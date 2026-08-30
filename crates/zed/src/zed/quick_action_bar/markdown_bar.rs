@@ -1,4 +1,4 @@
-use editor::{Editor, EditorSettings, actions as editor_actions};
+use editor::{Editor, EditorEvent, EditorSettings, actions as editor_actions};
 use gpui::{
     Action, AnyElement, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, Subscription,
     WeakEntity,
@@ -15,10 +15,16 @@ const MARKDOWN_LANGUAGE_NAME: &str = "Markdown";
 /// A toolbar row of Markdown formatting buttons, shown under the tab bar while
 /// a Markdown file is open.
 pub struct MarkdownFormatBar {
-    active_editor: Option<Entity<Editor>>,
+    active_editor: Option<ActiveEditor>,
     enabled: bool,
     workspace: WeakEntity<Workspace>,
     _settings_subscription: Subscription,
+}
+
+struct ActiveEditor {
+    editor: Entity<Editor>,
+    is_markdown: bool,
+    _subscription: Subscription,
 }
 
 impl MarkdownFormatBar {
@@ -43,11 +49,36 @@ impl MarkdownFormatBar {
     }
 
     fn location(&self) -> ToolbarItemLocation {
-        if self.enabled && self.active_editor.is_some() {
+        if self.enabled
+            && self
+                .active_editor
+                .as_ref()
+                .is_some_and(|active| active.is_markdown)
+        {
             ToolbarItemLocation::Secondary
         } else {
             ToolbarItemLocation::Hidden
         }
+    }
+
+    /// A buffer's language is resolved asynchronously, so an editor handed over
+    /// by the pane is often not Markdown *yet*: `Pane::activate_item` updates the
+    /// toolbar before it even focuses the item. Re-decide once the buffer has
+    /// been parsed, otherwise the row stays hidden until the tab happens to be
+    /// activated a second time.
+    fn active_editor_language_changed(&mut self, cx: &mut Context<Self>) {
+        let Some(active) = self.active_editor.as_ref() else {
+            return;
+        };
+        let is_markdown = MarkdownPreviewView::is_markdown_file(&active.editor, cx);
+        if active.is_markdown == is_markdown {
+            return;
+        }
+        if let Some(active) = self.active_editor.as_mut() {
+            active.is_markdown = is_markdown;
+        }
+        cx.emit(ToolbarItemEvent::ChangeLocation(self.location()));
+        cx.notify();
     }
 
     fn render_hard_break_toggle(
@@ -174,7 +205,12 @@ impl Render for MarkdownFormatBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let row = h_flex().id("markdown-format-bar");
 
-        let Some(editor) = self.active_editor.clone() else {
+        let Some(editor) = self
+            .active_editor
+            .as_ref()
+            .filter(|active| active.is_markdown)
+            .map(|active| active.editor.clone())
+        else {
             return row;
         };
         let focus_handle = editor.focus_handle(cx);
@@ -322,7 +358,18 @@ impl ToolbarItemView for MarkdownFormatBar {
         // buttons over a pane that cannot be typed into.
         self.active_editor = active_pane_item
             .and_then(|item| item.downcast::<Editor>())
-            .filter(|editor| MarkdownPreviewView::is_markdown_file(editor, cx));
+            .map(|editor| ActiveEditor {
+                is_markdown: MarkdownPreviewView::is_markdown_file(&editor, cx),
+                _subscription: cx.subscribe(&editor, |this, _, event, cx| {
+                    if matches!(
+                        event,
+                        EditorEvent::Reparsed(_) | EditorEvent::FileHandleChanged
+                    ) {
+                        this.active_editor_language_changed(cx);
+                    }
+                }),
+                editor,
+            });
         cx.notify();
         self.location()
     }

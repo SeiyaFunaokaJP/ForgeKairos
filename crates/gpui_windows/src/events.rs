@@ -148,8 +148,8 @@ impl WindowsWindowInner {
             WM_MOUSEHWHEEL => self.handle_mouse_horizontal_wheel_msg(handle, wparam, lparam),
             WM_SYSKEYUP => self.handle_syskeyup_msg(wparam, lparam),
             WM_KEYUP => self.handle_keyup_msg(wparam, lparam),
-            WM_GPUI_KEYDOWN => self.handle_keydown_msg(wparam, lparam),
-            WM_CHAR => self.handle_char_msg(wparam),
+            WM_GPUI_KEYDOWN => self.handle_keydown_msg(handle, wparam, lparam),
+            WM_CHAR => self.handle_char_msg(handle, wparam),
             WM_IME_STARTCOMPOSITION => self.handle_ime_position(handle),
             WM_IME_COMPOSITION => self.handle_ime_composition(handle, lparam),
             WM_SETCURSOR => self.handle_set_cursor(handle, lparam),
@@ -409,7 +409,7 @@ impl WindowsWindowInner {
 
     // It's a known bug that you can't trigger `ctrl-shift-0`. See:
     // https://superuser.com/questions/1455762/ctrl-shift-number-key-combination-has-stopped-working-for-a-few-numbers
-    fn handle_keydown_msg(&self, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+    fn handle_keydown_msg(&self, handle: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
         let Some(input) = handle_key_event(
             wparam,
             lparam,
@@ -433,6 +433,16 @@ impl WindowsWindowInner {
 
         self.state.callbacks.input.set(Some(func));
 
+        // A key press can flip whether the focused element takes text at all —
+        // vim leaving normal mode for insert mode is the everyday case — and
+        // dispatching it drew any pending frame, so the answer is current now.
+        // Waiting for the next `WM_PAINT` to notice would leave the IME detached
+        // for the keystroke that immediately follows, and that keystroke would
+        // then arrive as raw ASCII instead of opening a composition. That is most
+        // visible right after a file is opened, when the main thread is busy
+        // enough for the vsync repaint to arrive late.
+        self.update_ime_enabled(handle);
+
         if handled { Some(0) } else { Some(1) }
     }
 
@@ -453,13 +463,44 @@ impl WindowsWindowInner {
         if handled { Some(0) } else { Some(1) }
     }
 
-    fn handle_char_msg(&self, wparam: WPARAM) -> Option<isize> {
+    /// GPUI installs the window's input handler while painting, so the handler on
+    /// `WindowsWindowState` only ever describes a focus that has already been
+    /// drawn. An ordinary key press gets a fresh one for free: `run`'s
+    /// `translate_accelerator` hands `WM_KEYDOWN` to `Window::dispatch_key_event`,
+    /// which draws any pending frame before dispatching, and `WM_CHAR` is only
+    /// generated afterwards. Text that arrives without a key press of its own has
+    /// no such guarantee — the IME swallows the key as `VK_PROCESSKEY`, which
+    /// `handle_key_event` cannot parse, so nothing is drawn before the composition
+    /// messages arrive, and `VK_PACKET` injection is parsed away too. Immediately
+    /// after a file is opened the frame that installs the new editor's handler is
+    /// still pending, and the text would go to the handler of a view that is no
+    /// longer on screen (the input handler holds a strong `Entity`, so a dismissed
+    /// modal's query editor happily absorbs it) or to no handler at all — either
+    /// way it vanishes without a trace.
+    fn draw_pending_frame_for_text_input(&self, handle: HWND) {
+        self.draw_window(handle, false);
+    }
+
+    fn handle_char_msg(&self, handle: HWND, wparam: WPARAM) -> Option<isize> {
         let input = self.parse_char_message(wparam)?;
+        // Only pay for a frame when there is nothing to hand the text to; a
+        // `WM_CHAR` that follows a key press we already dispatched has a current
+        // handler, and auto-repeat must not draw a frame per character.
+        if self.take_input_handler_is_none() {
+            self.draw_pending_frame_for_text_input(handle);
+        }
         self.with_input_handler(|input_handler| {
             input_handler.replace_text_in_range(None, &input);
         });
 
         Some(0)
+    }
+
+    fn take_input_handler_is_none(&self) -> bool {
+        let input_handler = self.state.input_handler.take();
+        let is_none = input_handler.is_none();
+        self.state.input_handler.set(input_handler);
+        is_none
     }
 
     fn handle_mouse_down_msg(
@@ -640,6 +681,13 @@ impl WindowsWindowInner {
     }
 
     fn handle_ime_position(&self, handle: HWND) -> Option<isize> {
+        // `WM_IME_STARTCOMPOSITION` opens a composition, so this runs once per
+        // composed word rather than once per keystroke — cheap enough to always
+        // bring the frame, and with it the input handler and the caret bounds the
+        // IME window is placed against, up to date. This is the point where a
+        // stale handler would otherwise swallow the first composed character; see
+        // `draw_pending_frame_for_text_input`.
+        self.draw_pending_frame_for_text_input(handle);
         if let Some(caret_position) = self.retrieve_caret_position() {
             self.update_ime_position(handle, caret_position);
         }
@@ -706,6 +754,17 @@ impl WindowsWindowInner {
     }
 
     fn handle_ime_composition(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {
+        // Normally `WM_IME_STARTCOMPOSITION` has already refreshed the frame, but
+        // some IMEs commit a result without opening a composition first.
+        if self.take_input_handler_is_none() {
+            self.draw_pending_frame_for_text_input(handle);
+            if self.take_input_handler_is_none() {
+                // Composing means the user believes they are typing into a text
+                // field, so a window with no input handler is a bug rather than a
+                // benign state: say so instead of eating the text in silence.
+                log::warn!("dropping IME composition: the window has no input handler");
+            }
+        }
         let ctx = ImeContext::get(handle)?;
         self.handle_ime_composition_inner(*ctx, lparam)
     }

@@ -43731,3 +43731,47 @@ async fn test_select_delimiters_expansion(cx: &mut TestAppContext) {
     cx.dispatch_action(SelectInsideDelimiters);
     cx.assert_editor_state("foo(«x, { a: 1 }ˇ»);");
 }
+
+#[gpui::test]
+async fn test_typing_immediately_after_opening_a_markdown_file(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/a"), json!({ "note.md": "hello\n" }))
+        .await;
+
+    let project = Project::test(fs, [path!("/a").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(markdown_lang());
+
+    let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let mut cx = VisualTestContext::from_window(*window, cx);
+    let workspace = window
+        .read_with(&mut cx, |mw, _| mw.workspace().clone())
+        .unwrap();
+
+    let worktree_id = workspace.update_in(&mut cx, |workspace, _, cx| {
+        workspace.project().update(cx, |project, cx| {
+            project.worktrees(cx).next().unwrap().read(cx).id()
+        })
+    });
+
+    let editor = workspace
+        .update_in(&mut cx, |workspace, window, cx| {
+            workspace.open_path((worktree_id, rel_path("note.md")), None, true, window, cx)
+        })
+        .await
+        .unwrap()
+        .downcast::<Editor>()
+        .unwrap();
+
+    editor.update_in(&mut cx, |editor, window, _cx| {
+        assert!(editor.focus_handle.is_focused(window), "editor not focused");
+    });
+
+    cx.simulate_input("X");
+
+    editor.update(&mut cx, |editor, cx| {
+        assert_eq!(editor.text(cx), "Xhello\n");
+    });
+}
