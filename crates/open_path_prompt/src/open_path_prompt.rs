@@ -163,6 +163,28 @@ impl OpenPathDelegate {
             PathStyle::Windows => ".\\",
         }
     }
+
+    fn parent_dir(&self) -> &'static str {
+        match self.path_style {
+            PathStyle::Unix => "../",
+            PathStyle::Windows => "..\\",
+        }
+    }
+
+    /// The query that moves the prompt one directory up, or `None` when it is
+    /// already at the root (or has nothing listed yet).
+    fn parent_query(&self) -> Option<String> {
+        let parent_path = match &self.directory_state {
+            DirectoryState::List { parent_path, .. }
+            | DirectoryState::Create { parent_path, .. } => parent_path,
+            DirectoryState::None { .. } => return None,
+        };
+        parent_directory_query(parent_path, self.path_style, &self.prompt_root)
+    }
+
+    fn is_parent_dir_entry(&self, candidate: &CandidateInfo) -> bool {
+        candidate.is_dir && candidate.path.string == self.parent_dir()
+    }
 }
 
 #[derive(Debug)]
@@ -323,7 +345,10 @@ impl PickerDelegate for OpenPathDelegate {
         let cancel_flag = self.cancel_flag.clone();
         let hidden_entries = self.hidden_entries;
         let parent_path_is_root = self.prompt_root == dir;
+        let has_parent_target =
+            parent_directory_query(&dir, self.path_style, &self.prompt_root).is_some();
         let current_dir = self.current_dir();
+        let parent_dir = self.parent_dir();
         let sort_mode = self.sort_mode;
         cx.spawn_in(window, async move |this, cx| {
             if let Some(query) = query {
@@ -342,10 +367,17 @@ impl PickerDelegate for OpenPathDelegate {
                                     parent_path: dir.clone(),
                                     error: None,
                                 },
-                                Err(e) => DirectoryState::List {
+                                // The directory the user asked for may simply be
+                                // unreadable (a remote `/root`, say). Name it and
+                                // keep the underlying reason: without the path the
+                                // message reads as "nothing here" and the user has
+                                // no idea their pick was refused rather than empty.
+                                Err(error) => DirectoryState::List {
                                     entries: Vec::new(),
                                     parent_path: dir.clone(),
-                                    error: Some(SharedString::from(e.to_string())),
+                                    error: Some(SharedString::from(format!(
+                                        "{dir} を開けません: {error}"
+                                    ))),
                                 },
                             },
                             DirectoryState::None { create: true }
@@ -400,17 +432,16 @@ impl PickerDelegate for OpenPathDelegate {
                 }
             }
 
-            let Ok(mut new_entries) =
+            let Ok((mut new_entries, listing_failed, is_create_state)) =
                 this.update(cx, |this, _| match &this.delegate.directory_state {
                     DirectoryState::List {
                         entries,
                         error: None,
                         ..
-                    }
-                    | DirectoryState::Create { entries, .. } => entries.clone(),
-                    DirectoryState::List { error: Some(_), .. } | DirectoryState::None { .. } => {
-                        Vec::new()
-                    }
+                    } => (entries.clone(), false, false),
+                    DirectoryState::Create { entries, .. } => (entries.clone(), false, true),
+                    DirectoryState::List { error: Some(_), .. } => (Vec::new(), true, false),
+                    DirectoryState::None { create } => (Vec::new(), false, *create),
                 })
             else {
                 return;
@@ -420,11 +451,38 @@ impl PickerDelegate for OpenPathDelegate {
                 new_entries.retain(|entry| !entry.path.string.starts_with('.'));
             }
 
-            let max_id = new_entries
+            let mut next_id = new_entries
                 .iter()
                 .map(|entry| entry.path.id)
                 .max()
-                .unwrap_or(0);
+                .unwrap_or(0)
+                + 1;
+
+            // A directory listing never contains `..`, so the prompt has to offer
+            // the way out itself. Without it the only way to leave the directory
+            // the prompt opened in — the remote home directory, for the "open a
+            // folder over SSH" picker — is to retype the whole path by hand, which
+            // makes it look like nothing above that directory can be opened.
+            //
+            // The listing is reused as-is while the directory does not change, so
+            // the row may already be in it from an earlier keystroke.
+            let parent_dir_in_new_entries = new_entries
+                .iter()
+                .any(|entry| entry.path.string == parent_dir);
+            let has_parent_entry = has_parent_target
+                && !listing_failed
+                && !is_create_state
+                && !parent_dir_in_new_entries;
+            if has_parent_entry {
+                new_entries.insert(
+                    0,
+                    CandidateInfo {
+                        path: StringMatchCandidate::new(next_id, parent_dir),
+                        is_dir: true,
+                    },
+                );
+                next_id += 1;
+            }
 
             if suffix.is_empty() {
                 let should_prepend_with_current_dir = this
@@ -447,7 +505,7 @@ impl PickerDelegate for OpenPathDelegate {
                         0,
                         CandidateInfo {
                             path: StringMatchCandidate {
-                                id: max_id + 1,
+                                id: next_id,
                                 string: current_dir.to_string(),
                                 char_bag: CharBag::from(current_dir),
                             },
@@ -487,16 +545,6 @@ impl PickerDelegate for OpenPathDelegate {
                 .ok();
                 return;
             }
-
-            let Ok(is_create_state) =
-                this.update(cx, |this, _| match &this.delegate.directory_state {
-                    DirectoryState::Create { .. } => true,
-                    DirectoryState::List { .. } => false,
-                    DirectoryState::None { create } => *create,
-                })
-            else {
-                return;
-            };
 
             let candidates = new_entries
                 .iter()
@@ -587,6 +635,9 @@ impl PickerDelegate for OpenPathDelegate {
         if candidate.path.string.is_empty() || !candidate.is_dir {
             return None;
         }
+        if self.is_parent_dir_entry(&candidate) {
+            return self.parent_query();
+        }
         let path_style = self.path_style;
         match &self.directory_state {
             DirectoryState::List { parent_path, .. }
@@ -605,17 +656,7 @@ impl PickerDelegate for OpenPathDelegate {
         _window: &mut Window,
         _cx: &mut Context<Picker<Self>>,
     ) -> Option<String> {
-        let parent_path = match &self.directory_state {
-            DirectoryState::List { parent_path, .. }
-            | DirectoryState::Create { parent_path, .. } => parent_path,
-            DirectoryState::None { .. } => return None,
-        };
-        if parent_path == &self.prompt_root {
-            return None;
-        }
-        let trimmed = parent_path.trim_end_matches(['/', '\\']);
-        let (dir, _) = get_dir_and_suffix(trimmed.to_string(), self.path_style);
-        Some(dir)
+        self.parent_query()
     }
     fn confirm_completion(
         &mut self,
@@ -626,6 +667,9 @@ impl PickerDelegate for OpenPathDelegate {
         let candidate = self.get_entry(self.selected_index)?;
         if candidate.path.string.is_empty() || candidate.path.string == self.current_dir() {
             return None;
+        }
+        if self.is_parent_dir_entry(&candidate) {
+            return self.parent_query();
         }
 
         let path_style = self.path_style;
@@ -663,6 +707,18 @@ impl PickerDelegate for OpenPathDelegate {
         let Some(candidate) = self.get_entry(self.selected_index) else {
             return;
         };
+
+        // Confirming `../` has to move the prompt up rather than hand back
+        // `<dir>/..` as the chosen path: the point of the row is to browse, and
+        // an un-normalized `..` would end up as the opened worktree's path.
+        if self.is_parent_dir_entry(&candidate) {
+            if let Some(parent) = self.parent_query() {
+                cx.defer_in(window, move |picker, window, cx| {
+                    picker.set_query(&parent, window, cx);
+                });
+            }
+            return;
+        }
 
         match &self.directory_state {
             DirectoryState::None { .. } => return,
@@ -803,6 +859,7 @@ impl PickerDelegate for OpenPathDelegate {
             .unwrap_or_default();
 
         let is_current_dir_candidate = candidate.path.string == self.current_dir();
+        let is_parent_dir_candidate = self.is_parent_dir_entry(&candidate);
 
         let file_icon = maybe!({
             if !settings.file_icons {
@@ -813,6 +870,8 @@ impl PickerDelegate for OpenPathDelegate {
             let icon = if candidate.is_dir {
                 if is_current_dir_candidate {
                     return Some(Icon::new(IconName::ReplyArrowRight).color(Color::Muted));
+                } else if is_parent_dir_candidate {
+                    return Some(Icon::new(IconName::ArrowUp).color(Color::Muted));
                 } else {
                     FileIcons::get_folder_icon(false, path, cx)?
                 }
@@ -826,6 +885,14 @@ impl PickerDelegate for OpenPathDelegate {
             DirectoryState::List { parent_path, .. } => {
                 let (label, indices) = if is_current_dir_candidate {
                     ("このディレクトリを開く".to_string(), vec![])
+                } else if is_parent_dir_candidate {
+                    (
+                        match self.parent_query() {
+                            Some(parent) => format!("上の階層へ移動 ({parent})"),
+                            None => "上の階層へ移動".to_string(),
+                        },
+                        vec![],
+                    )
                 } else if *parent_path == self.prompt_root {
                     match_positions.iter_mut().for_each(|position| {
                         *position += self.prompt_root.len();
@@ -944,13 +1011,18 @@ impl PickerDelegate for OpenPathDelegate {
     }
 
     fn separators_after_indices(&self) -> Vec<usize> {
-        let Some(m) = self.string_matches.first() else {
-            return Vec::new();
-        };
-        if m.string == self.current_dir() {
-            vec![0]
-        } else {
+        // The navigation rows (`./`, then `../`) are always first when present,
+        // so the separator goes after the last of them rather than after a fixed
+        // index.
+        let navigation_rows = self
+            .string_matches
+            .iter()
+            .take_while(|m| m.string == self.current_dir() || m.string == self.parent_dir())
+            .count();
+        if navigation_rows == 0 {
             Vec::new()
+        } else {
+            vec![navigation_rows - 1]
         }
     }
 }
@@ -983,6 +1055,25 @@ fn path_candidates(
             is_dir: item.is_dir,
         })
         .collect()
+}
+
+/// The query that lists the parent of `dir`, or `None` when `dir` already is the
+/// root, resolves to it, or is not a path the prompt can walk up from.
+///
+/// `dir` is normalized first so that walking up from a query the user typed with
+/// `.` or `..` components in it lands where those components actually point,
+/// rather than one literal segment back.
+fn parent_directory_query(dir: &str, path_style: PathStyle, prompt_root: &str) -> Option<String> {
+    let normalized = path_style.normalize(dir);
+    if normalized == prompt_root {
+        return None;
+    }
+    let trimmed = normalized.trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (parent, _) = get_dir_and_suffix(trimmed.to_string(), path_style);
+    (parent != dir).then_some(parent)
 }
 
 fn get_dir_and_suffix(query: String, path_style: PathStyle) -> (String, String) {
@@ -1020,7 +1111,33 @@ fn get_dir_and_suffix(query: String, path_style: PathStyle) -> (String, String) 
 mod tests {
     use util::paths::PathStyle;
 
-    use super::get_dir_and_suffix;
+    use super::{get_dir_and_suffix, parent_directory_query};
+
+    #[test]
+    fn test_parent_directory_query_with_posix_style() {
+        let parent = |dir| parent_directory_query(dir, PathStyle::Unix, "/");
+
+        assert_eq!(parent("/home/ubuntu/").as_deref(), Some("/home/"));
+        assert_eq!(parent("/home/").as_deref(), Some("/"));
+        assert_eq!(parent("/"), None);
+        // A `..` the user typed points where it actually points, so walking up
+        // from it does not just drop the last literal segment.
+        assert_eq!(parent("/home/ubuntu/../").as_deref(), Some("/"));
+        assert_eq!(parent("/home/ubuntu/./").as_deref(), Some("/home/"));
+        // Nothing to walk up from: `~` is only expanded further down the stack.
+        assert_eq!(parent("~/"), None);
+    }
+
+    #[test]
+    fn test_parent_directory_query_with_windows_style() {
+        let parent = |dir| parent_directory_query(dir, PathStyle::Windows, "C:\\");
+
+        assert_eq!(parent("C:\\Users\\admin\\").as_deref(), Some("C:\\Users\\"));
+        assert_eq!(parent("C:\\Users\\").as_deref(), Some("C:\\"));
+        assert_eq!(parent("C:\\"), None);
+        assert_eq!(parent("C:/Users/admin/").as_deref(), Some("C:\\Users\\"));
+        assert_eq!(parent("C:\\Users\\admin\\..\\").as_deref(), Some("C:\\"));
+    }
 
     #[test]
     fn test_get_dir_and_suffix_with_windows_style() {

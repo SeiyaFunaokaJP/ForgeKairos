@@ -499,7 +499,7 @@ impl RemoteConnection for SshRemoteConnection {
         cx: &mut AsyncApp,
     ) -> Task<Result<i32>> {
         const VARS: [&str; 3] = ["RUST_LOG", "RUST_BACKTRACE", "ZED_GENERATE_MINIDUMPS"];
-        delegate.set_status(Some("Starting proxy"), cx);
+        delegate.set_status(Some("プロキシを起動しています"), cx);
 
         let Some(remote_binary_path) = self.remote_binary_path.clone() else {
             return Task::ready(Err(anyhow!("Remote binary path not set")));
@@ -678,7 +678,7 @@ impl SshRemoteConnection {
 
         #[cfg(not(windows))]
         let (socket, master_process_option) = if let Some(reused_path) = reused_socket {
-            delegate.set_status(Some("Connecting (reusing session)"), cx);
+            delegate.set_status(Some("接続しています (既存の SSH セッションを再利用)"), cx);
             log::info!("reusing existing ControlMaster, skipping authentication");
             let socket = SshSocket::new(connection_options, reused_path).await?;
             (socket, None)
@@ -694,7 +694,7 @@ impl SshRemoteConnection {
                 askpass::AskPassSession::new(cx.background_executor().clone(), askpass_delegate)
                     .await?;
 
-            delegate.set_status(Some("Connecting"), cx);
+            delegate.set_status(Some("接続しています"), cx);
 
             // Start the master SSH process, which does not do anything except
             // for establish the connection and keep it open, allowing other ssh
@@ -758,7 +758,7 @@ impl SshRemoteConnection {
                 askpass::AskPassSession::new(cx.background_executor().clone(), askpass_delegate)
                     .await?;
 
-            delegate.set_status(Some("Connecting"), cx);
+            delegate.set_status(Some("接続しています"), cx);
 
             let mut master_process = MasterProcess::new(
                 askpass.script_path().as_ref(),
@@ -1104,7 +1104,10 @@ impl SshRemoteConnection {
             }
         }
 
-        delegate.set_status(Some("Downloading remote development server on host"), cx);
+        delegate.set_status(
+            Some("リモートホスト上でリモート開発サーバーをダウンロードしています"),
+            cx,
+        );
 
         let connection_timeout = self
             .socket
@@ -1236,7 +1239,18 @@ impl SshRemoteConnection {
         let size = src_stat.len();
 
         let t0 = Instant::now();
-        delegate.set_status(Some("Uploading remote development server"), cx);
+        // The size is in the status because this is by far the longest step of a
+        // first connection after the client was rebuilt (the binary's name carries
+        // the version, so a new build is always absent from the remote), and a
+        // spinner with no indication of scale is what made that wait look like the
+        // connection had stalled or restarted.
+        delegate.set_status(
+            Some(&format!(
+                "リモート開発サーバーを転送しています ({})",
+                format_transfer_size(size)
+            )),
+            cx,
+        );
         log::info!(
             "uploading remote development server to {:?} ({}kb)",
             tmp_path,
@@ -1256,7 +1270,7 @@ impl SshRemoteConnection {
         delegate: &Arc<dyn RemoteClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
-        delegate.set_status(Some("Extracting remote development server"), cx);
+        delegate.set_status(Some("リモート開発サーバーを展開しています"), cx);
 
         let result = if self.ssh_platform.os.is_windows() {
             self.extract_server_binary_windows(dst_path, tmp_path).await
@@ -2121,6 +2135,21 @@ impl SshConnectionOptions {
 /// them, so the quoting has to be unconditional.
 fn powershell_single_quoted(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+/// Renders a byte count for the connection dialog. Binary units, because that is
+/// what the rest of the tooling around this file (`ls -lh`, `df -h`) reports.
+fn format_transfer_size(bytes: u64) -> String {
+    const MIB: f64 = (1024 * 1024) as f64;
+    const KIB: f64 = 1024.0;
+    let bytes = bytes as f64;
+    if bytes >= MIB {
+        format!("{:.1} MB", bytes / MIB)
+    } else if bytes >= KIB {
+        format!("{:.0} KB", bytes / KIB)
+    } else {
+        format!("{bytes:.0} B")
+    }
 }
 
 /// Rejects a string that is about to be interpolated into a glob pattern

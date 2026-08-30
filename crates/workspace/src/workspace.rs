@@ -15121,6 +15121,93 @@ mod tests {
         }
     }
 
+    // Hosts a reopenable picker, and so is recognized by focus identity, but opts
+    // out of being stashed — like the remote-server modal, which owns a live SSH
+    // session that a hidden copy would keep running.
+    struct NonStashableTestModal(FocusHandle);
+
+    impl NonStashableTestModal {
+        fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
+            let focus_handle = cx.focus_handle();
+            register_reopenable_picker(&focus_handle, cx);
+            Self(focus_handle)
+        }
+    }
+
+    impl EventEmitter<DismissEvent> for NonStashableTestModal {}
+
+    impl Focusable for NonStashableTestModal {
+        fn focus_handle(&self, _cx: &App) -> FocusHandle {
+            self.0.clone()
+        }
+    }
+
+    impl ModalView for NonStashableTestModal {
+        fn stash_when_dismissed(&self) -> bool {
+            false
+        }
+    }
+
+    impl Render for NonStashableTestModal {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<NonStashableTestModal>,
+        ) -> impl IntoElement {
+            div().track_focus(&self.0)
+        }
+    }
+
+    #[gpui::test]
+    async fn test_modal_can_opt_out_of_being_stashed(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_modal(window, cx, NonStashableTestModal::new);
+        });
+        cx.executor().run_until_parked();
+        let dismissed_id = workspace
+            .read_with(cx, |workspace, cx| {
+                workspace.active_modal::<NonStashableTestModal>(cx)
+            })
+            .unwrap()
+            .entity_id();
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let revealed = workspace.modal_layer.update(cx, |modal_layer, cx| {
+                modal_layer.hide_modal(window, cx);
+                modal_layer.reveal_stashed_modal(window, cx)
+            });
+            assert!(
+                !revealed,
+                "a modal that opted out of stashing must not be revealable"
+            );
+        });
+        cx.executor().run_until_parked();
+
+        // Opening it again builds a fresh one rather than reviving the hidden
+        // instance, which is what lets the connection the old one owned go away.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_modal(window, cx, NonStashableTestModal::new);
+        });
+        cx.executor().run_until_parked();
+        let reopened_id = workspace
+            .read_with(cx, |workspace, cx| {
+                workspace.active_modal::<NonStashableTestModal>(cx)
+            })
+            .unwrap()
+            .entity_id();
+        assert_ne!(
+            dismissed_id, reopened_id,
+            "the dismissed modal must not be brought back"
+        );
+    }
+
     #[gpui::test]
     async fn test_reopen_last_picker(cx: &mut gpui::TestAppContext) {
         init_test(cx);

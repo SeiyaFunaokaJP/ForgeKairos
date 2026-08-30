@@ -1263,7 +1263,7 @@ impl ConnectionPool {
                 if let Some(task) = task.upgrade() {
                     log::debug!("Connecting task is still alive");
                     cx.spawn(async move |cx| {
-                        delegate.set_status(Some("Waiting for existing connection attempt"), cx)
+                        delegate.set_status(Some("進行中の接続を待っています"), cx)
                     })
                     .detach();
                     return task;

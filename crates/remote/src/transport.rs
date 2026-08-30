@@ -367,7 +367,7 @@ async fn build_remote_server_from_source(
     if platform.arch.as_str() == std::env::consts::ARCH
         && platform.os.as_str() == std::env::consts::OS
     {
-        delegate.set_status(Some("Building remote server binary from source"), cx);
+        delegate.set_status(Some("リモートサーバーをソースからビルドしています"), cx);
         log::info!("building remote server binary from source");
         run_cmd(
             new_command("cargo")
@@ -398,19 +398,25 @@ async fn build_remote_server_from_source(
         let rustup = which("rustup", cx)
             .await?
             .context("rustup not found on $PATH, install rustup (see https://rustup.rs/)")?;
-        delegate.set_status(Some("Adding rustup target for cross-compilation"), cx);
+        delegate.set_status(
+            Some("クロスコンパイル用の rustup ターゲットを追加しています"),
+            cx,
+        );
         log::info!("adding rustup target");
         run_cmd(new_command(rustup).args(["target", "add"]).arg(&triple)).await?;
 
         if which("cargo-zigbuild", cx).await?.is_none() {
-            delegate.set_status(Some("Installing cargo-zigbuild for cross-compilation"), cx);
+            delegate.set_status(
+                Some("クロスコンパイル用の cargo-zigbuild を導入しています"),
+                cx,
+            );
             log::info!("installing cargo-zigbuild");
             run_cmd(new_command("cargo").args(["install", "--locked", "cargo-zigbuild"])).await?;
         }
 
         delegate.set_status(
             Some(&format!(
-                "Building remote binary from source for {triple} with Zig"
+                "{triple} 向けのリモートサーバーを Zig でビルドしています"
             )),
             cx,
         );
@@ -442,7 +448,7 @@ async fn build_remote_server_from_source(
         .with_extension(if platform.os.is_windows() { "exe" } else { "" });
 
     let path = if !build_remote_server.contains("nocompress") {
-        delegate.set_status(Some("Compressing binary"), cx);
+        delegate.set_status(Some("バイナリを圧縮しています"), cx);
 
         #[cfg(not(target_os = "windows"))]
         let archive_path = {

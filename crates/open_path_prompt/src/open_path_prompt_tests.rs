@@ -49,16 +49,27 @@ async fn test_open_path_prompt(cx: &mut TestAppContext) {
     assert_eq!(collect_match_candidates(&picker, cx), vec!["root"]);
 
     #[cfg(not(windows))]
-    let expected_separator = "./";
+    let (expected_separator, expected_parent) = ("./", "../");
     #[cfg(windows)]
-    let expected_separator = ".\\";
+    let (expected_separator, expected_parent) = (".\\", "..\\");
 
     // If the query ends with a slash, the picker should show the contents of the directory and not show any of the hidden entries.
+    // The `..` row is offered by the prompt itself: a directory listing never
+    // contains one, so without it there is no way out of the directory the
+    // prompt opened in short of retyping the whole path.
     let query = path!("/root/");
     insert_query(query, &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![expected_separator, "dir1", "dir2", "a1", "a2", "a3"]
+        vec![
+            expected_separator,
+            expected_parent,
+            "dir1",
+            "dir2",
+            "a1",
+            "a2",
+            "a3"
+        ]
     );
 
     // Show candidates for the query "a".
@@ -82,7 +93,16 @@ async fn test_open_path_prompt(cx: &mut TestAppContext) {
     insert_query(query, &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![expected_separator, "dir3", "dir4", "c", "d1", "d2", "d3"]
+        vec![
+            expected_separator,
+            expected_parent,
+            "dir3",
+            "dir4",
+            "c",
+            "d1",
+            "d2",
+            "d3"
+        ]
     );
 
     // Show candidates for the query "d".
@@ -97,10 +117,16 @@ async fn test_open_path_prompt(cx: &mut TestAppContext) {
     insert_query(query, &picker, cx).await;
     assert_eq!(collect_match_candidates(&picker, cx), vec!["dir3", "dir4"]);
 
-    // Don't show candidates for the query ".".
+    // With hidden entries off, the only thing "." matches is the way up.
     let query = path!("/root/.");
     insert_query(query, &picker, cx).await;
-    assert_eq!(collect_match_candidates(&picker, cx), Vec::<String>::new());
+    assert_eq!(collect_match_candidates(&picker, cx), vec![expected_parent]);
+
+    // Typing `..` reaches the parent row, which is how the prompt is walked up
+    // from the keyboard.
+    let query = path!("/root/..");
+    insert_query(query, &picker, cx).await;
+    assert_eq!(collect_match_candidates(&picker, cx), vec![expected_parent]);
 
     // Don't show any candidates for the query ".a".
     let query = path!("/root/.a");
@@ -113,7 +139,15 @@ async fn test_open_path_prompt(cx: &mut TestAppContext) {
     insert_query(query, &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![expected_separator, "dir1", "dir2", "a1", "a2", "a3"]
+        vec![
+            expected_separator,
+            expected_parent,
+            "dir1",
+            "dir2",
+            "a1",
+            "a2",
+            "a3"
+        ]
     );
 
     // Show candidates for the query "../". Show parent contents.
@@ -121,7 +155,23 @@ async fn test_open_path_prompt(cx: &mut TestAppContext) {
     insert_query(query, &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![expected_separator, "dir1", "dir2", "a1", "a2", "a3"]
+        vec![
+            expected_separator,
+            expected_parent,
+            "dir1",
+            "dir2",
+            "a1",
+            "a2",
+            "a3"
+        ]
+    );
+
+    // The root has nothing above it to offer.
+    let query = path!("/");
+    insert_query(query, &picker, cx).await;
+    assert!(
+        !collect_match_candidates(&picker, cx).contains(&expected_parent.to_string()),
+        "the root must not offer a parent row"
     );
 }
 
@@ -168,15 +218,20 @@ async fn test_open_path_prompt_completion(cx: &mut TestAppContext) {
     );
     assert_eq!(
         confirm_completion(query, 1, &picker, cx).unwrap(),
+        path!("/"),
+        "Second entry is `..`, which completes to the parent directory"
+    );
+    assert_eq!(
+        confirm_completion(query, 2, &picker, cx).unwrap(),
         path!("/root/dir1/"),
-        "Second entry is the first directory"
+        "Third entry is the first directory"
     );
 
-    // Confirm completion for the query "/root/", selecting the third candidate "a", since it's a file, it should not add a trailing slash.
+    // Confirm completion for the query "/root/", selecting the candidate "a", since it's a file, it should not add a trailing slash.
     let query = path!("/root/");
     insert_query(query, &picker, cx).await;
     assert_eq!(
-        confirm_completion(query, 3, &picker, cx).unwrap(),
+        confirm_completion(query, 4, &picker, cx).unwrap(),
         path!("/root/a")
     );
 
@@ -205,13 +260,18 @@ async fn test_open_path_prompt_completion(cx: &mut TestAppContext) {
     insert_query(query, &picker, cx).await;
     assert_eq!(
         confirm_completion(query, 1, &picker, cx).unwrap(),
+        path!("/root/"),
+        "`..` completes to the parent, not to a child of the current directory"
+    );
+    assert_eq!(
+        confirm_completion(query, 2, &picker, cx).unwrap(),
         path!("/root/dir2/dir3/")
     );
 
     let query = path!("/root/dir2/");
     insert_query(query, &picker, cx).await;
     assert_eq!(
-        confirm_completion(query, 3, &picker, cx).unwrap(),
+        confirm_completion(query, 4, &picker, cx).unwrap(),
         path!("/root/dir2/c")
     );
 
@@ -263,7 +323,7 @@ async fn test_open_path_prompt_on_windows(cx: &mut TestAppContext) {
     insert_query(query, &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![".\\", "dir1", "dir2", "a"]
+        vec![".\\", "..\\", "dir1", "dir2", "a"]
     );
     assert_eq!(
         confirm_completion(query, 0, &picker, cx),
@@ -272,18 +332,23 @@ async fn test_open_path_prompt_on_windows(cx: &mut TestAppContext) {
     );
     assert_eq!(
         confirm_completion(query, 1, &picker, cx).unwrap(),
+        "C:\\",
+        "Second entry is `..`, which completes to the parent directory"
+    );
+    assert_eq!(
+        confirm_completion(query, 2, &picker, cx).unwrap(),
         "C:/root/dir1\\",
-        "Second entry is the first directory"
+        "Third entry is the first directory"
     );
 
     let query = "C:\\root/";
     insert_query(query, &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![".\\", "dir1", "dir2", "a"]
+        vec![".\\", "..\\", "dir1", "dir2", "a"]
     );
     assert_eq!(
-        confirm_completion(query, 1, &picker, cx).unwrap(),
+        confirm_completion(query, 2, &picker, cx).unwrap(),
         "C:\\root/dir1\\"
     );
 
@@ -291,10 +356,10 @@ async fn test_open_path_prompt_on_windows(cx: &mut TestAppContext) {
     insert_query(query, &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![".\\", "dir1", "dir2", "a"]
+        vec![".\\", "..\\", "dir1", "dir2", "a"]
     );
     assert_eq!(
-        confirm_completion(query, 1, &picker, cx).unwrap(),
+        confirm_completion(query, 2, &picker, cx).unwrap(),
         "C:\\root\\dir1\\"
     );
 
@@ -426,18 +491,67 @@ async fn test_open_path_prompt_with_show_hidden(cx: &mut TestAppContext) {
     let (picker, cx) = build_open_path_prompt(project, false, true, cx);
 
     #[cfg(not(windows))]
-    let expected_separator = "./";
+    let (expected_separator, expected_parent) = ("./", "../");
     #[cfg(windows)]
-    let expected_separator = ".\\";
+    let (expected_separator, expected_parent) = (".\\", "..\\");
 
     insert_query(path!("/root/"), &picker, cx).await;
     assert_eq!(
         collect_match_candidates(&picker, cx),
-        vec![expected_separator, ".hidden", "directory_1", "directory_2"]
+        vec![
+            expected_separator,
+            expected_parent,
+            ".hidden",
+            "directory_1",
+            "directory_2"
+        ]
     );
 
     insert_query(path!("/root/."), &picker, cx).await;
-    assert_eq!(collect_match_candidates(&picker, cx), vec![".hidden"]);
+    assert_eq!(
+        collect_match_candidates(&picker, cx),
+        vec![".hidden", expected_parent]
+    );
+}
+
+/// Confirming the `..` row has to browse upwards. Sending `<dir>/..` back as the
+/// chosen path instead would open a worktree at an un-normalized path, and would
+/// close the prompt when the user meant to keep looking.
+#[gpui::test]
+async fn test_confirming_the_parent_row_navigates_up(cx: &mut TestAppContext) {
+    let app_state = init_test(cx);
+    app_state
+        .fs
+        .as_fake()
+        .insert_tree(
+            path!("/root"),
+            json!({
+                "dir1": {
+                    "dir2": {}
+                }
+            }),
+        )
+        .await;
+
+    let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+    let (picker, cx) = build_open_path_prompt(project, false, false, cx);
+
+    insert_query(path!("/root/dir1/"), &picker, cx).await;
+    picker.update_in(cx, |picker, window, cx| {
+        picker.delegate.set_selected_index(1, window, cx);
+        picker.delegate.confirm(false, window, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        picker.read_with(cx, |picker, cx| picker.query(cx)),
+        path!("/root/"),
+        "confirming `..` moves the prompt to the parent directory"
+    );
+    assert!(
+        collect_match_candidates(&picker, cx).contains(&"dir1".to_string()),
+        "the parent's contents are listed after navigating up"
+    );
 }
 
 #[gpui::test]

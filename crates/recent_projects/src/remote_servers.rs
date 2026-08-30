@@ -394,9 +394,18 @@ impl ProjectPicker {
         let lister = project::DirectoryLister::Project(project.clone());
         let delegate = open_path_prompt::OpenPathDelegate::new(tx, lister, false, cx).show_hidden();
 
+        // The trailing separator is what makes the prompt open *inside* the home
+        // directory. Without it, `/home/ubuntu` is read as "list `/home`, filtered
+        // by `ubuntu`", so the picker comes up showing a single row — which reads
+        // as "this is the only folder that can be opened over SSH".
+        let mut initial_query = home_dir.to_string();
+        if !initial_query.ends_with(['/', '\\']) {
+            initial_query.push_str(home_dir.path_style().primary_separator());
+        }
+
         let picker = cx.new(|cx| {
             let picker = Picker::uniform_list(delegate, window, cx).embedded();
-            picker.set_query(&home_dir.to_string(), window, cx);
+            picker.set_query(&initial_query, window, cx);
             picker
         });
 
@@ -3066,6 +3075,16 @@ impl ModalView for RemoteServerProjects {
         _cx: &mut Context<Self>,
     ) -> DismissDecision {
         DismissDecision::Dismiss(self.allow_dismissal)
+    }
+
+    // This modal owns live remote sessions — `retained_connections` from adding a
+    // server, and the `Project` its folder picker browses through, both opened
+    // under a `ConnectionIdentifier::setup()`. Keeping a hidden copy around for
+    // `ReopenLastPicker` therefore leaves a `remote_server` process running on the
+    // host for the rest of the session; two of them were found still alive on a
+    // remote twenty minutes after the dialog was closed.
+    fn stash_when_dismissed(&self) -> bool {
+        false
     }
 }
 

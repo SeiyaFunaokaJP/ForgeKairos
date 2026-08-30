@@ -62,6 +62,18 @@ pub trait ModalView: ManagedView {
     fn render_bare(&self) -> bool {
         false
     }
+
+    /// Whether a dismissal may keep this modal alive (hidden) so that
+    /// `ReopenLastPicker` can bring it back with its prior state.
+    ///
+    /// Modals that own something the rest of the app can observe while they are
+    /// hidden must return `false`. The remote-server modal is the case that
+    /// forced this: it holds the `RemoteClient` its picker browses through, and
+    /// a stashed copy kept a `remote_server` process alive on the host long
+    /// after the user closed the dialog.
+    fn stash_when_dismissed(&self) -> bool {
+        true
+    }
 }
 
 trait ModalViewHandle {
@@ -71,6 +83,7 @@ trait ModalViewHandle {
     fn subscribe_dismiss(&self, window: &mut Window, cx: &mut Context<ModalLayer>) -> Subscription;
     fn fade_out_background(&self, cx: &mut App) -> bool;
     fn render_bare(&self, cx: &mut App) -> bool;
+    fn stash_when_dismissed(&self, cx: &mut App) -> bool;
 }
 
 impl<V: ModalView> ModalViewHandle for Entity<V> {
@@ -98,6 +111,10 @@ impl<V: ModalView> ModalViewHandle for Entity<V> {
 
     fn render_bare(&self, cx: &mut App) -> bool {
         self.read(cx).render_bare()
+    }
+
+    fn stash_when_dismissed(&self, cx: &mut App) -> bool {
+        self.read(cx).stash_when_dismissed()
     }
 }
 
@@ -246,7 +263,8 @@ impl ModalLayer {
         }
 
         if let Some(active_modal) = self.active_modal.take() {
-            let reopenable = focus_handle_is_reopenable(&active_modal.modal.focus_handle(cx), cx);
+            let reopenable = active_modal.modal.stash_when_dismissed(cx)
+                && focus_handle_is_reopenable(&active_modal.modal.focus_handle(cx), cx);
             if let Some(previous_focus) = active_modal.previous_focus_handle
                 && active_modal.focus_handle.contains_focused(window, cx)
             {
