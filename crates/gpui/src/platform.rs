@@ -2208,6 +2208,11 @@ impl From<&str> for PromptButton {
         match value.to_lowercase().as_str() {
             "ok" => PromptButton::Ok("OK".into()),
             "cancel" => PromptButton::Cancel("Cancel".into()),
+            // zed-jp-enhance (DESIGN.md §3): プロンプトのボタンを日本語化すると、この分類が
+            // `Other` に落ちて `is_cancel()` が偽になり、Esc / ネイティブダイアログの
+            // キャンセル判定が壊れる。日本語ラベルも Cancel として分類する。
+            // 訳語は docs/jp-enhance/GLOSSARY.md の「Cancel = キャンセル」に対応。
+            "キャンセル" => PromptButton::Cancel("キャンセル".into()),
             _ => PromptButton::Other(SharedString::from(value.to_owned())),
         }
     }

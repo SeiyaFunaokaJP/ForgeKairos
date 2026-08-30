@@ -144,7 +144,7 @@ impl PickerDelegate for CommitTagPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Copy Tag".into()
+        "タグをコピー".into()
     }
 
     fn match_count(&self) -> usize {
@@ -301,7 +301,7 @@ impl ChangedFileEntry {
                 } else {
                     format!("{}/{}", dir_path, file_name).into()
                 };
-                move |_, cx| Tooltip::with_meta("View Changes", None, meta.clone(), cx)
+                move |_, cx| Tooltip::with_meta("変更を表示", None, meta.clone(), cx)
             })
             .on_click({
                 let entry = self.clone();
@@ -382,7 +382,7 @@ impl ChangedFileDirectoryEntry {
             )
             .tooltip({
                 let name = self.name.clone();
-                move |_, cx| Tooltip::with_meta("Toggle Folder", None, name.clone(), cx)
+                move |_, cx| Tooltip::with_meta("フォルダーの開閉", None, name.clone(), cx)
             })
             .on_click(move |_, _, cx| {
                 git_graph
@@ -609,7 +609,7 @@ fn timestamp_format() -> &'static [BorrowedFormatItem<'static>] {
 
 fn format_timestamp(timestamp: i64) -> String {
     let Ok(datetime) = OffsetDateTime::from_unix_timestamp(timestamp) else {
-        return "Unknown".to_string();
+        return "不明".to_string();
     };
 
     let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
@@ -1469,7 +1469,7 @@ impl GitGraph {
 
         let search_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Search commits…", window, cx);
+            editor.set_placeholder_text("コミットを検索…", window, cx);
             editor
         });
 
@@ -1833,7 +1833,7 @@ impl GitGraph {
                     author_name = data.author_name.clone();
                     formatted_time = format_timestamp(data.commit_timestamp);
                 } else {
-                    subject = "Loading…".into();
+                    subject = "読み込み中…".into();
                     author_name = "".into();
                 }
 
@@ -2495,9 +2495,9 @@ impl GitGraph {
     ) {
         let is_path_history = matches!(self.log_source, LogSource::Path(_));
         let columns: &[&str] = if is_path_history {
-            &["Description", "Date", "Author", "Commit"]
+            &["説明", "日付", "作成者", "コミット"]
         } else {
-            &["Graph", "Description", "Date", "Author", "Commit"]
+            &["グラフ", "説明", "日付", "作成者", "コミット"]
         };
 
         let filter = self.column_visibility.clone();
@@ -2510,7 +2510,7 @@ impl GitGraph {
         let focus_handle = self.focus_handle.clone();
         let git_graph = cx.entity();
         let context_menu = ContextMenu::build(window, cx, |mut context_menu, _window, _cx| {
-            context_menu = context_menu.context(focus_handle).header("Columns");
+            context_menu = context_menu.context(focus_handle).header("列");
             for (col_idx, label) in columns.iter().enumerate() {
                 let is_visible = !filter.get(col_idx).copied().unwrap_or(false);
                 // Disable hiding the last remaining visible column.
@@ -2585,7 +2585,7 @@ impl GitGraph {
                             })
                             .tooltip(move |_window, cx| {
                                 Tooltip::for_action_in(
-                                    "Match Case Sensitivity",
+                                    "大文字と小文字を区別",
                                     &ToggleCaseSensitive,
                                     &focus_handle,
                                     cx,
@@ -2604,7 +2604,7 @@ impl GitGraph {
                             .icon_size(IconSize::Small)
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "Select Previous Match",
+                                    "前の一致を選択",
                                     &SelectPreviousMatch,
                                     &focus_handle,
                                     cx,
@@ -2627,7 +2627,7 @@ impl GitGraph {
                             .icon_size(IconSize::Small)
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "Select Next Match",
+                                    "次の一致を選択",
                                     &SelectNextMatch,
                                     &focus_handle,
                                     cx,
@@ -2734,7 +2734,7 @@ impl GitGraph {
                 data.author_email.clone(),
                 Some(data.commit_timestamp),
             ),
-            CommitDataState::Loading(_) => ("Loading…".into(), "".into(), None),
+            CommitDataState::Loading(_) => ("読み込み中…".into(), "".into(), None),
         };
 
         let date_string = commit_timestamp
@@ -2813,9 +2813,9 @@ impl GitGraph {
             .toggle_state(self.changed_files_view_mode.is_tree())
             .tooltip({
                 let tooltip = if is_tree_view {
-                    "Show Flat View"
+                    "フラット表示に切り替え"
                 } else {
-                    "Show Tree View"
+                    "ツリー表示に切り替え"
                 };
                 move |_, cx| Tooltip::for_action(tooltip, &ToggleChangedFilesView, cx)
             })
@@ -2889,9 +2889,13 @@ impl GitGraph {
                                 let is_copied = copied_state.read(cx).is_copied();
 
                                 let (icon, icon_color, tooltip_label) = if is_copied {
-                                    (IconName::Check, Color::Success, "Email Copied!")
+                                    (
+                                        IconName::Check,
+                                        Color::Success,
+                                        "メールアドレスをコピーしました",
+                                    )
                                 } else {
-                                    (IconName::Envelope, Color::Muted, "Copy Email")
+                                    (IconName::Envelope, Color::Muted, "メールアドレスをコピー")
                                 };
 
                                 let copy_email = author_email.clone();
@@ -2940,9 +2944,13 @@ impl GitGraph {
                                 let is_copied = copied_state.read(cx).is_copied();
 
                                 let (icon, icon_color, tooltip_label) = if is_copied {
-                                    (IconName::Check, Color::Success, "Commit SHA Copied!")
+                                    (
+                                        IconName::Check,
+                                        Color::Success,
+                                        "コミット SHA をコピーしました",
+                                    )
                                 } else {
-                                    (IconName::Hash, Color::Muted, "Copy Commit SHA")
+                                    (IconName::Hash, Color::Muted, "コミット SHA をコピー")
                                 };
 
                                 Button::new("sha-button", &full_sha)
@@ -3000,7 +3008,7 @@ impl GitGraph {
                                 this.child(
                                     Button::new(
                                         "view-on-provider",
-                                        format!("View on {}", provider_name),
+                                        format!("{} で表示", provider_name),
                                     )
                                     .start_icon(
                                         Icon::new(icon).size(IconSize::Small).color(Color::Muted),
@@ -3037,14 +3045,11 @@ impl GitGraph {
                                 h_flex()
                                     .gap_1()
                                     .child(
+                                        // 日本語には複数形がないため、原文の
+                                        // "File"/"Files" の出し分けは不要。
                                         Label::new(format!(
-                                            "{} Changed {}",
-                                            changed_files_count,
-                                            if changed_files_count == 1 {
-                                                "File"
-                                            } else {
-                                                "Files"
-                                            }
+                                            "変更されたファイル {} 件",
+                                            changed_files_count
                                         ))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
@@ -3155,7 +3160,7 @@ impl GitGraph {
             .child(Divider::horizontal())
             .child(
                 h_flex().p_1p5().w_full().child(
-                    Button::new("view-commit", "View Commit")
+                    Button::new("view-commit", "コミットを表示")
                         .full_width()
                         .start_icon(
                             Icon::new(IconName::GitCommit)
@@ -3728,11 +3733,11 @@ impl Render for GitGraph {
 
         let content = if commit_count == 0 {
             let message = if let Some(error) = &error {
-                format!("Error loading: {}", error)
+                format!("読み込みエラー: {}", error)
             } else if is_loading {
-                "Loading".to_string()
+                "読み込み中".to_string()
             } else {
-                "No commits found".to_string()
+                "コミットが見つかりません".to_string()
             };
             let label = Label::new(message)
                 .color(Color::Muted)
@@ -3807,20 +3812,20 @@ impl Render for GitGraph {
                                     if !is_path_history {
                                         TableRow::from_vec(
                                             vec![
-                                                Label::new("Graph")
+                                                Label::new("グラフ")
                                                     .color(Color::Muted)
                                                     .truncate()
                                                     .into_any_element(),
-                                                Label::new("Description")
+                                                Label::new("説明")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Date")
+                                                Label::new("日付")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Author")
+                                                Label::new("作成者")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::new("コミット")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -3829,16 +3834,16 @@ impl Render for GitGraph {
                                     } else {
                                         TableRow::from_vec(
                                             vec![
-                                                Label::new("Description")
+                                                Label::new("説明")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Date")
+                                                Label::new("日付")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Author")
+                                                Label::new("作成者")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::new("コミット")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -4136,9 +4141,9 @@ impl Item for GitGraph {
             move |_, _| {
                 v_flex()
                     .child(Label::new(if path_history_path.is_some() {
-                        "Path History"
+                        "ファイルの履歴"
                     } else {
-                        "Git Graph"
+                        "コミットグラフ"
                     }))
                     .when_some(path_history_path.clone(), |this, path| {
                         this.child(Label::new(path).color(Color::Muted).size(LabelSize::Small))
@@ -4167,7 +4172,7 @@ impl Item for GitGraph {
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
             })
-            .map_or_else(|| "Git Graph".into(), |name| SharedString::from(name))
+            .map_or_else(|| "コミットグラフ".into(), |name| SharedString::from(name))
     }
 
     fn show_toolbar(&self) -> bool {

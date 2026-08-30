@@ -76,9 +76,9 @@ impl AgentTool for CopyPathTool {
         if let Ok(input) = input {
             let src = MarkdownInlineCode(&input.source_path);
             let dest = MarkdownInlineCode(&input.destination_path);
-            format!("Copy {src} to {dest}").into()
+            format!("{src} を {dest} にコピー").into()
         } else {
-            "Copy path".into()
+            "パスをコピー".into()
         }
     }
 
@@ -154,7 +154,7 @@ impl AgentTool for CopyPathTool {
                         Self::NAME,
                         vec![input.source_path.clone(), input.destination_path.clone()],
                     );
-                    let title = format!("Copy {src} to {dest}");
+                    let title = format!("{src} を {dest} にコピー");
                     authorize_with_sensitive_settings(
                         sensitive_kind,
                         context,

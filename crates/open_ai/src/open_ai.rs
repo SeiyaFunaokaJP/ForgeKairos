@@ -444,7 +444,30 @@ impl Model {
 
 #[cfg(test)]
 mod tests {
-    use super::{Model, ReasoningEffort};
+    use super::{CustomHeaders, Model, ReasoningEffort, chat_completion_request};
+
+    #[test]
+    fn a_key_less_endpoint_gets_no_authorization_header() {
+        let build = |api_key| {
+            chat_completion_request(
+                "OpenAI Compatible",
+                "http://llm.corp:8000/v1",
+                api_key,
+                &CustomHeaders::default(),
+                "{}",
+            )
+            .expect("request should build")
+        };
+
+        assert_eq!(
+            build(Some(" sk-secret "))
+                .headers()
+                .get("authorization")
+                .map(|value| value.to_str().expect("header should be ascii")),
+            Some("Bearer sk-secret")
+        );
+        assert!(build(None).headers().get("authorization").is_none());
+    }
 
     #[test]
     fn gpt_5_1_uses_none_reasoning_by_default() {
@@ -876,7 +899,13 @@ pub async fn non_streaming_chat_completion<RequestBody>(
 where
     RequestBody: Serialize + ?Sized,
 {
-    let request = chat_completion_request(provider_name, api_url, api_key, extra_headers, request)?;
+    let request = chat_completion_request(
+        provider_name,
+        api_url,
+        Some(api_key),
+        extra_headers,
+        request,
+    )?;
     let mut response = client
         .send(request)
         .await
@@ -944,6 +973,33 @@ pub async fn stream_chat_completion<RequestBody>(
 where
     RequestBody: Serialize + ?Sized,
 {
+    stream_chat_completion_with_optional_key(
+        client,
+        provider_name,
+        api_url,
+        Some(api_key),
+        extra_headers,
+        request,
+    )
+    .await
+}
+
+/// [`stream_chat_completion`] for endpoints that may take no credential at all;
+/// `None` omits the `Authorization` header.
+pub async fn stream_chat_completion_with_optional_key<RequestBody>(
+    client: &dyn HttpClient,
+    provider_name: &str,
+    api_url: &str,
+    api_key: Option<&str>,
+    extra_headers: &CustomHeaders,
+    request: &RequestBody,
+) -> Result<
+    BoxStream<'static, std::result::Result<ChatCompletionStreamEvent, RequestError>>,
+    RequestError,
+>
+where
+    RequestBody: Serialize + ?Sized,
+{
     let request = chat_completion_request(provider_name, api_url, api_key, extra_headers, request)?;
     let mut response = client
         .send(request)
@@ -1001,15 +1057,17 @@ where
     .boxed())
 }
 
+/// `api_key` is `None` for a compatible endpoint configured to need no
+/// credential; the `Authorization` header is then omitted.
 pub async fn stream_completion(
     client: &dyn HttpClient,
     provider_name: &str,
     api_url: &str,
-    api_key: &str,
+    api_key: Option<&str>,
     request: Request,
     extra_headers: &CustomHeaders,
 ) -> Result<BoxStream<'static, Result<ResponseStreamEvent>>, RequestError> {
-    let events = stream_chat_completion(
+    let events = stream_chat_completion_with_optional_key(
         client,
         provider_name,
         api_url,
@@ -1045,7 +1103,7 @@ pub async fn stream_completion(
 fn chat_completion_request<RequestBody>(
     provider_name: &str,
     api_url: &str,
-    api_key: &str,
+    api_key: Option<&str>,
     extra_headers: &CustomHeaders,
     request: &RequestBody,
 ) -> std::result::Result<HttpRequest<AsyncBody>, RequestError>
@@ -1056,11 +1114,17 @@ where
         provider: provider_name.to_string(),
         error,
     })?;
-    HttpRequest::builder()
+    let mut builder = HttpRequest::builder()
         .method(Method::POST)
         .uri(format!("{api_url}/chat/completions"))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_key.trim()))
+        .header("Content-Type", "application/json");
+    // `None` is a compatible endpoint that takes no credential at all. Such a
+    // server rejects `Authorization: Bearer ` rather than treating it as absent,
+    // so the header has to be left out entirely.
+    if let Some(api_key) = api_key {
+        builder = builder.header("Authorization", format!("Bearer {}", api_key.trim()));
+    }
+    builder
         .extra_headers(extra_headers)
         .body(AsyncBody::from(body))
         .map_err(|error| RequestError::BuildRequestBody {

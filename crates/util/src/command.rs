@@ -1,6 +1,5 @@
 use std::ffi::OsStr;
-#[cfg(not(target_os = "macos"))]
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "macos")]
 mod darwin;
@@ -15,6 +14,113 @@ pub use gpui_util::new_std_command;
 
 pub fn new_command(program: impl AsRef<OsStr>) -> Command {
     Command::new(program)
+}
+
+/// Resolves a bare external-command name (e.g. `"clang-format"`, as configured by
+/// `languages.<lang>.formatter.external.command`) to a binary bundled next to the
+/// running executable, so a shipped copy can take priority over whatever (if
+/// anything) is found on `PATH`.
+///
+/// Returns `None` — meaning "leave `command` untouched and let the normal `PATH`
+/// lookup happen exactly as before" — when either:
+/// - `command` is not a bare name (it contains a path separator, or is already
+///   absolute). Such commands are meant literally by whoever configured them and
+///   must never be redirected.
+/// - no matching binary exists next to the executable or in its `bin` subdirectory.
+///
+/// This is a general-purpose, command-name-agnostic resolver (it has no
+/// knowledge of `clang-format` specifically); callers opt into it explicitly
+/// rather than it being wired into `new_command` globally, since `new_command`
+/// backs unrelated things (shells, LSP servers, DAP adapters, git, node, ssh)
+/// where silently preferring a same-named binary shipped next to Zed would be
+/// surprising.
+pub fn resolve_command_next_to_current_exe(command: &str) -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let bin_dir = exe_dir.join("bin");
+    resolve_bare_command_in_dirs(command, &[exe_dir, bin_dir])
+}
+
+fn resolve_bare_command_in_dirs(command: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    let path = Path::new(command);
+    if path.is_absolute() || path.file_name() != Some(OsStr::new(command)) {
+        return None;
+    }
+
+    let mut candidate_names = vec![command.to_owned()];
+    if cfg!(target_os = "windows") && path.extension().is_none() {
+        candidate_names.push(format!("{command}.exe"));
+    }
+
+    dirs.iter().find_map(|dir| {
+        candidate_names
+            .iter()
+            .map(|name| dir.join(name))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+#[cfg(test)]
+mod resolve_command_tests {
+    use super::*;
+
+    fn bundled_name() -> &'static str {
+        if cfg!(target_os = "windows") {
+            "clang-format.exe"
+        } else {
+            "clang-format"
+        }
+    }
+
+    #[test]
+    fn prefers_binary_next_to_exe_over_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let bundled = dir.path().join(bundled_name());
+        std::fs::write(&bundled, b"").unwrap();
+
+        let resolved = resolve_bare_command_in_dirs("clang-format", &[dir.path().to_path_buf()]);
+        assert_eq!(resolved.as_deref(), Some(bundled.as_path()));
+    }
+
+    #[test]
+    fn falls_back_to_path_when_nothing_bundled() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let resolved = resolve_bare_command_in_dirs("clang-format", &[dir.path().to_path_buf()]);
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn absolute_or_path_qualified_commands_pass_through_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let bundled = dir.path().join(bundled_name());
+        std::fs::write(&bundled, b"").unwrap();
+
+        // Even though a same-named binary exists in the search dir, a command
+        // that already names a directory (relative or absolute) must never be
+        // redirected to a different path than the one that was configured.
+        let relative_qualified = format!(".{}clang-format", std::path::MAIN_SEPARATOR);
+        assert_eq!(
+            resolve_bare_command_in_dirs(&relative_qualified, &[dir.path().to_path_buf()]),
+            None
+        );
+        assert_eq!(
+            resolve_bare_command_in_dirs(bundled.to_str().unwrap(), &[dir.path().to_path_buf()]),
+            None
+        );
+    }
+
+    #[test]
+    fn checks_bin_subdirectory_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        std::fs::create_dir(&bin_dir).unwrap();
+        let bundled = bin_dir.join(bundled_name());
+        std::fs::write(&bundled, b"").unwrap();
+
+        let resolved =
+            resolve_bare_command_in_dirs("clang-format", &[bin_dir, dir.path().to_path_buf()]);
+        assert_eq!(resolved.as_deref(), Some(bundled.as_path()));
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

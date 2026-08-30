@@ -53,6 +53,14 @@ Lists files and directories in a given path, providing an overview of filesystem
 
 Reads the content of a specified file in the project, allowing access to file contents.
 
+### `repo_map`
+
+Returns a compact map of the project: the non-ignored files, each followed by the signatures of the symbols it declares, with line numbers.
+Symbols come from each file's tree-sitter outline, so files in languages without an outline grammar, files larger than 512 KB, and binary files are listed by path only.
+Accepts an optional `path` prefix and a `max_bytes` budget (default 32768, clamped to 1024..=262144); the map is truncated to fit and reports what was left out.
+
+**Example:** Call `repo_map` once at the start of a task to learn where things live, then follow up with `read_file` at the reported line numbers instead of reading whole files.
+
 ## Web Tools
 
 ### `search_web`

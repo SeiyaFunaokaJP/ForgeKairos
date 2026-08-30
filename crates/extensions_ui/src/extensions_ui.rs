@@ -76,14 +76,14 @@ impl WorkspaceError for DevExtensionNotInstalledError {
     fn primary_message(&self) -> SharedString {
         match &self.extension_id {
             Some(extension_id) => {
-                format!("Dev extension '{extension_id}' is not installed.").into()
+                format!("開発中の拡張機能 '{extension_id}' はインストールされていません。").into()
             }
-            None => "No dev extensions are installed.".into(),
+            None => "開発中の拡張機能はインストールされていません。".into(),
         }
     }
 
     fn primary_action(&self) -> ErrorAction {
-        ErrorAction::new("Install Dev Extension", InstallDevExtension)
+        ErrorAction::new("開発中の拡張機能をインストール", InstallDevExtension)
     }
 
     fn severity(&self) -> ErrorSeverity {
@@ -218,7 +218,10 @@ pub fn init(cx: &mut App) {
                                         // NOTE: using `anyhow::context` here ends up not printing
                                         // the error
                                         workspace.show_error(
-                                            format!("Failed to install dev extension: {}", err),
+                                            format!(
+                                                "開発中の拡張機能のインストールに失敗しました: {}",
+                                                err
+                                            ),
                                             cx,
                                         );
                                     })
@@ -430,7 +433,7 @@ impl ExtensionsPage {
 
             let query_editor = cx.new(|cx| {
                 let mut input = Editor::single_line(window, cx);
-                input.set_placeholder_text("Search extensions...", window, cx);
+                input.set_placeholder_text("拡張機能を検索...", window, cx);
                 if let Some(id) = focus_extension_id {
                     input.set_text(format!("id:{id}"), window, cx);
                 }
@@ -709,7 +712,7 @@ impl ExtensionsPage {
             Some(ContextMenu::build(window, cx, |context_menu, window, _| {
                 context_menu
                     .entry(
-                        "Install Another Version...",
+                        "別のバージョンをインストール...",
                         None,
                         window.handler_for(&this, {
                             let extension_id = extension_id.clone();
@@ -718,7 +721,7 @@ impl ExtensionsPage {
                             }
                         }),
                     )
-                    .entry("Copy Extension ID", None, {
+                    .entry("拡張機能 ID をコピー", None, {
                         let extension_id = extension_id.clone();
                         move |_, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(
@@ -726,7 +729,7 @@ impl ExtensionsPage {
                             ));
                         }
                     })
-                    .entry("Copy Author Info", None, move |_, cx| {
+                    .entry("作者情報をコピー", None, move |_, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(authors.to_string()));
                     })
             }))
@@ -915,30 +918,30 @@ impl ExtensionsPage {
         let has_search = self.search_query(cx).is_some();
 
         let message = if self.is_fetching_extensions {
-            "Loading extensions…"
+            "拡張機能を読み込んでいます…"
         } else if self.fetch_failed {
-            "Failed to load extensions. Please check your connection and try again."
+            "拡張機能の読み込みに失敗しました。接続を確認してもう一度お試しください。"
         } else {
             match self.filter {
                 ExtensionFilter::All => {
                     if has_search {
-                        "No extensions that match your search."
+                        "検索条件に一致する拡張機能はありません。"
                     } else {
-                        "No extensions."
+                        "拡張機能はありません。"
                     }
                 }
                 ExtensionFilter::Installed => {
                     if has_search {
-                        "No installed extensions that match your search."
+                        "検索条件に一致するインストール済みの拡張機能はありません。"
                     } else {
-                        "No installed extensions."
+                        "インストール済みの拡張機能はありません。"
                     }
                 }
                 ExtensionFilter::NotInstalled => {
                     if has_search {
-                        "No not installed extensions that match your search."
+                        "検索条件に一致する未インストールの拡張機能はありません。"
                     } else {
-                        "No not installed extensions."
+                        "未インストールの拡張機能はありません。"
                     }
                 }
             }
@@ -1027,7 +1030,7 @@ impl ExtensionsPage {
         vim: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let docs_url_button = Button::new("open_docs", "View Documentation")
+        let docs_url_button = Button::new("open_docs", "ドキュメントを表示")
             .end_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::Small))
             .on_click({
                 move |_event, _window, cx| {
@@ -1058,7 +1061,7 @@ impl ExtensionsPage {
                                         h_flex()
                                             .pl_1()
                                             .gap_1()
-                                            .child(Label::new("Enable Vim mode"))
+                                            .child(Label::new("Vim モードを有効化"))
                                             .child(
                                                 Switch::new(
                                                     "enable-vim",
@@ -1100,110 +1103,111 @@ impl ExtensionsPage {
         for feature in &self.upsells {
             let banner = match feature {
                 Feature::AgentClaude => self.render_feature_upsell_banner(
-                    "Claude Agent support is built-in to Zed!".into(),
+                    "Claude Agent のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/ai/external-agents#claude-agent".into(),
                     false,
                     cx,
                 ),
                 Feature::AgentCodex => self.render_feature_upsell_banner(
-                    "Codex CLI support is built-in to Zed!".into(),
+                    "Codex CLI のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/ai/external-agents#codex-cli".into(),
                     false,
                     cx,
                 ),
                 Feature::AgentGemini => self.render_feature_upsell_banner(
-                    "Gemini CLI support is built-in to Zed!".into(),
+                    "Gemini CLI のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/ai/external-agents#gemini-cli".into(),
                     false,
                     cx,
                 ),
                 Feature::ExtensionBasedpyright => self.render_feature_upsell_banner(
-                    "Basedpyright (Python language server) support is built-in to Zed!".into(),
+                    "Basedpyright (Python 言語サーバー) のサポートは Zed に組み込まれています。"
+                        .into(),
                     "https://zed.dev/docs/languages/python#basedpyright".into(),
                     false,
                     cx,
                 ),
                 Feature::ExtensionRuff => self.render_feature_upsell_banner(
-                    "Ruff (linter for Python) support is built-in to Zed!".into(),
+                    "Ruff (Python 用リンター) のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/python#code-formatting--linting".into(),
                     false,
                     cx,
                 ),
                 Feature::ExtensionTailwind => self.render_feature_upsell_banner(
-                    "Tailwind CSS support is built-in to Zed!".into(),
+                    "Tailwind CSS のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/tailwindcss".into(),
                     false,
                     cx,
                 ),
                 Feature::ExtensionTy => self.render_feature_upsell_banner(
-                    "Ty (Python language server) support is built-in to Zed!".into(),
+                    "Ty (Python 言語サーバー) のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/python".into(),
                     false,
                     cx,
                 ),
                 Feature::Git => self.render_feature_upsell_banner(
-                    "Zed comes with basic Git support—more features are coming in the future."
+                    "Zed には基本的な Git サポートが付属しています。今後さらに機能が追加されます。"
                         .into(),
                     "https://zed.dev/docs/git".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguageBash => self.render_feature_upsell_banner(
-                    "Shell support is built-in to Zed!".into(),
+                    "シェルのサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/bash".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguageC => self.render_feature_upsell_banner(
-                    "C support is built-in to Zed!".into(),
+                    "C のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/c".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguageCpp => self.render_feature_upsell_banner(
-                    "C++ support is built-in to Zed!".into(),
+                    "C++ のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/cpp".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguageGo => self.render_feature_upsell_banner(
-                    "Go support is built-in to Zed!".into(),
+                    "Go のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/go".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguagePython => self.render_feature_upsell_banner(
-                    "Python support is built-in to Zed!".into(),
+                    "Python のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/python".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguageReact => self.render_feature_upsell_banner(
-                    "React support is built-in to Zed!".into(),
+                    "React のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/typescript".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguageRust => self.render_feature_upsell_banner(
-                    "Rust support is built-in to Zed!".into(),
+                    "Rust のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/rust".into(),
                     false,
                     cx,
                 ),
                 Feature::LanguageTypescript => self.render_feature_upsell_banner(
-                    "Typescript support is built-in to Zed!".into(),
+                    "TypeScript のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/languages/typescript".into(),
                     false,
                     cx,
                 ),
                 Feature::OpenIn => self.render_feature_upsell_banner(
-                    "Zed supports linking to a source line on GitHub and others.".into(),
+                    "Zed は GitHub などのソース行へのリンク作成に対応しています。".into(),
                     "https://zed.dev/docs/git#git-integrations".into(),
                     false,
                     cx,
                 ),
                 Feature::Vim => self.render_feature_upsell_banner(
-                    "Vim support is built-in to Zed!".into(),
+                    "Vim のサポートは Zed に組み込まれています。".into(),
                     "https://zed.dev/docs/vim".into(),
                     true,
                     cx,
@@ -1342,7 +1346,7 @@ impl PickerDelegate for DevExtensionRebuildPickerDelegate {
     fn dismissed(&mut self, _window: &mut Window, _cx: &mut Context<Picker<Self>>) {}
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        Arc::from("Rebuild dev extension…")
+        Arc::from("開発中の拡張機能を再ビルド…")
     }
 
     fn render_match(
@@ -1377,7 +1381,7 @@ impl PickerDelegate for DevExtensionRebuildPickerDelegate {
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
-        Some("No dev extensions found".into())
+        Some("開発中の拡張機能が見つかりません".into())
     }
 }
 
@@ -1397,14 +1401,17 @@ impl Render for ExtensionsPage {
                             .w_full()
                             .gap_1p5()
                             .justify_between()
-                            .child(Headline::new("Extensions").size(HeadlineSize::Large))
+                            .child(Headline::new("拡張機能").size(HeadlineSize::Large))
                             .child(
-                                Button::new("install-dev-extension", "Install Dev Extension")
-                                    .style(ButtonStyle::Outlined)
-                                    .size(ButtonSize::Medium)
-                                    .on_click(|_event, window, cx| {
-                                        window.dispatch_action(Box::new(InstallDevExtension), cx)
-                                    }),
+                                Button::new(
+                                    "install-dev-extension",
+                                    "開発中の拡張機能をインストール",
+                                )
+                                .style(ButtonStyle::Outlined)
+                                .size(ButtonSize::Medium)
+                                .on_click(|_event, window, cx| {
+                                    window.dispatch_action(Box::new(InstallDevExtension), cx)
+                                }),
                             ),
                     )
                     .child(
@@ -1419,7 +1426,7 @@ impl Render for ExtensionsPage {
                                         "filter-buttons",
                                         [
                                             ToggleButtonSimple::new(
-                                                "All",
+                                                "すべて",
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = ExtensionFilter::All;
                                                     this.filter_extension_entries(cx);
@@ -1427,7 +1434,7 @@ impl Render for ExtensionsPage {
                                                 }),
                                             ),
                                             ToggleButtonSimple::new(
-                                                "Installed",
+                                                "インストール済み",
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = ExtensionFilter::Installed;
                                                     this.filter_extension_entries(cx);
@@ -1435,7 +1442,7 @@ impl Render for ExtensionsPage {
                                                 }),
                                             ),
                                             ToggleButtonSimple::new(
-                                                "Not Installed",
+                                                "未インストール",
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = ExtensionFilter::NotInstalled;
                                                     this.filter_extension_entries(cx);
@@ -1468,7 +1475,7 @@ impl Render for ExtensionsPage {
                     .border_color(cx.theme().colors().border_variant)
                     .overflow_x_scroll()
                     .child(
-                        Button::new("filter-all-categories", "All")
+                        Button::new("filter-all-categories", "すべて")
                             .when(self.provides_filter.is_none(), |button| {
                                 button.style(ButtonStyle::Filled)
                             })
@@ -1545,7 +1552,7 @@ impl Item for ExtensionsPage {
     type Event = ItemEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Extensions".into()
+        "拡張機能".into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

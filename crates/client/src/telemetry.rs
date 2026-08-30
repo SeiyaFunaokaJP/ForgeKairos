@@ -1061,7 +1061,13 @@ mod tests {
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            let settings_store = SettingsStore::test(cx);
+            let mut settings_store = SettingsStore::test(cx);
+            // `telemetry.metrics` ships as false in this fork (DESIGN.md §4)
+            // and `report_event` drops every event while it is off, which
+            // would leave these tests asserting nothing.
+            settings_store
+                .set_user_settings(r#"{ "telemetry": { "metrics": true } }"#, cx)
+                .expect("telemetry must be enabled for these tests");
             cx.set_global(settings_store);
         });
     }

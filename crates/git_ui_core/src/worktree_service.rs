@@ -88,7 +88,7 @@ impl WorktreeCreateTarget {
             WorktreeCreateTarget::DefaultBranch(default_branch) => default_branch.display_name(),
             WorktreeCreateTarget::CurrentBranch => {
                 if has_multiple_repositories {
-                    "current branches".to_string()
+                    "現在の各ブランチ".to_string()
                 } else {
                     current_branch_name.unwrap_or("HEAD").to_string()
                 }
@@ -253,13 +253,13 @@ impl Render for WorktreeFetchFailedToast {
                     .color(Color::Error),
             )
             .child(Label::new(format!(
-                "git fetch failed for {}",
+                "{} の git fetch が失敗しました",
                 self.remote_branch_name
             )))
             .child(
                 Button::new(
                     "use-local-worktree-base",
-                    format!("Use local {}", self.remote_branch_name),
+                    format!("ローカルの {} を使用", self.remote_branch_name),
                 )
                 .color(Color::Muted)
                 .on_click(cx.listener(move |_, _event, window, cx| {
@@ -285,7 +285,7 @@ impl Render for WorktreeFetchFailedToast {
                 })),
             )
             .child(
-                Button::new("view-worktree-fetch-log", "Show Error Logs")
+                Button::new("view-worktree-fetch-log", "エラーログを表示")
                     .color(Color::Muted)
                     .on_click(cx.listener(move |_, _event, window, cx| {
                         cx.emit(DismissEvent);
@@ -1270,8 +1270,8 @@ async fn open_worktree_workspace(
                     workspace.show_toast(
                         workspace::Toast::new(
                             toast_id,
-                            "Some project folders are not git repositories. \
-                             They were included as-is without creating a worktree.",
+                            "Git リポジトリではないプロジェクトフォルダーがあります。\
+                             ワークツリーを作成せずそのまま追加しました。",
                         ),
                         cx,
                     );
@@ -1786,7 +1786,7 @@ mod tests {
         // Multiple repositories pluralize the current branch.
         assert_eq!(
             WorktreeCreateTarget::CurrentBranch.branch_label(true, Some("feature")),
-            "current branches"
+            "現在の各ブランチ"
         );
     }
 }

@@ -821,30 +821,38 @@ impl AcpConnection {
                 .cloned()
         });
         let original_command = command.clone();
-        let (path, args, env) = project
-            .read_with(cx, |project, cx| {
-                project.remote_client().and_then(|client| {
-                    let template = client
-                        .read(cx)
-                        .build_command(
-                            Some(command.path.display().to_string()),
-                            &command.args,
-                            &command.env.clone().into_iter().flatten().collect(),
-                            root_dir.as_ref().map(|path| path.display().to_string()),
-                            None,
-                            Interactive::No,
-                        )
-                        .log_err()?;
-                    Some((template.program, template.args, template.env))
-                })
+        let remote = project.read_with(cx, |project, cx| {
+            project.remote_client().and_then(|client| {
+                let template = client
+                    .read(cx)
+                    .build_command(
+                        Some(command.path.display().to_string()),
+                        &command.args,
+                        &command.env.clone().into_iter().flatten().collect(),
+                        root_dir.as_ref().map(|path| path.display().to_string()),
+                        None,
+                        Interactive::No,
+                    )
+                    .log_err()?;
+                Some((template.program, template.args, template.env))
             })
-            .unwrap_or_else(|| {
-                (
-                    command.path.display().to_string(),
-                    command.args,
-                    command.env.unwrap_or_default(),
-                )
-            });
+        });
+        let runs_on_this_machine = remote.is_none();
+        let (path, args, mut env) = remote.unwrap_or_else(|| {
+            (
+                command.path.display().to_string(),
+                command.args,
+                command.env.unwrap_or_default(),
+            )
+        });
+
+        // ADR-F13 (F2-7): point the agent at the fork's loopback egress proxy
+        // so its runtime traffic is judged by the same allowlist the app's own
+        // requests are. Only for an agent running on this machine — a remote
+        // one would be handed a loopback port that means something else there.
+        if runs_on_this_machine {
+            http_client::apply_child_process_proxy_env(&mut env);
+        }
 
         let builder = ShellBuilder::new(&Shell::System, cfg!(windows)).non_interactive();
         let mut child = builder.build_std_command(Some(path.clone()), &args);

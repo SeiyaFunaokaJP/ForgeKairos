@@ -141,7 +141,7 @@ impl AgentTool for SpawnAgentTool {
                 .get("label")
                 .and_then(|v| v.as_str())
                 .map(|s| SharedString::from(s.to_owned()))
-                .unwrap_or_else(|| "Spawning agent".into()),
+                .unwrap_or_else(|| "エージェントを起動".into()),
         }
     }
 

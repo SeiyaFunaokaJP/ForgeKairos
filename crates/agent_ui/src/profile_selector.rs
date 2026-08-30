@@ -181,11 +181,11 @@ impl Render for ProfileSelector {
         }
 
         if !self.provider.profiles_supported(cx) {
-            return Button::new("tools-not-supported-button", "Tools Unsupported")
+            return Button::new("tools-not-supported-button", "ツール非対応")
                 .disabled(true)
                 .label_size(LabelSize::Small)
                 .color(Color::Muted)
-                .tooltip(Tooltip::text("This model does not support tools."))
+                .tooltip(Tooltip::text("このモデルはツールに対応していません。"))
                 .into_any_element();
         }
 
@@ -197,7 +197,7 @@ impl Render for ProfileSelector {
 
         let selected_profile = profile
             .map(|profile| profile.name.clone())
-            .unwrap_or_else(|| "Unknown".into());
+            .unwrap_or_else(|| "不明".into());
 
         let icon = if self.picker_handle.is_deployed() {
             IconName::ChevronUp
@@ -231,7 +231,7 @@ impl Render for ProfileSelector {
                     .gap_1()
                     .child(
                         container()
-                            .child(Label::new("Change Profile"))
+                            .child(Label::new("プロファイルを変更"))
                             .child(KeyBinding::for_action(&ToggleProfileSelector, cx)),
                     )
                     .child(
@@ -239,7 +239,7 @@ impl Render for ProfileSelector {
                             .pt_1()
                             .border_t_1()
                             .border_color(cx.theme().colors().border_variant)
-                            .child(Label::new("Cycle Through Profiles"))
+                            .child(Label::new("プロファイルを順に切り替え"))
                             .child(KeyBinding::for_action(&CycleModeSelector, cx)),
                     )
                     .into_any()
@@ -388,9 +388,9 @@ impl ProfilePickerDelegate {
 
     fn documentation(candidate: &ProfileCandidate) -> Option<&'static str> {
         match candidate.id.as_str() {
-            builtin_profiles::WRITE => Some("Get help to write anything."),
-            builtin_profiles::ASK => Some("Chat about your codebase."),
-            builtin_profiles::MINIMAL => Some("Chat about anything with no tools."),
+            builtin_profiles::WRITE => Some("何でも書く手助けをします。"),
+            builtin_profiles::ASK => Some("コードベースについて対話します。"),
+            builtin_profiles::MINIMAL => Some("ツールを使わずに何でも対話します。"),
             _ => None,
         }
     }
@@ -402,7 +402,7 @@ impl ProfilePickerDelegate {
         for (idx, candidate) in candidates.iter().enumerate() {
             if !candidate.is_builtin && !inserted_custom_header {
                 if !entries.is_empty() {
-                    entries.push(ProfilePickerEntry::Header("Custom Profiles".into()));
+                    entries.push(ProfilePickerEntry::Header("カスタムプロファイル".into()));
                 }
                 inserted_custom_header = true;
             }
@@ -481,14 +481,14 @@ impl PickerDelegate for ProfilePickerDelegate {
     }
 
     fn placeholder_text(&self, _: &mut Window, _: &mut App) -> Arc<str> {
-        "Search profiles…".into()
+        "プロファイルを検索…".into()
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         let text = if self.candidates.is_empty() {
-            "No profiles.".into()
+            "プロファイルはありません。".into()
         } else {
-            "No profiles match your search.".into()
+            "検索条件に一致するプロファイルはありません。".into()
         };
         Some(text)
     }
@@ -752,8 +752,7 @@ impl PickerDelegate for ProfilePickerDelegate {
                                                 .color(Color::Warning),
                                         )
                                         .child(
-                                            Label::new("Disabled in Restricted Mode")
-                                                .size(LabelSize::Small),
+                                            Label::new("制限モードでは無効").size(LabelSize::Small),
                                         ),
                                 )
                                 .children(forbidden_tools.iter().map(|tool| {
@@ -790,7 +789,7 @@ impl PickerDelegate for ProfilePickerDelegate {
                         .border_color(cx.theme().colors().border_variant)
                         .p_1p5()
                         .child(
-                            Button::new("configure", "Configure")
+                            Button::new("configure", "構成")
                                 .full_width()
                                 .style(ButtonStyle::Outlined)
                                 .key_binding(
@@ -817,7 +816,7 @@ impl PickerDelegate for ProfilePickerDelegate {
                             .border_color(cx.theme().colors().border_variant)
                             .p_1p5()
                             .child(
-                                Button::new("restricted-mode", "Restricted Mode")
+                                Button::new("restricted-mode", "制限モード")
                                     .full_width()
                                     .style(ButtonStyle::Tinted(TintColor::Warning))
                                     .color(Color::Warning)
@@ -827,7 +826,7 @@ impl PickerDelegate for ProfilePickerDelegate {
                                             .color(Color::Warning),
                                     )
                                     .tooltip(Tooltip::text(
-                                        "Some tools are disabled. Click to review trust settings.",
+                                        "一部のツールが無効になっています。クリックして信頼の設定を確認してください。",
                                     ))
                                     .on_click(|_, window, cx| {
                                         window.dispatch_action(
@@ -873,7 +872,7 @@ mod tests {
         )));
         assert!(entries.iter().any(|entry| matches!(
             entry,
-            ProfilePickerEntry::Header(label) if label.as_ref() == "Custom Profiles"
+            ProfilePickerEntry::Header(label) if label.as_ref() == "カスタムプロファイル"
         )));
     }
 

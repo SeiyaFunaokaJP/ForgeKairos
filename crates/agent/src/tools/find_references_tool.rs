@@ -46,9 +46,9 @@ impl AgentTool for FindReferencesTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("Find references to `{}`", input.symbol.symbol_name).into()
+            format!("`{}` の参照を検索", input.symbol.symbol_name).into()
         } else {
-            "Find references".into()
+            "参照を検索".into()
         }
     }
 

@@ -862,14 +862,14 @@ impl Item for BufferDiagnosticsEditor {
     }
 
     fn tab_content_text(&self, _detail: usize, _app: &App) -> SharedString {
-        "Buffer Diagnostics".into()
+        "バッファーの診断".into()
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
         let path_style = self.project.read(cx).path_style(cx);
         Some(
             format!(
-                "Buffer Diagnostics - {}",
+                "バッファーの診断 - {}",
                 self.project_path.path.display(path_style)
             )
             .into(),
@@ -897,8 +897,8 @@ impl Render for BufferDiagnosticsEditor {
 
         let child = if error_count + warning_count == 0 {
             let label = match warning_count {
-                0 => "No problems in",
-                _ => "No errors in",
+                0 => "に問題はありません",
+                _ => "にエラーはありません",
             };
 
             v_flex()
@@ -912,11 +912,10 @@ impl Render for BufferDiagnosticsEditor {
                 .child(
                     div()
                         .h_flex()
-                        .child(Label::new(label).color(Color::Muted))
                         .child(
                             Button::new("open-file", filename)
                                 .style(ButtonStyle::Transparent)
-                                .tooltip(Tooltip::text("Open File"))
+                                .tooltip(Tooltip::text("ファイルを開く"))
                                 .on_click(cx.listener(|buffer_diagnostics, _, window, cx| {
                                     if let Some(workspace) = Workspace::for_window(window, cx) {
                                         workspace.update(cx, |workspace, cx| {
@@ -932,12 +931,13 @@ impl Render for BufferDiagnosticsEditor {
                                         })
                                     }
                                 })),
-                        ),
+                        )
+                        .child(Label::new(label).color(Color::Muted)),
                 )
                 .when(self.summary.warning_count > 0, |div| {
                     let label = match self.summary.warning_count {
-                        1 => "Show 1 warning".into(),
-                        warning_count => format!("Show {} warnings", warning_count),
+                        1 => "警告 1 件を表示".into(),
+                        warning_count => format!("警告 {} 件を表示", warning_count),
                     };
 
                     div.child(

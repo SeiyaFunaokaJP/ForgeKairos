@@ -1,4 +1,3 @@
-use collab_ui::collab_panel;
 use gpui::{App, Menu, MenuItem, OsAction};
 use release_channel::ReleaseChannel;
 use terminal_view::terminal_panel;
@@ -7,319 +6,350 @@ use zed_actions::{Quit, assistant, debug_panel, dev, git_panel, project_panel};
 pub fn app_menus(cx: &mut App) -> Vec<Menu> {
     let mut view_items = vec![
         MenuItem::action(
-            "Zoom In",
+            "拡大",
             zed_actions::IncreaseBufferFontSize { persist: false },
         ),
         MenuItem::action(
-            "Zoom Out",
+            "縮小",
             zed_actions::DecreaseBufferFontSize { persist: false },
         ),
         MenuItem::action(
-            "Reset Zoom",
+            "ズームをリセット",
             zed_actions::ResetBufferFontSize { persist: false },
         ),
         MenuItem::action(
-            "Reset All Zoom",
+            "すべてのズームをリセット",
             zed_actions::ResetAllZoom { persist: false },
         ),
         MenuItem::separator(),
-        MenuItem::action("Toggle Left Dock", workspace::ToggleLeftDock),
-        MenuItem::action("Toggle Right Dock", workspace::ToggleRightDock),
-        MenuItem::action("Toggle Bottom Dock", workspace::ToggleBottomDock),
-        MenuItem::action("Toggle All Docks", workspace::ToggleAllDocks),
+        MenuItem::action("左ドックの表示切り替え", workspace::ToggleLeftDock),
+        MenuItem::action("右ドックの表示切り替え", workspace::ToggleRightDock),
+        MenuItem::action("下ドックの表示切り替え", workspace::ToggleBottomDock),
+        MenuItem::action("すべてのドックの表示切り替え", workspace::ToggleAllDocks),
         MenuItem::submenu(Menu {
-            name: "Editor Layout".into(),
+            name: "エディターのレイアウト".into(),
             disabled: false,
             items: vec![
-                MenuItem::action("Split Up", workspace::SplitUp::default()),
-                MenuItem::action("Split Down", workspace::SplitDown::default()),
-                MenuItem::action("Split Left", workspace::SplitLeft::default()),
-                MenuItem::action("Split Right", workspace::SplitRight::default()),
+                MenuItem::action("上に分割", workspace::SplitUp::default()),
+                MenuItem::action("下に分割", workspace::SplitDown::default()),
+                MenuItem::action("左に分割", workspace::SplitLeft::default()),
+                MenuItem::action("右に分割", workspace::SplitRight::default()),
             ],
         }),
         MenuItem::separator(),
-        MenuItem::action("Project Panel", project_panel::ToggleFocus),
-        MenuItem::action("Outline Panel", outline_panel::ToggleFocus),
-        MenuItem::action("Collab Panel", collab_panel::ToggleFocus),
-        MenuItem::action("Terminal Panel", terminal_panel::Toggle),
-        MenuItem::action("Debugger Panel", debug_panel::ToggleFocus),
-        MenuItem::action("Agent Panel", assistant::ToggleFocus),
-        MenuItem::action("Git Panel", git_panel::ToggleFocus),
+        MenuItem::action("プロジェクトパネル", project_panel::ToggleFocus),
+        MenuItem::action("アウトラインパネル", outline_panel::ToggleFocus),
+        MenuItem::action("ターミナルパネル", terminal_panel::Toggle),
+        MenuItem::action("デバッガーパネル", debug_panel::ToggleFocus),
+        MenuItem::action("エージェントパネル", assistant::ToggleFocus),
+        MenuItem::action("Git パネル", git_panel::ToggleFocus),
         MenuItem::separator(),
-        MenuItem::action("Diagnostics", diagnostics::Deploy),
+        MenuItem::action("診断", diagnostics::Deploy),
         MenuItem::separator(),
     ];
 
     if ReleaseChannel::try_global(cx) == Some(ReleaseChannel::Dev) {
         view_items.push(MenuItem::action(
-            "Toggle GPUI Inspector",
+            "GPUI インスペクターの表示切り替え",
             dev::ToggleInspector,
         ));
         view_items.push(MenuItem::separator());
     }
 
-    vec![
+    let zed_menu = Menu {
+        name: "Zed".into(),
+        disabled: false,
+        items: vec![
+            MenuItem::action("Zed について", zed_actions::About),
+            MenuItem::action("更新を確認", auto_update::Check),
+            MenuItem::separator(),
+            MenuItem::submenu(Menu::new("設定").items([
+                MenuItem::action("設定を開く", zed_actions::OpenSettings),
+                MenuItem::action("設定ファイルを開く", super::OpenSettingsFile),
+                MenuItem::action("プロジェクト設定を開く", zed_actions::OpenProjectSettings),
+                MenuItem::action(
+                    "プロジェクト設定ファイルを開く",
+                    super::OpenProjectSettingsFile,
+                ),
+                MenuItem::action("既定の設定を開く", super::OpenDefaultSettings),
+                MenuItem::separator(),
+                MenuItem::action("キーマップを開く", zed_actions::OpenKeymap),
+                MenuItem::action("キーマップファイルを開く", zed_actions::OpenKeymapFile),
+                MenuItem::action("既定のキーバインドを開く", zed_actions::OpenDefaultKeymap),
+                MenuItem::separator(),
+                MenuItem::action(
+                    "テーマを選択...",
+                    zed_actions::theme_selector::Toggle::default(),
+                ),
+                MenuItem::action(
+                    "アイコンテーマを選択...",
+                    zed_actions::icon_theme_selector::Toggle::default(),
+                ),
+            ])),
+            MenuItem::separator(),
+            #[cfg(target_os = "macos")]
+            MenuItem::os_submenu("サービス", gpui::SystemMenuType::Services),
+            MenuItem::separator(),
+            MenuItem::action("拡張機能", zed_actions::Extensions::default()),
+            #[cfg(not(target_os = "windows"))]
+            MenuItem::action("CLI をインストール", install_cli::InstallCliBinary),
+            MenuItem::separator(),
+            #[cfg(target_os = "macos")]
+            MenuItem::action("Zed を非表示", super::Hide),
+            #[cfg(target_os = "macos")]
+            MenuItem::action("ほかを非表示", super::HideOthers),
+            #[cfg(target_os = "macos")]
+            MenuItem::action("すべて表示", super::ShowAll),
+            MenuItem::separator(),
+            MenuItem::action("Zed を終了", Quit),
+        ],
+    };
+
+    let mut menus = vec![
         Menu {
-            name: "Zed".into(),
+            name: "ファイル".into(),
             disabled: false,
             items: vec![
-                MenuItem::action("About Zed", zed_actions::About),
-                MenuItem::action("Check for Updates", auto_update::Check),
-                MenuItem::separator(),
-                MenuItem::submenu(Menu::new("Settings").items([
-                    MenuItem::action("Open Settings", zed_actions::OpenSettings),
-                    MenuItem::action("Open Settings File", super::OpenSettingsFile),
-                    MenuItem::action("Open Project Settings", zed_actions::OpenProjectSettings),
-                    MenuItem::action("Open Project Settings File", super::OpenProjectSettingsFile),
-                    MenuItem::action("Open Default Settings", super::OpenDefaultSettings),
-                    MenuItem::separator(),
-                    MenuItem::action("Open Keymap", zed_actions::OpenKeymap),
-                    MenuItem::action("Open Keymap File", zed_actions::OpenKeymapFile),
-                    MenuItem::action("Open Default Key Bindings", zed_actions::OpenDefaultKeymap),
-                    MenuItem::separator(),
-                    MenuItem::action(
-                        "Select Theme...",
-                        zed_actions::theme_selector::Toggle::default(),
-                    ),
-                    MenuItem::action(
-                        "Select Icon Theme...",
-                        zed_actions::icon_theme_selector::Toggle::default(),
-                    ),
-                ])),
-                MenuItem::separator(),
-                #[cfg(target_os = "macos")]
-                MenuItem::os_submenu("Services", gpui::SystemMenuType::Services),
-                MenuItem::separator(),
-                MenuItem::action("Extensions", zed_actions::Extensions::default()),
-                #[cfg(not(target_os = "windows"))]
-                MenuItem::action("Install CLI", install_cli::InstallCliBinary),
-                MenuItem::separator(),
-                #[cfg(target_os = "macos")]
-                MenuItem::action("Hide Zed", super::Hide),
-                #[cfg(target_os = "macos")]
-                MenuItem::action("Hide Others", super::HideOthers),
-                #[cfg(target_os = "macos")]
-                MenuItem::action("Show All", super::ShowAll),
-                MenuItem::separator(),
-                MenuItem::action("Quit Zed", Quit),
-            ],
-        },
-        Menu {
-            name: "File".into(),
-            disabled: false,
-            items: vec![
-                MenuItem::action("New", workspace::NewFile),
-                MenuItem::action("New Window", workspace::NewWindow),
+                MenuItem::action("新規ファイル", workspace::NewFile),
+                MenuItem::action("新規ウィンドウ", workspace::NewWindow),
                 MenuItem::separator(),
                 #[cfg(not(target_os = "macos"))]
-                MenuItem::action("Open File...", workspace::OpenFiles),
+                MenuItem::action("ファイルを開く...", workspace::OpenFiles),
                 MenuItem::action(
                     if cfg!(not(target_os = "macos")) {
-                        "Open Folder..."
+                        "フォルダーを開く..."
                     } else {
-                        "Open…"
+                        "開く…"
                     },
                     workspace::Open::default(),
                 ),
-                MenuItem::action("Open Recent…", zed_actions::OpenRecent::default()),
-                MenuItem::action("Open Remote…", zed_actions::OpenRemote::default()),
-                MenuItem::separator(),
-                MenuItem::action("Add Folder to Project…", workspace::AddFolderToProject),
-                MenuItem::separator(),
-                MenuItem::action("Save", workspace::Save { save_intent: None }),
-                MenuItem::action("Save As…", workspace::SaveAs),
-                MenuItem::action("Save All", workspace::SaveAll { save_intent: None }),
+                MenuItem::action(
+                    "最近のプロジェクトを開く…",
+                    zed_actions::OpenRecent::default(),
+                ),
+                MenuItem::action(
+                    "リモートプロジェクトを開く…",
+                    zed_actions::OpenRemote::default(),
+                ),
                 MenuItem::separator(),
                 MenuItem::action(
-                    "Close Editor",
+                    "プロジェクトにフォルダーを追加…",
+                    workspace::AddFolderToProject,
+                ),
+                MenuItem::separator(),
+                MenuItem::action("保存", workspace::Save { save_intent: None }),
+                MenuItem::action("名前を付けて保存…", workspace::SaveAs),
+                MenuItem::action("すべて保存", workspace::SaveAll { save_intent: None }),
+                MenuItem::separator(),
+                MenuItem::action(
+                    "エディターを閉じる",
                     workspace::CloseActiveItem {
                         save_intent: None,
                         close_pinned: true,
                     },
                 ),
-                MenuItem::action("Close Project", workspace::CloseProject),
-                MenuItem::action("Close Window", workspace::CloseWindow),
+                MenuItem::action("プロジェクトを閉じる", workspace::CloseProject),
+                MenuItem::action("ウィンドウを閉じる", workspace::CloseWindow),
             ],
         },
         Menu {
-            name: "Edit".into(),
+            name: "編集".into(),
             disabled: false,
             items: vec![
-                MenuItem::os_action("Undo", editor::actions::Undo, OsAction::Undo),
-                MenuItem::os_action("Redo", editor::actions::Redo, OsAction::Redo),
+                MenuItem::os_action("元に戻す", editor::actions::Undo, OsAction::Undo),
+                MenuItem::os_action("やり直し", editor::actions::Redo, OsAction::Redo),
                 MenuItem::separator(),
-                MenuItem::os_action("Cut", editor::actions::Cut, OsAction::Cut),
-                MenuItem::os_action("Copy", editor::actions::Copy, OsAction::Copy),
-                MenuItem::action("Copy and Trim", editor::actions::CopyAndTrim),
-                MenuItem::os_action("Paste", editor::actions::Paste, OsAction::Paste),
+                MenuItem::os_action("切り取り", editor::actions::Cut, OsAction::Cut),
+                MenuItem::os_action("コピー", editor::actions::Copy, OsAction::Copy),
+                MenuItem::action("余白を削ってコピー", editor::actions::CopyAndTrim),
+                MenuItem::os_action("貼り付け", editor::actions::Paste, OsAction::Paste),
                 MenuItem::separator(),
-                MenuItem::action("Find", search::buffer_search::Deploy::find()),
-                MenuItem::action("Find in Project", workspace::DeploySearch::default()),
+                MenuItem::action("検索", search::buffer_search::Deploy::find()),
+                MenuItem::action("プロジェクト内を検索", workspace::DeploySearch::default()),
                 MenuItem::separator(),
                 MenuItem::action(
-                    "Toggle Line Comment",
+                    "行コメントの切り替え",
                     editor::actions::ToggleComments::default(),
                 ),
             ],
         },
         Menu {
-            name: "Selection".into(),
+            name: "選択".into(),
             disabled: false,
             items: vec![
                 MenuItem::os_action(
-                    "Select All",
+                    "すべて選択",
                     editor::actions::SelectAll,
                     OsAction::SelectAll,
                 ),
-                MenuItem::action("Expand Selection", editor::actions::SelectLargerSyntaxNode),
-                MenuItem::action("Shrink Selection", editor::actions::SelectSmallerSyntaxNode),
-                MenuItem::action("Select Next Sibling", editor::actions::SelectNextSyntaxNode),
+                MenuItem::action("選択範囲を拡張", editor::actions::SelectLargerSyntaxNode),
+                MenuItem::action("選択範囲を縮小", editor::actions::SelectSmallerSyntaxNode),
                 MenuItem::action(
-                    "Select Previous Sibling",
+                    "次の兄弟ノードを選択",
+                    editor::actions::SelectNextSyntaxNode,
+                ),
+                MenuItem::action(
+                    "前の兄弟ノードを選択",
                     editor::actions::SelectPreviousSyntaxNode,
                 ),
                 MenuItem::separator(),
                 MenuItem::action(
-                    "Add Cursor Above",
+                    "上にカーソルを追加",
                     editor::actions::AddSelectionAbove {
                         skip_soft_wrap: true,
                     },
                 ),
                 MenuItem::action(
-                    "Add Cursor Below",
+                    "下にカーソルを追加",
                     editor::actions::AddSelectionBelow {
                         skip_soft_wrap: true,
                     },
                 ),
                 MenuItem::action(
-                    "Select Next Occurrence",
+                    "次の出現箇所を選択",
                     editor::actions::SelectNext {
                         replace_newest: false,
                     },
                 ),
                 MenuItem::action(
-                    "Select Previous Occurrence",
+                    "前の出現箇所を選択",
                     editor::actions::SelectPrevious {
                         replace_newest: false,
                     },
                 ),
-                MenuItem::action("Select All Occurrences", editor::actions::SelectAllMatches),
+                MenuItem::action("すべての出現箇所を選択", editor::actions::SelectAllMatches),
                 MenuItem::separator(),
-                MenuItem::action("Move Line Up", editor::actions::MoveLineUp),
-                MenuItem::action("Move Line Down", editor::actions::MoveLineDown),
-                MenuItem::action("Duplicate Selection", editor::actions::DuplicateLineDown),
+                MenuItem::action("行を上へ移動", editor::actions::MoveLineUp),
+                MenuItem::action("行を下へ移動", editor::actions::MoveLineDown),
+                MenuItem::action("選択範囲を複製", editor::actions::DuplicateLineDown),
             ],
         },
         Menu {
-            name: "View".into(),
+            name: "表示".into(),
             disabled: false,
             items: view_items,
         },
         Menu {
-            name: "Go".into(),
+            name: "移動".into(),
             disabled: false,
             items: vec![
-                MenuItem::action("Back", workspace::GoBack),
-                MenuItem::action("Forward", workspace::GoForward),
+                MenuItem::action("戻る", workspace::GoBack),
+                MenuItem::action("進む", workspace::GoForward),
                 MenuItem::separator(),
-                MenuItem::action("Command Palette...", zed_actions::command_palette::Toggle),
+                MenuItem::action("コマンドパレット...", zed_actions::command_palette::Toggle),
                 MenuItem::separator(),
-                MenuItem::action("Go to File...", workspace::ToggleFileFinder::default()),
+                MenuItem::action("ファイルへ移動...", workspace::ToggleFileFinder::default()),
                 // MenuItem::action("Go to Symbol in Project", project_symbols::Toggle),
                 MenuItem::action(
-                    "Go to Symbol in Editor...",
+                    "エディター内のシンボルへ移動...",
                     zed_actions::outline::ToggleOutline,
                 ),
-                MenuItem::action("Go to Line/Column...", editor::actions::ToggleGoToLine),
+                MenuItem::action("行/列へ移動...", editor::actions::ToggleGoToLine),
                 MenuItem::separator(),
+                MenuItem::action("定義へ移動", editor::actions::GoToDefinition::default()),
+                MenuItem::action("宣言へ移動", editor::actions::GoToDeclaration),
+                MenuItem::action("型定義へ移動", editor::actions::GoToTypeDefinition),
                 MenuItem::action(
-                    "Go to Definition",
-                    editor::actions::GoToDefinition::default(),
-                ),
-                MenuItem::action("Go to Declaration", editor::actions::GoToDeclaration),
-                MenuItem::action("Go to Type Definition", editor::actions::GoToTypeDefinition),
-                MenuItem::action(
-                    "Find All References",
+                    "すべての参照を検索",
                     editor::actions::FindAllReferences::default(),
                 ),
                 MenuItem::separator(),
-                MenuItem::action("Next Problem", editor::actions::GoToDiagnostic::default()),
+                MenuItem::action("次の問題へ", editor::actions::GoToDiagnostic::default()),
                 MenuItem::action(
-                    "Previous Problem",
+                    "前の問題へ",
                     editor::actions::GoToPreviousDiagnostic::default(),
                 ),
             ],
         },
         Menu {
-            name: "Run".into(),
+            name: "実行".into(),
             disabled: false,
             items: vec![
                 MenuItem::action(
-                    "Spawn Task",
+                    "タスクを実行",
                     zed_actions::Spawn::ViaModal {
                         reveal_target: None,
                     },
                 ),
-                MenuItem::action("Start Debugger", debugger_ui::Start),
+                MenuItem::action("デバッガーを開始", debugger_ui::Start),
                 MenuItem::separator(),
-                MenuItem::action("Edit tasks.json…", zed_actions::OpenProjectTasks),
-                MenuItem::action("Edit debug.json…", zed_actions::OpenProjectDebugTasks),
+                MenuItem::action("tasks.json を編集…", zed_actions::OpenProjectTasks),
+                MenuItem::action("debug.json を編集…", zed_actions::OpenProjectDebugTasks),
                 MenuItem::separator(),
-                MenuItem::action("Continue", debugger_ui::Continue),
-                MenuItem::action("Step Over", debugger_ui::StepOver),
-                MenuItem::action("Step Into", debugger_ui::StepInto),
-                MenuItem::action("Step Out", debugger_ui::StepOut),
+                MenuItem::action("続行", debugger_ui::Continue),
+                MenuItem::action("ステップオーバー", debugger_ui::StepOver),
+                MenuItem::action("ステップイン", debugger_ui::StepInto),
+                MenuItem::action("ステップアウト", debugger_ui::StepOut),
                 MenuItem::separator(),
-                MenuItem::action("Toggle Breakpoint", editor::actions::ToggleBreakpoint),
-                MenuItem::action("Edit Breakpoint", editor::actions::EditLogBreakpoint),
-                MenuItem::action("Clear All Breakpoints", debugger_ui::ClearAllBreakpoints),
+                MenuItem::action(
+                    "ブレークポイントの切り替え",
+                    editor::actions::ToggleBreakpoint,
+                ),
+                MenuItem::action("ブレークポイントを編集", editor::actions::EditLogBreakpoint),
+                MenuItem::action(
+                    "すべてのブレークポイントを削除",
+                    debugger_ui::ClearAllBreakpoints,
+                ),
             ],
         },
         Menu {
-            name: "Window".into(),
+            // gpui_macos の `Platform::create_menu_bar` はこの名前で
+            // NSApplication の windowsMenu を判定する (DEVLOG F1-3)
+            name: "ウィンドウ".into(),
             disabled: false,
             items: vec![
-                MenuItem::action("Minimize", super::Minimize),
-                MenuItem::action("Zoom", super::Zoom),
+                MenuItem::action("最小化", super::Minimize),
+                MenuItem::action("ズーム", super::Zoom),
                 MenuItem::separator(),
             ],
         },
         Menu {
-            name: "Help".into(),
+            name: "ヘルプ".into(),
             disabled: false,
             items: vec![
                 MenuItem::action(
-                    "View Release Notes Locally",
+                    "リリースノートをエディターで表示",
                     auto_update_ui::ViewReleaseNotesLocally,
                 ),
-                MenuItem::action("View Telemetry", zed_actions::OpenTelemetryLog),
-                MenuItem::action("View Dependency Licenses", zed_actions::OpenLicenses),
-                MenuItem::action("Show Welcome", onboarding::ShowWelcome),
+                MenuItem::action("テレメトリログを表示", zed_actions::OpenTelemetryLog),
+                MenuItem::action("依存ライブラリのライセンス", zed_actions::OpenLicenses),
+                MenuItem::action("ようこそページを表示", onboarding::ShowWelcome),
                 MenuItem::separator(),
-                MenuItem::action("File Bug Report...", zed_actions::feedback::FileBugReport),
-                MenuItem::action("Request Feature...", zed_actions::feedback::RequestFeature),
-                MenuItem::action("Email Us...", zed_actions::feedback::EmailZed),
+                MenuItem::action("バグを報告...", zed_actions::feedback::FileBugReport),
+                MenuItem::action("機能をリクエスト...", zed_actions::feedback::RequestFeature),
+                MenuItem::action("メールを送る...", zed_actions::feedback::EmailZed),
                 MenuItem::separator(),
                 MenuItem::action(
-                    "Documentation",
+                    "ドキュメント",
                     super::OpenBrowser {
                         url: "https://zed.dev/docs".into(),
                     },
                 ),
-                MenuItem::action("Zed Repository", feedback::OpenZedRepo),
+                MenuItem::action("Zed のリポジトリ", feedback::OpenZedRepo),
                 MenuItem::action(
-                    "Zed Twitter",
+                    "Zed の Twitter",
                     super::OpenBrowser {
                         url: "https://twitter.com/zeddotdev".into(),
                     },
                 ),
                 MenuItem::action(
-                    "Join the Team",
+                    "採用情報",
                     super::OpenBrowser {
                         url: "https://zed.dev/jobs".into(),
                     },
                 ),
             ],
         },
-    ]
+    ];
+
+    // macOS treats the first menu as the application menu — it is drawn bold
+    // next to the Apple logo whatever it contains — so only Windows and Linux
+    // honour the request to park "Zed" at the far right, after "ヘルプ".
+    if cfg!(target_os = "macos") {
+        menus.insert(0, zed_menu);
+    } else {
+        menus.push(zed_menu);
+    }
+
+    menus
 }

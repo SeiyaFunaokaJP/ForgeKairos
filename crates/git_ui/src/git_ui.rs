@@ -486,10 +486,15 @@ impl RenameBranchModal {
             {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(error)) => Err(error),
-                Err(_) => Err(anyhow!("Operation was canceled")),
+                Err(_) => Err(anyhow!("操作はキャンセルされました。")),
             }
         })
-        .detach_and_prompt_err("Failed to rename branch", window, cx, |_, _, _| None);
+        .detach_and_prompt_err(
+            "ブランチ名を変更できませんでした",
+            window,
+            cx,
+            |_, _, _| None,
+        );
         cx.emit(DismissEvent);
     }
 }
@@ -519,7 +524,7 @@ impl Render for RenameBranchModal {
                     .gap_1p5()
                     .child(Icon::new(IconName::GitBranch).size(IconSize::XSmall))
                     .child(
-                        Headline::new(format!("Rename Branch ({})", self.current_branch))
+                        Headline::new(format!("ブランチ名を変更 ({})", self.current_branch))
                             .size(HeadlineSize::XSmall),
                     ),
             )
@@ -587,7 +592,7 @@ impl RefPickerModal {
     ) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Enter git ref...", window, cx);
+            editor.set_placeholder_text("git ref を入力...", window, cx);
             editor
         });
 
@@ -689,7 +694,7 @@ impl RefPickerModal {
                     }
                     Ok(Err(_)) | Err(_) => {
                         workspace.update(cx, |workspace, cx| {
-                            let error = anyhow::anyhow!("View commit failed");
+                            let error = anyhow::anyhow!("コミットの表示に失敗しました。");
                             Self::show_git_error_toast(&git_ref_string, error, workspace, cx);
                         });
                     }
@@ -772,7 +777,7 @@ impl Render for RefPickerModal {
                     .w_full()
                     .gap_1p5()
                     .child(Icon::new(IconName::Hash).size(IconSize::XSmall))
-                    .child(Headline::new("View Commit").size(HeadlineSize::XSmall)),
+                    .child(Headline::new("コミットを表示").size(HeadlineSize::XSmall)),
             )
             .child(div().px_3().w_full().child(self.editor.clone()))
             .when_some(commit_preview, |el, preview| {
@@ -870,7 +875,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "Fetch",
+            "フェッチ",
             0,
             0,
             Some(IconName::ArrowCircle),
@@ -882,7 +887,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "Fetch updates from remote",
+                    "リモートから更新をフェッチします",
                     &git::Fetch,
                     "git fetch",
                     keybinding_target.clone(),
@@ -901,7 +906,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "Push",
+            "プッシュ",
             ahead as usize,
             0,
             None,
@@ -913,7 +918,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "Push committed changes to remote",
+                    "コミット済みの変更をリモートにプッシュします",
                     &git::Push,
                     "git push",
                     keybinding_target.clone(),
@@ -933,7 +938,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "Pull",
+            "プル",
             ahead as usize,
             behind as usize,
             None,
@@ -945,7 +950,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "Pull",
+                    "プル",
                     &git::Pull,
                     "git pull",
                     keybinding_target.clone(),
@@ -963,7 +968,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "Publish",
+            "発行",
             0,
             0,
             Some(IconName::ExpandUp),
@@ -975,7 +980,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "Publish branch to remote",
+                    "ブランチをリモートに発行します",
                     &git::Push,
                     "git push --set-upstream",
                     keybinding_target.clone(),
@@ -993,7 +998,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "Republish",
+            "再発行",
             0,
             0,
             Some(IconName::ExpandUp),
@@ -1005,7 +1010,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "Re-publish branch to remote",
+                    "ブランチをリモートに再発行します",
                     &git::Push,
                     "git push --set-upstream",
                     keybinding_target.clone(),
@@ -1017,9 +1022,9 @@ mod remote_button {
 
     fn in_progress_tooltip(operation: RemoteOperationKind) -> &'static str {
         match operation {
-            RemoteOperationKind::Fetch => "Fetch in Progress…",
-            RemoteOperationKind::Pull => "Pull in Progress…",
-            RemoteOperationKind::Push => "Push in Progress…",
+            RemoteOperationKind::Fetch => "フェッチ中…",
+            RemoteOperationKind::Pull => "プル中…",
+            RemoteOperationKind::Push => "プッシュ中…",
         }
     }
 
@@ -1059,14 +1064,14 @@ mod remote_button {
                         .when_some(keybinding_target.clone(), |el, keybinding_target| {
                             el.context(keybinding_target)
                         })
-                        .action("Fetch", git::Fetch.boxed_clone())
-                        .action("Fetch From", git::FetchFrom.boxed_clone())
-                        .action("Pull", git::Pull.boxed_clone())
-                        .action("Pull (Rebase)", git::PullRebase.boxed_clone())
+                        .action("フェッチ", git::Fetch.boxed_clone())
+                        .action("取得元を指定してフェッチ", git::FetchFrom.boxed_clone())
+                        .action("プル", git::Pull.boxed_clone())
+                        .action("リベースしてプル", git::PullRebase.boxed_clone())
                         .separator()
-                        .action("Push", git::Push.boxed_clone())
-                        .action("Push To", git::PushTo.boxed_clone())
-                        .action("Force Push", git::ForcePush.boxed_clone())
+                        .action("プッシュ", git::Push.boxed_clone())
+                        .action("プッシュ先を指定してプッシュ", git::PushTo.boxed_clone())
+                        .action("強制プッシュ", git::ForcePush.boxed_clone())
                 }))
             })
             .anchor(Anchor::TopRight)
@@ -1277,7 +1282,7 @@ impl GitCloneModal {
     pub fn show(panel: Entity<GitPanel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let repo_input = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Enter repository URL…", window, cx);
+            editor.set_placeholder_text("リポジトリの URL を入力…", window, cx);
             editor
         });
         let focus_handle = repo_input.focus_handle(cx);
@@ -1321,12 +1326,12 @@ impl Render for GitCloneModal {
                     .rounded_b_sm()
                     .bg(cx.theme().colors().editor_background)
                     .child(
-                        Label::new("Clone a repository from GitHub or other sources.")
+                        Label::new("GitHub などからリポジトリをクローンします。")
                             .color(Color::Muted)
                             .size(LabelSize::Small),
                     )
                     .child(
-                        Button::new("learn-more", "Learn More")
+                        Button::new("learn-more", "詳細")
                             .label_size(LabelSize::Small)
                             .end_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::XSmall))
                             .on_click(|_, _, cx| {

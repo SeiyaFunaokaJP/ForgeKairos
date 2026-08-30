@@ -1,7 +1,7 @@
 use crate::{
     RemoteArch, RemoteClientDelegate, RemoteOs, RemotePlatform,
     remote_client::{CommandTemplate, Interactive, RemoteConnection, RemoteConnectionOptions},
-    transport::{parse_platform, parse_shell},
+    transport::{find_bundled_server_artifact, parse_platform, parse_shell},
 };
 use anyhow::{Context as _, Result, anyhow};
 use async_trait::async_trait;
@@ -38,6 +38,34 @@ use util::{
 
 /// How long to wait for SSH to connect when no askpass prompt has opened.
 const SSH_CONNECTION_PROMPT_TIMEOUT: Duration = Duration::from_secs(17);
+
+/// The environment variables [`build_command_windows`] carries over to a
+/// Windows remote, out of the whole environment it otherwise drops to stay
+/// under Windows OpenSSH's 8K command-line limit.
+///
+/// The exception exists because the fork's network control depends on it: the
+/// egress proxy the remote runs for AI child processes (ADR-F14) is reachable
+/// only through these variables, so dropping them does not merely inconvenience
+/// a Windows remote, it silently takes those processes *outside* the allowlist.
+/// A proxy URL and a `NO_PROXY` list are a few dozen bytes, which the limit has
+/// room for. Both cases are listed because the injectors write the uppercase
+/// spelling while some tools only read the lowercase one, and the whole point
+/// is to pass on whatever the caller decided to set.
+const WINDOWS_FORWARDED_ENV: &[&str] = &[
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+];
+
+/// How many bytes of rendered `$env:…=…` assignments a Windows remote command
+/// may spend out of the 8K it has. Small on purpose: the budget is there to let
+/// a proxy configuration through, not to reopen the door the 8K limit closed.
+/// The command is sent base64-encoded UTF-16, so a byte here costs about 2.7 on
+/// the wire.
+const WINDOWS_FORWARDED_ENV_MAX_BYTES: usize = 1024;
 
 pub(crate) struct SshRemoteConnection {
     socket: SshSocket,
@@ -839,9 +867,13 @@ impl SshRemoteConnection {
             ReleaseChannel::Dev => "build".to_string(),
             _ => version.to_string(),
         };
+        // Kept as its own binding because the cleanup pass below globs on it:
+        // it is the part of the name that is stable across the versions of this
+        // channel that have piled up on the remote.
+        let binary_name_prefix = format!("zed-remote-server-{}-", release_channel.dev_name());
         let binary_name = format!(
-            "zed-remote-server-{}-{}{}",
-            release_channel.dev_name(),
+            "{}{}{}",
+            binary_name_prefix,
             version_str,
             if self.ssh_platform.os.is_windows() {
                 ".exe"
@@ -864,39 +896,69 @@ impl SshRemoteConnection {
             .is_ok();
 
         #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
-        if let Some(remote_server_path) = super::build_remote_server_from_source(
+        match super::build_remote_server_from_source(
             &self.ssh_platform,
             delegate.as_ref(),
             binary_exists_on_server,
             cx,
         )
-        .await?
+        .await
         {
-            let tmp_path = paths::remote_server_dir_relative().join(
-                RelPath::from_unix_str(&format!(
-                    "download-{}-{}",
-                    std::process::id(),
-                    remote_server_path.file_name().unwrap().to_string_lossy()
-                ))
-                .unwrap(),
-            );
-            self.upload_local_server_binary(&remote_server_path, &tmp_path, delegate, cx)
-                .await?;
-            self.extract_server_binary(&dst_path, &tmp_path, delegate, cx)
-                .await?;
-            return Ok(dst_path.into());
+            Ok(Some(remote_server_path)) => {
+                log::info!(
+                    "remote server binary source: locally built {}",
+                    remote_server_path.display()
+                );
+                self.remove_stale_server_files(&binary_name_prefix, &binary_name)
+                    .await;
+                self.upload_and_install_server_binary(&remote_server_path, &dst_path, delegate, cx)
+                    .await
+                    .context("installing locally built server binary")?;
+                return Ok(dst_path.into());
+            }
+            Ok(None) => {}
+            // A missing cross-compilation toolchain (zig, cargo-zigbuild, cmake) must not be
+            // fatal here: the bundled artifact below is exactly the fallback for that case.
+            Err(error) => log::warn!(
+                "failed to build the remote server from source, \
+                 falling back to a bundled or downloaded binary: {error:#}"
+            ),
         }
 
         if binary_exists_on_server {
+            log::info!(
+                "remote server binary source: already present on the remote at {}",
+                dst_path.display(self.path_style())
+            );
             return Ok(dst_path.into());
         }
+
+        if let Some(bundled_path) = find_bundled_server_artifact(self.ssh_platform) {
+            log::info!(
+                "remote server binary source: artifact bundled with this app, {}",
+                bundled_path.display()
+            );
+            self.remove_stale_server_files(&binary_name_prefix, &binary_name)
+                .await;
+            self.upload_and_install_server_binary(&bundled_path, &dst_path, delegate, cx)
+                .await
+                .context("installing bundled server binary")?;
+            return Ok(dst_path.into());
+        }
+
+        log::info!("remote server binary source: download (no local or bundled binary available)");
 
         let wanted_version = cx.update(|cx| match release_channel {
             ReleaseChannel::Nightly => Ok(None),
             ReleaseChannel::Dev => {
+                let [bundled_artifact_name, _] =
+                    super::bundled_server_artifact_names(self.ssh_platform);
                 anyhow::bail!(
-                    "ZED_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
-                    dst_path
+                    "no remote server binary is available: none at ({:?}) on the remote, \
+                     no `{}` bundled next to this executable, \
+                     and building one from source produced nothing (see ZED_BUILD_REMOTE_SERVER)",
+                    dst_path,
+                    bundled_artifact_name
                 )
             }
             _ => Ok(Some(AppVersion::global(cx))),
@@ -915,6 +977,9 @@ impl SshRemoteConnection {
             ))
             .unwrap(),
         );
+        self.remove_stale_server_files(&binary_name_prefix, &binary_name)
+            .await;
+
         if !self.socket.connection_options.upload_binary_over_ssh
             && let Some(url) = delegate
                 .get_download_url(
@@ -959,6 +1024,61 @@ impl SshRemoteConnection {
             .await
             .context("extracting server binary")?;
         Ok(dst_path.into())
+    }
+
+    /// Deletes the previous generations of this channel's server binary — and
+    /// the temporary files an interrupted install left behind — from the
+    /// remote's `~/.zed_server`, keeping only `keep_file_name`, the binary
+    /// about to be installed there.
+    ///
+    /// A dev build's binary name carries the version it was built from, so
+    /// every connection from a rebuilt client installs a *new* half-gigabyte
+    /// file beside the old ones and nothing ever removes them. A 31GB remote
+    /// filled up that way on 2026-08-30, and the only symptom the user saw was
+    /// that the extraction step failed. Deleting the old generations right
+    /// before uploading a new one also means the upload itself has the space:
+    /// unlinking a file a running `remote_server` still holds open is safe on
+    /// POSIX, and on Windows the delete of a running image simply fails and is
+    /// skipped.
+    ///
+    /// Deliberately not called on the path where the remote already has the
+    /// right binary — that connection needs no extra SSH round trip — so the
+    /// cleanup happens once per *install*, not once per connection.
+    ///
+    /// Best effort: failing to tidy up must not stop a connection that would
+    /// otherwise work, so the error is logged rather than propagated.
+    async fn remove_stale_server_files(&self, binary_name_prefix: &str, keep_file_name: &str) {
+        let dir = remote_server_dir_relative().display(self.path_style());
+        let script = if self.ssh_platform.os.is_windows() {
+            stale_server_files_cleanup_script_windows(&dir, binary_name_prefix, keep_file_name)
+        } else {
+            stale_server_files_cleanup_script_posix(&dir, binary_name_prefix, keep_file_name)
+        };
+        let script = match script {
+            Ok(script) => script,
+            Err(error) => {
+                log::warn!("not cleaning up stale remote server files: {error:#}");
+                return;
+            }
+        };
+
+        let (shell_kind, program) = if self.ssh_platform.os.is_windows() {
+            (ShellKind::Pwsh, "powershell")
+        } else {
+            (ShellKind::Posix, "sh")
+        };
+        let args = shell_kind.args_for_shell(false, script);
+        match self
+            .socket
+            .run_command(self.ssh_shell_kind, program, &args, true)
+            .await
+        {
+            Ok(_) => log::info!(
+                "remote server binary cleanup: removed the generations of {dir}/{binary_name_prefix}* \
+                 other than {keep_file_name}, and any leftover download temporaries"
+            ),
+            Err(error) => log::warn!("failed to clean up stale remote server files: {error:#}"),
+        }
     }
 
     async fn download_binary_on_server(
@@ -1061,6 +1181,32 @@ impl SshRemoteConnection {
         Ok(())
     }
 
+    /// Uploads a local server binary (or a `.gz` / `.zip` archive of one) to a
+    /// temporary path on the remote and unpacks it into `dst_path`. The temporary
+    /// name keeps the source file's extension, because that is what
+    /// `extract_server_binary` dispatches on.
+    async fn upload_and_install_server_binary(
+        &self,
+        src_path: &Path,
+        dst_path: &RelPath,
+        delegate: &Arc<dyn RemoteClientDelegate>,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        let file_name = src_path
+            .file_name()
+            .with_context(|| format!("no file name in server binary path {src_path:?}"))?
+            .to_string_lossy()
+            .into_owned();
+        let tmp_path = remote_server_dir_relative().join(
+            RelPath::from_unix_str(&format!("download-{}-{}", std::process::id(), file_name))
+                .context("building the remote temporary path for the server binary")?,
+        );
+        self.upload_local_server_binary(src_path, &tmp_path, delegate, cx)
+            .await?;
+        self.extract_server_binary(dst_path, &tmp_path, delegate, cx)
+            .await
+    }
+
     async fn upload_local_server_binary(
         &self,
         src_path: &Path,
@@ -1112,10 +1258,130 @@ impl SshRemoteConnection {
     ) -> Result<()> {
         delegate.set_status(Some("Extracting remote development server"), cx);
 
-        if self.ssh_platform.os.is_windows() {
+        let result = if self.ssh_platform.os.is_windows() {
             self.extract_server_binary_windows(dst_path, tmp_path).await
         } else {
             self.extract_server_binary_posix(dst_path, tmp_path).await
+        };
+        let Err(error) = result else {
+            return Ok(());
+        };
+
+        // Unpacking needs as much room again as the archive already occupies,
+        // so a full remote disk is by far the likeliest reason to be here — and
+        // that is exactly what happened on 2026-08-30, with nothing but
+        // `gunzip: write error` to show for it. Leaving the archive and the
+        // half-written binary behind would also make the next attempt start
+        // from even less room than this one had.
+        self.remove_extract_leftovers(tmp_path).await;
+        Err(error.context(self.free_space_hint().await))
+    }
+
+    /// Removes what a failed extraction leaves in `~/.zed_server`: the uploaded
+    /// archive, plus the partially written file (POSIX) or directory (Windows)
+    /// the unpacker had started producing beside it. Best effort — the caller
+    /// is already returning an error, and this must not replace it.
+    async fn remove_extract_leftovers(&self, tmp_path: &RelPath) {
+        let tmp_path = tmp_path.display(self.path_style());
+        let leftovers = [
+            Some(tmp_path.as_ref()),
+            tmp_path
+                .strip_suffix(".gz")
+                .or_else(|| tmp_path.strip_suffix(".zip")),
+        ];
+        let leftovers = leftovers.into_iter().flatten();
+
+        let (shell_kind, program, script) = if self.ssh_platform.os.is_windows() {
+            let paths = leftovers
+                .map(powershell_single_quoted)
+                .collect::<Vec<_>>()
+                .join(", ");
+            (
+                ShellKind::Pwsh,
+                "powershell",
+                // `exit 0` for the same reason as the stale-file cleanup: a
+                // path that was already gone must not read as a failed command.
+                format!(
+                    "Remove-Item -LiteralPath {paths} -Force -Recurse \
+                     -ErrorAction SilentlyContinue; exit 0"
+                ),
+            )
+        } else {
+            let shell_kind = ShellKind::Posix;
+            let mut script = String::from("rm -rf --");
+            for path in leftovers {
+                let Some(path) = shell_kind.try_quote(path) else {
+                    log::warn!("not removing the failed extraction's leftovers: {path:?}");
+                    return;
+                };
+                script.push(' ');
+                script.push_str(&path);
+            }
+            (shell_kind, "sh", script)
+        };
+
+        let args = shell_kind.args_for_shell(false, script);
+        if let Err(error) = self
+            .socket
+            .run_command(self.ssh_shell_kind, program, &args, true)
+            .await
+        {
+            log::warn!("failed to remove the failed extraction's leftovers: {error:#}");
+        }
+    }
+
+    /// The Japanese hint appended to a failed extraction, naming how much room
+    /// the remote has left. This error reaches the connection-failure dialog,
+    /// which renders the whole `anyhow` chain, so it is user-facing text and is
+    /// written in Japanese (ADR-F07).
+    async fn free_space_hint(&self) -> String {
+        match self.remote_free_space().await {
+            Some(free_space) => {
+                format!("リモートの空き容量が不足している可能性があります (現在: {free_space})")
+            }
+            None => {
+                "リモートの空き容量が不足している可能性があります (空き容量は取得できませんでした)"
+                    .to_string()
+            }
+        }
+    }
+
+    /// Asks the remote, once, how much room is left where the server binary
+    /// goes. Only ever called after an install has already failed: an ordinary
+    /// connection must not pay for the extra round trip.
+    async fn remote_free_space(&self) -> Option<String> {
+        let dir = remote_server_dir_relative().display(self.path_style());
+        let is_windows = self.ssh_platform.os.is_windows();
+        let (program, args) = if is_windows {
+            let script = format!(
+                "'{{0:N1}} GB' -f ((Get-Item -LiteralPath {} -ErrorAction Stop).PSDrive.Free / 1GB)",
+                powershell_single_quoted(&dir)
+            );
+            ("powershell", ShellKind::Pwsh.args_for_shell(false, script))
+        } else {
+            // `-P` pins the POSIX one-line-per-filesystem layout `df` otherwise
+            // wraps for a long device name; `-h` is not in POSIX but is present
+            // everywhere a remote server runs.
+            ("df", vec!["-Ph".to_string(), dir.into_owned()])
+        };
+
+        let output = match self
+            .socket
+            .run_command(self.ssh_shell_kind, program, &args, true)
+            .await
+        {
+            Ok(output) => output,
+            Err(error) => {
+                log::warn!("failed to read the remote's free disk space: {error:#}");
+                return None;
+            }
+        };
+
+        if is_windows {
+            let free_space = output.trim();
+            (!free_space.is_empty()).then(|| format!("空き {free_space}"))
+        } else {
+            parse_df_free_space(&output)
         }
     }
 
@@ -1845,6 +2111,130 @@ impl SshConnectionOptions {
     }
 }
 
+/// A PowerShell single-quoted string literal.
+///
+/// [`ShellKind::try_quote`] leaves a value with no metacharacters bare, which
+/// is right for a cmdlet argument but wrong in expression position: PowerShell
+/// parses a bare word on the right of `=` or of `-like` as a command to run, so
+/// `$env:HTTP_PROXY=http://127.0.0.1:1` would try to execute the URL. Proxy
+/// URLs and file names contain nothing that would force `try_quote` to quote
+/// them, so the quoting has to be unconditional.
+fn powershell_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+/// Rejects a string that is about to be interpolated into a glob pattern
+/// *unquoted* — which is the whole point of the pattern — unless it is inert.
+///
+/// Every caller passes a compile-time constant today (`.zed_server` from
+/// `paths`, and `zed-remote-server-{ReleaseChannel::dev_name}-`); this is what
+/// notices if one of them stops being one.
+fn is_inert_glob_fragment(fragment: &str) -> bool {
+    !fragment.is_empty()
+        && fragment
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'))
+}
+
+/// The `sh` one-liner behind [`SshRemoteConnection::remove_stale_server_files`].
+///
+/// Matching is done with two globs rather than a listing because the client
+/// keeps no record of which versions it installed on a given host. The loop
+/// tests `-e` so that a glob that matched nothing (left literal by `sh`) is
+/// skipped, and ends in `exit 0` so that the last iteration's comparison does
+/// not decide the script's exit status.
+fn stale_server_files_cleanup_script_posix(
+    dir: &str,
+    binary_name_prefix: &str,
+    keep_file_name: &str,
+) -> Result<String> {
+    let shell_kind = ShellKind::Posix;
+    anyhow::ensure!(
+        is_inert_glob_fragment(dir) && is_inert_glob_fragment(binary_name_prefix),
+        "refusing to build a cleanup glob out of {dir:?} and {binary_name_prefix:?}"
+    );
+    let keep_path = format!("{dir}/{keep_file_name}");
+    let keep = shell_kind.try_quote(&keep_path).context("shell quoting")?;
+    Ok(format!(
+        "for stale in {dir}/{binary_name_prefix}* {dir}/download-*; \
+         do if [ -e \"$stale\" ] && [ \"$stale\" != {keep} ]; then rm -f -- \"$stale\"; fi; \
+         done; exit 0"
+    ))
+}
+
+/// The PowerShell equivalent of [`stale_server_files_cleanup_script_posix`].
+///
+/// `-ErrorAction SilentlyContinue` on both halves covers the two expected
+/// failures: `~/.zed_server` not existing yet, and a binary that a running
+/// `remote_server` still has mapped, which Windows refuses to delete.
+/// `-Recurse` is there because `Expand-Archive` unpacks into a *directory* next
+/// to the archive, which an interrupted install leaves behind under the same
+/// `download-` prefix. The trailing `exit 0` is what keeps a first install —
+/// where `~/.zed_server` does not exist yet — from looking like a failure:
+/// `powershell -C` exits 1 whenever `$?` is false at the end, even for an error
+/// `-ErrorAction SilentlyContinue` swallowed.
+fn stale_server_files_cleanup_script_windows(
+    dir: &str,
+    binary_name_prefix: &str,
+    keep_file_name: &str,
+) -> Result<String> {
+    anyhow::ensure!(
+        is_inert_glob_fragment(dir) && is_inert_glob_fragment(binary_name_prefix),
+        "refusing to build a cleanup glob out of {dir:?} and {binary_name_prefix:?}"
+    );
+    let dir = powershell_single_quoted(dir);
+    let binary_glob = powershell_single_quoted(&format!("{binary_name_prefix}*"));
+    let keep = powershell_single_quoted(keep_file_name);
+    Ok(format!(
+        "Get-ChildItem -LiteralPath {dir} -Force -ErrorAction SilentlyContinue | \
+         Where-Object {{ ($_.Name -like {binary_glob} -or $_.Name -like 'download-*') \
+         -and $_.Name -ne {keep} }} | \
+         Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; exit 0"
+    ))
+}
+
+/// Reads how much room is left out of `df -Ph` output, as a phrase to drop into
+/// the Japanese error the connection dialog shows.
+///
+/// `-P` pins the POSIX layout — one line per filesystem, the columns being
+/// `Filesystem Size Used Avail Capacity Mounted-on` — so only the last column
+/// can realistically contain a space and counting from the front is sound. The
+/// two shape checks are there to reject the header, which is what is left when
+/// `df` names a filesystem it then has nothing to say about.
+fn parse_df_free_space(output: &str) -> Option<String> {
+    let line = output.lines().rev().find(|line| !line.trim().is_empty())?;
+    let fields = line.split_whitespace().collect::<Vec<_>>();
+    let [_filesystem, _size, _used, available, capacity, ..] = fields.as_slice() else {
+        return None;
+    };
+    if !available.starts_with(|c: char| c.is_ascii_digit()) || !capacity.ends_with('%') {
+        return None;
+    }
+    Some(format!("空き {available}、使用率 {capacity}"))
+}
+
+/// The environment variables [`build_command_windows`] forwards to the remote
+/// despite Windows OpenSSH's 8K command-line limit, rendered as PowerShell
+/// assignments, or `None` when they would cost more of that budget than
+/// [`WINDOWS_FORWARDED_ENV_MAX_BYTES`].
+///
+/// Iterating the allowlist rather than the map keeps the order independent of
+/// the hash seed.
+fn windows_forwarded_env_assignments(input_env: &HashMap<String, String>) -> Option<String> {
+    let separator = ShellKind::PowerShell.sequential_and_commands_separator();
+    let mut rendered = String::new();
+    for name in WINDOWS_FORWARDED_ENV {
+        let Some(value) = input_env.get(*name) else {
+            continue;
+        };
+        rendered.push_str(&format!(
+            "$env:{name}={} {separator} ",
+            powershell_single_quoted(value)
+        ));
+    }
+    (rendered.len() <= WINDOWS_FORWARDED_ENV_MAX_BYTES).then_some(rendered)
+}
+
 fn build_command_posix(
     input_program: Option<String>,
     input_args: &[String],
@@ -1966,7 +2356,7 @@ fn build_command_posix(
 fn build_command_windows(
     input_program: Option<String>,
     input_args: &[String],
-    _input_env: &HashMap<String, String>,
+    input_env: &HashMap<String, String>,
     working_dir: Option<String>,
     port_forward: Option<(u16, String, u16)>,
     ssh_env: HashMap<String, String>,
@@ -1996,17 +2386,17 @@ fn build_command_windows(
         )?;
     }
 
-    // Windows OpenSSH has an 8K character limit for command lines. Sending a lot of environment variables easily puts us over the limit.
-    // Until we have a better solution for this, we just won't set environment variables for now.
-    // for (k, v) in input_env.iter() {
-    //     write!(
-    //         exec,
-    //         "$env:{}={} {} ",
-    //         k,
-    //         shell_kind.try_quote(v).context("shell quoting")?,
-    //         shell_kind.sequential_and_commands_separator()
-    //     )?;
-    // }
+    // Windows OpenSSH has an 8K character limit for command lines. Sending a lot of environment
+    // variables easily puts us over the limit, so all that crosses is the small fixed allowlist in
+    // `WINDOWS_FORWARDED_ENV` — see the comment there for why those cannot be dropped like the rest.
+    match windows_forwarded_env_assignments(input_env) {
+        Some(assignments) => exec.push_str(&assignments),
+        None => log::warn!(
+            "not forwarding proxy environment variables to a Windows remote: they render to more \
+             than {WINDOWS_FORWARDED_ENV_MAX_BYTES} bytes, which risks Windows OpenSSH's 8K \
+             command-line limit"
+        ),
+    }
 
     if let Some(input_program) = input_program {
         write!(
@@ -2069,6 +2459,7 @@ fn build_command_windows(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine as _;
 
     #[test]
     fn test_build_command() -> Result<()> {
@@ -2198,6 +2589,168 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    /// The 8K limit still drops the rest of the environment, but a Windows
+    /// remote whose AI child processes were meant to run behind the egress
+    /// proxy (ADR-F14) has to receive the variables that point at it.
+    #[test]
+    fn test_build_command_windows_forwards_only_the_proxy_env() -> Result<()> {
+        let mut input_env = HashMap::default();
+        input_env.insert("HTTPS_PROXY".to_string(), "http://127.0.0.1:53123".into());
+        input_env.insert("NO_PROXY".to_string(), "localhost,127.0.0.1,::1".into());
+        input_env.insert("SOME_HUGE_VAR".to_string(), "x".repeat(9000));
+
+        let command = build_command_windows(
+            Some("remote_program".to_string()),
+            &[],
+            &input_env,
+            None,
+            None,
+            HashMap::default(),
+            PathStyle::Windows,
+            "powershell",
+            ShellKind::PowerShell,
+            vec![],
+            "user@host",
+            Interactive::No,
+        )?;
+
+        let encoded = command
+            .args
+            .last()
+            .and_then(|arg| arg.strip_prefix("powershell.exe -E "))
+            .context("missing the base64 encoded remote command")?;
+        let decoded = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+        let decoded = String::from_utf16(
+            &decoded
+                .chunks_exact(2)
+                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                .collect::<Vec<_>>(),
+        )?;
+
+        assert_eq!(
+            decoded,
+            "$env:HTTPS_PROXY='http://127.0.0.1:53123' ; \
+             $env:NO_PROXY='localhost,127.0.0.1,::1' ; &remote_program"
+        );
+        Ok(())
+    }
+
+    /// Every byte here is 2.7 on an 8K-limited command line, so a caller that
+    /// hands over an oversized proxy value gets the pre-fork behaviour rather
+    /// than a connection that fails to start.
+    #[test]
+    fn test_windows_forwarded_env_is_dropped_when_it_is_too_large() {
+        let mut input_env = HashMap::default();
+        input_env.insert(
+            "NO_PROXY".to_string(),
+            "a".repeat(WINDOWS_FORWARDED_ENV_MAX_BYTES),
+        );
+        assert_eq!(windows_forwarded_env_assignments(&input_env), None);
+
+        input_env.insert("NO_PROXY".to_string(), "localhost".to_string());
+        assert_eq!(
+            windows_forwarded_env_assignments(&input_env).as_deref(),
+            Some("$env:NO_PROXY='localhost' ; ")
+        );
+    }
+
+    /// A bare `http://…` on the right of `=` is a command for PowerShell to
+    /// run, so the value has to be quoted even though it holds nothing
+    /// `try_quote` considers a metacharacter.
+    #[test]
+    fn test_windows_forwarded_env_quotes_every_value() {
+        let mut input_env = HashMap::default();
+        input_env.insert("HTTP_PROXY".to_string(), "http://127.0.0.1:1".to_string());
+        input_env.insert("http_proxy".to_string(), "it's".to_string());
+
+        assert_eq!(
+            windows_forwarded_env_assignments(&input_env).as_deref(),
+            Some("$env:HTTP_PROXY='http://127.0.0.1:1' ; $env:http_proxy='it''s' ; ")
+        );
+    }
+
+    #[test]
+    fn test_stale_server_files_cleanup_script_posix() -> Result<()> {
+        assert_eq!(
+            stale_server_files_cleanup_script_posix(
+                ".zed_server",
+                "zed-remote-server-dev-",
+                "zed-remote-server-dev-build",
+            )?,
+            "for stale in .zed_server/zed-remote-server-dev-* .zed_server/download-*; \
+             do if [ -e \"$stale\" ] && [ \"$stale\" != .zed_server/zed-remote-server-dev-build ]; \
+             then rm -f -- \"$stale\"; fi; done; exit 0"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_stale_server_files_cleanup_script_windows() -> Result<()> {
+        assert_eq!(
+            stale_server_files_cleanup_script_windows(
+                ".zed_server",
+                "zed-remote-server-dev-",
+                "zed-remote-server-dev-build.exe",
+            )?,
+            "Get-ChildItem -LiteralPath '.zed_server' -Force -ErrorAction SilentlyContinue | \
+             Where-Object { ($_.Name -like 'zed-remote-server-dev-*' -or $_.Name -like 'download-*') \
+             -and $_.Name -ne 'zed-remote-server-dev-build.exe' } | \
+             Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; exit 0"
+        );
+        Ok(())
+    }
+
+    /// The glob halves are interpolated unquoted, so a fragment that could
+    /// carry a wildcard (or worse) has to stop the cleanup rather than widen
+    /// what it deletes.
+    #[test]
+    fn test_cleanup_scripts_refuse_a_non_inert_glob() {
+        for (dir, prefix) in [
+            (".zed_server", "zed-remote-server-*-"),
+            (".zed_server; rm -rf ~", "zed-remote-server-dev-"),
+            (".zed_server", "zed remote server"),
+            (".zed_server", ""),
+        ] {
+            assert!(
+                stale_server_files_cleanup_script_posix(dir, prefix, "keep").is_err(),
+                "{dir:?} / {prefix:?} should be refused"
+            );
+            assert!(
+                stale_server_files_cleanup_script_windows(dir, prefix, "keep").is_err(),
+                "{dir:?} / {prefix:?} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_df_free_space() {
+        assert_eq!(
+            parse_df_free_space(
+                "Filesystem      Size  Used Avail Use% Mounted on\n\
+                 /dev/root        31G   30G  512M  99% /\n"
+            )
+            .as_deref(),
+            Some("空き 512M、使用率 99%")
+        );
+        // A mount point with a space in it still parses: only the columns
+        // before it are read.
+        assert_eq!(
+            parse_df_free_space(
+                "Filesystem Size Used Avail Use% Mounted on\n\
+                 /dev/sdb1 100G 1G 99G 1% /mnt/my disk\n"
+            )
+            .as_deref(),
+            Some("空き 99G、使用率 1%")
+        );
+        // Header only, no output, and non-`df` noise all mean "cannot tell".
+        assert_eq!(
+            parse_df_free_space("Filesystem Size Used Avail Use% Mounted on\n"),
+            None
+        );
+        assert_eq!(parse_df_free_space(""), None);
+        assert_eq!(parse_df_free_space("df: '.zed_server': no such file"), None);
     }
 
     #[test]

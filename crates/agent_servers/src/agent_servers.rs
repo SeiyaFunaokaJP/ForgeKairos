@@ -111,9 +111,22 @@ impl dyn AgentServer {
 
 /// Load the default proxy environment variables to pass through to the agent
 pub fn load_proxy_env(cx: &mut App) -> HashMap<String, String> {
+    let mut env = HashMap::default();
+
+    // ADR-F13 (F2-7): when the fork's child-process egress proxy is running,
+    // Zed's own `proxy` setting is deliberately *not* propagated here. The
+    // agent is pointed at the fork's proxy instead — by `AcpConnection::stdio`,
+    // once the agent's own settings have had their say — and that proxy chains
+    // through the user's rather than around it, so nothing is lost. Doing it
+    // there rather than here is what keeps a proxy the user spelled out in
+    // `agent_servers.<name>.env` winning: this map is merged *over* a custom
+    // agent's `env`, whereas the injection downstream only fills a gap.
+    if http_client::child_process_proxy().is_some() {
+        return env;
+    }
+
     let proxy_url = cx
         .read_global(|settings: &SettingsStore, _| settings.get::<ProxySettings>(None).proxy_url());
-    let mut env = HashMap::default();
 
     if let Some(proxy_url) = &proxy_url {
         let env_var = if proxy_url.scheme() == "https" {

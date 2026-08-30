@@ -1418,6 +1418,8 @@ impl KeybindSource {
     const VIM: KeyBindingMetaIndex = KeyBindingMetaIndex(KeybindSource::Vim as u32);
     const USER: KeyBindingMetaIndex = KeyBindingMetaIndex(KeybindSource::User as u32);
 
+    /// テレメトリのプロパティ値とログに使う安定名。GLOSSARY.md §1 により**翻訳しない**。
+    /// 画面に出す名前が要る場合は [`Self::display_name`] を使うこと
     pub fn name(&self) -> &'static str {
         match self {
             KeybindSource::User => "User",
@@ -1425,6 +1427,18 @@ impl KeybindSource {
             KeybindSource::Base => "Base",
             KeybindSource::Vim => "Vim",
             KeybindSource::Unknown => "Unknown",
+        }
+    }
+
+    /// キーマップエディターの「ソース」列とフィルターに出す表示名 (F1-3)。
+    /// `keymap_editor` のフィルター項目のラベルと対になっているので、片方だけ変えないこと
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            KeybindSource::User => "ユーザー",
+            KeybindSource::Default => "既定",
+            KeybindSource::Base => "ベース",
+            KeybindSource::Vim => "Vim",
+            KeybindSource::Unknown => "不明",
         }
     }
 

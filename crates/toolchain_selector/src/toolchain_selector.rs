@@ -175,22 +175,24 @@ impl AddToolchainState {
                                 .p_1()
                                 .justify_between()
                                 .gap_2()
-                                .child(Label::new("Select Toolchain Path").color(Color::Muted).map(
-                                    |this| {
-                                        if is_loading {
-                                            this.with_animation(
-                                                "select-toolchain-label",
-                                                Animation::new(Duration::from_secs(2))
-                                                    .repeat()
-                                                    .with_easing(pulsating_between(0.4, 0.8)),
-                                                |label, delta| label.alpha(delta),
-                                            )
-                                            .into_any()
-                                        } else {
-                                            this.into_any_element()
-                                        }
-                                    },
-                                ))
+                                .child(
+                                    Label::new("ツールチェーンのパスを選択")
+                                        .color(Color::Muted)
+                                        .map(|this| {
+                                            if is_loading {
+                                                this.with_animation(
+                                                    "select-toolchain-label",
+                                                    Animation::new(Duration::from_secs(2))
+                                                        .repeat()
+                                                        .with_easing(pulsating_between(0.4, 0.8)),
+                                                    |label, delta| label.alpha(delta),
+                                                )
+                                                .into_any()
+                                            } else {
+                                                this.into_any_element()
+                                            }
+                                        }),
+                                )
                                 .when_some(error, |this, error| {
                                     this.child(Label::new(error).color(Color::Error))
                                 }),
@@ -385,7 +387,7 @@ impl Render for AddToolchainState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let weak = self.weak.upgrade();
-        let label = SharedString::new_static("Add");
+        let label = SharedString::new_static("追加");
 
         v_flex()
             .size_full()
@@ -435,7 +437,7 @@ impl Render for AddToolchainState {
                             .child(
                                 v_flex()
                                     .child(
-                                        Label::new("Scope")
+                                        Label::new("適用範囲")
                                             .size(LabelSize::Small)
                                             .color(Color::Muted)
                                             .mt_1()
@@ -792,8 +794,10 @@ impl ToolchainSelectorDelegate {
                     .await?;
                 let relative_path = this
                     .update(cx, |this, cx| {
+                        // `meta.term` は言語定義由来の英語の名詞 ("Toolchain" /
+                        // "Virtual Environment" 等)。訳さずそのまま日本語文の頭に置く。
                         this.delegate.add_toolchain_text = format!(
-                            "Add {}",
+                            "{} を追加",
                             meta.term.as_ref().to_case(convert_case::Case::Title)
                         )
                         .into();
@@ -820,13 +824,14 @@ impl ToolchainSelectorDelegate {
                     .await?;
                 let pretty_path = {
                     if relative_path.is_empty() {
-                        Cow::Borrowed("worktree root")
+                        Cow::Borrowed("ワークツリーのルート")
                     } else {
                         Cow::Owned(format!("`{}`", relative_path.display(path_style)))
                     }
                 };
+                // `to_lowercase()` が掛かるのは英語の `meta.term` だけで、日本語部分には影響しない。
                 let placeholder_text =
-                    format!("Select a {} for {pretty_path}…", meta.term.to_lowercase(),).into();
+                    format!("{pretty_path} の {} を選択…", meta.term.to_lowercase()).into();
                 let _ = this.update_in(cx, move |this, window, cx| {
                     this.delegate.relative_path = relative_path;
                     this.delegate.placeholder_text = placeholder_text;
@@ -864,7 +869,7 @@ impl ToolchainSelectorDelegate {
                 Some(())
             }
         });
-        let placeholder_text = "Select a toolchain…".to_string().into();
+        let placeholder_text = "ツールチェーンを選択…".to_string().into();
         Self {
             toolchain_selector,
             candidates: Default::default(),
@@ -878,7 +883,7 @@ impl ToolchainSelectorDelegate {
             _fetch_candidates_task,
             project,
             focus_handle: cx.focus_handle(),
-            add_toolchain_text: Arc::from("Add Toolchain"),
+            add_toolchain_text: Arc::from("Toolchain を追加"),
         }
     }
     fn relativize_path(
@@ -1147,7 +1152,7 @@ impl PickerDelegate for ToolchainSelectorDelegate {
                                 }),
                         )
                         .child(
-                            Button::new("select", "Select")
+                            Button::new("select", "選択")
                                 .key_binding(KeyBinding::for_action_in(
                                     &menu::Confirm,
                                     &self.focus_handle,

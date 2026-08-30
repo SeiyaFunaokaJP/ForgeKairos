@@ -408,24 +408,24 @@ impl PaneLeaderDecorator for PaneRenderContext<'_> {
                         if Some(leader_project_id) == self.project.read(cx).remote_id() {
                             is_in_unshared_view.then(|| {
                                 Label::new(format!(
-                                    "{} is in an unshared pane",
+                                    "{} は共有されていないペインを表示しています",
                                     leader.user.username
                                 ))
                             })
                         } else {
                             leader_join_data = Some((leader_project_id, leader.user.legacy_id));
                             Some(Label::new(format!(
-                                "Follow {} to their active project",
+                                "{} をフォローしてアクティブなプロジェクトを表示",
                                 leader.user.username,
                             )))
                         }
                     }
                     ParticipantLocation::UnsharedProject => Some(Label::new(format!(
-                        "{} is viewing an unshared Zed project",
+                        "{} は共有されていない Zed プロジェクトを表示しています",
                         leader.user.username
                     ))),
                     ParticipantLocation::External => Some(Label::new(format!(
-                        "{} is viewing a window outside of Zed",
+                        "{} は Zed 以外のウィンドウを表示しています",
                         leader.user.username
                     ))),
                 };
@@ -452,7 +452,7 @@ impl PaneLeaderDecorator for PaneRenderContext<'_> {
                                             cx,
                                         )
                                         .detach_and_prompt_err(
-                                            "Failed to join project",
+                                            "プロジェクトに参加できませんでした",
                                             window,
                                             cx,
                                             |error, _, _| Some(format!("{error:#}")),

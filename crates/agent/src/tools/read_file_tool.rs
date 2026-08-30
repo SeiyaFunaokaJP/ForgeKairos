@@ -229,16 +229,16 @@ impl AgentTool for ReadFileTool {
         {
             match (input.start_line, input.end_line) {
                 (Some(start), Some(end)) => {
-                    format!("Read file `{path}` (lines {}-{})", start, end,)
+                    format!("ファイル `{path}` を読み込み ({}-{} 行)", start, end,)
                 }
                 (Some(start), None) => {
-                    format!("Read file `{path}` (from line {})", start)
+                    format!("ファイル `{path}` を読み込み ({} 行目以降)", start)
                 }
-                _ => format!("Read file `{path}`"),
+                _ => format!("ファイル `{path}` を読み込み"),
             }
             .into()
         } else {
-            "Read file".into()
+            "ファイルを読み込み".into()
         }
     }
 

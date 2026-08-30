@@ -24,6 +24,7 @@ use assets::Assets;
 use breadcrumbs::Breadcrumbs;
 use client::zed_urls;
 use collections::VecDeque;
+use command_palette_hooks::CommandPaletteFilter;
 use debugger_ui::debugger_panel::DebugPanel;
 use editor::{Editor, MultiBuffer};
 use extension_host::ExtensionStore;
@@ -65,7 +66,7 @@ use project::{
     project_settings::{SettingsObserver, SettingsObserverEvent},
 };
 use project_panel::ProjectPanel;
-use quick_action_bar::QuickActionBar;
+use quick_action_bar::{QuickActionBar, markdown_bar::MarkdownFormatBar};
 use recent_projects::open_remote_project;
 use release_channel::{AppCommitSha, AppVersion, ReleaseChannel};
 use rope::Rope;
@@ -81,6 +82,7 @@ use sidebar::Sidebar;
 use workspace::workspace_error::{ErrorAction, ErrorSeverity, WorkspaceError};
 
 use std::{
+    any::TypeId,
     borrow::Cow,
     path::{Path, PathBuf},
     sync::Arc,
@@ -191,7 +193,29 @@ actions!(
     ]
 );
 
+/// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): collab / LiveKit 除去後も、`workspace` クレートが
+/// 宣言している通話系アクション (`collab` 名前空間) は型として残っている
+/// (`OpenChannelNotesById` は `file_finder` が参照しているため `workspace` からは消せない)。
+/// ハンドラが無いので発火しても何も起きないが、コマンドパレットに死んだ項目として
+/// 並ぶのは害なので、ここで一括して隠す。
+fn hide_collab_actions_from_command_palette(cx: &mut App) {
+    CommandPaletteFilter::update_global(cx, |filter, _| {
+        filter.hide_action_types(&[
+            TypeId::of::<workspace::OpenChannelNotes>(),
+            TypeId::of::<workspace::OpenChannelNotesById>(),
+            TypeId::of::<workspace::Mute>(),
+            TypeId::of::<workspace::Deafen>(),
+            TypeId::of::<workspace::LeaveCall>(),
+            TypeId::of::<workspace::ShareProject>(),
+            TypeId::of::<workspace::ScreenShare>(),
+            TypeId::of::<workspace::CopyRoomId>(),
+        ]);
+    });
+}
+
 pub fn init(cx: &mut App) {
+    hide_collab_actions_from_command_palette(cx);
+
     #[cfg(target_os = "macos")]
     cx.on_action(|_: &Hide, cx| cx.hide());
     #[cfg(target_os = "macos")]
@@ -670,17 +694,17 @@ fn initialize_file_watcher(window: &mut Window, cx: &mut Context<Workspace>) {
     if let Err(e) = fs::fs_watcher::global(|_| {}) {
         let message = format!(
             db::indoc! {r#"
-            inotify_init returned {}
+            inotify_init が {} を返しました
 
-            This may be due to system-wide limits on inotify instances. For troubleshooting see: https://zed.dev/docs/linux
+            システム全体の inotify インスタンス数の上限が原因の可能性があります。対処方法: https://zed.dev/docs/linux
             "#},
             e
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start inotify",
+            "inotify を開始できませんでした",
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &["対処方法を確認して終了"],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -701,17 +725,17 @@ fn initialize_file_watcher(window: &mut Window, cx: &mut Context<Workspace>) {
     if let Err(e) = fs::fs_watcher::global(|_| {}) {
         let message = format!(
             db::indoc! {r#"
-            ReadDirectoryChangesW initialization failed: {}
+            ReadDirectoryChangesW の初期化に失敗しました: {}
 
-            This may occur on network filesystems and WSL paths. For troubleshooting see: https://zed.dev/docs/windows
+            ネットワークファイルシステムや WSL のパスで発生することがあります。対処方法: https://zed.dev/docs/windows
             "#},
             e
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start ReadDirectoryChangesW",
+            "ReadDirectoryChangesW を開始できませんでした",
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &["対処方法を確認して終了"],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -747,21 +771,21 @@ fn show_software_emulation_warning_if_needed(
         };
         let message = format!(
             db::indoc! {r#"
-            Zed uses {} for rendering and requires a compatible GPU.
+            Zed は描画に {} を使用するため、対応した GPU が必要です。
 
-            Currently you are using a software emulated GPU ({}) which
-            will result in awful performance.
+            現在はソフトウェアエミュレーションの GPU ({}) を使用しており、
+            動作が極端に遅くなります。
 
-            For troubleshooting see: {}
-            Set ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.
+            対処方法: {}
+            常に無視するには環境変数 ZED_ALLOW_EMULATED_GPU=1 を設定してください。
             "#},
             graphics_api, specs.device_name, docs_url
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Unsupported GPU",
+            "サポートされていない GPU",
             Some(&message),
-            &["Skip", "Troubleshoot and Quit"],
+            &["スキップ", "対処方法を確認して終了"],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -782,8 +806,6 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
         let outline_panel = OutlinePanel::load(workspace_handle.clone(), cx.clone());
         let terminal_panel = TerminalPanel::load(workspace_handle.clone(), cx.clone());
         let git_panel = GitPanel::load(workspace_handle.clone(), cx.clone());
-        let channels_panel =
-            collab_ui::collab_panel::CollabPanel::load(workspace_handle.clone(), cx.clone());
         let debug_panel = DebugPanel::load(workspace_handle.clone(), cx);
 
         async fn add_panel_when_ready(
@@ -806,7 +828,6 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             add_panel_when_ready(outline_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(terminal_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(git_panel, workspace_handle.clone(), cx.clone()),
-            add_panel_when_ready(channels_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(debug_panel, workspace_handle.clone(), cx.clone()),
             initialize_agent_panel(workspace_handle, cx.clone()).map(|r| r.log_err()),
         );
@@ -1276,7 +1297,7 @@ fn register_actions(
                         Toast::new(
                             NotificationId::unique::<RegisterZedScheme>(),
                             format!(
-                                "zed:// links will now open in {}.",
+                                "zed:// のリンクは今後 {} で開きます。",
                                 ReleaseChannel::global(cx).display_name()
                             ),
                         ),
@@ -1286,7 +1307,7 @@ fn register_actions(
                 Ok(())
             })
             .detach_and_prompt_err(
-                "Error registering zed:// scheme",
+                "zed:// スキームの登録に失敗しました",
                 window,
                 cx,
                 |_, _, _| None,
@@ -1310,14 +1331,6 @@ fn register_actions(
              window: &mut Window,
              cx: &mut Context<Workspace>| {
                 workspace.toggle_panel_focus::<OutlinePanel>(window, cx);
-            },
-        )
-        .register_action(
-            |workspace: &mut Workspace,
-             _: &collab_ui::collab_panel::ToggleFocus,
-             window: &mut Window,
-             cx: &mut Context<Workspace>| {
-                workspace.toggle_panel_focus::<collab_ui::collab_panel::CollabPanel>(window, cx);
             },
         )
         .register_action(
@@ -1491,6 +1504,8 @@ fn initialize_pane(
             let quick_action_bar =
                 cx.new(|cx| QuickActionBar::new(buffer_search_bar, workspace, cx));
             toolbar.add_item(quick_action_bar, window, cx);
+            let markdown_format_bar = cx.new(|cx| MarkdownFormatBar::new(workspace, cx));
+            toolbar.add_item(markdown_format_bar, window, cx);
             let diagnostic_editor_controls = cx.new(|_| diagnostics::ToolbarControls::new());
             toolbar.add_item(diagnostic_editor_controls, window, cx);
             let project_search_bar = cx.new(|_| ProjectSearchBar::new());
@@ -1530,6 +1545,10 @@ fn initialize_pane(
             toolbar.add_item(basedpyright_banner, window, cx);
             let image_view_toolbar = cx.new(|_| image_viewer::ImageViewToolbarControls::new());
             toolbar.add_item(image_view_toolbar, window, cx);
+            let markdown_preview_toolbar = cx.new(|_| {
+                markdown_preview::markdown_preview_view::MarkdownPreviewToolbarControls::new()
+            });
+            toolbar.add_item(markdown_preview_toolbar, window, cx);
         })
     });
 }
@@ -1634,14 +1653,14 @@ fn open_about_window(cx: &mut App) {
                             .child(Headline::new(self.message.clone()))
                             .when_some(self.commit.clone(), |this, commit| {
                                 this.child(
-                                    Label::new("Commit")
+                                    Label::new("コミット")
                                         .color(Color::Muted)
                                         .size(LabelSize::XSmall),
                                 )
                                 .child(Label::new(commit).size(LabelSize::Small))
                             })
                             .child(
-                                Label::new("Version")
+                                Label::new("バージョン")
                                     .color(Color::Muted)
                                     .size(LabelSize::XSmall),
                             )
@@ -1679,7 +1698,7 @@ fn open_about_window(cx: &mut App) {
                                         },
                                     ))
                                     .child(
-                                        Button::new("copy", "Copy")
+                                        Button::new("copy", "コピー")
                                             .full_width()
                                             .style(ButtonStyle::Tinted(TintColor::Accent))
                                             .toggle_state(copy_is_focused)
@@ -1784,9 +1803,9 @@ fn quit(_: &Quit, cx: &mut App) {
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Info,
-                        "Are you sure you want to quit?",
+                        "終了してもよろしいですか?",
                         None,
-                        &["Quit", "Cancel"],
+                        &["終了", "キャンセル"],
                         cx,
                     )
                 })
@@ -2410,7 +2429,7 @@ fn reload_keymaps(cx: &mut App, mut user_key_bindings: Vec<KeyBinding>) {
     // On Windows, this is set in the `update_jump_list` method of the `HistoryManager`.
     #[cfg(not(target_os = "windows"))]
     cx.set_dock_menu(vec![gpui::MenuItem::action(
-        "New Window",
+        "新規ウィンドウ",
         workspace::NewWindow,
     )]);
     // todo: nicer api here?
@@ -3015,7 +3034,7 @@ mod tests {
         indicator.update(cx, |indicator, cx| {
             assert_eq!(
                 indicator.message_to_render(cx),
-                Some("Partial file index".to_string())
+                Some("部分的なファイルインデックス".to_string())
             );
         });
 
@@ -3032,7 +3051,7 @@ mod tests {
         indicator.update(cx, |indicator, cx| {
             assert_eq!(
                 indicator.message_to_render(cx),
-                Some("Partial file index".to_string())
+                Some("部分的なファイルインデックス".to_string())
             );
         });
 
@@ -3204,7 +3223,7 @@ mod tests {
             1,
             "create_new_window: false should reuse the current window"
         );
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer("キャンセル");
         executor.run_until_parked();
     }
 
@@ -3593,7 +3612,7 @@ mod tests {
             .unwrap();
         executor.run_until_parked();
 
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer("保存しない");
         close.await.unwrap();
 
         // Advance the clock to ensure that the item has been serialized and dropped from the queue
@@ -3659,7 +3678,7 @@ mod tests {
         assert_eq!(cx.update(|cx| cx.windows().len()), 1);
 
         // The window is successfully closed after the user dismisses the prompt.
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer("保存しない");
         executor.run_until_parked();
         assert_eq!(cx.update(|cx| cx.windows().len()), 0);
     }
@@ -4477,7 +4496,7 @@ mod tests {
             })
             .unwrap();
         cx.background_executor.run_until_parked();
-        cx.simulate_prompt_answer("Overwrite");
+        cx.simulate_prompt_answer("上書き");
         save_task.await.unwrap();
         window
             .update(cx, |_, _, cx| {
@@ -4803,7 +4822,7 @@ mod tests {
             close_pinned: false,
         });
         cx.background_executor.run_until_parked();
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer("保存しない");
         cx.background_executor.run_until_parked();
 
         workspace.read_with(cx, |workspace, cx| {
@@ -5908,11 +5927,12 @@ mod tests {
                 "bedrock",
                 "branches",
                 "buffer_search",
-                "channel_modal",
                 "cli",
                 "client",
+                // docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): `collab_ui` / `call` 除去により
+                // `channel_modal` / `collab_panel` 名前空間は消えた。`collab` は
+                // `title_bar` のユーザーメニュー系アクションが使い続けている
                 "collab",
-                "collab_panel",
                 "command_palette",
                 "console",
                 "context_server",
@@ -5997,6 +6017,36 @@ mod tests {
                     .map(|namespace| namespace.to_string())
                     .sorted()
                     .collect::<Vec<_>>()
+            );
+        });
+    }
+
+    /// コマンドパレットの日本語ラベル表 (`command_palette::ja_labels`) のキーが
+    /// 実在するアクション名かどうかを確かめる (F1-3)。
+    /// 表自体は `command_palette` にあるが、全アクションが登録されるのは `zed` を
+    /// リンクしたときだけなので検証はこちら側に置く。
+    #[gpui::test]
+    async fn test_ja_labels_reference_registered_actions(cx: &mut gpui::TestAppContext) {
+        // `#[action(no_register)]` のアクションはグローバル登録されないので
+        // `all_action_names()` に出てこない。名前自体は実在するので除外する
+        const UNREGISTERED: &[&str] = &["zed::ChangeKeybinding", "search::NewSearchInDirectory"];
+
+        init_keymap_test(cx);
+        cx.update(|cx| {
+            let registered = cx
+                .all_action_names()
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>();
+            let unknown = command_palette::labeled_action_names()
+                .filter(|action_name| {
+                    !registered.contains(action_name) && !UNREGISTERED.contains(action_name)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                unknown,
+                Vec::<&str>::new(),
+                "ja_labels.rs のキーが実在しないアクションを指している"
             );
         });
     }
@@ -6169,13 +6219,11 @@ mod tests {
             theme_settings::init(theme::LoadThemes::JustBase, cx);
             audio::init(cx);
             channel::init(&app_state.client, app_state.user_store.clone(), cx);
-            call::init(app_state.client.clone(), app_state.user_store.clone(), cx);
             notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
             workspace::init(app_state.clone(), cx);
             release_channel::init(Version::new(0, 0, 0), cx);
             command_palette::init(cx);
             editor::init(cx);
-            collab_ui::init(&app_state, cx);
             git_ui::init(cx);
             project_panel::init(cx);
             outline_panel::init(cx);
@@ -7004,7 +7052,7 @@ mod tests {
             "Case 1: Should prompt to save dirty item in active workspace"
         );
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer("キャンセル");
         cx.run_until_parked();
 
         assert_eq!(
@@ -7024,7 +7072,7 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer("保存しない");
         close_task.await.ok();
         cx.run_until_parked();
 
@@ -7081,7 +7129,7 @@ mod tests {
             "Case 2: Should prompt to save dirty item in non-active workspace"
         );
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer("キャンセル");
         cx.run_until_parked();
 
         assert_eq!(
@@ -7101,7 +7149,7 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer("保存しない");
         close_task.await.ok();
         cx.run_until_parked();
 
@@ -7165,7 +7213,7 @@ mod tests {
             "Case 3: Should prompt to save dirty item in non-active window"
         );
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer("キャンセル");
         cx.run_until_parked();
 
         assert_eq!(

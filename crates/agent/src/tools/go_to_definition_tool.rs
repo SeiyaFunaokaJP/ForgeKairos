@@ -46,9 +46,9 @@ impl AgentTool for GoToDefinitionTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("Go to definition of `{}`", input.symbol.symbol_name).into()
+            format!("`{}` の定義へ移動", input.symbol.symbol_name).into()
         } else {
-            "Go to definition".into()
+            "定義へ移動".into()
         }
     }
 

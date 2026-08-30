@@ -340,9 +340,9 @@ impl From<TerminalDockPosition> for DockPosition {
 impl DockPosition {
     fn label(&self) -> &'static str {
         match self {
-            Self::Left => "Left",
-            Self::Bottom => "Bottom",
-            Self::Right => "Right",
+            Self::Left => "左",
+            Self::Bottom => "下",
+            Self::Right => "右",
         }
     }
 
@@ -1339,7 +1339,7 @@ impl Render for PanelButtons {
                     let action = dock.toggle_action();
 
                     let tooltip: SharedString =
-                        format!("Close {} Dock", dock.position.label()).into();
+                        format!("{}ドックを閉じる", dock.position.label()).into();
 
                     (action, tooltip)
                 } else {
@@ -1368,7 +1368,7 @@ impl Render for PanelButtons {
                                         let is_current = position == dock_position;
                                         let panel = panel.clone();
                                         menu = menu.toggleable_entry(
-                                            format!("Dock {}", position.label()),
+                                            format!("{}にドッキング", position.label()),
                                             is_current,
                                             IconPosition::Start,
                                             None,
@@ -1389,7 +1389,7 @@ impl Render for PanelButtons {
                                     let dock_for_flex = dock_for_menu.clone();
                                     let workspace_for_flex = workspace_for_menu.clone();
                                     menu = menu.toggleable_entry(
-                                        "Flex Width",
+                                        "幅を可変にする",
                                         currently_flexible,
                                         IconPosition::Start,
                                         None,
@@ -1412,7 +1412,7 @@ impl Render for PanelButtons {
                                     let dock_for_fixed = dock_for_menu.clone();
                                     let workspace_for_fixed = workspace_for_menu.clone();
                                     menu = menu.toggleable_entry(
-                                        "Fixed Width",
+                                        "幅を固定する",
                                         !currently_flexible,
                                         IconPosition::Start,
                                         None,

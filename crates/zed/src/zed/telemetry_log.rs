@@ -269,17 +269,16 @@ impl TelemetryLogView {
         struct TelemetryLogReadError;
         cx.emit(TelemetryLogEvent::ShowToast(Toast::new(
             NotificationId::unique::<TelemetryLogReadError>(),
-            format!("Failed to read telemetry log: {}", error),
+            format!("テレメトリログの読み込みに失敗しました: {}", error),
         )));
     }
 
     fn show_parse_error_toast(&self, count: usize, cx: &mut Context<Self>) {
         struct TelemetryLogParseError;
-        let message = if count == 1 {
-            "1 telemetry log entry failed to parse".to_string()
-        } else {
-            format!("{} telemetry log entries failed to parse", count)
-        };
+        let message = format!(
+            "テレメトリログの {} 件のエントリを解析できませんでした",
+            count
+        );
         cx.emit(TelemetryLogEvent::ShowToast(Toast::new(
             NotificationId::unique::<TelemetryLogParseError>(),
             message,
@@ -400,7 +399,7 @@ impl TelemetryLogView {
                     .when(signed_in, |this| {
                         this.child(
                             div()
-                                .child(ui::Chip::new("signed in"))
+                                .child(ui::Chip::new("サインイン済み"))
                                 .visible_on_hover("telemetry-entry"),
                         )
                     }),
@@ -484,7 +483,7 @@ impl Item for TelemetryLogView {
     type Event = TelemetryLogEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Telemetry Log".into()
+        "テレメトリログ".into()
     }
 
     fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
@@ -510,9 +509,9 @@ impl Render for TelemetryLogView {
                     .justify_center()
                     .items_center()
                     .child(if self.events.is_empty() {
-                        "No telemetry events recorded yet"
+                        "まだテレメトリイベントは記録されていません"
                     } else {
-                        "No events match the current filter"
+                        "現在のフィルターに一致するイベントはありません"
                     })
                     .into_any()
             } else {
@@ -539,7 +538,7 @@ impl TelemetryLogToolbarItemView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_editor = cx.new(|cx| {
             let mut editor = editor::Editor::single_line(window, cx);
-            editor.set_placeholder_text("Filter events...", window, cx);
+            editor.set_placeholder_text("イベントを絞り込み...", window, cx);
             editor
         });
 
@@ -580,7 +579,7 @@ impl Render for TelemetryLogToolbarItemView {
             .child(
                 IconButton::new("clear_events", IconName::Trash)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Clear Events"))
+                    .tooltip(Tooltip::text("イベントを消去"))
                     .disabled(!has_events)
                     .on_click(cx.listener(move |_this, _, _window, cx| {
                         telemetry_log_clone.update(cx, |log, cx| {
@@ -591,7 +590,7 @@ impl Render for TelemetryLogToolbarItemView {
             .child(
                 IconButton::new("open_log_file", IconName::File)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Open Raw Log File"))
+                    .tooltip(Tooltip::text("生のログファイルを開く"))
                     .on_click(|_, _window, cx| {
                         let path = Telemetry::log_file_path();
                         cx.open_url(&format!("file://{}", path.display()));

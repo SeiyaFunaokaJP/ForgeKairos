@@ -22,7 +22,11 @@ rewrap_prefixes = [
     ">\\s*",
     "[-*+]\\s+\\[[\\sx]\\]\\s+"
 ]
-unordered_list = ["- ", "* ", "+ "]
+# `> ` rides on the unordered-list machinery so that Enter continues a block
+# quote and clears the marker on an empty quote line, the same way it does for
+# list items. The side effect of `indent_list_on_tab` also treating `> ` as a
+# list marker is accepted.
+unordered_list = ["- ", "* ", "+ ", "> "]
 ordered_list = [{ pattern = "(\\d+)\\. ", format = "{1}. " }]
 task_list = { prefixes = ["- [ ] ", "- [x] ", "- [X] "], continuation = "- [ ] " }
 

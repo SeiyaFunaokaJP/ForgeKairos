@@ -696,6 +696,7 @@ async fn run_agent(
                     "move_path",
                     "rename_symbol",
                     "read_file",
+                    "repo_map",
                     "grep",
                     "skill",
                     "spawn_agent",

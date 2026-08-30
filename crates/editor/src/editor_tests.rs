@@ -37414,7 +37414,7 @@ async fn test_markdown_indents(cx: &mut gpui::TestAppContext) {
             - Item 1.a
         -ˇ"});
 
-    // Case 7: Test blockquote newline preserves something
+    // Case 7: Test blockquote newline repeats the marker
     cx.set_state(indoc! {"
         > Item 1ˇ"
     });
@@ -37423,7 +37423,7 @@ async fn test_markdown_indents(cx: &mut gpui::TestAppContext) {
     });
     cx.assert_editor_state(indoc! {"
         > Item 1
-        ˇ"
+        > ˇ"
     });
 }
 
@@ -40000,6 +40000,47 @@ async fn test_newline_unordered_list_continuation(cx: &mut TestAppContext) {
         .replace("$", " ")
         .as_str(),
     );
+}
+
+#[gpui::test]
+async fn test_newline_block_quote_continuation(cx: &mut TestAppContext) {
+    init_test(cx, |settings| {
+        settings.defaults.tab_size = Some(2.try_into().unwrap());
+    });
+
+    let markdown_language = languages::language("markdown", tree_sitter_md::LANGUAGE.into());
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_language), cx));
+
+    // Case 1: Adding a newline after quoted content repeats the `> ` marker
+    cx.set_state(indoc! {"
+        > quotedˇ
+    "});
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state(indoc! {"
+        > quoted
+        > ˇ
+    "});
+
+    // Case 2: Adding a newline on an empty quote line clears the marker
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state(indoc! {"
+        > quoted
+        ˇ
+    "});
+
+    // Case 3: Cursor before the marker does not repeat it
+    cx.set_state(indoc! {"
+        ˇ> quoted
+    "});
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state(indoc! {"
+
+        ˇ> quoted
+    "});
 }
 
 #[gpui::test]
@@ -43186,6 +43227,332 @@ async fn test_toggle_markdown_block_quote(cx: &mut TestAppContext) {
         third
         fourthˇ»
     "});
+}
+
+#[gpui::test]
+async fn test_markdown_hard_break_on_newline(cx: &mut TestAppContext) {
+    init_test(cx, |settings| {
+        settings.defaults.hard_break_on_newline = Some(true);
+    });
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // A plain paragraph line gets the two trailing spaces that spell a hard break.
+    cx.set_state("paragraphˇ");
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("paragraph$$\nˇ".replace('$', " ").as_str());
+
+    // Undoing the newline also removes the hard break: both live in one transaction.
+    cx.update_editor(|e, window, cx| e.undo(&Undo, window, cx));
+    cx.assert_editor_state("paragraphˇ");
+
+    // List items, headings and table rows are left alone.
+    cx.set_state("- itemˇ");
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("- item\n- ˇ");
+
+    cx.set_state("## headingˇ");
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("## heading\nˇ");
+
+    cx.set_state("| a | b |ˇ");
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("| a | b |\nˇ");
+
+    // A line that already ends in a backslash break is left alone.
+    cx.set_state("paragraph\\ˇ");
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("paragraph\\\nˇ");
+
+    // Inside a fenced code block the break would only add stray whitespace.
+    cx.set_state(indoc! {"
+        ```
+        codeˇ
+        ```
+    "});
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state(indoc! {"
+        ```
+        code
+        ˇ
+        ```
+    "});
+
+    // Shift+Enter inverts the setting for that one press.
+    cx.set_state("paragraphˇ");
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| {
+        e.newline_invert_hard_break(&NewlineInvertHardBreak, window, cx)
+    });
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("paragraph\nˇ");
+}
+
+#[gpui::test]
+async fn test_markdown_hard_break_off_by_default(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    cx.set_state("paragraphˇ");
+    cx.run_until_parked();
+    cx.update_editor(|e, window, cx| e.newline(&Newline, window, cx));
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("paragraph\nˇ");
+
+    // ...and Shift+Enter then supplies the break instead.
+    cx.set_state("paragraphˇ");
+    cx.update_editor(|e, window, cx| {
+        e.newline_invert_hard_break(&NewlineInvertHardBreak, window, cx)
+    });
+    cx.wait_for_autoindent_applied().await;
+    cx.assert_editor_state("paragraph$$\nˇ".replace('$', " ").as_str());
+}
+
+#[gpui::test]
+async fn test_toggle_markdown_inline_wraps(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // No-op outside Markdown
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state("«helloˇ» world");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bold(&ToggleBold, window, cx));
+    cx.assert_editor_state("«helloˇ» world");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // Wrapping keeps the original text selected
+    cx.set_state("«helloˇ» world");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bold(&ToggleBold, window, cx));
+    cx.assert_editor_state("**«helloˇ»** world");
+
+    // Toggling again removes the delimiters that now sit outside the selection
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bold(&ToggleBold, window, cx));
+    cx.assert_editor_state("«helloˇ» world");
+
+    // A selection that already includes the delimiters is unwrapped too
+    cx.set_state("«**hello**ˇ» world");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bold(&ToggleBold, window, cx));
+    cx.assert_editor_state("«helloˇ» world");
+
+    // Italic must not mistake a bold pair for its own delimiters
+    cx.set_state("«**hello**ˇ» world");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_italic(&ToggleItalic, window, cx));
+    cx.assert_editor_state("*«**hello**ˇ»* world");
+
+    cx.set_state("«helloˇ» world");
+    cx.update_editor(|e, window, cx| {
+        e.toggle_markdown_strikethrough(&ToggleStrikethrough, window, cx)
+    });
+    cx.assert_editor_state("~~«helloˇ»~~ world");
+
+    cx.set_state("«helloˇ» world");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_inline_code(&ToggleInlineCode, window, cx));
+    cx.assert_editor_state("`«helloˇ»` world");
+
+    // An empty selection leaves the cursor between the delimiters
+    cx.set_state("ˇ");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bold(&ToggleBold, window, cx));
+    cx.assert_editor_state("**ˇ**");
+}
+
+#[gpui::test]
+async fn test_toggle_markdown_headings(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // No-op outside Markdown
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state("titleˇ");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_heading_1(&ToggleHeading1, window, cx));
+    cx.assert_editor_state("titleˇ");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    cx.set_state("titˇle");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_heading_1(&ToggleHeading1, window, cx));
+    cx.assert_editor_state("«# titleˇ»");
+
+    // The same level toggles the heading back off
+    cx.update_editor(|e, window, cx| e.toggle_markdown_heading_1(&ToggleHeading1, window, cx));
+    cx.assert_editor_state("«titleˇ»");
+
+    // A different level replaces the existing one
+    cx.set_state("«# titleˇ»");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_heading_2(&ToggleHeading2, window, cx));
+    cx.assert_editor_state("«## titleˇ»");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_heading_3(&ToggleHeading3, window, cx));
+    cx.assert_editor_state("«### titleˇ»");
+
+    // Blank lines inside a multi-line selection stay blank
+    cx.set_state(indoc! {"
+        «first
+
+        thirdˇ»
+    "});
+    cx.update_editor(|e, window, cx| e.toggle_markdown_heading_2(&ToggleHeading2, window, cx));
+    cx.assert_editor_state(indoc! {"
+        «## first
+
+        ## thirdˇ»
+    "});
+}
+
+#[gpui::test]
+async fn test_toggle_markdown_lists(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // No-op outside Markdown
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state("itemˇ");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bullet_list(&ToggleBulletList, window, cx));
+    cx.assert_editor_state("itemˇ");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    cx.set_state(indoc! {"
+        «first
+        secondˇ»
+    "});
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bullet_list(&ToggleBulletList, window, cx));
+    cx.assert_editor_state(indoc! {"
+        «- first
+        - secondˇ»
+    "});
+
+    // Numbering restarts at 1 and replaces the bullet markers
+    cx.update_editor(|e, window, cx| {
+        e.toggle_markdown_numbered_list(&ToggleNumberedList, window, cx)
+    });
+    cx.assert_editor_state(indoc! {"
+        «1. first
+        2. secondˇ»
+    "});
+
+    // Task markers replace the numbers
+    cx.update_editor(|e, window, cx| e.toggle_markdown_task_list(&ToggleTaskList, window, cx));
+    cx.assert_editor_state(indoc! {"
+        «- [ ] first
+        - [ ] secondˇ»
+    "});
+
+    // Toggling the same kind removes the markers entirely
+    cx.update_editor(|e, window, cx| e.toggle_markdown_task_list(&ToggleTaskList, window, cx));
+    cx.assert_editor_state(indoc! {"
+        «first
+        secondˇ»
+    "});
+
+    // Indentation is preserved and blank lines are skipped
+    cx.set_state(indoc! {"
+        «first
+
+          nestedˇ»
+    "});
+    cx.update_editor(|e, window, cx| e.toggle_markdown_bullet_list(&ToggleBulletList, window, cx));
+    cx.assert_editor_state(indoc! {"
+        «- first
+
+          - nestedˇ»
+    "});
+}
+
+#[gpui::test]
+async fn test_markdown_block_insertions(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // No-op outside Markdown
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state("textˇ");
+    cx.update_editor(|e, window, cx| {
+        e.insert_markdown_horizontal_rule(&InsertHorizontalRule, window, cx)
+    });
+    cx.assert_editor_state("textˇ");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // A blank line is inserted above the rule, and none below at the buffer end
+    cx.set_state("textˇ");
+    cx.update_editor(|e, window, cx| {
+        e.insert_markdown_horizontal_rule(&InsertHorizontalRule, window, cx)
+    });
+    cx.assert_editor_state(indoc! {"
+        text
+
+        ---ˇ"});
+
+    // A blank line that is already there is not doubled
+    cx.set_state(indoc! {"
+        textˇ
+
+        more
+    "});
+    cx.update_editor(|e, window, cx| {
+        e.insert_markdown_horizontal_rule(&InsertHorizontalRule, window, cx)
+    });
+    cx.assert_editor_state(indoc! {"
+        text
+
+        ---ˇ
+
+        more
+    "});
+
+    // A code fence wraps the selected lines, padded only where needed
+    cx.set_state(indoc! {"
+        before
+        «codeˇ»
+        after
+    "});
+    cx.update_editor(|e, window, cx| e.wrap_markdown_in_code_block(&WrapInCodeBlock, window, cx));
+    cx.assert_editor_state(indoc! {"
+        before
+
+        ```ˇ
+        code
+        ```
+
+        after
+    "});
+}
+
+#[gpui::test]
+async fn test_insert_markdown_link(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // With a selection the cursor lands where the URL goes
+    cx.set_state("see «Zedˇ» docs");
+    cx.update_editor(|e, window, cx| e.insert_markdown_link(&InsertLink, window, cx));
+    cx.assert_editor_state("see [Zed](ˇ) docs");
+
+    // With no selection a snippet supplies both tab stops
+    cx.set_state("see ˇdocs");
+    cx.update_editor(|e, window, cx| e.insert_markdown_link(&InsertLink, window, cx));
+    cx.assert_editor_state("see [ˇ]()docs");
 }
 
 #[track_caller]

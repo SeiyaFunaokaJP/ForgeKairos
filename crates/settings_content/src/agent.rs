@@ -214,6 +214,11 @@ pub struct AgentSettingsContent {
     ///
     /// Default: left
     pub sidebar_side: Option<SidebarDockPosition>,
+    /// Whether to split the thread history into the agent panel itself,
+    /// as a list to the left of the current thread.
+    ///
+    /// Default: true
+    pub panel_thread_history: Option<bool>,
     /// Default width in pixels when the agent panel is docked to the left or right.
     ///
     /// Default: 640
@@ -366,6 +371,10 @@ impl AgentSettingsContent {
 
     pub fn set_sidebar_side(&mut self, position: SidebarDockPosition) {
         self.sidebar_side = Some(position);
+    }
+
+    pub fn set_panel_thread_history(&mut self, visible: bool) {
+        self.panel_thread_history = Some(visible);
     }
 
     pub fn set_flexible_size(&mut self, flexible: bool) {

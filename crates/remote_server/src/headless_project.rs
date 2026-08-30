@@ -6,11 +6,13 @@ use gpui::TasksIncluded;
 use language::File;
 use lsp::LanguageServerId;
 
+use client::ProxySettings;
+use egress_policy::child_process_proxy::Supervisor as ChildProcessProxySupervisor;
 use extension::ExtensionHostProxy;
 use extension_host::headless_host::HeadlessExtensionStore;
 use fs::Fs;
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, PromptLevel, TaskExt};
-use http_client::HttpClient;
+use http_client::{EgressPolicy, EgressPolicyHandle, HttpClient};
 use language::{Buffer, BufferEvent, LanguageRegistry, proto::serialize_operation};
 use node_runtime::NodeRuntime;
 use project::{
@@ -33,6 +35,7 @@ use rpc::{
     AnyProtoClient, TypedEnvelope,
     proto::{self, REMOTE_SERVER_PEER_ID, REMOTE_SERVER_PROJECT_ID},
 };
+use settings::Settings as _;
 use smol::process::Child;
 
 use settings::initial_server_settings_content;
@@ -61,6 +64,20 @@ pub struct HeadlessProject {
     pub agent_server_store: Entity<AgentServerStore>,
     pub context_server_store: Entity<ContextServerStore>,
     pub settings_observer: Entity<SettingsObserver>,
+    /// The allowlist gating this process's own `HttpClient`, pushed by the
+    /// connecting IDE right after the connection is established (ADR-F11).
+    /// `None` when the process's `HttpClient` isn't an `AllowlistedHttpClient`
+    /// (e.g. `BlockedHttpClient` in tests), in which case a pushed allowlist
+    /// has nothing to update and is accepted but ignored.
+    pub egress_policy: Option<EgressPolicyHandle>,
+    /// The CONNECT proxy this host's own agent child processes — ACP agents,
+    /// MCP servers, npm — are pointed at, so that `egress_policy` governs
+    /// their traffic too (ADR-F14, the remote half of ADR-F13). It listens on
+    /// *this* host's loopback: the IDE's endpoint would mean a different
+    /// machine's port here. Started when the client pushes its allowlist,
+    /// since until then this process's policy denies everything anyway, and
+    /// stopped when this project is released.
+    pub(crate) child_process_proxy: Option<ChildProcessProxySupervisor>,
     pub next_entry_id: Arc<AtomicUsize>,
     pub languages: Arc<LanguageRegistry>,
     pub extensions: Entity<HeadlessExtensionStore>,
@@ -102,6 +119,20 @@ impl HeadlessProject {
         init_worktree_trust: bool,
         cx: &mut Context<Self>,
     ) -> Self {
+        let egress_policy = http_client.egress_policy().cloned();
+        // Only worth a supervisor when there is a policy for it to enforce:
+        // without one (a test harness whose client isn't allowlisted) a
+        // listener would bind a port and judge nothing.
+        let child_process_proxy = egress_policy.as_ref().map(|_| {
+            // `try_get` rather than `get_global`: the settings type is
+            // registered on the real startup path, but a test that builds a
+            // `HeadlessProject` directly need not have registered it, and
+            // chaining through the user's proxy is a convenience that must not
+            // cost the process its ability to start.
+            let upstream_proxy = ProxySettings::try_get(cx).and_then(ProxySettings::proxy_url);
+            ChildProcessProxySupervisor::new(upstream_proxy.as_ref())
+        });
+
         debug_adapter_extension::init(proxy.clone(), cx);
         languages::init(languages.clone(), fs.clone(), node_runtime.clone(), cx);
 
@@ -295,6 +326,7 @@ impl HeadlessProject {
         session.add_request_handler(cx.weak_entity(), Self::handle_ping);
         session.add_request_handler(cx.weak_entity(), Self::handle_get_processes);
         session.add_request_handler(cx.weak_entity(), Self::handle_get_remote_profiling_data);
+        session.add_request_handler(cx.weak_entity(), Self::handle_set_egress_allowlist);
 
         session.add_entity_request_handler(Self::handle_add_worktree);
         session.add_request_handler(cx.weak_entity(), Self::handle_remove_worktree);
@@ -343,6 +375,8 @@ impl HeadlessProject {
             next_entry_id: Default::default(),
             session,
             settings_observer,
+            egress_policy,
+            child_process_proxy,
             fs,
             worktree_store,
             buffer_store,
@@ -1225,6 +1259,67 @@ impl HeadlessProject {
         _cx: AsyncApp,
     ) -> Result<proto::Ack> {
         log::debug!("Received ping from client");
+        Ok(proto::Ack {})
+    }
+
+    /// Applies the egress allowlist the connecting IDE pushes right after
+    /// connecting (ADR-F11, DESIGN.md §4). The client's list is the source of
+    /// truth; this process's own `HttpClient` had been denying everything but
+    /// loopback (and the built-in extension-marketplace entries) until now.
+    ///
+    /// Sent with `send`, not `request`, on the client side, so a client that
+    /// predates this message (or a test harness with no handler for it) never
+    /// blocks on a response that doesn't come; the `Ack` this returns is for
+    /// symmetry with the rest of this file's handlers and isn't waited on.
+    ///
+    /// The same message carries the `proxy_child_processes` choice, which is
+    /// what starts this host's child-process egress proxy (ADR-F14). Starting
+    /// it here rather than at construction is deliberate: until the allowlist
+    /// lands, this process's policy denies everything, and a proxy that denied
+    /// every destination would be worse than none.
+    pub async fn handle_set_egress_allowlist(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::SetEgressAllowlist>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::Ack> {
+        let egress_policy = this.read_with(&cx, |this, _| this.egress_policy.clone());
+        let Some(egress_policy) = egress_policy else {
+            log::debug!(
+                "egress allowlist: received {} host pattern(s) from the client, \
+                 but this process's HTTP client has no allowlist to update",
+                envelope.payload.allowed_hosts.len()
+            );
+            return Ok(proto::Ack {});
+        };
+
+        let (policy, errors) = EgressPolicy::from_host_strings(&envelope.payload.allowed_hosts);
+        for error in errors {
+            log::warn!("egress allowlist: skipping entry pushed by the client — {error}");
+        }
+        log::info!(
+            "egress allowlist: {} host pattern(s) received from the client",
+            policy.patterns().len()
+        );
+        egress_policy.set(policy);
+
+        // A client that predates the field means the mechanism is on, matching
+        // what an absent value in the policy file means on the IDE's own side.
+        let enabled = envelope.payload.proxy_child_processes.unwrap_or(true);
+        this.update(&mut cx, |this, _| {
+            if let Some(supervisor) = this.child_process_proxy.as_mut() {
+                supervisor.apply(enabled, &egress_policy);
+            }
+        });
+        match http_client::child_process_proxy() {
+            Some(endpoint) => log::info!(
+                "child process proxy: agent child processes on this host are pointed at {endpoint}"
+            ),
+            None => log::info!(
+                "child process proxy: off; agent child processes on this host reach the \
+                 network directly"
+            ),
+        }
+
         Ok(proto::Ack {})
     }
 

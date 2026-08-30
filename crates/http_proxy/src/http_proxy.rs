@@ -15,7 +15,10 @@
 //!   host, IP-literal targets are denied, and hostnames whose DNS resolves
 //!   only into loopback / private / link-local space are denied too
 //!   (DNS-rebinding protection — the proxy runs outside the sandbox, so it
-//!   must not reopen the local network the Seatbelt rule closed off).
+//!   must not reopen the local network the Seatbelt rule closed off). That
+//!   decision can be nested inside a caller-supplied outer policy
+//!   ([`ProxyConfig::outer_policy`]), which only ever narrows it: both have to
+//!   permit a destination for it to be reached.
 //! - Pins each TCP connection to the destination approved for its first
 //!   request: directly (to the vetted resolved addresses) or via a CONNECT
 //!   tunnel through an optional upstream HTTP proxy from the parent's
@@ -53,5 +56,6 @@ mod proxy;
 pub use allowlist::{Allowlist, HostPattern, HostPatternError};
 pub use pinned_host::{PinnedHost, PinnedHostError, is_forbidden_ip};
 pub use proxy::{
-    DenyReason, ProxyConfig, ProxyEvent, ProxyHandle, RequestMethod, RequestOutcome, UpstreamProxy,
+    DenyReason, DestinationPolicy, PolicyDecision, ProxyConfig, ProxyEvent, ProxyHandle,
+    RequestMethod, RequestOutcome, UpstreamProxy,
 };

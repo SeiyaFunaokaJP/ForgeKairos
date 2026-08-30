@@ -179,7 +179,7 @@ impl PromptContextAction {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::AddSelections => "Selection",
+            Self::AddSelections => "選択範囲",
         }
     }
 
@@ -211,18 +211,18 @@ impl PromptLocalCommand {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::ThumbsUp => "Positive Feedback",
-            Self::ThumbsDown => "Negative Feedback",
+            Self::ThumbsUp => "高評価のフィードバック",
+            Self::ThumbsDown => "低評価のフィードバック",
         }
     }
 
     pub fn description(&self) -> &'static str {
         match self {
             Self::ThumbsUp => {
-                "Rate this response as helpful. Sends the current conversation to the Zed team."
+                "この応答を「役に立った」と評価します。現在の会話を Zed チームに送信します。"
             }
             Self::ThumbsDown => {
-                "Rate this response as not helpful. Sends the current conversation to the Zed team."
+                "この応答を「役に立たなかった」と評価します。現在の会話を Zed チームに送信します。"
             }
         }
     }
@@ -267,13 +267,13 @@ impl PromptContextType {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::File => "Files & Directories",
-            Self::Symbol => "Symbols",
-            Self::Fetch => "Fetch",
-            Self::Thread => "Threads",
-            Self::Skill => "Skills",
-            Self::Diagnostics => "Diagnostics",
-            Self::BranchDiff => "Branch Diff",
+            Self::File => "ファイルとディレクトリ",
+            Self::Symbol => "シンボル",
+            Self::Fetch => "URL を取得",
+            Self::Thread => "スレッド",
+            Self::Skill => "スキル",
+            Self::Diagnostics => "診断",
+            Self::BranchDiff => "ブランチの差分",
         }
     }
 
@@ -396,9 +396,9 @@ impl AvailableCommand {
     /// Completion group key and header label for this command's category.
     fn group(&self) -> CompletionGroup {
         let (key, label) = match self.category {
-            Some(acp_thread::CommandCategory::Native) => ("commands", "Commands"),
-            Some(acp_thread::CommandCategory::Mcp) => ("mcp-commands", "MCP Server Commands"),
-            None => ("acp-commands", "Commands"),
+            Some(acp_thread::CommandCategory::Native) => ("commands", "コマンド"),
+            Some(acp_thread::CommandCategory::Mcp) => ("mcp-commands", "MCP サーバーのコマンド"),
+            None => ("acp-commands", "コマンド"),
         };
         CompletionGroup {
             key: key.into(),
@@ -1549,7 +1549,7 @@ impl<T: PromptCompletionProviderDelegate> CompletionProvider for PromptCompletio
                                     confirm: Some(confirm),
                                     group: show_section_headers.then(|| CompletionGroup {
                                         key: "skills".into(),
-                                        label: Some("Skills".into()),
+                                        label: Some("スキル".into()),
                                     }),
                                 }
                             }
@@ -1618,7 +1618,7 @@ impl<T: PromptCompletionProviderDelegate> CompletionProvider for PromptCompletio
                             SlashCompletionCandidate::LocalCommand(command) => {
                                 let group = show_section_headers.then(|| CompletionGroup {
                                     key: "local-commands".into(),
-                                    label: Some("Actions".into()),
+                                    label: Some("アクション".into()),
                                 });
 
                                 Completion {
@@ -2204,23 +2204,12 @@ fn diagnostics_submenu_label(
 ) -> String {
     match (include_errors, include_warnings) {
         (true, true) => format!(
-            "{} {} & {} {}",
-            summary.error_count,
-            pluralize("error", summary.error_count),
-            summary.warning_count,
-            pluralize("warning", summary.warning_count)
+            "エラー {} 件、警告 {} 件",
+            summary.error_count, summary.warning_count
         ),
-        (true, _) => format!(
-            "{} {}",
-            summary.error_count,
-            pluralize("error", summary.error_count)
-        ),
-        (_, true) => format!(
-            "{} {}",
-            summary.warning_count,
-            pluralize("warning", summary.warning_count)
-        ),
-        _ => "Diagnostics".into(),
+        (true, _) => format!("エラー {} 件", summary.error_count),
+        (_, true) => format!("警告 {} 件", summary.warning_count),
+        _ => "診断".into(),
     }
 }
 

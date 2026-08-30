@@ -641,10 +641,10 @@ impl Render for ProjectSearchView {
             let model = self.entity.read(cx);
 
             let heading_text = match model.search_state {
-                SearchState::Running(SearchActivity::WaitingForScan) => "Loading project…",
-                SearchState::Running(SearchActivity::Searching) => "Searching…",
-                SearchState::Completed(SearchCompletion::NoResults) => "No Results",
-                _ => "Search All Files",
+                SearchState::Running(SearchActivity::WaitingForScan) => "プロジェクトを読み込み中…",
+                SearchState::Running(SearchActivity::Searching) => "検索中…",
+                SearchState::Completed(SearchCompletion::NoResults) => "該当なし",
+                _ => "すべてのファイルを検索",
             };
 
             let heading_text = div()
@@ -654,7 +654,7 @@ impl Render for ProjectSearchView {
             let page_content: Option<AnyElement> = match model.search_state {
                 SearchState::Idle => Some(self.landing_text_minor(cx).into_any_element()),
                 SearchState::Completed(SearchCompletion::NoResults) => Some(
-                    Label::new("No results found in this project for the provided query")
+                    Label::new("このプロジェクトで一致する結果は見つかりませんでした")
                         .size(LabelSize::Small)
                         .into_any_element(),
                 ),
@@ -699,7 +699,7 @@ impl Item for ProjectSearchView {
             .is_empty()
             .not()
             .then(|| query_text.into())
-            .or_else(|| Some("Project Search".into()))
+            .or_else(|| Some("プロジェクト内検索".into()))
     }
 
     fn act_as_type<'a>(
@@ -743,7 +743,7 @@ impl Item for ProjectSearchView {
 
         last_query
             .filter(|query| !query.is_empty())
-            .unwrap_or_else(|| "Project Search".into())
+            .unwrap_or_else(|| "プロジェクト内検索".into())
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -1070,7 +1070,7 @@ impl ProjectSearchView {
 
         let query_editor = cx.new(|cx| {
             let mut editor = Editor::auto_height(1, 4, window, cx);
-            editor.set_placeholder_text("Search all files…", window, cx);
+            editor.set_placeholder_text("すべてのファイルを検索…", window, cx);
             editor.set_use_autoclose(false);
             editor.set_use_selection_highlight(false);
             editor.set_text(query_text, window, cx);
@@ -1433,11 +1433,11 @@ impl ProjectSearchView {
             let should_prompt_to_save = !skip_save_on_close && !will_autosave && is_dirty;
 
             let should_search = if should_prompt_to_save {
-                let options = &["Save", "Don't Save", "Cancel"];
+                let options = &["保存", "保存しない", "キャンセル"];
                 let result_channel = this.update_in(cx, |_, window, cx| {
                     window.prompt(
                         gpui::PromptLevel::Warning,
-                        "Project search buffer contains unsaved edits. Do you want to save it?",
+                        "検索結果バッファーに保存されていない変更があります。保存しますか?",
                         None,
                         options,
                         cx,
@@ -1847,12 +1847,12 @@ impl ProjectSearchView {
         v_flex()
             .gap_1()
             .child(
-                Label::new("Hit enter to search. For more options:")
+                Label::new("Enter キーで検索します。その他のオプション:")
                     .color(Color::Muted)
                     .mb_2(),
             )
             .child(
-                Button::new("filter-paths", "Include/exclude specific paths")
+                Button::new("filter-paths", "特定のパスを含める/除外する")
                     .start_icon(Icon::new(IconName::Filter).size(IconSize::Small))
                     .key_binding(KeyBinding::for_action_in(&ToggleFilters, &focus_handle, cx))
                     .on_click(|_event, window, cx| {
@@ -1860,7 +1860,7 @@ impl ProjectSearchView {
                     }),
             )
             .child(
-                Button::new("find-replace", "Find and replace")
+                Button::new("find-replace", "検索と置換")
                     .start_icon(Icon::new(IconName::Replace).size(IconSize::Small))
                     .key_binding(KeyBinding::for_action_in(&ToggleReplace, &focus_handle, cx))
                     .on_click(|_event, window, cx| {
@@ -1868,7 +1868,7 @@ impl ProjectSearchView {
                     }),
             )
             .child(
-                Button::new("regex", "Match with regex")
+                Button::new("regex", "正規表現で検索")
                     .start_icon(Icon::new(IconName::Regex).size(IconSize::Small))
                     .key_binding(KeyBinding::for_action_in(&ToggleRegex, &focus_handle, cx))
                     .on_click(|_event, window, cx| {
@@ -1876,7 +1876,7 @@ impl ProjectSearchView {
                     }),
             )
             .child(
-                Button::new("match-case", "Match case")
+                Button::new("match-case", "大文字と小文字を区別")
                     .start_icon(Icon::new(IconName::CaseSensitive).size(IconSize::Small))
                     .key_binding(KeyBinding::for_action_in(
                         &ToggleCaseSensitive,
@@ -1888,7 +1888,7 @@ impl ProjectSearchView {
                     }),
             )
             .child(
-                Button::new("match-whole-words", "Match whole words")
+                Button::new("match-whole-words", "単語単位で検索")
                     .start_icon(Icon::new(IconName::WholeWord).size(IconSize::Small))
                     .key_binding(KeyBinding::for_action_in(
                         &ToggleWholeWord,
@@ -2416,7 +2416,7 @@ impl Render for ProjectSearchBar {
                     .active_match_index
                     .is_none()
                     .then_some(ActionButtonState::Disabled),
-                "Select Previous Match",
+                "前の一致へ",
                 &SelectPreviousMatch,
                 query_focus.clone(),
             ))
@@ -2427,7 +2427,7 @@ impl Render for ProjectSearchBar {
                     .active_match_index
                     .is_none()
                     .then_some(ActionButtonState::Disabled),
-                "Select Next Match",
+                "次の一致へ",
                 &SelectNextMatch,
                 query_focus.clone(),
             ))
@@ -2458,7 +2458,7 @@ impl Render for ProjectSearchBar {
                     )
                     .when(limit_reached, |this| {
                         this.tooltip(Tooltip::text(
-                            "Search Limits Reached\nTry narrowing your search",
+                            "検索件数の上限に達しました\n検索条件を絞り込んでください",
                         ))
                     }),
             );
@@ -2470,7 +2470,7 @@ impl Render for ProjectSearchBar {
                 IconButton::new("project-search-filter-button", IconName::Filter)
                     .shape(IconButtonShape::Square)
                     .tooltip(|_window, cx| {
-                        Tooltip::for_action("Toggle Filters", &ToggleFilters, cx)
+                        Tooltip::for_action("フィルターの表示切り替え", &ToggleFilters, cx)
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.toggle_filters(window, cx);
@@ -2485,7 +2485,7 @@ impl Render for ProjectSearchBar {
                         let focus_handle = focus_handle.clone();
                         move |_window, cx| {
                             Tooltip::for_action_in(
-                                "Toggle Filters",
+                                "フィルターの表示切り替え",
                                 &ToggleFilters,
                                 &focus_handle,
                                 cx,
@@ -2500,7 +2500,7 @@ impl Render for ProjectSearchBar {
                     .as_ref()
                     .map(|search| search.read(cx).replace_enabled)
                     .and_then(|enabled| enabled.then_some(ActionButtonState::Toggled)),
-                "Toggle Replace",
+                "置換の表示切り替え",
                 &ToggleReplace,
                 focus_handle.clone(),
             ))
@@ -2509,9 +2509,9 @@ impl Render for ProjectSearchBar {
         let is_collapsed = search.results_editor.read(cx).has_any_buffer_folded(cx);
 
         let (icon, tooltip_label) = if is_collapsed {
-            (IconName::ChevronUpDown, "Expand All Search Results")
+            (IconName::ChevronUpDown, "検索結果をすべて展開")
         } else {
-            (IconName::ChevronDownUp, "Collapse All Search Results")
+            (IconName::ChevronDownUp, "検索結果をすべて折りたたむ")
         };
 
         let expand_button = IconButton::new("project-search-collapse-expand", icon)
@@ -2557,7 +2557,7 @@ impl Render for ProjectSearchBar {
                     "project-search-replace-button",
                     IconName::ReplaceNext,
                     is_search_underway.then_some(ActionButtonState::Disabled),
-                    "Replace Next Match",
+                    "次を置換",
                     &ReplaceNext,
                     focus_handle.clone(),
                 ))
@@ -2565,7 +2565,7 @@ impl Render for ProjectSearchBar {
                     "project-search-replace-button",
                     IconName::ReplaceAll,
                     Default::default(),
-                    "Replace All Matches",
+                    "すべて置換",
                     &ReplaceAll,
                     focus_handle,
                 ));
@@ -2602,7 +2602,7 @@ impl Render for ProjectSearchBar {
                     IconButton::new("project-search-opened-only", IconName::FolderSearch)
                         .shape(IconButtonShape::Square)
                         .toggle_state(self.is_opened_only_enabled(cx))
-                        .tooltip(Tooltip::text("Only Search Open Files"))
+                        .tooltip(Tooltip::text("開いているファイルのみ検索"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.toggle_opened_only(window, cx);
                         })),

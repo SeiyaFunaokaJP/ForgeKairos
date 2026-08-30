@@ -173,12 +173,13 @@ pub(crate) fn suggest(buffer: Entity<Buffer>, window: &mut Window, cx: &mut Cont
             cx.new(move |cx| {
                 MessageNotification::new(
                     format!(
-                        "Do you want to install the recommended '{}' extension for '{}' files?",
+                        "'{1}' ファイル向けの推奨拡張機能 '{0}' をインストールしますか?",
                         extension_id, file_name_or_extension
                     ),
                     cx,
                 )
-                .primary_message("Yes, install extension")
+                // GLOSSARY.md §2: ボタンは体言止め。F1-1 の「保存」/「保存しない」に合わせる
+                .primary_message("インストール")
                 .primary_icon(IconName::Check)
                 .primary_icon_color(Color::Success)
                 .primary_on_click({
@@ -191,7 +192,7 @@ pub(crate) fn suggest(buffer: Entity<Buffer>, window: &mut Window, cx: &mut Cont
                         });
                     }
                 })
-                .secondary_message("No, don't install it")
+                .secondary_message("インストールしない")
                 .secondary_icon(IconName::Close)
                 .secondary_icon_color(Color::Error)
                 .secondary_on_click(move |_window, cx| {

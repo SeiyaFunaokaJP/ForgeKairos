@@ -502,7 +502,7 @@ impl Render for KeystrokeInput {
             .rounded_sm()
             .child(recording_pulse(Color::Error))
             .child(
-                Label::new("REC")
+                Label::new("記録中")
                     .size(LabelSize::XSmall)
                     .weight(FontWeight::SEMIBOLD)
                     .color(Color::Error),
@@ -520,7 +520,7 @@ impl Render for KeystrokeInput {
             .rounded_sm()
             .child(recording_pulse(Color::Accent))
             .child(
-                Label::new("SEARCH")
+                Label::new("検索中")
                     .size(LabelSize::XSmall)
                     .weight(FontWeight::SEMIBOLD)
                     .color(Color::Accent),
@@ -610,9 +610,9 @@ impl Render for KeystrokeInput {
                                     .map(|this| {
                                         this.tooltip(Tooltip::for_action_title(
                                             if self.search {
-                                                "Stop Searching"
+                                                "検索を停止"
                                             } else {
-                                                "Stop Recording"
+                                                "記録を停止"
                                             },
                                             &StopRecording,
                                         ))
@@ -629,9 +629,9 @@ impl Render for KeystrokeInput {
                                     .map(|this| {
                                         this.tooltip(Tooltip::for_action_title(
                                             if self.search {
-                                                "Start Searching"
+                                                "検索を開始"
                                             } else {
-                                                "Start Recording"
+                                                "記録を開始"
                                             },
                                             &StartRecording,
                                         ))
@@ -650,9 +650,9 @@ impl Render for KeystrokeInput {
                                 .shape(IconButtonShape::Square)
                                 .tooltip(move |_, cx| {
                                     Tooltip::with_meta(
-                                        "Clear Keystrokes",
+                                        "キーストロークを消去",
                                         Some(&ClearKeystrokes),
-                                        "Hit it three times to execute",
+                                        "3 回押すと実行されます",
                                         cx,
                                     )
                                 })

@@ -60,7 +60,7 @@ impl EncodingSelector {
             workspace.show_toast(
                 Toast::new(
                     NotificationId::unique::<EncodingSelector>(),
-                    "Save file to change encoding",
+                    "エンコーディングを変更するにはファイルを保存してください。",
                 ),
                 cx,
             );
@@ -70,7 +70,7 @@ impl EncodingSelector {
             workspace.show_toast(
                 Toast::new(
                     NotificationId::unique::<EncodingSelector>(),
-                    "Cannot change encoding during collaboration",
+                    "共同編集中はエンコーディングを変更できません。",
                 ),
                 cx,
             );
@@ -80,7 +80,7 @@ impl EncodingSelector {
             workspace.show_toast(
                 Toast::new(
                     NotificationId::unique::<EncodingSelector>(),
-                    "Cannot change encoding of remote server file",
+                    "リモートサーバー上のファイルのエンコーディングは変更できません。",
                 ),
                 cx,
             );
@@ -149,7 +149,8 @@ impl EncodingSelectorDelegate {
         let current_encoding = self.buffer.read(cx).encoding();
 
         if candidate_encoding.name() == current_encoding.name() {
-            format!("{} (current)", candidate_encoding.name())
+            // エンコーディング名 (UTF-8 等) はデータなので未翻訳。付記のみ日本語にする。
+            format!("{} (現在)", candidate_encoding.name())
         } else {
             candidate_encoding.name().to_string()
         }
@@ -225,7 +226,7 @@ impl PickerDelegate for EncodingSelectorDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Reopen with encoding...".into()
+        "エンコーディングを指定して再度開く...".into()
     }
 
     fn match_count(&self) -> usize {

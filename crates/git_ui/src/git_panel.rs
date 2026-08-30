@@ -32,9 +32,8 @@ use git::Oid;
 use git::commit::ParsedCommitMessage;
 use git::repository::{
     Branch, CommitData, CommitDetails, CommitOptions, CommitSummary, DiffType, FetchOptions,
-    GitCommitTemplate, GitCommitter, InitialGraphCommitData, LogOrder, LogSource, PushOptions,
-    Remote, RemoteCommandOutput, ResetMode, Upstream, UpstreamTracking, UpstreamTrackingStatus,
-    get_git_committer,
+    GitCommitTemplate, InitialGraphCommitData, LogOrder, LogSource, PushOptions, Remote,
+    RemoteCommandOutput, ResetMode, Upstream, UpstreamTracking, UpstreamTrackingStatus,
 };
 use git::stash::GitStash;
 use git::status::{DiffStat, StageStatus};
@@ -187,10 +186,15 @@ where
     cx.spawn(async move |_| Ok(T::iter().nth(rx.await?).unwrap()))
 }
 
+// docs/jp-enhance/GLOSSARY.md §1「プロンプトのボタン」: ボタン文字列は `T::VARIANTS`
+// 由来なので strum の `serialize` で日本語化する。「キャンセル」は gpui の
+// `From<&str> for PromptButton` が `Cancel` に分類する。
 #[derive(strum::EnumIter, strum::VariantNames)]
 #[strum(serialize_all = "title_case")]
 enum TrashCancel {
+    #[strum(serialize = "ゴミ箱へ移動")]
     Trash,
+    #[strum(serialize = "キャンセル")]
     Cancel,
 }
 
@@ -211,12 +215,14 @@ enum StashKind {
 impl StashKind {
     fn title(self) -> &'static str {
         match self {
-            StashKind::All => "Stash All",
-            StashKind::Tracked => "Stash Tracked",
-            StashKind::Staged => "Stash Staged",
+            StashKind::All => "すべてスタッシュ",
+            StashKind::Tracked => "追跡中をスタッシュ",
+            StashKind::Staged => "ステージ済みをスタッシュ",
         }
     }
 
+    // `show_error_toast` は git_ui_core 側で `git {action} failed` に埋め込むため、
+    // ここは git のサブコマンド名のまま (未翻訳)。
     fn error_action(self) -> &'static str {
         match self {
             StashKind::All => "stash",
@@ -243,7 +249,7 @@ impl StashMessageModal {
     ) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Optionally provide a stash message", window, cx);
+            editor.set_placeholder_text("スタッシュのメッセージ (任意)", window, cx);
             editor
         });
         Self {
@@ -313,17 +319,25 @@ fn git_panel_context_menu(
     ContextMenu::build(window, cx, |context_menu, _, _| {
         context_menu
             .context(focus_handle.clone())
-            .action_disabled_when(!has_unstaged_changes, "Stage All", StageAll.boxed_clone())
-            .action_disabled_when(!has_staged_changes, "Unstage All", UnstageAll.boxed_clone())
+            .action_disabled_when(
+                !has_unstaged_changes,
+                "すべてステージ",
+                StageAll.boxed_clone(),
+            )
+            .action_disabled_when(
+                !has_staged_changes,
+                "すべてアンステージ",
+                UnstageAll.boxed_clone(),
+            )
             .action_disabled_when(
                 !has_tracked_changes,
-                "Restore All Changes",
+                "すべての変更を元に戻す",
                 RestoreTrackedFiles.boxed_clone(),
             )
             .separator()
             .action_disabled_when(
                 !(has_new_changes || has_tracked_changes),
-                "Stash All",
+                "すべてスタッシュ",
                 StashAll.boxed_clone(),
             )
             // Offer the stash variant that matches how the list is currently grouped,
@@ -331,34 +345,41 @@ fn git_panel_context_menu(
             .when(group_by == GitPanelGroupBy::Status, |context_menu| {
                 context_menu.action_disabled_when(
                     !has_tracked_changes,
-                    "Stash Tracked",
+                    "追跡中をスタッシュ",
                     StashTracked.boxed_clone(),
                 )
             })
             .when(group_by == GitPanelGroupBy::Staging, |context_menu| {
                 context_menu.action_disabled_when(
                     !has_staged_changes,
-                    "Stash Staged",
+                    "ステージ済みをスタッシュ",
                     StashStaged.boxed_clone(),
                 )
             })
-            .action_disabled_when(!has_stash_items, "Stash Pop", StashPop.boxed_clone())
-            .action("View Stash", zed_actions::git::ViewStash.boxed_clone())
+            .action_disabled_when(
+                !has_stash_items,
+                "スタッシュをポップ",
+                StashPop.boxed_clone(),
+            )
+            .action(
+                "スタッシュを表示",
+                zed_actions::git::ViewStash.boxed_clone(),
+            )
             .when(include_copy_paths, |context_menu| {
                 context_menu
                     .separator()
-                    .action("Copy Path", CopyPath.boxed_clone())
-                    .action("Copy Relative Path", CopyRelativePath.boxed_clone())
+                    .action("パスをコピー", CopyPath.boxed_clone())
+                    .action("相対パスをコピー", CopyRelativePath.boxed_clone())
             })
             .separator()
             .action_disabled_when(
                 !has_tracked_changes,
-                "Discard Tracked Changes",
+                "追跡中の変更を破棄",
                 RestoreTrackedFiles.boxed_clone(),
             )
             .action_disabled_when(
                 !has_new_changes,
-                "Trash Untracked Files",
+                "未追跡ファイルをゴミ箱へ移動",
                 TrashUntrackedFiles.boxed_clone(),
             )
     })
@@ -380,10 +401,10 @@ fn git_panel_view_options_menu(
 
         context_menu
             .context(focus_handle.clone())
-            .header("View")
+            .header("表示")
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("List")
+                ContextMenuEntry::new("リスト")
                     .toggle(IconPosition::End, !state.tree_view)
                     .handler(move |window, cx| {
                         if state.tree_view {
@@ -397,7 +418,7 @@ fn git_panel_view_options_menu(
             })
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("Tree")
+                ContextMenuEntry::new("ツリー")
                     .toggle(IconPosition::End, state.tree_view)
                     .handler(move |window, cx| {
                         if !state.tree_view {
@@ -411,10 +432,10 @@ fn git_panel_view_options_menu(
             })
             .when(!state.tree_view, |this| {
                 this.separator()
-                    .header("Sort By")
+                    .header("並べ替え")
                     .item({
                         let view_options_menu_state = view_options_menu_state.clone();
-                        ContextMenuEntry::new("Path")
+                        ContextMenuEntry::new("パス")
                             .toggle(IconPosition::End, state.sort_by == GitPanelSortBy::Path)
                             .handler(move |window, cx| {
                                 if !state.tree_view {
@@ -428,7 +449,7 @@ fn git_panel_view_options_menu(
                     })
                     .item({
                         let view_options_menu_state = view_options_menu_state.clone();
-                        ContextMenuEntry::new("Name")
+                        ContextMenuEntry::new("名前")
                             .toggle(IconPosition::End, state.sort_by == GitPanelSortBy::Name)
                             .handler(move |window, cx| {
                                 if !state.tree_view {
@@ -442,10 +463,10 @@ fn git_panel_view_options_menu(
                     })
             })
             .separator()
-            .header("Group By")
+            .header("グループ化")
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("None")
+                ContextMenuEntry::new("なし")
                     .toggle(IconPosition::End, state.group_by == GitPanelGroupBy::None)
                     .handler(move |window, cx| {
                         if state.group_by != GitPanelGroupBy::None {
@@ -459,7 +480,7 @@ fn git_panel_view_options_menu(
             })
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("Tracked & Untracked")
+                ContextMenuEntry::new("追跡中と未追跡")
                     .toggle(IconPosition::End, state.group_by == GitPanelGroupBy::Status)
                     .handler(move |window, cx| {
                         if state.group_by != GitPanelGroupBy::Status {
@@ -473,7 +494,7 @@ fn git_panel_view_options_menu(
             })
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
-                ContextMenuEntry::new("Staged & Unstaged")
+                ContextMenuEntry::new("ステージ済みと未ステージ")
                     .toggle(
                         IconPosition::End,
                         state.group_by == GitPanelGroupBy::Staging,
@@ -651,9 +672,9 @@ impl StageIntent {
 
     fn label(self, stage_status: impl FnOnce() -> StageStatus) -> &'static str {
         if self.resolve_with(stage_status) {
-            "Stage"
+            "ステージ"
         } else {
-            "Unstage"
+            "アンステージ"
         }
     }
 }
@@ -691,11 +712,11 @@ impl GitHeaderEntry {
     }
     pub fn title(&self) -> &'static str {
         match self.header {
-            Section::Conflict => "Conflicts",
-            Section::Tracked => "Tracked",
-            Section::New => "Untracked",
-            Section::Staged => "Staged",
-            Section::Unstaged => "Unstaged",
+            Section::Conflict => "コンフリクト",
+            Section::Tracked => "追跡中",
+            Section::New => "未追跡",
+            Section::Staged => "ステージ済み",
+            Section::Unstaged => "未ステージ",
         }
     }
 }
@@ -1084,10 +1105,6 @@ pub struct GitPanel {
     context_menu: Option<GitPanelContextMenu>,
     modal_open: bool,
     show_placeholders: bool,
-    // Only read to compute collaborative co-authors, which requires the `call` feature.
-    #[cfg_attr(not(feature = "call"), allow(dead_code))]
-    local_committer: Option<GitCommitter>,
-    local_committer_task: Option<Task<()>>,
     commit_template: Option<GitCommitTemplate>,
     bulk_staging: Option<BulkStaging>,
     stash_entries: GitStash,
@@ -1158,7 +1175,7 @@ pub(crate) fn commit_message_editor(
     commit_editor.set_use_modal_editing(true);
     commit_editor.set_show_wrap_guides(false, cx);
     commit_editor.set_show_indent_guides(false, cx);
-    let placeholder = placeholder.unwrap_or("Enter commit message".into());
+    let placeholder = placeholder.unwrap_or("コミットメッセージを入力".into());
     commit_editor.set_placeholder_text(&placeholder, window, cx);
     commit_editor
 }
@@ -1383,8 +1400,6 @@ impl GitPanel {
                 update_visible_entries_task: Task::ready(()),
                 reopen_commit_buffer_task: Task::ready(()),
                 show_placeholders: false,
-                local_committer: None,
-                local_committer_task: None,
                 commit_template: None,
                 context_menu: None,
                 workspace: workspace.weak_handle(),
@@ -2228,28 +2243,26 @@ impl GitPanel {
             let prompt = if skip_prompt {
                 Task::ready(Ok(0))
             } else {
+                // 日本語は語順が逆になるので、ファイル名を先に置いて述部を後ろに続ける。
                 let (message, confirm_text) = if entry.status.is_deleted() {
-                    ("Are you sure you want to restore ", "Restore File")
+                    (" を元に戻しますか?", "ファイルを元に戻す")
                 } else {
-                    (
-                        "Are you sure you want to discard changes to ",
-                        "Discard Changes",
-                    )
+                    (" への変更を破棄しますか?", "変更を破棄")
                 };
                 let prompt = window.prompt(
                     PromptLevel::Warning,
                     &format!(
-                        "{}{}?",
-                        message,
+                        "{}{}",
                         MarkdownInlineCode(
                             entry
                                 .repo_path
                                 .file_name()
                                 .unwrap_or(entry.repo_path.display(path_style).as_ref())
                         ),
+                        message,
                     ),
                     None,
-                    &[confirm_text, "Cancel"],
+                    &[confirm_text, "キャンセル"],
                     cx,
                 );
                 cx.background_spawn(prompt)
@@ -2369,7 +2382,12 @@ impl GitPanel {
             if !entry.status.is_created() {
                 self.perform_checkout(vec![entry.clone()], window, cx);
             } else {
-                let prompt = prompt(&format!("Trash {}?", filename), None, window, cx);
+                let prompt = prompt(
+                    &format!("{} をゴミ箱へ移動しますか?", filename),
+                    None,
+                    window,
+                    cx,
+                );
                 cx.spawn_in(window, async move |_, cx| {
                     match prompt.await? {
                         TrashCancel::Trash => {}
@@ -2386,7 +2404,7 @@ impl GitPanel {
                     Ok(())
                 })
                 .detach_and_prompt_err(
-                    "Failed to trash file",
+                    "ファイルをゴミ箱へ移動できませんでした",
                     window,
                     cx,
                     |e, _, _| Some(format!("{e}")),
@@ -2497,17 +2515,19 @@ impl GitPanel {
             .take(5)
             .join("\n");
         if entries.len() > 5 {
-            details.push_str(&format!("\nand {} more…", entries.len() - 5))
+            details.push_str(&format!("\n他 {} 件…", entries.len() - 5))
         }
 
         #[derive(strum::EnumIter, strum::VariantNames)]
         #[strum(serialize_all = "title_case")]
         enum RestoreCancel {
+            #[strum(serialize = "追跡中のファイルを元に戻す")]
             RestoreTrackedFiles,
+            #[strum(serialize = "キャンセル")]
             Cancel,
         }
         let prompt = prompt(
-            "Discard changes to these files?",
+            "これらのファイルの変更を破棄しますか?",
             Some(&details),
             window,
             cx,
@@ -2554,10 +2574,15 @@ impl GitPanel {
             .join("\n");
 
         if to_delete.len() > 5 {
-            details.push_str(&format!("\nand {} more…", to_delete.len() - 5))
+            details.push_str(&format!("\n他 {} 件…", to_delete.len() - 5))
         }
 
-        let prompt = prompt("Trash these files?", Some(&details), window, cx);
+        let prompt = prompt(
+            "これらのファイルをゴミ箱へ移動しますか?",
+            Some(&details),
+            window,
+            cx,
+        );
         cx.spawn_in(window, async move |this, cx| {
             match prompt.await? {
                 TrashCancel::Trash => {}
@@ -2588,14 +2613,17 @@ impl GitPanel {
             let failed_count = errors.len();
             if let Some(first_error) = errors.into_iter().next() {
                 return Err(anyhow::anyhow!(
-                    "Failed to trash {failed_count} of {total_count} files: {first_error:#}"
+                    "{total_count} 件中 {failed_count} 件のファイルをゴミ箱へ移動できませんでした: {first_error:#}"
                 ));
             }
             Ok(())
         })
-        .detach_and_prompt_err("Failed to trash files", window, cx, |e, _, _| {
-            Some(format!("{e}"))
-        });
+        .detach_and_prompt_err(
+            "ファイルをゴミ箱へ移動できませんでした",
+            window,
+            cx,
+            |e, _, _| Some(format!("{e}")),
+        );
     }
 
     fn change_all_files_stage(&mut self, stage: bool, cx: &mut Context<Self>) {
@@ -3237,7 +3265,7 @@ impl GitPanel {
 
         if self.has_unstaged_conflicts() {
             error_spawn(
-                "There are still conflicts. You must stage these before committing",
+                "まだコンフリクトが残っています。コミットする前にステージしてください。",
                 window,
                 cx,
             );
@@ -3273,7 +3301,7 @@ impl GitPanel {
                 .collect::<Vec<_>>();
 
             if changed_files.is_empty() && !options.amend {
-                error_spawn("No changes to commit", window, cx);
+                error_spawn("コミットする変更がありません。", window, cx);
                 return;
             }
 
@@ -3378,15 +3406,19 @@ impl GitPanel {
                 #[derive(strum::EnumIter, strum::VariantNames)]
                 #[strum(serialize_all = "title_case")]
                 enum CancelUncommit {
+                    #[strum(serialize = "コミットを取り消す")]
                     Uncommit,
+                    #[strum(serialize = "キャンセル")]
                     Cancel,
                 }
                 let detail = format!(
-                    "This commit was already pushed to {}.",
+                    "このコミットはすでに {} にプッシュされています。",
                     pushed_to.into_iter().join(", ")
                 );
                 let result = cx
-                    .update(|window, cx| prompt("Are you sure?", Some(&detail), window, cx))?
+                    .update(|window, cx| {
+                        prompt("本当によろしいですか?", Some(&detail), window, cx)
+                    })?
                     .await?;
 
                 match result {
@@ -3417,6 +3449,8 @@ impl GitPanel {
             None
         }?;
 
+        // 生成された文字列はプレースホルダー表示だけでなく、そのまま
+        // リポジトリに記録されるコミットメッセージ本文になるため英語のまま。
         let action_text = if git_status_entry.status.is_deleted() {
             Some("Delete")
         } else if git_status_entry.status.is_created() {
@@ -3824,7 +3858,7 @@ impl GitPanel {
             let selection = cx
                 .update(|window, cx| {
                     picker_prompt::prompt(
-                        "Pick which remote to fetch",
+                        "フェッチするリモートを選択",
                         remotes.iter().map(|r| r.name()).collect(),
                         workspace,
                         window,
@@ -3923,8 +3957,8 @@ impl GitPanel {
         } else if worktrees.is_empty() {
             let result = window.prompt(
                 PromptLevel::Warning,
-                "Unable to initialize a git repository",
-                Some("Open a directory first"),
+                "Git リポジトリを初期化できません",
+                Some("先にディレクトリを開いてください。"),
                 &["OK"],
                 cx,
             );
@@ -3951,7 +3985,7 @@ impl GitPanel {
                 })
                 .collect_vec();
             let prompt = picker_prompt::prompt(
-                "Where would you like to initialize this git repository?",
+                "この Git リポジトリをどこに初期化しますか?",
                 worktree_directories,
                 self.workspace.clone(),
                 window,
@@ -4104,7 +4138,9 @@ impl GitPanel {
                     this.update(cx, |this, cx| {
                         this.show_error_toast(
                             "push",
-                            anyhow::anyhow!("No remote available to push to. Add a remote to be able to publish changes."),
+                            anyhow::anyhow!(
+                                "プッシュ先のリモートがありません。変更を発行するにはリモートを追加してください。"
+                            ),
                             cx,
                         )
                     })
@@ -4191,7 +4227,7 @@ impl GitPanel {
             let repo = self
                 .active_repository
                 .clone()
-                .ok_or_else(|| anyhow::anyhow!("No active repository"))?;
+                .ok_or_else(|| anyhow::anyhow!("アクティブなリポジトリがありません。"))?;
 
             let (branch, remote_origin, remote_upstream) = {
                 let repository = repo.read(cx);
@@ -4202,13 +4238,14 @@ impl GitPanel {
                 )
             };
 
-            let branch = branch.ok_or_else(|| anyhow::anyhow!("No active branch"))?;
+            let branch =
+                branch.ok_or_else(|| anyhow::anyhow!("アクティブなブランチがありません。"))?;
             let source_branch = branch
                 .upstream
                 .as_ref()
                 .filter(|upstream| matches!(upstream.tracking, UpstreamTracking::Tracked(_)))
                 .and_then(|upstream| upstream.branch_name())
-                .ok_or_else(|| anyhow::anyhow!("No remote configured for repository"))?;
+                .ok_or_else(|| anyhow::anyhow!("リポジトリにリモートが設定されていません。"))?;
             let source_branch = source_branch.to_string();
 
             let remote_url = branch
@@ -4221,19 +4258,24 @@ impl GitPanel {
                 })
                 .or(remote_origin.as_deref())
                 .or(remote_upstream.as_deref())
-                .ok_or_else(|| anyhow::anyhow!("No remote configured for repository"))?;
+                .ok_or_else(|| anyhow::anyhow!("リポジトリにリモートが設定されていません。"))?;
             let remote_url = remote_url.to_string();
 
             let provider_registry = GitHostingProviderRegistry::global(cx);
             let Some((provider, parsed_remote)) =
                 git::parse_git_remote_url(provider_registry, &remote_url)
             else {
-                return Err(anyhow::anyhow!("Unsupported remote URL: {}", remote_url));
+                return Err(anyhow::anyhow!(
+                    "サポートされていないリモート URL です: {}",
+                    remote_url
+                ));
             };
 
             let Some(url) = provider.build_create_pull_request_url(&parsed_remote, &source_branch)
             else {
-                return Err(anyhow::anyhow!("Unable to construct pull request URL"));
+                return Err(anyhow::anyhow!(
+                    "プルリクエストの URL を作成できませんでした。"
+                ));
             };
 
             cx.open_url(url.as_str());
@@ -4315,13 +4357,16 @@ impl GitPanel {
         let mut cx = window.to_async(cx);
 
         async move {
-            let repo = repo.context("No active repository")?;
+            let repo = repo.context("アクティブなリポジトリがありません。")?;
             let current_remotes: Vec<Remote> = repo
                 .update(&mut cx, |repo, _| {
                     let current_branch = if always_select {
                         None
                     } else {
-                        let current_branch = repo.branch.as_ref().context("No active branch")?;
+                        let current_branch = repo
+                            .branch
+                            .as_ref()
+                            .context("アクティブなブランチがありません。")?;
                         Some(current_branch.name().to_string())
                     };
                     anyhow::Ok(repo.get_remotes(current_branch, is_push))
@@ -4335,7 +4380,7 @@ impl GitPanel {
             let selection = cx
                 .update(|window, cx| {
                     picker_prompt::prompt(
-                        "Pick which remote to push to",
+                        "プッシュ先のリモートを選択",
                         current_remotes.clone(),
                         workspace,
                         window,
@@ -4350,77 +4395,11 @@ impl GitPanel {
         }
     }
 
-    pub fn load_local_committer(&mut self, cx: &Context<Self>) {
-        if self.local_committer_task.is_none() {
-            self.local_committer_task = Some(cx.spawn(async move |this, cx| {
-                let committer = get_git_committer(cx).await;
-                this.update(cx, |this, cx| {
-                    this.local_committer = Some(committer);
-                    cx.notify()
-                })
-                .ok();
-            }));
-        }
-    }
-
-    #[cfg(not(feature = "call"))]
+    /// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): 共同編集者 (co-author) の候補は
+    /// collab の通話ルーム参加者からしか得られなかった。通話機能を除去したので
+    /// 常に空 = 「Co-authored-by を足す」トグルは UI に出ない。
     fn potential_co_authors(&self, _cx: &App) -> Vec<(String, String)> {
         Vec::new()
-    }
-
-    #[cfg(feature = "call")]
-    fn potential_co_authors(&self, cx: &App) -> Vec<(String, String)> {
-        let mut new_co_authors = Vec::new();
-        let project = self.project.read(cx);
-
-        let Some(room) =
-            call::ActiveCall::try_global(cx).and_then(|call| call.read(cx).room().cloned())
-        else {
-            return Vec::default();
-        };
-
-        let room = room.read(cx);
-
-        for (peer_id, collaborator) in project.collaborators() {
-            if collaborator.is_host {
-                continue;
-            }
-
-            let Some(participant) = room.remote_participant_for_peer_id(*peer_id) else {
-                continue;
-            };
-            if !participant.can_write() {
-                continue;
-            }
-            if let Some(email) = &collaborator.committer_email {
-                let name = collaborator
-                    .committer_name
-                    .clone()
-                    .or_else(|| participant.user.name.clone())
-                    .unwrap_or_else(|| participant.user.username.clone().to_string());
-                new_co_authors.push((name.clone(), email.clone()))
-            }
-        }
-        if !project.is_local()
-            && !project.is_read_only(cx)
-            && let Some(local_committer) = self.local_committer(room, cx)
-        {
-            new_co_authors.push(local_committer);
-        }
-        new_co_authors
-    }
-
-    #[cfg(feature = "call")]
-    fn local_committer(&self, room: &call::Room, cx: &App) -> Option<(String, String)> {
-        let user = room.local_participant_user(cx)?;
-        let committer = self.local_committer.as_ref()?;
-        let email = committer.email.clone()?;
-        let name = committer
-            .name
-            .clone()
-            .or_else(|| user.name.clone())
-            .unwrap_or_else(|| user.username.clone().to_string());
-        Some((name, email))
     }
 
     fn toggle_fill_co_authors(
@@ -5169,7 +5148,8 @@ impl GitPanel {
         self.select_last_entry_if_out_of_bounds(window, cx);
 
         let suggested_commit_message = self.suggest_commit_message(cx);
-        let placeholder_text = suggested_commit_message.unwrap_or("Enter commit message".into());
+        let placeholder_text =
+            suggested_commit_message.unwrap_or("コミットメッセージを入力".into());
 
         self.commit_editor.update(cx, |editor, cx| {
             editor.set_placeholder_text(&placeholder_text, window, cx)
@@ -5351,6 +5331,8 @@ impl GitPanel {
         show_error_toast(workspace, action, e, cx)
     }
 
+    // `dev::ShowGitJobQueue` は開発者向けの生データビューなので、F1-1 / F1-2 の
+    // 方針どおりトーストとバッファのタイトルは英語のまま。
     fn show_git_job_queue(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(repo) = self.active_repository.as_ref() else {
             let workspace = self.workspace.clone();
@@ -5446,7 +5428,10 @@ impl GitPanel {
     {
         if let Ok(Some(workspace)) = weak_this.update(cx, |this, _cx| this.workspace.upgrade()) {
             let _ = workspace.update(cx, |workspace, cx| {
-                workspace.show_error(format!("Failed to generate commit message: {err}"), cx);
+                workspace.show_error(
+                    format!("コミットメッセージを生成できませんでした: {err}"),
+                    cx,
+                );
             });
         }
     }
@@ -5484,14 +5469,14 @@ impl GitPanel {
                         // output of a push command, we'll simply dispatch the
                         // generic `CreatePullRequest` action when the toast
                         // button is pressed.
-                        this.action("Create Pull Request", move |window, cx| {
+                        this.action("プルリクエストを作成", move |window, cx| {
                             window
                                 .dispatch_action(Box::new(zed_actions::git::CreatePullRequest), cx);
                         })
                     }
                     (Toast, false) => this,
                     (ToastWithLog { output }, false) => {
-                        this.action("View Log", move |window, cx| {
+                        this.action("ログを表示", move |window, cx| {
                             let output = output.clone();
                             let output =
                                 format!("stdout:\n{}\nstderr:\n{}", output.stdout, output.stderr);
@@ -5590,7 +5575,7 @@ impl GitPanel {
             .trigger_with_tooltip(
                 IconButton::new("view-options-menu-trigger", IconName::Filter)
                     .icon_size(IconSize::Small),
-                Tooltip::text("View Options"),
+                Tooltip::text("表示オプション"),
             )
             .menu(move |window, cx| {
                 Some(git_panel_view_options_menu(
@@ -5619,14 +5604,14 @@ impl GitPanel {
                             .icon_color(Color::Error)
                             .icon_size(IconSize::Small)
                             .style(ButtonStyle::Tinted(TintColor::Error))
-                            .tooltip(Tooltip::text("Cancel Commit Message Generation"))
+                            .tooltip(Tooltip::text("コミットメッセージの生成をキャンセル"))
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.generate_commit_message_task.take();
                                 cx.notify();
                             })),
                     )
                     .child(
-                        Label::new("Generating Commit…")
+                        Label::new("コミットを生成中…")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -5661,10 +5646,10 @@ impl GitPanel {
         } else {
             button.tooltip(move |_window, cx| {
                 if !can_commit {
-                    Tooltip::simple("No Changes to Commit", cx)
+                    Tooltip::simple("コミットする変更がありません", cx)
                 } else {
                     Tooltip::for_action_in(
-                        "Generate Commit Message",
+                        "コミットメッセージを生成",
                         &git::GenerateCommitMessage,
                         &editor_focus_handle,
                         cx,
@@ -5680,9 +5665,9 @@ impl GitPanel {
         let potential_co_authors = self.potential_co_authors(cx);
 
         let (tooltip_label, icon) = if self.add_coauthors {
-            ("Remove co-authored-by", IconName::Person)
+            ("Co-authored-by を削除", IconName::Person)
         } else {
-            ("Add co-authored-by", IconName::UserCheck)
+            ("Co-authored-by を追加", IconName::UserCheck)
         };
 
         if potential_co_authors.is_empty() {
@@ -5749,7 +5734,7 @@ impl GitPanel {
                             })
                             .when(has_previous_commit, |this| {
                                 this.toggleable_entry(
-                                    "Amend",
+                                    "直前のコミットを修正",
                                     amend,
                                     IconPosition::Start,
                                     Some(Box::new(Amend)),
@@ -5766,14 +5751,14 @@ impl GitPanel {
                                 )
                             })
                             .toggleable_entry(
-                                "Signoff",
+                                "サインオフ",
                                 signoff,
                                 IconPosition::Start,
                                 Some(Box::new(Signoff)),
                                 move |window, cx| window.dispatch_action(Box::new(Signoff), cx),
                             )
                             .item(
-                                ContextMenuEntry::new("Skip Hooks")
+                                ContextMenuEntry::new("フックをスキップ")
                                     .toggleable(IconPosition::Start, skip_hooks)
                                     .action(Box::new(SkipHooks))
                                     .handler(move |window, cx| {
@@ -5799,17 +5784,17 @@ impl GitPanel {
 
     pub fn configure_commit_button(&self, cx: &mut Context<Self>) -> (bool, &'static str) {
         if self.generate_commit_message_task.is_some() {
-            (false, "Generating commit message...")
+            (false, "コミットメッセージを生成中...")
         } else if self.has_unstaged_conflicts() {
-            (false, "You must resolve conflicts before committing")
+            (false, "コミットする前にコンフリクトを解決してください")
         } else if !self.has_staged_changes() && !self.has_tracked_changes() && !self.amend_pending {
-            (false, "No changes to commit")
+            (false, "コミットする変更がありません")
         } else if self.pending_commit.is_some() {
-            (false, "Commit in progress")
+            (false, "コミットを実行中")
         } else if !self.has_commit_message(cx) {
-            (false, "No commit message")
+            (false, "コミットメッセージがありません")
         } else if !self.has_write_access(cx) {
-            (false, "You do not have write access to this project")
+            (false, "このプロジェクトへの書き込み権限がありません")
         } else {
             (true, self.commit_button_title())
         }
@@ -5818,16 +5803,16 @@ impl GitPanel {
     pub fn commit_button_title(&self) -> &'static str {
         if self.amend_pending {
             if self.has_staged_changes() {
-                "Amend"
+                "直前のコミットを修正"
             } else if self.has_tracked_changes() {
-                "Amend Tracked"
+                "追跡中を修正"
             } else {
-                "Amend"
+                "直前のコミットを修正"
             }
         } else if self.has_staged_changes() {
-            "Commit"
+            "コミット"
         } else {
-            "Commit Tracked"
+            "追跡中をコミット"
         }
     }
 
@@ -5915,10 +5900,21 @@ impl GitPanel {
     }
 
     fn render_git_changes_actions_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // tooltip は git のコマンドそのものなので未翻訳。
         let (text, action, stage, tooltip) = if self.primary_changes_action_stages() {
-            ("Stage All", StageAll.boxed_clone(), true, "git add --all")
+            (
+                "すべてステージ",
+                StageAll.boxed_clone(),
+                true,
+                "git add --all",
+            )
         } else {
-            ("Unstage All", UnstageAll.boxed_clone(), false, "git reset")
+            (
+                "すべてアンステージ",
+                UnstageAll.boxed_clone(),
+                false,
+                "git reset",
+            )
         };
 
         SplitButton::new(
@@ -5981,7 +5977,7 @@ impl GitPanel {
                                         .color(Color::Muted),
                                 )
                                 .child(
-                                    Label::new("View Diff")
+                                    Label::new("差分を表示")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
@@ -5998,7 +5994,7 @@ impl GitPanel {
                                 ),
                         )
                         .tooltip(Tooltip::for_action_title_in(
-                            "View Diff",
+                            "差分を表示",
                             &Diff,
                             &self.focus_handle,
                         ))
@@ -6091,7 +6087,7 @@ impl GitPanel {
                     .tooltip({
                         move |_window, cx| {
                             Tooltip::for_action_in(
-                                "Open Commit Modal",
+                                "コミットモーダルを開く",
                                 &git::ExpandCommitEditor,
                                 &editor_focus_handle,
                                 cx,
@@ -6106,9 +6102,9 @@ impl GitPanel {
             )
             .child({
                 let (icon, label) = if self.commit_editor_expanded {
-                    (IconName::Minimize, "Collapse Commit Editor")
+                    (IconName::Minimize, "コミットエディターを折りたたむ")
                 } else {
-                    (IconName::Maximize, "Expand Commit Editor")
+                    (IconName::Maximize, "コミットエディターを展開")
                 };
                 let focus_handle = self.focus_handle.clone();
 
@@ -6155,7 +6151,7 @@ impl GitPanel {
                         )
                         .child(
                             Label::new(format!(
-                                "Commit message title exceeds {max_title_length}-character limit."
+                                "コミットタイトルが {max_title_length} 文字の上限を超えています。"
                             ))
                             .size(LabelSize::Small),
                         ),
@@ -6314,13 +6310,13 @@ impl GitPanel {
                     .overflow_hidden()
                     .max_w(relative(0.85))
                     .child(
-                        Label::new("This will update your most recent commit.")
+                        Label::new("直前のコミットを更新します。")
                             .size(LabelSize::Small)
                             .truncate(),
                     ),
             )
             .child(
-                Button::new("cancel", "Cancel")
+                Button::new("cancel", "キャンセル")
                     .label_size(LabelSize::Small)
                     .layer(ElevationIndex::ModalSurface)
                     .on_click(cx.listener(|this, _, _, cx| this.set_amend_pending(false, cx))),
@@ -6397,7 +6393,7 @@ impl GitPanel {
                                     .icon_size(IconSize::Small)
                                     .tooltip(move |_window, cx| {
                                         Tooltip::with_meta(
-                                            "Uncommit",
+                                            "コミットを取り消す",
                                             Some(&git::Uncommit),
                                             if has_unstaged {
                                                 "git reset HEAD^ --soft"
@@ -6419,7 +6415,7 @@ impl GitPanel {
                                 .icon_size(IconSize::Small)
                                 .tooltip(|_window, cx| {
                                     Tooltip::for_action(
-                                        "Open Git Graph",
+                                        "コミットグラフを開く",
                                         &crate::git_graph::Open,
                                         cx,
                                     )
@@ -6467,7 +6463,7 @@ impl GitPanel {
                     )
                 })
                 .tooltip(Tooltip::for_action_title_in(
-                    format!("Toggle {} Tab", label),
+                    format!("{} タブに切り替え", label),
                     tooltip_action.as_ref(),
                     &focus_handle,
                 ))
@@ -6484,7 +6480,7 @@ impl GitPanel {
                 ElementId::Name("changes-tab".into()),
                 active_tab == GitPanelTab::Changes,
                 true,
-                "Changes".into(),
+                "変更".into(),
                 GitPanelTab::Changes,
                 ActivateChangesTab.boxed_clone(),
             ))
@@ -6497,7 +6493,7 @@ impl GitPanel {
                 ElementId::Name("history-tab".into()),
                 active_tab != GitPanelTab::Changes,
                 false,
-                "History".into(),
+                "履歴".into(),
                 GitPanelTab::History,
                 ActivateHistoryTab.boxed_clone(),
             ))
@@ -6507,21 +6503,23 @@ impl GitPanel {
         v_flex().flex_1().size_full().overflow_hidden().map(|this| {
             let has_repo = self.active_repository.is_some();
             match &self.commit_history {
-                _ if !has_repo => {
-                    this.child(Self::render_history_placeholder("No repository found"))
-                }
-                CommitHistory::Error(_) => this.child(Self::render_history_placeholder(
-                    "Failed to load commit history",
+                _ if !has_repo => this.child(Self::render_history_placeholder(
+                    "リポジトリが見つかりません",
                 )),
-                CommitHistory::Loading => {
-                    this.child(Self::render_history_placeholder("Loading Commit History…"))
-                }
+                CommitHistory::Error(_) => this.child(Self::render_history_placeholder(
+                    "コミット履歴を読み込めませんでした",
+                )),
+                CommitHistory::Loading => this.child(Self::render_history_placeholder(
+                    "コミット履歴を読み込み中…",
+                )),
                 CommitHistory::Loaded(entries) if entries.is_empty() => {
-                    this.child(Self::render_history_placeholder("No commits yet"))
+                    this.child(Self::render_history_placeholder("まだコミットがありません"))
                 }
                 CommitHistory::Loaded(_) => match self.render_commit_history(window, cx) {
                     Some(history) => this.child(history),
-                    None => this.child(Self::render_history_placeholder("Failed to load commits")),
+                    None => this.child(Self::render_history_placeholder(
+                        "コミットを読み込めませんでした",
+                    )),
                 },
             }
         })
@@ -6853,7 +6851,7 @@ impl GitPanel {
                                             Some(data.author_email.clone()),
                                             Some(data.commit_timestamp),
                                         ),
-                                        None => ("Loading…".into(), "".into(), None, None),
+                                        None => ("読み込み中…".into(), "".into(), None, None),
                                     };
 
                                     let relative_time: SharedString = timestamp
@@ -7028,7 +7026,7 @@ impl GitPanel {
                                             this.tooltip(move |_, cx| {
                                                 let description = if is_unpushed {
                                                     SharedString::from(format!(
-                                                        "Contains Unpushed Changes — {}",
+                                                        "未プッシュの変更を含む — {}",
                                                         short_sha.clone(),
                                                     ))
                                                 } else {
@@ -7036,7 +7034,7 @@ impl GitPanel {
                                                 };
 
                                                 Tooltip::with_meta(
-                                                    "View Commit Diff",
+                                                    "コミットの差分を表示",
                                                     None,
                                                     description,
                                                     cx,
@@ -7115,10 +7113,10 @@ impl GitPanel {
         v_flex()
             .gap_1()
             .items_center()
-            .child(Label::new("No changes to commit").color(Color::Muted))
+            .child(Label::new("コミットする変更がありません").color(Color::Muted))
             .when(show_branch_diff, |this| {
                 this.child(
-                    Button::new("view_branch_diff", "View Branch Diff")
+                    Button::new("view_branch_diff", "ブランチの差分を表示")
                         .label_size(LabelSize::Small)
                         .style(ButtonStyle::Outlined)
                         .on_click(move |_, _, cx| {
@@ -7141,9 +7139,9 @@ impl GitPanel {
         });
 
         let message = format!(
-            "Detected dubious ownership in repository at {}. \
-            This happens when the .git/ directory is not owned by the current user. \
-            If you want to learn more about safe directories, visit git's documentation.",
+            "{} のリポジトリで所有者が不審であることを検出しました。\
+            これは .git/ ディレクトリが現在のユーザーの所有でない場合に起こります。\
+            安全なディレクトリ (safe.directory) の詳細は Git のドキュメントを参照してください。",
             directory.display()
         );
 
@@ -7156,7 +7154,7 @@ impl GitPanel {
                         .flex_wrap()
                         .gap_1()
                         .child(
-                            Button::new("trust_directory", "Trust Directory")
+                            Button::new("trust_directory", "ディレクトリを信頼")
                             .label_size(LabelSize::Small)
                             .layer(ElevationIndex::ModalSurface)
                             .style(ButtonStyle::Filled)
@@ -7170,7 +7168,7 @@ impl GitPanel {
                             )
                     )
                     .child(
-                        Button::new("learn_more", "Learn More")
+                        Button::new("learn_more", "詳細")
                             .label_size(LabelSize::Small)
                             .style(ButtonStyle::Outlined)
                             .end_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::Small).color(Color::Muted))
@@ -7186,9 +7184,9 @@ impl GitPanel {
             v_flex()
                 .gap_1()
                 .items_center()
-                .child(Label::new("No Git Repositories").color(Color::Muted))
+                .child(Label::new("Git リポジトリがありません").color(Color::Muted))
                 .child(
-                    Button::new("initialize_repository", "Initialize Repository")
+                    Button::new("initialize_repository", "リポジトリを初期化")
                         .label_size(LabelSize::Small)
                         .style(ButtonStyle::Outlined)
                         .tooltip(Tooltip::for_action_title_in(
@@ -7206,7 +7204,7 @@ impl GitPanel {
         } else if worktree_count == 0 {
             let focus_handle = self.focus_handle.clone();
             ProjectEmptyState::new(
-                "Git Panel",
+                "Git パネル",
                 focus_handle.clone(),
                 KeyBinding::for_action_in(&workspace::Open::default(), &focus_handle, cx),
             )
@@ -7519,11 +7517,11 @@ impl GitPanel {
                             .ok();
                     });
                 let tooltip_label = if all_conflicts_resolved {
-                    Some("All conflicts marked as resolved")
+                    Some("すべてのコンフリクトを解決済みにしました")
                 } else {
                     match stage_intent {
-                        StageIntent::Stage => Some("Stage All"),
-                        StageIntent::Unstage => Some("Unstage All"),
+                        StageIntent::Stage => Some("すべてステージ"),
+                        StageIntent::Unstage => Some("すべてアンステージ"),
                         StageIntent::Toggle => None,
                     }
                 };
@@ -7546,9 +7544,9 @@ impl GitPanel {
 
     fn render_empty_section(&self, section: Section) -> AnyElement {
         let message = match section {
-            Section::Staged => "No staged changes yet",
-            Section::Unstaged => "No unstaged changes",
-            _ => "No changes",
+            Section::Staged => "ステージ済みの変更はまだありません",
+            Section::Unstaged => "未ステージの変更はありません",
+            _ => "変更はありません",
         };
         h_flex()
             .h(self.list_item_height())
@@ -7602,16 +7600,16 @@ impl GitPanel {
             Some(repo) => GitPanel::stage_status_for_entry(entry, repo),
             None => entry.status.staging(),
         }) {
-            "Stage File"
+            "ファイルをステージ"
         } else {
-            "Unstage File"
+            "ファイルをアンステージ"
         };
         let restore_title = if entry.status.is_created() {
-            "Trash File"
+            "ファイルをゴミ箱へ移動"
         } else if entry.status.is_deleted() {
-            "Restore File"
+            "ファイルを元に戻す"
         } else {
-            "Discard Changes"
+            "変更を破棄"
         };
         let context_menu = ContextMenu::build(window, cx, |context_menu, _, _| {
             let is_created = entry.status.is_created();
@@ -7620,30 +7618,30 @@ impl GitPanel {
                 .action(stage_title, ToggleStaged.boxed_clone())
                 .action(restore_title, git::RestoreFile::default().boxed_clone())
                 .separator()
-                .action("Unstaged Changes", ViewUnstagedChanges.boxed_clone())
-                .action("Staged Changes", ViewStagedChanges.boxed_clone())
+                .action("未ステージの変更", ViewUnstagedChanges.boxed_clone())
+                .action("ステージ済みの変更", ViewStagedChanges.boxed_clone())
                 .separator()
-                .action("Copy Path", CopyPath.boxed_clone())
-                .action("Copy Relative Path", CopyRelativePath.boxed_clone())
+                .action("パスをコピー", CopyPath.boxed_clone())
+                .action("相対パスをコピー", CopyRelativePath.boxed_clone())
                 .separator()
                 .action_disabled_when(
                     !is_created,
-                    "Add to .gitignore",
+                    ".gitignore に追加",
                     git::AddToGitignore.boxed_clone(),
                 )
                 .action_disabled_when(
                     !is_created,
-                    "Add to .git/info/exclude",
+                    ".git/info/exclude に追加",
                     git::AddToGitInfoExclude.boxed_clone(),
                 )
                 .separator()
-                .action("Open Diff", menu::Confirm.boxed_clone())
-                .action("Open File Diff", menu::SecondaryConfirm.boxed_clone())
-                .action("View File", ViewFile.boxed_clone())
+                .action("差分を開く", menu::Confirm.boxed_clone())
+                .action("ファイルの差分を開く", menu::SecondaryConfirm.boxed_clone())
+                .action("ファイルを表示", ViewFile.boxed_clone())
                 .when(!is_created, |context_menu| {
                     context_menu
                         .separator()
-                        .action("View File History", Box::new(git::FileHistory))
+                        .action("ファイルの履歴を表示", Box::new(git::FileHistory))
                 })
         });
         self.selected_entry = Some(ix);
@@ -7937,7 +7935,7 @@ impl GitPanel {
                             })
                             .tooltip(move |_window, cx| {
                                 if resolved_conflict {
-                                    Tooltip::simple("Conflict marked as resolved", cx)
+                                    Tooltip::simple("コンフリクトを解決済みにしました", cx)
                                 } else {
                                     let action = stage_intent.label(|| stage_status);
                                     Tooltip::for_action(action, &ToggleStaged, cx)
@@ -8116,10 +8114,10 @@ impl GitPanel {
                             })
                             .tooltip(move |_window, cx| {
                                 if resolved_conflict {
-                                    Tooltip::simple("Conflicts marked as resolved", cx)
+                                    Tooltip::simple("コンフリクトを解決済みにしました", cx)
                                 } else {
                                     let action = stage_intent.label(|| stage_status);
-                                    Tooltip::simple(format!("{action} Folder"), cx)
+                                    Tooltip::simple(format!("フォルダーを{action}"), cx)
                                 }
                             }),
                     ),
@@ -8356,13 +8354,13 @@ impl Render for GenerateCommitMessageConfigurationTooltip {
             container
                 .gap_1p5()
                 .child(Label::new(
-                    "Configure an LLM provider to generate commit messages.",
+                    "コミットメッセージを生成するには LLM プロバイダーを設定してください。",
                 ))
                 .child(
                     h_flex()
                         .gap_1()
                         .child(
-                            Button::new("configure-commit-message-provider", "Configure Provider")
+                            Button::new("configure-commit-message-provider", "プロバイダーを設定")
                                 .style(ButtonStyle::Filled)
                                 .layer(ElevationIndex::ModalSurface)
                                 .label_size(LabelSize::Small)
@@ -8378,7 +8376,7 @@ impl Render for GenerateCommitMessageConfigurationTooltip {
                                 }),
                         )
                         .child(
-                            Button::new("llm-provider-docs", "See Docs")
+                            Button::new("llm-provider-docs", "ドキュメントを見る")
                                 .style(ButtonStyle::OutlinedGhost)
                                 .end_icon(
                                     Icon::new(IconName::ArrowUpRight)
@@ -8427,21 +8425,7 @@ impl Render for GitPanel {
         let has_entries = !self.entries.is_empty();
         let has_write_access = self.has_write_access(cx);
 
-        #[cfg(feature = "call")]
-        let has_co_authors = self
-            .workspace
-            .upgrade()
-            .and_then(|_workspace| {
-                call::ActiveCall::try_global(cx).and_then(|call| call.read(cx).room().cloned())
-            })
-            .is_some_and(|room| {
-                self.load_local_committer(cx);
-                let room = room.read(cx);
-                room.remote_participants()
-                    .values()
-                    .any(|remote_participant| remote_participant.can_write())
-            });
-        #[cfg(not(feature = "call"))]
+        // docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): 共同編集者は通話ルーム由来なので常に無し。
         let has_co_authors = false;
 
         v_flex()
@@ -8637,7 +8621,7 @@ impl Panel for GitPanel {
     }
 
     fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("Git Panel")
+        Some("Git パネル")
     }
 
     fn icon_label(&self, _: &Window, cx: &App) -> Option<String> {
@@ -8834,7 +8818,7 @@ impl RenderOnce for PanelRepoFooter {
                         .collect::<String>()
                 })
             })
-            .unwrap_or_else(|| " (no branch)".to_owned());
+            .unwrap_or_else(|| " (ブランチなし)".to_owned());
         let show_separator = self.branch.is_some() || self.head_commit.is_some();
 
         let active_repo_name = self.active_repository.clone();
@@ -8856,7 +8840,7 @@ impl RenderOnce for PanelRepoFooter {
                     if single_repo {
                         cx.new(|_| Empty).into()
                     } else {
-                        Tooltip::simple("Switch Active Repository", cx)
+                        Tooltip::simple("アクティブなリポジトリを切り替え", cx)
                     }
                 },
             )
@@ -8883,7 +8867,7 @@ impl RenderOnce for PanelRepoFooter {
             })
             .trigger_with_tooltip(
                 branch_selector_button,
-                Tooltip::for_action_title("Switch Branch", &zed_actions::git::Switch),
+                Tooltip::for_action_title("ブランチを切り替え", &zed_actions::git::Switch),
             )
             .anchor(Anchor::BottomLeft)
             .offset(gpui::Point {
@@ -10104,10 +10088,7 @@ mod tests {
             .pending_prompt()
             .expect("discard should show a confirmation prompt");
 
-        assert_eq!(
-            message,
-            "Are you sure you want to discard changes to `__somefile__`?"
-        );
+        assert_eq!(message, "`__somefile__` への変更を破棄しますか?");
     }
 
     #[gpui::test]
@@ -13078,7 +13059,7 @@ mod tests {
         let (message, detail) = cx
             .pending_prompt()
             .expect("discard tracked should show a confirmation prompt");
-        assert_eq!(message, "Discard changes to these files?");
+        assert_eq!(message, "これらのファイルの変更を破棄しますか?");
         assert!(
             detail.contains("staged_a.rs"),
             "prompt should list staged_a.rs, got: {detail}"

@@ -5,17 +5,21 @@
 //! Bubblewrap inside WSL. Restricted-network policies are enforced by an
 //! in-process HTTP/HTTPS proxy (the `http_proxy` crate) that this crate
 //! constructs and owns; callers only describe intent via [`SandboxPolicy`].
+//! That proxy also enforces the editor-wide ceiling published through
+//! [`set_network_ceiling`], so a command's allowed hosts can only ever narrow
+//! what the application as a whole is permitted to reach.
 
 use std::{
     collections::HashMap,
     fmt,
     path::{Path, PathBuf},
     process::Output,
+    sync::{Arc, RwLock},
 };
 
-use http_proxy::ProxyHandle;
 #[cfg(not(target_os = "windows"))]
 use http_proxy::{Allowlist, HostPattern, ProxyConfig, ProxyEvent, UpstreamProxy};
+use http_proxy::{DestinationPolicy, ProxyHandle};
 
 #[cfg(target_os = "linux")]
 mod linux_bubblewrap;
@@ -115,6 +119,44 @@ pub enum SandboxNetPolicy {
     /// Allow outbound HTTP(S) only to these hostnames (exact hosts or
     /// leading-`*.` subdomain wildcards), enforced by an in-process proxy.
     Restricted { allowed_domains: Vec<String> },
+}
+
+/// The editor-wide network policy that every sandboxed command's own host
+/// allowlist sits inside.
+///
+/// A sandboxed command reaches a host only when
+/// [`SandboxNetPolicy::Restricted`] *and* this policy both permit it — the
+/// hosts approved for one command narrow what the editor as a whole may reach,
+/// they never widen it. `None` (the default) leaves the per-command allowlist
+/// as the only check, which is what the sandbox test helpers and any embedder
+/// with no editor-wide policy get.
+///
+/// A process-wide slot rather than a field on [`SandboxPolicy`]: the ceiling is
+/// a property of the running application, identical for every command, and this
+/// crate deliberately knows nothing about the crate that owns it (`egress_policy`,
+/// which reads and watches `network_allowlist.json`). Same arrangement, and for
+/// the same reason, as `http_client::set_child_process_proxy`.
+static NETWORK_CEILING: RwLock<Option<Arc<dyn DestinationPolicy>>> = RwLock::new(None);
+
+/// Publishes (or, with `None`, withdraws) the [`NETWORK_CEILING`]. Called once
+/// at startup by the crate that owns the editor's egress allowlist. The policy
+/// object is expected to read a live handle, so later edits to that allowlist
+/// apply to the next connection without anything being re-published here.
+pub fn set_network_ceiling(policy: Option<Arc<dyn DestinationPolicy>>) {
+    // A poisoned lock means a previous writer panicked while holding it; the
+    // slot itself is a single `Option`, so there is no torn state to recover
+    // from and overwriting it is exactly right.
+    *NETWORK_CEILING
+        .write()
+        .unwrap_or_else(|error| error.into_inner()) = policy;
+}
+
+#[cfg(not(target_os = "windows"))]
+fn network_ceiling() -> Option<Arc<dyn DestinationPolicy>> {
+    NETWORK_CEILING
+        .read()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
 }
 
 /// Host paths that should remain readable but not writable, even when they fall
@@ -682,6 +724,12 @@ impl Sandbox {
                 allowlist: allowlist.clone(),
                 upstream,
                 events: events_tx,
+                policy: None,
+                // The command's own allowlist is the inner box; the editor-wide
+                // egress allowlist, when the app published one, is the ceiling
+                // around it. Read per proxy so a policy published (or
+                // withdrawn) after this process started still applies.
+                outer_policy: network_ceiling(),
             };
             #[cfg(target_os = "linux")]
             let handle = ProxyHandle::spawn_unix_temp(config);

@@ -1110,7 +1110,7 @@ impl NotebookEditor {
                                     cx,
                                 )
                                 .tooltip(move |window, cx| {
-                                    Tooltip::for_action("Execute all cells", &RunAll, cx)
+                                    Tooltip::for_action("すべてのセルを実行", &RunAll, cx)
                                 })
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(RunAll), cx);
@@ -1125,7 +1125,7 @@ impl NotebookEditor {
                                 )
                                 .disabled(!has_outputs)
                                 .tooltip(move |window, cx| {
-                                    Tooltip::for_action("Clear all outputs", &ClearOutputs, cx)
+                                    Tooltip::for_action("すべての出力を消去", &ClearOutputs, cx)
                                 })
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(ClearOutputs), cx);
@@ -1142,7 +1142,7 @@ impl NotebookEditor {
                                     cx,
                                 )
                                 .tooltip(move |window, cx| {
-                                    Tooltip::for_action("Move cell up", &MoveCellUp, cx)
+                                    Tooltip::for_action("セルを上へ移動", &MoveCellUp, cx)
                                 })
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(MoveCellUp), cx);
@@ -1156,7 +1156,7 @@ impl NotebookEditor {
                                     cx,
                                 )
                                 .tooltip(move |window, cx| {
-                                    Tooltip::for_action("Move cell down", &MoveCellDown, cx)
+                                    Tooltip::for_action("セルを下へ移動", &MoveCellDown, cx)
                                 })
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(MoveCellDown), cx);
@@ -1173,7 +1173,11 @@ impl NotebookEditor {
                                     cx,
                                 )
                                 .tooltip(move |window, cx| {
-                                    Tooltip::for_action("Add markdown block", &AddMarkdownBlock, cx)
+                                    Tooltip::for_action(
+                                        "Markdown ブロックを追加",
+                                        &AddMarkdownBlock,
+                                        cx,
+                                    )
                                 })
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(AddMarkdownBlock), cx);
@@ -1187,7 +1191,7 @@ impl NotebookEditor {
                                     cx,
                                 )
                                 .tooltip(move |window, cx| {
-                                    Tooltip::for_action("Add code block", &AddCodeBlock, cx)
+                                    Tooltip::for_action("コードブロックを追加", &AddCodeBlock, cx)
                                 })
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(AddCodeBlock), cx);
@@ -1204,7 +1208,7 @@ impl NotebookEditor {
                             )
                             .disabled(self.cell_order.is_empty())
                             .tooltip(move |window, cx| {
-                                Tooltip::for_action("Delete cell", &DeleteCell, cx)
+                                Tooltip::for_action("セルを削除", &DeleteCell, cx)
                             })
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(DeleteCell), cx);
@@ -1218,7 +1222,9 @@ impl NotebookEditor {
                     .items_center()
                     .child(
                         Self::render_notebook_control("more-menu", IconName::Ellipsis, window, cx)
-                            .tooltip(move |window, cx| (Tooltip::text("More options"))(window, cx)),
+                            .tooltip(move |window, cx| {
+                                (Tooltip::text("その他のオプション"))(window, cx)
+                            }),
                     )
                     .child(Self::button_group(window, cx).child({
                         let kernel_status = self.kernel.status();
@@ -1235,12 +1241,12 @@ impl NotebookEditor {
                             .kernel_specification
                             .as_ref()
                             .map(|spec| spec.name().to_string())
-                            .unwrap_or_else(|| "Select Kernel".to_string());
+                            .unwrap_or_else(|| "カーネルを選択".to_string());
                         IconButton::new("repl", icon)
                             .icon_color(icon_color)
                             .tooltip(move |window, cx| {
                                 Tooltip::text(format!(
-                                    "{} ({}). Click to change kernel.",
+                                    "{} ({})。クリックしてカーネルを変更します。",
                                     kernel_name,
                                     kernel_status.to_string()
                                 ))(window, cx)
@@ -1262,7 +1268,7 @@ impl NotebookEditor {
             .kernel_specification
             .as_ref()
             .map(|spec| spec.name().to_string())
-            .unwrap_or_else(|| "Select Kernel".to_string());
+            .unwrap_or_else(|| "カーネルを選択".to_string());
 
         let (status_icon, status_color) = match &kernel_status {
             KernelStatus::Idle => (IconName::Circle, Color::Success),
@@ -1325,7 +1331,7 @@ impl NotebookEditor {
                                 .color(status_color),
                         ),
                     Tooltip::text(format!(
-                        "Kernel: {} ({}). Click to change.",
+                        "カーネル: {} ({})。クリックして変更します。",
                         kernel_name,
                         kernel_status.to_string()
                     )),
@@ -1339,7 +1345,7 @@ impl NotebookEditor {
                         IconButton::new("restart-kernel", IconName::RotateCw)
                             .icon_size(IconSize::Small)
                             .tooltip(|window, cx| {
-                                Tooltip::for_action("Restart Kernel", &RestartKernel, cx)
+                                Tooltip::for_action("カーネルを再起動", &RestartKernel, cx)
                             })
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.restart_kernel(&RestartKernel, window, cx);
@@ -1350,7 +1356,7 @@ impl NotebookEditor {
                             .icon_size(IconSize::Small)
                             .disabled(!matches!(kernel_status, KernelStatus::Busy))
                             .tooltip(|window, cx| {
-                                Tooltip::for_action("Interrupt Kernel", &InterruptKernel, cx)
+                                Tooltip::for_action("カーネルを中断", &InterruptKernel, cx)
                             })
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.interrupt_kernel(&InterruptKernel, window, cx);
@@ -1377,12 +1383,12 @@ impl NotebookEditor {
             .items_center()
             .justify_center()
             .gap_3()
-            .child(Label::new("This notebook is empty.").color(Color::Muted))
+            .child(Label::new("このノートブックは空です。").color(Color::Muted))
             .child(
                 h_flex()
                     .gap_2()
                     .child(
-                        Button::new("empty-state-add-code", "Add code cell")
+                        Button::new("empty-state-add-code", "コードセルを追加")
                             .start_icon(Icon::new(IconName::Code))
                             .key_binding(KeyBinding::for_action_in(
                                 &AddCodeBlock,
@@ -1394,7 +1400,7 @@ impl NotebookEditor {
                             ),
                     )
                     .child(
-                        Button::new("empty-state-add-markdown", "Add markdown cell")
+                        Button::new("empty-state-add-markdown", "Markdown セルを追加")
                             .style(ButtonStyle::Subtle)
                             .start_icon(Icon::new(IconName::FileMarkdown))
                             .key_binding(KeyBinding::for_action_in(

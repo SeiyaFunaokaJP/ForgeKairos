@@ -598,7 +598,7 @@ pub(crate) fn render_mermaid_diagram(
                 let rasterized_scale = cached.map_or(1.0, |cached| cached.rasterized_scale);
                 let image_element =
                     img(ImageSource::Render(render_image.clone())).with_fallback(|| {
-                        Label::new("Failed to Load Mermaid Diagram").into_any_element()
+                        Label::new("Mermaid 図を読み込めませんでした。").into_any_element()
                     });
                 let scroll_handle = markdown.update(cx, |markdown, _| {
                     markdown.mermaid_scroll_handle(source_offset)
@@ -659,7 +659,7 @@ pub(crate) fn render_mermaid_diagram(
                 let fallback_element =
                     img(ImageSource::Render(fallback.clone())).with_fallback(|| {
                         div()
-                            .child(Label::new("Failed to load mermaid diagram"))
+                            .child(Label::new("Mermaid 図を読み込めませんでした。"))
                             .into_any_element()
                     });
                 let scroll_handle = markdown.update(cx, |markdown, _| {
@@ -714,7 +714,7 @@ pub(crate) fn render_mermaid_diagram(
                     .child(render_mermaid_code_view(&parsed.contents.contents))
                     .child(
                         div().absolute().top_1().right_2().child(
-                            Label::new("Rendering...")
+                            Label::new("レンダリング中...")
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted)
                                 .with_animation(
@@ -821,7 +821,7 @@ fn render_mermaid_tab_header(
         .gap_0p5()
         .mb_2p5()
         .child(
-            Button::new(preview_id, "Preview")
+            Button::new(preview_id, "プレビュー")
                 .label_size(LabelSize::Small)
                 .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                 .toggle_state(!showing_code)
@@ -835,7 +835,7 @@ fn render_mermaid_tab_header(
                 }),
         )
         .child(
-            Button::new(code_id, "Code")
+            Button::new(code_id, "コード")
                 .label_size(LabelSize::Small)
                 .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                 .toggle_state(showing_code)
@@ -890,7 +890,7 @@ fn render_mermaid_zoom_indicator(
     h_flex()
         .gap_0p5()
         .child(
-            Label::new(format!("Zoom {percentage}%"))
+            Label::new(format!("ズーム {percentage}%"))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
@@ -901,7 +901,7 @@ fn render_mermaid_zoom_indicator(
             )
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
-            .tooltip(Tooltip::text("Reset Zoom"))
+            .tooltip(Tooltip::text("ズームをリセット"))
             .on_click(move |_event, window, cx| {
                 let zoom_changed = markdown.update(cx, |markdown, cx| {
                     let current_zoom = markdown.mermaid_zoom_level(source_offset);

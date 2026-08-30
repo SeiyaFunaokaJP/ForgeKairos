@@ -1,0 +1,261 @@
+﻿<#
+.SYNOPSIS
+zed-jp-enhance の開発ビルド (Windows)。zed.exe と cli.exe を -j 8 でビルドする。
+
+.DESCRIPTION
+BUILD-WINDOWS.md のハマりどころを自動で回避する:
+- CMake (VS 同梱) が PATH に無ければ補完する
+- ディスク残量が少なければ警告し、-FreeDisk 指定時は安全な掃除
+  (target\debug\incremental と target\debug\deps の *.exe / *.pdb) を行う
+- 並列度は常に -j 8 (無制限だと rustc がメモリ枯渇で落ちる)
+- SSH リモート用の remote_server (musl 静的) を zed.exe の隣に同梱する。
+  zig / cargo-zigbuild / rustup target が無ければ自動で導入する (-SkipRemoteServer で省略)
+
+.EXAMPLE
+powershell -NoProfile -File script\build-dev.ps1
+powershell -NoProfile -File script\build-dev.ps1 -Run
+powershell -NoProfile -File script\build-dev.ps1 -FreeDisk
+powershell -NoProfile -File script\build-dev.ps1 -SkipRemoteServer
+#>
+param(
+    # ビルド成功後に zed.exe を起動する
+    [switch]$Run,
+    # ビルド前に target の肥大分 (incremental / deps の exe・pdb) を削除する
+    [switch]$FreeDisk,
+    # cli.exe のビルドを省略する (コンソール連携を使わない場合)
+    [switch]$SkipCli,
+    # SSH リモート用 remote_server アーティファクトの生成を省略する
+    [switch]$SkipRemoteServer
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $repoRoot
+
+# --- CMake (VS 同梱) の PATH 補完 -------------------------------------------
+if (-not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
+    $vsCmakeCandidates = @(
+        'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin',
+        'C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin',
+        'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
+    )
+    $found = $vsCmakeCandidates | Where-Object { Test-Path (Join-Path $_ 'cmake.exe') } | Select-Object -First 1
+    if ($found) {
+        $env:PATH = "$found;$env:PATH"
+        Write-Host "CMake を PATH に追加: $found"
+    } else {
+        Write-Warning 'cmake.exe が見つかりません。wasmtime 系のビルドで失敗します。docs/jp-enhance/BUILD-WINDOWS.md の前提条件を確認してください。'
+    }
+}
+
+# --- ディスク残量 -----------------------------------------------------------
+function Get-FreeGB {
+    $drive = (Get-Item $repoRoot).PSDrive.Name
+    [math]::Round((Get-PSDrive $drive).Free / 1GB, 1)
+}
+
+if ($FreeDisk) {
+    $incremental = Join-Path $repoRoot 'target\debug\incremental'
+    if (Test-Path $incremental) {
+        Write-Host 'target\debug\incremental を削除しています…'
+        Remove-Item -Recurse -Force $incremental
+    }
+    $deps = Join-Path $repoRoot 'target\debug\deps'
+    if (Test-Path $deps) {
+        Write-Host 'target\debug\deps の *.exe / *.pdb (テストバイナリの古い世代) を削除しています…'
+        Get-ChildItem $deps -File |
+            Where-Object { $_.Extension -in '.exe', '.pdb' } |
+            Remove-Item -Force
+    }
+    Write-Host ("掃除後の空き: {0} GB" -f (Get-FreeGB))
+}
+
+$freeGB = Get-FreeGB
+if ($freeGB -lt 20) {
+    Write-Warning ("ディスク残量が {0} GB しかありません。ビルド途中で枯渇したら -FreeDisk を付けて再実行してください。" -f $freeGB)
+}
+
+# --- リモート (SSH) 用 remote_server アーティファクト -------------------------
+# zed.exe の隣に zed-remote-server-linux-x86_64.gz を置いておくと、SSH 接続時に
+# crates/remote がそれを自動アップロードする。エンドユーザー側の作業もネットワーク
+# アクセス (egress は既定で遮断) も不要にするのが狙い。
+#
+# 失敗は throw で伝える。関数の戻り値で成否を返すと、内部で叩いた cargo/rustup の
+# 標準出力まで戻り値パイプラインに混ざって真偽判定が壊れるため。
+
+function Get-ZigPath {
+    $zig = Get-Command zig -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($zig) { return $zig.Source }
+
+    # winget で入れた zig は PATH に載らないことがあるので既知の配置を直接探す
+    $wingetCandidates = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\zig.zig_*\zig-*\zig.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\zig.exe')
+    )
+    foreach ($pattern in $wingetCandidates) {
+        $found = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($found) { return $found.FullName }
+    }
+    return $null
+}
+
+function Install-Zig {
+    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+        throw 'zig が無く、winget も使えないため自動導入できません。https://ziglang.org/ から zig を入れて PATH に通してください。'
+    }
+    Write-Host 'zig が見つからないので winget で導入します (winget install -e --id zig.zig) …'
+    # winget は「既にインストール済み」でも非 0 を返すため、終了コードではなく実体の有無で判定する
+    winget install -e --id zig.zig --accept-source-agreements --accept-package-agreements --silent | Out-Host
+}
+
+function Get-NewestSourceWriteTimeUtc {
+    $newest = Get-ChildItem -Path (Join-Path $repoRoot 'crates') -Recurse -File -Include '*.rs', 'Cargo.toml' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    $times = @()
+    if ($newest) { $times += $newest.LastWriteTimeUtc }
+    $lockFile = Join-Path $repoRoot 'Cargo.lock'
+    if (Test-Path $lockFile) { $times += (Get-Item $lockFile).LastWriteTimeUtc }
+    if ($times.Count -eq 0) { return $null }
+    return ($times | Sort-Object -Descending | Select-Object -First 1)
+}
+
+function Compress-ToGzip {
+    param([string]$SourcePath, [string]$DestinationPath)
+
+    $source = $null
+    $destination = $null
+    $gzipStream = $null
+    try {
+        $source = [IO.File]::OpenRead($SourcePath)
+        $destination = [IO.File]::Create($DestinationPath)
+        $gzipStream = New-Object System.IO.Compression.GZipStream($destination, [System.IO.Compression.CompressionMode]::Compress)
+        $source.CopyTo($gzipStream)
+    } finally {
+        # GZipStream はフッタを書くので destination より先に閉じる
+        if ($gzipStream) { $gzipStream.Dispose() }
+        if ($destination) { $destination.Dispose() }
+        if ($source) { $source.Dispose() }
+    }
+}
+
+function Build-RemoteServerArtifact {
+    $target = 'x86_64-unknown-linux-musl'
+    $artifactPath = Join-Path $repoRoot 'target\debug\zed-remote-server-linux-x86_64.gz'
+    $binaryPath = Join-Path $repoRoot "target\remote_server\$target\debug\remote_server"
+
+    $newestSource = Get-NewestSourceWriteTimeUtc
+    if ((Test-Path $artifactPath) -and $newestSource -and ((Get-Item $artifactPath).LastWriteTimeUtc -ge $newestSource)) {
+        Write-Host ("remote_server アーティファクトは最新です: {0}" -f $artifactPath)
+        return
+    }
+
+    $zigPath = Get-ZigPath
+    if (-not $zigPath) {
+        Install-Zig
+        $zigPath = Get-ZigPath
+    }
+    if (-not $zigPath) {
+        throw 'winget 実行後も zig が見つかりません。新しいシェルを開き直すか、zig を PATH に通してください。'
+    }
+    $zigDir = Split-Path -Parent $zigPath
+    if (($env:PATH -split ';') -notcontains $zigDir) {
+        $env:PATH = "$zigDir;$env:PATH"
+        Write-Host "zig を PATH に追加: $zigDir"
+    }
+
+    if (-not (Get-Command rustup -CommandType Application -ErrorAction SilentlyContinue)) {
+        throw 'rustup が見つかりません (https://rustup.rs/)。'
+    }
+    Write-Host "rustup target add $target …"
+    rustup target add $target
+    if ($LASTEXITCODE -ne 0) {
+        throw "rustup target add $target に失敗しました (exit $LASTEXITCODE)。"
+    }
+
+    if (-not (Get-Command cargo-zigbuild -CommandType Application -ErrorAction SilentlyContinue)) {
+        Write-Host 'cargo-zigbuild を導入します (cargo install cargo-zigbuild --locked) …'
+        cargo install cargo-zigbuild --locked
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo install cargo-zigbuild に失敗しました (exit $LASTEXITCODE)。"
+        }
+    }
+
+    # musl 静的リンク。glibc のバージョン差に依存しない単一バイナリにするため。
+    # strip=debuginfo は DWARF だけを落とし、シンボル名 (= バックトレース) は残す。
+    # debug ビルドの remote_server は素のままだと 582 MB あり、dev ビルドはバイナリ名に
+    # バージョンが入るのでリモートには接続のたびに新しい世代が積み上がる。
+    # 2026-08-30 に 31 GB のリモートがこれで枯渇した (DEVLOG 同日)
+    $previousRustFlags = $env:RUSTFLAGS
+    $rustFlags = '-C target-feature=+crt-static -C strip=debuginfo'
+    if ($previousRustFlags) { $rustFlags = "$previousRustFlags $rustFlags" }
+    if ($env:ZED_ZSTD_MUSL_LIB) { $rustFlags = "$rustFlags -C link-arg=-L$env:ZED_ZSTD_MUSL_LIB" }
+
+    $env:RUSTFLAGS = $rustFlags
+    try {
+        Write-Host "cargo zigbuild -p remote_server --target $target -j 8 …"
+        cargo zigbuild -p remote_server --features debug-embed --target $target --target-dir target/remote_server -j 8
+        $buildExitCode = $LASTEXITCODE
+    } finally {
+        if ($null -eq $previousRustFlags) {
+            if (Test-Path Env:\RUSTFLAGS) { Remove-Item Env:\RUSTFLAGS }
+        } else {
+            $env:RUSTFLAGS = $previousRustFlags
+        }
+    }
+    if ($buildExitCode -ne 0) {
+        throw "cargo zigbuild -p remote_server に失敗しました (exit $buildExitCode)。"
+    }
+    if (-not (Test-Path $binaryPath)) {
+        throw "ビルドは成功しましたが成果物が見つかりません: $binaryPath"
+    }
+
+    $artifactDir = Split-Path -Parent $artifactPath
+    if (-not (Test-Path $artifactDir)) {
+        New-Item -ItemType Directory -Force $artifactDir | Out-Null
+    }
+    Write-Host "gzip 圧縮しています: $artifactPath"
+    Compress-ToGzip -SourcePath $binaryPath -DestinationPath $artifactPath
+    # 展開後のサイズがリモートのディスクに効く数字なので、圧縮前後の両方を出す
+    Write-Host ("remote_server アーティファクト: {0} ({1:N1} MB / 展開後 {2:N1} MB)" -f `
+        $artifactPath, `
+        ((Get-Item $artifactPath).Length / 1MB), `
+        ((Get-Item $binaryPath).Length / 1MB))
+}
+
+# --- ビルド (-j 8 固定。無制限並列は rustc がメモリ枯渇で落ちる) ------------
+Write-Host 'cargo build -p zed -j 8 …'
+cargo build -p zed -j 8
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "zed のビルドに失敗しました (exit $LASTEXITCODE)。docs/jp-enhance/BUILD-WINDOWS.md の gotcha を確認してください。"
+}
+
+if (-not $SkipCli) {
+    # コンソールから `zed <パス>` を使うには cli.exe が zed.exe の隣に必要
+    Write-Host 'cargo build -p cli -j 8 …'
+    cargo build -p cli -j 8
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "cli のビルドに失敗しました (exit $LASTEXITCODE)。"
+    }
+}
+
+if (-not $SkipRemoteServer) {
+    # zed.exe 自体のビルドは成功しているので、ここでの失敗は警告に留める
+    try {
+        Build-RemoteServerArtifact
+    } catch {
+        Write-Warning ("remote_server アーティファクトを用意できませんでした: {0}" -f $_.Exception.Message)
+        Write-Warning 'SSH リモート接続時にサーバーバイナリを供給できません。-SkipRemoteServer で明示的に省略できます。'
+    }
+}
+
+$zedExe = Join-Path $repoRoot 'target\debug\zed.exe'
+Write-Host ''
+Write-Host ("ビルド完了: {0} ({1:N0} MB)" -f $zedExe, ((Get-Item $zedExe).Length / 1MB))
+
+if ($Run) {
+    Write-Host '起動します…'
+    Start-Process $zedExe
+}

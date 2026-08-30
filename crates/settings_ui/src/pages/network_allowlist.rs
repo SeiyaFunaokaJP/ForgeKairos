@@ -1,0 +1,1191 @@
+//! Settings page for the egress allowlist (`docs/jp-enhance/DESIGN.md` §4,
+//! ADR-F03).
+//!
+//! Unlike every other page in this crate, the values here do not live in
+//! `settings.json`: they are the `allowed_hosts` array and the
+//! `proxy_child_processes` flag (ADR-F14) of
+//! `%APPDATA%\Zed\network_allowlist.json`, which `egress_policy` reads and
+//! watches on behalf of `http_client::AllowlistedHttpClient` and of the
+//! loopback proxy it points agent child processes at. That watch is what
+//! applies an edit made here, so this page only has to leave the file in the
+//! right shape — there is no in-process policy handle to poke.
+
+use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::{Context as _, Result, ensure};
+use egress_policy::NetworkAllowlistFile;
+use fs::Fs;
+use gpui::{ScrollHandle, Task, prelude::*};
+use ui::{Banner, Divider, Severity, SwitchField, ToggleState, Tooltip, prelude::*};
+use util::ResultExt as _;
+
+use crate::SettingsWindow;
+use crate::components::{SettingsInputField, SettingsSectionHeader};
+
+const HOSTS_DESCRIPTION: &str = "各項目は完全一致のホスト名 (api.anthropic.com)、先頭の *. によるサブドメインのワイルドカード (*.corp.example。親ドメイン自身にはマッチしません)、または IP アドレス (10.0.0.5 / [fd00::1]) です。大文字と小文字は区別せず、ポートは指定しません。";
+
+/// See `docs/jp-enhance/DESIGN.md` §4.14 (ADR-F14) for what this actually covers.
+const PROXY_CHILD_PROCESSES_DESCRIPTION: &str = "有効にすると、ACP エージェント・MCP サーバー・AI エージェントのインストールに使う npm の各子プロセスに、ループバックのプロキシを渡してその外部通信も上の許可リストで判定します。既定は有効です。無効にすると、これらの子プロセスの外部通信は許可リストの統制外になります (IDE 本体の通信は統制されたままです)。";
+
+const PROXY_CHILD_PROCESSES_NOTE: &str = "変更は次に起動する子プロセスから反映されます (再起動は不要)。プロキシ設定を無視するプロセスは有効にしても統制できません。AI と無関係な npm や言語サーバーの通信は、有効にしても対象外です。";
+
+/// Written when the file has to be created before it can be opened in the
+/// editor, so the user lands on something they can edit rather than a blank
+/// buffer.
+const FILE_TEMPLATE: &str = "\
+// zed-jp-enhance 外部通信の許可リスト (docs/jp-enhance/DESIGN.md §4)
+//
+// ここに書いたホストだけが外部への HTTP(S) 通信を許可されます。
+// 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。
+// // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。
+{
+  \"allowed_hosts\": []
+}
+";
+
+/// What the settings window knows about `network_allowlist.json`.
+pub(crate) struct NetworkAllowlistState {
+    status: Status,
+    /// The `allowed_hosts` entries exactly as they appear in the file, in file
+    /// order. Editing matches on the index, so this must stay the literal list
+    /// rather than a canonicalized or filtered one.
+    entries: Vec<String>,
+    /// See [`NetworkAllowlistFile::proxy_child_processes`]. Starts out `true`
+    /// so the toggle never reads as off in the window before the first read of
+    /// the file lands, which is also what an absent key means.
+    proxy_child_processes: bool,
+    /// Shown in a banner until it is dismissed or the next operation clears it.
+    error: Option<SharedString>,
+    /// Whether `error` belongs to a write the external-AI consent flow asked
+    /// for. Only that flow shows it, so an invalid host typed on this page does
+    /// not light up every provider section on the AI pages.
+    error_from_consent: bool,
+    /// At most one file operation is in flight; each new one awaits its
+    /// predecessor instead of replacing it, so two quick edits cannot land out
+    /// of order.
+    task: Option<Task<()>>,
+}
+
+impl Default for NetworkAllowlistState {
+    fn default() -> Self {
+        Self {
+            status: Status::default(),
+            entries: Vec::new(),
+            proxy_child_processes: true,
+            error: None,
+            error_from_consent: false,
+            task: None,
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq)]
+enum Status {
+    #[default]
+    Loading,
+    /// No file on disk. `egress_policy` treats that as an empty policy, so the
+    /// page shows an empty list rather than an error.
+    Missing,
+    Present,
+    /// The file exists but could not be read or parsed. Editing is disabled in
+    /// this state: rewriting the file would discard whatever is in it.
+    Unusable(SharedString),
+}
+
+impl NetworkAllowlistState {
+    fn is_editable(&self) -> bool {
+        matches!(self.status, Status::Missing | Status::Present)
+    }
+
+    /// Whether the file has been read at least once. Callers outside this page
+    /// (the external-AI consent flow) render "not registered" only once this is
+    /// true, so an unread file is never reported as an empty allowlist.
+    pub(crate) fn is_loaded(&self) -> bool {
+        self.status != Status::Loading
+    }
+
+    /// Whether one of the entries already covers `host`, wildcards included.
+    /// Entries that no longer parse are skipped, exactly as `egress_policy`
+    /// skips them.
+    pub(crate) fn allows(&self, host: &str) -> bool {
+        let Some(host) = http_client::RequestHost::parse(host) else {
+            return false;
+        };
+        if host.is_loopback() {
+            return true;
+        }
+        self.entries.iter().any(|entry| {
+            http_client::HostPattern::parse(entry).is_ok_and(|pattern| pattern.matches(&host))
+        })
+    }
+
+    /// The message from the last failed allowlist write the consent flow asked
+    /// for, so that it can be reported where the button was pressed.
+    pub(crate) fn consent_error(&self) -> Option<SharedString> {
+        self.error.clone().filter(|_| self.error_from_consent)
+    }
+}
+
+/// The file's values plus how the file they came from was read.
+struct Loaded {
+    status: Status,
+    entries: Vec<String>,
+    proxy_child_processes: bool,
+}
+
+enum Operation {
+    Reload,
+    /// Replace `allowed_hosts` with this list, then read the file back.
+    Write(Vec<String>),
+    /// Append these hosts to whatever is on disk, skipping ones already
+    /// covered. Used by the external-AI consent flow, which cannot assume this
+    /// page has been opened, so it must not send a `Write` built from a
+    /// possibly-unread `entries`.
+    Add(Vec<String>),
+    /// Write `proxy_child_processes`, leaving the rest of the file alone.
+    SetProxyChildProcesses(bool),
+}
+
+/// Reads the policy file into the window's state. Called when the sub page is
+/// opened and by the page's own reload button.
+pub(crate) fn load_network_allowlist(
+    settings_window: &mut SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) {
+    run(settings_window, Operation::Reload, cx);
+}
+
+fn run(
+    settings_window: &mut SettingsWindow,
+    operation: Operation,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let fs = <dyn Fs>::global(cx);
+    let path = paths::network_allowlist_file().clone();
+
+    // Show the edit right away; the read-back that follows the write is what
+    // makes it authoritative.
+    match &operation {
+        Operation::Write(entries) => {
+            settings_window.network_allowlist.entries = entries.clone();
+        }
+        Operation::SetProxyChildProcesses(enabled) => {
+            settings_window.network_allowlist.proxy_child_processes = *enabled;
+        }
+        Operation::Reload | Operation::Add(_) => {}
+    }
+    settings_window.network_allowlist.error = None;
+    settings_window.network_allowlist.error_from_consent = matches!(operation, Operation::Add(_));
+
+    // Taking the previous task rather than dropping it keeps an in-flight write
+    // alive, and awaiting it serializes the file operations.
+    let previous = settings_window.network_allowlist.task.take();
+    settings_window.network_allowlist.task = Some(cx.spawn(async move |this, cx| {
+        if let Some(previous) = previous {
+            previous.await;
+        }
+        let (loaded, error) = apply(fs, &path, operation).await;
+        this.update(cx, |this, cx| {
+            this.network_allowlist.status = loaded.status;
+            this.network_allowlist.entries = loaded.entries;
+            this.network_allowlist.proxy_child_processes = loaded.proxy_child_processes;
+            // Only report a failure here; a validation message the user
+            // provoked while this was in flight must not be wiped out.
+            if let Some(error) = error {
+                this.network_allowlist.error = Some(error);
+            }
+            cx.notify();
+        })
+        .log_err();
+    }));
+    cx.notify();
+}
+
+async fn apply(
+    fs: Arc<dyn Fs>,
+    path: &Path,
+    operation: Operation,
+) -> (Loaded, Option<SharedString>) {
+    let mut error = None;
+    match operation {
+        Operation::Reload => {}
+        Operation::Write(entries) => {
+            let written = write(&fs, path, |existing| {
+                allowed_hosts_replaced(existing, &entries)
+            })
+            .await;
+            if let Err(write_error) = written {
+                error = Some(SharedString::from(format!(
+                    "許可リストを保存できませんでした: {write_error:#}"
+                )));
+            }
+        }
+        Operation::SetProxyChildProcesses(enabled) => {
+            let written = write(&fs, path, |existing| {
+                proxy_child_processes_replaced(existing, enabled)
+            })
+            .await;
+            if let Err(write_error) = written {
+                error = Some(SharedString::from(format!(
+                    "子プロセスのプロキシ設定を保存できませんでした: {write_error:#}"
+                )));
+            }
+        }
+        // Delegates to the shared read-modify-write in `egress_policy`, the
+        // same one the F2-5 install consent flow (`agent_ui`) uses, rather
+        // than replacing the in-memory `entries` this page may not have
+        // loaded — the caller here (the external-AI consent flow) cannot
+        // assume this page has been opened.
+        Operation::Add(hosts) => {
+            if let Err(write_error) = egress_policy::add_allowed_hosts(&fs, path, &hosts).await {
+                error = Some(SharedString::from(format!(
+                    "許可リストを保存できませんでした: {write_error:#}"
+                )));
+            }
+        }
+    }
+    // Always read back, even after a failed write, so the list on screen is
+    // what is actually on disk.
+    (read(&fs, path).await, error)
+}
+
+async fn read(fs: &Arc<dyn Fs>, path: &Path) -> Loaded {
+    // A file that is absent or unusable is the same policy as one that says
+    // nothing: `egress_policy` reads both as loopback-only with the
+    // child-process proxy on, so that is what this page shows.
+    let denied_by_default = |status| Loaded {
+        status,
+        entries: Vec::new(),
+        proxy_child_processes: true,
+    };
+
+    if !fs.is_file(path).await {
+        return denied_by_default(Status::Missing);
+    }
+    let contents = match fs.load(path).await {
+        Ok(contents) => contents,
+        Err(error) => {
+            return denied_by_default(Status::Unusable(
+                format!("network_allowlist.json を読み込めませんでした: {error:#}").into(),
+            ));
+        }
+    };
+    // An empty file is a valid "allow nothing" policy for `egress_policy`, but
+    // not valid JSON, so it is handled before parsing.
+    if contents.trim().is_empty() {
+        return denied_by_default(Status::Present);
+    }
+    match settings_json::parse_json_with_comments::<NetworkAllowlistFile>(&contents) {
+        Ok(file) => Loaded {
+            status: Status::Present,
+            entries: file.allowed_hosts,
+            proxy_child_processes: file.proxy_child_processes.unwrap_or(true),
+        },
+        Err(error) => denied_by_default(Status::Unusable(
+            format!("network_allowlist.json を解析できませんでした: {error}").into(),
+        )),
+    }
+}
+
+/// Rewrites the file through `replace`, which is handed the current contents
+/// (empty when there is no file yet) and returns what should stand in their
+/// place.
+async fn write(
+    fs: &Arc<dyn Fs>,
+    path: &Path,
+    replace: impl FnOnce(&str) -> Result<String>,
+) -> Result<()> {
+    let exists = fs.is_file(path).await;
+    let existing = if exists {
+        fs.load(path)
+            .await
+            .context("network_allowlist.json を読み込めませんでした")?
+    } else {
+        String::new()
+    };
+    // Refuse to rewrite a file that cannot be parsed: the rewrite would throw
+    // away whatever the user was in the middle of hand-editing.
+    if !existing.trim().is_empty() {
+        settings_json::parse_json_with_comments::<NetworkAllowlistFile>(&existing)
+            .context("network_allowlist.json を解析できませんでした")?;
+    }
+
+    let new_text = replace(&existing)?;
+
+    if let Some(parent) = path.parent() {
+        fs.create_dir(parent).await?;
+    }
+    // `settings.json` is written the same way: to the canonical path, so that
+    // the watch `egress_policy` registered (which canonicalizes too) sees it.
+    // A path that cannot be canonicalized is still writable under its original
+    // spelling.
+    let target = if exists {
+        fs.canonicalize(path)
+            .await
+            .unwrap_or_else(|_| path.to_path_buf())
+    } else {
+        path.to_path_buf()
+    };
+    fs.atomic_write(target, new_text)
+        .await
+        .context("network_allowlist.json に書き込めませんでした")
+}
+
+/// Rewrites only the `allowed_hosts` value, so the rest of the file — including
+/// the comments users are encouraged to keep there — survives. Comments *inside*
+/// the array are part of the replaced value and do not.
+fn allowed_hosts_replaced(existing: &str, entries: &[String]) -> Result<String> {
+    let value = serde_json::Value::Array(
+        entries
+            .iter()
+            .map(|entry| serde_json::Value::String(entry.clone()))
+            .collect(),
+    );
+    key_replaced(existing, "allowed_hosts", &value)
+}
+
+/// Rewrites only the `proxy_child_processes` value. The `true` case is written
+/// out rather than dropping the key: an explicit value is what the user asked
+/// for, and leaving the file silent would make the toggle look like it had not
+/// been touched next to a hand-written `false`.
+fn proxy_child_processes_replaced(existing: &str, enabled: bool) -> Result<String> {
+    key_replaced(
+        existing,
+        "proxy_child_processes",
+        &serde_json::Value::Bool(enabled),
+    )
+}
+
+/// Replaces one top-level key's value, creating it when it is absent, and
+/// leaving every other byte of the file where it was.
+fn key_replaced(existing: &str, key: &str, value: &serde_json::Value) -> Result<String> {
+    let indent_size = settings_json::infer_json_indent_size(existing);
+    let (range, replacement) =
+        settings_json::replace_value_in_json_text(existing, &[key], indent_size, Some(value), None);
+    ensure!(
+        range.end <= existing.len()
+            && existing.is_char_boundary(range.start)
+            && existing.is_char_boundary(range.end),
+        "書き換える範囲を特定できませんでした"
+    );
+    let mut text = existing.to_string();
+    text.replace_range(range, &replacement);
+    Ok(text)
+}
+
+/// Validates one entry the way `egress_policy` will, returning the canonical
+/// spelling to store or a message to show.
+fn canonicalize_host(input: &str) -> Result<String, SharedString> {
+    match http_client::HostPattern::parse(input) {
+        Ok(pattern) => Ok(pattern.to_string()),
+        Err(_) => Err(rejection_reason(input)),
+    }
+}
+
+/// `HostPattern::parse` reports its reason as prose with no machine-readable
+/// discriminant, so the Japanese message is derived from the shape of the input
+/// instead. The generic message is the fallback whenever the shape does not
+/// explain the rejection.
+fn rejection_reason(input: &str) -> SharedString {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return "ホストを入力してください。".into();
+    }
+    let (has_wildcard, rest) = match trimmed.strip_prefix("*.") {
+        Some(rest) => (true, rest),
+        None => (false, trimmed),
+    };
+    if rest.contains('*') {
+        return "ワイルドカードは先頭の `*.` にのみ指定できます (例: *.corp.example)。".into();
+    }
+    if has_wildcard
+        && matches!(
+            http_client::RequestHost::parse(rest),
+            Some(http_client::RequestHost::Ip(_))
+        )
+    {
+        return "`*.` は IP アドレスには指定できません。".into();
+    }
+    "有効なホスト名または IP アドレスではありません。例: api.anthropic.com、*.corp.example、10.0.0.5"
+        .into()
+}
+
+fn add_host(settings_window: &mut SettingsWindow, input: &str, cx: &mut Context<SettingsWindow>) {
+    let host = match canonicalize_host(input) {
+        Ok(host) => host,
+        Err(reason) => {
+            settings_window.network_allowlist.error = Some(reason);
+            cx.notify();
+            return;
+        }
+    };
+    let mut entries = settings_window.network_allowlist.entries.clone();
+    if entries.iter().any(|entry| entry == &host) {
+        settings_window.network_allowlist.error =
+            Some(format!("{host} はすでに許可リストにあります。").into());
+        cx.notify();
+        return;
+    }
+    entries.push(host);
+    run(settings_window, Operation::Write(entries), cx);
+}
+
+/// Adds hosts to `network_allowlist.json` without needing this page to have
+/// been opened first: the write reads the file, appends what is missing and
+/// writes it back. Hosts that `egress_policy` would reject are dropped with a
+/// message rather than written.
+pub(crate) fn add_allowed_hosts(
+    settings_window: &mut SettingsWindow,
+    hosts: &[SharedString],
+    cx: &mut Context<SettingsWindow>,
+) {
+    let mut canonical = Vec::with_capacity(hosts.len());
+    for host in hosts {
+        match canonicalize_host(host) {
+            Ok(host) => canonical.push(host),
+            Err(reason) => {
+                settings_window.network_allowlist.error =
+                    Some(format!("{host} を追加できません: {reason}").into());
+                settings_window.network_allowlist.error_from_consent = true;
+                cx.notify();
+                return;
+            }
+        }
+    }
+    if canonical.is_empty() {
+        return;
+    }
+    run(settings_window, Operation::Add(canonical), cx);
+}
+
+/// Clears the banner shown for the last failed allowlist file operation.
+pub(crate) fn dismiss_error(
+    settings_window: &mut SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) {
+    settings_window.network_allowlist.error = None;
+    settings_window.network_allowlist.error_from_consent = false;
+    cx.notify();
+}
+
+fn update_host(
+    settings_window: &mut SettingsWindow,
+    index: usize,
+    input: &str,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let host = match canonicalize_host(input) {
+        Ok(host) => host,
+        Err(reason) => {
+            settings_window.network_allowlist.error = Some(reason);
+            cx.notify();
+            return;
+        }
+    };
+    let mut entries = settings_window.network_allowlist.entries.clone();
+    if entries.get(index) == Some(&host) {
+        return;
+    }
+    if entries
+        .iter()
+        .enumerate()
+        .any(|(other, value)| other != index && value == &host)
+    {
+        settings_window.network_allowlist.error =
+            Some(format!("{host} はすでに許可リストにあります。").into());
+        cx.notify();
+        return;
+    }
+    let Some(entry) = entries.get_mut(index) else {
+        return;
+    };
+    *entry = host;
+    run(settings_window, Operation::Write(entries), cx);
+}
+
+fn remove_host(
+    settings_window: &mut SettingsWindow,
+    index: usize,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let mut entries = settings_window.network_allowlist.entries.clone();
+    if index >= entries.len() {
+        return;
+    }
+    entries.remove(index);
+    run(settings_window, Operation::Write(entries), cx);
+}
+
+fn set_proxy_child_processes(
+    settings_window: &mut SettingsWindow,
+    enabled: bool,
+    cx: &mut Context<SettingsWindow>,
+) {
+    // `SwitchField` reports the same new state from both the switch and the row
+    // around it, so one click arrives twice; without this the second one would
+    // queue a redundant rewrite of the file.
+    if settings_window.network_allowlist.proxy_child_processes == enabled {
+        return;
+    }
+    run(
+        settings_window,
+        Operation::SetProxyChildProcesses(enabled),
+        cx,
+    );
+}
+
+pub(crate) fn render_network_allowlist_page(
+    settings_window: &SettingsWindow,
+    scroll_handle: &ScrollHandle,
+    _window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let state = &settings_window.network_allowlist;
+    let is_editable = state.is_editable();
+    let error = state.error.clone();
+    let entry_count = state.entries.len();
+    let proxy_child_processes = state.proxy_child_processes;
+
+    let host_rows: Vec<AnyElement> = state
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(index, host)| render_host_row(index, host.clone(), cx))
+        .collect();
+    let empty_border = cx.theme().colors().border_variant;
+
+    v_flex()
+        .id("network-allowlist-page")
+        .size_full()
+        .pt_2p5()
+        .px_8()
+        .pb_16()
+        .gap_6()
+        .overflow_y_scroll()
+        .track_scroll(scroll_handle)
+        .child(render_intro(cx))
+        .when_some(error, |this, error| {
+            this.child(
+                Banner::new()
+                    .severity(Severity::Warning)
+                    .child(Label::new(error).size(LabelSize::Small))
+                    .action_slot(
+                        Button::new("network-allowlist-dismiss-error", "閉じる")
+                            .style(ButtonStyle::Tinted(ui::TintColor::Warning))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                dismiss_error(this, cx);
+                            })),
+                    ),
+            )
+        })
+        .map(|this| match &state.status {
+            Status::Loading => this.child(
+                Label::new("読み込み中…")
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            ),
+            Status::Missing => this.child(
+                Banner::new().severity(Severity::Info).child(
+                    Label::new(
+                        "network_allowlist.json はまだありません。許可リストは空 (ループバックのみ許可) として扱われます。ホストを追加すると作成されます。",
+                    )
+                    .size(LabelSize::Small),
+                ),
+            ),
+            Status::Present => this,
+            Status::Unusable(message) => this.child(
+                Banner::new().severity(Severity::Error).child(
+                    v_flex()
+                        .gap_0p5()
+                        .child(Label::new(message.clone()).size(LabelSize::Small))
+                        .child(
+                            Label::new(
+                                "解析できない間は許可リストが空 (ループバックのみ許可) として扱われます。ファイルを直接修正してください。この画面からの編集は無効です。",
+                            )
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                        ),
+                ),
+            ),
+        })
+        .when(is_editable, |this| {
+            this.child(
+                v_flex()
+                    .gap_4()
+                    .child(SettingsSectionHeader::new("許可するホスト").no_padding(true))
+                    .child(
+                        v_flex()
+                            .gap_0p5()
+                            .child(
+                                Label::new(format!("登録済み: {entry_count} 件"))
+                                    .size(LabelSize::Small),
+                            )
+                            .child(
+                                Label::new(HOSTS_DESCRIPTION)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(
+                                v_flex()
+                                    .mt_2()
+                                    .w_full()
+                                    .gap_1p5()
+                                    .when(host_rows.is_empty(), |this| {
+                                        this.child(render_empty_state(empty_border))
+                                    })
+                                    .when(!host_rows.is_empty(), |this| {
+                                        this.child(v_flex().gap_1p5().children(host_rows))
+                                    })
+                                    .child(render_add_host_input(cx)),
+                            ),
+                    ),
+            )
+        })
+        // Hidden rather than disabled while the file is unusable or unread, so
+        // it behaves exactly like the host list above it: a toggle whose state
+        // came from a file that could not be parsed would be a claim this page
+        // cannot make.
+        .when(is_editable, |this| {
+            this.child(render_child_process_proxy(proxy_child_processes, cx))
+        })
+        .child(Divider::horizontal())
+        .child(render_file_actions(settings_window, cx))
+        .into_any_element()
+}
+
+fn render_intro(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
+    v_flex()
+        .gap_1()
+        .child(Label::new(
+            "外部への HTTP(S) 通信は既定ですべて拒否されます。ここに登録したホストだけが許可されます。",
+        ))
+        .child(
+            Label::new(
+                "127.0.0.1 / ::1 / localhost は登録しなくても常に許可されるため、ローカルの LLM サーバー (Ollama など) は許可リストが空のままでも利用できます。拡張機能マーケットプレイス (一覧・検索・インストール) と本体の更新確認に必要なホストも組み込みで許可済みです。ただし更新のダウンロード先 (github.com など) は組み込みに含まれないため、確認のうえでここに追加されます。リダイレクト先も 1 ホップごとに同じ判定を受けます。",
+            )
+            .size(LabelSize::Small)
+            .color(Color::Muted),
+        )
+        .child(
+            Label::new(
+                "対象は AI 機能に限りません。拡張機能・AI プロバイダー・エージェントや MCP の子プロセスを含む、IDE 全体の外部通信が対象です。「AI」ページの「サンドボックス」は、エージェントが実行するコマンドの隔離 (アクセスできるドメインと書き込み先の制限) を扱う別の設定です。ただし、そちらで許可したドメインが効くのはこのリストの範囲内だけです。サンドボックス側は許可を広げるのではなく、この範囲をさらに狭めるものと考えてください。",
+            )
+            .size(LabelSize::Small)
+            .color(Color::Muted),
+        )
+        .child(
+            Label::new(paths::network_allowlist_file().to_string_lossy().into_owned())
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .buffer_font(cx),
+        )
+}
+
+fn render_child_process_proxy(enabled: bool, cx: &mut Context<SettingsWindow>) -> impl IntoElement {
+    let settings_window = cx.entity().downgrade();
+
+    v_flex()
+        .gap_4()
+        .child(SettingsSectionHeader::new("子プロセスの外部通信").no_padding(true))
+        .child(
+            v_flex()
+                .gap_1()
+                .child(
+                    SwitchField::new(
+                        "network-allowlist-proxy-child-processes",
+                        Some("AI エージェントの子プロセスにプロキシを適用"),
+                        Some(PROXY_CHILD_PROCESSES_DESCRIPTION.into()),
+                        enabled,
+                        move |state, _window, cx| {
+                            let enabled = *state == ToggleState::Selected;
+                            settings_window
+                                .update(cx, |this, cx| {
+                                    set_proxy_child_processes(this, enabled, cx);
+                                })
+                                .log_err();
+                        },
+                    )
+                    .tab_index(0),
+                )
+                .child(
+                    Label::new(PROXY_CHILD_PROCESSES_NOTE)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                ),
+        )
+}
+
+fn render_file_actions(
+    settings_window: &SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) -> impl IntoElement {
+    let is_loading = settings_window.network_allowlist.status == Status::Loading;
+    // Opening the file needs a workspace to open it in; the settings window can
+    // be running without one.
+    let can_open_file = settings_window.original_window.is_some();
+
+    h_flex()
+        .gap_1()
+        .child(
+            Button::new("network-allowlist-reload", "再読み込み")
+                .label_size(LabelSize::Small)
+                .color(Color::Muted)
+                .disabled(is_loading)
+                .start_icon(
+                    Icon::new(IconName::RotateCw)
+                        .color(Color::Muted)
+                        .size(IconSize::XSmall),
+                )
+                .tooltip(Tooltip::text("ファイルを読み直します"))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    load_network_allowlist(this, cx);
+                })),
+        )
+        .child(
+            Button::new(
+                "network-allowlist-open-file",
+                "network_allowlist.json をエディターで開く",
+            )
+            .label_size(LabelSize::Small)
+            .color(Color::Muted)
+            .disabled(!can_open_file)
+            .start_icon(
+                Icon::new(IconName::FileCode)
+                    .color(Color::Muted)
+                    .size(IconSize::XSmall),
+            )
+            .tooltip(Tooltip::text(
+                "設定ウィンドウを閉じ、ファイルをエディターで開きます。ファイルが無い場合は作成します",
+            ))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_network_allowlist_file(FILE_TEMPLATE, window, cx);
+            })),
+        )
+}
+
+fn render_empty_state(border_color: gpui::Hsla) -> AnyElement {
+    h_flex()
+        .p_2()
+        .rounded_md()
+        .border_1()
+        .border_dashed()
+        .border_color(border_color)
+        .child(
+            Label::new("設定されていません (ループバック以外はすべて拒否されます)")
+                .size(LabelSize::Small)
+                .color(Color::Disabled),
+        )
+        .into_any_element()
+}
+
+fn render_host_row(index: usize, host: String, cx: &mut Context<SettingsWindow>) -> AnyElement {
+    let is_valid = http_client::HostPattern::parse(&host).is_ok();
+    let settings_window = cx.entity().downgrade();
+
+    let field = SettingsInputField::new(format!("network-allowlist-host-{index}"))
+        .with_initial_text(host)
+        .tab_index(0)
+        .with_buffer_font()
+        .color(if is_valid {
+            Color::Default
+        } else {
+            Color::Error
+        })
+        .aria_label("許可するホスト")
+        .action_slot(
+            IconButton::new(
+                format!("network-allowlist-host-delete-{index}"),
+                IconName::Trash,
+            )
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .tooltip(Tooltip::text("ホストを削除"))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                remove_host(this, index, cx);
+            })),
+        )
+        .on_confirm(move |new_host, _window, cx| {
+            let Some(new_host) = new_host else {
+                return;
+            };
+            settings_window
+                .update(cx, |this, cx| {
+                    update_host(this, index, &new_host, cx);
+                })
+                .log_err();
+        });
+
+    if is_valid {
+        field.into_any_element()
+    } else {
+        v_flex()
+            .gap_0p5()
+            .child(field)
+            .child(
+                Label::new("形式が正しくないため、この項目は無視されます。")
+                    .size(LabelSize::Small)
+                    .color(Color::Error),
+            )
+            .into_any_element()
+    }
+}
+
+fn render_add_host_input(cx: &mut Context<SettingsWindow>) -> AnyElement {
+    let settings_window = cx.entity().downgrade();
+
+    SettingsInputField::new("network-allowlist-host-new")
+        .with_placeholder("ホストを追加 (例: api.anthropic.com、*.corp.example)…")
+        .tab_index(0)
+        .with_buffer_font()
+        .display_clear_button()
+        .display_confirm_button()
+        .clear_on_confirm()
+        .on_confirm(move |host, _window, cx| {
+            let Some(host) = host else {
+                return;
+            };
+            if host.trim().is_empty() {
+                return;
+            }
+            settings_window
+                .update(cx, |this, cx| {
+                    add_host(this, &host, cx);
+                })
+                .log_err();
+        })
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    /// The point of the page: what it writes has to reach the policy that
+    /// `egress_policy` keeps for `AllowlistedHttpClient`, through nothing but
+    /// the file. Covers the file being created as well as later rewrites, since
+    /// only the latter go through `canonicalize`.
+    #[gpui::test]
+    async fn a_write_reaches_the_running_policy(cx: &mut gpui::TestAppContext) {
+        cx.executor().allow_parking();
+
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(Path::new(util::path!("/config")), serde_json::json!({}))
+            .await;
+
+        let handle = cx.update(|cx| egress_policy::watch(fake_fs.clone(), path.clone(), cx));
+        cx.run_until_parked();
+
+        let anthropic =
+            http_client::RequestHost::parse("api.anthropic.com").expect("host should parse");
+        assert!(!handle.allows(&anthropic));
+
+        // Nothing on disk yet: an empty list, not an error.
+        let (loaded, error) = apply(fs.clone(), &path, Operation::Reload).await;
+        assert_eq!(error, None);
+        assert_eq!(loaded.status, Status::Missing);
+        assert!(loaded.entries.is_empty());
+
+        let (loaded, error) = apply(
+            fs.clone(),
+            &path,
+            Operation::Write(vec!["api.anthropic.com".to_string()]),
+        )
+        .await;
+        assert_eq!(error, None);
+        assert_eq!(loaded.status, Status::Present);
+        assert_eq!(loaded.entries, vec!["api.anthropic.com".to_string()]);
+        cx.run_until_parked();
+        assert!(
+            handle.allows(&anthropic),
+            "the egress policy watch should apply what this page wrote"
+        );
+
+        let (loaded, error) = apply(fs.clone(), &path, Operation::Write(Vec::new())).await;
+        assert_eq!(error, None);
+        assert!(loaded.entries.is_empty());
+        cx.run_until_parked();
+        assert!(
+            !handle.allows(&anthropic),
+            "removing the last host should close it again"
+        );
+    }
+
+    /// `Operation::Add` is issued from the external-AI consent flow, which
+    /// cannot assume this page has been opened. It therefore has to append to
+    /// what is on disk rather than to the (possibly unread) in-memory list.
+    #[gpui::test]
+    async fn add_appends_to_the_file_rather_than_replacing_it(cx: &mut gpui::TestAppContext) {
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                Path::new(util::path!("/config")),
+                serde_json::json!({
+                    "network_allowlist.json": "{ \"allowed_hosts\": [\"*.corp.example\"] }\n"
+                }),
+            )
+            .await;
+
+        let (loaded, error) = apply(
+            fs.clone(),
+            &path,
+            Operation::Add(vec![
+                "api.anthropic.com".to_string(),
+                "*.corp.example".to_string(),
+            ]),
+        )
+        .await;
+
+        assert_eq!(error, None);
+        assert_eq!(
+            loaded.entries,
+            vec![
+                "*.corp.example".to_string(),
+                "api.anthropic.com".to_string()
+            ],
+            "an entry already present must not be duplicated, and the existing ones must survive"
+        );
+    }
+
+    #[gpui::test]
+    async fn refuses_to_rewrite_a_file_it_cannot_parse(cx: &mut gpui::TestAppContext) {
+        let broken = "{ \"allowed_hosts\": [\n";
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                Path::new(util::path!("/config")),
+                serde_json::json!({ "network_allowlist.json": broken }),
+            )
+            .await;
+
+        let (loaded, error) = apply(
+            fs.clone(),
+            &path,
+            Operation::Write(vec!["zed.dev".to_string()]),
+        )
+        .await;
+
+        assert!(error.is_some(), "the write should have been refused");
+        assert!(matches!(loaded.status, Status::Unusable(_)));
+        assert_eq!(
+            fake_fs
+                .load(&path)
+                .await
+                .expect("file should still be there"),
+            broken,
+            "a file that cannot be parsed must be left exactly as it was"
+        );
+    }
+
+    #[test]
+    fn rewrites_only_the_allowed_hosts_array() {
+        let existing = concat!(
+            "// Header comment that must survive.\n",
+            "{\n",
+            "  // Keep this one too.\n",
+            "  \"allowed_hosts\": [\n",
+            "    \"api.anthropic.com\"\n",
+            "  ]\n",
+            "}\n",
+        );
+        let rewritten = allowed_hosts_replaced(
+            existing,
+            &[
+                "api.anthropic.com".to_string(),
+                "*.corp.example".to_string(),
+            ],
+        )
+        .expect("rewrite should succeed");
+
+        assert!(rewritten.contains("// Header comment that must survive."));
+        assert!(rewritten.contains("// Keep this one too."));
+        let parsed: NetworkAllowlistFile = settings_json::parse_json_with_comments(&rewritten)
+            .expect("rewritten file should parse");
+        assert_eq!(
+            parsed.allowed_hosts,
+            vec![
+                "api.anthropic.com".to_string(),
+                "*.corp.example".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn creates_the_key_in_an_empty_or_keyless_file() {
+        for existing in ["", "{}", "{\n  \"future_key\": true\n}\n"] {
+            let rewritten = allowed_hosts_replaced(existing, &["zed.dev".to_string()])
+                .expect("rewrite should succeed");
+            let parsed: NetworkAllowlistFile = settings_json::parse_json_with_comments(&rewritten)
+                .unwrap_or_else(|error| panic!("{existing:?} -> {rewritten:?}: {error}"));
+            assert_eq!(parsed.allowed_hosts, vec!["zed.dev".to_string()]);
+        }
+    }
+
+    /// The toggle rides in the same file as the host list (ADR-F14), so it has
+    /// to leave that list — and the comments around it — untouched.
+    #[test]
+    fn rewrites_only_the_proxy_child_processes_value() {
+        let existing = concat!(
+            "// Header comment that must survive.\n",
+            "{\n",
+            "  \"proxy_child_processes\": true,\n",
+            "  // Keep this one too.\n",
+            "  \"allowed_hosts\": [\n",
+            "    \"api.anthropic.com\"\n",
+            "  ]\n",
+            "}\n",
+        );
+        let rewritten =
+            proxy_child_processes_replaced(existing, false).expect("rewrite should succeed");
+
+        assert!(rewritten.contains("// Header comment that must survive."));
+        assert!(rewritten.contains("// Keep this one too."));
+        let parsed: NetworkAllowlistFile = settings_json::parse_json_with_comments(&rewritten)
+            .expect("rewritten file should parse");
+        assert_eq!(parsed.proxy_child_processes, Some(false));
+        assert_eq!(
+            parsed.allowed_hosts,
+            vec!["api.anthropic.com".to_string()],
+            "turning the proxy off must not touch the host allowlist"
+        );
+    }
+
+    /// `true` is the default, but it is still written out rather than left
+    /// implicit, so turning the toggle back on undoes an explicit `false`.
+    #[test]
+    fn creates_the_proxy_key_in_an_empty_or_keyless_file() {
+        for (existing, enabled) in [
+            ("", true),
+            ("", false),
+            ("{}", true),
+            ("{ \"allowed_hosts\": [\"zed.dev\"] }\n", true),
+            ("{ \"allowed_hosts\": [\"zed.dev\"] }\n", false),
+        ] {
+            let rewritten =
+                proxy_child_processes_replaced(existing, enabled).expect("rewrite should succeed");
+            let parsed: NetworkAllowlistFile = settings_json::parse_json_with_comments(&rewritten)
+                .unwrap_or_else(|error| panic!("{existing:?} -> {rewritten:?}: {error}"));
+            assert_eq!(parsed.proxy_child_processes, Some(enabled));
+        }
+    }
+
+    /// What the page reads back is what `egress_policy::parse_file` would: an
+    /// absent key means on, and only an explicit `false` turns it off.
+    #[gpui::test]
+    async fn reads_the_proxy_toggle_and_writes_it_back(cx: &mut gpui::TestAppContext) {
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                Path::new(util::path!("/config")),
+                serde_json::json!({
+                    "network_allowlist.json": "// keep me\n{ \"allowed_hosts\": [\"zed.dev\"] }\n"
+                }),
+            )
+            .await;
+
+        let (loaded, error) = apply(fs.clone(), &path, Operation::Reload).await;
+        assert_eq!(error, None);
+        assert!(
+            loaded.proxy_child_processes,
+            "an absent key means the proxy is on"
+        );
+
+        let (loaded, error) =
+            apply(fs.clone(), &path, Operation::SetProxyChildProcesses(false)).await;
+        assert_eq!(error, None);
+        assert!(!loaded.proxy_child_processes);
+        assert_eq!(
+            loaded.entries,
+            vec!["zed.dev".to_string()],
+            "the host list must survive the toggle"
+        );
+        let on_disk = fake_fs.load(&path).await.expect("file should exist");
+        assert!(on_disk.contains("// keep me"));
+        assert!(!egress_policy::parse_file(&on_disk).proxy_child_processes);
+
+        let (loaded, error) =
+            apply(fs.clone(), &path, Operation::SetProxyChildProcesses(true)).await;
+        assert_eq!(error, None);
+        assert!(loaded.proxy_child_processes);
+        let on_disk = fake_fs.load(&path).await.expect("file should exist");
+        assert!(egress_policy::parse_file(&on_disk).proxy_child_processes);
+    }
+
+    /// The same guard the host list gets: a file mid-hand-edit is never
+    /// rewritten out from under the user, whichever control was touched.
+    #[gpui::test]
+    async fn refuses_to_toggle_the_proxy_in_a_file_it_cannot_parse(cx: &mut gpui::TestAppContext) {
+        let broken = "{ \"allowed_hosts\": [\n";
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                Path::new(util::path!("/config")),
+                serde_json::json!({ "network_allowlist.json": broken }),
+            )
+            .await;
+
+        let (loaded, error) =
+            apply(fs.clone(), &path, Operation::SetProxyChildProcesses(false)).await;
+
+        assert!(error.is_some(), "the write should have been refused");
+        assert!(matches!(loaded.status, Status::Unusable(_)));
+        assert!(
+            loaded.proxy_child_processes,
+            "an unusable file reads as the default, which is on"
+        );
+        assert_eq!(
+            fake_fs
+                .load(&path)
+                .await
+                .expect("file should still be there"),
+            broken,
+            "a file that cannot be parsed must be left exactly as it was"
+        );
+    }
+
+    #[test]
+    fn removing_the_last_entry_leaves_an_empty_array() {
+        let existing = "{ \"allowed_hosts\": [\"zed.dev\"] }\n";
+        let rewritten = allowed_hosts_replaced(existing, &[]).expect("rewrite should succeed");
+        let parsed: NetworkAllowlistFile =
+            settings_json::parse_json_with_comments(&rewritten).expect("should parse");
+        assert!(parsed.allowed_hosts.is_empty());
+    }
+
+    #[test]
+    fn canonicalizes_the_forms_the_policy_accepts() {
+        assert_eq!(
+            canonicalize_host(" API.Anthropic.COM. "),
+            Ok("api.anthropic.com".to_string())
+        );
+        assert_eq!(
+            canonicalize_host("*.corp.example"),
+            Ok("*.corp.example".to_string())
+        );
+        assert_eq!(canonicalize_host("10.0.0.5"), Ok("10.0.0.5".to_string()));
+        assert_eq!(canonicalize_host("[fd00::1]"), Ok("[fd00::1]".to_string()));
+    }
+
+    #[test]
+    fn rejects_what_the_policy_would_skip() {
+        for input in ["", "   ", "*.", "foo.*.com", "*.*", "a..b", "*.10.0.0.5"] {
+            assert!(
+                canonicalize_host(input).is_err(),
+                "{input:?} should be rejected"
+            );
+        }
+    }
+}

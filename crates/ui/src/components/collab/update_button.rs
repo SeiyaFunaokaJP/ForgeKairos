@@ -100,39 +100,61 @@ impl UpdateButton {
     }
 
     pub fn checking() -> Self {
-        Self::new(IconName::LoadCircle, "Checking for Zed Updates…")
+        Self::new(IconName::LoadCircle, "Zed の更新を確認しています…")
             .icon_animate(true)
             .disabled(true)
     }
 
     pub fn downloading(progress: Option<f32>) -> Self {
-        Self::new(IconName::Download, "Downloading Zed Update…")
+        Self::new(IconName::Download, "Zed の更新をダウンロードしています…")
             .progress(progress)
             .disabled(true)
     }
 
     pub fn installing(version: impl Into<SharedString>) -> Self {
-        Self::new(IconName::LoadCircle, "Installing Zed Update…")
+        Self::new(IconName::LoadCircle, "Zed の更新をインストールしています…")
             .icon_animate(true)
             .tooltip(version)
             .disabled(true)
     }
 
     pub fn updated(version: impl Into<SharedString>) -> Self {
-        Self::new(IconName::Download, "Restart to Update")
+        Self::new(IconName::Download, "再起動して更新")
             .tooltip(version)
             .with_dismiss()
     }
 
     pub fn errored(error: impl Into<SharedString>) -> Self {
-        Self::new(IconName::Warning, "Failed to Update")
+        Self::new(IconName::Warning, "更新に失敗しました")
             .icon_color(Color::Warning)
             .tooltip(error)
             .with_dismiss()
     }
 
+    /// Shown when an update is available but downloading it would reach hosts
+    /// the network allowlist does not permit (ADR-F16). Clicking it must ask
+    /// before anything is added to the allowlist.
+    pub fn needs_egress_consent(detail: impl Into<SharedString>) -> Self {
+        Self::new(IconName::Warning, "更新には許可が必要です")
+            .icon_color(Color::Warning)
+            .tooltip(detail)
+            .with_dismiss()
+    }
+
+    // `crates/title_bar/src/update_version.rs` のテストが完全一致で照合している
+    pub fn egress_consent_tooltip_message(
+        version: impl std::fmt::Display,
+        hosts: &[String],
+    ) -> String {
+        format!(
+            "バージョン {version} をダウンロードするには {} への通信の許可が必要です",
+            hosts.join("、")
+        )
+    }
+
+    // `crates/title_bar/src/update_version.rs` のテストが完全一致で照合している
     pub fn version_tooltip_message(version: impl std::fmt::Display) -> String {
-        format!("Update to Version: {version}")
+        format!("バージョン {version} に更新")
     }
 
     pub fn downloading_tooltip_message(
@@ -142,7 +164,7 @@ impl UpdateButton {
         let message = Self::version_tooltip_message(version);
         match progress {
             Some(progress) => format!(
-                "{message} ({:.0}% downloaded)",
+                "{message} (ダウンロード済み {:.0}%)",
                 progress.clamp(0.0, 1.0) * 100.0
             ),
             None => message,
@@ -210,7 +232,7 @@ impl RenderOnce for UpdateButton {
                         IconButton::new(dismiss_button_id, IconName::Close)
                             .icon_size(IconSize::Indicator)
                             .when_some(self.on_dismiss, |this, handler| this.on_click(handler))
-                            .tooltip(Tooltip::text("Dismiss")),
+                            .tooltip(Tooltip::text("閉じる")),
                     ),
                 )
             })
@@ -267,6 +289,16 @@ impl Component for UpdateButton {
                             "Error",
                             UpdateButton::errored("Network timeout").into_any_element(),
                         ),
+                        single_example(
+                            "Needs Egress Consent",
+                            UpdateButton::needs_egress_consent(
+                                UpdateButton::egress_consent_tooltip_message(
+                                    version,
+                                    &["github.com".to_string()],
+                                ),
+                            )
+                            .into_any_element(),
+                        ),
                     ],
                 ),
             ])
@@ -312,7 +344,7 @@ mod tests {
                         cx.new(|_| TestTooltip { rendered }).into()
                     }),
                 )
-                .child(UpdateButton::updated("Update to Version: 1.0.0"))
+                .child(UpdateButton::updated("バージョン 1.0.0 に更新"))
         }
     }
 

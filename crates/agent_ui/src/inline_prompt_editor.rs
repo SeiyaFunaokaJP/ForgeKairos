@@ -129,7 +129,12 @@ impl<T: 'static> Render for PromptEditor<T> {
             .icon_color(Color::Muted)
             .when(!menu_visible, |this| {
                 this.tooltip(move |_window, cx| {
-                    Tooltip::with_meta("Add Context", None, "Or type @ to include context", cx)
+                    Tooltip::with_meta(
+                        "コンテキストを追加",
+                        None,
+                        "@ を入力してコンテキストを追加することもできます",
+                        cx,
+                    )
                 })
             })
             .on_click(cx.listener(move |this, _, window, cx| {
@@ -357,7 +362,7 @@ impl<T: 'static> PromptEditor<T> {
         self.editor = cx.new(|cx| {
             let mut editor = Editor::auto_height(1, Self::MAX_LINES as usize, window, cx);
             editor.set_soft_wrap_mode(language::language_settings::SoftWrap::EditorWidth, cx);
-            editor.set_placeholder_text("Add a prompt…", window, cx);
+            editor.set_placeholder_text("プロンプトを追加…", window, cx);
             editor.set_text(prompt, window, cx);
             creases = insert_message_creases(&mut editor, &existing_creases, window, cx);
 
@@ -390,20 +395,20 @@ impl<T: 'static> PromptEditor<T> {
         let action = match mode {
             PromptEditorMode::Buffer { codegen, .. } => {
                 if codegen.read(cx).is_insertion {
-                    "Generate"
+                    "生成"
                 } else {
-                    "Transform"
+                    "変換"
                 }
             }
-            PromptEditorMode::Terminal { .. } => "Generate",
+            PromptEditorMode::Terminal { .. } => "生成",
         };
 
         let agent_panel_keybinding =
             ui::text_for_action(&zed_actions::assistant::ToggleFocus, window, cx)
-                .map(|keybinding| format!("{keybinding} to chat"))
+                .map(|keybinding| format!("{keybinding} でチャット"))
                 .unwrap_or_default();
 
-        format!("{action}… ({agent_panel_keybinding} ― ↓↑ for history — @ to include context)")
+        format!("{action}… ({agent_panel_keybinding} ― ↓↑ で履歴 — @ でコンテキストを追加)")
     }
 
     pub fn prompt(&self, cx: &App) -> String {
@@ -596,12 +601,12 @@ impl<T: 'static> PromptEditor<T> {
     fn thumbs_up(&mut self, _: &ThumbsUpResult, _window: &mut Window, cx: &mut Context<Self>) {
         match &self.session_state.completion {
             CompletionState::Pending => {
-                self.toast("Can't rate, still generating...", None, cx);
+                self.toast("生成中のため評価できません...", None, cx);
                 return;
             }
             CompletionState::Rated => {
                 self.toast(
-                    "Already rated this completion",
+                    "この生成結果は評価済みです",
                     Some(self.session_state.session_id),
                     cx,
                 );
@@ -611,7 +616,7 @@ impl<T: 'static> PromptEditor<T> {
                 let model_info = self.model_selector.read(cx).active_model(cx);
                 let (model_id, use_streaming_tools) = {
                     let Some(configured_model) = model_info else {
-                        self.toast("No configured model", None, cx);
+                        self.toast("モデルが設定されていません", None, cx);
                         return;
                     };
                     (
@@ -659,12 +664,12 @@ impl<T: 'static> PromptEditor<T> {
     fn thumbs_down(&mut self, _: &ThumbsDownResult, _window: &mut Window, cx: &mut Context<Self>) {
         match &self.session_state.completion {
             CompletionState::Pending => {
-                self.toast("Can't rate, still generating...", None, cx);
+                self.toast("生成中のため評価できません...", None, cx);
                 return;
             }
             CompletionState::Rated => {
                 self.toast(
-                    "Already rated this completion",
+                    "この生成結果は評価済みです",
                     Some(self.session_state.session_id),
                     cx,
                 );
@@ -674,7 +679,7 @@ impl<T: 'static> PromptEditor<T> {
                 let model_info = self.model_selector.read(cx).active_model(cx);
                 let (model_telemetry_id, use_streaming_tools) = {
                     let Some(configured_model) = model_info else {
-                        self.toast("No configured model", None, cx);
+                        self.toast("モデルが設定されていません", None, cx);
                         return;
                     };
                     (
@@ -732,9 +737,14 @@ impl<T: 'static> PromptEditor<T> {
                         .autohide();
 
                         if let Some(uuid) = uuid {
-                            toast = toast.on_click("Click to copy rating ID", move |_, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(uuid.to_string()));
-                            });
+                            toast = toast.on_click(
+                                "クリックして評価 ID をコピー",
+                                move |_, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        uuid.to_string(),
+                                    ));
+                                },
+                            );
                         };
 
                         toast
@@ -824,7 +834,7 @@ impl<T: 'static> PromptEditor<T> {
                         Tooltip::with_meta(
                             mode.tooltip_interrupt(),
                             Some(&menu::Cancel),
-                            "Changes won't be discarded",
+                            "変更は破棄されません",
                             cx,
                         )
                     })
@@ -842,7 +852,7 @@ impl<T: 'static> PromptEditor<T> {
                                 Tooltip::with_meta(
                                     mode.tooltip_restart(),
                                     Some(&menu::Confirm),
-                                    "Changes will be discarded",
+                                    "変更は破棄されます",
                                     cx,
                                 )
                             })
@@ -883,9 +893,9 @@ impl<T: 'static> PromptEditor<T> {
                                                     .icon_color(Color::Disabled)
                                                     .tooltip(move |_, cx| {
                                                         Tooltip::with_meta(
-                                                            "Good Result",
+                                                            "良い結果",
                                                             None,
-                                                            "You already rated this result",
+                                                            "この結果は評価済みです",
                                                             cx,
                                                         )
                                                     })
@@ -893,7 +903,7 @@ impl<T: 'static> PromptEditor<T> {
                                                 this.icon_color(Color::Muted).tooltip(
                                                     move |_, cx| {
                                                         Tooltip::for_action(
-                                                            "Good Result",
+                                                            "良い結果",
                                                             &ThumbsUpResult,
                                                             cx,
                                                         )
@@ -914,9 +924,9 @@ impl<T: 'static> PromptEditor<T> {
                                                     .icon_color(Color::Disabled)
                                                     .tooltip(move |_, cx| {
                                                         Tooltip::with_meta(
-                                                            "Bad Result",
+                                                            "悪い結果",
                                                             None,
-                                                            "You already rated this result",
+                                                            "この結果は評価済みです",
                                                             cx,
                                                         )
                                                     })
@@ -924,7 +934,7 @@ impl<T: 'static> PromptEditor<T> {
                                                 this.icon_color(Color::Muted).tooltip(
                                                     move |_, cx| {
                                                         Tooltip::for_action(
-                                                            "Bad Result",
+                                                            "悪い結果",
                                                             &ThumbsDownResult,
                                                             cx,
                                                         )
@@ -950,7 +960,7 @@ impl<T: 'static> PromptEditor<T> {
                                     .shape(IconButtonShape::Square)
                                     .tooltip(|_window, cx| {
                                         Tooltip::for_action(
-                                            "Execute Generated Command",
+                                            "生成されたコマンドを実行",
                                             &menu::SecondaryConfirm,
                                             cx,
                                         )
@@ -1007,7 +1017,7 @@ impl<T: 'static> PromptEditor<T> {
             .tooltip({
                 move |_window, cx| {
                     Tooltip::for_action_in(
-                        "Close Assistant",
+                        "アシスタントを閉じる",
                         &editor::actions::Cancel,
                         &focus_handle,
                         cx,
@@ -1060,7 +1070,7 @@ impl<T: 'static> PromptEditor<T> {
                         let focus_handle = self.editor.focus_handle(cx);
                         move |_window, cx| {
                             cx.new(|cx| {
-                                let mut tooltip = Tooltip::new("Previous Alternative").key_binding(
+                                let mut tooltip = Tooltip::new("前の候補").key_binding(
                                     KeyBinding::for_action_in(
                                         &CyclePreviousInlineAssist,
                                         &focus_handle,
@@ -1101,7 +1111,7 @@ impl<T: 'static> PromptEditor<T> {
                         let focus_handle = self.editor.focus_handle(cx);
                         move |_window, cx| {
                             cx.new(|cx| {
-                                let mut tooltip = Tooltip::new("Next Alternative").key_binding(
+                                let mut tooltip = Tooltip::new("次の候補").key_binding(
                                     KeyBinding::for_action_in(
                                         &CycleNextInlineAssist,
                                         &focus_handle,
@@ -1542,28 +1552,28 @@ pub enum GenerationMode {
 impl GenerationMode {
     fn start_label(self) -> &'static str {
         match self {
-            GenerationMode::Generate => "Generate",
-            GenerationMode::Transform => "Transform",
+            GenerationMode::Generate => "生成",
+            GenerationMode::Transform => "変換",
         }
     }
     fn tooltip_interrupt(self) -> &'static str {
         match self {
-            GenerationMode::Generate => "Interrupt Generation",
-            GenerationMode::Transform => "Interrupt Transform",
+            GenerationMode::Generate => "生成を中断",
+            GenerationMode::Transform => "変換を中断",
         }
     }
 
     fn tooltip_restart(self) -> &'static str {
         match self {
-            GenerationMode::Generate => "Restart Generation",
-            GenerationMode::Transform => "Restart Transform",
+            GenerationMode::Generate => "生成を再実行",
+            GenerationMode::Transform => "変換を再実行",
         }
     }
 
     fn tooltip_accept(self) -> &'static str {
         match self {
-            GenerationMode::Generate => "Accept Generation",
-            GenerationMode::Transform => "Accept Transform",
+            GenerationMode::Generate => "生成を採用",
+            GenerationMode::Transform => "変換を採用",
         }
     }
 }

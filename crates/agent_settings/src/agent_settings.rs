@@ -208,6 +208,7 @@ pub struct AgentSettings {
     pub dock: DockPosition,
     pub flexible: bool,
     pub sidebar_side: SidebarDockPosition,
+    pub panel_thread_history: bool,
     pub default_width: Pixels,
     pub default_height: Pixels,
     pub max_content_width: Option<Pixels>,
@@ -543,8 +544,7 @@ impl CompiledRegex {
     }
 }
 
-pub const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "Blocked by built-in security rule. This operation is considered too \
-     harmful to be allowed, and cannot be overridden by settings.";
+pub const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "組み込みのセキュリティルールによりブロックされました。この操作は許可するには危険すぎると判断されており、設定で上書きすることはできません。";
 
 /// Security rules that are always enforced and cannot be overridden by any setting.
 /// These protect against catastrophic operations like wiping filesystems.
@@ -759,6 +759,7 @@ impl Settings for AgentSettings {
             button: agent.button.unwrap(),
             dock: agent.dock.unwrap(),
             sidebar_side: agent.sidebar_side.unwrap(),
+            panel_thread_history: agent.panel_thread_history.unwrap_or(true),
             default_width: agent.default_width.unwrap().into_gpui(),
             default_height: agent.default_height.unwrap().into_gpui(),
             max_content_width: if agent.limit_content_width.unwrap() {
@@ -767,7 +768,7 @@ impl Settings for AgentSettings {
                 None
             },
             flexible: agent.flexible.unwrap(),
-            default_model: Some(agent.default_model.unwrap()),
+            default_model: agent.default_model,
             subagent_model: agent.subagent_model,
             inline_assistant_model: agent.inline_assistant_model,
             inline_assistant_use_streaming_tools: agent

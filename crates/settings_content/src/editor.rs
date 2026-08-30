@@ -383,6 +383,11 @@ pub struct ToolbarContent {
     ///
     /// Default: false
     pub code_actions: Option<bool>,
+    /// Whether to display the Markdown formatting row below the editor toolbar
+    /// while a Markdown file is open.
+    ///
+    /// Default: true
+    pub markdown_format_bar: Option<bool>,
 }
 
 /// Scrollbar related settings

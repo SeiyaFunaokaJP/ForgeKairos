@@ -96,7 +96,7 @@ impl Render for ApiKeysWithProviders {
                                 div()
                                     .w_full()
                                     .child(
-                                        Label::new("Start now using API keys from your environment for the following providers:")
+                                        Label::new("次のプロバイダーについては、環境の API キーですぐに利用を開始できます:")
                                             .color(Color::Muted)
                                     )
                             )
@@ -124,7 +124,7 @@ impl RenderOnce for ApiKeysWithoutProviders {
                 h_flex()
                     .gap_2()
                     .child(
-                        Label::new("API Keys")
+                        Label::new("API キー")
                             .size(LabelSize::Small)
                             .color(Color::Muted)
                             .buffer_font(cx),
@@ -132,10 +132,10 @@ impl RenderOnce for ApiKeysWithoutProviders {
                     .child(Divider::horizontal()),
             )
             .child(List::new().child(ListBulletItem::new(
-                "Add your own keys to use AI without signing in.",
+                "サインインせずに AI を使うには、ご自身のキーを追加してください。",
             )))
             .child(
-                Button::new("configure-providers", "Configure Providers")
+                Button::new("configure-providers", "プロバイダーを設定")
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .on_click(move |_, window, cx| {

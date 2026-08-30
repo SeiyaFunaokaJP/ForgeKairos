@@ -16,6 +16,8 @@ doctest = false
 anyhow.workspace = true
 client.workspace = true
 db.workspace = true
+egress_policy.workspace = true
+fs.workspace = true
 futures-lite.workspace = true
 gpui.workspace = true
 http_client.workspace = true
@@ -24,7 +26,6 @@ paths.workspace = true
 release_channel.workspace = true
 semver.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 settings.workspace = true
 smol.workspace = true
 tempfile.workspace = true
@@ -40,4 +41,5 @@ clock= { workspace = true, "features" = ["test-support"] }
 futures.workspace = true
 gpui = { workspace = true, "features" = ["test-support"] }
 parking_lot.workspace = true
+serde_json.workspace = true
 zlog.workspace = true

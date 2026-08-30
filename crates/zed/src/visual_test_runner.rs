@@ -183,7 +183,6 @@ fn run_visual_tests(project_path: PathBuf, update_baseline: bool) -> Result<()> 
         release_channel::init(semver::Version::new(0, 0, 0), cx);
         command_palette::init(cx);
         editor::init(cx);
-        call::init(app_state.client.clone(), app_state.user_store.clone(), cx);
         title_bar::init(cx);
         project_panel::init(cx);
         outline_panel::init(cx);
@@ -2114,7 +2113,7 @@ fn run_agent_thread_view_test(
     connection.set_next_prompt_updates(vec![acp::SessionUpdate::ToolCall(
         acp::ToolCall::new(
             "read_file",
-            format!("Read file `{}/test-image.png`", worktree_name),
+            format!("ファイル `{}/test-image.png` を読み込み", worktree_name),
         )
         .kind(acp::ToolKind::Read)
         .status(acp::ToolCallStatus::Completed)

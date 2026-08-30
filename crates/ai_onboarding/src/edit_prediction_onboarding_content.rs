@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use client::{Client, UserStore};
 use cloud_api_types::Plan;
-use gpui::{Entity, IntoElement, ParentElement};
+use gpui::{Action, Entity, IntoElement, ParentElement};
 use ui::prelude::*;
 
 use crate::ZedAiOnboarding;
@@ -42,29 +42,67 @@ impl Render for EditPredictionOnboarding {
             .plan()
             .is_some_and(|plan| plan == Plan::ZedFree);
 
-        let github_copilot = v_flex()
-            .gap_1()
-            .child(Label::new(if self.copilot_is_configured {
-                "Alternatively, you can continue to use GitHub Copilot as that's already set up."
-            } else {
-                "Alternatively, you can use GitHub Copilot as your edit prediction provider."
-            }))
-            .child(
-                Button::new(
-                    "configure-copilot",
-                    if self.copilot_is_configured {
-                        "Use Copilot"
-                    } else {
-                        "Configure Copilot"
-                    },
+        // zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): GitHub Copilot is an
+        // external AI service, and this button would otherwise kick off its
+        // sign-in flow directly, bypassing the consent gate that
+        // `settings_ui::pages::edit_prediction_provider_setup` enforces for the
+        // same provider. `copilot_is_configured` only reflects whether the
+        // shared Copilot OAuth token exists, not whether this surface's warning
+        // was acknowledged, so it cannot substitute for the check.
+        let copilot_needs_consent = !settings::external_ai_provider_is_acknowledged(
+            settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY,
+            cx,
+        );
+
+        let github_copilot = if copilot_needs_consent {
+            v_flex()
+                .gap_1()
+                .child(
+                    Label::new(
+                        "GitHub Copilot も編集予測のプロバイダーとして使えますが、外部の AI サービスです。「AI」ページの「プロバイダーの設定」で編集予測を有効にし、学習リスクの警告を確認してください。",
+                    )
+                    .color(Color::Muted),
                 )
-                .full_width()
-                .style(ButtonStyle::Outlined)
-                .on_click({
-                    let callback = self.continue_with_copilot.clone();
-                    move |_, window, cx| callback(window, cx)
-                }),
-            );
+                .child(
+                    Button::new("configure-copilot", "「プロバイダーの設定」を開く")
+                        .full_width()
+                        .style(ButtonStyle::Outlined)
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(
+                                zed_actions::OpenSettingsAt {
+                                    path: "edit_predictions.providers".to_string(),
+                                    target: None,
+                                }
+                                .boxed_clone(),
+                                cx,
+                            );
+                        }),
+                )
+        } else {
+            v_flex()
+                .gap_1()
+                .child(Label::new(if self.copilot_is_configured {
+                    "GitHub Copilot は設定済みのため、そのまま使い続けることもできます。"
+                } else {
+                    "編集予測のプロバイダーとして GitHub Copilot を使うこともできます。"
+                }))
+                .child(
+                    Button::new(
+                        "configure-copilot",
+                        if self.copilot_is_configured {
+                            "Copilot を使用"
+                        } else {
+                            "Copilot を設定"
+                        },
+                    )
+                    .full_width()
+                    .style(ButtonStyle::Outlined)
+                    .on_click({
+                        let callback = self.continue_with_copilot.clone();
+                        move |_, window, cx| callback(window, cx)
+                    }),
+                )
+        };
 
         v_flex()
             .gap_2()

@@ -32,6 +32,7 @@ collections.workspace = true
 crashes.workspace = true
 dap_adapters.workspace = true
 debug_adapter_extension.workspace = true
+egress_policy.workspace = true
 env_logger.workspace = true
 extension.workspace = true
 extension_host.workspace = true

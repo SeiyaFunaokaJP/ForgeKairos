@@ -4,9 +4,13 @@ use collections::HashMap;
 use context_server::ContextServerId;
 use editor::Editor;
 use extension_host::ExtensionStore;
-use gpui::{Action as _, Entity, Focusable as _, ScrollHandle, WeakEntity, prelude::*};
+use gpui::{
+    Action as _, Entity, EntityId, Focusable as _, ScrollHandle, Subscription, Task, WeakEntity,
+    prelude::*,
+};
 use project::context_server_store::{
-    ContextServerConfiguration, ContextServerStatus, ContextServerStore,
+    ContextServerConfiguration, ContextServerStatus, ContextServerStore, ServerStatusChangedEvent,
+    wait_for_context_server,
 };
 use project::project_settings::ContextServerSettings;
 use settings::{ContextServerCommand, ContextServerSettingsContent, OAuthClientSettings};
@@ -19,6 +23,118 @@ use util::ResultExt as _;
 use zed_actions::ExtensionCategoryFilter;
 
 use crate::{PROJECT, SettingField, SettingItem, SettingsPageItem, SettingsWindow, USER};
+
+/// Live state the MCP servers page keeps while it is open.
+#[derive(Default)]
+pub(crate) struct McpPageState {
+    /// Subscription to the active project's [`ContextServerStore`], tagged with
+    /// the store it watches. Without it the status indicators would only change
+    /// when the page happened to be re-rendered for some other reason.
+    store_subscription: Option<(EntityId, Subscription)>,
+    connection_tests: HashMap<ContextServerId, McpConnectionTest>,
+    /// The server whose client secret is being entered, and the input for it.
+    client_secret_input: Option<(ContextServerId, Entity<Editor>)>,
+}
+
+struct McpConnectionTest {
+    outcome: McpConnectionTestOutcome,
+    /// Held so the wait is cancelled when the page state is dropped. Never
+    /// replaced from inside the task it holds, which would drop that task while
+    /// it is still running.
+    _task: Option<Task<()>>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum McpConnectionTestOutcome {
+    Running,
+    Succeeded,
+    /// The server settled in a state that needs something from the user; the
+    /// row's own status details say what.
+    NeedsAction(SharedString),
+    Failed(SharedString),
+}
+
+impl McpPageState {
+    fn report(&mut self, id: ContextServerId, outcome: McpConnectionTestOutcome) {
+        self.connection_tests.insert(
+            id,
+            McpConnectionTest {
+                outcome,
+                _task: None,
+            },
+        );
+    }
+}
+
+/// Called when the MCP servers sub-page opens: drops feedback left over from the
+/// previous visit and points the status subscription at the current project.
+pub(crate) fn open_mcp_servers_page(
+    settings_window: &mut SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) {
+    settings_window.mcp_page.connection_tests.clear();
+    settings_window.mcp_page.client_secret_input = None;
+    subscribe_to_context_server_store(settings_window, cx);
+}
+
+/// The settings window is re-pointed at whichever workspace opened it, so the
+/// project — and with it the server store — can change under an already-open
+/// page. Does nothing until the page has been opened at least once.
+pub(crate) fn retarget_mcp_server_subscription(
+    settings_window: &mut SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) {
+    if settings_window.mcp_page.store_subscription.is_some() {
+        subscribe_to_context_server_store(settings_window, cx);
+    }
+}
+
+fn subscribe_to_context_server_store(
+    settings_window: &mut SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(store) = get_context_server_store(settings_window, cx) else {
+        settings_window.mcp_page = McpPageState::default();
+        return;
+    };
+
+    if settings_window
+        .mcp_page
+        .store_subscription
+        .as_ref()
+        .is_some_and(|(subscribed_to, _)| *subscribed_to == store.entity_id())
+    {
+        return;
+    }
+
+    // Feedback is keyed by server id, which means nothing once the page is
+    // looking at a different project's servers.
+    settings_window.mcp_page.connection_tests.clear();
+    settings_window.mcp_page.client_secret_input = None;
+
+    let subscription = cx.subscribe(
+        &store,
+        |this, _store, event: &ServerStatusChangedEvent, cx| {
+            let secret_prompt_is_stale =
+                this.mcp_page
+                    .client_secret_input
+                    .as_ref()
+                    .is_some_and(|(id, _)| {
+                        id == &event.server_id
+                            && !matches!(
+                                event.status,
+                                ContextServerStatus::ClientSecretRequired { .. }
+                            )
+                    });
+            if secret_prompt_is_stale {
+                this.mcp_page.client_secret_input = None;
+            }
+            cx.notify();
+        },
+    );
+
+    settings_window.mcp_page.store_subscription = Some((store.entity_id(), subscription));
+}
 
 pub(crate) fn render_mcp_servers_page(
     settings_window: &SettingsWindow,
@@ -34,7 +150,7 @@ pub(crate) fn render_mcp_servers_page(
         if server_ids.is_empty() {
             render_empty_state(cx)
         } else {
-            render_server_list(&server_ids, store, cx)
+            render_server_list(settings_window, &server_ids, store, cx)
         }
     } else {
         render_no_project_state(cx)
@@ -55,8 +171,8 @@ pub(crate) fn render_mcp_servers_page(
                 .px_8()
                 .gap_2()
                 .child(
-                    v_flex().child(Label::new("Configured Servers")).child(
-                        Label::new("Manage servers connected directly or via extensions.")
+                    v_flex().child(Label::new("構成済みのサーバー")).child(
+                        Label::new("直接、または拡張機能を通じて接続されたサーバーを管理します。")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
@@ -74,8 +190,8 @@ fn render_context_server_timeout(
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
     let item = SettingsPageItem::SettingItem(SettingItem {
-        title: "MCP Server Timeout",
-        description: "Default timeout in seconds for MCP server tool calls.",
+        title: "MCP サーバーのタイムアウト",
+        description: "MCP サーバーのツール呼び出しの既定のタイムアウト (秒) です。",
         field: Box::new(SettingField {
             organization_override: None,
             json_path: Some("context_server_timeout"),
@@ -108,9 +224,11 @@ fn render_empty_state(cx: &App) -> AnyElement {
         .border_color(cx.theme().colors().border.opacity(0.6))
         .rounded_sm()
         .child(
-            Label::new("No MCP servers added yet. Click \"Add Server\" to get started.")
-                .color(Color::Muted)
-                .size(LabelSize::Small),
+            Label::new(
+                "MCP サーバーはまだ追加されていません。「サーバーを追加」から始めてください。",
+            )
+            .color(Color::Muted)
+            .size(LabelSize::Small),
         )
         .into_any_element()
 }
@@ -124,7 +242,7 @@ fn render_no_project_state(cx: &App) -> AnyElement {
         .border_color(cx.theme().colors().border.opacity(0.6))
         .rounded_sm()
         .child(
-            Label::new("No active project found. Open a workspace to manage MCP servers.")
+            Label::new("アクティブなプロジェクトがありません。MCP サーバーを管理するにはワークスペースを開いてください。")
                 .color(Color::Muted)
                 .size(LabelSize::Small),
         )
@@ -132,6 +250,7 @@ fn render_no_project_state(cx: &App) -> AnyElement {
 }
 
 fn render_server_list(
+    settings_window: &SettingsWindow,
     server_ids: &[ContextServerId],
     store: &Entity<ContextServerStore>,
     cx: &mut Context<SettingsWindow>,
@@ -140,15 +259,16 @@ fn render_server_list(
         .w_full()
         .gap_1()
         .children(itertools::intersperse_with(
-            server_ids
-                .iter()
-                .map(|server_id| render_context_server(server_id, store, cx).into_any_element()),
+            server_ids.iter().map(|server_id| {
+                render_context_server(settings_window, server_id, store, cx).into_any_element()
+            }),
             || Divider::horizontal_dashed().into_any_element(),
         ))
         .into_any_element()
 }
 
 fn render_context_server(
+    settings_window: &SettingsWindow,
     context_server_id: &ContextServerId,
     store: &Entity<ContextServerStore>,
     cx: &mut Context<SettingsWindow>,
@@ -159,7 +279,6 @@ fn render_context_server(
         .unwrap_or(ContextServerStatus::Stopped);
     let server_configuration = store.read(cx).configuration_for_server(context_server_id);
 
-    let is_running = matches!(server_status, ContextServerStatus::Running);
     let is_enabled = store.read(cx).is_server_enabled(context_server_id, cx);
     let is_transitioning = matches!(
         server_status,
@@ -191,24 +310,30 @@ fn render_context_server(
             && !config.has_static_auth_header()
     });
 
-    // ContextServerRegistry is per-project (not a global), so we skip tool count
-    // in the settings UI for now.
-    let tool_count = 0usize;
-
-    let tool_label = if is_running && tool_count > 0 {
-        Some(if tool_count == 1 {
-            SharedString::from("1 tool")
-        } else {
-            SharedString::from(format!("{} tools", tool_count))
-        })
-    } else {
-        None
-    };
-
     let server_settings = store
         .read(cx)
         .settings_for_server(context_server_id)
         .cloned();
+
+    // ContextServerRegistry is per-project (not a global), so the tool count is
+    // not available here; the detail label reports egress control instead.
+    let proxy_status = proxy_status_for_server(
+        server_settings.as_ref(),
+        server_configuration.as_deref(),
+        store.read(cx).is_remote_project(),
+        http_client::child_process_proxy().is_some(),
+    );
+
+    let test = settings_window
+        .mcp_page
+        .connection_tests
+        .get(context_server_id);
+    let is_testing = matches!(
+        test.map(|test| &test.outcome),
+        Some(McpConnectionTestOutcome::Running)
+    );
+
+    let test_button = render_connection_test_button(context_server_id, is_testing, cx);
     let configure_button = (!provided_by_extension).then(|| {
         render_configure_button(
             context_server_id,
@@ -219,21 +344,45 @@ fn render_context_server(
     let uninstall_button = render_uninstall_button(context_server_id, provided_by_extension);
 
     // Build toggle switch
-    let toggle_switch =
-        render_toggle_switch(context_server_id, store, is_enabled, is_transitioning);
+    let toggle_switch = render_toggle_switch(
+        context_server_id,
+        store,
+        is_enabled,
+        is_transitioning,
+        configured_remote(server_settings.as_ref(), server_configuration.as_deref()),
+    );
 
     // Surface invalid settings (which prevent the server from starting at all)
     // ahead of runtime status feedback, so the misconfiguration is visible.
-    let details = match settings_validation_error(server_settings.as_ref()) {
+    let status_details = match settings_validation_error(server_settings.as_ref()) {
         Some(error) => Some(render_form_error(error).into_any_element()),
-        None => render_status_details(&server_status, context_server_id, store, should_show_logout),
+        None => render_status_details(
+            settings_window,
+            &server_status,
+            context_server_id,
+            store,
+            should_show_logout,
+            cx,
+        ),
     };
+    let test_feedback = test.map(|test| render_connection_test_feedback(&test.outcome));
+    let details = (test_feedback.is_some() || status_details.is_some()).then(|| {
+        v_flex()
+            .w_full()
+            .min_w_0()
+            .children(test_feedback)
+            .children(status_details)
+            .into_any_element()
+    });
 
     AiSettingItem::new(item_id, display_name, status, source)
+        .action(test_button)
         .when_some(configure_button, |this, button| this.action(button))
         .action(uninstall_button)
         .action(toggle_switch)
-        .when_some(tool_label, |this, label| this.detail_label(label))
+        .when_some(proxy_status.detail(), |this, (label, tooltip)| {
+            this.detail_label(label).detail_label_tooltip(tooltip)
+        })
         .when_some(details, |this, details| this.details(details))
 }
 
@@ -281,7 +430,7 @@ fn render_configure_button(
     )
     .icon_size(IconSize::Small)
     .tab_index(0isize)
-    .tooltip(Tooltip::text("Configure MCP Server"))
+    .tooltip(Tooltip::text("MCP サーバーを設定"))
     .on_click(move |_event, window, cx| {
         let transport = match &server_settings {
             Some(ContextServerSettings::Http { .. }) => McpTransport::Http,
@@ -298,6 +447,168 @@ fn render_configure_button(
     })
 }
 
+/// Rendered as a labelled button rather than a bare icon: the row's other
+/// controls are all unlabelled icons, and a fourth glyph among them was reported
+/// as invisible in practice — the only thing naming it was its hover tooltip.
+fn render_connection_test_button(
+    context_server_id: &ContextServerId,
+    is_testing: bool,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let context_server_id = context_server_id.clone();
+
+    Button::new(
+        SharedString::from(format!("mcp-test-btn-{}", context_server_id.0)),
+        if is_testing {
+            "テスト中…"
+        } else {
+            "接続テスト"
+        },
+    )
+    .style(ButtonStyle::Outlined)
+    .label_size(LabelSize::Small)
+    .start_icon(
+        Icon::new(IconName::RotateCw)
+            .size(IconSize::Small)
+            .color(Color::Muted),
+    )
+    .tab_index(0isize)
+    .disabled(is_testing)
+    .tooltip(Tooltip::text(
+        "サーバーを再接続して、接続できるかどうかを確認します。",
+    ))
+    .on_click(cx.listener(move |this, _event, _window, cx| {
+        start_connection_test(this, context_server_id.clone(), cx);
+    }))
+    .into_any_element()
+}
+
+fn render_connection_test_feedback(outcome: &McpConnectionTestOutcome) -> AnyElement {
+    let (icon, color, message): (IconName, Color, SharedString) = match outcome {
+        McpConnectionTestOutcome::Running => (
+            IconName::RotateCw,
+            Color::Muted,
+            "接続をテストしています…".into(),
+        ),
+        McpConnectionTestOutcome::Succeeded => (
+            IconName::Check,
+            Color::Success,
+            "接続テスト: 接続できました。".into(),
+        ),
+        McpConnectionTestOutcome::NeedsAction(message) => (
+            IconName::Info,
+            Color::Warning,
+            format!("接続テスト: {message}").into(),
+        ),
+        McpConnectionTestOutcome::Failed(message) => (
+            IconName::XCircle,
+            Color::Error,
+            format!("接続テスト: {message}").into(),
+        ),
+    };
+
+    h_flex()
+        .py_1()
+        .min_w_0()
+        .w_full()
+        .gap_2()
+        .child(Icon::new(icon).size(IconSize::XSmall).color(color))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                // Coloured like its icon so the outcome reads without hovering.
+                .child(Label::new(message).color(color).size(LabelSize::Small)),
+        )
+        .into_any_element()
+}
+
+/// Restarts a server and reports where it ended up, so the user can tell a
+/// working configuration from a broken one without leaving the page.
+fn start_connection_test(
+    settings_window: &mut SettingsWindow,
+    context_server_id: ContextServerId,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(store) = get_context_server_store(settings_window, cx) else {
+        return;
+    };
+
+    if !store.read(cx).is_server_enabled(&context_server_id, cx) {
+        settings_window.mcp_page.report(
+            context_server_id,
+            McpConnectionTestOutcome::Failed(
+                "このサーバーは無効です。有効にしてから接続をテストしてください。".into(),
+            ),
+        );
+        cx.notify();
+        return;
+    }
+
+    // `start_server` needs the store's own handle for the server, which only
+    // exists once the store has built it. A server that is enabled but absent
+    // was never successfully created (a missing extension, or settings that
+    // could not be resolved), and there is nothing here to restart.
+    let Some(server) = store.read(cx).get_server(&context_server_id) else {
+        settings_window.mcp_page.report(
+            context_server_id,
+            McpConnectionTestOutcome::Failed(
+                "このサーバーはまだ作成されていません。設定と拡張機能を確認してください。".into(),
+            ),
+        );
+        cx.notify();
+        return;
+    };
+
+    // Stop before the wait is set up: the wait treats `Stopped` as a failure and
+    // must not see the one this restart causes.
+    store.update(cx, |store, cx| {
+        store.stop_server(&context_server_id, cx).log_err();
+    });
+
+    let wait = wait_for_context_server(&store, context_server_id.clone(), cx);
+    let task = cx.spawn({
+        let context_server_id = context_server_id.clone();
+        async move |this, cx| {
+            let outcome = match wait.await {
+                Ok(ContextServerStatus::Running) => McpConnectionTestOutcome::Succeeded,
+                Ok(ContextServerStatus::AuthRequired) => {
+                    McpConnectionTestOutcome::NeedsAction("接続するには認証が必要です。".into())
+                }
+                Ok(ContextServerStatus::ClientSecretRequired { .. }) => {
+                    McpConnectionTestOutcome::NeedsAction(
+                        "接続するにはクライアントシークレットが必要です。".into(),
+                    )
+                }
+                Ok(_) => McpConnectionTestOutcome::Failed(
+                    "サーバーが接続できる状態になりませんでした。".into(),
+                ),
+                Err(error) => McpConnectionTestOutcome::Failed(error.to_string().into()),
+            };
+            this.update(cx, |this, cx| {
+                // Only the outcome is replaced: this task is stored in the very
+                // entry being updated, and replacing the entry would drop it.
+                if let Some(test) = this.mcp_page.connection_tests.get_mut(&context_server_id) {
+                    test.outcome = outcome;
+                }
+                cx.notify();
+            })
+            .log_err();
+        }
+    });
+
+    settings_window.mcp_page.connection_tests.insert(
+        context_server_id,
+        McpConnectionTest {
+            outcome: McpConnectionTestOutcome::Running,
+            _task: Some(task),
+        },
+    );
+
+    store.update(cx, |store, cx| store.start_server(server, cx));
+    cx.notify();
+}
+
 fn render_uninstall_button(
     context_server_id: &ContextServerId,
     provided_by_extension: bool,
@@ -310,7 +621,7 @@ fn render_uninstall_button(
     )
     .icon_size(IconSize::Small)
     .tab_index(0isize)
-    .tooltip(Tooltip::text("Uninstall MCP Server"))
+    .tooltip(Tooltip::text("MCP サーバーをアンインストール"))
     .on_click(move |_event, _window, cx| {
         uninstall_server(&context_server_id, provided_by_extension, cx);
     })
@@ -321,6 +632,7 @@ fn render_toggle_switch(
     store: &Entity<ContextServerStore>,
     is_enabled: bool,
     is_transitioning: bool,
+    configured_remote: bool,
 ) -> impl IntoElement {
     let context_server_id = context_server_id.clone();
     let store = store.clone();
@@ -362,9 +674,12 @@ fn render_toggle_switch(
                         .project
                         .context_servers
                         .entry(context_server_id.0.clone())
+                        // Materializing an entry for a server that had none must
+                        // not silently move it back to this machine: carry over
+                        // the execution host it is running with.
                         .or_insert_with(|| ContextServerSettingsContent::Extension {
                             enabled: is_enabled,
-                            remote: false,
+                            remote: configured_remote,
                             settings: serde_json::json!({}),
                         })
                         .set_enabled(is_enabled);
@@ -375,10 +690,12 @@ fn render_toggle_switch(
 }
 
 fn render_status_details(
+    settings_window: &SettingsWindow,
     server_status: &ContextServerStatus,
     context_server_id: &ContextServerId,
     store: &Entity<ContextServerStore>,
     should_show_logout: bool,
+    cx: &mut Context<SettingsWindow>,
 ) -> Option<AnyElement> {
     let feedback_base = || h_flex().py_1().min_w_0().w_full().gap_1().justify_between();
 
@@ -408,7 +725,7 @@ fn render_status_details(
                     )
                     .when(should_show_logout, |this| {
                         this.child(
-                            Button::new("error-logout", "Log Out")
+                            Button::new("error-logout", "ログアウト")
                                 .style(ButtonStyle::Outlined)
                                 .label_size(LabelSize::Small)
                                 .on_click({
@@ -441,13 +758,13 @@ fn render_status_details(
                                     .color(Color::Muted),
                             )
                             .child(
-                                Label::new("Authenticate to connect this server")
+                                Label::new("このサーバーに接続するには認証してください")
                                     .color(Color::Muted)
                                     .size(LabelSize::Small),
                             ),
                     )
                     .child(
-                        Button::new("authenticate-server", "Authenticate")
+                        Button::new("authenticate-server", "認証")
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .on_click({
@@ -461,26 +778,12 @@ fn render_status_details(
                     .into_any_element(),
             )
         }
-        ContextServerStatus::ClientSecretRequired { .. } => Some(
-            feedback_base()
-                .child(
-                    h_flex()
-                        .min_w_0()
-                        .w_full()
-                        .gap_2()
-                        .child(
-                            Icon::new(IconName::Info)
-                                .size(IconSize::XSmall)
-                                .color(Color::Muted),
-                        )
-                        .child(
-                            Label::new("A client secret is required to connect this server")
-                                .color(Color::Muted)
-                                .size(LabelSize::Small),
-                        ),
-                )
-                .into_any_element(),
-        ),
+        ContextServerStatus::ClientSecretRequired { error } => Some(render_client_secret_details(
+            settings_window,
+            context_server_id,
+            error.as_deref(),
+            cx,
+        )),
         ContextServerStatus::Authenticating => Some(
             h_flex()
                 .mt_1()
@@ -489,7 +792,7 @@ fn render_status_details(
                 .gap_2()
                 .child(div().size_3().flex_shrink_0())
                 .child(
-                    Label::new("Authenticating…")
+                    Label::new("認証中…")
                         .color(Color::Muted)
                         .size(LabelSize::Small),
                 )
@@ -504,7 +807,7 @@ fn render_status_details(
                     .w_full()
                     .justify_end()
                     .child(
-                        Button::new("running-logout", "Log Out")
+                        Button::new("running-logout", "ログアウト")
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .on_click(move |_event, _window, cx| {
@@ -518,6 +821,189 @@ fn render_status_details(
         }
         _ => None,
     }
+}
+
+/// The `ClientSecretRequired` state is a dead end without somewhere to type the
+/// secret: the OAuth flow cannot continue until one is supplied.
+fn render_client_secret_details(
+    settings_window: &SettingsWindow,
+    context_server_id: &ContextServerId,
+    error: Option<&str>,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let input = settings_window
+        .mcp_page
+        .client_secret_input
+        .as_ref()
+        .filter(|(id, _)| id == context_server_id)
+        .map(|(_, editor)| editor.clone());
+
+    v_flex()
+        .py_1()
+        .min_w_0()
+        .w_full()
+        .gap_1()
+        .child(
+            h_flex()
+                .min_w_0()
+                .w_full()
+                .gap_1()
+                .justify_between()
+                .child(
+                    h_flex()
+                        .min_w_0()
+                        .w_full()
+                        .gap_2()
+                        .child(
+                            Icon::new(IconName::Info)
+                                .size(IconSize::XSmall)
+                                .color(Color::Muted),
+                        )
+                        .child(
+                            div().min_w_0().flex_1().child(
+                                Label::new(
+                                    "このサーバーに接続するにはクライアントシークレットが必要です",
+                                )
+                                .color(Color::Muted)
+                                .size(LabelSize::Small),
+                            ),
+                        ),
+                )
+                .when(input.is_none(), |this| {
+                    let context_server_id = context_server_id.clone();
+                    this.child(
+                        Button::new(
+                            SharedString::from(format!(
+                                "client-secret-open-{}",
+                                context_server_id.0
+                            )),
+                            "シークレットを入力",
+                        )
+                        .style(ButtonStyle::Outlined)
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(
+                            move |this, _event, window, cx| {
+                                let editor = new_secret_input(window, cx);
+                                editor.focus_handle(cx).focus(window, cx);
+                                this.mcp_page.client_secret_input =
+                                    Some((context_server_id.clone(), editor));
+                                cx.notify();
+                            },
+                        )),
+                    )
+                }),
+        )
+        .when_some(error, |this, error| {
+            this.child(
+                Label::new(error.to_string())
+                    .color(Color::Error)
+                    .size(LabelSize::Small),
+            )
+        })
+        .when_some(input, |this, editor| {
+            let submit_id = context_server_id.clone();
+            this.child(
+                v_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(input_box(&editor, cx))
+                    .child(
+                        Label::new("パブリッククライアントの場合は空欄のまま送信してください。")
+                            .color(Color::Muted)
+                            .size(LabelSize::Small),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_1()
+                            .justify_end()
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!(
+                                        "client-secret-cancel-{}",
+                                        submit_id.0
+                                    )),
+                                    "キャンセル",
+                                )
+                                .style(ButtonStyle::Subtle)
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(
+                                    |this, _event, _window, cx| {
+                                        this.mcp_page.client_secret_input = None;
+                                        cx.notify();
+                                    },
+                                )),
+                            )
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!(
+                                        "client-secret-submit-{}",
+                                        submit_id.0
+                                    )),
+                                    "送信",
+                                )
+                                .style(ButtonStyle::Filled)
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(
+                                    move |this, _event, _window, cx| {
+                                        submit_client_secret(this, &submit_id, cx);
+                                    },
+                                )),
+                            ),
+                    ),
+            )
+        })
+        .into_any_element()
+}
+
+fn new_secret_input(window: &mut Window, cx: &mut Context<SettingsWindow>) -> Entity<Editor> {
+    cx.new(|cx| {
+        let mut editor = Editor::single_line(window, cx);
+        editor.set_placeholder_text(
+            "クライアントシークレット (パブリッククライアントの場合は空欄)",
+            window,
+            cx,
+        );
+        editor.set_masked(true, cx);
+        editor
+    })
+}
+
+fn submit_client_secret(
+    settings_window: &mut SettingsWindow,
+    context_server_id: &ContextServerId,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(store) = get_context_server_store(settings_window, cx) else {
+        return;
+    };
+    let Some(secret) = settings_window
+        .mcp_page
+        .client_secret_input
+        .as_ref()
+        .filter(|(id, _)| id == context_server_id)
+        .map(|(_, editor)| editor.read(cx).text(cx))
+    else {
+        return;
+    };
+
+    settings_window.mcp_page.client_secret_input = None;
+    settings_window
+        .mcp_page
+        .connection_tests
+        .remove(context_server_id);
+
+    if let Err(error) = store.update(cx, |store, cx| {
+        store.submit_client_secret(context_server_id, secret, cx)
+    }) {
+        settings_window.mcp_page.report(
+            context_server_id.clone(),
+            McpConnectionTestOutcome::Failed(
+                format!("クライアントシークレットを送信できませんでした: {error}").into(),
+            ),
+        );
+    }
+    cx.notify();
 }
 
 pub(crate) fn render_add_server_popover(
@@ -544,7 +1030,7 @@ pub(crate) fn render_add_server_popover(
 
     let popover = PopoverMenu::new("add-mcp-server-popover")
         .trigger(
-            Button::new("add-mcp-server", "Add Server")
+            Button::new("add-mcp-server", "サーバーを追加")
                 .style(ButtonStyle::Outlined)
                 .track_focus(&focus_handle)
                 .start_icon(
@@ -559,7 +1045,7 @@ pub(crate) fn render_add_server_popover(
             move |window, cx| {
                 let settings_window = settings_window.clone();
                 Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                    menu.entry("Add Local Server", None, {
+                    menu.entry("ローカルサーバーを追加", None, {
                         let settings_window = settings_window.clone();
                         move |window, cx| {
                             settings_window
@@ -575,7 +1061,7 @@ pub(crate) fn render_add_server_popover(
                                 .log_err();
                         }
                     })
-                    .entry("Add Remote Server", None, {
+                    .entry("リモートサーバーを追加", None, {
                         let settings_window = settings_window.clone();
                         move |window, cx| {
                             settings_window
@@ -592,7 +1078,7 @@ pub(crate) fn render_add_server_popover(
                         }
                     })
                     .separator()
-                    .entry("Install from Extensions", None, {
+                    .entry("拡張機能からインストール", None, {
                         move |_window, cx| {
                             if let Some(original_window) = original_window.as_ref() {
                                 cx.activate(true);
@@ -733,6 +1219,10 @@ pub(crate) struct McpServerForm {
     oauth_client_id: Entity<Editor>,
     env: Vec<KeyValueRow>,
     headers: Vec<KeyValueRow>,
+    /// Run the server on the SSH host instead of this machine. Only meaningful
+    /// for a stdio server in a remote project, but round-tripped in every case
+    /// so saving the form never drops a hand-written value.
+    remote: bool,
     error: Option<SharedString>,
 }
 
@@ -754,6 +1244,9 @@ impl McpServerForm {
         let mut oauth_initial = None;
         let mut env = Vec::new();
         let mut headers = Vec::new();
+        // Not shown outside a remote project, but read back regardless so saving
+        // the form does not silently discard a hand-written execution host.
+        let remote = configured_remote(settings.as_ref(), None);
 
         // Pre-fill from the raw settings so invalid values (e.g. a malformed URL
         // the user typed directly into settings.json) still load into the form
@@ -804,13 +1297,14 @@ impl McpServerForm {
             ),
             timeout: new_input("60", timeout_initial.as_deref(), window, cx),
             oauth_client_id: new_input(
-                "Optional OAuth client ID",
+                "OAuth クライアント ID (省略可)",
                 oauth_initial.as_deref(),
                 window,
                 cx,
             ),
             env,
             headers,
+            remote,
             error: None,
         }
     }
@@ -850,8 +1344,8 @@ fn new_kv_row(
     cx: &mut Context<SettingsWindow>,
 ) -> KeyValueRow {
     KeyValueRow {
-        key: new_input("Key", key, window, cx),
-        value: new_input("Value", value, window, cx),
+        key: new_input("キー", key, window, cx),
+        value: new_input("値", value, window, cx),
     }
 }
 
@@ -867,17 +1361,17 @@ pub(crate) fn open_mcp_server_form(
     settings_window.mcp_server_form = Some(McpServerForm::new(transport, existing, window, cx));
 
     let title = if is_edit {
-        "Configure MCP Server"
+        "MCP サーバーの設定"
     } else {
         match transport {
-            McpTransport::Stdio => "Add Local MCP Server",
-            McpTransport::Http => "Add Remote MCP Server",
+            McpTransport::Stdio => "ローカル MCP サーバーの追加",
+            McpTransport::Http => "リモート MCP サーバーの追加",
         }
     };
 
     settings_window.push_dynamic_sub_page(
         title,
-        "Agent Configuration",
+        "エージェントの設定",
         Some("context_servers"),
         false,
         render_mcp_server_form_page,
@@ -897,14 +1391,19 @@ fn render_mcp_server_form_page(
     };
     let transport = form.transport;
     let error = form.error.clone();
+    let remote = form.remote;
+    // Outside a remote project the setting has no effect (the server always runs
+    // here), so offering the choice would only invite a wrong expectation.
+    let show_execution_host = get_context_server_store(settings_window, cx)
+        .is_some_and(|store| store.read(cx).is_remote_project());
 
     let fields = v_flex()
         .w_full()
         .gap_4()
         .child(render_form_field(
             settings_window,
-            "Server Name",
-            "Required. A unique name used to identify this MCP server.",
+            "サーバー名",
+            "必須。この MCP サーバーを識別する一意の名前です。",
             &form.name,
             cx,
         ))
@@ -912,60 +1411,63 @@ fn render_mcp_server_form_page(
             McpTransport::Stdio => this
                 .child(render_form_field(
                     settings_window,
-                    "Command",
-                    "Required. Path to the executable that launches the server.",
+                    "コマンド",
+                    "必須。サーバーを起動する実行ファイルのパスです。",
                     &form.command,
                     cx,
                 ))
                 .child(render_form_field(
                     settings_window,
-                    "Arguments",
-                    "Space-separated arguments passed to the command.",
+                    "引数",
+                    "コマンドに渡す引数です。半角スペースで区切ります。",
                     &form.args,
                     cx,
                 ))
                 .child(render_kv_section(
                     settings_window,
-                    "Environment Variables",
-                    "Environment variables provided to the server process.",
+                    "環境変数",
+                    "サーバーのプロセスに渡す環境変数です。",
                     &form.env,
                     McpKvKind::Env,
                     cx,
                 ))
                 .child(render_form_field(
                     settings_window,
-                    "Timeout (seconds)",
-                    "How long to wait for the server to respond before timing out.",
+                    "タイムアウト (秒)",
+                    "サーバーの応答をタイムアウトまでどれだけ待つかを設定します。",
                     &form.timeout,
                     cx,
-                )),
+                ))
+                .when(show_execution_host, |this| {
+                    this.child(render_execution_host_field(settings_window, remote, cx))
+                }),
             McpTransport::Http => this
                 .child(render_form_field(
                     settings_window,
                     "URL",
-                    "Required. The base URL of the remote MCP server.",
+                    "必須。リモート MCP サーバーのベース URL です。",
                     &form.url,
                     cx,
                 ))
                 .child(render_kv_section(
                     settings_window,
-                    "Headers",
-                    "HTTP headers sent with each request to the server.",
+                    "ヘッダー",
+                    "サーバーへの各リクエストに付与する HTTP ヘッダーです。",
                     &form.headers,
                     McpKvKind::Header,
                     cx,
                 ))
                 .child(render_form_field(
                     settings_window,
-                    "Timeout (seconds)",
-                    "How long to wait for the server to respond before timing out.",
+                    "タイムアウト (秒)",
+                    "サーバーの応答をタイムアウトまでどれだけ待つかを設定します。",
                     &form.timeout,
                     cx,
                 ))
                 .child(render_form_field(
                     settings_window,
-                    "OAuth Client ID",
-                    "Optional OAuth client ID used to authenticate with the server.",
+                    "OAuth クライアント ID",
+                    "サーバーの認証に使う OAuth クライアント ID です (省略可)。",
                     &form.oauth_client_id,
                     cx,
                 )),
@@ -1027,6 +1529,50 @@ fn render_form_field(
     .into_any_element()
 }
 
+/// The "run it here / run it over there" choice for a stdio server, shown only
+/// in a remote project. Deliberately worded as an *execution host* rather than
+/// local/remote *server*, which this page already uses for stdio versus HTTP.
+fn render_execution_host_field(
+    settings_window: &SettingsWindow,
+    remote: bool,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let control = Switch::new(
+        "mcp-form-execution-host",
+        if remote {
+            ToggleState::Selected
+        } else {
+            ToggleState::Unselected
+        },
+    )
+    .label(if remote {
+        "SSH 接続先で実行"
+    } else {
+        "この PC で実行"
+    })
+    .tab_index(0isize)
+    .on_click(cx.listener(|this, state, _window, cx| {
+        if let Some(form) = this.mcp_server_form.as_mut() {
+            form.remote = *state == ToggleState::Selected;
+        }
+        cx.notify();
+    }))
+    .into_any_element();
+
+    crate::render_settings_item_layout(
+        settings_window,
+        "実行ホスト",
+        "SSH 接続先で実行する場合、コマンドは接続先で解決されます (拡張機能提供の場合は接続先にも同じ拡張機能が必要です)。この PC で実行する場合、サーバーが読み書きするファイルはこの PC のものになります。",
+        control,
+        None,
+        None,
+        None,
+        false,
+        cx,
+    )
+    .into_any_element()
+}
+
 fn render_kv_section(
     settings_window: &SettingsWindow,
     title: &'static str,
@@ -1050,7 +1596,7 @@ fn render_kv_section(
                             IconButton::new((kind.remove_id(), ix), IconName::Close)
                                 .icon_size(IconSize::Small)
                                 .icon_color(Color::Muted)
-                                .tooltip(Tooltip::text("Remove"))
+                                .tooltip(Tooltip::text("削除"))
                                 .on_click(cx.listener(move |this, _, _window, cx| {
                                     if let Some(form) = this.mcp_server_form.as_mut() {
                                         let rows = kind.rows_mut(form);
@@ -1065,7 +1611,7 @@ fn render_kv_section(
                 .child(input_box(&row.value, cx))
         }))
         .child(
-            Button::new(kind.add_id(), "Add")
+            Button::new(kind.add_id(), "追加")
                 .style(ButtonStyle::Outlined)
                 .label_size(LabelSize::Small)
                 .start_icon(
@@ -1117,7 +1663,7 @@ fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
         .justify_end()
         .pt_2()
         .child(
-            Button::new("mcp-form-cancel", "Cancel")
+            Button::new("mcp-form-cancel", "キャンセル")
                 .style(ButtonStyle::Subtle)
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.mcp_server_form = None;
@@ -1125,7 +1671,7 @@ fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
                 })),
         )
         .child(
-            Button::new("mcp-form-save", "Save")
+            Button::new("mcp-form-save", "保存")
                 .style(ButtonStyle::Filled)
                 .on_click(cx.listener(|this, _, window, cx| {
                     save_mcp_server_form(this, window, cx);
@@ -1165,7 +1711,7 @@ fn save_mcp_server_form(
         });
     if collides_with_other_server {
         if let Some(form) = settings_window.mcp_server_form.as_mut() {
-            form.error = Some(format!("A server named \"{}\" already exists.", id.0).into());
+            form.error = Some(format!("「{}」という名前のサーバーは既に存在します。", id.0).into());
         }
         cx.notify();
         return;
@@ -1201,6 +1747,7 @@ struct McpServerFormValues {
     oauth_client_id: String,
     env: Vec<(String, String)>,
     headers: Vec<(String, String)>,
+    remote: bool,
 }
 
 fn build_settings_from_form(
@@ -1225,6 +1772,7 @@ fn build_settings_from_form(
         oauth_client_id: form.oauth_client_id.read(cx).text(cx),
         env: read_kv(&form.env, cx),
         headers: read_kv(&form.headers, cx),
+        remote: form.remote,
     };
     build_settings_from_values(&values)
 }
@@ -1247,7 +1795,7 @@ fn build_settings_from_values(
 > {
     let name = values.name.trim().to_string();
     if name.is_empty() {
-        return Err("Server name is required.".into());
+        return Err("サーバー名を入力してください。".into());
     }
 
     let timeout = parse_timeout(&values.timeout)?;
@@ -1256,17 +1804,17 @@ fn build_settings_from_values(
         McpTransport::Stdio => {
             let command = values.command.trim().to_string();
             if command.is_empty() {
-                return Err("Command is required.".into());
+                return Err("コマンドを入力してください。".into());
             }
             let args = values
                 .args
                 .split_whitespace()
                 .map(|arg| arg.to_string())
                 .collect::<Vec<_>>();
-            let env = collect_kv(&values.env, "environment variable")?;
+            let env = collect_kv(&values.env, "環境変数")?;
             ContextServerSettingsContent::Stdio {
                 enabled: true,
-                remote: false,
+                remote: values.remote,
                 command: ContextServerCommand {
                     path: command.into(),
                     args,
@@ -1278,15 +1826,15 @@ fn build_settings_from_values(
         McpTransport::Http => {
             let url = values.url.trim().to_string();
             if url.is_empty() {
-                return Err("URL is required.".into());
+                return Err("URL を入力してください。".into());
             }
             // Validate the URL on save (a deliberate action) rather than on every
             // render, so a clearly invalid URL is reported to the user instead of
             // being silently written and failing later when the server starts.
             if let Err(error) = url::Url::parse(&url) {
-                return Err(format!("Invalid URL: {error}").into());
+                return Err(format!("URL が正しくありません: {error}").into());
             }
-            let headers = collect_kv(&values.headers, "header")?;
+            let headers = collect_kv(&values.headers, "ヘッダー")?;
             let oauth_client_id = values.oauth_client_id.trim().to_string();
             let oauth = (!oauth_client_id.is_empty()).then(|| OAuthClientSettings {
                 client_id: oauth_client_id,
@@ -1315,10 +1863,150 @@ fn build_settings_from_values(
 fn settings_validation_error(settings: Option<&ContextServerSettings>) -> Option<SharedString> {
     match settings? {
         ContextServerSettings::Http { url, .. } if url::Url::parse(url).is_err() => {
-            Some("Invalid URL in settings.".into())
+            Some("設定内の URL が正しくありません。".into())
         }
         _ => None,
     }
+}
+
+/// Whether the fork's loopback egress proxy (ADR-F13 / F2-7) reaches a server's
+/// traffic.
+///
+/// Recomputed rather than read back: [`ContextServerStore`] injects the proxy
+/// into a copy of the command it spawns, so neither the settings nor the stored
+/// runtime configuration record that it happened. The answer is therefore only
+/// as current as the page's last render, which is fine — the proxy endpoint does
+/// not change without a settings edit.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum McpProxyStatus {
+    Proxied,
+    /// Child-process proxying is off, so this server's traffic never reaches the
+    /// allowlist.
+    ProxyDisabled,
+    /// The server's own environment names a proxy, which the injection
+    /// deliberately leaves alone.
+    EnvOverride,
+    /// Nothing to report: an HTTP server (whose requests go through the app's
+    /// own allowlisted HTTP client) or a server that runs on the remote host.
+    NotApplicable,
+}
+
+impl McpProxyStatus {
+    /// The row's detail label and the explanation shown on hovering it.
+    fn detail(self) -> Option<(SharedString, SharedString)> {
+        match self {
+            McpProxyStatus::Proxied => Some((
+                "プロキシ経由".into(),
+                "このサーバーの子プロセスはループバックのプロキシを経由するため、外部通信はネットワーク許可リストで統制されます。"
+                    .into(),
+            )),
+            McpProxyStatus::ProxyDisabled => Some((
+                "統制外".into(),
+                "子プロセスへのプロキシ適用が無効なため、このサーバーの外部通信はネットワーク許可リストの統制外です。"
+                    .into(),
+            )),
+            McpProxyStatus::EnvOverride => Some((
+                "統制外 (独自プロキシ)".into(),
+                "このサーバーの環境変数がプロキシを指定しているため、ループバックのプロキシは適用されません。外部通信はネットワーク許可リストの統制外です。"
+                    .into(),
+            )),
+            McpProxyStatus::NotApplicable => None,
+        }
+    }
+}
+
+fn proxy_status_for_server(
+    settings: Option<&ContextServerSettings>,
+    configuration: Option<&ContextServerConfiguration>,
+    is_remote_project: bool,
+    proxy_running: bool,
+) -> McpProxyStatus {
+    let launch = child_process_launch(settings, configuration);
+
+    // The execution host is a per-server choice: a `remote: false` server in a
+    // remote project still spawns here, and is proxied like any local one.
+    if !launch.spawns_child_process || (is_remote_project && launch.on_remote_host) {
+        return McpProxyStatus::NotApplicable;
+    }
+    if !proxy_running {
+        return McpProxyStatus::ProxyDisabled;
+    }
+    if launch
+        .env
+        .is_some_and(http_client::env_overrides_child_process_proxy)
+    {
+        return McpProxyStatus::EnvOverride;
+    }
+    McpProxyStatus::Proxied
+}
+
+struct ChildProcessLaunch<'a> {
+    spawns_child_process: bool,
+    /// Configured to run on the SSH host rather than this machine. Only takes
+    /// effect in a remote project.
+    on_remote_host: bool,
+    env: Option<&'a HashMap<String, String>>,
+}
+
+/// Whether a server is launched as a child process and, if so, where and with
+/// what environment. The runtime configuration wins where it exists: an
+/// extension-provided server's command comes from the extension, not settings.
+fn child_process_launch<'a>(
+    settings: Option<&'a ContextServerSettings>,
+    configuration: Option<&'a ContextServerConfiguration>,
+) -> ChildProcessLaunch<'a> {
+    if let Some(configuration) = configuration {
+        return match configuration {
+            ContextServerConfiguration::Http { .. } => ChildProcessLaunch {
+                spawns_child_process: false,
+                on_remote_host: false,
+                env: None,
+            },
+            _ => ChildProcessLaunch {
+                spawns_child_process: true,
+                on_remote_host: configuration.remote(),
+                env: configuration
+                    .command()
+                    .and_then(|command| command.env.as_ref()),
+            },
+        };
+    }
+
+    match settings {
+        Some(ContextServerSettings::Http { .. }) => ChildProcessLaunch {
+            spawns_child_process: false,
+            on_remote_host: false,
+            env: None,
+        },
+        Some(ContextServerSettings::Stdio {
+            command, remote, ..
+        }) => ChildProcessLaunch {
+            spawns_child_process: true,
+            on_remote_host: *remote,
+            env: command.env.as_ref(),
+        },
+        // An extension server that has not started yet will spawn a child
+        // process, but its command — and so its environment — is not known here.
+        Some(ContextServerSettings::Extension { remote, .. }) => ChildProcessLaunch {
+            spawns_child_process: true,
+            on_remote_host: *remote,
+            env: None,
+        },
+        None => ChildProcessLaunch {
+            spawns_child_process: true,
+            on_remote_host: false,
+            env: None,
+        },
+    }
+}
+
+/// The execution host a server is configured with, for carrying through an edit
+/// that does not itself touch it.
+fn configured_remote(
+    settings: Option<&ContextServerSettings>,
+    configuration: Option<&ContextServerConfiguration>,
+) -> bool {
+    child_process_launch(settings, configuration).on_remote_host
 }
 
 /// Returns whether saving under `id` would overwrite a *different* existing
@@ -1339,7 +2027,7 @@ fn parse_timeout(text: &str) -> Result<Option<u64>, SharedString> {
     }
     text.parse::<u64>()
         .map(Some)
-        .map_err(|_| "Timeout must be a positive whole number of seconds.".into())
+        .map_err(|_| "タイムアウトには正の整数の秒数を指定してください。".into())
 }
 
 fn collect_kv(
@@ -1353,7 +2041,7 @@ fn collect_kv(
             continue;
         }
         if map.contains_key(&key) {
-            return Err(format!("Duplicate {label} \"{key}\".").into());
+            return Err(format!("{label}「{key}」が重複しています。").into());
         }
         map.insert(key, value.clone());
     }
@@ -1376,6 +2064,7 @@ mod tests {
             oauth_client_id: String::new(),
             env: Vec::new(),
             headers: Vec::new(),
+            remote: false,
         }
     }
 
@@ -1401,7 +2090,7 @@ mod tests {
         values.command = "/bin/server".into();
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "Server name is required."
+            "サーバー名を入力してください。"
         );
     }
 
@@ -1410,7 +2099,7 @@ mod tests {
         let values = values(McpTransport::Stdio);
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "Command is required."
+            "コマンドを入力してください。"
         );
     }
 
@@ -1419,7 +2108,7 @@ mod tests {
         let values = values(McpTransport::Http);
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "URL is required."
+            "URL を入力してください。"
         );
     }
 
@@ -1429,7 +2118,7 @@ mod tests {
         values.url = "not a url".into();
         let error = build_settings_from_values(&values).unwrap_err();
         assert!(
-            error.starts_with("Invalid URL"),
+            error.starts_with("URL が正しくありません"),
             "unexpected error: {error}"
         );
     }
@@ -1441,7 +2130,7 @@ mod tests {
         values.timeout = "soon".into();
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "Timeout must be a positive whole number of seconds."
+            "タイムアウトには正の整数の秒数を指定してください。"
         );
     }
 
@@ -1452,7 +2141,7 @@ mod tests {
         values.env = vec![("FOO".into(), "1".into()), ("FOO".into(), "2".into())];
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "Duplicate environment variable \"FOO\"."
+            "環境変数「FOO」が重複しています。"
         );
     }
 
@@ -1466,7 +2155,7 @@ mod tests {
         ];
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "Duplicate header \"Authorization\"."
+            "ヘッダー「Authorization」が重複しています。"
         );
     }
 
@@ -1505,6 +2194,61 @@ mod tests {
                 },
             }
         );
+    }
+
+    #[test]
+    fn builds_a_local_server_that_runs_on_the_ssh_host() {
+        let mut values = values(McpTransport::Stdio);
+        values.command = "/usr/bin/server".into();
+        values.remote = true;
+
+        let (_, _, content) = build_settings_from_values(&values).unwrap();
+        assert!(matches!(
+            content,
+            ContextServerSettingsContent::Stdio { remote: true, .. }
+        ));
+    }
+
+    /// Regression: the form used to have no execution host of its own, so
+    /// saving an unrelated edit rewrote a hand-written `remote: true` to false.
+    #[test]
+    fn saving_the_form_keeps_the_configured_execution_host() {
+        for remote in [false, true] {
+            let existing = stdio_settings_on_host(None, remote);
+            // What `McpServerForm::new` pre-fills the form with.
+            let mut values = values(McpTransport::Stdio);
+            values.command = "/bin/server".into();
+            values.remote = configured_remote(Some(&existing), None);
+
+            let (_, _, content) = build_settings_from_values(&values).unwrap();
+            let ContextServerSettingsContent::Stdio {
+                remote: saved_remote,
+                ..
+            } = content
+            else {
+                panic!("expected a stdio server");
+            };
+            assert_eq!(saved_remote, remote);
+        }
+    }
+
+    #[test]
+    fn reads_the_execution_host_of_an_extension_server() {
+        let extension = |remote| ContextServerSettings::Extension {
+            enabled: true,
+            remote,
+            settings: serde_json::json!({}),
+        };
+        assert!(configured_remote(Some(&extension(true)), None));
+        assert!(!configured_remote(Some(&extension(false)), None));
+        // The runtime configuration wins where there is one.
+        assert!(!configured_remote(
+            Some(&extension(true)),
+            Some(&extension_configuration(None))
+        ));
+        // An HTTP server has no execution host to preserve.
+        assert!(!configured_remote(Some(&http_settings()), None));
+        assert!(!configured_remote(None, None));
     }
 
     #[test]
@@ -1548,10 +2292,163 @@ mod tests {
             settings_validation_error(Some(&http("not a url")))
                 .unwrap()
                 .as_ref(),
-            "Invalid URL in settings."
+            "設定内の URL が正しくありません。"
         );
         assert!(settings_validation_error(Some(&http("https://example.com/mcp"))).is_none());
         assert!(settings_validation_error(None).is_none());
+    }
+
+    fn stdio_settings(env: Option<HashMap<String, String>>) -> ContextServerSettings {
+        stdio_settings_on_host(env, false)
+    }
+
+    fn stdio_settings_on_host(
+        env: Option<HashMap<String, String>>,
+        remote: bool,
+    ) -> ContextServerSettings {
+        ContextServerSettings::Stdio {
+            enabled: true,
+            remote,
+            command: ContextServerCommand {
+                path: "/bin/server".into(),
+                args: Vec::new(),
+                env,
+                timeout: None,
+            },
+        }
+    }
+
+    fn http_settings() -> ContextServerSettings {
+        ContextServerSettings::Http {
+            enabled: true,
+            url: "https://example.com/mcp".into(),
+            headers: HashMap::default(),
+            timeout: None,
+            oauth: None,
+        }
+    }
+
+    fn extension_configuration(env: Option<HashMap<String, String>>) -> ContextServerConfiguration {
+        ContextServerConfiguration::Extension {
+            command: ContextServerCommand {
+                path: "/bin/extension-server".into(),
+                args: Vec::new(),
+                env,
+                timeout: None,
+            },
+            settings: serde_json::json!({}),
+            remote: false,
+        }
+    }
+
+    #[test]
+    fn proxy_applies_to_local_child_processes_only() {
+        // A local stdio server with the proxy running is the case the injection
+        // actually covers.
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings(None)), None, false, true),
+            McpProxyStatus::Proxied
+        );
+        // Turning child-process proxying off leaves it outside the allowlist.
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings(None)), None, false, false),
+            McpProxyStatus::ProxyDisabled
+        );
+        // A server that runs on the SSH host spawns over there, where this
+        // proxy is not reachable.
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings_on_host(None, true)), None, true, true),
+            McpProxyStatus::NotApplicable
+        );
+        // But a remote project is not itself the criterion: a server left on
+        // this machine is spawned — and proxied — here.
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings(None)), None, true, true),
+            McpProxyStatus::Proxied
+        );
+        // Outside a remote project `remote` has no effect, so the server runs
+        // here regardless.
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings_on_host(None, true)), None, false, true),
+            McpProxyStatus::Proxied
+        );
+        // HTTP servers make their requests through the app's own client.
+        assert_eq!(
+            proxy_status_for_server(Some(&http_settings()), None, false, true),
+            McpProxyStatus::NotApplicable
+        );
+    }
+
+    #[test]
+    fn proxy_reports_an_environment_that_names_its_own_proxy() {
+        let env = HashMap::from_iter([("HTTPS_PROXY".to_string(), "http://corp:3128".to_string())]);
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings(Some(env.clone()))), None, false, true),
+            McpProxyStatus::EnvOverride
+        );
+        // With no proxy running there is nothing to be overridden in the first
+        // place; the traffic is uncontrolled either way.
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings(Some(env))), None, false, false),
+            McpProxyStatus::ProxyDisabled
+        );
+
+        let unrelated = HashMap::from_iter([("TOKEN".to_string(), "secret".to_string())]);
+        assert_eq!(
+            proxy_status_for_server(Some(&stdio_settings(Some(unrelated))), None, false, true),
+            McpProxyStatus::Proxied
+        );
+    }
+
+    #[test]
+    fn proxy_reads_the_environment_of_an_extension_server_from_its_runtime_configuration() {
+        // An extension server has no command in settings, so before it starts
+        // the environment is unknown and the proxy is assumed to apply.
+        let settings = ContextServerSettings::Extension {
+            enabled: true,
+            remote: false,
+            settings: serde_json::json!({}),
+        };
+        assert_eq!(
+            proxy_status_for_server(Some(&settings), None, false, true),
+            McpProxyStatus::Proxied
+        );
+
+        let env = HashMap::from_iter([("http_proxy".to_string(), "http://corp:3128".to_string())]);
+        assert_eq!(
+            proxy_status_for_server(
+                Some(&settings),
+                Some(&extension_configuration(Some(env))),
+                false,
+                true
+            ),
+            McpProxyStatus::EnvOverride
+        );
+        assert_eq!(
+            proxy_status_for_server(
+                Some(&settings),
+                Some(&extension_configuration(None)),
+                false,
+                true
+            ),
+            McpProxyStatus::Proxied
+        );
+    }
+
+    #[test]
+    fn proxy_detail_label_is_only_shown_when_it_says_something() {
+        assert!(McpProxyStatus::NotApplicable.detail().is_none());
+        for status in [
+            McpProxyStatus::Proxied,
+            McpProxyStatus::ProxyDisabled,
+            McpProxyStatus::EnvOverride,
+        ] {
+            let (label, tooltip) = status
+                .detail()
+                .unwrap_or_else(|| panic!("{status:?} should have a detail label"));
+            assert!(!label.is_empty());
+            assert!(!tooltip.is_empty());
+        }
     }
 
     #[test]

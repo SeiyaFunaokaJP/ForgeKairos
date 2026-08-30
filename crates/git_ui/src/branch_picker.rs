@@ -612,9 +612,9 @@ impl BranchFilter {
 
     fn label(self) -> &'static str {
         match self {
-            Self::All => "All Branches",
-            Self::Local => "Local Branches",
-            Self::Remote => "Remote Branches",
+            Self::All => "すべてのブランチ",
+            Self::Local => "ローカルブランチ",
+            Self::Remote => "リモートブランチ",
         }
     }
 }
@@ -814,6 +814,7 @@ impl BranchDeleteForceDeletePrompt {
     }
 }
 
+// `required_error_substrings` は git の stderr と突き合わせる照合文字列なので英語のまま。
 const BRANCH_DELETE_FORCE_DELETE_PROMPTS: &[BranchDeleteForceDeletePrompt] =
     &[BranchDeleteForceDeletePrompt {
         required_error_substrings: &["not fully merged"],
@@ -821,7 +822,7 @@ const BRANCH_DELETE_FORCE_DELETE_PROMPTS: &[BranchDeleteForceDeletePrompt] =
     }];
 
 fn unmerged_branch_force_delete_prompt(branch_name: &str) -> String {
-    format!("Branch \"{branch_name}\" is not fully merged. Force delete it?")
+    format!("ブランチ \"{branch_name}\" は完全にマージされていません。強制削除しますか?")
 }
 
 // Git only reports these cases via localized stderr, so this best-effort check
@@ -873,7 +874,7 @@ impl Render for DeleteBranchTooltip {
             .unwrap_or(false);
         if force_delete {
             Tooltip::for_action_in(
-                "Force Delete Branch",
+                "ブランチを強制削除",
                 &branch_picker::ForceDeleteBranch,
                 &self.focus_handle,
                 cx,
@@ -881,9 +882,9 @@ impl Render for DeleteBranchTooltip {
             .into_any_element()
         } else {
             Tooltip::with_meta_in(
-                "Delete Branch",
+                "ブランチを削除",
                 Some(&branch_picker::DeleteBranch),
-                "Hold alt to force delete",
+                "alt キーを押しながら強制削除",
                 &self.focus_handle,
                 cx,
             )
@@ -1034,7 +1035,7 @@ impl BranchListDelegate {
         let focus_handle = self.focus_handle.clone();
         move |_, cx| {
             Tooltip::for_action_in(
-                "Filter Branches",
+                "ブランチを絞り込み",
                 &branch_picker::ToggleFilterMenu,
                 &focus_handle,
                 cx,
@@ -1066,9 +1067,12 @@ impl BranchListDelegate {
 
             Ok(())
         })
-        .detach_and_prompt_err("Failed to create branch", window, cx, |e, _, _| {
-            Some(e.to_string())
-        });
+        .detach_and_prompt_err(
+            "ブランチを作成できませんでした",
+            window,
+            cx,
+            |e, _, _| Some(e.to_string()),
+        );
         cx.emit(DismissEvent);
     }
 
@@ -1086,9 +1090,12 @@ impl BranchListDelegate {
         let receiver = repo.update(cx, |repo, _| repo.create_remote(remote_name, remote_url));
 
         cx.background_spawn(async move { receiver.await? })
-            .detach_and_prompt_err("Failed to create remote", window, cx, |e, _, _cx| {
-                Some(e.to_string())
-            });
+            .detach_and_prompt_err(
+                "リモートを作成できませんでした",
+                window,
+                cx,
+                |e, _, _cx| Some(e.to_string()),
+            );
         cx.emit(DismissEvent);
     }
 
@@ -1145,7 +1152,7 @@ impl BranchListDelegate {
                                 PromptLevel::Warning,
                                 &prompt_message,
                                 None,
-                                &["Force Delete", "Cancel"],
+                                &["強制削除", "キャンセル"],
                                 cx,
                             )
                         })?;
@@ -1242,9 +1249,9 @@ impl PickerDelegate for BranchListDelegate {
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
         match self.state {
             PickerState::List | PickerState::NewRemote | PickerState::NewBranch => {
-                "Switch or type to create a branch…"
+                "ブランチを切り替え、または入力して作成…"
             }
-            PickerState::CreateRemote(_) => "Enter a name for this remote…",
+            PickerState::CreateRemote(_) => "このリモートの名前を入力…",
         }
         .into()
     }
@@ -1252,7 +1259,7 @@ impl PickerDelegate for BranchListDelegate {
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         match self.state {
             PickerState::CreateRemote(_) => {
-                Some(SharedString::new_static("Remote name can't be empty"))
+                Some(SharedString::new_static("リモート名を空にはできません"))
             }
             _ => None,
         }
@@ -1270,7 +1277,7 @@ impl PickerDelegate for BranchListDelegate {
 
         let warning_banner = || {
             self.branch_list_error.as_deref().map(|error| {
-                let message = format!("Some branches could not be loaded: {error}");
+                let message = format!("一部のブランチを読み込めませんでした: {error}");
                 div().p_1p5().child(
                     Banner::new()
                         .severity(Severity::Warning)
@@ -1573,7 +1580,7 @@ impl PickerDelegate for BranchListDelegate {
                     anyhow::Ok(())
                 })
                 .detach_and_prompt_err(
-                    "Failed to change branch",
+                    "ブランチを切り替えられませんでした",
                     window,
                     cx,
                     |_, _, _| None,
@@ -1687,15 +1694,15 @@ impl PickerDelegate for BranchListDelegate {
         };
 
         let entry_title = match entry {
-            Entry::NewUrl { .. } => Label::new("Create Remote Repository")
+            Entry::NewUrl { .. } => Label::new("リモートリポジトリを作成")
                 .single_line()
                 .truncate()
                 .into_any_element(),
-            Entry::NewBranch { name } => Label::new(format!("Create Branch: \"{name}\"…"))
+            Entry::NewBranch { name } => Label::new(format!("ブランチを作成: \"{name}\"…"))
                 .single_line()
                 .truncate()
                 .into_any_element(),
-            Entry::NewRemoteName { name, .. } => Label::new(format!("Create Remote: \"{name}\""))
+            Entry::NewRemoteName { name, .. } => Label::new(format!("リモートを作成: \"{name}\""))
                 .single_line()
                 .truncate()
                 .into_any_element(),
@@ -1756,7 +1763,7 @@ impl PickerDelegate for BranchListDelegate {
         };
 
         let create_from_default_button = self.default_branch.as_ref().map(|default_branch| {
-            let tooltip_label: SharedString = format!("Create New From: {default_branch}").into();
+            let tooltip_label: SharedString = format!("{default_branch} から新規作成").into();
             let focus_handle = self.focus_handle.clone();
 
             IconButton::new("create_from_default", IconName::GitBranchPlus)
@@ -1802,9 +1809,9 @@ impl PickerDelegate for BranchListDelegate {
                             .child(entry_title)
                             .child({
                                 let message = match entry {
-                                    Entry::NewUrl { url } => format!("Based off {url}"),
+                                    Entry::NewUrl { url } => format!("{url} を基に作成"),
                                     Entry::NewRemoteName { url, .. } => {
-                                        format!("Based off {url}")
+                                        format!("{url} を基に作成")
                                     }
                                     Entry::NewBranch { .. } => {
                                         if let Some(current_branch) =
@@ -1812,9 +1819,9 @@ impl PickerDelegate for BranchListDelegate {
                                                 repo.read(cx).branch.as_ref().map(|b| b.name())
                                             })
                                         {
-                                            format!("Based off {}", current_branch)
+                                            format!("{} を基に作成", current_branch)
                                         } else {
-                                            "Based off the current branch".to_string()
+                                            "現在のブランチを基に作成".to_string()
                                         }
                                     }
                                     Entry::Branch { .. } => String::new(),
@@ -1866,7 +1873,7 @@ impl PickerDelegate for BranchListDelegate {
                                         })
                                         .when(!has_commit, |this| {
                                             this.child(
-                                                Label::new("No commits found")
+                                                Label::new("コミットがありません")
                                                     .color(Color::Muted)
                                                     .size(LabelSize::Small),
                                             )
@@ -1893,14 +1900,14 @@ impl PickerDelegate for BranchListDelegate {
                                                 .child(Label::new(branch_name.clone()))
                                                 .when(is_select_only && is_checked, |this| {
                                                     this.child(
-                                                        Label::new("Selected Branch")
+                                                        Label::new("選択中のブランチ")
                                                             .size(LabelSize::Small)
                                                             .color(Color::Muted),
                                                     )
                                                 })
                                                 .when(is_head, |this| {
                                                     this.child(
-                                                        Label::new("Current Branch")
+                                                        Label::new("現在のブランチ")
                                                             .size(LabelSize::Small)
                                                             .color(Color::Muted),
                                                     )
@@ -1950,9 +1957,9 @@ impl PickerDelegate for BranchListDelegate {
                         });
                 starts_section.then(|| {
                     if branch.is_remote() {
-                        ("Remote Branches", ix != 0)
+                        ("リモートブランチ", ix != 0)
                     } else {
-                        ("Local Branches", false)
+                        ("ローカルブランチ", false)
                     }
                 })
             });
@@ -2000,7 +2007,7 @@ impl PickerDelegate for BranchListDelegate {
                     .as_ref()
                     .filter(|_| matches!(selected_entry, Some(Entry::NewBranch { .. })))
                     .map(|default_branch| {
-                        let button_label = format!("Create New From: {default_branch}");
+                        let button_label = format!("{default_branch} から新規作成");
 
                         Button::new("branch-from-default", button_label)
                             .key_binding(
@@ -2024,7 +2031,7 @@ impl PickerDelegate for BranchListDelegate {
                             .is_some_and(|branch| branch.is_head),
                         |this| {
                             this.child(
-                                Button::new("delete-branch", "Delete")
+                                Button::new("delete-branch", "削除")
                                     .key_binding(
                                         KeyBinding::for_action_in(
                                             &branch_picker::DeleteBranch,
@@ -2043,7 +2050,7 @@ impl PickerDelegate for BranchListDelegate {
                         },
                     )
                     .child(
-                        Button::new("switch_branch", "Switch")
+                        Button::new("switch_branch", "切り替え")
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2058,7 +2065,7 @@ impl PickerDelegate for BranchListDelegate {
                         .justify_end()
                         .map(|this| match branch_from_default_button {
                             Some(button) => this.child(button).child(
-                                Button::new("create", "Create")
+                                Button::new("create", "作成")
                                     .key_binding(
                                         KeyBinding::for_action_in(
                                             &menu::Confirm,
@@ -2079,7 +2086,7 @@ impl PickerDelegate for BranchListDelegate {
             PickerState::NewBranch => {
                 let branch_from_default_button =
                     self.default_branch.as_ref().map(|default_branch| {
-                        let button_label = format!("Create New From: {default_branch}");
+                        let button_label = format!("{default_branch} から新規作成");
 
                         Button::new("branch-from-default", button_label)
                             .key_binding(
@@ -2103,7 +2110,7 @@ impl PickerDelegate for BranchListDelegate {
                             this.child(button)
                         })
                         .child(
-                            Button::new("create-new-branch", "Create")
+                            Button::new("create-new-branch", "作成")
                                 .key_binding(
                                     KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2119,7 +2126,7 @@ impl PickerDelegate for BranchListDelegate {
                 footer_container()
                     .justify_end()
                     .child(
-                        Button::new("confirm-create-remote", "Confirm")
+                        Button::new("confirm-create-remote", "確定")
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2631,7 +2638,7 @@ mod tests {
         cx.run_until_parked();
         assert!(cx.has_pending_prompt());
 
-        cx.simulate_prompt_answer("Force Delete");
+        cx.simulate_prompt_answer("強制削除");
         cx.run_until_parked();
 
         let repo_branches = branch_list
@@ -2710,7 +2717,7 @@ mod tests {
         cx.run_until_parked();
         assert!(cx.has_pending_prompt());
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer("キャンセル");
         cx.run_until_parked();
         assert!(!cx.has_pending_prompt());
 

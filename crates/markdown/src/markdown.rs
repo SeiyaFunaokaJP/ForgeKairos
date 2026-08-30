@@ -3241,14 +3241,16 @@ fn image_fallback_element(
         .filter(|alt| !alt.is_empty())
         .unwrap_or_else(|| dest_url.clone());
 
-    let label = format!("Failed to Load: {link_label}");
+    let label = format!("読み込みに失敗しました: {link_label}");
 
     div()
         .id("image-fallback")
         .min_w_0()
         .child(Label::new(label).color(Color::Warning).underline())
         .tooltip(Tooltip::text(
-            "Image failed to load. Open `zed: log` for more details.",
+            // 元の "Open `zed: log`" はパレットのコマンド名を指していたが、
+            // パレットが日本語化されたので日本語ラベル (ja_labels.rs の "zed::OpenLog") を案内する
+            "画像を読み込めませんでした。詳細はコマンドパレットの「ログを開く」で確認してください。",
         ))
         .when(open_image_url_on_click, |this| {
             this.cursor_pointer()
@@ -3312,9 +3314,9 @@ fn render_wrap_code_block_button(
     markdown: Entity<Markdown>,
 ) -> impl IntoElement {
     let (icon, tooltip) = if is_wrapped {
-        (IconName::TextUnwrap, "Unwrap Content")
+        (IconName::TextUnwrap, "折り返しを解除")
     } else {
-        (IconName::TextWrap, "Wrap Content")
+        (IconName::TextWrap, "内容を折り返す")
     };
     let button_id = ElementId::NamedChild(
         Arc::new(ElementId::from(("wrap-code-block", markdown.entity_id()))),

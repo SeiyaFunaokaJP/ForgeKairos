@@ -216,7 +216,7 @@ impl PickerDelegate for ModelPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select a model…".into()
+        "モデルを選択…".into()
     }
 
     fn update_matches(
@@ -404,7 +404,7 @@ fn info_list_to_picker_entries(
 
     let has_favorites = !favorite_models.is_empty();
     if has_favorites {
-        entries.push(ModelPickerEntry::Separator("Favorite".into()));
+        entries.push(ModelPickerEntry::Separator("お気に入り".into()));
         for model in favorite_models {
             entries.push(ModelPickerEntry::Model((*model).clone(), true));
         }
@@ -413,7 +413,7 @@ fn info_list_to_picker_entries(
     match model_list {
         AgentModelList::Flat(list) => {
             if has_favorites {
-                entries.push(ModelPickerEntry::Separator("All".into()));
+                entries.push(ModelPickerEntry::Separator("すべて".into()));
             }
             for model in list {
                 let is_favorite = favorites.contains(&model.id);
@@ -712,7 +712,7 @@ mod tests {
 
         assert!(matches!(
             entries.first(),
-            Some(ModelPickerEntry::Separator(s)) if s == "Favorite"
+            Some(ModelPickerEntry::Separator(s)) if s == "お気に入り"
         ));
 
         let model_ids = get_entry_model_ids(&entries);
@@ -788,7 +788,7 @@ mod tests {
         assert_eq!(
             labels,
             vec![
-                "Favorite",
+                "お気に入り",
                 "zed/claude",
                 "Recommended",
                 "zed/claude",
@@ -832,12 +832,12 @@ mod tests {
 
         assert!(matches!(
             entries.first(),
-            Some(ModelPickerEntry::Separator(s)) if s == "Favorite"
+            Some(ModelPickerEntry::Separator(s)) if s == "お気に入り"
         ));
 
         assert!(entries.iter().any(|e| matches!(
             e,
-            ModelPickerEntry::Separator(s) if s == "All"
+            ModelPickerEntry::Separator(s) if s == "すべて"
         )));
     }
 

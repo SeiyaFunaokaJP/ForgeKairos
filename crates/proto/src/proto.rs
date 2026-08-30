@@ -257,6 +257,7 @@ messages!(
     (SendChannelMessageResponse, Background),
     (SetChannelMemberRole, Foreground),
     (SetChannelVisibility, Foreground),
+    (SetEgressAllowlist, Background),
     (SetRoomParticipantRole, Foreground),
     (ShareProject, Foreground),
     (ShareProjectResponse, Foreground),
@@ -520,6 +521,7 @@ request_messages!(
     (SendChannelMessage, SendChannelMessageResponse),
     (SetChannelMemberRole, Ack),
     (SetChannelVisibility, Ack),
+    (SetEgressAllowlist, Ack),
     (ShareProject, ShareProjectResponse),
     (SynchronizeBuffers, SynchronizeBuffersResponse),
     (TaskContextForLocation, TaskContext),
@@ -1092,6 +1094,24 @@ mod tests {
             id: u32::MAX,
         };
         assert_eq!(PeerId::from_u64(peer_id.as_u64()), peer_id);
+    }
+
+    #[test]
+    fn set_egress_allowlist_round_trips_the_child_process_proxy_flag() {
+        // ADR-F14: the flag rides along with the allowlist the IDE pushes to a
+        // remote host. A client that predates the field has to decode as
+        // absent rather than as `false`, because the receiver reads absent as
+        // "on" — the same thing an absent value in the policy file means.
+        for flag in [Some(true), Some(false), None] {
+            let message = SetEgressAllowlist {
+                allowed_hosts: vec!["api.anthropic.com".into()],
+                proxy_child_processes: flag,
+            };
+            let decoded = SetEgressAllowlist::decode(message.encode_to_vec().as_slice())
+                .expect("the message should round-trip");
+            assert_eq!(decoded.allowed_hosts, message.allowed_hosts);
+            assert_eq!(decoded.proxy_child_processes, flag);
+        }
     }
 
     #[test]

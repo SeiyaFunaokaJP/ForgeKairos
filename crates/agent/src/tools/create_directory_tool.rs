@@ -96,9 +96,9 @@ impl AgentTool for CreateDirectoryTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("Create directory {}", MarkdownInlineCode(&input.path)).into()
+            format!("ディレクトリ {} を作成", MarkdownInlineCode(&input.path)).into()
         } else {
-            "Create directory".into()
+            "ディレクトリを作成".into()
         }
     }
 
@@ -179,7 +179,8 @@ impl AgentTool for CreateDirectoryTool {
                 match decision {
                     ToolPermissionDecision::Allow => None,
                     ToolPermissionDecision::Confirm => Some(cx.update(|cx| {
-                        let title = format!("Create directory {}", MarkdownInlineCode(&input.path));
+                        let title =
+                            format!("ディレクトリ {} を作成", MarkdownInlineCode(&input.path));
                         let context =
                             crate::ToolPermissionContext::new(Self::NAME, vec![input.path.clone()]);
                         authorize_with_sensitive_settings(

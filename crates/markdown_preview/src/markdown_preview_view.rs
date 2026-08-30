@@ -29,7 +29,8 @@ use theme::{SystemAppearance, Theme, ThemeRegistry};
 use theme_settings::ThemeSettings;
 use ui::utils::WithRemSize;
 use ui::{
-    ContextMenu, LinkPreview, ScrollAxes, Scrollbars, WithScrollbar, prelude::*, right_click_menu,
+    ContextMenu, LinkPreview, ScrollAxes, Scrollbars, Tooltip, WithScrollbar, prelude::*,
+    right_click_menu,
 };
 use util::{
     ResultExt,
@@ -38,22 +39,26 @@ use util::{
     rel_path::RelPath,
 };
 use workspace::item::{Item, ItemBufferKind, ItemHandle, SaveOptions, SerializableItem};
-use workspace::notifications::{NotifyResultExt, NotifyTaskExt};
+use workspace::notifications::{NotificationId, NotifyResultExt, NotifyTaskExt};
 use workspace::path_link::{PathMatching, resolve_open_target};
 use workspace::searchable::{
     Direction, SearchEvent, SearchOptions, SearchToken, SearchableItem, SearchableItemHandle,
 };
-use workspace::{ItemId, Pane, SaveIntent, Workspace, WorkspaceId, delete_unloaded_items};
+use workspace::{
+    ItemId, Pane, SaveIntent, Toast, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView,
+    Workspace, WorkspaceId, delete_unloaded_items,
+};
 use zed_actions::{DecreaseBufferFontSize, IncreaseBufferFontSize, ResetBufferFontSize};
 
 use crate::markdown_preview_settings::MarkdownPreviewSettings;
 use crate::{
-    CloseAndReturnToEditor, OpenFollowingPreview, OpenPreview, OpenPreviewToTheSide, ScrollDown,
-    ScrollDownByItem,
+    CloseAndReturnToEditor, ExportToPdf, OpenFollowingPreview, OpenPreview, OpenPreviewToTheSide,
+    ScrollDown, ScrollDownByItem, markdown_export,
 };
 use crate::{ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, ScrollUp, ScrollUpByItem};
 
 const REPARSE_DEBOUNCE: Duration = Duration::from_millis(200);
+const PDF_EXPORT_NOTIFICATION_ID: &str = "markdown-export-to-pdf";
 
 pub struct MarkdownPreviewView {
     workspace: WeakEntity<Workspace>,
@@ -113,6 +118,16 @@ enum PreviewLinkTarget {
     Position { row: u32, column: u32 },
 }
 
+/// Why a buffer can or cannot be exported to PDF, kept apart so the three cases
+/// get three different messages instead of one "save the file first".
+enum PdfSource {
+    Local(PathBuf),
+    /// The file lives on a remote host, which the PDF converter cannot read.
+    Remote,
+    /// The buffer has never been saved, so there is no directory to write to.
+    Untitled,
+}
+
 impl MarkdownPreviewView {
     pub fn register(workspace: &mut Workspace, _window: &mut Window, _cx: &mut Context<Workspace>) {
         workspace.register_action(move |workspace, _: &OpenPreview, window, cx| {
@@ -153,6 +168,196 @@ impl MarkdownPreviewView {
                 cx.notify();
             }
         });
+
+        workspace.register_action(move |workspace, _: &ExportToPdf, window, cx| {
+            if let Some(editor) = Self::resolve_active_item_as_markdown_editor(workspace, cx) {
+                Self::export_to_pdf(workspace, editor, window, cx);
+            }
+        });
+    }
+
+    /// Exports the markdown source this preview is showing, for the toolbar button that
+    /// replaces the quick action bar while a preview is the active pane item.
+    pub fn export_active_source_to_pdf(&self, window: &mut Window, cx: &mut App) {
+        let Some(editor) = self
+            .active_editor
+            .as_ref()
+            .map(|state| state.editor.clone())
+        else {
+            return;
+        };
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        workspace.update(cx, |workspace, cx| {
+            Self::export_to_pdf(workspace, editor, window, cx);
+        });
+    }
+
+    /// DESIGN.md §5.3 (ADR-F05)
+    pub fn export_to_pdf(
+        workspace: &mut Workspace,
+        editor: Entity<Editor>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let Some(buffer) = editor.read(cx).buffer().read(cx).as_singleton() else {
+            Self::show_pdf_export_toast(
+                workspace,
+                "PDF に書き出せるのは、1 つのファイルを開いているタブだけです。",
+                cx,
+            );
+            return;
+        };
+
+        match Self::pdf_source(&buffer, cx) {
+            PdfSource::Local(source_path) => {
+                Self::start_pdf_export(workspace, buffer, source_path, cx);
+            }
+            PdfSource::Remote => Self::show_pdf_export_toast(
+                workspace,
+                "リモートのファイルは PDF に書き出せません。ローカルに保存してから実行してください。",
+                cx,
+            ),
+            PdfSource::Untitled => {
+                Self::save_as_then_export_to_pdf(workspace, editor, buffer, window, cx);
+            }
+        }
+    }
+
+    /// Where the PDF would be written, which is the one thing the export cannot
+    /// do without: it is placed next to the markdown file and rendered by a
+    /// converter that only reads the local filesystem.
+    fn pdf_source(buffer: &Entity<Buffer>, cx: &App) -> PdfSource {
+        let Some(file) = buffer.read(cx).file() else {
+            return PdfSource::Untitled;
+        };
+        match file.as_local() {
+            Some(local_file) => PdfSource::Local(local_file.abs_path(cx)),
+            None => PdfSource::Remote,
+        }
+    }
+
+    /// A buffer that has never been saved has nowhere to put the PDF, so run
+    /// "save as" first and carry on once it lands, rather than asking the user to
+    /// save and then making them start over.
+    fn save_as_then_export_to_pdf(
+        workspace: &mut Workspace,
+        editor: Entity<Editor>,
+        buffer: Entity<Buffer>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let Some(pane) = workspace.pane_for(&editor) else {
+            Self::show_pdf_export_toast(
+                workspace,
+                "PDF に書き出す前に、名前を付けてファイルを保存してください。",
+                cx,
+            );
+            return;
+        };
+        let project = workspace.project().clone();
+
+        cx.spawn_in(window, async move |workspace, cx| {
+            let saved = Pane::save_item(project, pane, &editor, SaveIntent::SaveAs, cx).await?;
+            workspace.update(cx, |workspace, cx| {
+                if !saved {
+                    return;
+                }
+                match Self::pdf_source(&buffer, cx) {
+                    PdfSource::Local(source_path) => {
+                        Self::start_pdf_export(workspace, buffer.clone(), source_path, cx);
+                    }
+                    PdfSource::Remote | PdfSource::Untitled => Self::show_pdf_export_toast(
+                        workspace,
+                        "保存先を特定できなかったため、PDF に書き出せませんでした。",
+                        cx,
+                    ),
+                }
+            })
+        })
+        .detach_and_log_err(cx);
+    }
+
+    /// Renders the buffer's current text (not the file on disk, so unsaved edits
+    /// are included) into a PDF next to `source_path`.
+    fn start_pdf_export(
+        workspace: &mut Workspace,
+        buffer: Entity<Buffer>,
+        source_path: PathBuf,
+        cx: &mut Context<Workspace>,
+    ) {
+        let source = buffer.read(cx).text();
+        let fs = workspace.project().read(cx).fs().clone();
+        Self::show_pdf_export_toast(workspace, "PDF を書き出しています…", cx);
+
+        cx.spawn(async move |workspace, cx| {
+            let result = markdown_export::export_to_pdf(fs.as_ref(), &source_path, &source).await;
+            if let Err(error) = &result {
+                log::error!("markdown PDF export failed: {error:?}");
+            }
+            workspace
+                .update(cx, |workspace, cx| match result {
+                    Ok(output_path) => {
+                        Self::show_pdf_export_success_toast(workspace, output_path, cx);
+                    }
+                    Err(error) => {
+                        let message = if error.to_string() == markdown_export::NO_CONVERTER {
+                            "PDF に変換できません。Microsoft Edge (msedge.exe) か pandoc \
+                             をインストールしてください。"
+                                .to_owned()
+                        } else {
+                            format!("PDF の書き出しに失敗しました: {error}")
+                        };
+                        Self::show_pdf_export_toast(workspace, message, cx);
+                    }
+                })
+                .ok();
+        })
+        .detach();
+    }
+
+    /// The PDF is written next to the markdown file, which is not necessarily a
+    /// folder the user has open, so the toast that announces it doubles as the
+    /// way to look at it.
+    fn show_pdf_export_success_toast(
+        workspace: &mut Workspace,
+        output_path: PathBuf,
+        cx: &mut Context<Workspace>,
+    ) {
+        workspace.show_toast(
+            Toast::new(
+                NotificationId::named(PDF_EXPORT_NOTIFICATION_ID.into()),
+                format!(
+                    "PDF を書き出しました: {} — クリックで開く",
+                    output_path.display()
+                ),
+            )
+            .on_click("開く", move |_window, cx| {
+                cx.open_with_system(&output_path);
+            })
+            .autohide(),
+            cx,
+        );
+    }
+
+    /// Auto-hiding on purpose: these toasts report the progress of one export,
+    /// and a sticky one outlives the situation it describes — a request to save
+    /// the file stayed on screen after the user had saved, reading as though the
+    /// export were still refusing to run.
+    fn show_pdf_export_toast(
+        workspace: &mut Workspace,
+        message: impl Into<Cow<'static, str>>,
+        cx: &mut Context<Workspace>,
+    ) {
+        workspace.show_toast(
+            Toast::new(
+                NotificationId::named(PDF_EXPORT_NOTIFICATION_ID.into()),
+                message,
+            )
+            .autohide(),
+            cx,
+        );
     }
 
     pub fn open_preview_in_pane(
@@ -1529,9 +1734,9 @@ impl Item for MarkdownPreviewView {
             .map(|editor_state| {
                 let buffer = editor_state.editor.read(cx).buffer().read(cx);
                 let title = buffer.title(cx);
-                format!("Preview {}", title).into()
+                format!("{} のプレビュー", title).into()
             })
-            .unwrap_or_else(|| SharedString::from("Markdown Preview"))
+            .unwrap_or_else(|| SharedString::from("Markdown プレビュー"))
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -1706,7 +1911,7 @@ impl Render for MarkdownPreviewView {
                                         menu.when_some(focus, |menu, focus| menu.context(focus))
                                             .when_some(selected_text, |menu, text| {
                                                 menu.entry(
-                                                    "Copy",
+                                                    "コピー",
                                                     Some(Box::new(markdown::Copy)),
                                                     move |_, cx| {
                                                         cx.write_to_clipboard(
@@ -1719,7 +1924,7 @@ impl Render for MarkdownPreviewView {
                                             })
                                             .when_some(selected_markdown, |menu, text| {
                                                 menu.entry(
-                                                    "Copy as Markdown",
+                                                    "Markdown としてコピー",
                                                     Some(Box::new(markdown::CopyAsMarkdown)),
                                                     move |_, cx| {
                                                         cx.write_to_clipboard(
@@ -1731,11 +1936,17 @@ impl Render for MarkdownPreviewView {
                                                 )
                                             })
                                             .when_some(context_menu_link, |menu, url| {
-                                                menu.entry("Copy Link", None, move |_, cx| {
-                                                    cx.write_to_clipboard(
-                                                        ClipboardItem::new_string(url.to_string()),
-                                                    );
-                                                })
+                                                menu.entry(
+                                                    "リンクをコピー",
+                                                    None,
+                                                    move |_, cx| {
+                                                        cx.write_to_clipboard(
+                                                            ClipboardItem::new_string(
+                                                                url.to_string(),
+                                                            ),
+                                                        );
+                                                    },
+                                                )
                                             })
                                     }))
                                 });
@@ -2081,6 +2292,76 @@ mod persistence {
                 WHERE item_id = ? AND workspace_id = ?
             }
         }
+    }
+}
+
+/// The quick action bar is hidden while a preview is the active pane item, so the preview
+/// carries its own toolbar entry for exporting the source it renders.
+pub struct MarkdownPreviewToolbarControls {
+    preview_view: Option<WeakEntity<MarkdownPreviewView>>,
+    _subscription: Option<Subscription>,
+}
+
+impl MarkdownPreviewToolbarControls {
+    pub fn new() -> Self {
+        Self {
+            preview_view: None,
+            _subscription: None,
+        }
+    }
+}
+
+impl Render for MarkdownPreviewToolbarControls {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(preview_view) = self
+            .preview_view
+            .as_ref()
+            .and_then(|preview_view| preview_view.upgrade())
+            .filter(|preview_view| preview_view.read(cx).active_editor.is_some())
+        else {
+            return div().into_any_element();
+        };
+
+        IconButton::new("export-markdown-to-pdf", IconName::Download)
+            .icon_size(IconSize::Small)
+            .style(ButtonStyle::Subtle)
+            .tooltip(|_window, cx| Tooltip::for_action("PDF に書き出す", &ExportToPdf, cx))
+            .on_click({
+                let preview_view = preview_view.downgrade();
+                move |_, window, cx| {
+                    if let Some(preview_view) = preview_view.upgrade() {
+                        preview_view.update(cx, |preview_view, cx| {
+                            preview_view.export_active_source_to_pdf(window, cx);
+                        });
+                    }
+                }
+            })
+            .into_any_element()
+    }
+}
+
+impl EventEmitter<ToolbarItemEvent> for MarkdownPreviewToolbarControls {}
+
+impl ToolbarItemView for MarkdownPreviewToolbarControls {
+    fn set_active_pane_item(
+        &mut self,
+        active_pane_item: Option<&dyn ItemHandle>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> ToolbarItemLocation {
+        self.preview_view = None;
+        self._subscription = None;
+
+        if let Some(preview_view) =
+            active_pane_item.and_then(|item| item.downcast::<MarkdownPreviewView>())
+        {
+            self._subscription = Some(cx.observe(&preview_view, |_, _, cx| cx.notify()));
+            self.preview_view = Some(preview_view.downgrade());
+            cx.notify();
+            return ToolbarItemLocation::PrimaryRight;
+        }
+
+        ToolbarItemLocation::Hidden
     }
 }
 

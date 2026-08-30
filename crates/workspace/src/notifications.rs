@@ -351,23 +351,23 @@ impl Render for LanguageServerPrompt {
                                             "copy-description",
                                             request.message.clone(),
                                         )
-                                        .tooltip_label("Copy Description"),
+                                        .tooltip_label("説明をコピー"),
                                     )
                                     .child(
                                         IconButton::new(close_id, close_icon)
                                             .tooltip(move |_window, cx| {
                                                 if suppress {
                                                     Tooltip::with_meta(
-                                                        "Suppress",
+                                                        "今後表示しない",
                                                         Some(&SuppressNotification),
-                                                        "Click to close",
+                                                        "クリックで閉じます",
                                                         cx,
                                                     )
                                                 } else {
                                                     Tooltip::with_meta(
-                                                        "Close",
+                                                        "閉じる",
                                                         Some(&menu::Cancel),
-                                                        "Suppress with shift-click",
+                                                        "Shift + クリックで今後表示しなくなります",
                                                         cx,
                                                     )
                                                 }
@@ -986,7 +986,7 @@ pub mod simple_message_notification {
                 .when_some(copy_text, |el, text| {
                     el.child(
                         CopyButton::new("copy-notification-message", text)
-                            .tooltip_label("Copy Message"),
+                            .tooltip_label("メッセージをコピー"),
                     )
                 })
                 .when(show_close_button, |el| {
@@ -995,20 +995,20 @@ pub mod simple_message_notification {
                             .tooltip(move |_window, cx| {
                                 if suppress {
                                     Tooltip::with_meta(
-                                        "Suppress",
+                                        "今後表示しない",
                                         Some(&SuppressNotification),
-                                        "Click to Close",
+                                        "クリックで閉じます",
                                         cx,
                                     )
                                 } else if show_suppress_button {
                                     Tooltip::with_meta(
-                                        "Close",
+                                        "閉じる",
                                         Some(&menu::Cancel),
-                                        "Shift-click to Suppress",
+                                        "Shift + クリックで今後表示しなくなります",
                                         cx,
                                     )
                                 } else {
-                                    Tooltip::for_action("Close", &menu::Cancel, cx)
+                                    Tooltip::for_action("閉じる", &menu::Cancel, cx)
                                 }
                             })
                             .on_click(cx.listener(move |_, _, _, cx| {

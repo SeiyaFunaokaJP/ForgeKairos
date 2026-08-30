@@ -31,7 +31,9 @@
   "buffer_font_family": ".ZedMono",
   // Set the buffer text's font fallbacks, this will be merged with
   // the platform's default fallbacks.
-  "buffer_font_fallbacks": null,
+  // Japanese faces first (DESIGN.md §3). Families that are not installed are
+  // skipped silently and the platform fallback chain still applies.
+  "buffer_font_fallbacks": ["BIZ UDGothic", "MS Gothic", "Yu Gothic UI"],
   // The OpenType features to enable for text in the editor.
   "buffer_font_features": {
     // Disable ligatures:
@@ -59,7 +61,9 @@
   "ui_font_family": ".ZedSans",
   // Set the UI's font fallbacks, this will be merged with the platform's
   // default font fallbacks.
-  "ui_font_fallbacks": null,
+  // Japanese faces first (DESIGN.md §3). Families that are not installed are
+  // skipped silently and the platform fallback chain still applies.
+  "ui_font_fallbacks": ["Yu Gothic UI", "Meiryo"],
   // The OpenType features to enable for text in the UI
   "ui_font_features": {
     // Disable ligatures:
@@ -547,6 +551,9 @@
     "agent_review": true,
     // Whether to show code action buttons in the editor toolbar.
     "code_actions": false,
+    // Whether to show the Markdown formatting row below the editor toolbar
+    // while a Markdown file is open.
+    "markdown_format_bar": true,
   },
   // Whether to allow windows to tab together based on the user’s tabbing preference (macOS only).
   "use_system_window_tabs": false,
@@ -577,7 +584,11 @@
     // Whether to show the sign in button in the titlebar.
     "show_sign_in": true,
     // Whether to show the menus in the titlebar.
-    "show_menus": false,
+    //
+    // On in this fork: upstream collapses every menu behind a single hamburger
+    // icon on Windows/Linux, but this fork targets users coming from VSCode who
+    // expect the labeled 「ファイル」「編集」… row to always be visible.
+    "show_menus": true,
     // The layout of window control buttons in the title bar (Linux only).
     "button_layout": "platform_default",
   },
@@ -823,7 +834,13 @@
     // Default width of the project panel.
     "default_width": 240,
     // Where to dock the project panel. Can be 'left' or 'right'.
-    "dock": "right",
+    //
+    // Left in this fork: the default window mirrors VSCode, with the file tree
+    // on the left and the AI chat on the right. All five dock defaults are kept
+    // equal to `agent_settings::PanelLayout::EDITOR`, so the title bar's
+    // 「パネルレイアウト」 submenu shows 「クラシック」 as the active preset
+    // instead of falling through to 「カスタム」.
+    "dock": "left",
     // Spacing between worktree entries in the project panel. Can be 'comfortable' or 'standard'.
     "entry_spacing": "comfortable",
     // Whether to show file icons in the project panel.
@@ -940,7 +957,8 @@
     // Default width of the outline panel.
     "default_width": 300,
     // Where to dock the outline panel. Can be 'left' or 'right'.
-    "dock": "right",
+    // Left in this fork: see `project_panel.dock`.
+    "dock": "left",
     // Whether to show file icons in the outline panel.
     "file_icons": true,
     // Whether to show folder icons or chevrons for directories in the outline panel.
@@ -992,7 +1010,8 @@
     // Whether to show the collaboration panel button in the status bar.
     "button": true,
     // Where to dock the collaboration panel. Can be 'left' or 'right'.
-    "dock": "right",
+    // Left in this fork: see `project_panel.dock`.
+    "dock": "left",
     // Default width of the collaboration panel.
     "default_width": 240,
   },
@@ -1000,7 +1019,8 @@
     // Whether to show the git panel button in the status bar.
     "button": true,
     // Where to dock the git panel. Can be 'left' or 'right'.
-    "dock": "right",
+    // Left in this fork: see `project_panel.dock`.
+    "dock": "left",
     // Default width of the git panel.
     "default_width": 360,
     // Style of the git status indicator in the panel.
@@ -1073,17 +1093,27 @@
     // in the prompt when generating git commit messages.
     "commit_message_include_project_rules": true,
     // Whether the agent is enabled.
-    "enabled": true,
+    // Off in this fork: every AI feature ships disabled and the user opts in
+    // explicitly from the settings UI ("AI" page). See docs/jp-enhance/DESIGN.md
+    // (ADR-F09). This is a plain boolean, so turning it back on is always
+    // possible - unlike `disable_ai`, which is a one-way latch.
+    "enabled": false,
     // Whether to show the agent panel button in the status bar.
     "button": true,
     // Where to dock the agent panel. Can be 'left', 'right' or 'bottom'.
-    "dock": "left",
+    // Right in this fork: see `project_panel.dock`.
+    "dock": "right",
     // Whether the agent panel should use flexible (proportional) sizing.
     //
     // Default: true
     "flexible": true,
     // Where to position the threads sidebar. Can be 'left' or 'right'.
     "sidebar_side": "left",
+    // Whether to split the thread history into the agent panel itself, as a
+    // list to the left of the current thread. Added by this fork so the history
+    // is reachable without opening the window-wide threads sidebar. The list is
+    // hidden automatically while the panel is too narrow to fit both halves.
+    "panel_thread_history": true,
     // Default width when the agent panel is docked to the left or right.
     "default_width": 640,
     // Default height when the agent panel is docked to the bottom.
@@ -1096,14 +1126,22 @@
     // Content will be centered within the panel.
     "max_content_width": 850,
     // The default model to use when creating new threads.
-    "default_model": {
-      // The provider to use.
-      "provider": "zed.dev",
-      // The model to use.
-      "model": "claude-sonnet-4",
-      // Whether thinking is enabled.
-      "enable_thinking": false,
-    },
+    //
+    // Deliberately unset in this fork (ADR-F09): picking the model is the
+    // user's decision, made after they opt into AI. With nothing configured,
+    // Zed falls back to the first *authenticated* provider, so a running local
+    // Ollama / LM Studio endpoint is picked up on its own and no cloud host is
+    // contacted until the user configures one (and adds it to
+    // network_allowlist.json - see docs/jp-enhance/DESIGN.md §4).
+    //
+    // "default_model": {
+    //   // The provider to use.
+    //   "provider": "ollama",
+    //   // The model to use.
+    //   "model": "qwen3:8b",
+    //   // Whether thinking is enabled.
+    //   "enable_thinking": false,
+    // },
     // Additional parameters for language model requests. When making a request to a model, parameters will be taken
     // from the last entry in this list that matches the model's provider and name. In each entry, both provider
     // and model are optional, so that you can specify parameters for either one.
@@ -1212,6 +1250,7 @@
           "move_path": true,
           "rename_symbol": true,
           "read_file": true,
+          "repo_map": true,
           "grep": true,
           "skill": true,
           "spawn_agent": true,
@@ -1235,6 +1274,7 @@
           "get_code_actions": true,
           "go_to_definition": true,
           "read_file": true,
+          "repo_map": true,
           "grep": true,
           "skill": true,
           "spawn_agent": true,
@@ -1480,6 +1520,10 @@
   "extend_list_on_newline": true,
   // Whether to indent list items when pressing tab after a list marker.
   "indent_list_on_tab": true,
+  // Whether pressing enter first appends the two trailing spaces that spell a
+  // Markdown hard line break. Blank lines, headings, tables, list items, code
+  // fences and lines that already end in a break are left alone.
+  "hard_break_on_newline": false,
   // Removes any lines containing only whitespace at the end of the file and
   // ensures just one newline at the end.
   "ensure_final_newline_on_save": true,
@@ -1568,11 +1612,13 @@
   // Default: true
   "word_diff_enabled": true,
   // Control what info is collected by Zed.
+  // Both are off in this fork: they are the only settings that stop the
+  // telemetry requests at the source rather than at the allowlist.
   "telemetry": {
     // Send debug info like crash reports.
-    "diagnostics": true,
+    "diagnostics": false,
     // Send anonymized usage data like what languages you're using Zed with.
-    "metrics": true,
+    "metrics": false,
     // Allow sending requests to Anthropic models that cannot be offered with
     // Zero Data Retention
     "anthropic_retention": false,
@@ -1581,9 +1627,19 @@
   //
   // Default: false
   "disable_ai": false,
+  // AI providers whose "your input may be retained and used for training"
+  // warning has been acknowledged (DESIGN.md ADR-F10). Written by the settings
+  // UI when the confirmation checkbox is ticked; clearing an entry brings the
+  // warning back. Agent providers are listed by their provider id, edit
+  // prediction providers as `edit_prediction:<provider>`.
+  //
+  // Default: []
+  "acknowledged_external_ai_providers": [],
   // Automatically update Zed. This setting may be ignored on Linux if
   // installed through a package manager.
-  "auto_update": true,
+  // Off in this fork: it is a hard fork of v1.17.2 and does not track
+  // upstream releases (DESIGN.md ADR-F01).
+  "auto_update": false,
   // How to render LSP `textDocument/documentColor` colors in the editor.
   //
   // Possible values:
@@ -1778,7 +1834,9 @@
   "load_direnv": "direct",
   "edit_predictions": {
     // Which edit prediction provider to use.
-    "provider": "zed",
+    // "none" in this fork: the "zed" provider calls a cloud service. Switch to
+    // "ollama" once a FIM-capable local model (e.g. qwen2.5-coder) is pulled.
+    "provider": "none",
     // A list of globs representing files that edit predictions should be disabled for.
     // There's a sensible default list of globs already included.
     // Any addition to this list will be merged with the default list.
@@ -1840,7 +1898,9 @@
     //     or false if no preference has been stored.
     //   - "yes": allow data collection for files in open-source projects.
     //   - "no": never allow data collection.
-    "allow_data_collection": "default",
+    // "no" in this fork: an explicit No is clearer than "default" (which means
+    // "whatever the status-bar toggle stored, else off").
+    "allow_data_collection": "no",
   },
   // Settings specific to journaling
   "journal": {
@@ -2257,6 +2317,18 @@
       "prettier": {
         "allowed": false,
       },
+      // zed-jp-enhance: CustomFormatter (C Indented-Brace Formatter) 相当の既定。
+      // GNU ベース + 制御文/関数名の後に空白、1 行形式の禁止、case ラベル字下げ。
+      // clang-format が PATH 上に必要 (docs/jp-enhance/BUILD-WINDOWS.md 参照)。
+      "formatter": {
+        "external": {
+          "command": "clang-format",
+          "arguments": [
+            "--style={Language: Cpp, BasedOnStyle: GNU, SpaceBeforeParens: Always, ColumnLimit: 120, AlignEscapedNewlines: Left, SortIncludes: Never, IndentCaseLabels: true, AllowShortFunctionsOnASingleLine: None, AllowShortBlocksOnASingleLine: Never, AllowShortIfStatementsOnASingleLine: Never, AllowShortLoopsOnASingleLine: false, AllowShortCaseLabelsOnASingleLine: false, AllowShortEnumsOnASingleLine: false}",
+            "--assume-filename={buffer_path}",
+          ],
+        },
+      },
     },
     "C++": {
       "use_on_type_format": false,
@@ -2367,6 +2439,7 @@
     "Markdown": {
       "use_on_type_format": false,
       "remove_trailing_whitespace_on_save": false,
+      "hard_break_on_newline": true,
       "allow_rewrap": "anywhere",
       "soft_wrap": "editor_width",
       "completions": {

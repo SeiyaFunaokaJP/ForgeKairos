@@ -244,10 +244,12 @@ impl Model {
 }
 
 /// Generate completion with streaming.
+/// `api_key` is `None` for a compatible endpoint configured to need no
+/// credential; the `X-Api-Key` header is then omitted.
 pub async fn stream_completion(
     client: &dyn HttpClient,
     api_url: &str,
-    api_key: &str,
+    api_key: Option<&str>,
     request: Request,
     beta_headers: Option<String>,
     extra_headers: &CustomHeaders,
@@ -387,7 +389,7 @@ pub async fn non_streaming_completion(
     let (mut response, rate_limits) = send_request(
         client,
         api_url,
-        api_key,
+        Some(api_key),
         &request,
         beta_headers,
         extra_headers,
@@ -411,7 +413,7 @@ pub async fn non_streaming_completion(
 async fn send_request(
     client: &dyn HttpClient,
     api_url: &str,
-    api_key: &str,
+    api_key: Option<&str>,
     request: impl Serialize,
     beta_headers: Option<String>,
     extra_headers: &CustomHeaders,
@@ -422,8 +424,14 @@ async fn send_request(
         .method(Method::POST)
         .uri(uri)
         .header("Anthropic-Version", "2023-06-01")
-        .header("X-Api-Key", api_key.trim())
         .header("Content-Type", "application/json");
+
+    // `None` is a compatible endpoint that takes no credential at all. Such a
+    // server rejects an empty `X-Api-Key` rather than treating it as absent, so
+    // the header has to be left out entirely.
+    if let Some(api_key) = api_key {
+        request_builder = request_builder.header("X-Api-Key", api_key.trim());
+    }
 
     if let Some(beta_headers) = beta_headers {
         request_builder = request_builder.header("Anthropic-Beta", beta_headers);
@@ -569,7 +577,7 @@ fn get_header<'a>(key: &str, headers: &'a HeaderMap) -> anyhow::Result<&'a str> 
 pub async fn stream_completion_with_rate_limit_info(
     client: &dyn HttpClient,
     api_url: &str,
-    api_key: &str,
+    api_key: Option<&str>,
     request: Request,
     beta_headers: Option<String>,
     extra_headers: &CustomHeaders,
@@ -1264,6 +1272,52 @@ pub fn completion_error_from_anthropic_api(
 mod tests {
     use super::*;
     use http_client::FakeHttpClient;
+    use std::sync::Mutex;
+
+    #[test]
+    fn a_key_less_endpoint_gets_no_api_key_header() {
+        let sent_headers = Arc::new(Mutex::new(Vec::new()));
+        let client = FakeHttpClient::create({
+            let sent_headers = sent_headers.clone();
+            move |request| {
+                sent_headers
+                    .lock()
+                    .expect("header lock should not be poisoned")
+                    .push(request.headers().clone());
+                async move {
+                    Ok(http::Response::builder()
+                        .status(StatusCode::OK)
+                        .body(AsyncBody::from("{}"))
+                        .expect("valid response"))
+                }
+            }
+        });
+
+        for api_key in [Some(" secret "), None] {
+            futures::executor::block_on(send_request(
+                client.as_ref(),
+                ANTHROPIC_API_URL,
+                api_key,
+                serde_json::json!({}),
+                None,
+                &CustomHeaders::default(),
+            ))
+            .expect("request should be sent");
+        }
+
+        let sent_headers = sent_headers
+            .lock()
+            .expect("header lock should not be poisoned");
+        assert_eq!(
+            sent_headers[0]
+                .get("x-api-key")
+                .map(|value| value.to_str().expect("header should be ascii")),
+            Some("secret")
+        );
+        assert!(sent_headers[1].get("x-api-key").is_none());
+        // The version header is not the credential, so it stays either way.
+        assert!(sent_headers[1].get("anthropic-version").is_some());
+    }
 
     #[test]
     fn list_models_preserves_anthropic_api_errors() {

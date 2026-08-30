@@ -85,7 +85,7 @@ impl AgentTool for AskUserTool {
     ) -> SharedString {
         match input {
             Ok(input) if !input.question.is_empty() => SharedString::from(input.question),
-            _ => "Asking a question".into(),
+            _ => "ユーザーに質問".into(),
         }
     }
 

@@ -381,15 +381,15 @@ impl ConfigOptionSelector {
 
     fn current_value_name(&self) -> String {
         let Some(option) = self.current_option() else {
-            return "Unknown".to_string();
+            return "不明".to_string();
         };
 
         match &option.kind {
             acp::SessionConfigKind::Select(select) => {
                 find_option_name(&select.options, &select.current_value)
-                    .unwrap_or_else(|| "Unknown".to_string())
+                    .unwrap_or_else(|| "不明".to_string())
             }
-            _ => "Unknown".to_string(),
+            _ => "不明".to_string(),
         }
     }
 
@@ -406,7 +406,7 @@ impl ConfigOptionSelector {
 
     fn render_trigger_button(&self, _window: &mut Window, _cx: &mut Context<Self>) -> Button {
         let Some(option) = self.current_option() else {
-            return Button::new("config-option-trigger", "Unknown")
+            return Button::new("config-option-trigger", "不明")
                 .label_size(LabelSize::Small)
                 .color(Color::Muted)
                 .disabled(true);
@@ -493,33 +493,33 @@ impl Render for ConfigOptionSelector {
                             acp::SessionConfigOptionCategory::Mode => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "Change Mode",
+                                        "モードを変更",
                                         KeyBinding::for_action(&ToggleProfileSelector, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "Cycle Through Modes",
+                                        "モードを順に切り替え",
                                         KeyBinding::for_action(&CycleModeSelector, cx),
                                     ));
                             }
                             acp::SessionConfigOptionCategory::Model => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "Change Model",
+                                        "モデルを変更",
                                         KeyBinding::for_action(&ToggleModelSelector, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "Cycle Favorite Models",
+                                        "お気に入りモデルを順に切り替え",
                                         KeyBinding::for_action(&CycleFavoriteModels, cx),
                                     ));
                             }
                             acp::SessionConfigOptionCategory::ThoughtLevel => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "Change Thinking Effort",
+                                        "思考の深さを変更",
                                         KeyBinding::for_action(&ToggleThinkingEffortMenu, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "Cycle Thinking Effort",
+                                        "思考の深さを順に切り替え",
                                         KeyBinding::for_action(&CycleThinkingEffort, cx),
                                     ));
                             }
@@ -726,7 +726,7 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select an option…".into()
+        "オプションを選択…".into()
     }
 
     fn update_matches(
@@ -862,9 +862,9 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
                                 }))
                                 .end_slot_on_hover(div().pr_1p5().child({
                                     let (icon, color, tooltip) = if is_favorite {
-                                        (IconName::StarFilled, Color::Accent, "Unfavorite")
+                                        (IconName::StarFilled, Color::Accent, "お気に入りから削除")
                                     } else {
-                                        (IconName::Star, Color::Default, "Favorite")
+                                        (IconName::Star, Color::Default, "お気に入りに追加")
                                     };
 
                                     let config_id = self.config_id.clone();
@@ -999,7 +999,7 @@ fn options_to_picker_entries(
     }
 
     if !favorite_options.is_empty() {
-        entries.push(ConfigOptionPickerEntry::Separator("Favorites".into()));
+        entries.push(ConfigOptionPickerEntry::Separator("お気に入り".into()));
         for option in favorite_options {
             entries.push(ConfigOptionPickerEntry::Option(option));
         }
@@ -1009,7 +1009,9 @@ fn options_to_picker_entries(
         if let Some(option) = options.first()
             && option.group.is_none()
         {
-            entries.push(ConfigOptionPickerEntry::Separator("All Options".into()));
+            entries.push(ConfigOptionPickerEntry::Separator(
+                "すべてのオプション".into(),
+            ));
         }
     }
 

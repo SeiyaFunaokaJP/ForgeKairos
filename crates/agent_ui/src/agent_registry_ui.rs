@@ -9,18 +9,104 @@ use gpui::{
     RenderOnce, SharedString, Styled, TextStyle, UniformListScrollHandle, Window, point,
     uniform_list,
 };
+use http_client::{RequestHost, hosts_required_to_download};
+use project::agent_registry_store::current_platform_key;
 use project::agent_server_store::{AllAgentServersSettings, CustomAgentServerSettings};
 use project::{AgentRegistryStore, RegistryAgent};
 use settings::{Settings, SettingsStore, update_settings_file};
 use theme_settings::ThemeSettings;
 use ui::{
-    ButtonStyle, ScrollableHandle, ToggleButtonGroup, ToggleButtonGroupSize,
+    Banner, ButtonStyle, ScrollableHandle, ToggleButtonGroup, ToggleButtonGroupSize,
     ToggleButtonGroupStyle, ToggleButtonSimple, Tooltip, WithScrollbar, prelude::*,
 };
+use util::ResultExt as _;
 use workspace::{
     Workspace,
     item::{Item, ItemEvent},
 };
+
+/// A registry agent's install requires network access this fork's
+/// deny-by-default egress policy has to be told about (`docs/jp-enhance/DESIGN.md`
+/// §4, F2-5). For a `Binary` agent that is every host its current-platform
+/// archive download touches — which for a GitHub release asset is more than
+/// one, the URL's own host plus every host it is known to redirect to, hence
+/// [`http_client::hosts_required_to_download`] rather than `Url::host_str`;
+/// for an `Npx` agent the package fetch itself runs inside npm's own child
+/// process and is never covered by the allowlist (ADR-F03's known gap,
+/// DESIGN.md §4.9), so this only lists `nodejs.org` — needed once to fetch
+/// Zed's bundled Node — and flags the gap so the UI can warn about it.
+struct InstallRequirement {
+    /// Hosts this install needs in `network_allowlist.json`, derived from the
+    /// registry manifest. Empty when nothing beyond what is already open is
+    /// required (or, for `Npx`, when Node has already been fetched — see
+    /// `render_pending_consent`, which still shows the npx warning either way).
+    hosts: Vec<SharedString>,
+    is_npx: bool,
+}
+
+fn install_requirement(agent: &RegistryAgent) -> InstallRequirement {
+    match agent {
+        RegistryAgent::Binary(binary) => {
+            let hosts = current_platform_key()
+                .and_then(|platform| binary.targets.get(platform))
+                .map(|target| hosts_required_to_download(&target.archive))
+                .unwrap_or_default();
+            InstallRequirement {
+                hosts: hosts.into_iter().map(SharedString::from).collect(),
+                is_npx: false,
+            }
+        }
+        RegistryAgent::Npx(_) => InstallRequirement {
+            hosts: vec![SharedString::from("nodejs.org")],
+            is_npx: true,
+        },
+    }
+}
+
+/// Registers a registry agent in `settings.json` and opens a thread with it —
+/// the effect the "Install" button always had before F2-5 added a consent
+/// step in front of it for agents that need one.
+fn install_registry_agent(agent_id: &str, window: &mut Window, cx: &mut App) {
+    let fs = <dyn Fs>::global(cx);
+    let agent_id_owned = agent_id.to_string();
+    update_settings_file(fs, cx, move |settings, _| {
+        let agent_servers = settings.agent_servers.get_or_insert_default();
+        agent_servers.entry(agent_id_owned).or_insert_with(|| {
+            settings::CustomAgentServerSettings::Registry {
+                default_mode: None,
+                env: Default::default(),
+                default_config_options: HashMap::default(),
+                favorite_config_option_values: HashMap::default(),
+            }
+        });
+    });
+    window.dispatch_action(
+        Box::new(zed_actions::agent::SelectAgent {
+            agent: agent_id.to_string(),
+        }),
+        cx,
+    );
+}
+
+/// The subset of `hosts` the running egress policy does not already allow.
+/// Falls back to "everything is missing" when the policy has not been
+/// published yet (`egress_policy::watch` sets it before the app's
+/// `HttpClient` is built, so in practice this only matters for a test that
+/// never calls that), which is the safe direction: showing the consent
+/// banner when it may not strictly be needed, never skipping it.
+fn missing_hosts(hosts: &[SharedString], cx: &App) -> Vec<SharedString> {
+    let allowed = cx.try_global::<egress_policy::EgressAllowlistGlobal>();
+    hosts
+        .iter()
+        .filter(|host| {
+            let Some(request_host) = RequestHost::parse(host) else {
+                return true;
+            };
+            !allowed.is_some_and(|policy| policy.0.allows(&request_host))
+        })
+        .cloned()
+        .collect()
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RegistryFilter {
@@ -34,6 +120,19 @@ enum RegistryInstallStatus {
     NotInstalled,
     InstalledRegistry,
     InstalledCustom,
+}
+
+/// An install the user has to confirm before it proceeds (F2-5): the "Install"
+/// button was pressed for an agent that needs a host added to the network
+/// allowlist, or that is distributed via `npx` (whose package fetch bypasses
+/// the allowlist entirely). Kept per agent id so confirming or cancelling one
+/// card never disturbs another the user may also have open.
+struct PendingInstallConsent {
+    hosts: Vec<SharedString>,
+    is_npx: bool,
+    /// Set when the last attempt to add `hosts` to `network_allowlist.json`
+    /// failed, so the banner can report it instead of silently retrying.
+    error: Option<SharedString>,
 }
 
 #[derive(IntoElement)]
@@ -79,6 +178,7 @@ pub struct AgentRegistryPage {
     registry_agents: Vec<RegistryAgent>,
     filtered_registry_indices: Vec<usize>,
     installed_statuses: HashMap<String, RegistryInstallStatus>,
+    pending_install_consent: HashMap<String, PendingInstallConsent>,
     query_editor: Entity<Editor>,
     filter: RegistryFilter,
     _subscriptions: Vec<gpui::Subscription>,
@@ -94,7 +194,7 @@ impl AgentRegistryPage {
             let registry_store = AgentRegistryStore::global(cx);
             let query_editor = cx.new(|cx| {
                 let mut input = Editor::single_line(window, cx);
-                input.set_placeholder_text("Search agents...", window, cx);
+                input.set_placeholder_text("エージェントを検索...", window, cx);
                 input
             });
             cx.subscribe(&query_editor, Self::on_query_change).detach();
@@ -113,6 +213,7 @@ impl AgentRegistryPage {
                 registry_agents: Vec::new(),
                 filtered_registry_indices: Vec::new(),
                 installed_statuses: HashMap::default(),
+                pending_install_consent: HashMap::default(),
                 query_editor,
                 filter: RegistryFilter::All,
                 _subscriptions: subscriptions,
@@ -292,30 +393,30 @@ impl AgentRegistryPage {
         let fetch_error = registry_store.fetch_error();
 
         let message = if is_fetching {
-            "Loading registry..."
+            "レジストリを読み込んでいます..."
         } else if fetch_error.is_some() {
-            "Failed to load the agent registry. Please check your connection and try again."
+            "エージェントレジストリの読み込みに失敗しました。接続を確認して再試行してください。"
         } else {
             match self.filter {
                 RegistryFilter::All => {
                     if has_search {
-                        "No agents match your search."
+                        "検索条件に一致するエージェントはありません。"
                     } else {
-                        "No agents available."
+                        "利用できるエージェントはありません。"
                     }
                 }
                 RegistryFilter::Installed => {
                     if has_search {
-                        "No installed agents match your search."
+                        "検索条件に一致するインストール済みのエージェントはありません。"
                     } else {
-                        "No installed agents."
+                        "インストール済みのエージェントはありません。"
                     }
                 }
                 RegistryFilter::NotInstalled => {
                     if has_search {
-                        "No uninstalled agents match your search."
+                        "検索条件に一致する未インストールのエージェントはありません。"
                     } else {
-                        "No uninstalled agents."
+                        "未インストールのエージェントはありません。"
                     }
                 }
             }
@@ -351,7 +452,7 @@ impl AgentRegistryPage {
             .when_some(fetch_error, |this, _| {
                 let registry_store = self.registry_store.clone();
                 this.child(
-                    Button::new("retry-agent-registry", "Retry")
+                    Button::new("retry-agent-registry", "再試行")
                         .style(ButtonStyle::Outlined)
                         .size(ButtonSize::Compact)
                         .on_click(move |_, _, cx| {
@@ -382,7 +483,7 @@ impl AgentRegistryPage {
 
     fn render_missing_agent(&self) -> AgentRegistryCard {
         AgentRegistryCard::new().child(
-            Label::new("Missing registry entry.")
+            Label::new("レジストリの項目が見つかりません。")
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
@@ -395,6 +496,7 @@ impl AgentRegistryPage {
     ) -> AgentRegistryCard {
         let install_status = self.install_status(agent.id().as_ref());
         let supports_current_platform = agent.supports_current_platform();
+        let pending_consent = self.pending_install_consent.get(agent.id().as_ref());
 
         let icon = match agent.icon_path() {
             Some(icon_path) => Icon::from_external_svg(icon_path.clone()),
@@ -403,8 +505,13 @@ impl AgentRegistryPage {
         .size(IconSize::Medium)
         .color(Color::Muted);
 
-        let install_button =
-            self.install_button(agent, install_status, supports_current_platform, cx);
+        let install_button = self.install_button(
+            agent,
+            install_status,
+            supports_current_platform,
+            pending_consent.is_some(),
+            cx,
+        );
 
         let repository_button = agent.repository().map(|repository| {
             let repository_for_tooltip = repository.clone();
@@ -417,7 +524,7 @@ impl AgentRegistryPage {
             .icon_size(IconSize::Small)
             .tooltip(move |_, cx| {
                 Tooltip::with_meta(
-                    "Visit Agent Repository",
+                    "エージェントのリポジトリを開く",
                     None,
                     repository_for_tooltip.clone(),
                     cx,
@@ -437,14 +544,14 @@ impl AgentRegistryPage {
             )
             .icon_size(IconSize::Small)
             .tooltip(move |_, cx| {
-                Tooltip::with_meta("Visit Agent Website", None, website.clone(), cx)
+                Tooltip::with_meta("エージェントの Web サイトを開く", None, website.clone(), cx)
             })
             .on_click(move |_, _, cx| {
                 cx.open_url(&website_for_click);
             })
         });
 
-        AgentRegistryCard::new()
+        let card = AgentRegistryCard::new()
             .child(
                 h_flex()
                     .justify_between()
@@ -456,7 +563,7 @@ impl AgentRegistryPage {
                             .child(Label::new(format!("v{}", agent.version())).color(Color::Muted))
                             .when(!supports_current_platform, |this| {
                                 this.child(
-                                    Label::new("Not supported on this platform")
+                                    Label::new("このプラットフォームには対応していません")
                                         .size(LabelSize::Small)
                                         .color(Color::Warning),
                                 )
@@ -485,7 +592,192 @@ impl AgentRegistryPage {
                             .when_some(repository_button, |this, button| this.child(button))
                             .when_some(website_button, |this, button| this.child(button)),
                     ),
+            );
+
+        match pending_consent {
+            Some(consent) => {
+                card.child(self.render_pending_consent(agent.id().as_ref(), consent, cx))
+            }
+            None => card,
+        }
+    }
+
+    /// The banner shown in place of a settled "Install" click while it needs
+    /// the user to confirm a network allowlist addition, an npx warning, or
+    /// both (F2-5, DESIGN.md §4 in the style of ADR-F10's consent banners).
+    fn render_pending_consent(
+        &self,
+        agent_id: &str,
+        consent: &PendingInstallConsent,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let missing = missing_hosts(&consent.hosts, cx);
+        let all_allowed = missing.is_empty();
+        let hosts_label = consent
+            .hosts
+            .iter()
+            .map(SharedString::to_string)
+            .collect::<Vec<_>>()
+            .join("、");
+        let proceed_label = if consent.is_npx && all_allowed {
+            "了承してインストール"
+        } else {
+            "許可リストに追加してインストール"
+        };
+        let agent_id_for_confirm = agent_id.to_string();
+        let agent_id_for_cancel = agent_id.to_string();
+
+        Banner::new()
+            .severity(Severity::Warning)
+            .child(
+                v_flex()
+                    .gap_2()
+                    .when(consent.is_npx, |this| {
+                        this.child(
+                            v_flex()
+                                .gap_0p5()
+                                .child(Label::new(
+                                    "このエージェントは npx (npm) 経由でインストールされます",
+                                ))
+                                .child(
+                                    Label::new(
+                                        "npm によるパッケージの取得と、インストール後の実行時通信は、ネットワーク統制 (許可リスト) の対象外です。可能であれば Binary 型のエージェントを優先してください。",
+                                    )
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                                ),
+                        )
+                    })
+                    .when(!consent.hosts.is_empty(), |this| {
+                        this.child(
+                            h_flex()
+                                .flex_wrap()
+                                .gap_1p5()
+                                .child(
+                                    Label::new("許可が必要なホスト:")
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(Label::new(hosts_label).size(LabelSize::Small).buffer_font(cx))
+                                .child(
+                                    Label::new(if all_allowed { "(登録済み)" } else { "(未登録)" })
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                    })
+                    .when_some(consent.error.clone(), |this, error| {
+                        this.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
+                    })
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!(
+                                        "install-consent-confirm-{agent_id}"
+                                    )),
+                                    proceed_label,
+                                )
+                                .style(ButtonStyle::Tinted(ui::TintColor::Accent))
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.confirm_install(&agent_id_for_confirm, window, cx);
+                                })),
+                            )
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!(
+                                        "install-consent-cancel-{agent_id}"
+                                    )),
+                                    "追加せず中止",
+                                )
+                                .style(ButtonStyle::Outlined)
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.pending_install_consent.remove(&agent_id_for_cancel);
+                                    cx.notify();
+                                })),
+                            ),
+                    ),
             )
+            .into_any_element()
+    }
+
+    /// Handles an "Install" click: proceeds immediately when nothing new is
+    /// needed, otherwise opens the confirmation banner instead of writing
+    /// settings right away.
+    fn begin_install(&mut self, agent_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(agent) = self
+            .registry_agents
+            .iter()
+            .find(|agent| agent.id().as_ref() == agent_id)
+        else {
+            return;
+        };
+        let requirement = install_requirement(agent);
+        let missing = missing_hosts(&requirement.hosts, cx);
+
+        if missing.is_empty() && !requirement.is_npx {
+            install_registry_agent(agent_id, window, cx);
+            return;
+        }
+
+        self.pending_install_consent.insert(
+            agent_id.to_string(),
+            PendingInstallConsent {
+                hosts: requirement.hosts,
+                is_npx: requirement.is_npx,
+                error: None,
+            },
+        );
+        cx.notify();
+    }
+
+    /// Adds whatever hosts the pending consent still needs, then proceeds
+    /// with the install. A failed allowlist write leaves the banner up with
+    /// an error instead of installing anyway.
+    fn confirm_install(&mut self, agent_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(consent) = self.pending_install_consent.get(agent_id) else {
+            return;
+        };
+        let hosts: Vec<String> = consent.hosts.iter().map(SharedString::to_string).collect();
+
+        if hosts.is_empty() {
+            self.pending_install_consent.remove(agent_id);
+            install_registry_agent(agent_id, window, cx);
+            return;
+        }
+
+        let agent_id = agent_id.to_string();
+        let fs = <dyn Fs>::global(cx);
+        let path = paths::network_allowlist_file().clone();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = egress_policy::add_allowed_hosts(&fs, &path, &hosts).await;
+            this.update_in(cx, |this, window, cx| {
+                // The banner may have been cancelled (or the card re-rendered
+                // away) while the write was in flight; only act on it if the
+                // consent this task was for is still the one pending.
+                if !this.pending_install_consent.contains_key(&agent_id) {
+                    return;
+                }
+                match result {
+                    Ok(_) => {
+                        this.pending_install_consent.remove(&agent_id);
+                        install_registry_agent(&agent_id, window, cx);
+                    }
+                    Err(error) => {
+                        if let Some(consent) = this.pending_install_consent.get_mut(&agent_id) {
+                            consent.error =
+                                Some(format!("許可リストへの追加に失敗しました: {error:#}").into());
+                        }
+                    }
+                }
+                cx.notify();
+            })
+            .log_err();
+        })
+        .detach();
     }
 
     fn install_button(
@@ -493,54 +785,39 @@ impl AgentRegistryPage {
         agent: &RegistryAgent,
         install_status: RegistryInstallStatus,
         supports_current_platform: bool,
+        has_pending_consent: bool,
         cx: &mut Context<Self>,
     ) -> Button {
         let button_id = SharedString::from(format!("install-agent-{}", agent.id()));
 
         if !supports_current_platform {
-            return Button::new(button_id, "Unavailable")
+            return Button::new(button_id, "利用不可")
                 .style(ButtonStyle::OutlinedGhost)
                 .disabled(true);
         }
 
         match install_status {
             RegistryInstallStatus::NotInstalled => {
-                let fs = <dyn Fs>::global(cx);
                 let agent_id = agent.id().to_string();
-                Button::new(button_id, "Install")
+                Button::new(button_id, "インストール")
                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                     .start_icon(
                         Icon::new(IconName::Download)
                             .size(IconSize::Small)
                             .color(Color::Muted),
                     )
-                    .on_click(move |_, window, cx| {
-                        update_settings_file(fs.clone(), cx, {
-                            let agent_id = agent_id.clone();
-                            move |settings, _| {
-                                let agent_servers = settings.agent_servers.get_or_insert_default();
-                                agent_servers.entry(agent_id).or_insert_with(|| {
-                                    settings::CustomAgentServerSettings::Registry {
-                                        default_mode: None,
-                                        env: Default::default(),
-                                        default_config_options: HashMap::default(),
-                                        favorite_config_option_values: HashMap::default(),
-                                    }
-                                });
-                            }
-                        });
-                        window.dispatch_action(
-                            Box::new(zed_actions::agent::SelectAgent {
-                                agent: agent_id.clone(),
-                            }),
-                            cx,
-                        );
-                    })
+                    // A pending consent banner is already open below this
+                    // button (F2-5); disabling it here avoids opening a
+                    // second one for the same agent from a stray click.
+                    .disabled(has_pending_consent)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.begin_install(&agent_id, window, cx);
+                    }))
             }
             RegistryInstallStatus::InstalledRegistry => {
                 let fs = <dyn Fs>::global(cx);
                 let agent_id = agent.id().to_string();
-                Button::new(button_id, "Remove")
+                Button::new(button_id, "削除")
                     .style(ButtonStyle::OutlinedGhost)
                     .on_click(move |_, _, cx| {
                         let agent_id = agent_id.clone();
@@ -559,7 +836,7 @@ impl AgentRegistryPage {
                         });
                     })
             }
-            RegistryInstallStatus::InstalledCustom => Button::new(button_id, "Installed")
+            RegistryInstallStatus::InstalledCustom => Button::new(button_id, "インストール済み")
                 .style(ButtonStyle::OutlinedGhost)
                 .disabled(true),
         }
@@ -582,9 +859,9 @@ impl Render for AgentRegistryPage {
                             .w_full()
                             .gap_1p5()
                             .justify_between()
-                            .child(Headline::new("ACP Registry").size(HeadlineSize::Large))
+                            .child(Headline::new("ACP レジストリ").size(HeadlineSize::Large))
                             .child(
-                                Button::new("learn-more", "Learn More")
+                                Button::new("learn-more", "詳細")
                                     .style(ButtonStyle::Outlined)
                                     .size(ButtonSize::Medium)
                                     .end_icon(
@@ -609,7 +886,7 @@ impl Render for AgentRegistryPage {
                                         "registry-filter-buttons",
                                         [
                                             ToggleButtonSimple::new(
-                                                "All",
+                                                "すべて",
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = RegistryFilter::All;
                                                     this.filter_registry_agents(cx);
@@ -617,7 +894,7 @@ impl Render for AgentRegistryPage {
                                                 }),
                                             ),
                                             ToggleButtonSimple::new(
-                                                "Installed",
+                                                "インストール済み",
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = RegistryFilter::Installed;
                                                     this.filter_registry_agents(cx);
@@ -625,7 +902,7 @@ impl Render for AgentRegistryPage {
                                                 }),
                                             ),
                                             ToggleButtonSimple::new(
-                                                "Not Installed",
+                                                "未インストール",
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = RegistryFilter::NotInstalled;
                                                     this.filter_registry_agents(cx);
@@ -679,7 +956,7 @@ impl Item for AgentRegistryPage {
     type Event = ItemEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "ACP Registry".into()
+        "ACP レジストリ".into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -692,5 +969,113 @@ impl Item for AgentRegistryPage {
 
     fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(workspace::item::ItemEvent)) {
         f(*event)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use project::AgentId;
+    use project::agent_registry_store::{
+        RegistryAgentMetadata, RegistryBinaryAgent, RegistryNpxAgent, RegistryTargetConfig,
+    };
+
+    fn metadata(id: &str) -> RegistryAgentMetadata {
+        RegistryAgentMetadata {
+            id: AgentId::new(id.to_string()),
+            name: id.to_string().into(),
+            description: SharedString::from(""),
+            version: SharedString::from("1.0.0"),
+            repository: None,
+            website: None,
+            icon_path: None,
+        }
+    }
+
+    fn target(archive: &str) -> RegistryTargetConfig {
+        RegistryTargetConfig {
+            archive: archive.to_string(),
+            cmd: "./agent".to_string(),
+            args: Vec::new(),
+            sha256: None,
+            env: HashMap::default(),
+        }
+    }
+
+    /// A GitHub release asset redirects to a second host, and the egress
+    /// decorator re-checks every hop, so consenting to `github.com` alone
+    /// would have the download refused after the user already said yes.
+    #[test]
+    fn binary_agent_needs_every_hop_of_a_github_release_download() {
+        let platform =
+            current_platform_key().expect("the test host should be a supported platform");
+        let agent = RegistryAgent::Binary(RegistryBinaryAgent {
+            metadata: metadata("example-agent"),
+            targets: HashMap::from_iter([(
+                platform.to_string(),
+                target("https://github.com/example/agent/releases/download/v1/agent.tar.gz"),
+            )]),
+            supports_current_platform: true,
+        });
+
+        let requirement = install_requirement(&agent);
+        assert!(!requirement.is_npx);
+        assert_eq!(
+            requirement.hosts,
+            vec![
+                SharedString::from("github.com"),
+                SharedString::from("release-assets.githubusercontent.com"),
+                SharedString::from("objects.githubusercontent.com"),
+            ]
+        );
+    }
+
+    /// A different distribution host per agent is the whole point: F2-5's
+    /// consent flow has to read it from the manifest, not assume a fixed one.
+    #[test]
+    fn binary_agent_host_follows_its_own_archive_url() {
+        let platform =
+            current_platform_key().expect("the test host should be a supported platform");
+        let agent = RegistryAgent::Binary(RegistryBinaryAgent {
+            metadata: metadata("agy"),
+            targets: HashMap::from_iter([(
+                platform.to_string(),
+                target("https://dl.google.com/agy/agy_acp_server.exe"),
+            )]),
+            supports_current_platform: true,
+        });
+
+        let requirement = install_requirement(&agent);
+        assert_eq!(requirement.hosts, vec![SharedString::from("dl.google.com")]);
+    }
+
+    #[test]
+    fn binary_agent_with_no_target_for_this_platform_needs_nothing() {
+        let agent = RegistryAgent::Binary(RegistryBinaryAgent {
+            metadata: metadata("example-agent"),
+            targets: HashMap::from_iter([(
+                "not-a-real-platform".to_string(),
+                target("https://example.com/agent.tar.gz"),
+            )]),
+            supports_current_platform: false,
+        });
+
+        let requirement = install_requirement(&agent);
+        assert!(!requirement.is_npx);
+        assert!(requirement.hosts.is_empty());
+    }
+
+    #[test]
+    fn npx_agent_flags_the_egress_gap_and_lists_only_the_node_download() {
+        let agent = RegistryAgent::Npx(RegistryNpxAgent {
+            metadata: metadata("claude-acp"),
+            package: SharedString::from("@agentclientprotocol/claude-agent-acp"),
+            args: Vec::new(),
+            env: HashMap::default(),
+        });
+
+        let requirement = install_requirement(&agent);
+        assert!(requirement.is_npx);
+        assert_eq!(requirement.hosts, vec![SharedString::from("nodejs.org")]);
     }
 }

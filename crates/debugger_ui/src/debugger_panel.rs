@@ -508,9 +508,9 @@ impl DebugPanel {
             if should_prompt {
                 let response = cx.prompt(
                     gpui::PromptLevel::Warning,
-                    "This Debug Session is still running. Are you sure you want to terminate it?",
+                    "このデバッグセッションはまだ実行中です。終了してもよろしいですか?",
                     None,
-                    &["Yes", "No"],
+                    &["はい", "いいえ"],
                 );
                 if response.await == Ok(1) {
                     return;
@@ -627,7 +627,7 @@ impl DebugPanel {
                     let focus_handle = focus_handle.clone();
                     move |_window, cx| {
                         Tooltip::for_action_in(
-                            "Start Debug Session",
+                            "デバッグセッションを開始",
                             &crate::Start,
                             &focus_handle,
                             cx,
@@ -642,14 +642,14 @@ impl DebugPanel {
                 .on_click(|_, window, cx| {
                     window.dispatch_action(zed_actions::OpenProjectDebugTasks.boxed_clone(), cx);
                 })
-                .tooltip(Tooltip::text("Edit debug.json"))
+                .tooltip(Tooltip::text("debug.json を編集"))
         };
 
         let documentation_button = || {
             IconButton::new("debug-open-documentation", IconName::CircleHelp)
                 .icon_size(IconSize::Small)
                 .on_click(move |_, _, cx| cx.open_url("https://zed.dev/docs/debugger"))
-                .tooltip(Tooltip::text("Open Documentation"))
+                .tooltip(Tooltip::text("ドキュメントを開く"))
         };
 
         let logs_button = || {
@@ -658,7 +658,7 @@ impl DebugPanel {
                 .on_click(move |_, window, cx| {
                     window.dispatch_action(debugger_tools::OpenDebugAdapterLogs.boxed_clone(), cx)
                 })
-                .tooltip(Tooltip::text("Open Debug Adapter Logs"))
+                .tooltip(Tooltip::text("デバッグアダプターのログを開く"))
         };
 
         let close_bottom_panel_button = {
@@ -668,7 +668,7 @@ impl DebugPanel {
                     .on_click(move |_, window, cx| {
                         window.dispatch_action(workspace::ToggleBottomDock.boxed_clone(), cx)
                     })
-                    .tooltip(Tooltip::text("Close Panel")),
+                    .tooltip(Tooltip::text("パネルを閉じる")),
             )
         };
 
@@ -717,7 +717,7 @@ impl DebugPanel {
                                                     let focus_handle = focus_handle.clone();
                                                     move |_window, cx| {
                                                         Tooltip::for_action_in(
-                                                            "Pause Program",
+                                                            "プログラムを一時停止",
                                                             &Pause,
                                                             &focus_handle,
                                                             cx,
@@ -741,7 +741,7 @@ impl DebugPanel {
                                                     let focus_handle = focus_handle.clone();
                                                     move |_window, cx| {
                                                         Tooltip::for_action_in(
-                                                            "Continue Program",
+                                                            "プログラムを続行",
                                                             &Continue,
                                                             &focus_handle,
                                                             cx,
@@ -765,7 +765,7 @@ impl DebugPanel {
                                                 let focus_handle = focus_handle.clone();
                                                 move |_window, cx| {
                                                     Tooltip::for_action_in(
-                                                        "Step Over",
+                                                        "ステップオーバー",
                                                         &StepOver,
                                                         &focus_handle,
                                                         cx,
@@ -787,7 +787,7 @@ impl DebugPanel {
                                                 let focus_handle = focus_handle.clone();
                                                 move |_window, cx| {
                                                     Tooltip::for_action_in(
-                                                        "Step In",
+                                                        "ステップイン",
                                                         &StepInto,
                                                         &focus_handle,
                                                         cx,
@@ -809,7 +809,7 @@ impl DebugPanel {
                                                 let focus_handle = focus_handle.clone();
                                                 move |_window, cx| {
                                                     Tooltip::for_action_in(
-                                                        "Step Out",
+                                                        "ステップアウト",
                                                         &StepOut,
                                                         &focus_handle,
                                                         cx,
@@ -831,7 +831,7 @@ impl DebugPanel {
                                                 let focus_handle = focus_handle.clone();
                                                 move |_window, cx| {
                                                     Tooltip::for_action_in(
-                                                        "Rerun Session",
+                                                        "セッションを再実行",
                                                         &RerunSession,
                                                         &focus_handle,
                                                         cx,
@@ -869,9 +869,9 @@ impl DebugPanel {
                                                     .supports_terminate_threads_request
                                                     .unwrap_or_default()
                                                 {
-                                                    "Terminate Thread"
+                                                    "スレッドを終了"
                                                 } else {
-                                                    "Terminate All Threads"
+                                                    "すべてのスレッドを終了"
                                                 };
                                                 move |_window, cx| {
                                                     Tooltip::for_action_in(
@@ -904,7 +904,7 @@ impl DebugPanel {
                                                 let focus_handle = focus_handle.clone();
                                                 move |_window, cx| {
                                                     Tooltip::for_action_in(
-                                                        "Detach",
+                                                        "デタッチ",
                                                         &Detach,
                                                         &focus_handle,
                                                         cx,
@@ -1288,7 +1288,7 @@ impl DebugPanel {
             .disabled(
                 thread_status == ThreadStatus::Running || thread_status == ThreadStatus::Stepping,
             )
-            .tooltip(Tooltip::text("Step Back in Session History"))
+            .tooltip(Tooltip::text("セッション履歴を 1 つ戻る"))
             .on_click(window.listener_for(running_state, |this, _, _window, cx| {
                 this.session().update(cx, |session, cx| {
                     let ix = session
@@ -1342,7 +1342,7 @@ impl DebugPanel {
                                 .read(cx)
                                 .historic_snapshots();
 
-                            context_menu = context_menu.entry("Current State", None, {
+                            context_menu = context_menu.entry("現在の状態", None, {
                                 let running_state = running_state.clone();
                                 move |_window, cx| {
                                     handler(None, running_state.clone(), cx);
@@ -1355,7 +1355,7 @@ impl DebugPanel {
 
                             for (ix, _) in history.iter().enumerate().rev() {
                                 context_menu =
-                                    context_menu.entry(format!("history-{}", ix + 1), None, {
+                                    context_menu.entry(format!("履歴 {}", ix + 1), None, {
                                         let running_state = running_state.clone();
                                         move |_window, cx| {
                                             handler(Some(ix), running_state.clone(), cx);
@@ -1522,7 +1522,7 @@ impl Panel for DebugPanel {
 
     fn icon_tooltip(&self, _window: &Window, cx: &App) -> Option<&'static str> {
         if DebuggerSettings::get_global(cx).button {
-            Some("Debug Panel")
+            Some("デバッグパネル")
         } else {
             None
         }
@@ -1754,7 +1754,7 @@ impl Render for DebugPanel {
                         .justify_center()
                         .gap_2()
                         .child(
-                            Button::new("spawn-new-session-empty-state", "New Session")
+                            Button::new("spawn-new-session-empty-state", "新規セッション")
                                 .start_icon(
                                     Icon::new(IconName::Plus)
                                         .size(IconSize::Small)
@@ -1765,7 +1765,7 @@ impl Render for DebugPanel {
                                 }),
                         )
                         .child(
-                            Button::new("edit-debug-settings", "Edit debug.json")
+                            Button::new("edit-debug-settings", "debug.json を編集")
                                 .start_icon(
                                     Icon::new(IconName::Code)
                                         .size(IconSize::Small)
@@ -1779,7 +1779,7 @@ impl Render for DebugPanel {
                                 }),
                         )
                         .child(
-                            Button::new("open-debugger-docs", "Debugger Docs")
+                            Button::new("open-debugger-docs", "デバッガーのドキュメント")
                                 .start_icon(
                                     Icon::new(IconName::Book)
                                         .size(IconSize::Small)
@@ -1790,7 +1790,7 @@ impl Render for DebugPanel {
                         .child(
                             Button::new(
                                 "spawn-new-session-install-extensions",
-                                "Debugger Extensions",
+                                "デバッガー拡張機能",
                             )
                             .start_icon(
                                 Icon::new(IconName::Blocks)
@@ -1836,7 +1836,7 @@ impl Render for DebugPanel {
                                 .justify_between()
                                 .border_b_1()
                                 .border_color(cx.theme().colors().border_variant)
-                                .child(Label::new("Breakpoints").size(LabelSize::Small))
+                                .child(Label::new("ブレークポイント").size(LabelSize::Small))
                                 .child(
                                     h_flex().visible_on_hover("base-breakpoint-list").child(
                                         self.breakpoint_list.read(cx).render_control_strip(),
@@ -1849,7 +1849,7 @@ impl Render for DebugPanel {
                         .when(!has_breakpoints, |this| {
                             this.child(
                                 v_flex().size_full().items_center().justify_center().child(
-                                    Label::new("No Breakpoints Set")
+                                    Label::new("ブレークポイントが設定されていません")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 ),

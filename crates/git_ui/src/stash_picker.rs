@@ -309,9 +309,12 @@ impl StashListDelegate {
                 .await??;
             Ok(())
         })
-        .detach_and_prompt_err("Failed to drop stash", window, cx, |e, _, _| {
-            Some(e.to_string())
-        });
+        .detach_and_prompt_err(
+            "スタッシュを破棄できませんでした",
+            window,
+            cx,
+            |e, _, _| Some(e.to_string()),
+        );
     }
 
     fn show_stash_at(&self, ix: usize, window: &mut Window, cx: &mut Context<Picker<Self>>) {
@@ -344,9 +347,12 @@ impl StashListDelegate {
                 .await?;
             Ok(())
         })
-        .detach_and_prompt_err("Failed to pop stash", window, cx, |e, _, _| {
-            Some(e.to_string())
-        });
+        .detach_and_prompt_err(
+            "スタッシュを取り出せませんでした",
+            window,
+            cx,
+            |e, _, _| Some(e.to_string()),
+        );
         cx.emit(DismissEvent);
     }
 
@@ -360,9 +366,12 @@ impl StashListDelegate {
                 .await?;
             Ok(())
         })
-        .detach_and_prompt_err("Failed to apply stash", window, cx, |e, _, _| {
-            Some(e.to_string())
-        });
+        .detach_and_prompt_err(
+            "スタッシュを適用できませんでした",
+            window,
+            cx,
+            |e, _, _| Some(e.to_string()),
+        );
         cx.emit(DismissEvent);
     }
 }
@@ -375,7 +384,7 @@ impl PickerDelegate for StashListDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select a stash…".into()
+        "スタッシュを選択…".into()
     }
 
     fn match_count(&self) -> usize {
@@ -537,7 +546,7 @@ impl PickerDelegate for StashListDelegate {
             IconButton::new(("view-stash", ix), IconName::Eye)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in("View Stash", &ShowStashItem, &focus_handle, cx)
+                    Tooltip::for_action_in("スタッシュを表示", &ShowStashItem, &focus_handle, cx)
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.delegate.show_stash_at(ix, window, cx);
@@ -549,7 +558,12 @@ impl PickerDelegate for StashListDelegate {
             IconButton::new(("pop-stash", ix), IconName::MaximizeAlt)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in("Pop Stash", &menu::SecondaryConfirm, &focus_handle, cx)
+                    Tooltip::for_action_in(
+                        "スタッシュを取り出す",
+                        &menu::SecondaryConfirm,
+                        &focus_handle,
+                        cx,
+                    )
                 })
                 .on_click(|_, window, cx| {
                     window.dispatch_action(menu::SecondaryConfirm.boxed_clone(), cx);
@@ -561,7 +575,7 @@ impl PickerDelegate for StashListDelegate {
             IconButton::new(("drop-stash", ix), IconName::Trash)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in("Drop Stash", &DropStashItem, &focus_handle, cx)
+                    Tooltip::for_action_in("スタッシュを破棄", &DropStashItem, &focus_handle, cx)
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.delegate.drop_stash_at(ix, window, cx);
@@ -623,7 +637,7 @@ impl PickerDelegate for StashListDelegate {
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
-        Some("No stashes found".into())
+        Some("スタッシュが見つかりません".into())
     }
 
     fn render_footer(&self, _: &mut Window, cx: &mut Context<Picker<Self>>) -> Option<AnyElement> {
@@ -643,7 +657,7 @@ impl PickerDelegate for StashListDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("drop-stash", "Drop")
+                    Button::new("drop-stash", "破棄")
                         .key_binding(
                             KeyBinding::for_action_in(
                                 &stash_picker::DropStashItem,
@@ -657,7 +671,7 @@ impl PickerDelegate for StashListDelegate {
                         }),
                 )
                 .child(
-                    Button::new("view-stash", "View")
+                    Button::new("view-stash", "表示")
                         .key_binding(
                             KeyBinding::for_action_in(
                                 &stash_picker::ShowStashItem,
@@ -673,7 +687,7 @@ impl PickerDelegate for StashListDelegate {
                         })),
                 )
                 .child(
-                    Button::new("pop-stash", "Pop")
+                    Button::new("pop-stash", "取り出す")
                         .key_binding(
                             KeyBinding::for_action_in(&menu::SecondaryConfirm, &focus_handle, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -683,7 +697,7 @@ impl PickerDelegate for StashListDelegate {
                         }),
                 )
                 .child(
-                    Button::new("apply-stash", "Apply")
+                    Button::new("apply-stash", "適用")
                         .key_binding(
                             KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),

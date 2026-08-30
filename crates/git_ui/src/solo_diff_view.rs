@@ -630,9 +630,9 @@ impl Render for SoloDiffStyleToolbar {
             GitPanelSettings::get_global(cx).status_style != StatusStyle::LabelColor;
 
         let (expand_icon, expand_tooltip) = if showing_full_file {
-            (IconName::ChevronDownUp, "Show Changes Only")
+            (IconName::ChevronDownUp, "変更箇所のみ表示")
         } else {
-            (IconName::ChevronUpDown, "Show Full File")
+            (IconName::ChevronUpDown, "ファイル全体を表示")
         };
 
         h_flex()
@@ -793,7 +793,7 @@ impl Render for SoloDiffGitToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "Go to Previous Hunk",
+                                "前の変更箇所へ移動",
                                 &GoToPreviousHunk,
                                 &focus_handle,
                             ))
@@ -806,7 +806,7 @@ impl Render for SoloDiffGitToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "Go to Next Hunk",
+                                "次の変更箇所へ移動",
                                 &GoToHunk,
                                 &focus_handle,
                             ))
@@ -820,10 +820,10 @@ impl Render for SoloDiffGitToolbar {
                 h_group_sm()
                     .when(button_states.selection, |el| {
                         el.child(
-                            Button::new("stage", "Toggle Staged")
+                            Button::new("stage", "ステージ状態を切り替え")
                                 .disabled(!button_states.stage && !button_states.unstage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "Toggle Staged",
+                                    "ステージ状態を切り替え",
                                     &ToggleStaged,
                                     &focus_handle,
                                 ))
@@ -834,10 +834,10 @@ impl Render for SoloDiffGitToolbar {
                     })
                     .when(!button_states.selection, |el| {
                         el.child(
-                            Button::new("stage", "Stage")
+                            Button::new("stage", "ステージ")
                                 .disabled(!button_states.stage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "Stage and Go to Next Hunk",
+                                    "ステージして次の変更箇所へ移動",
                                     &StageAndNext,
                                     &focus_handle,
                                 ))
@@ -846,10 +846,10 @@ impl Render for SoloDiffGitToolbar {
                                 })),
                         )
                         .child(
-                            Button::new("unstage", "Unstage")
+                            Button::new("unstage", "アンステージ")
                                 .disabled(!button_states.unstage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "Unstage and Go to Next Hunk",
+                                    "アンステージして次の変更箇所へ移動",
                                     &UnstageAndNext,
                                     &focus_handle,
                                 ))
@@ -859,9 +859,9 @@ impl Render for SoloDiffGitToolbar {
                         )
                     })
                     .child(
-                        Button::new("restore", "Restore")
+                        Button::new("restore", "元に戻す")
                             .tooltip(Tooltip::for_action_title_in(
-                                "Restore selected hunk",
+                                "選択した変更箇所を元に戻す",
                                 &Restore,
                                 &focus_handle,
                             ))
@@ -873,21 +873,21 @@ impl Render for SoloDiffGitToolbar {
             )
             .child(Divider::vertical())
             .child(h_group_sm().child(if button_states.stage_file {
-                Button::new("stage-file", "Stage All")
-                    .width(rems_from_px(80_f32))
+                Button::new("stage-file", "すべてステージ")
+                    .width(rems_from_px(152_f32))
                     .disabled(!button_states.stage_file)
                     .tooltip(Tooltip::for_action_title_in(
-                        "Stage All",
+                        "すべてステージ",
                         &StageFile,
                         &focus_handle,
                     ))
                     .on_click(cx.listener(|this, _, window, cx| this.stage_file(window, cx)))
             } else {
-                Button::new("unstage-file", "Unstage All")
-                    .width(rems_from_px(80_f32))
+                Button::new("unstage-file", "すべてアンステージ")
+                    .width(rems_from_px(152_f32))
                     .disabled(!button_states.unstage_file)
                     .tooltip(Tooltip::for_action_title_in(
-                        "Unstage All",
+                        "すべてアンステージ",
                         &UnstageFile,
                         &focus_handle,
                     ))
@@ -895,9 +895,9 @@ impl Render for SoloDiffGitToolbar {
             }))
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "Commit")
+                Button::new("commit", "コミット")
                     .tooltip(Tooltip::for_action_title_in(
-                        "Commit",
+                        "コミット",
                         &Commit,
                         &focus_handle,
                     ))

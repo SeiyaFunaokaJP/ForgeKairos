@@ -38,6 +38,10 @@ use crate::ExpandMessageEditor;
 use crate::ManageProfiles;
 use crate::agent_connection_store::AgentConnectionStore;
 use crate::completion_provider::{AgentContextSelection, AgentContextSource};
+use crate::panel_thread_history::{
+    MIN_THREAD_WIDTH_BESIDE_HISTORY, PANEL_THREAD_HISTORY_WIDTH, PanelThreadHistory,
+    PanelThreadHistoryEvent,
+};
 use crate::terminal_thread_metadata_store::{
     TerminalThreadMetadata, TerminalThreadMetadataStore, compose_terminal_thread_title,
     terminal_title_without_prefix,
@@ -51,7 +55,7 @@ use crate::{
     AgentDiffPane, ConversationView, CopyThreadToClipboard, Follow, LoadThreadFromClipboard,
     NewTerminalThread, NewThread, OpenActiveThreadAsMarkdown, OpenAgentDiff, ResetFastModeWarnings,
     ResetTrialEndUpsell, ResetTrialUpsell, ShowAllSidebarThreadMetadata, ShowThreadMetadata,
-    ToggleNewThreadMenu, ToggleOptionsMenu,
+    ToggleNewThreadMenu, ToggleOptionsMenu, TogglePanelThreadHistory,
     conversation_view::{
         AcpThreadViewEvent, RootThreadUpdated, ThreadView, reset_fast_mode_warnings,
     },
@@ -73,9 +77,9 @@ use feature_flags::{CreateThreadToolFeatureFlag, FeatureFlagAppExt as _};
 use fs::Fs;
 use futures::FutureExt as _;
 use gpui::{
-    Action, Anchor, Animation, AnimationExt, AnyElement, App, AsyncWindowContext, ClipboardItem,
-    Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable, KeyContext, Pixels,
-    PlatformDisplay, Subscription, Task, TaskExt, WeakEntity, WindowHandle, prelude::*,
+    Action, Anchor, Animation, AnimationExt, AnyElement, App, AsyncWindowContext, Bounds,
+    ClipboardItem, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable, KeyContext, Pixels,
+    PlatformDisplay, Subscription, Task, TaskExt, WeakEntity, WindowHandle, canvas, prelude::*,
     pulsating_between,
 };
 use language::LanguageRegistry;
@@ -474,6 +478,17 @@ pub fn init(cx: &mut App) {
                         workspace.focus_panel::<AgentPanel>(window, cx);
                         panel.update(cx, |panel, cx| {
                             panel.toggle_new_thread_menu(&ToggleNewThreadMenu, window, cx);
+                        });
+                    }
+                })
+                .register_action(|workspace, _: &TogglePanelThreadHistory, window, cx| {
+                    if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
+                        panel.update(cx, |panel, cx| {
+                            panel.toggle_panel_thread_history(
+                                &TogglePanelThreadHistory,
+                                window,
+                                cx,
+                            );
                         });
                     }
                 })
@@ -929,19 +944,19 @@ fn format_timestamp_human(dt: &DateTime<Utc>) -> String {
     let duration = now.signed_duration_since(*dt);
 
     let relative = if duration.num_seconds() < 0 {
-        "in the future".to_string()
+        "未来".to_string()
     } else if duration.num_seconds() < 60 {
         let seconds = duration.num_seconds();
-        format!("{seconds} seconds ago")
+        format!("{seconds} 秒前")
     } else if duration.num_minutes() < 60 {
         let minutes = duration.num_minutes();
-        format!("{minutes} minutes ago")
+        format!("{minutes} 分前")
     } else if duration.num_hours() < 24 {
         let hours = duration.num_hours();
-        format!("{hours} hours ago")
+        format!("{hours} 時間前")
     } else {
         let days = duration.num_days();
-        format!("{days} days ago")
+        format!("{days} 日前")
     };
 
     format!("{} ({})", dt.to_rfc3339(), relative)
@@ -1170,6 +1185,12 @@ pub struct AgentPanel {
     pending_terminal_spawn: Option<TerminalId>,
     new_thread_menu_handle: PopoverMenuHandle<ContextMenu>,
     agent_panel_menu_handle: PopoverMenuHandle<ContextMenu>,
+    thread_history: Entity<PanelThreadHistory>,
+    /// Written by a measuring canvas during paint and read on the next render,
+    /// so the history list can hide itself when the panel gets too narrow to
+    /// hold both halves.
+    measured_panel_width: Rc<Cell<Option<Pixels>>>,
+    _thread_history_subscription: Subscription,
     _extension_subscription: Option<Subscription>,
     _project_subscription: Subscription,
     zoomed: bool,
@@ -1482,7 +1503,7 @@ impl AgentPanel {
         })
     }
 
-    pub(crate) fn new(workspace: &Workspace, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(workspace: &Workspace, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let fs = workspace.app_state().fs.clone();
         let user_store = workspace.app_state().user_store.clone();
         let project = workspace.project();
@@ -1554,6 +1575,30 @@ impl AgentPanel {
         })
         .detach();
 
+        let thread_history =
+            cx.new(|cx| PanelThreadHistory::new(workspace.clone(), project.clone(), window, cx));
+        let _thread_history_subscription = cx.subscribe_in(
+            &thread_history,
+            window,
+            |this, _history, event, window, cx| match event {
+                PanelThreadHistoryEvent::Activate(metadata) => {
+                    this.load_agent_thread(
+                        Agent::from(metadata.agent_id.clone()),
+                        metadata.thread_id,
+                        Some(metadata.folder_paths().clone()),
+                        metadata.title.clone(),
+                        true,
+                        AgentThreadSource::AgentPanel,
+                        window,
+                        cx,
+                    );
+                }
+                PanelThreadHistoryEvent::NewThread => {
+                    this.new_thread(&NewThread, window, cx);
+                }
+            },
+        );
+
         let panel = Self {
             workspace_id,
             base_view,
@@ -1572,6 +1617,9 @@ impl AgentPanel {
             pending_terminal_spawn: None,
             new_thread_menu_handle: PopoverMenuHandle::default(),
             agent_panel_menu_handle: PopoverMenuHandle::default(),
+            thread_history,
+            measured_panel_width: Rc::new(Cell::new(None)),
+            _thread_history_subscription,
 
             _extension_subscription: extension_subscription,
             _project_subscription,
@@ -3572,6 +3620,35 @@ impl AgentPanel {
         self.new_thread_menu_handle.toggle(window, cx);
     }
 
+    /// Whether the in-panel thread history is enabled by settings. It can
+    /// still be suppressed for the current frame — see
+    /// [`Self::thread_history_visible`].
+    fn thread_history_enabled(&self, cx: &App) -> bool {
+        AgentSettings::get_global(cx).panel_thread_history && self.has_open_project(cx)
+    }
+
+    fn thread_history_visible(&self, cx: &App) -> bool {
+        self.thread_history_enabled(cx)
+            && self.measured_panel_width.get().is_none_or(|width| {
+                width >= PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY
+            })
+    }
+
+    pub fn toggle_panel_thread_history(
+        &mut self,
+        _: &TogglePanelThreadHistory,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let visible = !AgentSettings::get_global(cx).panel_thread_history;
+        update_settings_file(self.fs.clone(), cx, move |settings, _| {
+            settings
+                .agent
+                .get_or_insert_default()
+                .set_panel_thread_history(visible);
+        });
+    }
+
     pub fn increase_font_size(
         &mut self,
         action: &IncreaseBufferFontSize,
@@ -3716,7 +3793,11 @@ impl AgentPanel {
 
     fn copy_thread_to_clipboard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(thread) = self.active_native_agent_thread(cx) else {
-            Self::show_deferred_toast(&self.workspace, "No active native thread to copy", cx);
+            Self::show_deferred_toast(
+                &self.workspace,
+                "コピーできるネイティブスレッドがありません。",
+                cx,
+            );
             return;
         };
 
@@ -3737,7 +3818,7 @@ impl AgentPanel {
                         workspace.show_toast(
                             workspace::Toast::new(
                                 workspace::notifications::NotificationId::unique::<ThreadCopiedToast>(),
-                                "Thread copied to clipboard (base64 encoded)",
+                                "スレッドをクリップボードにコピーしました (base64 エンコード)。",
                             )
                             .autohide(),
                             cx,
@@ -3776,17 +3857,25 @@ impl AgentPanel {
 
     fn load_thread_from_clipboard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.has_open_project(cx) {
-            Self::show_deferred_toast(&self.workspace, "Open a project to load a thread", cx);
+            Self::show_deferred_toast(
+                &self.workspace,
+                "スレッドを読み込むにはプロジェクトを開いてください。",
+                cx,
+            );
             return;
         }
 
         let Some(clipboard) = cx.read_from_clipboard() else {
-            Self::show_deferred_toast(&self.workspace, "No clipboard content available", cx);
+            Self::show_deferred_toast(&self.workspace, "クリップボードに内容がありません。", cx);
             return;
         };
 
         let Some(encoded) = clipboard.text() else {
-            Self::show_deferred_toast(&self.workspace, "Clipboard does not contain text", cx);
+            Self::show_deferred_toast(
+                &self.workspace,
+                "クリップボードにテキストが含まれていません。",
+                cx,
+            );
             return;
         };
 
@@ -3796,7 +3885,7 @@ impl AgentPanel {
             Err(_) => {
                 Self::show_deferred_toast(
                     &self.workspace,
-                    "Failed to decode clipboard content (expected base64)",
+                    "クリップボードの内容をデコードできませんでした (base64 が必要です)。",
                     cx,
                 );
                 return;
@@ -3808,7 +3897,7 @@ impl AgentPanel {
             Err(_) => {
                 Self::show_deferred_toast(
                     &self.workspace,
-                    "Failed to parse thread data from clipboard",
+                    "クリップボードのスレッドデータを解析できませんでした。",
                     cx,
                 );
                 return;
@@ -3839,7 +3928,7 @@ impl AgentPanel {
                         workspace.show_toast(
                             workspace::Toast::new(
                                 workspace::notifications::NotificationId::unique::<ThreadLoadedToast>(),
-                                "Thread loaded from clipboard",
+                                "クリップボードからスレッドを読み込みました。",
                             )
                             .autohide(),
                             cx,
@@ -5032,7 +5121,7 @@ impl Panel for AgentPanel {
     }
 
     fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("Agent Panel")
+        Some("エージェントパネル")
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {
@@ -5392,7 +5481,7 @@ impl AgentPanel {
                                         .icon_size(IconSize::Small)
                                         .tooltip(move |_window, cx| {
                                             Tooltip::with_meta(
-                                                "Title generation failed. Click to retry.",
+                                                "タイトルの生成に失敗しました。クリックすると再試行します。",
                                                 None,
                                                 title_generation_error.clone(),
                                                 cx,
@@ -5460,11 +5549,13 @@ impl AgentPanel {
                             .into_any_element()
                     }
                 } else {
-                    Label::new("Terminal").into_any_element()
+                    Label::new("ターミナル").into_any_element()
                 }
             }
 
-            VisibleSurface::Uninitialized => Label::new("Agent").truncate().into_any_element(),
+            VisibleSurface::Uninitialized => {
+                Label::new("エージェント").truncate().into_any_element()
+            }
         };
 
         let toolbar_bg = cx.theme().colors().tab_bar_background;
@@ -5498,7 +5589,7 @@ impl AgentPanel {
                             .child(
                                 IconButton::new("edit_tile", IconName::Pencil)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Edit Thread Title")),
+                                    .tooltip(Tooltip::text("スレッドタイトルを編集")),
                             ),
                     )
             })
@@ -5508,7 +5599,7 @@ impl AgentPanel {
     fn show_no_thread_summary_model_toast(workspace: Entity<Workspace>, cx: &mut App) {
         workspace.update(cx, |workspace, cx| {
             let toast = StatusToast::new(
-                "No model is configured for summarizing thread titles.",
+                "スレッドタイトルの要約に使用するモデルが構成されていません。",
                 cx,
                 |this, _cx| {
                     this.icon(
@@ -5600,7 +5691,7 @@ impl AgentPanel {
                     .icon_size(IconSize::Small),
                 move |_window, cx| {
                     Tooltip::for_action_in(
-                        "Toggle Agent Menu",
+                        "エージェントメニューの表示切り替え",
                         &ToggleOptionsMenu,
                         &focus_handle,
                         cx,
@@ -5615,28 +5706,29 @@ impl AgentPanel {
                         menu = menu.context(menu_action_context.clone());
 
                         if has_thread_messages {
-                            menu = menu.header("Current Thread");
+                            menu = menu.header("現在のスレッド");
 
                             if let Some(conversation_view) = conversation_view.as_ref() {
                                 if can_regenerate_thread_title {
-                                    menu = menu.entry("Regenerate Thread Title", None, {
-                                        let conversation_view = conversation_view.clone();
-                                        let workspace = workspace.clone();
-                                        move |_, cx| {
-                                            Self::handle_regenerate_thread_title(
-                                                conversation_view.clone(),
-                                                workspace.clone(),
-                                                cx,
-                                            );
-                                        }
-                                    });
+                                    menu =
+                                        menu.entry("スレッドタイトルを再生成", None, {
+                                            let conversation_view = conversation_view.clone();
+                                            let workspace = workspace.clone();
+                                            move |_, cx| {
+                                                Self::handle_regenerate_thread_title(
+                                                    conversation_view.clone(),
+                                                    workspace.clone(),
+                                                    cx,
+                                                );
+                                            }
+                                        });
                                 }
 
                                 let root_thread_view =
                                     conversation_view.read(cx).root_thread_view();
                                 if let Some(thread_view) = root_thread_view {
                                     let workspace = workspace.clone();
-                                    menu = menu.entry("Open Thread as Markdown", None, {
+                                    menu = menu.entry("スレッドを Markdown で開く", None, {
                                         move |window, cx| {
                                             if let Some(workspace) = workspace.upgrade() {
                                                 thread_view.update(cx, |thread_view, cx| {
@@ -5657,16 +5749,16 @@ impl AgentPanel {
 
                         if !showing_terminal {
                             menu = menu
-                                .header("MCP Servers")
+                                .header("MCP サーバー")
                                 .action(
-                                    "Add Server…",
+                                    "サーバーを追加…",
                                     Box::new(zed_actions::OpenSettingsAt {
                                         path: "context_servers".to_string(),
                                         target: None,
                                     }),
                                 )
                                 .action(
-                                    "Install New Servers…",
+                                    "新しいサーバーをインストール…",
                                     Box::new(zed_actions::Extensions {
                                         category_filter: Some(
                                             zed_actions::ExtensionCategoryFilter::ContextServers,
@@ -5675,8 +5767,8 @@ impl AgentPanel {
                                     }),
                                 )
                                 .separator()
-                                .header("Context")
-                                .action("Skills", Box::new(ManageSkills));
+                                .header("コンテキスト")
+                                .action("スキル", Box::new(ManageSkills));
 
                             if project_agents_md_path.is_some() || global_agents_md_loaded {
                                 if global_agents_md_loaded {
@@ -5687,7 +5779,7 @@ impl AgentPanel {
                                             h_flex()
                                                 .w_full()
                                                 .gap_1()
-                                                .child(Label::new("Open Global Rules"))
+                                                .child(Label::new("グローバルルールを開く"))
                                                 .child(
                                                     Label::new("(AGENTS.md)")
                                                         .color(Color::Muted)
@@ -5712,7 +5804,7 @@ impl AgentPanel {
                                             h_flex()
                                                 .w_full()
                                                 .gap_1()
-                                                .child(Label::new("Open Project Rules"))
+                                                .child(Label::new("プロジェクトルールを開く"))
                                                 .child(
                                                     Label::new("(AGENTS.md)")
                                                         .color(Color::Muted)
@@ -5733,22 +5825,29 @@ impl AgentPanel {
 
                             menu = menu
                                 .separator()
-                                .action("Profiles", Box::new(ManageProfiles::default()));
+                                .action("プロファイル", Box::new(ManageProfiles::default()));
                         }
 
                         menu = menu
-                            .action("Settings", Box::new(OpenSettings))
+                            .action("設定", Box::new(OpenSettings))
                             .separator()
-                            .action("Toggle Threads Sidebar", Box::new(ToggleWorkspaceSidebar));
+                            .action(
+                                "パネル内のスレッド履歴の切り替え",
+                                Box::new(TogglePanelThreadHistory),
+                            )
+                            .action(
+                                "スレッドサイドバーの切り替え",
+                                Box::new(ToggleWorkspaceSidebar),
+                            );
 
                         if has_auth_methods || supports_logout {
                             menu = menu.separator()
                         }
                         if has_auth_methods {
-                            menu = menu.action("Reauthenticate", Box::new(ReauthenticateAgent))
+                            menu = menu.action("再認証", Box::new(ReauthenticateAgent))
                         }
                         if supports_logout {
-                            menu = menu.action("Log Out", Box::new(LogoutAgent))
+                            menu = menu.action("ログアウト", Box::new(LogoutAgent))
                         }
 
                         menu
@@ -5761,7 +5860,7 @@ impl AgentPanel {
         let focus_handle = self.focus_handle(cx);
 
         ProjectEmptyState::new(
-            "Agent Panel",
+            "エージェントパネル",
             focus_handle.clone(),
             KeyBinding::for_action_in(&workspace::Open::default(), &focus_handle, cx),
         )
@@ -5785,7 +5884,7 @@ impl AgentPanel {
         let showing_terminal = matches!(self.visible_surface(), VisibleSurface::Terminal(_));
 
         let (selected_agent_custom_icon, selected_agent_label) = if showing_terminal {
-            (None, SharedString::from("Terminal"))
+            (None, SharedString::from("ターミナル"))
         } else if let Agent::Custom { id, .. } = &self.selected_agent {
             let store = agent_server_store.read(cx);
             let icon = store.agent_icon(&id);
@@ -5850,7 +5949,7 @@ impl AgentPanel {
                         )
                         .when(supports_terminal, |menu| {
                             menu.item(
-                                ContextMenuEntry::new("Terminal")
+                                ContextMenuEntry::new("ターミナル")
                                     .when(showing_terminal, |this| this.action(Box::new(NewThread)))
                                     .when(!showing_terminal, |this| {
                                         this.action(Box::new(NewTerminalThread))
@@ -5911,7 +6010,7 @@ impl AgentPanel {
                                 .collect::<Vec<_>>();
 
                             if !agent_items.is_empty() {
-                                menu = menu.separator().header("External Agents");
+                                menu = menu.separator().header("外部エージェント");
                             }
                             for item in &agent_items {
                                 let mut entry = ContextMenuEntry::new(item.display_name.clone());
@@ -5971,7 +6070,7 @@ impl AgentPanel {
                         })
                         .separator()
                         .item(
-                            ContextMenuEntry::new("Add More Agents")
+                            ContextMenuEntry::new("エージェントを追加")
                                 .icon(IconName::Plus)
                                 .icon_color(Color::Muted)
                                 .handler({
@@ -6017,7 +6116,7 @@ impl AgentPanel {
                 Tooltip::with_meta(
                     selected_agent_label_for_tooltip.clone(),
                     None,
-                    "Selected Agent",
+                    "選択中のエージェント",
                     cx,
                 )
             });
@@ -6052,9 +6151,9 @@ impl AgentPanel {
 
         let is_full_screen = self.is_zoomed(window, cx);
         let (icon_name, tooltip_text) = if is_full_screen {
-            (IconName::Minimize, "Disable Full Screen")
+            (IconName::Minimize, "全画面表示を解除")
         } else {
-            (IconName::Maximize, "Enable Full Screen")
+            (IconName::Maximize, "全画面表示")
         };
         let full_screen_button = IconButton::new("toggle-full-screen", icon_name)
             .icon_size(IconSize::Small)
@@ -6076,7 +6175,7 @@ impl AgentPanel {
             .justify_between();
 
         let empty_thread_title = matches!(mode, ToolbarMode::EmptyThread).then(|| {
-            Label::new(format!("New {} Thread", selected_agent_label))
+            Label::new(format!("{} の新規スレッド", selected_agent_label))
                 .color(Color::Muted)
                 .truncate()
                 .into_any_element()
@@ -6090,7 +6189,7 @@ impl AgentPanel {
                     {
                         move |_window, cx| {
                             Tooltip::for_action_in(
-                                "New Thread\u{2026}",
+                                "新規スレッド\u{2026}",
                                 &ToggleNewThreadMenu,
                                 &focus_handle,
                                 cx,
@@ -6108,6 +6207,32 @@ impl AgentPanel {
                 .and_then(|thread_view| {
                     thread_view.update(cx, |thread_view, cx| thread_view.render_sandbox_status(cx))
                 });
+
+            let thread_history_enabled = self.thread_history_enabled(cx);
+            let thread_history_button = IconButton::new(
+                "toggle-panel-thread-history",
+                if thread_history_enabled {
+                    IconName::ThreadsSidebarLeftOpen
+                } else {
+                    IconName::ThreadsSidebarLeftClosed
+                },
+            )
+            .icon_size(IconSize::Small)
+            .toggle_state(thread_history_enabled)
+            .tooltip(move |_window, cx| {
+                Tooltip::for_action(
+                    if thread_history_enabled {
+                        "パネル内のスレッド履歴を非表示"
+                    } else {
+                        "パネル内のスレッド履歴を表示"
+                    },
+                    &TogglePanelThreadHistory,
+                    cx,
+                )
+            })
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.toggle_panel_thread_history(&TogglePanelThreadHistory, window, cx);
+            }));
 
             base_container
                 .child(
@@ -6132,7 +6257,9 @@ impl AgentPanel {
                         .flex_none()
                         .gap_1()
                         .children(sandbox_status)
-                        .when(can_create_entries, |this| this.child(new_thread_menu))
+                        .when(can_create_entries, |this| {
+                            this.child(thread_history_button).child(new_thread_menu)
+                        })
                         .child(full_screen_button)
                         .child(self.render_panel_options_menu(window, cx)),
                 )
@@ -6427,6 +6554,52 @@ impl AgentPanel {
         key_context.add("AgentPanel");
         key_context
     }
+
+    /// Puts the thread history list to the left of whatever surface the panel
+    /// is showing. When the list is hidden the surface is returned untouched,
+    /// so the panel's element tree stays exactly as it was without it.
+    fn render_surface_with_thread_history(
+        &self,
+        surface: AnyElement,
+        show_thread_history: bool,
+    ) -> AnyElement {
+        if !show_thread_history {
+            return surface;
+        }
+
+        h_flex()
+            .size_full()
+            .min_h_0()
+            .child(self.thread_history.clone())
+            .child(v_flex().flex_1().min_w_0().size_full().child(surface))
+            .into_any_element()
+    }
+
+    /// Records the panel's own width so the next render can tell whether the
+    /// history list still fits. Measuring in an element keeps this correct for
+    /// flexible docks and zoomed panels, where the stored dock size lies.
+    fn render_width_probe(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let measured_panel_width = self.measured_panel_width.clone();
+        let panel = cx.entity().downgrade();
+
+        canvas(
+            move |bounds: Bounds<Pixels>, _window, cx: &mut App| {
+                let width = bounds.size.width;
+                if measured_panel_width.get() == Some(width) {
+                    return;
+                }
+                measured_panel_width.set(Some(width));
+                cx.defer(move |cx| {
+                    panel.update(cx, |_panel, cx| cx.notify()).ok();
+                });
+            },
+            |_bounds, _state, _window, _cx| {},
+        )
+        .absolute()
+        .size_full()
+        .top_0()
+        .left_0()
+    }
 }
 
 impl Render for AgentPanel {
@@ -6440,6 +6613,12 @@ impl Render for AgentPanel {
         // - Font size works as expected and can be changed with cmd-+/cmd-
         // - Scrolling in all views works as expected
         // - Files can be dropped into the panel
+        let show_thread_history = self.thread_history_visible(cx);
+        let active_thread_id = self.active_thread_id(cx);
+        self.thread_history.update(cx, |thread_history, cx| {
+            thread_history.set_active_thread_id(active_thread_id, cx);
+        });
+
         let content = v_flex()
             .key_context(self.key_context())
             .relative()
@@ -6460,6 +6639,7 @@ impl Render for AgentPanel {
             .on_action(cx.listener(Self::open_active_thread_as_markdown))
             .on_action(cx.listener(Self::manage_skills))
             .on_action(cx.listener(Self::toggle_options_menu))
+            .on_action(cx.listener(Self::toggle_panel_thread_history))
             .on_action(cx.listener(Self::increase_font_size))
             .on_action(cx.listener(Self::decrease_font_size))
             .on_action(cx.listener(Self::reset_font_size))
@@ -6487,7 +6667,10 @@ impl Render for AgentPanel {
                 }
                 VisibleSurface::Uninitialized => parent,
                 VisibleSurface::AgentThread(conversation_view) => parent
-                    .child(conversation_view.clone())
+                    .child(self.render_surface_with_thread_history(
+                        conversation_view.clone().into_any_element(),
+                        show_thread_history,
+                    ))
                     .child(self.render_drag_target(cx)),
                 VisibleSurface::Terminal(terminal_view) => {
                     let search_bar = self
@@ -6514,10 +6697,14 @@ impl Render for AgentPanel {
                         .child(terminal_view.clone());
 
                     parent
-                        .child(terminal_content)
+                        .child(self.render_surface_with_thread_history(
+                            terminal_content.into_any_element(),
+                            show_thread_history,
+                        ))
                         .child(self.render_drag_target(cx))
                 }
             })
+            .child(self.render_width_probe(cx))
             .children(self.render_trial_end_upsell(window, cx));
 
         match self.visible_font_size() {
@@ -9274,6 +9461,108 @@ mod tests {
         assert_eq!(pasted, "file.rs:2-3 ");
     }
 
+    #[gpui::test]
+    async fn test_panel_thread_history_hides_when_panel_is_narrow(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_panel(cx).await;
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, cx| {
+            assert!(
+                panel.thread_history_visible(cx),
+                "a project-backed panel shows the history list by default"
+            );
+        });
+
+        panel.update(&mut cx, |panel, _cx| {
+            panel.measured_panel_width.set(Some(
+                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+            ));
+        });
+        panel.read_with(&cx, |panel, cx| {
+            assert!(
+                !panel.thread_history_visible(cx),
+                "a panel too narrow for both halves drops the list"
+            );
+            assert!(
+                panel.thread_history_enabled(cx),
+                "hiding the list on width must not flip the toolbar toggle"
+            );
+        });
+
+        panel.update(&mut cx, |panel, _cx| {
+            panel.measured_panel_width.set(None);
+        });
+        cx.update(|_, cx| {
+            let mut settings = AgentSettings::get_global(cx).clone();
+            settings.panel_thread_history = false;
+            AgentSettings::override_global(settings, cx);
+        });
+        panel.read_with(&cx, |panel, cx| {
+            assert!(
+                !panel.thread_history_visible(cx),
+                "turning the setting off hides the list at any width"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_panel_thread_history_lists_threads_for_the_open_project(cx: &mut TestAppContext) {
+        use crate::panel_thread_history::HistoryListItem;
+        use crate::thread_metadata_store::ThreadMetadata;
+
+        let (panel, mut cx) = setup_panel(cx).await;
+        cx.run_until_parked();
+
+        let in_project = ThreadId::new();
+        let elsewhere = ThreadId::new();
+        cx.update(|_, cx| {
+            ThreadMetadataStore::global(cx).update(cx, |store, cx| {
+                for (thread_id, root) in [(in_project, "/project"), (elsewhere, "/other")] {
+                    store.save(
+                        ThreadMetadata {
+                            thread_id,
+                            session_id: Some(acp::SessionId::new(root.to_string())),
+                            agent_id: AgentId("zed".into()),
+                            title: Some(root.into()),
+                            title_override: None,
+                            updated_at: Utc::now(),
+                            created_at: Some(Utc::now()),
+                            interacted_at: None,
+                            worktree_paths: WorktreePaths::from_folder_paths(&PathList::new(&[
+                                PathBuf::from(root),
+                            ])),
+                            remote_connection: None,
+                            archived: false,
+                        },
+                        cx,
+                    );
+                }
+            });
+        });
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, cx| {
+            let listed = panel
+                .thread_history
+                .read(cx)
+                .items()
+                .iter()
+                .filter_map(|item| match item {
+                    HistoryListItem::Entry { thread, .. } => Some(thread.thread_id),
+                    HistoryListItem::BucketSeparator(_) => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                listed.contains(&in_project),
+                "threads rooted in the panel's project are listed"
+            );
+            assert!(
+                !listed.contains(&elsewhere),
+                "threads from other projects stay out of the panel's list"
+            );
+        });
+    }
+
     async fn setup_panel(cx: &mut TestAppContext) -> (Entity<AgentPanel>, VisualTestContext) {
         init_test(cx);
         cx.update(|cx| {
@@ -9602,7 +9891,7 @@ mod tests {
         cx.run_until_parked();
 
         assert!(
-            cx.debug_bounds("MENU_ITEM-Skills").is_some(),
+            cx.debug_bounds("MENU_ITEM-スキル").is_some(),
             "Skills menu item should be visible"
         );
         assert!(

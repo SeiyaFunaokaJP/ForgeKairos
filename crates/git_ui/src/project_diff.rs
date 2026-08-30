@@ -226,7 +226,7 @@ impl ProjectDiff {
             DiffMultibuffer::new(
                 branch_diff,
                 Capability::ReadWrite,
-                "No uncommitted changes",
+                "未コミットの変更はありません",
                 move |editor, cx| {
                     editor.set_diff_hunk_delegate(Some(Arc::new(UncommittedDiffHunkDelegate)), cx);
                     editor.rhs_editor().update(cx, |rhs_editor, _cx| {
@@ -434,7 +434,7 @@ impl Item for ProjectDiff {
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Uncommitted Changes".into()
+        "未コミットの変更".into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -809,7 +809,8 @@ impl Render for ProjectDiffToolbar {
         let (additions, deletions) = project_diff.read(cx).calculate_changed_lines(cx);
         let is_multibuffer_empty = project_diff.read(cx).multibuffer(cx).read(cx).is_empty();
 
-        let stage_all_button_width = rems(5.);
+        // 「すべてアンステージ」(全角 9 文字) が入る幅。日本語化に合わせて 5rem から広げた (F1-3)
+        let stage_all_button_width = rems(9.5);
 
         h_flex()
             .my_neg_1()
@@ -834,7 +835,7 @@ impl Render for ProjectDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "Go to Previous Hunk",
+                                "前の変更箇所へ移動",
                                 &GoToPreviousHunk,
                                 &focus_handle,
                             ))
@@ -847,7 +848,7 @@ impl Render for ProjectDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "Go to Next Hunk",
+                                "次の変更箇所へ移動",
                                 &GoToHunk,
                                 &focus_handle,
                             ))
@@ -861,9 +862,9 @@ impl Render for ProjectDiffToolbar {
                 h_group_sm()
                     .when(button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "Toggle Staged")
+                            Button::new("stage", "ステージ状態を切り替え")
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "Toggle Staged",
+                                    "ステージ状態を切り替え",
                                     &ToggleStaged,
                                     &focus_handle,
                                 ))
@@ -875,10 +876,10 @@ impl Render for ProjectDiffToolbar {
                     })
                     .when(!button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "Stage")
+                            Button::new("stage", "ステージ")
                                 .disabled(!button_states.stage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "Stage and Go to Next Hunk",
+                                    "ステージして次の変更箇所へ移動",
                                     &StageAndNext,
                                     &focus_handle,
                                 ))
@@ -887,10 +888,10 @@ impl Render for ProjectDiffToolbar {
                                 })),
                         )
                         .child(
-                            Button::new("unstage", "Unstage")
+                            Button::new("unstage", "アンステージ")
                                 .disabled(!button_states.unstage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "Unstage and Go to Next Hunk",
+                                    "アンステージして次の変更箇所へ移動",
                                     &UnstageAndNext,
                                     &focus_handle,
                                 ))
@@ -905,10 +906,10 @@ impl Render for ProjectDiffToolbar {
                 button_states.unstage_all && !button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("unstage-all", "Unstage All")
+                        Button::new("unstage-all", "すべてアンステージ")
                             .width(stage_all_button_width)
                             .tooltip(Tooltip::for_action_title_in(
-                                "Unstage All Changes",
+                                "すべての変更をアンステージ",
                                 &UnstageAll,
                                 &focus_handle,
                             ))
@@ -922,11 +923,11 @@ impl Render for ProjectDiffToolbar {
                 !button_states.unstage_all || button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("stage-all", "Stage All")
+                        Button::new("stage-all", "すべてステージ")
                             .width(stage_all_button_width)
                             .disabled(!button_states.stage_all)
                             .tooltip(Tooltip::for_action_title_in(
-                                "Stage All Changes",
+                                "すべての変更をステージ",
                                 &StageAll,
                                 &focus_handle,
                             ))
@@ -938,9 +939,9 @@ impl Render for ProjectDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "Commit")
+                Button::new("commit", "コミット")
                     .tooltip(Tooltip::for_action_title_in(
-                        "Commit",
+                        "コミット",
                         &Commit,
                         &focus_handle,
                     ))
@@ -966,7 +967,7 @@ pub(crate) fn render_send_review_to_agent_button(
 ) -> Button {
     Button::new(
         "send-review",
-        format!("Send Review to Agent ({})", review_count),
+        format!("レビューをエージェントへ送信 ({})", review_count),
     )
     .start_icon(
         Icon::new(IconName::ZedAssistant)
@@ -974,7 +975,7 @@ pub(crate) fn render_send_review_to_agent_button(
             .color(Color::Muted),
     )
     .tooltip(Tooltip::for_action_title_in(
-        "Send all review comments to the Agent panel",
+        "すべてのレビューコメントをエージェントパネルへ送信します",
         &SendReviewToAgent,
         focus_handle,
     ))
@@ -1421,7 +1422,7 @@ mod tests {
         assert_ne!(diff_item.entity_id(), unstaged_item.entity_id());
         let unstaged_editor = workspace.update(cx, |workspace, cx| {
             let active_item = workspace.active_item(cx).unwrap();
-            assert_eq!(active_item.tab_content_text(0, cx), "Unstaged Changes");
+            assert_eq!(active_item.tab_content_text(0, cx), "未ステージの変更");
             active_item
                 .act_as::<DiffMultibuffer>(cx)
                 .unwrap()
@@ -1454,7 +1455,7 @@ mod tests {
         assert_eq!(diff_item.entity_id(), uncommitted_item.entity_id());
         assert_eq!(
             uncommitted_item.read_with(cx, |diff, cx| diff.tab_content_text(0, cx)),
-            "Uncommitted Changes"
+            "未コミットの変更"
         );
         let uncommitted_editor = uncommitted_item
             .read_with(cx, |diff, cx| diff.editor(cx).read(cx).rhs_editor().clone());
@@ -1481,7 +1482,7 @@ mod tests {
         let staged_editor = workspace.update(cx, |workspace, cx| {
             workspace.active_item_as::<StagedDiff>(cx).unwrap();
             let active_item = workspace.active_item(cx).unwrap();
-            assert_eq!(active_item.tab_content_text(0, cx), "Staged Changes");
+            assert_eq!(active_item.tab_content_text(0, cx), "ステージ済みの変更");
             active_item
                 .act_as::<DiffMultibuffer>(cx)
                 .unwrap()

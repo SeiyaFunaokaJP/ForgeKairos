@@ -1,10 +1,11 @@
 use gpui::{App, actions};
 use workspace::Workspace;
 
+pub mod markdown_export;
 pub mod markdown_preview_settings;
 pub mod markdown_preview_view;
 
-pub use zed_actions::preview::markdown::{OpenPreview, OpenPreviewToTheSide};
+pub use zed_actions::preview::markdown::{ExportToPdf, OpenPreview, OpenPreviewToTheSide};
 
 use crate::markdown_preview_view::MarkdownPreviewView;
 

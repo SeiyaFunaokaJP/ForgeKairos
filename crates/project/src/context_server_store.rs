@@ -18,6 +18,7 @@ use gpui::{
 };
 use http_client::HttpClient;
 use itertools::Itertools;
+use parking_lot::Mutex;
 use rand::Rng as _;
 use registry::ContextServerDescriptorRegistry;
 use remote::{Interactive, RemoteClient};
@@ -941,6 +942,12 @@ impl ContextServerStore {
         let root_path: Option<Arc<Path>> =
             this.update(cx, |this, cx| this.resolve_root_path(cx))?;
 
+        // `needs_remote_command` only says what the settings asked for; the
+        // command is actually resolved over there when the store is also the
+        // remote end of a connection. A `remote: true` server in a purely local
+        // project still spawns on this machine.
+        let runs_on_this_machine = remote_state.is_none();
+
         let configuration = if let Some((project_id, upstream_client)) = remote_state {
             let root_dir = root_path.as_ref().map(|p| p.display().to_string());
 
@@ -1057,6 +1064,20 @@ impl ContextServerStore {
 
                     // Don't pass remote paths as working directory for locally-spawned processes
                     let working_directory = if is_remote_project { None } else { root_path };
+
+                    // ADR-F13 (F2-7): point the MCP server at the fork's
+                    // loopback egress proxy so its traffic is judged by the
+                    // same allowlist the app's own requests are. Only when it
+                    // runs on this machine — once `command` has been rewritten
+                    // into the ssh/wsl wrapper its env belongs over there. A
+                    // `remote: false` server in a remote project is spawned
+                    // here, so it is covered like any local one.
+                    if runs_on_this_machine && http_client::child_process_proxy().is_some() {
+                        http_client::apply_child_process_proxy_env(
+                            command.env.get_or_insert_with(Default::default),
+                        );
+                    }
+
                     anyhow::Ok(Arc::new(ContextServer::stdio(
                         id,
                         command,
@@ -1119,14 +1140,23 @@ impl ContextServerStore {
             .command()
             .context("context server has no command (HTTP servers don't need RPC)")?;
 
+        // ADR-F14: this handler only ever runs in `remote_server` (the
+        // `is_headless` check above), and the process it describes is spawned
+        // on this host, so the endpoint to hand it is this host's — the one
+        // the local injection in `create_context_server` deliberately withheld
+        // from a remote server because a loopback port means a different
+        // machine there. Applied to the resolved command's own environment, so
+        // a proxy the user spelled out in `context_servers.<name>.env` still
+        // wins.
+        let mut env: HashMap<String, String> = command.env.clone().unwrap_or_default();
+        if http_client::child_process_proxy().is_some() {
+            http_client::apply_child_process_proxy_env(&mut env);
+        }
+
         Ok(proto::ContextServerCommand {
             path: command.path.display().to_string(),
             args: command.args.clone(),
-            env: command
-                .env
-                .clone()
-                .map(|env| env.into_iter().collect())
-                .unwrap_or_default(),
+            env: env.into_iter().collect(),
         })
     }
 
@@ -1861,6 +1891,83 @@ impl ContextServerStore {
         }
 
         Ok(())
+    }
+}
+
+/// How long [`wait_for_context_server`] waits for a server to settle before
+/// giving up. OAuth flows go through the browser, so this is generous.
+const WAIT_FOR_SERVER_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The outcome of waiting for a server to settle: either the terminal status it
+/// reached, or a message describing why it never got there.
+type WaitOutcome = Result<ContextServerStatus, Arc<str>>;
+
+/// Resolves once `context_server_id` reaches a status that ends a (re)start
+/// attempt — running, or waiting on the user for authorization — or with a
+/// message to show when it stops, errors, or never settles.
+///
+/// Callers that restart a server must stop it *before* calling this, otherwise
+/// the `Stopped` event from their own stop resolves the wait immediately.
+///
+/// Lives here rather than in a UI crate because both the agent panel's
+/// "configure MCP server" modal and the settings window's MCP page wait the
+/// same way; the messages are user-facing, hence Japanese (ADR-F07).
+pub fn wait_for_context_server(
+    context_server_store: &Entity<ContextServerStore>,
+    context_server_id: ContextServerId,
+    cx: &mut App,
+) -> Task<WaitOutcome> {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+
+    let context_server_id_for_timeout = context_server_id.clone();
+    let subscription = cx.subscribe(context_server_store, move |_, event, _cx| {
+        let ServerStatusChangedEvent { server_id, status } = event;
+
+        if server_id != &context_server_id {
+            return;
+        }
+
+        match status {
+            ContextServerStatus::Running
+            | ContextServerStatus::AuthRequired
+            | ContextServerStatus::ClientSecretRequired { .. } => {
+                send_wait_outcome(&tx, Ok(status.clone()));
+            }
+            ContextServerStatus::Stopped => {
+                send_wait_outcome(&tx, Err("MCP サーバーが停止しました".into()));
+            }
+            ContextServerStatus::Error(error) => {
+                send_wait_outcome(&tx, Err(error.clone()));
+            }
+            ContextServerStatus::Starting | ContextServerStatus::Authenticating => {}
+        }
+    });
+
+    cx.spawn(async move |cx| {
+        let timeout = cx.background_executor().timer(WAIT_FOR_SERVER_TIMEOUT);
+        let result = futures::future::select(rx, timeout).await;
+        drop(subscription);
+        match result {
+            Either::Left((Ok(inner), _)) => inner,
+            Either::Left((Err(_), _)) => Err(Arc::from("MCP サーバーストアが破棄されました")),
+            Either::Right(_) => Err(Arc::from(format!(
+                "MCP サーバー `{}` の起動がタイムアウトしました。詳細は Zed のログを確認してください。",
+                context_server_id_for_timeout
+            ))),
+        }
+    })
+}
+
+fn send_wait_outcome(
+    tx: &Mutex<Option<futures::channel::oneshot::Sender<WaitOutcome>>>,
+    outcome: WaitOutcome,
+) {
+    let Some(tx) = tx.lock().take() else {
+        return;
+    };
+    if tx.send(outcome).is_err() {
+        log::debug!("context server wait was dropped before its outcome could be reported");
     }
 }
 

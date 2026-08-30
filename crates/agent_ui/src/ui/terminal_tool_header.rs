@@ -185,10 +185,10 @@ impl RenderOnce for TerminalToolHeader {
                             .icon_color(Color::Error)
                             .tooltip(move |_window, cx| {
                                 Tooltip::with_meta(
-                                    "Stop This Command",
+                                    "このコマンドを停止",
                                     None,
-                                    "Also possible by placing your cursor inside the terminal \
-                                     and using regular terminal bindings.",
+                                    "ターミナル内にカーソルを置いて通常のターミナルのキーバインドを\
+                                     使うこともできます。",
                                     cx,
                                 )
                             })
@@ -213,7 +213,7 @@ impl RenderOnce for TerminalToolHeader {
                         .icon_size(IconSize::Small)
                         .icon_color(Color::Error)
                         .when_some(exit_code, |this, code| {
-                            this.tooltip(Tooltip::text(format!("Exited with code {code}")))
+                            this.tooltip(Tooltip::text(format!("終了コード {code} で終了しました")))
                         }),
                 )
             })
@@ -230,7 +230,9 @@ impl RenderOnce for TerminalToolHeader {
                             Tooltip::with_meta(
                                 title.clone(),
                                 None,
-                                format!("{detail} Click to learn more about sandboxing."),
+                                format!(
+                                    "{detail} クリックするとサンドボックスの詳細を確認できます。"
+                                ),
                                 cx,
                             )
                         })

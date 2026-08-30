@@ -52,12 +52,12 @@ impl AgentTool for RenameTool {
     ) -> SharedString {
         if let Ok(input) = input {
             format!(
-                "Rename `{}` to `{}`",
+                "`{}` の名前を `{}` に変更",
                 input.symbol.symbol_name, input.new_name
             )
             .into()
         } else {
-            "Rename symbol".into()
+            "シンボルの名前変更".into()
         }
     }
 

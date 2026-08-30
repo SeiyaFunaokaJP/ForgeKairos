@@ -605,6 +605,13 @@
     "bindings": {
       "ctrl-k v": "markdown::OpenPreviewToTheSide",
       "ctrl-shift-v": "markdown::OpenPreview",
+      // Inside Markdown these deliberately shadow the VS Code defaults for
+      // ctrl-b (dock toggle) and ctrl-shift-x (extensions), the same way
+      // "Markdown All in One" does.
+      "ctrl-b": "markdown::ToggleBold",
+      "ctrl-i": "markdown::ToggleItalic",
+      "ctrl-shift-x": "markdown::ToggleStrikethrough",
+      "shift-enter": "markdown::NewlineInvertHardBreak",
     },
   },
   {
@@ -898,12 +905,6 @@
     },
   },
   {
-    "context": "!Terminal",
-    "bindings": {
-      "ctrl-shift-c": "collab_panel::ToggleFocus",
-    },
-  },
-  {
     "context": "!AcpThread > Editor && mode == full",
     "bindings": {
       "alt-enter": "editor::OpenExcerpts",
@@ -1154,34 +1155,6 @@
     },
   },
   {
-    "context": "CollabPanel && not_editing",
-    "bindings": {
-      "ctrl-backspace": "collab_panel::Remove",
-      "space": "menu::Confirm",
-    },
-  },
-  {
-    "context": "CollabPanel",
-    "bindings": {
-      "alt-up": "collab_panel::MoveChannelUp",
-      "alt-down": "collab_panel::MoveChannelDown",
-      "alt-enter": "collab_panel::OpenSelectedChannelNotes",
-      "shift-enter": "collab_panel::ToggleSelectedChannelFavorite",
-    },
-  },
-  {
-    "context": "(CollabPanel && editing) > Editor",
-    "bindings": {
-      "space": "collab_panel::InsertSpace",
-    },
-  },
-  {
-    "context": "ChannelModal",
-    "bindings": {
-      "tab": "channel_modal::ToggleMode",
-    },
-  },
-  {
     "context": "Picker > Editor",
     "bindings": {
       "escape": "menu::Cancel",
@@ -1193,12 +1166,6 @@
       // ToggleActionsMenu) live in keymaps/specific-overrides.json, which is
       // loaded after the base keymap so they win over conflicting base-keymap
       // Editor bindings.
-    },
-  },
-  {
-    "context": "ChannelModal > Picker > Editor",
-    "bindings": {
-      "tab": "channel_modal::ToggleMode",
     },
   },
   {
@@ -1267,6 +1234,10 @@
       "ctrl-backspace": ["terminal::SendKeystroke", "ctrl-w"],
       "ctrl-shift-a": "editor::SelectAll",
       "find": "buffer_search::Deploy",
+      // Fork default: ctrl-f searches the terminal buffer like every other
+      // surface, instead of falling through to the pty. To send a literal
+      // ctrl-f to the shell, bind ["terminal::SendKeystroke", "ctrl-f"].
+      "ctrl-f": "buffer_search::Deploy",
       "ctrl-shift-f": "buffer_search::Deploy",
       "ctrl-shift-l": "terminal::Clear",
       "ctrl-shift-w": "pane::CloseActiveItem",

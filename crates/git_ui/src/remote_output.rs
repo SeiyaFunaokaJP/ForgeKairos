@@ -4,15 +4,17 @@ use git::repository::{Remote, RemoteCommandOutput};
 use ui::SharedString;
 use util::ResultExt as _;
 
+/// 第 1 要素は git の stderr と突き合わせる照合文字列なので**必ず英語のまま**にする。
+/// 第 2 要素はトースト上のボタンラベル (表示専用) なので翻訳する。
 const PULL_REQUEST_HINTS: &[(&str, &str)] = &[
     // GitHub: "Create a pull request for 'branch' on GitHub by visiting:"
-    ("Create a pull request", "Create Pull Request"),
+    ("Create a pull request", "プルリクエストを作成"),
     // Bitbucket: "Create pull request for branch:"
-    ("Create pull request", "Create Pull Request"),
+    ("Create pull request", "プルリクエストを作成"),
     // GitLab: "To create a merge request for branch, visit:"
-    ("create a merge request", "Create Merge Request"),
+    ("create a merge request", "マージリクエストを作成"),
     // GitLab: "View merge request for branch:"
-    ("View merge request", "View Merge Request"),
+    ("View merge request", "マージリクエストを表示"),
 ];
 
 #[derive(Clone)]
@@ -84,13 +86,13 @@ pub fn format_output(action: &RemoteAction, output: RemoteCommandOutput) -> Succ
         RemoteAction::Fetch(remote) => {
             if output.stderr.is_empty() {
                 SuccessMessage {
-                    message: "Fetch: Already up to date".into(),
+                    message: "フェッチ: すでに最新です".into(),
                     style: SuccessStyle::Toast,
                 }
             } else {
                 let message = match remote {
-                    Some(remote) => format!("Synchronized with {}", remote.name),
-                    None => "Synchronized with remotes".into(),
+                    Some(remote) => format!("{} と同期しました", remote.name),
+                    None => "リモートと同期しました".into(),
                 };
                 SuccessMessage {
                     message,
@@ -115,22 +117,22 @@ pub fn format_output(action: &RemoteAction, output: RemoteCommandOutput) -> Succ
 
                 Ok(files_changed)
             };
+            // 以下の `ends_with` / `starts_with` / `contains` は git の stdout と
+            // 突き合わせる照合文字列なので英語のまま。
             if output.stdout.ends_with("Already up to date.\n") {
                 SuccessMessage {
-                    message: "Pull: Already up to date".into(),
+                    message: "プル: すでに最新です".into(),
                     style: SuccessStyle::Toast,
                 }
             } else if output.stdout.starts_with("Updating") {
                 let files_changed = get_changes(&output).log_err();
                 let message = if let Some(files_changed) = files_changed {
                     format!(
-                        "Received {} file change{} from {}",
-                        files_changed,
-                        if files_changed == 1 { "" } else { "s" },
-                        remote_ref.name
+                        "{} から {} 件のファイル変更を取得しました",
+                        remote_ref.name, files_changed
                     )
                 } else {
-                    format!("Fast forwarded from {}", remote_ref.name)
+                    format!("{} から早送りしました", remote_ref.name)
                 };
                 SuccessMessage {
                     message,
@@ -140,13 +142,11 @@ pub fn format_output(action: &RemoteAction, output: RemoteCommandOutput) -> Succ
                 let files_changed = get_changes(&output).log_err();
                 let message = if let Some(files_changed) = files_changed {
                     format!(
-                        "Merged {} file change{} from {}",
-                        files_changed,
-                        if files_changed == 1 { "" } else { "s" },
-                        remote_ref.name
+                        "{} から {} 件のファイル変更をマージしました",
+                        remote_ref.name, files_changed
                     )
                 } else {
-                    format!("Merged from {}", remote_ref.name)
+                    format!("{} からマージしました", remote_ref.name)
                 };
                 SuccessMessage {
                     message,
@@ -154,30 +154,31 @@ pub fn format_output(action: &RemoteAction, output: RemoteCommandOutput) -> Succ
                 }
             } else if output.stdout.contains("Successfully rebased") {
                 SuccessMessage {
-                    message: format!("Successfully rebased from {}", remote_ref.name),
+                    message: format!("{} からリベースしました", remote_ref.name),
                     style: SuccessStyle::ToastWithLog { output },
                 }
             } else {
                 SuccessMessage {
-                    message: format!("Successfully pulled from {}", remote_ref.name),
+                    message: format!("{} からプルしました", remote_ref.name),
                     style: SuccessStyle::ToastWithLog { output },
                 }
             }
         }
         RemoteAction::Push(branch_name, remote_ref) => {
+            // `Everything up-to-date` は git の stderr と突き合わせる照合文字列。
             if output.stderr.ends_with("Everything up-to-date\n") {
                 SuccessMessage {
-                    message: "Push: Everything is up-to-date".to_string(),
+                    message: "プッシュ: すべて最新です".to_string(),
                     style: SuccessStyle::Toast,
                 }
             } else if let Some((label, url)) = extract_pull_request_link(&output) {
                 SuccessMessage {
-                    message: format!("Pushed {} to {}", branch_name, remote_ref.name),
+                    message: format!("{} を {} にプッシュしました", branch_name, remote_ref.name),
                     style: SuccessStyle::PushPrLink { label, url },
                 }
             } else {
                 SuccessMessage {
-                    message: format!("Pushed {} to {}", branch_name, remote_ref.name),
+                    message: format!("{} を {} にプッシュしました", branch_name, remote_ref.name),
                     style: SuccessStyle::ToastWithLog { output },
                 }
             }
@@ -215,8 +216,8 @@ mod tests {
 
         let msg = format_output(&action, output);
         if let SuccessStyle::PushPrLink { label, url } = msg.style {
-            assert_eq!(msg.message, "Pushed test_branch to test_remote");
-            assert_eq!(label, "Create Pull Request");
+            assert_eq!(msg.message, "test_branch を test_remote にプッシュしました");
+            assert_eq!(label, "プルリクエストを作成");
             assert_eq!(url, "https://example.com/test/test/pull/new/test");
         } else {
             panic!("Expected PushPrLink variant");
@@ -249,8 +250,8 @@ mod tests {
         let msg = format_output(&action, output);
 
         if let SuccessStyle::PushPrLink { label, url } = msg.style {
-            assert_eq!(msg.message, "Pushed test_branch to test_remote");
-            assert_eq!(label, "Create Merge Request");
+            assert_eq!(msg.message, "test_branch を test_remote にプッシュしました");
+            assert_eq!(label, "マージリクエストを作成");
             assert_eq!(
                 url,
                 "https://example.com/test/test/-/merge_requests/new?merge_request%5Bsource_branch%5D=test"
@@ -275,7 +276,7 @@ mod tests {
         assert_eq!(
             extract_pull_request_link(&output),
             Some((
-                "Create Pull Request",
+                "プルリクエストを作成",
                 "https://bitbucket.example.com/projects/TEST/repos/test/pull-requests?create&sourceBranch=refs/heads/test".to_string()
             ))
         );
@@ -313,8 +314,8 @@ mod tests {
         let msg = format_output(&action, output);
 
         if let SuccessStyle::PushPrLink { label, url } = msg.style {
-            assert_eq!(msg.message, "Pushed test_branch to test_remote");
-            assert_eq!(label, "View Merge Request");
+            assert_eq!(msg.message, "test_branch を test_remote にプッシュしました");
+            assert_eq!(label, "マージリクエストを表示");
             assert_eq!(url, "https://example.com/test/test/-/merge_requests/99999");
         } else {
             panic!("Expected PushPrLink variant")

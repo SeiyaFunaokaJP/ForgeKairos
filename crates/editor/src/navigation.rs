@@ -1514,9 +1514,9 @@ impl Editor {
                     .take(3)
                     .join(", ");
                 let title = if target.is_empty() {
-                    "References".to_owned()
+                    "参照".to_owned()
                 } else {
-                    format!("References to {target}")
+                    format!("{target} の参照")
                 };
                 let allow_preview = PreviewTabsSettings::get_global(cx)
                     .enable_preview_multibuffer_from_code_navigation;
@@ -1774,10 +1774,10 @@ impl Editor {
 
             if num_locations > 1 {
                 let tab_kind = match kind {
-                    Some(GotoDefinitionKind::Implementation) => "Implementations",
-                    Some(GotoDefinitionKind::Symbol) | None => "Definitions",
-                    Some(GotoDefinitionKind::Declaration) => "Declarations",
-                    Some(GotoDefinitionKind::Type) => "Types",
+                    Some(GotoDefinitionKind::Implementation) => "実装",
+                    Some(GotoDefinitionKind::Symbol) | None => "定義",
+                    Some(GotoDefinitionKind::Declaration) => "宣言",
+                    Some(GotoDefinitionKind::Type) => "型",
                 };
                 let title = editor
                     .update_in(cx, |_, _, cx| {
@@ -1797,7 +1797,7 @@ impl Editor {
                         if target.is_empty() {
                             tab_kind.to_owned()
                         } else {
-                            format!("{tab_kind} for {target}")
+                            format!("{target} の{tab_kind}")
                         }
                     })
                     .context("buffer title")?;

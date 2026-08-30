@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::PathBuf;
 
 use crate::{
     RemoteArch, RemoteOs, RemotePlatform,
@@ -238,6 +239,48 @@ fn handle_rpc_messages_over_child_process_stdio(
     })
 }
 
+/// File names of a remote server artifact for `platform`, most preferred first.
+///
+/// The compressed name is exactly what `script/bundle-linux` and
+/// `script/bundle-mac` emit, so a release artifact can be dropped in as-is. The
+/// uncompressed name is accepted too, so a locally cross-compiled binary can be
+/// used without a compression step.
+pub(crate) fn bundled_server_artifact_names(platform: RemotePlatform) -> [String; 2] {
+    let stem = format!("zed-remote-server-{}-{}", platform.os, platform.arch);
+    if platform.os.is_windows() {
+        [format!("{stem}.zip"), format!("{stem}.exe")]
+    } else {
+        [format!("{stem}.gz"), stem]
+    }
+}
+
+fn find_bundled_server_artifact_in_dirs(
+    platform: RemotePlatform,
+    dirs: &[PathBuf],
+) -> Option<PathBuf> {
+    let names = bundled_server_artifact_names(platform);
+    dirs.iter().find_map(|dir| {
+        names
+            .iter()
+            .map(|name| dir.join(name))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+/// Locates a remote server artifact shipped with the application: next to the
+/// running executable, or in its `bin` subdirectory (the same convention as
+/// `util::command::resolve_command_next_to_current_exe`).
+///
+/// This is what lets SSH remoting work for someone who installed nothing extra:
+/// the server binary travels with the app, so it can be uploaded without a local
+/// cross-compilation toolchain and without reaching the network, which this fork
+/// blocks by default.
+pub(crate) fn find_bundled_server_artifact(platform: RemotePlatform) -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let bin_dir = exe_dir.join("bin");
+    find_bundled_server_artifact_in_dirs(platform, &[exe_dir, bin_dir])
+}
+
 #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 async fn build_remote_server_from_source(
     platform: &crate::RemotePlatform,
@@ -457,6 +500,112 @@ async fn which(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn linux_x86_64() -> RemotePlatform {
+        RemotePlatform {
+            os: RemoteOs::Linux,
+            arch: RemoteArch::X86_64,
+        }
+    }
+
+    #[test]
+    fn test_bundled_server_artifact_names() {
+        assert_eq!(
+            bundled_server_artifact_names(linux_x86_64()),
+            [
+                "zed-remote-server-linux-x86_64.gz".to_string(),
+                "zed-remote-server-linux-x86_64".to_string()
+            ]
+        );
+        assert_eq!(
+            bundled_server_artifact_names(RemotePlatform {
+                os: RemoteOs::MacOs,
+                arch: RemoteArch::Aarch64,
+            }),
+            [
+                "zed-remote-server-macos-aarch64.gz".to_string(),
+                "zed-remote-server-macos-aarch64".to_string()
+            ]
+        );
+        assert_eq!(
+            bundled_server_artifact_names(RemotePlatform {
+                os: RemoteOs::Windows,
+                arch: RemoteArch::X86_64,
+            }),
+            [
+                "zed-remote-server-windows-x86_64.zip".to_string(),
+                "zed-remote-server-windows-x86_64.exe".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_find_bundled_server_artifact_prefers_compressed_next_to_exe() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        std::fs::create_dir(&bin_dir).unwrap();
+        let dirs = [dir.path().to_path_buf(), bin_dir];
+
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(linux_x86_64(), &dirs),
+            None
+        );
+
+        let uncompressed = dir.path().join("zed-remote-server-linux-x86_64");
+        std::fs::write(&uncompressed, b"").unwrap();
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(linux_x86_64(), &dirs).as_deref(),
+            Some(uncompressed.as_path())
+        );
+
+        let compressed = dir.path().join("zed-remote-server-linux-x86_64.gz");
+        std::fs::write(&compressed, b"").unwrap();
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(linux_x86_64(), &dirs).as_deref(),
+            Some(compressed.as_path())
+        );
+    }
+
+    #[test]
+    fn test_find_bundled_server_artifact_falls_back_to_bin_subdirectory() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        std::fs::create_dir(&bin_dir).unwrap();
+        let bundled = bin_dir.join("zed-remote-server-linux-x86_64.gz");
+        std::fs::write(&bundled, b"").unwrap();
+
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(
+                linux_x86_64(),
+                &[dir.path().to_path_buf(), bin_dir]
+            )
+            .as_deref(),
+            Some(bundled.as_path())
+        );
+    }
+
+    #[test]
+    fn test_find_bundled_server_artifact_ignores_other_platforms() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("zed-remote-server-macos-aarch64.gz"), b"").unwrap();
+        std::fs::write(dir.path().join("zed-remote-server-linux-aarch64.gz"), b"").unwrap();
+
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(linux_x86_64(), &[dir.path().to_path_buf()]),
+            None
+        );
+    }
+
+    #[test]
+    fn test_find_bundled_server_artifact_ignores_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("zed-remote-server-linux-x86_64.gz")).unwrap();
+
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(linux_x86_64(), &[dir.path().to_path_buf()]),
+            None
+        );
+    }
 
     #[test]
     fn test_parse_platform() {

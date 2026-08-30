@@ -51,15 +51,15 @@ pub(crate) fn commit_context_menu(
         cx,
     );
     let header = match &ref_name {
-        Some(ref_name) => format!("Ref {ref_name}"),
-        None => format!("Commit {sha_short}"),
+        Some(ref_name) => format!("ref {ref_name}"),
+        None => format!("コミット {sha_short}"),
     };
 
     ContextMenu::build(window, cx, move |context_menu, _, _| {
         context_menu
             .context(focus_handle)
             .header(header)
-            .entry("View Diff", Some(OpenCommitView.boxed_clone()), {
+            .entry("差分を表示", Some(OpenCommitView.boxed_clone()), {
                 let repository = repository.clone();
                 let workspace = workspace.clone();
                 move |window, cx| {
@@ -78,21 +78,21 @@ pub(crate) fn commit_context_menu(
                 }
             })
             .entry(
-                "Copy SHA",
+                "SHA をコピー",
                 Some(CopyCommitSha.boxed_clone()),
                 move |_window, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(sha.to_string()));
                 },
             )
             .when_some(ref_name.clone(), |menu, ref_name| {
-                menu.entry("Copy Ref Name", None, move |_window, cx| {
+                menu.entry("ref 名をコピー", None, move |_window, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(ref_name.to_string()));
                 })
             })
             .when(ref_name.is_none(), |menu| {
                 menu.map(|menu| {
                     let tag_names = commit.tag_names.clone();
-                    let copy_tag_label = "Copy Tag";
+                    let copy_tag_label = "タグをコピー";
 
                     match tag_names.as_slice() {
                         [] => menu.item(
@@ -130,7 +130,7 @@ pub(crate) fn commit_context_menu(
                 })
             })
             .when(source == CommitContextMenuSource::GitPanel, |menu| {
-                menu.entry("Show in Git Graph", None, move |window, cx| {
+                menu.entry("コミットグラフで表示", None, move |window, cx| {
                     window.dispatch_action(
                         Box::new(crate::git_graph::OpenAtCommit {
                             sha: sha.to_string(),
@@ -140,11 +140,11 @@ pub(crate) fn commit_context_menu(
                 })
             })
             .map(|mut menu| {
-                menu = menu.separator().header("Custom Commands");
+                menu = menu.separator().header("カスタムコマンド");
 
                 if git_tasks.is_empty() {
                     return menu.item(
-                        ContextMenuEntry::new("Learn More")
+                        ContextMenuEntry::new("詳細")
                             .icon(IconName::ArrowUpRight)
                             .icon_color(Color::Muted)
                             .icon_position(IconPosition::End)

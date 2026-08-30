@@ -1038,7 +1038,7 @@ impl ConversationView {
         {
             return ServerState::LoadError {
                 error: LoadError::Other(
-                    "External agents are not yet supported in shared projects.".into(),
+                    "共有プロジェクトでは外部エージェントはまだサポートされていません。".into(),
                 ),
             };
         }
@@ -1128,7 +1128,8 @@ impl ConversationView {
                         )
                     } else {
                         Task::ready(Err(anyhow!(LoadError::Other(
-                            "Loading or resuming sessions is not supported by this agent.".into()
+                            "このエージェントはセッションの読み込みや再開をサポートしていません。"
+                                .into()
                         ))))
                     }
                 })
@@ -1533,16 +1534,18 @@ impl ConversationView {
             ServerState::Loading { .. } => self
                 .loading_status
                 .clone()
-                .unwrap_or_else(|| "Loading…".into()),
+                .unwrap_or_else(|| "読み込み中…".into()),
             ServerState::LoadError { error, .. } => match error {
                 LoadError::Unsupported { .. } => {
-                    format!("Upgrade {}", self.agent.agent_id()).into()
+                    format!("{} をアップグレード", self.agent.agent_id()).into()
                 }
                 LoadError::FailedToInstall(_) => {
-                    format!("Failed to Install {}", self.agent.agent_id()).into()
+                    format!("{} のインストールに失敗しました", self.agent.agent_id()).into()
                 }
-                LoadError::Exited { .. } => format!("{} Exited", self.agent.agent_id()).into(),
-                LoadError::Other(_) => format!("Error Loading {}", self.agent.agent_id()).into(),
+                LoadError::Exited { .. } => {
+                    format!("{} が終了しました", self.agent.agent_id()).into()
+                }
+                LoadError::Other(_) => format!("{} の読み込みエラー", self.agent.agent_id()).into(),
             },
         }
     }
@@ -1641,11 +1644,11 @@ impl ConversationView {
                 self.load_subagent_session(subagent_session_id.clone(), session_id, window, cx)
             }
             AcpThreadEvent::ToolAuthorizationRequested(_) => {
-                self.notify_with_sound("Waiting for tool confirmation", IconName::Info, window, cx);
+                self.notify_with_sound("ツールの確認を待っています", IconName::Info, window, cx);
             }
             AcpThreadEvent::ToolAuthorizationReceived(_) => {}
             AcpThreadEvent::ElicitationRequested(_) => {
-                self.notify_with_sound("Waiting for input", IconName::Info, window, cx);
+                self.notify_with_sound("入力を待っています", IconName::Info, window, cx);
             }
             AcpThreadEvent::ElicitationResponded(_) => {}
             AcpThreadEvent::Retry(retry) => {
@@ -1707,9 +1710,9 @@ impl ConversationView {
                     let used_tools = thread.read(cx).used_tools_since_last_user_message();
                     self.notify_with_sound(
                         if used_tools {
-                            "Finished running tools"
+                            "ツールの実行が完了しました"
                         } else {
-                            "New message"
+                            "新しいメッセージ"
                         },
                         IconName::ZedAssistant,
                         window,
@@ -1727,8 +1730,10 @@ impl ConversationView {
                 }
                 if !is_subagent {
                     let model_or_agent_name = self.current_model_name(cx);
-                    let notification_message =
-                        format!("{} refused to respond to this request", model_or_agent_name);
+                    let notification_message = format!(
+                        "{} がこのリクエストへの応答を拒否しました",
+                        model_or_agent_name
+                    );
                     self.notify_with_sound(&notification_message, IconName::Warning, window, cx);
                 }
             }
@@ -1748,7 +1753,7 @@ impl ConversationView {
                 }
                 if !is_subagent {
                     self.notify_with_sound(
-                        "Agent stopped due to an error",
+                        "エラーによりエージェントが停止しました",
                         IconName::Warning,
                         window,
                         cx,
@@ -2293,7 +2298,7 @@ impl ConversationView {
         if pending_auth_method.is_some() {
             return Callout::new()
                 .icon(IconName::Info)
-                .title(format!("Authenticating to {}…", agent_display_name))
+                .title(format!("{} を認証中…", agent_display_name))
                 .actions_slot(
                     Icon::new(IconName::ArrowCircle)
                         .size(IconSize::Small)
@@ -2306,7 +2311,7 @@ impl ConversationView {
 
         Callout::new()
             .icon(IconName::Info)
-            .title(format!("Authenticate to {}", agent_display_name))
+            .title(format!("{} の認証", agent_display_name))
             .when(auth_methods.len() == 1, |this| {
                 this.actions_slot(auth_buttons())
             })
@@ -2316,7 +2321,7 @@ impl ConversationView {
                     .map(|this| {
                         if show_fallback_description {
                             this.child(
-                                Label::new("Choose one of the following authentication options:")
+                                Label::new("次の認証方法から 1 つを選択してください:")
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -2712,12 +2717,12 @@ impl ConversationView {
                 return self.render_unsupported(path, current_version, minimum_version, window, cx);
             }
             LoadError::FailedToInstall(msg) => (
-                "Failed to Install",
+                "インストールに失敗しました",
                 msg.into(),
                 Some(self.create_copy_button(msg.to_string()).into_any_element()),
             ),
             LoadError::Exited { status, stderr } => {
-                let mut message = format!("Server exited with status {status}");
+                let mut message = format!("サーバーがステータス {status} で終了しました");
                 if let Some(stderr) = stderr {
                     message.push_str("\n");
                     message.push_str(stderr);
@@ -2725,10 +2730,10 @@ impl ConversationView {
                 let action_slot = stderr
                     .is_some()
                     .then(|| self.create_copy_button(message.clone()).into_any_element());
-                ("Failed to Launch", message.into(), action_slot)
+                ("起動に失敗しました", message.into(), action_slot)
             }
             LoadError::Other(msg) => (
-                "Failed to Launch",
+                "起動に失敗しました",
                 msg.into(),
                 Some(self.create_copy_button(msg.to_string()).into_any_element()),
             ),
@@ -2752,15 +2757,18 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (heading_label, description_label) = (
-            format!("Upgrade {} to work with Zed", self.agent.agent_id()),
+            format!(
+                "Zed で使うには {} をアップグレードしてください",
+                self.agent.agent_id()
+            ),
             if version.is_empty() {
                 format!(
-                    "Currently using {}, which does not report a valid --version",
-                    path,
+                    "現在 {} を使用していますが、有効な --version を返しません",
+                    path
                 )
             } else {
                 format!(
-                    "Currently using {}, which is only version {} (need at least {minimum_version})",
+                    "現在 {} を使用していますが、バージョンが {} です ({minimum_version} 以上が必要です)",
                     path, version
                 )
             },
@@ -3203,7 +3211,7 @@ impl ConversationView {
                 .and_then(|active| active.read(cx).model_selector.clone())
                 .and_then(|selector| selector.read(cx).active_model(cx))
                 .map(|model| model.name.clone())
-                .unwrap_or_else(|| SharedString::from("The model"))
+                .unwrap_or_else(|| SharedString::from("モデル"))
         } else {
             // ACP agent - use the agent name (e.g., "Claude Agent", "Gemini CLI")
             self.agent.agent_id().0
@@ -3213,7 +3221,7 @@ impl ConversationView {
     fn create_copy_button(&self, message: impl Into<String>) -> impl IntoElement {
         let message = message.into();
 
-        CopyButton::new("copy-error-message", message).tooltip_label("Copy Error Message")
+        CopyButton::new("copy-error-message", message).tooltip_label("エラーメッセージをコピー")
     }
 
     pub(crate) fn reauthenticate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -3311,16 +3319,16 @@ fn native_available_skills(
 fn placeholder_text(agent_name: &str, has_commands: bool) -> String {
     if agent_name == agent::ZED_AGENT_ID.as_ref() {
         format!(
-            "Message the {}, @ to include context, / for commands",
+            "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド",
             agent_name
         )
     } else if has_commands {
         format!(
-            "Message {} — @ to include context, / for commands",
+            "{} にメッセージを送信 — @ でコンテキストを追加、/ でコマンド",
             agent_name
         )
     } else {
-        format!("Message {} — @ to include context", agent_name)
+        format!("{} にメッセージを送信 — @ でコンテキストを追加", agent_name)
     }
 }
 
@@ -3379,7 +3387,7 @@ impl Render for ConversationView {
                 let label_text = self
                     .loading_status
                     .clone()
-                    .unwrap_or_else(|| "Loading…".into());
+                    .unwrap_or_else(|| "読み込み中…".into());
                 v_flex()
                     .flex_1()
                     .size_full()
@@ -4502,7 +4510,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             placeholder,
-            Some("Message Test — @ to include context, / for commands".to_string())
+            Some("Test にメッセージを送信 — @ でコンテキストを追加、/ でコマンド".to_string())
         );
 
         message_editor.update_in(cx, |editor, window, cx| {
@@ -4609,7 +4617,7 @@ pub(crate) mod tests {
             let title = view.title(cx);
             assert_eq!(
                 title.as_ref(),
-                "Error Loading Codex CLI",
+                "Codex CLI の読み込みエラー",
                 "Tab title should show the agent name with an error prefix"
             );
             match &view.server_state {

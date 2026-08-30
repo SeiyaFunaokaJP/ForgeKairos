@@ -1,12 +1,19 @@
 use anyhow::{Context as _, Result};
 use client::Client;
 use db::kvp::KeyValueStore;
+// `smol::fs` is imported below under the same name, so the crate has to be
+// named through the crate root here.
+use ::fs::Fs;
 use futures_lite::StreamExt;
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, Context, Entity, Global, Task, TaskExt,
     Window, actions,
 };
-use http_client::{HttpClient, HttpClientWithUrl};
+use http_client::{
+    EgressDenied, HttpClient, HttpClientWithUrl, RequestHost, UPDATE_REPO,
+    github::{GithubRelease, get_release_by_tag_name, latest_github_release},
+    hosts_required_to_download,
+};
 use paths::remote_servers_dir;
 use release_channel::{AppCommitSha, ReleaseChannel};
 use semver::Version;
@@ -47,6 +54,15 @@ impl std::error::Error for MissingDependencyError {}
 const POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const NIGHTLY_POLL_INTERVAL: Duration = Duration::from_secs(15 * 60);
 const REMOTE_SERVER_CACHE_LIMIT: usize = 5;
+
+/// `network_allowlist.json` is watched asynchronously, so the policy this
+/// process enforces only catches up a moment after the consent flow writes to
+/// it. Retrying the update before it does would land straight back in
+/// [`AutoUpdateStatus::NeedsEgressConsent`], so the retry waits — briefly, and
+/// then goes ahead regardless rather than hanging on a watcher that may never
+/// fire.
+const ALLOWLIST_RELOAD_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const ALLOWLIST_RELOAD_ATTEMPTS: usize = 50;
 
 #[cfg(target_os = "linux")]
 fn linux_rsync_install_hint() -> &'static str {
@@ -109,20 +125,18 @@ actions!(
     ]
 );
 
-#[derive(Serialize, Debug)]
-pub struct AssetQuery<'a> {
-    asset: &'a str,
-    os: &'a str,
-    arch: &'a str,
-    metrics_id: Option<&'a str>,
-    system_id: Option<&'a str>,
-    is_staff: Option<bool>,
-}
-
 #[derive(Clone, Debug)]
 pub enum AutoUpdateStatus {
     Idle,
     Checking,
+    /// A newer release exists, but downloading it would reach hosts the
+    /// deny-by-default egress policy does not permit (ADR-F03/F16). The
+    /// download is held here until the user explicitly opens them; nothing is
+    /// added to `network_allowlist.json` without that confirmation.
+    NeedsEgressConsent {
+        version: Version,
+        hosts: Vec<String>,
+    },
     Downloading {
         version: Version,
         /// Download progress as a fraction in the range `0.0..=1.0`, or `None`
@@ -147,6 +161,16 @@ impl PartialEq for AutoUpdateStatus {
         match (self, other) {
             (AutoUpdateStatus::Idle, AutoUpdateStatus::Idle) => true,
             (AutoUpdateStatus::Checking, AutoUpdateStatus::Checking) => true,
+            (
+                AutoUpdateStatus::NeedsEgressConsent {
+                    version: v1,
+                    hosts: h1,
+                },
+                AutoUpdateStatus::NeedsEgressConsent {
+                    version: v2,
+                    hosts: h2,
+                },
+            ) => v1 == v2 && h1 == h2,
             (
                 AutoUpdateStatus::Downloading { version: v1, .. },
                 AutoUpdateStatus::Downloading { version: v2, .. },
@@ -337,23 +361,23 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     }
 }
 
+/// Where this fork's release notes live: its own repository's GitHub
+/// Releases, the same place [`AutoUpdater`] fetches updates from (ADR-F16).
 pub fn release_notes_url(cx: &mut App) -> Option<String> {
     let release_channel = ReleaseChannel::try_global(cx)?;
     let url = match release_channel {
         ReleaseChannel::Stable | ReleaseChannel::Preview => {
             let auto_updater = AutoUpdater::get(cx)?;
-            let auto_updater = auto_updater.read(cx);
-            let mut current_version = auto_updater.current_version.clone();
+            let mut current_version = auto_updater.read(cx).current_version.clone();
             current_version.pre = semver::Prerelease::EMPTY;
             current_version.build = semver::BuildMetadata::EMPTY;
-            let release_channel = release_channel.dev_name();
-            let path = format!("/releases/{release_channel}/{current_version}");
-            auto_updater.client.http_client().build_url(&path)
+            format!("https://github.com/{UPDATE_REPO}/releases/tag/v{current_version}")
         }
-        ReleaseChannel::Nightly => {
-            "https://github.com/zed-industries/zed/commits/nightly/".to_string()
+        // A nightly or dev build is not published as a tagged release, so
+        // there is no single note to link to — the index is the honest answer.
+        ReleaseChannel::Nightly | ReleaseChannel::Dev => {
+            format!("https://github.com/{UPDATE_REPO}/releases")
         }
-        ReleaseChannel::Dev => "https://github.com/zed-industries/zed/commits/main/".to_string(),
     };
     Some(url)
 }
@@ -667,6 +691,13 @@ impl AutoUpdater {
         Ok(Some(release.url))
     }
 
+    /// Resolves one published asset on [`UPDATE_REPO`]'s GitHub Releases.
+    ///
+    /// This fork updates itself from its own repository only (ADR-F16), so
+    /// the upstream Zed Cloud endpoint — which picked the file server-side
+    /// from an `asset`/`os`/`arch` query and carried telemetry identifiers
+    /// while doing it — is gone, and the naming convention it encoded now
+    /// lives in [`asset_name`].
     async fn get_release_asset(
         this: &Entity<Self>,
         release_channel: ReleaseChannel,
@@ -676,58 +707,100 @@ impl AutoUpdater {
         arch: &str,
         cx: &mut AsyncApp,
     ) -> Result<ReleaseAsset> {
-        let client = this.read_with(cx, |this, _| this.client.clone());
+        let http_client = this.read_with(cx, |this, _| this.client.http_client());
+        let asset_name = asset_name(asset, os, arch)?;
 
-        let (system_id, metrics_id, is_staff) = if client.telemetry().metrics_enabled() {
-            (
-                client.telemetry().system_id(),
-                client.telemetry().metrics_id(),
-                client.telemetry().is_staff(),
-            )
-        } else {
-            (None, None, None)
+        let release = match version {
+            Some(mut version) => {
+                version.pre = semver::Prerelease::EMPTY;
+                version.build = semver::BuildMetadata::EMPTY;
+                get_release_by_tag_name(UPDATE_REPO, &format!("v{version}"), http_client).await
+            }
+            // The API returns releases newest first, so this is the most
+            // recent one that actually carries assets.
+            None => {
+                latest_github_release(
+                    UPDATE_REPO,
+                    true,
+                    !matches!(release_channel, ReleaseChannel::Stable),
+                    http_client,
+                )
+                .await
+            }
+        }
+        .with_context(|| format!("fetching the {UPDATE_REPO} release carrying {asset_name}"))?;
+
+        asset_from_release(release, &asset_name)
+    }
+
+    /// The hosts a download from `url` needs that the running egress policy
+    /// does not permit yet. Empty when this process has no allowlist at all
+    /// (a build without the decorator, or a test), because then there is
+    /// nothing to consent to.
+    fn hosts_needing_consent(client: &Arc<HttpClientWithUrl>, url: &str) -> Vec<String> {
+        let Some(policy) = client.egress_policy() else {
+            return Vec::new();
         };
+        hosts_required_to_download(url)
+            .into_iter()
+            .filter(|host| RequestHost::parse(host).is_none_or(|host| !policy.allows(&host)))
+            .collect()
+    }
 
-        let version = if let Some(mut version) = version {
-            version.pre = semver::Prerelease::EMPTY;
-            version.build = semver::BuildMetadata::EMPTY;
-            version.to_string()
-        } else {
-            "latest".to_string()
+    /// Adds the hosts the held-back download needs to `network_allowlist.json`
+    /// and checks again.
+    ///
+    /// Only reached from a UI path that has already asked the user
+    /// (ADR-F16): the allowlist is never widened without an explicit
+    /// confirmation, so this must not be called speculatively.
+    pub fn allow_download_hosts_and_retry(&mut self, cx: &mut Context<Self>) {
+        let AutoUpdateStatus::NeedsEgressConsent { hosts, .. } = &self.status else {
+            return;
         };
-        let http_client = client.http_client();
+        let hosts = hosts.clone();
+        let fs = <dyn Fs>::global(cx);
+        let path = paths::network_allowlist_file().clone();
+        let policy = self.client.http_client().egress_policy().cloned();
 
-        let path = format!("/releases/{}/{}/asset", release_channel.dev_name(), version,);
-        let url = http_client.build_zed_cloud_url_with_query(
-            &path,
-            AssetQuery {
-                os,
-                arch,
-                asset,
-                metrics_id: metrics_id.as_deref(),
-                system_id: system_id.as_deref(),
-                is_staff,
-            },
-        )?;
+        self.update_check_type = UpdateCheckType::Manual;
+        self.status = AutoUpdateStatus::Checking;
+        cx.notify();
 
-        let mut response = http_client
-            .get(url.as_str(), Default::default(), true)
-            .await?;
-        let mut body = Vec::new();
-        response.body_mut().read_to_end(&mut body).await?;
+        cx.spawn(async move |this, cx| {
+            if let Err(error) = egress_policy::add_allowed_hosts(&fs, &path, &hosts).await {
+                log::error!("auto-update: failed to add {hosts:?} to the allowlist: {error:#}");
+                // `Errored`'s tooltip renders `to_string()`, which drops the
+                // cause chain, so the reason is folded into the message.
+                this.update(cx, |this, cx| {
+                    this.status = AutoUpdateStatus::Errored {
+                        error: Arc::new(anyhow::anyhow!(
+                            "許可リストへの追加に失敗しました: {error:#}"
+                        )),
+                    };
+                    cx.notify();
+                })
+                .ok();
+                return;
+            }
 
-        anyhow::ensure!(
-            response.status().is_success(),
-            "failed to fetch release: {:?}",
-            String::from_utf8_lossy(&body),
-        );
+            if let Some(policy) = policy {
+                for _ in 0..ALLOWLIST_RELOAD_ATTEMPTS {
+                    let allowed = hosts.iter().all(|host| {
+                        RequestHost::parse(host).is_some_and(|host| policy.allows(&host))
+                    });
+                    if allowed {
+                        break;
+                    }
+                    cx.background_executor()
+                        .timer(ALLOWLIST_RELOAD_POLL_INTERVAL)
+                        .await;
+                }
+            }
 
-        serde_json::from_slice(body.as_slice()).with_context(|| {
-            format!(
-                "error deserializing release {:?}",
-                String::from_utf8_lossy(&body),
-            )
+            this.update(cx, |this, cx| this.poll(UpdateCheckType::Manual, cx))
+                .ok();
         })
+        .detach();
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> Result<()> {
@@ -773,6 +846,26 @@ impl AutoUpdater {
             return Ok(());
         };
 
+        // The check itself is covered by a built-in allowlist entry, but the
+        // release binaries live on GitHub's download hosts, which this fork
+        // will not open on the user's behalf (ADR-F16). Stop here and let the
+        // UI ask, rather than failing with an error nobody can act on.
+        let hosts_needing_consent = Self::hosts_needing_consent(&client, &fetched_release_data.url);
+        if !hosts_needing_consent.is_empty() {
+            log::info!(
+                "Auto Update: holding the download for {}; not on the network allowlist",
+                hosts_needing_consent.join(", ")
+            );
+            this.update(cx, |this, cx| {
+                this.status = AutoUpdateStatus::NeedsEgressConsent {
+                    version: newer_version,
+                    hosts: hosts_needing_consent,
+                };
+                cx.notify();
+            });
+            return Ok(());
+        }
+
         this.update(cx, |this, cx| {
             this.status = AutoUpdateStatus::Downloading {
                 version: newer_version.clone(),
@@ -787,7 +880,7 @@ impl AutoUpdater {
         let target_path = Self::target_path(&installer_dir).await?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
-        download_release(
+        let download_result = download_release(
             &target_path,
             fetched_release_data,
             client,
@@ -804,8 +897,28 @@ impl AutoUpdater {
                 });
             },
         )
-        .await
-        .with_context(|| format!("Failed to download update to {}", target_path.display()))?;
+        .await;
+
+        // A redirect hop `hosts_required_to_download` could not predict. The
+        // policy names the host it refused, so ask for that one instead of
+        // reporting a dead end.
+        if let Err(error) = &download_result
+            && let Some(denied) = error
+                .chain()
+                .find_map(|error| error.downcast_ref::<EgressDenied>())
+        {
+            let host = denied.host.clone();
+            this.update(cx, |this, cx| {
+                this.status = AutoUpdateStatus::NeedsEgressConsent {
+                    version: newer_version,
+                    hosts: vec![host],
+                };
+                cx.notify();
+            });
+            return Ok(());
+        }
+        download_result
+            .with_context(|| format!("Failed to download update to {}", target_path.display()))?;
 
         this.update(cx, |this, cx| {
             this.status = AutoUpdateStatus::Installing {
@@ -983,6 +1096,47 @@ impl AutoUpdater {
             Ok(kvp.read_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY)?.is_some())
         })
     }
+}
+
+/// The file name this fork publishes an asset under on its GitHub Releases.
+///
+/// The upstream endpoint this replaced chose the file server-side, so the
+/// convention has to be spelled out on the client now. `zed-remote-server`
+/// keeps the name upstream's own bundle scripts produce, which is also the
+/// one ADR-F15 looks for next to the executable, so a single file in a
+/// release serves both the bundled and the downloaded path.
+fn asset_name(asset: &str, os: &str, arch: &str) -> Result<String> {
+    match asset {
+        "zed-remote-server" => Ok(format!("zed-remote-server-{os}-{arch}.gz")),
+        "zed" => match os {
+            "windows" => Ok(format!("zed-{os}-{arch}-setup.exe")),
+            "macos" => Ok(format!("zed-{os}-{arch}.dmg")),
+            "linux" => Ok(format!("zed-{os}-{arch}.tar.gz")),
+            unsupported => anyhow::bail!("no update asset is published for {unsupported}"),
+        },
+        other => anyhow::bail!("unknown release asset {other:?}"),
+    }
+}
+
+/// Maps a GitHub release onto the shape the updater consumes: the tag with a
+/// leading `v` stripped as the version, and the named asset's download URL.
+fn asset_from_release(release: GithubRelease, asset_name: &str) -> Result<ReleaseAsset> {
+    let GithubRelease {
+        tag_name, assets, ..
+    } = release;
+    let version = tag_name
+        .strip_prefix('v')
+        .unwrap_or(tag_name.as_str())
+        .to_string();
+    let asset = assets
+        .into_iter()
+        .find(|asset| asset.name == asset_name)
+        .with_context(|| format!("release {tag_name} has no asset named {asset_name}"))?;
+
+    Ok(ReleaseAsset {
+        version,
+        url: asset.browser_download_url,
+    })
 }
 
 async fn download_remote_server_binary(
@@ -1350,7 +1504,7 @@ mod tests {
     use client::Client;
     use clock::FakeSystemClock;
     use futures::channel::oneshot;
-    use gpui::TestAppContext;
+    use gpui::{TestAppContext, UpdateGlobal as _};
     use http_client::{FakeHttpClient, Response};
     use settings::default_settings;
     use std::{
@@ -1372,8 +1526,81 @@ mod tests {
     pub(super) struct InstallOverride(pub Rc<dyn Fn(&Path, &AsyncApp) -> Result<Option<PathBuf>>>);
     impl Global for InstallOverride {}
 
+    /// One GitHub release, shaped the way `GET /repos/{repo}/releases`
+    /// answers, carrying the asset this platform's updater looks for.
+    fn github_releases_body(tag: &str, download_url: &str) -> String {
+        let asset = asset_name("zed", OS, ARCH).expect("the test host should be supported");
+        format!(
+            r#"[{{
+                "tag_name": "{tag}",
+                "prerelease": false,
+                "tarball_url": "https://api.github.com/tarball/{tag}",
+                "zipball_url": "https://api.github.com/zipball/{tag}",
+                "assets": [
+                    {{
+                        "name": "zed-remote-server-linux-x86_64.gz",
+                        "browser_download_url": "https://test.example/remote-server"
+                    }},
+                    {{ "name": "{asset}", "browser_download_url": "{download_url}" }}
+                ]
+            }}]"#
+        )
+    }
+
+    #[test]
+    fn asset_names_follow_the_published_naming_convention() {
+        assert_eq!(
+            asset_name("zed", "windows", "x86_64").unwrap(),
+            "zed-windows-x86_64-setup.exe"
+        );
+        assert_eq!(
+            asset_name("zed", "macos", "aarch64").unwrap(),
+            "zed-macos-aarch64.dmg"
+        );
+        assert_eq!(
+            asset_name("zed", "linux", "x86_64").unwrap(),
+            "zed-linux-x86_64.tar.gz"
+        );
+        // ADR-F15 looks for this exact name next to the executable, so the
+        // bundled and downloaded paths can share one file.
+        assert_eq!(
+            asset_name("zed-remote-server", "linux", "aarch64").unwrap(),
+            "zed-remote-server-linux-aarch64.gz"
+        );
+        assert!(asset_name("zed", "freebsd", "x86_64").is_err());
+        assert!(asset_name("something-else", "linux", "x86_64").is_err());
+    }
+
+    fn parse_fixture(tag: &str, download_url: &str) -> GithubRelease {
+        let releases: Vec<GithubRelease> =
+            serde_json::from_str(&github_releases_body(tag, download_url))
+                .expect("the fixture should parse as the GitHub API shape");
+        releases.into_iter().next().expect("one release")
+    }
+
+    #[test]
+    fn a_release_maps_onto_its_tag_and_matching_asset() {
+        let release = parse_fixture("v1.2.3", "https://test.example/zed");
+
+        let asset_name = asset_name("zed", OS, ARCH).unwrap();
+        let mapped = asset_from_release(release, &asset_name).unwrap();
+        assert_eq!(mapped.version, "1.2.3", "the `v` prefix is not a version");
+        assert_eq!(mapped.url, "https://test.example/zed");
+    }
+
+    #[test]
+    fn a_release_without_this_platform_s_asset_is_an_error() {
+        let release = parse_fixture("v1.2.3", "https://test.example/zed");
+
+        let error = asset_from_release(release, "zed-plan9-x86_64.tar.gz")
+            .expect_err("a missing asset must not be silently skipped");
+        assert!(error.to_string().contains("zed-plan9-x86_64.tar.gz"));
+    }
+
+    /// This fork never updates itself (ADR-F01), so `auto_update` ships as
+    /// `false` — see DESIGN.md §4.
     #[gpui::test]
-    fn test_auto_update_defaults_to_true(cx: &mut TestAppContext) {
+    fn test_auto_update_defaults_to_false(cx: &mut TestAppContext) {
         cx.update(|cx| {
             let mut store = SettingsStore::new(cx, &settings::default_settings());
             store
@@ -1383,7 +1610,7 @@ mod tests {
                 .set_user_settings("{}", cx)
                 .expect("Unable to set user settings");
             cx.set_global(store);
-            assert!(AutoUpdateSetting::get_global(cx).0);
+            assert!(!AutoUpdateSetting::get_global(cx).0);
         });
     }
 
@@ -1397,6 +1624,13 @@ mod tests {
 
         cx.update(|cx| {
             settings::init(cx);
+            // `auto_update` ships as false in this fork (DESIGN.md §4), and
+            // `init` below only starts polling when it is on.
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(r#"{ "auto_update": true }"#, cx)
+                    .expect("auto_update must be enabled for this test");
+            });
 
             let current_version = semver::Version::new(0, 100, 0);
             release_channel::init_test(current_version, ReleaseChannel::Stable, cx);
@@ -1408,23 +1642,26 @@ mod tests {
                 let release_available = release_available.load(atomic::Ordering::Relaxed);
                 let dmg_rx = dmg_rx.clone();
                 async move {
-                if req.uri().path() == "/releases/stable/latest/asset" {
-                    if release_available {
-                        return Ok(Response::builder().status(200).body(
-                            r#"{"version":"0.100.1","url":"https://test.example/new-download"}"#.into()
-                        ).unwrap());
-                    } else {
-                        return Ok(Response::builder().status(200).body(
-                            r#"{"version":"0.100.0","url":"https://test.example/old-download"}"#.into()
-                        ).unwrap());
+                    if req.uri().path() == format!("/repos/{UPDATE_REPO}/releases") {
+                        let (tag, download) = if release_available {
+                            ("v0.100.1", "https://test.example/new-download")
+                        } else {
+                            ("v0.100.0", "https://test.example/old-download")
+                        };
+                        return Ok(Response::builder()
+                            .status(200)
+                            .body(github_releases_body(tag, download).into())
+                            .unwrap());
+                    } else if req.uri().path() == "/new-download" {
+                        return Ok(Response::builder()
+                            .status(200)
+                            .body({
+                                let dmg_rx = dmg_rx.lock().take().unwrap();
+                                dmg_rx.await.unwrap().into()
+                            })
+                            .unwrap());
                     }
-                } else if req.uri().path() == "/new-download" {
-                    return Ok(Response::builder().status(200).body({
-                        let dmg_rx = dmg_rx.lock().take().unwrap();
-                        dmg_rx.await.unwrap().into()
-                    }).unwrap());
-                }
-                Ok(Response::builder().status(404).body("".into()).unwrap())
+                    Ok(Response::builder().status(404).body("".into()).unwrap())
                 }
             });
             let client = Client::new(clock, fake_client_http, cx);

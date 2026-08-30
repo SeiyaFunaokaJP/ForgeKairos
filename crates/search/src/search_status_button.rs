@@ -31,18 +31,18 @@ impl Render for SearchButton {
             IconButton::new("project-search-indicator", SEARCH_ICON)
                 .icon_size(IconSize::Small)
                 .tab_index(0isize)
-                .aria_label("Project Search")
+                .aria_label("プロジェクト内検索")
                 .tooltip(move |_window, cx| {
                     if let Some(focus_handle) = &focus_handle {
                         Tooltip::for_action_in(
-                            "Project Search",
+                            "プロジェクト内検索",
                             &workspace::DeploySearch::default(),
                             focus_handle,
                             cx,
                         )
                     } else {
                         Tooltip::for_action(
-                            "Project Search",
+                            "プロジェクト内検索",
                             &workspace::DeploySearch::default(),
                             cx,
                         )

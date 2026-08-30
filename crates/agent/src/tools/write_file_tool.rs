@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::SharedString;
 
-const DEFAULT_UI_TEXT: &str = "Writing file";
+const DEFAULT_UI_TEXT: &str = "ファイルを書き込み";
 
 /// This is a tool for creating a new file or overwriting an existing file with completely new contents.
 ///

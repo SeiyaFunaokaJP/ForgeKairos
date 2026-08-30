@@ -340,9 +340,9 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
     Vim::action(editor, cx, |_, _: &ArgumentRequired, window, cx| {
         let _ = window.prompt(
             gpui::PromptLevel::Critical,
-            "Argument required",
+            "引数が必要です",
             None,
-            &["Cancel"],
+            &["キャンセル"],
             cx,
         );
     });
@@ -377,9 +377,9 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                     else {
                         let _ = window.prompt(
                             gpui::PromptLevel::Warning,
-                            "No file name",
-                            Some("Partial buffer write requires file name."),
-                            &["Cancel"],
+                            "ファイル名がありません",
+                            Some("バッファーの一部を書き出すにはファイル名が必要です。"),
+                            &["キャンセル"],
                             cx,
                         );
                         return;
@@ -399,7 +399,7 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                                         window,
                                         cx,
                                     )
-                                    .detach_and_prompt_err("Failed to save", window, cx, |_, _, _| None);
+                                    .detach_and_prompt_err("保存できませんでした", window, cx, |_, _, _| None);
                             });
                         }
                         return;
@@ -407,9 +407,9 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                     if Some(SaveIntent::Overwrite) != action.save_intent {
                         let _ = window.prompt(
                             gpui::PromptLevel::Warning,
-                            "Use ! to write partial buffer",
-                            Some("Overwriting the current file with selected buffer content requires '!'."),
-                            &["Cancel"],
+                            "バッファーの一部を書き出すには ! が必要です",
+                            Some("選択範囲の内容で現在のファイルを上書きするには '!' を付けてください。"),
+                            &["キャンセル"],
                             cx,
                         );
                         return;
@@ -433,11 +433,11 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                         let rx = (worktree.entry_for_path(&path).is_some() && Some(SaveIntent::Overwrite) != action.save_intent).then(|| {
                             window.prompt(
                                 gpui::PromptLevel::Warning,
-                                &format!("{path:?} already exists. Do you want to replace it?"),
+                                &format!("{path:?} はすでに存在します。置き換えますか?"),
                                 Some(
-                                    "A file or folder with the same name already exists. Replacing it will overwrite its current contents.",
+                                    "同じ名前のファイルまたはフォルダーがすでに存在します。置き換えると現在の内容が上書きされます。",
                                 ),
-                                &["Replace", "Cancel"],
+                                &["置き換える", "キャンセル"],
                                 cx
                             )
                         });
@@ -455,7 +455,7 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                                 };
                                 worktree
                                     .write_file(path.into_arc(), text.clone(), line_ending, encoding, has_bom, cx)
-                                    .detach_and_prompt_err("Failed to write lines", window, cx, |_, _, _| None);
+                                    .detach_and_prompt_err("行を書き出せませんでした", window, cx, |_, _, _| None);
                             });
                         })
                         .detach();
@@ -473,7 +473,7 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                             window,
                             cx,
                         )
-                        .detach_and_prompt_err("Failed to save", window, cx, |_, _, _| None);
+                        .detach_and_prompt_err("保存できませんでした", window, cx, |_, _, _| None);
                 });
             }
             return;
@@ -497,7 +497,7 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                     "Cannot save buffer with absolute path"
                 )))
                 .detach_and_prompt_err(
-                    "Failed to save",
+                    "保存できませんでした",
                     window,
                     cx,
                     |_, _, _| None,
@@ -511,14 +511,14 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                 let answer = window.prompt(
                     gpui::PromptLevel::Critical,
                     &format!(
-                        "{} already exists. Do you want to replace it?",
+                        "{} はすでに存在します。置き換えますか?",
                         project_path.path.display(path_style)
                     ),
                     Some(
-                        "A file or folder with the same name already exists. \
-                        Replacing it will overwrite its current contents.",
+                        "同じ名前のファイルまたはフォルダーがすでに存在します。\
+                        置き換えると現在の内容が上書きされます。",
                     ),
-                    &["Replace", "Cancel"],
+                    &["置き換える", "キャンセル"],
                     cx,
                 );
                 cx.spawn_in(window, async move |editor, cx| {
@@ -529,14 +529,19 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                     let _ = editor.update_in(cx, |editor, window, cx| {
                         editor
                             .save_as(project, project_path, window, cx)
-                            .detach_and_prompt_err("Failed to :w", window, cx, |_, _, _| None);
+                            .detach_and_prompt_err(
+                                ":w を実行できませんでした",
+                                window,
+                                cx,
+                                |_, _, _| None,
+                            );
                     });
                 })
                 .detach();
             } else {
                 editor
                     .save_as(project, project_path, window, cx)
-                    .detach_and_prompt_err("Failed to :w", window, cx, |_, _, _| None);
+                    .detach_and_prompt_err(":w を実行できませんでした", window, cx, |_, _, _| None);
             }
         });
     });
@@ -576,9 +581,9 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
         fn err(s: String, window: &mut Window, cx: &mut Context<Editor>) {
             let _ = window.prompt(
                 gpui::PromptLevel::Critical,
-                &format!("Invalid argument: {}", s),
+                &format!("引数が不正です: {}", s),
                 None,
-                &["Cancel"],
+                &["キャンセル"],
                 cx,
             );
         }
@@ -2752,7 +2757,7 @@ mod test {
         // conflict!
         cx.simulate_keystrokes("i @ escape");
         cx.simulate_keystrokes(": w enter");
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer("キャンセル");
 
         assert_eq!(fs.load(path).await.unwrap().replace("\r\n", "\n"), "oops\n");
         assert!(!cx.has_pending_prompt());
@@ -3002,7 +3007,7 @@ mod test {
         cx.simulate_keystrokes(": w space dir/file.rs");
         cx.simulate_keystrokes("enter");
 
-        cx.simulate_prompt_answer("Replace");
+        cx.simulate_prompt_answer("置き換える");
         cx.run_until_parked();
 
         cx.workspace(|workspace, _, cx| {

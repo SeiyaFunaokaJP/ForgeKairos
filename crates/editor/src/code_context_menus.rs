@@ -1692,32 +1692,32 @@ fn render_completion_kind_letter(
 
 fn completion_kind_name(kind: CompletionItemKind) -> &'static str {
     match kind {
-        CompletionItemKind::TEXT => "Text",
-        CompletionItemKind::METHOD => "Method",
-        CompletionItemKind::FUNCTION => "Function",
-        CompletionItemKind::CONSTRUCTOR => "Constructor",
-        CompletionItemKind::FIELD => "Field",
-        CompletionItemKind::VARIABLE => "Variable",
-        CompletionItemKind::CLASS => "Class",
-        CompletionItemKind::INTERFACE => "Interface",
-        CompletionItemKind::MODULE => "Module",
-        CompletionItemKind::PROPERTY => "Property",
-        CompletionItemKind::UNIT => "Unit",
-        CompletionItemKind::VALUE => "Value",
-        CompletionItemKind::ENUM => "Enum",
-        CompletionItemKind::KEYWORD => "Keyword",
-        CompletionItemKind::SNIPPET => "Snippet",
-        CompletionItemKind::COLOR => "Color",
-        CompletionItemKind::FILE => "File",
-        CompletionItemKind::REFERENCE => "Reference",
-        CompletionItemKind::FOLDER => "Folder",
-        CompletionItemKind::ENUM_MEMBER => "Enum Member",
-        CompletionItemKind::CONSTANT => "Constant",
-        CompletionItemKind::STRUCT => "Struct",
-        CompletionItemKind::EVENT => "Event",
-        CompletionItemKind::OPERATOR => "Operator",
-        CompletionItemKind::TYPE_PARAMETER => "Type Parameter",
-        _ => "Unknown",
+        CompletionItemKind::TEXT => "テキスト",
+        CompletionItemKind::METHOD => "メソッド",
+        CompletionItemKind::FUNCTION => "関数",
+        CompletionItemKind::CONSTRUCTOR => "コンストラクター",
+        CompletionItemKind::FIELD => "フィールド",
+        CompletionItemKind::VARIABLE => "変数",
+        CompletionItemKind::CLASS => "クラス",
+        CompletionItemKind::INTERFACE => "インターフェース",
+        CompletionItemKind::MODULE => "モジュール",
+        CompletionItemKind::PROPERTY => "プロパティ",
+        CompletionItemKind::UNIT => "単位",
+        CompletionItemKind::VALUE => "値",
+        CompletionItemKind::ENUM => "列挙型",
+        CompletionItemKind::KEYWORD => "キーワード",
+        CompletionItemKind::SNIPPET => "スニペット",
+        CompletionItemKind::COLOR => "色",
+        CompletionItemKind::FILE => "ファイル",
+        CompletionItemKind::REFERENCE => "参照",
+        CompletionItemKind::FOLDER => "フォルダー",
+        CompletionItemKind::ENUM_MEMBER => "列挙型のメンバー",
+        CompletionItemKind::CONSTANT => "定数",
+        CompletionItemKind::STRUCT => "構造体",
+        CompletionItemKind::EVENT => "イベント",
+        CompletionItemKind::OPERATOR => "演算子",
+        CompletionItemKind::TYPE_PARAMETER => "型パラメーター",
+        _ => "不明",
     }
 }
 
@@ -1950,7 +1950,7 @@ impl CodeActionsItem {
         match self {
             Self::CodeAction { action, .. } => action.lsp_action.title().replace("\n", ""),
             Self::Task(_, task) => task.resolved_label.replace("\n", ""),
-            Self::DebugScenario(scenario) => format!("debug: {}", scenario.label),
+            Self::DebugScenario(scenario) => format!("デバッグ: {}", scenario.label),
         }
     }
 }
@@ -2106,7 +2106,7 @@ impl CodeActionsMenu {
                         action.lsp_action.title().chars().count()
                     }
                     CodeActionsItem::DebugScenario(scenario) => {
-                        format!("debug: {}", scenario.label).chars().count()
+                        format!("デバッグ: {}", scenario.label).chars().count()
                     }
                 })
                 .map(|(ix, _)| ix),

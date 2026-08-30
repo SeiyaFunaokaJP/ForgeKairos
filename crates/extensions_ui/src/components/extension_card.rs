@@ -196,7 +196,7 @@ impl ExtensionCard {
     ) -> Button {
         Button::new(
             Self::button_id(extension_id, ExtensionOperation::Remove),
-            "Uninstall",
+            "アンインストール",
         )
         .when(ENABLE_HANDLERS, |button| {
             button.on_click({
@@ -221,7 +221,7 @@ impl ExtensionCard {
     ) -> Button {
         Button::new(
             SharedString::from(format!("configure-{extension_id}")),
-            "Configure",
+            "構成",
         )
         .when(ENABLE_HANDLERS, |button| {
             button.on_click({
@@ -251,7 +251,7 @@ impl ExtensionCard {
     ) -> ExtensionCardActions {
         let rebuild = Button::new(
             SharedString::from(format!("rebuild-{}", extension.id)),
-            "Rebuild",
+            "再ビルド",
         )
         .color(Color::Accent)
         .disabled(status.disables_actions())
@@ -280,7 +280,7 @@ impl ExtensionCard {
     fn install_button<const ENABLE_HANDLERS: bool>(extension_id: &Arc<str>) -> Button {
         Button::new(
             Self::button_id(extension_id, ExtensionOperation::Install),
-            "Install",
+            "インストール",
         )
         .style(ButtonStyle::Tinted(ui::TintColor::Accent))
         .start_icon(
@@ -329,7 +329,7 @@ impl ExtensionCard {
                 let upgrade = matches!(status, ExtensionStatus::Upgrading).then(|| {
                     Button::new(
                         Self::button_id(&extension.id, ExtensionOperation::Upgrade),
-                        "Upgrade",
+                        "アップグレード",
                     )
                     .disabled(status.disables_actions())
                 });
@@ -350,7 +350,7 @@ impl ExtensionCard {
                     );
                     Button::new(
                         Self::button_id(&extension.id, ExtensionOperation::Upgrade),
-                        "Upgrade",
+                        "アップグレード",
                     )
                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                     .when(!is_compatible, |button| {
@@ -359,7 +359,7 @@ impl ExtensionCard {
                             move |_, cx| {
                                 Tooltip::simple(
                                     format!(
-                                        "v{version} is not compatible with this version of Zed."
+                                        "v{version} はこのバージョンの Zed と互換性がありません。"
                                     ),
                                     cx,
                                 )
@@ -423,17 +423,17 @@ fn provided_feature_labels(
 
 pub(crate) fn extension_provides_label(provides: ExtensionProvides) -> &'static str {
     match provides {
-        ExtensionProvides::Themes => "Themes",
-        ExtensionProvides::IconThemes => "Icon Themes",
-        ExtensionProvides::Languages => "Languages",
-        ExtensionProvides::Grammars => "Grammars",
-        ExtensionProvides::LanguageServers => "Language Servers",
-        ExtensionProvides::ContextServers => "MCP Servers",
-        ExtensionProvides::AgentServers => "Agent Servers",
-        ExtensionProvides::SlashCommands => "Slash Commands",
-        ExtensionProvides::IndexedDocsProviders => "Indexed Docs Providers",
-        ExtensionProvides::Snippets => "Snippets",
-        ExtensionProvides::DebugAdapters => "Debug Adapters",
+        ExtensionProvides::Themes => "テーマ",
+        ExtensionProvides::IconThemes => "アイコンテーマ",
+        ExtensionProvides::Languages => "言語",
+        ExtensionProvides::Grammars => "文法",
+        ExtensionProvides::LanguageServers => "言語サーバー",
+        ExtensionProvides::ContextServers => "MCP サーバー",
+        ExtensionProvides::AgentServers => "エージェントサーバー",
+        ExtensionProvides::SlashCommands => "スラッシュコマンド",
+        ExtensionProvides::IndexedDocsProviders => "インデックス済みドキュメントプロバイダー",
+        ExtensionProvides::Snippets => "スニペット",
+        ExtensionProvides::DebugAdapters => "デバッグアダプター",
     }
 }
 
@@ -676,7 +676,7 @@ impl RenderOnce for ExtensionCard {
                         }))
                         .children(download_count.map(|download_count| {
                             Label::new(format!(
-                                "Downloads: {}",
+                                "ダウンロード数: {}",
                                 download_count.to_formatted_string(&Locale::en)
                             ))
                             .size(LabelSize::Small)
@@ -714,7 +714,7 @@ impl RenderOnce for ExtensionCard {
                                             .icon_size(IconSize::Small)
                                             .tooltip(move |_, cx| {
                                                 Tooltip::with_meta(
-                                                    "Visit Extension Repository",
+                                                    "拡張機能のリポジトリを開きます",
                                                     None,
                                                     repository_url_for_tooltip.clone(),
                                                     cx,
@@ -763,7 +763,7 @@ impl RenderOnce for ExtensionCard {
                             .size_full()
                             .justify_center()
                             .bg(cx.theme().colors().elevated_surface_background.alpha(0.8))
-                            .child(Label::new("Overridden by dev extension.")),
+                            .child(Label::new("開発中の拡張機能によって上書きされています。")),
                     )
                 }),
         )

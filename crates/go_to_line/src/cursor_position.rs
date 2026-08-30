@@ -171,26 +171,29 @@ impl CursorPosition {
         } = self.selected_count;
         let format = LineIndicatorFormat::get(None, cx);
         let is_short_format = format == &LineIndicatorFormat::Short;
-        let lines = (lines > 1).then_some((lines, "line"));
-        let selections = (selections > 1).then_some((selections, "selection"));
-        let characters = (characters > 0).then_some((characters, "character"));
+        // GLOSSARY.md §2: 日本語には複数形がないため、元の `&name[..1]` / `"s"` による
+        // 短縮形・複数形の組み立てはやめ、(長い表記, 短い表記) の組を直接持つ。
+        // マルチバイト文字をバイト単位で切ると panic するため、この形が必須。
+        let lines = (lines > 1).then_some((lines, "行", "行"));
+        let selections = (selections > 1).then_some((selections, "選択範囲", "選択"));
+        let characters = (characters > 0).then_some((characters, "文字", "字"));
         if (None, None, None) == (characters, selections, lines) {
             // Nothing to display.
             return;
         }
         write!(text, " (").unwrap();
         let mut wrote_once = false;
-        for (count, name) in [selections, lines, characters].into_iter().flatten() {
+        for (count, long_name, short_name) in [selections, lines, characters].into_iter().flatten()
+        {
             if wrote_once {
                 write!(text, ", ").unwrap();
             }
-            let name = if is_short_format { &name[..1] } else { name };
-            let plural_suffix = if count > 1 && !is_short_format {
-                "s"
+            let name = if is_short_format {
+                short_name
             } else {
-                ""
+                long_name
             };
-            write!(text, "{count} {name}{plural_suffix}").unwrap();
+            write!(text, "{count} {name}").unwrap();
             wrote_once = true;
         }
         text.push(')');
@@ -226,10 +229,7 @@ impl Render for CursorPosition {
                 Button::new("go-to-line-column", text)
                     .label_size(LabelSize::Small)
                     .tab_index(0isize)
-                    .aria_label(format!(
-                        "Line {}, column {}",
-                        position.line, position.character
-                    ))
+                    .aria_label(format!("{} 行 {} 列", position.line, position.character))
                     .on_click(cx.listener(|this, _, window, cx| {
                         if let Some(workspace) = this.workspace.upgrade() {
                             workspace.update(cx, |workspace, cx| {
@@ -247,16 +247,14 @@ impl Render for CursorPosition {
                     }))
                     .tooltip(move |_window, cx| match context.as_ref() {
                         Some(context) => Tooltip::for_action_in(
-                            "Go to Line/Column",
+                            "行/列へ移動",
                             &editor::actions::ToggleGoToLine,
                             context,
                             cx,
                         ),
-                        None => Tooltip::for_action(
-                            "Go to Line/Column",
-                            &editor::actions::ToggleGoToLine,
-                            cx,
-                        ),
+                        None => {
+                            Tooltip::for_action("行/列へ移動", &editor::actions::ToggleGoToLine, cx)
+                        }
                     }),
             )
         })

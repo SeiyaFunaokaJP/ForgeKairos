@@ -84,6 +84,33 @@ impl UserSettingsContentExt for UserSettingsContent {
     }
 }
 
+/// Consent key of the Zed Cloud (`zed.dev`) language model provider, which is
+/// also the provider the AI onboarding cards sign in to.
+pub const ZED_CLOUD_AI_CONSENT_KEY: &str = "zed.dev";
+
+/// Consent key of the GitHub Copilot edit prediction provider. Namespaced
+/// separately from the agent (chat) provider's `copilot_chat` key (F2-4: the
+/// two surfaces opt in independently). Shared with `ai_onboarding`'s edit
+/// prediction upsell modal, which can kick off Copilot sign-in outside of
+/// `settings_ui` (zed-jp-enhance: `docs/jp-enhance/DESIGN.md` ADR-F10). Must match the
+/// key `settings_ui::pages::external_ai_consent::edit_prediction_target`
+/// builds for `"copilot"`; a test on that side pins the two together.
+pub const EDIT_PREDICTION_COPILOT_CONSENT_KEY: &str = "edit_prediction:copilot";
+
+/// Whether the user has explicitly acknowledged the data-retention warning for
+/// an external AI provider (zed-jp-enhance: `docs/jp-enhance/DESIGN.md` ADR-F10).
+///
+/// Read from the global merge (default + global + user + server), never from
+/// worktree-local settings, so that opening someone else's project cannot grant
+/// consent on the user's behalf.
+pub fn external_ai_provider_is_acknowledged(provider_key: &str, cx: &App) -> bool {
+    cx.global::<SettingsStore>()
+        .merged_settings()
+        .acknowledged_external_ai_providers
+        .as_deref()
+        .is_some_and(|keys| keys.iter().any(|key| key == provider_key))
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord, serde::Serialize)]
 pub struct WorktreeId(usize);
 

@@ -60,7 +60,10 @@ use workspace::{
     searchable::SearchOptions,
 };
 use zed_actions::preview::{
-    markdown::OpenPreview as OpenMarkdownPreview, svg::OpenPreview as OpenSvgPreview,
+    markdown::{
+        ExportToPdf as ExportMarkdownToPdf, OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide,
+    },
+    svg::OpenPreviewToTheSide as OpenSvgPreviewToTheSide,
 };
 
 pub const MAX_TAB_TITLE_LEN: usize = 24;
@@ -1220,17 +1223,23 @@ impl Item for Editor {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
             });
 
+        // Opened beside the source rather than over it, matching the toolbar's
+        // preview button: a preview that replaces its own source is of little use.
         if is_markdown {
             actions.push((
-                "Open Markdown Preview".into(),
-                Box::new(OpenMarkdownPreview) as Box<dyn gpui::Action>,
+                "Markdown プレビューを横に開く".into(),
+                Box::new(OpenMarkdownPreviewToTheSide) as Box<dyn gpui::Action>,
+            ));
+            actions.push((
+                "PDF に書き出す".into(),
+                Box::new(ExportMarkdownToPdf) as Box<dyn gpui::Action>,
             ));
         }
 
         if is_svg {
             actions.push((
-                "Open SVG Preview".into(),
-                Box::new(OpenSvgPreview) as Box<dyn gpui::Action>,
+                "SVG プレビューを横に開く".into(),
+                Box::new(OpenSvgPreviewToTheSide) as Box<dyn gpui::Action>,
             ));
         }
 

@@ -13,7 +13,8 @@
 
 use crate::pinned_host::{PinnedHost, PinnedHostError};
 use crate::proxy::{
-    DenyReason, ProxyEvent, RequestMethod, RequestOutcome, RuntimeState, UpstreamProxy,
+    DenyReason, PolicyDecision, ProxyEvent, RequestMethod, RequestOutcome, RuntimeState,
+    UpstreamProxy,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
@@ -405,26 +406,82 @@ fn is_ip_literal(host: &str) -> bool {
     stripped.parse::<IpAddr>().is_ok()
 }
 
-/// The policy check shared by CONNECT and HTTP forward: IP-literal targets
-/// and hosts outside the allowlist are denied. Both checks are skipped when
-/// the allowlist allows any host — that grant means unrestricted egress,
-/// including IP literals (matching the pre-allowlist `allow_network`
-/// behavior).
-fn policy_denial(host: &str, port: u16, state: &RuntimeState) -> Option<DenyReason> {
+/// An approved destination, carrying whether it may resolve into loopback /
+/// private / link-local space. Produced once per connection so the policy is
+/// consulted exactly once, then handed to [`plan_route`].
+#[derive(Debug)]
+struct DestinationGrant {
+    permit_local_addresses: bool,
+}
+
+/// The policy check shared by CONNECT and HTTP forward.
+///
+/// Two decisions, ANDed: the base one (below), then
+/// [`crate::ProxyConfig::outer_policy`] if the caller supplied one. The base
+/// decision is evaluated first so that its denial reason — which tells the
+/// client how to get *that* policy widened — is the one the client sees when
+/// both would refuse.
+///
+/// The waiver of the DNS-rebinding filter is ANDed too: it survives only if
+/// both decisions grant it, so nesting can never reopen loopback / private
+/// space that either policy on its own would have closed.
+fn evaluate_destination(
+    host: &str,
+    port: u16,
+    state: &RuntimeState,
+) -> Result<DestinationGrant, DenyReason> {
+    let grant = evaluate_base_destination(host, port, state)?;
+    let Some(outer_policy) = &state.outer_policy else {
+        return Ok(grant);
+    };
+    match outer_policy.evaluate(host, port) {
+        PolicyDecision::Allow {
+            permit_local_addresses,
+        } => Ok(DestinationGrant {
+            permit_local_addresses: grant.permit_local_addresses && permit_local_addresses,
+        }),
+        PolicyDecision::Deny(reason) => Err(reason),
+    }
+}
+
+/// The inner decision: a caller-supplied [`crate::DestinationPolicy`] replaces
+/// it whole. Otherwise IP-literal targets and hosts outside the allowlist are
+/// denied, both checks being skipped when the allowlist allows any host — that
+/// grant means unrestricted egress, including IP literals (matching the
+/// pre-allowlist `allow_network` behavior).
+fn evaluate_base_destination(
+    host: &str,
+    port: u16,
+    state: &RuntimeState,
+) -> Result<DestinationGrant, DenyReason> {
+    if let Some(policy) = &state.policy {
+        return match policy.evaluate(host, port) {
+            PolicyDecision::Allow {
+                permit_local_addresses,
+            } => Ok(DestinationGrant {
+                permit_local_addresses,
+            }),
+            PolicyDecision::Deny(reason) => Err(reason),
+        };
+    }
     if state.allowlist.allows_any() {
-        return None;
+        return Ok(DestinationGrant {
+            permit_local_addresses: true,
+        });
     }
     if is_ip_literal(host) {
-        return Some(DenyReason::IpLiteralRejected {
+        return Err(DenyReason::IpLiteralRejected {
             target: format!("{host}:{port}"),
         });
     }
     if !state.allowlist.allows(host) {
-        return Some(DenyReason::HostNotInAllowlist {
+        return Err(DenyReason::HostNotInAllowlist {
             host: host.to_string(),
         });
     }
-    None
+    Ok(DestinationGrant {
+        permit_local_addresses: false,
+    })
 }
 
 /// How an approved request will reach its destination.
@@ -451,18 +508,28 @@ enum RouteFailure {
 /// command onto the local machine or local network: a hostname whose DNS
 /// points into loopback / private / link-local space (DNS rebinding) is
 /// denied, and the connection later uses the vetted addresses rather than
-/// re-resolving. The filter is skipped when the allowlist allows any host,
-/// since that grant means unrestricted egress. Upstream-proxied destinations
-/// aren't resolved locally at all — the upstream does its own resolution
-/// inside the user's trusted network.
-fn plan_route(host: &str, port: u16, state: &RuntimeState) -> Result<Route, RouteFailure> {
+/// re-resolving. The filter is skipped when the grant permits local addresses,
+/// which is what "allow any host" and this fork's egress policy both mean.
+/// Upstream-proxied destinations aren't resolved locally at all — the upstream
+/// does its own resolution inside the user's trusted network.
+fn plan_route(
+    host: &str,
+    port: u16,
+    grant: &DestinationGrant,
+    state: &RuntimeState,
+) -> Result<Route, RouteFailure> {
     if let Some(upstream) = &state.upstream
         && !upstream.bypasses(host, port)
     {
         return Ok(Route::ViaUpstream(upstream.clone()));
     }
 
-    match PinnedHost::resolve_for_allowlist(host, port, &state.allowlist) {
+    let resolved = if grant.permit_local_addresses {
+        PinnedHost::resolve_allowing_any(host, port)
+    } else {
+        PinnedHost::resolve(host, port)
+    };
+    match resolved {
         Ok(pinned) => Ok(Route::Direct(pinned)),
         Err(PinnedHostError::AllAddressesForbidden { host }) => {
             Err(RouteFailure::Denied(DenyReason::ResolvedToForbiddenIp {
@@ -482,18 +549,21 @@ fn handle_connect(
 ) -> Result<()> {
     let normalized = normalize_host(&host);
 
-    if let Some(reason) = policy_denial(&normalized, port, &state) {
-        return deny_request(
-            &mut client,
-            &state,
-            normalized,
-            port,
-            RequestMethod::Connect,
-            reason,
-        );
-    }
+    let grant = match evaluate_destination(&normalized, port, &state) {
+        Ok(grant) => grant,
+        Err(reason) => {
+            return deny_request(
+                &mut client,
+                &state,
+                normalized,
+                port,
+                RequestMethod::Connect,
+                reason,
+            );
+        }
+    };
 
-    let route = match plan_route(&normalized, port, &state) {
+    let route = match plan_route(&normalized, port, &grant, &state) {
         Ok(route) => route,
         Err(RouteFailure::Denied(reason)) => {
             return deny_request(
@@ -576,18 +646,21 @@ fn handle_http_forward(
 ) -> Result<()> {
     let normalized = normalize_host(&host);
 
-    if let Some(reason) = policy_denial(&normalized, port, &state) {
-        return deny_request(
-            &mut client,
-            &state,
-            normalized,
-            port,
-            RequestMethod::Http(method),
-            reason,
-        );
-    }
+    let grant = match evaluate_destination(&normalized, port, &state) {
+        Ok(grant) => grant,
+        Err(reason) => {
+            return deny_request(
+                &mut client,
+                &state,
+                normalized,
+                port,
+                RequestMethod::Http(method),
+                reason,
+            );
+        }
+    };
 
-    let route = match plan_route(&normalized, port, &state) {
+    let route = match plan_route(&normalized, port, &grant, &state) {
         Ok(route) => route,
         Err(RouteFailure::Denied(reason)) => {
             return deny_request(
@@ -792,17 +865,32 @@ fn deny_request(
         },
     );
 
+    // A caller-supplied policy is not the sandbox, so naming the sandbox and
+    // telling the client to ask for approval "on the next terminal call" would
+    // both be wrong. The other reasons keep their original wording.
+    let (proxy_token, policy_name, advice) = match &reason {
+        DenyReason::NotPermittedByPolicy { .. } => (
+            "zed-egress-proxy",
+            "the Zed network allowlist",
+            "To proceed, add the host to `allowed_hosts` in network_allowlist.json.",
+        ),
+        _ => (
+            "zed-sandbox-proxy",
+            "the Zed sandbox network policy",
+            "To proceed, ask the user to approve the host on the next terminal call.",
+        ),
+    };
     let body = format!(
-        "Request blocked by the Zed sandbox network policy.\n\n  \
+        "Request blocked by {policy_name}.\n\n  \
          Reason: {}\n\n  \
          This is not a network or server failure — it's a policy decision.\n  \
-         To proceed, ask the user to approve the host on the next terminal call.\n",
+         {advice}\n",
         reason.human_explanation()
     );
     let response = format!(
         "HTTP/1.1 511 Network Authentication Required\r\n\
-         Via: 1.1 zed-sandbox-proxy\r\n\
-         Proxy-Status: zed-sandbox-proxy; error={}; details=\"{}\"\r\n\
+         Via: 1.1 {proxy_token}\r\n\
+         Proxy-Status: {proxy_token}; error={}; details=\"{}\"\r\n\
          Content-Type: text/plain; charset=utf-8\r\n\
          Content-Length: {}\r\n\
          Connection: close\r\n\r\n{body}",
@@ -919,7 +1007,10 @@ mod tests {
         let state = runtime_state(Allowlist::from_patterns([
             HostPattern::parse("github.com").unwrap()
         ]));
-        match plan_route("localhost", 80, &state) {
+        let grant = DestinationGrant {
+            permit_local_addresses: false,
+        };
+        match plan_route("localhost", 80, &grant, &state) {
             Err(RouteFailure::Denied(DenyReason::ResolvedToForbiddenIp { host })) => {
                 assert_eq!(host, "localhost");
             }
@@ -932,7 +1023,9 @@ mod tests {
     #[test]
     fn plan_route_allows_loopback_when_allowlist_allows_any() {
         let state = runtime_state(Allowlist::any());
-        match plan_route("localhost", 80, &state) {
+        let grant = evaluate_destination("localhost", 80, &state).expect("allow-any never denies");
+        assert!(grant.permit_local_addresses);
+        match plan_route("localhost", 80, &grant, &state) {
             Ok(Route::Direct(pinned)) => {
                 let addrs: Vec<SocketAddr> = pinned.socket_addrs().collect();
                 assert!(!addrs.is_empty());
@@ -944,14 +1037,162 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_custom_policy_replaces_the_allowlist_and_the_rebinding_filter() {
+        struct LoopbackOnly;
+        impl crate::DestinationPolicy for LoopbackOnly {
+            fn evaluate(&self, host: &str, _port: u16) -> PolicyDecision {
+                if host == "localhost" {
+                    PolicyDecision::Allow {
+                        permit_local_addresses: true,
+                    }
+                } else {
+                    PolicyDecision::Deny(DenyReason::NotPermittedByPolicy {
+                        host: host.to_string(),
+                        explanation: format!("host '{host}' is not allowed"),
+                    })
+                }
+            }
+        }
+
+        // An empty allowlist would deny `localhost` twice over (not listed,
+        // and resolving to loopback); the policy overrides both.
+        let mut state = runtime_state(Allowlist::empty());
+        state.policy = Some(Arc::new(LoopbackOnly));
+
+        let grant = evaluate_destination("localhost", 80, &state).expect("policy allows localhost");
+        assert!(grant.permit_local_addresses);
+        assert!(matches!(
+            plan_route("localhost", 80, &grant, &state),
+            Ok(Route::Direct(_))
+        ));
+
+        // And it denies what the allowlist would otherwise have to decide.
+        match evaluate_destination("example.com", 443, &state) {
+            Err(DenyReason::NotPermittedByPolicy { host, .. }) => assert_eq!(host, "example.com"),
+            other => panic!("expected a policy denial, got {other:?}"),
+        }
+    }
+
     fn runtime_state(allowlist: Allowlist) -> RuntimeState {
         let (events, _receiver) = futures::channel::mpsc::unbounded();
         RuntimeState {
             allowlist,
             upstream: None,
             events,
+            policy: None,
+            outer_policy: None,
             active_connections: AtomicUsize::new(0),
         }
+    }
+
+    /// An outer policy standing in for this fork's egress allowlist: one host,
+    /// loopback and private space permitted (as that allowlist permits them),
+    /// and a record of every host it was asked about.
+    struct OuterAllowlist {
+        allowed: &'static str,
+        consulted: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl OuterAllowlist {
+        fn new(allowed: &'static str) -> Self {
+            Self {
+                allowed,
+                consulted: Arc::new(std::sync::Mutex::new(Vec::new())),
+            }
+        }
+
+        fn consulted(&self) -> Vec<String> {
+            self.consulted
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone()
+        }
+    }
+
+    impl crate::DestinationPolicy for OuterAllowlist {
+        fn evaluate(&self, host: &str, _port: u16) -> PolicyDecision {
+            self.consulted
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(host.to_string());
+            if host == self.allowed {
+                PolicyDecision::Allow {
+                    permit_local_addresses: true,
+                }
+            } else {
+                PolicyDecision::Deny(DenyReason::NotPermittedByPolicy {
+                    host: host.to_string(),
+                    explanation: format!("host '{host}' is not on the network allowlist"),
+                })
+            }
+        }
+    }
+
+    /// The nesting this fork puts the terminal sandbox in: a host reaches the
+    /// network only when the sandbox's own allowlist *and* the editor-wide
+    /// egress allowlist both permit it.
+    #[test]
+    fn an_outer_policy_intersects_with_the_allowlist_rather_than_widening_it() {
+        let outer = Arc::new(OuterAllowlist::new("github.com"));
+        let mut state = runtime_state(Allowlist::from_patterns([
+            HostPattern::parse("github.com").unwrap(),
+            HostPattern::parse("crates.io").unwrap(),
+        ]));
+        state.outer_policy = Some(outer.clone());
+
+        // In both boxes.
+        assert!(evaluate_destination("github.com", 443, &state).is_ok());
+
+        // In the sandbox's list only: the ceiling refuses it, and the client is
+        // told which policy to widen.
+        match evaluate_destination("crates.io", 443, &state) {
+            Err(DenyReason::NotPermittedByPolicy { host, .. }) => assert_eq!(host, "crates.io"),
+            other => panic!("expected an outer-policy denial, got {other:?}"),
+        }
+
+        // In the ceiling only: still denied, because the sandbox never listed
+        // it. The sandbox's own reason wins, since widening *that* list is what
+        // would let this through.
+        match evaluate_destination("example.com", 443, &state) {
+            Err(DenyReason::HostNotInAllowlist { host }) => assert_eq!(host, "example.com"),
+            other => panic!("expected an allowlist denial, got {other:?}"),
+        }
+
+        // In neither: denied, and the outer policy was never consulted about it
+        // — the base decision short-circuits.
+        assert!(evaluate_destination("evil.example", 443, &state).is_err());
+        assert_eq!(outer.consulted(), vec!["github.com", "crates.io"]);
+    }
+
+    #[test]
+    fn an_outer_policy_cannot_reopen_loopback_the_inner_decision_closed() {
+        // The inner policy waives the DNS-rebinding filter, the outer one also
+        // permits local addresses: loopback stays reachable.
+        struct Loopback;
+        impl crate::DestinationPolicy for Loopback {
+            fn evaluate(&self, _host: &str, _port: u16) -> PolicyDecision {
+                PolicyDecision::Allow {
+                    permit_local_addresses: true,
+                }
+            }
+        }
+        let mut state = runtime_state(Allowlist::empty());
+        state.policy = Some(Arc::new(Loopback));
+        state.outer_policy = Some(Arc::new(OuterAllowlist::new("localhost")));
+        let grant = evaluate_destination("localhost", 80, &state).expect("both policies allow it");
+        assert!(grant.permit_local_addresses);
+
+        // The sandbox's own allowlist never waives the filter, so the outer
+        // policy permitting loopback must not reinstate it: the narrower of the
+        // two wins, and the rebinding filter still fires.
+        let mut state = runtime_state(Allowlist::from_patterns([
+            HostPattern::parse("github.com").unwrap()
+        ]));
+        state.outer_policy = Some(Arc::new(OuterAllowlist::new("github.com")));
+        let grant =
+            evaluate_destination("github.com", 443, &state).expect("both policies allow it");
+        assert!(!grant.permit_local_addresses);
     }
 
     #[test]

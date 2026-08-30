@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::SharedString;
 
-const DEFAULT_UI_TEXT: &str = "Editing file";
+const DEFAULT_UI_TEXT: &str = "ファイルを編集";
 
 /// This is a tool for applying edits to an existing file.
 ///

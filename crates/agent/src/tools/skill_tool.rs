@@ -155,9 +155,9 @@ impl AgentTool for SkillTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("`{}` Skill", input.name).into()
+            format!("`{}` スキル", input.name).into()
         } else {
-            "Skill".into()
+            "スキル".into()
         }
     }
 

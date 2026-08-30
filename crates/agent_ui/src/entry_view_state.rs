@@ -257,7 +257,7 @@ impl EntryViewState {
                             self.thread_store.clone(),
                             self.session_capabilities.clone(),
                             self.agent_id.clone(),
-                            "Edit message － @ to include context",
+                            "メッセージを編集 － @ でコンテキストを追加",
                             editor::EditorMode::AutoHeight {
                                 min_lines: 1,
                                 max_lines: None,

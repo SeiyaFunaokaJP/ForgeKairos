@@ -2292,7 +2292,7 @@ mod tests {
             .await
             .expect_err("hardcoded denial should override unconditional allow-all");
         assert!(
-            error.contains("built-in security rule"),
+            error.contains("組み込みのセキュリティルール"),
             "expected hardcoded denial message, got: {error}"
         );
         assert!(

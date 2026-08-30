@@ -1866,11 +1866,11 @@ async fn test_closing_last_agent_panel_terminal_restores_empty_header(cx: &mut T
         );
     });
     // Closing the terminal drops the user back onto the panel's empty
-    // draft. The sidebar mirrors that with a "New {agent} Thread"
+    // draft. The sidebar mirrors that with a "{agent} の新規スレッド"
     // placeholder row, so the header reports having threads.
     assert_eq!(
         visible_entries_as_strings(&sidebar, cx),
-        vec!["v [my-project]", "  New Zed Agent Thread"]
+        vec!["v [my-project]", "  Zed Agent の新規スレッド"]
     );
     assert_project_header_has_threads(&sidebar, "my-project", true, cx);
 
@@ -5717,7 +5717,7 @@ async fn test_plus_button_reuses_empty_draft(cx: &mut TestAppContext) {
         "an empty draft should be reused, not replaced"
     );
     // The active empty draft is surfaced in the sidebar as a single
-    // "New {agent} Thread" placeholder so the sidebar mirrors the panel.
+    // "{agent} の新規スレッド" placeholder so the sidebar mirrors the panel.
     let draft_rows: Vec<_> = sidebar.read_with(cx, |sidebar, _| {
         sidebar
             .contents
@@ -5780,7 +5780,7 @@ async fn test_plus_button_parks_nonempty_draft(cx: &mut TestAppContext) {
 
     // Both drafts now appear as sidebar rows: the parked one with its
     // editor-derived title (real user state), and the newly-created empty
-    // draft as a "New {agent} Thread" placeholder. The placeholder mirrors
+    // draft as a "{agent} の新規スレッド" placeholder. The placeholder mirrors
     // the panel's current view; the parked row preserves typed content.
     let draft_rows: Vec<_> = sidebar.read_with(cx, |sidebar, _| {
         sidebar
@@ -5984,7 +5984,7 @@ async fn test_sending_message_from_draft_promotes_in_place(cx: &mut TestAppConte
 async fn test_cmd_n_shows_new_thread_entry(cx: &mut TestAppContext) {
     // When the user presses Cmd-N (NewThread action) while viewing a
     // non-empty thread, the panel should switch to the draft thread and
-    // the sidebar should surface a "New {agent} Thread" placeholder row
+    // the sidebar should surface a "{agent} の新規スレッド" placeholder row
     // that mirrors the active empty draft.
     let project = init_test_project_with_agent_panel("/my-project", cx).await;
     let (multi_workspace, cx) =
@@ -6026,7 +6026,7 @@ async fn test_cmd_n_shows_new_thread_entry(cx: &mut TestAppContext) {
     // placeholder row above the real thread.
     assert_eq!(
         visible_entries_as_strings(&sidebar, cx),
-        vec!["v [my-project]", "  New stub Thread", "  Hello *"],
+        vec!["v [my-project]", "  stub の新規スレッド", "  Hello *"],
         "After Cmd-N the sidebar should show a placeholder row for the active empty draft"
     );
 
@@ -6152,7 +6152,7 @@ async fn test_cmd_n_shows_new_thread_entry_in_absorbed_worktree(cx: &mut TestApp
         vec![
             //
             "v [project]",
-            "  New stub Thread {wt-feature-a}",
+            "  stub の新規スレッド {wt-feature-a}",
             "  Hello {wt-feature-a} *",
         ],
         "After Cmd-N the sidebar should show a placeholder row for the active empty draft"

@@ -1,49 +1,109 @@
-# Zed
+# zed-jp-enhance
 
-[![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
-[![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)
+[Zed](https://zed.dev) v1.17.2 の**ハードフォーク** (upstream 追従なし)。
+日本語 UI、ネットワーク統制 (egress deny-by-default)、ローカル LLM 第一の AI 方針、
+そして VSCode が切り捨てた古い Linux への SSH リモート対応を自前改造で足した Windows 向け IDE。
 
-Welcome to Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
+## 特徴
 
----
+### 日本語化
 
-### Installation
+- **UI の全面日本語化** — メニューバー / 設定 GUI / コマンドパレット (日英どちらのクエリでもヒット) /
+  git・エージェント・診断など全出荷パネル / エディタ周辺 / 相対日時 / UI に出るエラー文言まで
 
-On macOS, Linux, and Windows you can [download Zed directly](https://zed.dev/download) or install Zed via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).
+### ネットワーク統制
 
-Other platforms are not yet available:
+- **外部通信は既定で全遮断** (deny-by-default) — 許可したホストとだけ通信する。
+  許可リストは設定 GUI (設定 → ネットワーク) か `%APPDATA%\Zed\network_allowlist.json` で管理。
+  リダイレクトも 1 hop ずつ再検証。組み込み許可は拡張マーケットプレイス /
+  ACP レジストリの更新確認 / 本体の更新確認の 3 つ (いずれもパス単位) のみ
+- **AI エージェントの子プロセスも統制内** — ACP エージェント / MCP サーバー / npm
+  (エージェントのインストール経路) に loopback プロキシを注入し、その外部通信も
+  許可リストで判定する。SSH リモートで実行されるエージェント / MCP にも同じ統制が
+  リモート側 loopback で効く (Linux / WSL リモート)
+- **サンドボックスのネットワークも許可リストの入れ子** — コマンド実行サンドボックスの
+  許可ドメインは、IDE 全体の許可リストの範囲内でのみ有効
+- **テレメトリ / コラボ (通話・画面共有) は無効** — collab / LiveKit はビルドグラフごと除去済み。
+  **本体の更新はこのリポジトリの GitHub Releases だけ**を見る (更新確認のみ組み込み許可、
+  ダウンロードは明示同意で許可リストに追加)
 
-- Web ([tracking discussion](https://github.com/zed-industries/zed/discussions/26195))
+### AI (ローカル第一)
 
-### Developing Zed
+- **AI 機能は既定ですべてオフ** — 使う人が明示的に有効化する。外部 AI プロバイダー
+  (クラウド API) は**学習リスクの警告 + 承諾チェック**を経ないと設定できず、
+  承諾フローから必要ホストを許可リストへワンクリック追加できる。
+  ローカル LLM (Ollama / LM Studio / OpenAI 互換。モデル一覧の自動取得・API キーなし接続対応) は警告なしで使える
+- **MCP 接続の GUI** — 設定 → AI → MCP サーバーで、状態のライブ表示 / 接続テスト /
+  クライアントシークレット入力 / プロキシ適用バッジ / 実行ホスト
+  (この PC / SSH 接続先) の選択まで完結
+- **サブスクリプションで使う外部エージェント (ACP)** — Claude Code (Claude Pro/Max) や
+  Google Antigravity をエージェントパネルから利用可能。ACP レジストリからの
+  インストール / 更新も IDE 内から統制付き (必要ホストの同意 → 許可リスト追加) で行える
 
-- [Building Zed for macOS](./docs/src/development/macos.md)
-- [Building Zed for Linux](./docs/src/development/linux.md)
-- [Building Zed for Windows](./docs/src/development/windows.md)
+### SSH リモート開発
 
-### Contributing
+- **musl 静的リンクの remote_server を同梱** — 接続先の glibc に依存しないため、
+  **VSCode (glibc 2.28+ 必須) が接続できない古い Linux (Ubuntu 18.04 で実機確認済み) にも入れる**。
+  ビルド時に成果物を `zed.exe` の隣へ自動生成・配置し、接続時のユーザー操作はゼロ
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways you can contribute to Zed.
+### 編集機能の追加
 
-Also... we're hiring! Check out our [jobs](https://zed.dev/jobs) page for open roles.
+- **Markdown 入力補助** — 引用/リスト/番号/タスクの Enter 自動継続、太字・斜体などの
+  整形アクション 14 本 (`Ctrl+B` / `Ctrl+I` / `Ctrl+Shift+X` は Markdown 内のみ)、
+  専用整形バー (タブ行の下)、Enter で hard break (行末スペース 2 つ) を補うオプション
+- **Markdown → PDF** 書き出し (Edge headless)。ツールバー / プレビュー / タブ右クリックから
+- プレビューは**分割表示が既定** (alt+クリックで同一ペイン)
+- エージェント用 **repo map** ツール、**C フォーマッタ既定** (clang-format 同梱対応)
+- **VSCode ライクな既定** — プロジェクトパネル左 / AI チャット右 / メニューバー常時表示 /
+  ターミナル Ctrl+F 検索 / タイトルバーに AI チャット開閉ボタン
 
-### Licensing
+## ビルド (Windows)
 
-Zed source code is licensed primarily under GPL-3.0-or-later, with Apache-2.0 components where marked.
+前提: VS 2022 (C++ ワークロード + Spectre 緩和ライブラリ + Windows 11 SDK 26100)、rustup。
 
-License information for third party dependencies must be correctly provided for CI to pass.
+```powershell
+powershell -NoProfile -File script\build-dev.ps1        # zed.exe / cli.exe / remote_server 同梱物
+powershell -NoProfile -File script\build-dev.ps1 -Run   # ビルド後そのまま起動
+```
 
-We use [`cargo-about`](https://github.com/EmbarkStudios/cargo-about) to automatically comply with open source licenses. If CI is failing, check the following:
+スクリプトは CMake (VS 同梱) の PATH 補完、ディスク残量チェック、SSH リモート用
+remote_server (musl) のクロスビルドと同梱配置 (zig を winget で自動調達) まで行う。
+**必ず `-j 8` を付ける** (無制限並列は rustc がメモリ枯渇で落ちる)。
+ディスクが埋まったら `-FreeDisk` スイッチ。
 
-- Is it showing a `no license specified` error for a crate you've created? If so, add `publish = false` under `[package]` in your crate's Cargo.toml.
-- Is the error `failed to satisfy license requirements` for a dependency? If so, first determine what license the project has and whether this system is sufficient to comply with this license's requirements. If you're unsure, ask a lawyer. Once you've verified that this system is acceptable add the license's SPDX identifier to the `accepted` array in `script/licenses/zed-licenses.toml`.
-- Is `cargo-about` unable to find the license for a dependency? If so, add a clarification field at the end of `script/licenses/zed-licenses.toml`, as specified in the [cargo-about book](https://embarkstudios.github.io/cargo-about/cli/generate/config.html#crate-configuration).
+## 起動
 
-## Sponsorship
+- 成果物は `target\debug\zed.exe`。**エクスプローラーからのダブルクリック
+  (または `Start-Process`) で起動**する
+- コンソールから `zed <パス>` のように使うには `cli.exe` が `zed.exe` の隣に必要
+  (`build-dev.ps1` が一緒にビルドする)
+- C フォーマットを使う場合は `clang-format.exe` を `zed.exe` の隣 (または `bin\`) に置くか、
+  PATH に通す
 
-Zed is developed by **Zed Industries, Inc.**, a for-profit company.
+### 初回起動時の状態 (意図した既定)
 
-If you’d like to financially support the project, you can do so via GitHub Sponsors.
-Sponsorships go directly to Zed Industries and are used as general company revenue.
-There are no perks or entitlements associated with sponsorship.
+| 項目 | 既定 | 変えたいとき |
+|---|---|---|
+| UI | 日本語 (固定) | — |
+| 外部通信 | 全遮断 (組み込み許可 3 つのみ) | 設定 → ネットワーク |
+| AI (エージェント / インライン補助) | 無効 | 設定 → AI → 「エージェントを有効にする」 |
+| 既定モデル | 未設定 (有効化後、認証済みプロバイダーから自動選択) | 設定 → AI → LLM プロバイダー |
+| 編集予測 (インライン補完) | 無効 (`none`) | 設定 → AI → 編集予測 |
+| 外部 AI プロバイダー | 警告 + 承諾チェックを経て有効化 | 各プロバイダーの設定画面 |
+| テレメトリ | 無効 | (推奨: そのまま) |
+| 自動更新 | 無効 (手動確認は可。接続先はこのリポジトリの Releases のみ) | 設定 → 一般 |
 
+## upstream との関係
+
+- fork 元: [zed-industries/zed](https://github.com/zed-industries/zed) v1.17.2 (スナップショット)。
+  **rebase / merge による upstream 追従は行わない**
+- upstream の開発規約 (`.rules`、`./script/clippy`、GPUI イディオム) は引き続き遵守する
+- upstream 由来のドキュメント (`docs/src/`、`CONTRIBUTING.md` 等) はそのまま残っているが、
+  フォーク独自機能の記述は本 README が正
+
+## ライセンス
+
+upstream (Zed) のライセンスを継承する: 主に **GPL-3.0-or-later**、一部 Apache-2.0
+(各クレートの表記に従う。`LICENSE-GPL` / `LICENSE-APACHE` 参照)。
+clang-format バイナリを同梱して配布する場合は LLVM の LICENSE.TXT
+(Apache-2.0 with LLVM Exceptions) を併せて同梱すること。

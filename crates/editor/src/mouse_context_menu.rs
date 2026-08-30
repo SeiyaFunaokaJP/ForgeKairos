@@ -14,7 +14,8 @@ use text::PointUtf16;
 use workspace::OpenInTerminal;
 use zed_actions::agent::AddSelectionToThread;
 use zed_actions::preview::{
-    markdown::OpenPreview as OpenMarkdownPreview, svg::OpenPreview as OpenSvgPreview,
+    markdown::OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide,
+    svg::OpenPreviewToTheSide as OpenSvgPreviewToTheSide,
 };
 
 #[derive(Debug)]
@@ -247,47 +248,41 @@ pub fn deploy_context_menu(
             let builder = menu
                 .on_blur_subscription(Subscription::new(|| {}))
                 .when(run_to_cursor, |builder| {
-                    builder.action("Run to Cursor", Box::new(RunToCursor))
+                    builder.action("カーソル位置まで実行", Box::new(RunToCursor))
                 })
                 .when(evaluate_selection && has_selections, |builder| {
-                    builder.action("Evaluate Selection", Box::new(EvaluateSelectedText))
+                    builder.action("選択範囲を評価", Box::new(EvaluateSelectedText))
                 })
                 .when(
                     run_to_cursor || (evaluate_selection && has_selections),
                     |builder| builder.separator(),
                 )
-                .action("Go to Definition", Box::new(GoToDefinition::default()))
-                .action("Go to Declaration", Box::new(GoToDeclaration))
-                .action("Go to Type Definition", Box::new(GoToTypeDefinition))
-                .action(
-                    "Go to Implementation",
-                    Box::new(GoToImplementation::default()),
-                )
-                .action(
-                    "Find All References",
-                    Box::new(FindAllReferences::default()),
-                )
+                .action("定義へ移動", Box::new(GoToDefinition::default()))
+                .action("宣言へ移動", Box::new(GoToDeclaration))
+                .action("型定義へ移動", Box::new(GoToTypeDefinition))
+                .action("実装へ移動", Box::new(GoToImplementation::default()))
+                .action("すべての参照を検索", Box::new(FindAllReferences::default()))
                 .separator()
-                .action("Rename Symbol", Box::new(Rename))
-                .action("Format Buffer", Box::new(Format))
+                .action("シンボルの名前変更", Box::new(Rename))
+                .action("バッファーをフォーマット", Box::new(Format))
                 .when(format_selections, |cx| {
-                    cx.action("Format Selections", Box::new(FormatSelections))
+                    cx.action("選択範囲をフォーマット", Box::new(FormatSelections))
                 })
                 .action(
-                    "Show Code Actions",
+                    "コードアクションを表示",
                     Box::new(ToggleCodeActions {
                         deployed_from: None,
                         quick_launch: false,
                     }),
                 )
                 .when(!disable_ai && has_selections, |this| {
-                    this.action("Add to Agent Thread", Box::new(AddSelectionToThread))
+                    this.action("エージェントスレッドに追加", Box::new(AddSelectionToThread))
                 })
                 .separator()
-                .action("Cut", Box::new(Cut))
-                .action("Copy", Box::new(Copy))
-                .action("Copy and Trim", Box::new(CopyAndTrim))
-                .action("Paste", Box::new(Paste))
+                .action("切り取り", Box::new(Cut))
+                .action("コピー", Box::new(Copy))
+                .action("余白を削ってコピー", Box::new(CopyAndTrim))
+                .action("貼り付け", Box::new(Paste))
                 .separator()
                 .action_disabled_when(
                     !has_reveal_target,
@@ -295,24 +290,30 @@ pub fn deploy_context_menu(
                     Box::new(RevealInFileManager),
                 )
                 .when(is_markdown, |builder| {
-                    builder.action("Open Markdown Preview", Box::new(OpenMarkdownPreview))
+                    builder.action(
+                        "Markdown プレビューを横に開く",
+                        Box::new(OpenMarkdownPreviewToTheSide),
+                    )
                 })
                 .when(is_svg, |builder| {
-                    builder.action("Open SVG Preview", Box::new(OpenSvgPreview))
+                    builder.action(
+                        "SVG プレビューを横に開く",
+                        Box::new(OpenSvgPreviewToTheSide),
+                    )
                 })
                 .action_disabled_when(
                     !has_reveal_target,
-                    "Open in Terminal",
+                    "ターミナルで開く",
                     Box::new(OpenInTerminal),
                 )
                 .action_disabled_when(
                     !has_git_repo,
-                    "Copy Permalink",
+                    "永続リンクをコピー",
                     Box::new(CopyPermalinkToLine),
                 )
                 .action_disabled_when(
                     !has_git_repo,
-                    "View File History",
+                    "ファイルの履歴を表示",
                     Box::new(git::FileHistory),
                 );
             match focus {
@@ -447,6 +448,7 @@ mod tests {
         });
         cx.run_until_parked();
 
-        assert!(cx.debug_bounds("MENU_ITEM-Copy").is_some());
+        // `ContextMenu` の debug selector はラベル文字列から作られるため日本語ラベルに追随する
+        assert!(cx.debug_bounds("MENU_ITEM-コピー").is_some());
     }
 }

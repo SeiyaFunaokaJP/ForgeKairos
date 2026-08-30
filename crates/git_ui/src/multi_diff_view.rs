@@ -209,12 +209,9 @@ impl MultiDiffView {
     }
 
     fn title(&self) -> SharedString {
-        let suffix = if self.file_count == 1 {
-            "1 file".to_string()
-        } else {
-            format!("{} files", self.file_count)
-        };
-        format!("Diff ({suffix})").into()
+        // 日本語には複数形がないので、原文の "1 file" / "{} files" の
+        // 出し分けはやめて件数をそのまま埋め込む。
+        format!("差分 ({} ファイル)", self.file_count).into()
     }
 }
 

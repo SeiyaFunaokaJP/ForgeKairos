@@ -118,11 +118,8 @@ pub struct Extensions {
 #[serde(deny_unknown_fields)]
 pub struct AcpRegistry;
 
-/// Show call diagnostics and connection quality statistics.
-#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
-#[action(namespace = collab)]
-#[serde(deny_unknown_fields)]
-pub struct ShowCallStats;
+// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): `collab::ShowCallStats` は
+// `title_bar/src/collab.rs` (削除済み) が唯一のハンドラだったため除去した。
 
 /// Decreases the font size in the editor buffer.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
@@ -897,6 +894,8 @@ pub mod preview {
                 OpenPreview,
                 /// Opens a markdown preview in a split pane.
                 OpenPreviewToTheSide,
+                /// Exports the active Markdown file to a PDF next to it. DESIGN.md §5.3
+                ExportToPdf,
             ]
         );
     }

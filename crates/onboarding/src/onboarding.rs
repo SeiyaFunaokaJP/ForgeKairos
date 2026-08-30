@@ -351,11 +351,11 @@ impl Render for Onboarding {
                                             .child(
                                                 v_flex()
                                                     .child(
-                                                        Headline::new("Welcome to Zed")
+                                                        Headline::new("Zed へようこそ")
                                                             .size(HeadlineSize::Small),
                                                     )
                                                     .child(
-                                                        Label::new("The editor for what's next")
+                                                        Label::new("次の時代のエディター")
                                                             .color(Color::Muted)
                                                             .size(LabelSize::Small)
                                                             .italic(),
@@ -363,7 +363,7 @@ impl Render for Onboarding {
                                             ),
                                     )
                                     .child({
-                                        Button::new("finish_setup", "Finish Setup")
+                                        Button::new("finish_setup", "セットアップを完了")
                                             .style(ButtonStyle::Filled)
                                             .size(ButtonSize::Medium)
                                             .width(rems_from_px(200_f32))
@@ -397,7 +397,7 @@ impl Item for Onboarding {
     type Event = ItemEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Onboarding".into()
+        "初期設定".into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -484,7 +484,7 @@ pub async fn handle_import_vscode_settings(
                 zlog::error!("{err:?}");
                 let _ = cx.prompt(
                     gpui::PromptLevel::Info,
-                    &format!("Could not find or load a {source} settings file"),
+                    &format!("{source} の設定ファイルが見つからないか、読み込めませんでした"),
                     None,
                     &["OK"],
                 );
@@ -496,13 +496,13 @@ pub async fn handle_import_vscode_settings(
         let prompt = cx.prompt(
             gpui::PromptLevel::Warning,
             &format!(
-                "Importing {} settings may overwrite your existing settings. \
-                Will import settings from {}",
+                "{} の設定をインポートすると、既存の設定が上書きされる場合があります。\
+                {} から設定をインポートします",
                 vscode_settings.source,
                 truncate_and_remove_front(&vscode_settings.path.to_string_lossy(), 128),
             ),
             None,
-            &["Import", "Cancel"],
+            &["インポート", "キャンセル"],
         );
         let result = cx.spawn(async move |_| prompt.await.ok()).await;
         if result != Some(0) {
@@ -527,7 +527,7 @@ pub async fn handle_import_vscode_settings(
         .update_in(cx, |workspace, _, cx| match result {
             Ok(_) => {
                 let confirmation_toast = StatusToast::new(
-                    format!("Your {} settings were successfully imported.", source),
+                    format!("{} の設定をインポートしました。", source),
                     cx,
                     |this, _| {
                         this.icon(
@@ -550,7 +550,7 @@ pub async fn handle_import_vscode_settings(
             }
             Err(_) => {
                 let error_toast = StatusToast::new(
-                    "Failed to import settings. See log for details",
+                    "設定のインポートに失敗しました。詳細はログを確認してください",
                     cx,
                     |this, _| {
                         this.icon(
@@ -558,7 +558,7 @@ pub async fn handle_import_vscode_settings(
                                 .size(IconSize::Small)
                                 .color(Color::Error),
                         )
-                        .action("Open Log", |window, cx| {
+                        .action("ログを開く", |window, cx| {
                             window.dispatch_action(workspace::OpenLog.boxed_clone(), cx)
                         })
                         .dismiss_button(true)

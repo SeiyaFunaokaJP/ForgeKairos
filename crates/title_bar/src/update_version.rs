@@ -40,7 +40,14 @@ impl UpdateVersion {
     pub fn update_simulation(&mut self, cx: &mut Context<Self>) {
         let next_state = match self.status {
             AutoUpdateStatus::Idle => AutoUpdateStatus::Checking,
-            AutoUpdateStatus::Checking => AutoUpdateStatus::Downloading {
+            AutoUpdateStatus::Checking => AutoUpdateStatus::NeedsEgressConsent {
+                version: Version::new(1, 99, 0),
+                hosts: vec![
+                    "github.com".to_string(),
+                    "objects.githubusercontent.com".to_string(),
+                ],
+            },
+            AutoUpdateStatus::NeedsEgressConsent { .. } => AutoUpdateStatus::Downloading {
                 version: Version::new(1, 99, 0),
                 progress: Some(0.5),
             },
@@ -84,6 +91,42 @@ impl UpdateVersion {
     fn version_tooltip_message(version: &Version) -> String {
         UpdateButton::version_tooltip_message(version)
     }
+
+    /// The confirmation shown before the update's download hosts are added to
+    /// `network_allowlist.json` (ADR-F16). The allowlist is only ever widened
+    /// from here, and only once the user has said so.
+    fn confirm_egress_consent(
+        version: &Version,
+        hosts: &[String],
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let detail = format!(
+            "バージョン {version} をダウンロードするには、次のホストをネットワーク許可リストに追加する必要があります。\n\n{}\n\n\
+             追加すると、これらのホストへの通信は以後常に許可されます。設定の「ネットワーク」ページでいつでも取り消せます。",
+            hosts.join("\n"),
+        );
+        let answer = window.prompt(
+            gpui::PromptLevel::Warning,
+            "更新のダウンロードにはネットワークの許可が必要です",
+            Some(&detail),
+            &["許可リストに追加して更新", "キャンセル"],
+            cx,
+        );
+        cx.spawn(async move |cx| {
+            if answer.await.ok() != Some(0) {
+                return;
+            }
+            cx.update(|cx| {
+                if let Some(auto_updater) = AutoUpdater::get(cx) {
+                    auto_updater.update(cx, |auto_updater, cx| {
+                        auto_updater.allow_download_hosts_and_retry(cx)
+                    });
+                }
+            });
+        })
+        .detach();
+    }
 }
 
 impl Render for UpdateVersion {
@@ -110,6 +153,18 @@ impl Render for UpdateVersion {
                 UpdateButton::downloading(*progress)
                     .tooltip_fn(tooltip)
                     .into_any_element()
+            }
+            AutoUpdateStatus::NeedsEgressConsent { version, hosts } => {
+                let version_for_click = version.clone();
+                let hosts_for_click = hosts.clone();
+                UpdateButton::needs_egress_consent(UpdateButton::egress_consent_tooltip_message(
+                    version, hosts,
+                ))
+                .on_click(move |_, window, cx| {
+                    Self::confirm_egress_consent(&version_for_click, &hosts_for_click, window, cx);
+                })
+                .on_dismiss(cx.listener(|this, _, _window, cx| this.dismiss(cx)))
+                .into_any_element()
             }
             AutoUpdateStatus::Installing { version } => {
                 let version = Self::version_tooltip_message(version);
@@ -147,7 +202,7 @@ mod tests {
     fn test_version_tooltip_message() {
         let message = UpdateVersion::version_tooltip_message(&Version::new(1, 0, 0));
 
-        assert_eq!(message, "Update to Version: 1.0.0");
+        assert_eq!(message, "バージョン 1.0.0 に更新");
 
         let message = UpdateVersion::version_tooltip_message(
             &"1.0.0+nightly.14d9a4189f058d8736339b06ff2340101eaea5af"
@@ -157,7 +212,23 @@ mod tests {
 
         assert_eq!(
             message,
-            "Update to Version: 1.0.0+nightly.14d9a4189f058d8736339b06ff2340101eaea5af"
+            "バージョン 1.0.0+nightly.14d9a4189f058d8736339b06ff2340101eaea5af に更新"
+        );
+    }
+
+    #[test]
+    fn test_egress_consent_tooltip_message() {
+        let message = UpdateButton::egress_consent_tooltip_message(
+            &Version::new(1, 0, 0),
+            &[
+                "github.com".to_string(),
+                "objects.githubusercontent.com".to_string(),
+            ],
+        );
+
+        assert_eq!(
+            message,
+            "バージョン 1.0.0 をダウンロードするには github.com、objects.githubusercontent.com への通信の許可が必要です"
         );
     }
 
@@ -166,12 +237,12 @@ mod tests {
         let version = Version::new(1, 0, 0);
 
         let message = UpdateButton::downloading_tooltip_message(&version, None);
-        assert_eq!(message, "Update to Version: 1.0.0");
+        assert_eq!(message, "バージョン 1.0.0 に更新");
 
         let message = UpdateButton::downloading_tooltip_message(&version, Some(0.454));
-        assert_eq!(message, "Update to Version: 1.0.0 (45% downloaded)");
+        assert_eq!(message, "バージョン 1.0.0 に更新 (ダウンロード済み 45%)");
 
         let message = UpdateButton::downloading_tooltip_message(&version, Some(1.5));
-        assert_eq!(message, "Update to Version: 1.0.0 (100% downloaded)");
+        assert_eq!(message, "バージョン 1.0.0 に更新 (ダウンロード済み 100%)");
     }
 }

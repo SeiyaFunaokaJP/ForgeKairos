@@ -1,11 +1,14 @@
 use std::{collections::HashSet, sync::Arc};
 
 use editor::Editor;
-use gpui::{AnyView, Entity, Focusable as _, ScrollHandle, prelude::*};
+use futures::AsyncReadExt as _;
+use gpui::{AnyView, Entity, Focusable as _, ScrollHandle, Task, prelude::*};
+use http_client::{AsyncBody, EgressDenied, HttpClient, Request, StatusCode};
 use language_model::{
     ApiKeyConfiguration, CreateProviderSettingsView, IconOrSvg, InlineDescription,
     LanguageModelProvider, LanguageModelProviderId, LanguageModelRegistry, ProviderSettingsView,
 };
+use serde::Deserialize;
 
 use settings::{
     AnthropicCompatibleAvailableModel, AnthropicCompatibleModelCapabilities,
@@ -13,13 +16,14 @@ use settings::{
     OpenAiCompatibleModelCapabilities, OpenAiCompatibleSettingsContent, OpenAiReasoningEffort,
 };
 use ui::{
-    ButtonLink, Checkbox, ConfiguredApiCard, ContextMenu, Divider, DividerColor, DropdownMenu,
-    DropdownStyle, IconPosition, PopoverMenu, ToggleState, prelude::*,
+    Banner, ButtonLink, Checkbox, ConfiguredApiCard, ContextMenu, Divider, DividerColor,
+    DropdownMenu, DropdownStyle, IconPosition, PopoverMenu, ToggleState, prelude::*,
 };
 use util::ResultExt as _;
 
 use crate::SettingsWindow;
 use crate::components::SettingsInputField;
+use crate::pages::external_ai_consent;
 
 pub(crate) fn render_llm_providers_page(
     settings_window: &SettingsWindow,
@@ -85,7 +89,7 @@ pub(crate) fn render_add_llm_provider_popover(
 
     PopoverMenu::new("add-llm-provider-popover")
         .trigger(
-            Button::new("add-llm-provider", "Add Provider")
+            Button::new("add-llm-provider", "プロバイダーを追加")
                 .style(ButtonStyle::Outlined)
                 .track_focus(&focus_handle)
                 .label_size(LabelSize::Small)
@@ -103,7 +107,7 @@ pub(crate) fn render_add_llm_provider_popover(
         .menu(move |window, cx| {
             let settings_window = settings_window.clone();
             Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                menu.header("Compatible APIs")
+                menu.header("互換 API")
                     .entry("OpenAI", None, {
                         let settings_window = settings_window.clone();
                         move |window, cx| {
@@ -148,29 +152,55 @@ fn render_provider_section(
     let provider_id = provider.id();
     let provider_name = provider.name().0;
 
-    let body = match provider.settings_view(cx) {
-        Some(ProviderSettingsView::ApiKey(config)) => {
-            render_api_key_providers_item(provider, provider_name.clone(), config, cx)
+    // External providers are gated on an explicit opt-in (ADR-F10). The gate
+    // goes here rather than around the API key field alone so that sign-in and
+    // sub-page based providers are covered too, and so that
+    // `settings_view` — which builds the provider's configuration view — is not
+    // even called while consent is missing.
+    let consent =
+        external_ai_consent::llm_provider_target(provider_id.0.as_ref(), provider_name.clone(), cx);
+
+    let body = match &consent {
+        Some(target) if !external_ai_consent::is_acknowledged(&target.key, cx) => {
+            external_ai_consent::render_consent_gate(settings_window, target, cx)
         }
-        Some(ProviderSettingsView::Inline(settings)) => {
-            let view = get_or_create_configuration_view(
-                settings_window,
-                &provider_id,
-                settings.create_view,
-                window,
-                cx,
-            );
-            render_inline_body(
-                provider_name.clone(),
-                settings.title,
-                settings.description,
-                view,
-            )
+        _ => {
+            let body = match provider.settings_view(cx) {
+                Some(ProviderSettingsView::ApiKey(config)) => {
+                    render_api_key_providers_item(provider, provider_name.clone(), config, cx)
+                }
+                Some(ProviderSettingsView::Inline(settings)) => {
+                    let view = get_or_create_configuration_view(
+                        settings_window,
+                        &provider_id,
+                        settings.create_view,
+                        window,
+                        cx,
+                    );
+                    render_inline_body(
+                        provider_name.clone(),
+                        settings.title,
+                        settings.description,
+                        view,
+                    )
+                }
+                Some(ProviderSettingsView::SubPage(settings)) => {
+                    render_subpage_item(provider, settings.description, cx)
+                }
+                None => div().into_any_element(),
+            };
+            match &consent {
+                Some(target) => v_flex()
+                    .child(external_ai_consent::render_consent_summary(
+                        settings_window,
+                        target,
+                        cx,
+                    ))
+                    .child(body)
+                    .into_any_element(),
+                None => body,
+            }
         }
-        Some(ProviderSettingsView::SubPage(settings)) => {
-            render_subpage_item(provider, settings.description, cx)
-        }
-        None => div().into_any_element(),
     };
 
     v_flex()
@@ -223,19 +253,19 @@ fn render_api_key_providers_item(
 
     if has_key {
         let configured_label = if is_from_env_var {
-            "API Key Set in Environment Variable"
+            "API キーは環境変数で設定されています"
         } else {
-            "API Key Configured"
+            "API キーは設定済み"
         };
         let button_id = format!("reset-api-key-{}", provider_id.0);
 
         let card = ConfiguredApiCard::new(button_id, configured_label)
-            .button_label("Reset Key")
+            .button_label("キーをリセット")
             .button_tab_index(0)
             .disabled(is_from_env_var)
             .when(is_from_env_var, |this| {
                 this.tooltip_label(format!(
-                    "To reset your API key, unset the {env_var_name} environment variable."
+                    "API キーをリセットするには、環境変数 {env_var_name} を解除してください。"
                 ))
             })
             .on_click({
@@ -250,7 +280,7 @@ fn render_api_key_providers_item(
     }
 
     let input_id = format!("{}-api-key-input", provider_id.0);
-    let aria_label = format!("{provider_name} API Key");
+    let aria_label = format!("{provider_name} の API キー");
 
     v_flex()
         .gap_2()
@@ -267,7 +297,7 @@ fn render_api_key_providers_item(
                         .min_w_0()
                         .max_w_1_2()
                         .gap_0p5()
-                        .child(Label::new("API Key"))
+                        .child(Label::new("API キー"))
                         .child(
                             h_flex()
                                 .w_full()
@@ -275,13 +305,8 @@ fn render_api_key_providers_item(
                                 .flex_wrap()
                                 .gap_0p5()
                                 .child(
-                                    Label::new("Visit the")
-                                        .size(LabelSize::Small)
-                                        .color(Color::Muted),
-                                )
-                                .child(
                                     ButtonLink::new(
-                                        format!("{provider_name} dashboard"),
+                                        format!("{provider_name} のダッシュボード"),
                                         api_key_url,
                                     )
                                     .no_icon(true)
@@ -289,14 +314,14 @@ fn render_api_key_providers_item(
                                     .label_color(Color::Muted),
                                 )
                                 .child(
-                                    Label::new("to generate an API key.")
+                                    Label::new("で API キーを生成してください。")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 ),
                         )
                         .child(
                             Label::new(format!(
-                                "Or set the {env_var_name} env var and restart Zed for it to take effect."
+                                "または環境変数 {env_var_name} を設定し、Zed を再起動すると反映されます。"
                             ))
                             .size(LabelSize::XSmall)
                             .color(Color::Muted),
@@ -375,13 +400,13 @@ fn render_subpage_item(
                 .min_w_0()
                 .max_w_1_2()
                 .gap_0p5()
-                .child(Label::new("Configure Provider"))
+                .child(Label::new("プロバイダーの設定"))
                 .when_some(description, |this, description| {
                     this.child(render_inline_description(provider_name, description))
                 }),
         )
         .child(
-            Button::new(format!("configure-{}", provider_id.0), "Configure")
+            Button::new(format!("configure-{}", provider_id.0), "設定")
                 .style(ButtonStyle::OutlinedGhost)
                 .size(ButtonSize::Medium)
                 .end_icon(
@@ -405,13 +430,13 @@ fn render_inline_description(
         InlineDescription::ApiKeyUrl(url) => h_flex()
             .gap_0p5()
             .child(
-                Label::new("To find an API key, visit the")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
+                ButtonLink::new(format!("{provider_name} のダッシュボード"), url)
+                    .label_size(LabelSize::Small),
             )
             .child(
-                ButtonLink::new(format!("{provider_name} dashboard."), url)
-                    .label_size(LabelSize::Small),
+                Label::new("で API キーを取得できます。")
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
             )
             .into_any_element(),
         InlineDescription::Text(text) => Label::new(text)
@@ -436,7 +461,7 @@ fn open_provider_configuration(
 
     settings_window.push_dynamic_sub_page(
         title,
-        "Agent Configuration",
+        "エージェントの設定",
         Some("llm_providers"),
         true,
         render_provider_config_sub_page,
@@ -516,8 +541,23 @@ pub(crate) struct LlmProviderForm {
     provider_name: Entity<Editor>,
     api_url: Entity<Editor>,
     api_key: Entity<Editor>,
+    /// The endpoint takes no credential at all, so the API key field is ignored
+    /// and validation stops requiring one.
+    no_api_key: bool,
     models: Vec<ModelInput>,
     error: Option<SharedString>,
+    /// Result of the last "モデル一覧を取得" run, shown next to the model rows.
+    models_fetch: Option<ModelsFetchOutcome>,
+    /// Held so that leaving the form cancels a fetch still in flight.
+    models_fetch_task: Option<Task<()>>,
+    /// Ticked by the user in the form's warning block. Only persisted to
+    /// `acknowledged_external_ai_providers` once the provider is actually
+    /// saved, since the consent is keyed by the provider name.
+    consent_acknowledged: bool,
+    /// Redraws the form as the endpoint is typed, so that the warning appears
+    /// and disappears with the URL. Editors notify their own view on edit, which
+    /// would otherwise not reach the settings window.
+    _api_url_subscription: gpui::Subscription,
 }
 
 impl LlmProviderForm {
@@ -526,10 +566,13 @@ impl LlmProviderForm {
         window: &mut Window,
         cx: &mut Context<SettingsWindow>,
     ) -> Self {
+        let provider_name = new_input(kind.label(), None, false, window, cx);
+        let api_url = new_input(kind.default_api_url(), None, false, window, cx);
+        let api_url_subscription = cx.observe(&api_url, |_, _, cx| cx.notify());
         Self {
             kind,
-            provider_name: new_input(kind.label(), None, false, window, cx),
-            api_url: new_input(kind.default_api_url(), None, false, window, cx),
+            provider_name,
+            api_url,
             api_key: new_input(
                 "000000000000000000000000000000000000000000000000",
                 None,
@@ -537,10 +580,23 @@ impl LlmProviderForm {
                 window,
                 cx,
             ),
+            no_api_key: false,
             models: vec![ModelInput::new(0, window, cx)],
             error: None,
+            models_fetch: None,
+            models_fetch_task: None,
+            consent_acknowledged: false,
+            _api_url_subscription: api_url_subscription,
         }
     }
+}
+
+/// What the last model-listing fetch produced, rendered inline in the model
+/// section rather than in the form footer so it sits next to the rows it filled.
+enum ModelsFetchOutcome {
+    Added(usize),
+    NoneNew,
+    Error(SharedString),
 }
 
 struct ModelInput {
@@ -573,15 +629,15 @@ impl ModelInput {
 
         Self {
             name: new_input(
-                "e.g. gpt-5, claude-opus-4, gemini-2.5-pro",
+                "例: gpt-5, claude-opus-4, gemini-2.5-pro",
                 None,
                 false,
                 window,
                 cx,
             ),
             max_completion_tokens: new_input("200000", Some("200000"), false, window, cx),
-            max_output_tokens: new_input("Max Output Tokens", Some("32000"), false, window, cx),
-            max_tokens: new_input("Max Tokens", Some("200000"), false, window, cx),
+            max_output_tokens: new_input("最大出力トークン数", Some("32000"), false, window, cx),
+            max_tokens: new_input("最大トークン数", Some("200000"), false, window, cx),
             reasoning_effort: OpenAiReasoningEffort::Medium,
             supports_tools: tools.into(),
             supports_images: images.into(),
@@ -623,8 +679,8 @@ fn open_llm_provider_form(
 ) {
     settings_window.llm_provider_form = Some(LlmProviderForm::new(kind, window, cx));
     settings_window.push_dynamic_sub_page(
-        format!("Add {}-Compatible Provider", kind.label()),
-        "Agent Configuration",
+        format!("{} 互換プロバイダーの追加", kind.label()),
+        "エージェントの設定",
         Some("llm_providers"),
         true,
         render_llm_provider_form_page,
@@ -643,6 +699,15 @@ fn render_llm_provider_form_page(
         return div().into_any_element();
     };
 
+    // The provider does not exist yet, so the warning follows whatever endpoint
+    // is currently typed: pointing it at loopback makes it disappear (ADR-F10).
+    let consent = external_ai_consent::form_target(
+        &form.provider_name.read(cx).text(cx),
+        &form.api_url.read(cx).text(cx),
+        form.kind.label(),
+    );
+    let consent_acknowledged = form.consent_acknowledged;
+
     v_flex()
         .size_full()
         .child(
@@ -656,31 +721,34 @@ fn render_llm_provider_form_page(
                 .overflow_y_scroll()
                 .child(Label::new(match form.kind {
                     CompatibleProviderKind::OpenAi => {
-                        "This provider will use an OpenAI-compatible API."
+                        "このプロバイダーは OpenAI 互換の API を使用します。"
                     }
                     CompatibleProviderKind::Anthropic => {
-                        "This provider will use an Anthropic Messages-compatible API."
+                        "このプロバイダーは Anthropic Messages 互換の API を使用します。"
                     }
                 }))
+                .when_some(consent.as_ref(), |this, target| {
+                    this.child(render_form_consent(
+                        settings_window,
+                        target,
+                        consent_acknowledged,
+                        cx,
+                    ))
+                })
                 .child(Divider::horizontal().flex_shrink_0())
                 .child(render_form_field(
-                    "Provider Name",
-                    "A unique name used to identify this provider.",
+                    "プロバイダー名",
+                    "このプロバイダーを識別する一意の名前です。",
                     &form.provider_name,
                     cx,
                 ))
                 .child(render_form_field(
                     "API URL",
-                    "The base URL for the compatible API.",
+                    "互換 API のベース URL です。",
                     &form.api_url,
                     cx,
                 ))
-                .child(render_form_field(
-                    "API Key",
-                    "Stored in the system keychain, not in settings.json.",
-                    &form.api_key,
-                    cx,
-                ))
+                .child(render_api_key_field(form, cx))
                 .child(render_models_section(form, window, cx)),
         )
         .child(
@@ -696,6 +764,40 @@ fn render_llm_provider_form_page(
                 .child(render_form_actions(cx)),
         )
         .into_any_element()
+}
+
+/// The data-retention warning shown while the form's endpoint is remote. Unlike
+/// the per-provider gate this does not hide the fields — the API URL is one of
+/// them, and the user has to be able to point it at a local server.
+fn render_form_consent(
+    settings_window: &SettingsWindow,
+    target: &external_ai_consent::ConsentTarget,
+    acknowledged: bool,
+    cx: &mut Context<SettingsWindow>,
+) -> impl IntoElement {
+    Banner::new().severity(Severity::Warning).child(
+        v_flex()
+            .w_full()
+            .min_w_0()
+            .gap_2()
+            .child(external_ai_consent::render_warning_content(
+                settings_window,
+                target,
+                cx,
+            ))
+            .child(Divider::horizontal())
+            .child(
+                Checkbox::new("llm-provider-form-consent", acknowledged.into())
+                    .label("上記のリスクを理解したうえで、このプロバイダーを追加します")
+                    .label_size(LabelSize::Small)
+                    .on_click(cx.listener(|this, checked: &ToggleState, _, cx| {
+                        if let Some(form) = this.llm_provider_form.as_mut() {
+                            form.consent_acknowledged = checked.selected();
+                        }
+                        cx.notify();
+                    })),
+            ),
+    )
 }
 
 fn render_form_field(
@@ -743,38 +845,135 @@ fn render_form_field(
         .into_any_element()
 }
 
+fn render_api_key_field(
+    form: &LlmProviderForm,
+    cx: &mut Context<SettingsWindow>,
+) -> impl IntoElement {
+    let no_api_key = form.no_api_key;
+
+    v_flex()
+        .w_full()
+        .gap_1p5()
+        .map(|this| {
+            if no_api_key {
+                this.child(
+                    v_flex().gap_0p5().child(Label::new("API キー")).child(
+                        Label::new(
+                            "認証が不要なサーバーに接続するため、API キーは送信されません。",
+                        )
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                    ),
+                )
+            } else {
+                this.child(render_form_field(
+                    "API キー",
+                    "settings.json ではなく、システムのキーチェーンに保存されます。",
+                    &form.api_key,
+                    cx,
+                ))
+            }
+        })
+        .child(
+            Checkbox::new("llm-provider-form-no-api-key", no_api_key.into())
+                .label("API キーなしで接続する (認証不要のサーバー)")
+                .label_size(LabelSize::Small)
+                .on_click(cx.listener(|this, checked: &ToggleState, _, cx| {
+                    if let Some(form) = this.llm_provider_form.as_mut() {
+                        form.no_api_key = checked.selected();
+                    }
+                    cx.notify();
+                })),
+        )
+}
+
 fn render_models_section(
     form: &LlmProviderForm,
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
+    let is_fetching = form.models_fetch_task.is_some();
+
     v_flex()
         .mt_1()
         .gap_2()
         .child(
             h_flex()
                 .justify_between()
-                .child(Label::new("Models"))
+                .child(Label::new("モデル"))
                 .child(
-                    Button::new("add-model", "Add Model")
-                        .start_icon(
-                            Icon::new(IconName::Plus)
-                                .size(IconSize::XSmall)
-                                .color(Color::Muted),
+                    h_flex()
+                        .gap_1()
+                        .child(
+                            Button::new(
+                                "fetch-models",
+                                if is_fetching {
+                                    "取得中…"
+                                } else {
+                                    "モデル一覧を取得"
+                                },
+                            )
+                            .start_icon(
+                                Icon::new(IconName::CloudDownload)
+                                    .size(IconSize::XSmall)
+                                    .color(Color::Muted),
+                            )
+                            .label_size(LabelSize::Small)
+                            .disabled(is_fetching)
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    fetch_llm_provider_models(this, window, cx);
+                                },
+                            )),
                         )
-                        .label_size(LabelSize::Small)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            if let Some(form) = this.llm_provider_form.as_mut() {
-                                let index = form.models.len();
-                                form.models.push(ModelInput::new(index, window, cx));
-                            }
-                            cx.notify();
-                        })),
+                        .child(
+                            Button::new("add-model", "モデルを追加")
+                                .start_icon(
+                                    Icon::new(IconName::Plus)
+                                        .size(IconSize::XSmall)
+                                        .color(Color::Muted),
+                                )
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    if let Some(form) = this.llm_provider_form.as_mut() {
+                                        let index = form.models.len();
+                                        form.models.push(ModelInput::new(index, window, cx));
+                                    }
+                                    cx.notify();
+                                })),
+                        ),
                 ),
         )
+        .when_some(form.models_fetch.as_ref(), |this, outcome| {
+            this.child(render_models_fetch_outcome(outcome))
+        })
         .children(form.models.iter().enumerate().map(|(index, model)| {
             render_model(form.kind, model, index, form.models.len(), window, cx)
         }))
+}
+
+fn render_models_fetch_outcome(outcome: &ModelsFetchOutcome) -> AnyElement {
+    match outcome {
+        ModelsFetchOutcome::Error(message) => render_form_error(message.clone()).into_any_element(),
+        ModelsFetchOutcome::Added(count) => h_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                Icon::new(IconName::Check)
+                    .size(IconSize::Small)
+                    .color(Color::Success),
+            )
+            .child(
+                Label::new(format!("{count} 件のモデルを追加しました"))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+            .into_any_element(),
+        ModelsFetchOutcome::NoneNew => Label::new("追加できる新しいモデルはありませんでした")
+            .size(LabelSize::Small)
+            .color(Color::Muted)
+            .into_any_element(),
+    }
 }
 
 fn render_model(
@@ -794,35 +993,35 @@ fn render_model(
         .border_color(cx.theme().colors().border.opacity(0.6))
         .bg(cx.theme().colors().element_active.opacity(0.15))
         .child(render_form_field(
-            "Model Name",
-            "The model's name in the provider's API.",
+            "モデル名",
+            "プロバイダーの API におけるモデルの名前です。",
             &model.name,
             cx,
         ))
         .when(matches!(kind, CompatibleProviderKind::OpenAi), |this| {
             this.child(render_form_field(
-                "Max Completion Tokens",
-                "Maximum completion tokens for OpenAI-compatible requests.",
+                "最大コンプリーショントークン数",
+                "OpenAI 互換リクエストのコンプリーショントークン数の上限です。",
                 &model.max_completion_tokens,
                 cx,
             ))
         })
         .child(render_form_field(
-            "Max Output Tokens",
-            "The maximum number of tokens the model can output.",
+            "最大出力トークン数",
+            "モデルが出力できるトークン数の上限です。",
             &model.max_output_tokens,
             cx,
         ))
         .child(render_form_field(
-            "Max Tokens",
-            "The model context window size.",
+            "最大トークン数",
+            "モデルのコンテキストウィンドウのサイズです。",
             &model.max_tokens,
             cx,
         ))
         .child(render_model_capabilities(kind, model, index, window, cx))
         .when(model_count > 1, |this| {
             this.child(
-                Button::new(("remove-model", index), "Remove Model")
+                Button::new(("remove-model", index), "モデルを削除")
                     .start_icon(
                         Icon::new(IconName::Trash)
                             .size(IconSize::XSmall)
@@ -856,7 +1055,7 @@ fn render_model_capabilities(
         .child(render_capability_checkbox(
             "supports-tools",
             index,
-            "Supports tools",
+            "ツールに対応",
             model.supports_tools,
             |model, state| model.supports_tools = state,
             cx,
@@ -864,7 +1063,7 @@ fn render_model_capabilities(
         .child(render_capability_checkbox(
             "supports-images",
             index,
-            "Supports images",
+            "画像に対応",
             model.supports_images,
             |model, state| model.supports_images = state,
             cx,
@@ -873,7 +1072,7 @@ fn render_model_capabilities(
             this.child(render_capability_checkbox(
                 "supports-parallel-tool-calls",
                 index,
-                "Supports parallel_tool_calls",
+                "parallel_tool_calls に対応",
                 model.supports_parallel_tool_calls,
                 |model, state| model.supports_parallel_tool_calls = state,
                 cx,
@@ -881,7 +1080,7 @@ fn render_model_capabilities(
             .child(render_capability_checkbox(
                 "supports-prompt-cache-key",
                 index,
-                "Supports prompt_cache_key",
+                "prompt_cache_key に対応",
                 model.supports_prompt_cache_key,
                 |model, state| model.supports_prompt_cache_key = state,
                 cx,
@@ -889,7 +1088,7 @@ fn render_model_capabilities(
             .child(render_capability_checkbox(
                 "supports-chat-completions",
                 index,
-                "Supports /chat/completions",
+                "/chat/completions に対応",
                 model.supports_chat_completions,
                 |model, state| model.supports_chat_completions = state,
                 cx,
@@ -898,7 +1097,7 @@ fn render_model_capabilities(
                 this.child(render_capability_checkbox(
                     "max-tokens-parameter",
                     index,
-                    "Uses max_tokens for output limit",
+                    "出力の上限に max_tokens を使用",
                     model.max_tokens_parameter,
                     |model, state| model.max_tokens_parameter = state,
                     cx,
@@ -907,7 +1106,7 @@ fn render_model_capabilities(
             .child(render_capability_checkbox(
                 "supports-thinking",
                 index,
-                "Supports thinking",
+                "思考に対応",
                 model.supports_thinking,
                 |model, state| model.supports_thinking = state,
                 cx,
@@ -923,7 +1122,7 @@ fn render_model_capabilities(
                     this.child(render_capability_checkbox(
                         "interleaved-reasoning",
                         index,
-                        "Preserves thinking in chat history",
+                        "チャット履歴に思考を保持",
                         model.interleaved_reasoning,
                         |model, state| model.interleaved_reasoning = state,
                         cx,
@@ -986,7 +1185,7 @@ fn render_reasoning_effort_selector(
 
     v_flex()
         .gap_1()
-        .child(Label::new("Default reasoning effort").size(LabelSize::Small))
+        .child(Label::new("既定の思考の深さ").size(LabelSize::Small))
         .child(
             DropdownMenu::new(
                 ElementId::Name(format!("reasoning-effort-selector-{index}").into()),
@@ -996,8 +1195,255 @@ fn render_reasoning_effort_selector(
             .style(DropdownStyle::Outlined)
             .trigger_size(ButtonSize::Compact)
             .full_width(true)
-            .aria_label("Default reasoning effort"),
+            .aria_label("既定の思考の深さ"),
         )
+}
+
+/// Header value every Anthropic Messages API request carries; mirrored from
+/// `anthropic::list_models` so a compatible server sees the same version it
+/// would see for a completion.
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// Characters of an error response body quoted back to the user. Enough to
+/// carry a server's own JSON error message without pasting a whole HTML error
+/// page into the form.
+const MAX_QUOTED_ERROR_BODY: usize = 300;
+
+#[derive(Deserialize)]
+struct ModelListResponse {
+    data: Vec<ModelListEntry>,
+}
+
+#[derive(Deserialize)]
+struct ModelListEntry {
+    id: String,
+}
+
+enum ModelsFetchError {
+    BuildRequest(String),
+    /// Refused by the fork's egress allowlist rather than by the network.
+    EgressDenied(String),
+    Connection(String),
+    Unauthorized(u16),
+    Http(u16, String),
+    ReadBody(String),
+    Parse(String),
+}
+
+impl ModelsFetchError {
+    fn message(&self) -> SharedString {
+        match self {
+            Self::BuildRequest(error) => {
+                format!("リクエストを作成できませんでした: {error}").into()
+            }
+            Self::EgressDenied(host) => format!(
+                "{host} への接続がネットワーク許可リストで拒否されました。\
+                 「ネットワーク」ページの「ネットワーク許可リスト」でこのホストを追加してください。"
+            )
+            .into(),
+            Self::Connection(error) => format!("サーバーに接続できませんでした: {error}").into(),
+            Self::Unauthorized(status) => format!(
+                "認証エラー ({status}) です。API キーを確認してください。\
+                 認証が不要なサーバーの場合は「API キーなしで接続する」を確認してください。"
+            )
+            .into(),
+            Self::Http(status, body) if body.is_empty() => {
+                format!("サーバーが HTTP {status} を返しました。").into()
+            }
+            Self::Http(status, body) => {
+                format!("サーバーが HTTP {status} を返しました: {body}").into()
+            }
+            Self::ReadBody(error) => {
+                format!("レスポンス本文の読み込みに失敗しました: {error}").into()
+            }
+            Self::Parse(error) => format!("モデル一覧の応答を解釈できませんでした: {error}").into(),
+        }
+    }
+}
+
+/// The listing endpoint, derived from the base URL exactly the way the provider
+/// crates derive the completion endpoint: `open_ai::stream_completion` appends
+/// straight onto the configured base (which already carries `/v1` when the
+/// server wants it), while `anthropic::list_models` appends the version segment
+/// itself. Deriving it any other way — trimming a trailing slash, say — would
+/// let the fetch succeed against a URL that later fails to complete.
+fn models_endpoint(kind: CompatibleProviderKind, api_url: &str) -> String {
+    match kind {
+        CompatibleProviderKind::OpenAi => format!("{api_url}/models"),
+        CompatibleProviderKind::Anthropic => format!("{api_url}/v1/models?limit=1000"),
+    }
+}
+
+async fn fetch_model_ids(
+    http_client: Arc<dyn HttpClient>,
+    kind: CompatibleProviderKind,
+    api_url: String,
+    api_key: Option<String>,
+) -> Result<Vec<String>, ModelsFetchError> {
+    let mut builder =
+        Request::get(models_endpoint(kind, &api_url)).header("Accept", "application/json");
+    match kind {
+        CompatibleProviderKind::OpenAi => {
+            if let Some(api_key) = &api_key {
+                builder = builder.header("Authorization", format!("Bearer {api_key}"));
+            }
+        }
+        CompatibleProviderKind::Anthropic => {
+            builder = builder.header("Anthropic-Version", ANTHROPIC_VERSION);
+            if let Some(api_key) = &api_key {
+                builder = builder.header("X-Api-Key", api_key.as_str());
+            }
+        }
+    }
+    let request = builder
+        .body(AsyncBody::default())
+        .map_err(|error| ModelsFetchError::BuildRequest(error.to_string()))?;
+
+    let mut response = http_client.send(request).await.map_err(|error| {
+        match error.downcast_ref::<EgressDenied>() {
+            Some(denied) => ModelsFetchError::EgressDenied(denied.host.clone()),
+            None => ModelsFetchError::Connection(error.to_string()),
+        }
+    })?;
+
+    let status = response.status();
+    let mut body = String::new();
+    response
+        .body_mut()
+        .read_to_string(&mut body)
+        .await
+        .map_err(|error| ModelsFetchError::ReadBody(error.to_string()))?;
+
+    if !status.is_success() {
+        return Err(
+            if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                ModelsFetchError::Unauthorized(status.as_u16())
+            } else {
+                ModelsFetchError::Http(status.as_u16(), quoted_error_body(&body))
+            },
+        );
+    }
+
+    parse_model_ids(&body)
+}
+
+fn quoted_error_body(body: &str) -> String {
+    let body = body.trim();
+    match body.char_indices().nth(MAX_QUOTED_ERROR_BODY) {
+        Some((index, _)) => format!("{}…", &body[..index]),
+        None => body.to_string(),
+    }
+}
+
+fn parse_model_ids(body: &str) -> Result<Vec<String>, ModelsFetchError> {
+    let response: ModelListResponse =
+        serde_json::from_str(body).map_err(|error| ModelsFetchError::Parse(error.to_string()))?;
+    Ok(response
+        .data
+        .into_iter()
+        .map(|entry| entry.id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect())
+}
+
+fn fetch_llm_provider_models(
+    settings_window: &mut SettingsWindow,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(form) = settings_window.llm_provider_form.as_ref() else {
+        return;
+    };
+    if form.models_fetch_task.is_some() {
+        return;
+    }
+
+    let kind = form.kind;
+    let api_url = form.api_url.read(cx).text(cx).trim().to_string();
+    let api_key = form.api_key.read(cx).text(cx).trim().to_string();
+    let api_key = (!form.no_api_key && !api_key.is_empty()).then_some(api_key);
+
+    if api_url.is_empty() {
+        if let Some(form) = settings_window.llm_provider_form.as_mut() {
+            form.models_fetch = Some(ModelsFetchOutcome::Error(
+                "API URL を入力してください".into(),
+            ));
+        }
+        cx.notify();
+        return;
+    }
+
+    let fetch = cx.background_spawn(fetch_model_ids(cx.http_client(), kind, api_url, api_key));
+    let task = cx.spawn_in(window, async move |this, cx| {
+        let result = fetch.await;
+        this.update_in(cx, |this, window, cx| {
+            let Some(form) = this.llm_provider_form.as_mut() else {
+                return;
+            };
+            let outcome = match result {
+                Ok(model_ids) => match apply_fetched_models(form, model_ids, window, cx) {
+                    0 => ModelsFetchOutcome::NoneNew,
+                    added => ModelsFetchOutcome::Added(added),
+                },
+                Err(error) => ModelsFetchOutcome::Error(error.message()),
+            };
+            form.models_fetch_task = None;
+            form.models_fetch = Some(outcome);
+            cx.notify();
+        })
+        .log_err();
+    });
+
+    if let Some(form) = settings_window.llm_provider_form.as_mut() {
+        form.models_fetch = None;
+        form.models_fetch_task = Some(task);
+    }
+    cx.notify();
+}
+
+/// Writes the fetched ids into the form, reusing rows the user left blank
+/// before appending new ones and skipping ids that are already listed, so a
+/// fetch never overwrites what was typed by hand. Returns how many rows it
+/// filled.
+fn apply_fetched_models(
+    form: &mut LlmProviderForm,
+    model_ids: Vec<String>,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> usize {
+    let mut listed = form
+        .models
+        .iter()
+        .map(|model| model.name.read(cx).text(cx).trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect::<HashSet<_>>();
+
+    let mut added = 0;
+    for model_id in model_ids {
+        if !listed.insert(model_id.clone()) {
+            continue;
+        }
+
+        let blank_row = form
+            .models
+            .iter()
+            .position(|model| model.name.read(cx).text(cx).trim().is_empty());
+        let index = match blank_row {
+            Some(index) => index,
+            None => {
+                let index = form.models.len();
+                form.models.push(ModelInput::new(index, window, cx));
+                index
+            }
+        };
+        if let Some(model) = form.models.get(index) {
+            model.name.update(cx, |editor, cx| {
+                editor.set_text(model_id.as_str(), window, cx);
+            });
+        }
+        added += 1;
+    }
+    added
 }
 
 fn render_form_error(error: SharedString) -> impl IntoElement {
@@ -1018,7 +1464,7 @@ fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
         .gap_1()
         .justify_end()
         .child(
-            Button::new("llm-provider-form-cancel", "Cancel").on_click(cx.listener(
+            Button::new("llm-provider-form-cancel", "キャンセル").on_click(cx.listener(
                 |this, _, window, cx| {
                     this.llm_provider_form = None;
                     this.pop_sub_page(window, cx);
@@ -1026,7 +1472,7 @@ fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
             )),
         )
         .child(
-            Button::new("llm-provider-form-save", "Save Provider")
+            Button::new("llm-provider-form-save", "プロバイダーを保存")
                 .style(ButtonStyle::Filled)
                 .on_click(cx.listener(|this, _, window, cx| {
                     save_llm_provider_form(this, window, cx);
@@ -1039,7 +1485,9 @@ struct LlmProviderFormValues {
     provider_name: String,
     api_url: String,
     api_key: String,
+    no_api_key: bool,
     models: Vec<ModelValues>,
+    consent_acknowledged: bool,
 }
 
 struct ModelValues {
@@ -1077,6 +1525,7 @@ fn save_llm_provider_form(
             provider_name: form.provider_name.read(cx).text(cx),
             api_url: form.api_url.read(cx).text(cx),
             api_key: form.api_key.read(cx).text(cx),
+            no_api_key: form.no_api_key,
             models: form
                 .models
                 .iter()
@@ -1096,10 +1545,18 @@ fn save_llm_provider_form(
                     max_tokens_parameter: model.max_tokens_parameter.selected(),
                 })
                 .collect(),
+            consent_acknowledged: form.consent_acknowledged,
         }
     };
 
-    let (provider_name, api_url, api_key, models) = match validate_llm_provider_form(&values, cx) {
+    let ValidatedLlmProviderForm {
+        provider_name,
+        api_url,
+        api_key,
+        no_api_key,
+        models,
+        needs_consent,
+    } = match validate_llm_provider_form(&values, cx) {
         Ok(value) => value,
         Err(error) => {
             if let Some(form) = settings_window.llm_provider_form.as_mut() {
@@ -1128,6 +1585,7 @@ fn save_llm_provider_form(
                                         api_url: api_url.clone(),
                                         available_models,
                                         custom_headers: None,
+                                        no_api_key: no_api_key.then_some(true),
                                     },
                                 );
                         }
@@ -1141,9 +1599,15 @@ fn save_llm_provider_form(
                                         api_url: api_url.clone(),
                                         available_models,
                                         custom_headers: None,
+                                        no_api_key: no_api_key.then_some(true),
                                     },
                                 );
                         }
+                    }
+                    if needs_consent {
+                        // Same write as the provider itself, so a saved external
+                        // provider is never left in the gated state (ADR-F10).
+                        external_ai_consent::acknowledge_in(settings, &provider_name);
                     }
                 })
             })?;
@@ -1152,13 +1616,17 @@ fn save_llm_provider_form(
                 .await
                 .map_err(|_| anyhow::anyhow!("Settings update was canceled"))??;
 
-            let set_api_key = cx.update(|_window, cx| {
-                let provider = LanguageModelRegistry::read_global(cx)
-                    .provider(&provider_id)
-                    .ok_or_else(|| anyhow::anyhow!("Provider was not registered"))?;
-                anyhow::Ok(provider.set_api_key(Some(api_key), cx))
-            })??;
-            set_api_key.await?;
+            // A key-less provider stores nothing in the keychain; its
+            // `is_authenticated` comes from the settings entry alone.
+            if let Some(api_key) = api_key {
+                let set_api_key = cx.update(|_window, cx| {
+                    let provider = LanguageModelRegistry::read_global(cx)
+                        .provider(&provider_id)
+                        .ok_or_else(|| anyhow::anyhow!("Provider was not registered"))?;
+                    anyhow::Ok(provider.set_api_key(Some(api_key), cx))
+                })??;
+                set_api_key.await?;
+            }
 
             cx.update(|window, cx| {
                 this.update(cx, |this, cx| {
@@ -1186,13 +1654,26 @@ fn save_llm_provider_form(
     .detach_and_log_err(cx);
 }
 
+struct ValidatedLlmProviderForm {
+    provider_name: String,
+    api_url: String,
+    /// `None` when the provider is configured key-less: nothing is written to
+    /// the system keychain in that case.
+    api_key: Option<String>,
+    no_api_key: bool,
+    models: ParsedModels,
+    /// The endpoint is remote, so the saved provider has to be recorded as
+    /// acknowledged or it would come back gated.
+    needs_consent: bool,
+}
+
 fn validate_llm_provider_form(
     values: &LlmProviderFormValues,
     cx: &App,
-) -> Result<(String, String, String, ParsedModels), SharedString> {
+) -> Result<ValidatedLlmProviderForm, SharedString> {
     let provider_name = values.provider_name.clone();
     if provider_name.is_empty() {
-        return Err("Provider Name cannot be empty".into());
+        return Err("プロバイダー名を入力してください".into());
     }
 
     if LanguageModelRegistry::read_global(cx)
@@ -1203,18 +1684,24 @@ fn validate_llm_provider_form(
                 || provider.name().0.as_ref() == provider_name.as_str()
         })
     {
-        return Err("Provider Name is already taken by another provider".into());
+        return Err("そのプロバイダー名は既に使われています".into());
     }
 
     let api_url = values.api_url.clone();
     if api_url.is_empty() {
-        return Err("API URL cannot be empty".into());
+        return Err("API URL を入力してください".into());
     }
 
-    let api_key = values.api_key.clone();
-    if api_key.is_empty() {
-        return Err("API Key cannot be empty".into());
+    let needs_consent =
+        external_ai_consent::form_target(&provider_name, &api_url, values.kind.label()).is_some();
+    if needs_consent && !values.consent_acknowledged {
+        return Err(
+            "外部のサービスに接続する設定です。学習リスクの警告を確認し、チェックを入れてください"
+                .into(),
+        );
     }
+
+    let api_key = validate_api_key(&values.api_key, values.no_api_key)?;
 
     let models = match values.kind {
         CompatibleProviderKind::OpenAi => ParsedModels::OpenAi(
@@ -1243,15 +1730,34 @@ fn validate_llm_provider_form(
             .all(|model| model_names.insert(model.name.clone())),
     };
     if !model_names_are_unique {
-        return Err("Model Names must be unique".into());
+        return Err("モデル名は重複できません".into());
     }
 
-    Ok((provider_name, api_url, api_key, models))
+    Ok(ValidatedLlmProviderForm {
+        provider_name,
+        api_url,
+        api_key,
+        no_api_key: values.no_api_key,
+        models,
+        needs_consent,
+    })
+}
+
+/// The key is dropped entirely when the provider is key-less, so a value typed
+/// before the checkbox was ticked never reaches the system keychain.
+fn validate_api_key(api_key: &str, no_api_key: bool) -> Result<Option<String>, SharedString> {
+    if no_api_key {
+        return Ok(None);
+    }
+    if api_key.is_empty() {
+        return Err("API キーを入力してください".into());
+    }
+    Ok(Some(api_key.to_string()))
 }
 
 fn parse_model_name(model: &ModelValues) -> Result<String, SharedString> {
     if model.name.is_empty() {
-        return Err("Model Name cannot be empty".into());
+        return Err("モデル名を入力してください".into());
     }
     Ok(model.name.clone())
 }
@@ -1264,13 +1770,13 @@ fn parse_open_ai_model(
         display_name: None,
         max_completion_tokens: Some(parse_u64_field(
             &model.max_completion_tokens,
-            "Max Completion Tokens",
+            "最大コンプリーショントークン数",
         )?),
         max_output_tokens: Some(parse_u64_field(
             &model.max_output_tokens,
-            "Max Output Tokens",
+            "最大出力トークン数",
         )?),
-        max_tokens: parse_u64_field(&model.max_tokens, "Max Tokens")?,
+        max_tokens: parse_u64_field(&model.max_tokens, "最大トークン数")?,
         reasoning_effort: model.supports_thinking.then_some(model.reasoning_effort),
         capabilities: OpenAiCompatibleModelCapabilities {
             tools: model.supports_tools,
@@ -1292,11 +1798,11 @@ fn parse_anthropic_model(
     Ok(AnthropicCompatibleAvailableModel {
         name: parse_model_name(model)?,
         display_name: None,
-        max_tokens: parse_u64_field(&model.max_tokens, "Max Tokens")?,
+        max_tokens: parse_u64_field(&model.max_tokens, "最大トークン数")?,
         tool_override: None,
         max_output_tokens: Some(parse_u64_field(
             &model.max_output_tokens,
-            "Max Output Tokens",
+            "最大出力トークン数",
         )?),
         default_temperature: None,
         extra_beta_headers: Vec::new(),
@@ -1312,5 +1818,100 @@ fn parse_anthropic_model(
 fn parse_u64_field(value: &str, name: &str) -> Result<u64, SharedString> {
     value
         .parse::<u64>()
-        .map_err(|_| format!("{name} must be a number").into())
+        .map_err(|_| format!("{name}には数値を指定してください").into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_api_key_is_only_accepted_when_the_provider_is_key_less() {
+        assert!(validate_api_key("", false).is_err());
+        assert_eq!(
+            validate_api_key("sk-secret", false),
+            Ok(Some("sk-secret".to_string()))
+        );
+        // The typed value is deliberately discarded rather than stored.
+        assert_eq!(validate_api_key("", true), Ok(None));
+        assert_eq!(validate_api_key("sk-secret", true), Ok(None));
+    }
+
+    #[test]
+    fn the_models_endpoint_is_appended_the_way_completions_are() {
+        assert_eq!(
+            models_endpoint(CompatibleProviderKind::OpenAi, "https://api.openai.com/v1"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            models_endpoint(CompatibleProviderKind::OpenAi, "http://llm.corp:8000/v1"),
+            "http://llm.corp:8000/v1/models"
+        );
+        assert_eq!(
+            models_endpoint(
+                CompatibleProviderKind::Anthropic,
+                "https://api.anthropic.com"
+            ),
+            "https://api.anthropic.com/v1/models?limit=1000"
+        );
+    }
+
+    #[test]
+    fn model_ids_are_read_from_the_data_array_of_either_api() {
+        let open_ai = r#"{
+            "object": "list",
+            "data": [
+                { "id": "gpt-5", "object": "model", "owned_by": "openai" },
+                { "id": " qwen3-32b ", "object": "model" },
+                { "id": "  ", "object": "model" }
+            ]
+        }"#;
+        assert_eq!(
+            parse_model_ids(open_ai).ok(),
+            Some(vec!["gpt-5".to_string(), "qwen3-32b".to_string()])
+        );
+
+        let anthropic = r#"{
+            "data": [
+                { "type": "model", "id": "claude-opus-4-1", "display_name": "Claude Opus 4.1" }
+            ],
+            "has_more": false
+        }"#;
+        assert_eq!(
+            parse_model_ids(anthropic).ok(),
+            Some(vec!["claude-opus-4-1".to_string()])
+        );
+
+        assert!(parse_model_ids("not json").is_err());
+        assert!(parse_model_ids(r#"{"models": []}"#).is_err());
+    }
+
+    #[test]
+    fn a_quoted_error_body_is_truncated_on_a_character_boundary() {
+        assert_eq!(quoted_error_body("  boom  "), "boom");
+        let long = "あ".repeat(MAX_QUOTED_ERROR_BODY + 10);
+        let quoted = quoted_error_body(&long);
+        assert_eq!(quoted.chars().count(), MAX_QUOTED_ERROR_BODY + 1);
+        assert!(quoted.ends_with('…'));
+    }
+
+    #[test]
+    fn key_less_is_off_unless_the_settings_entry_says_otherwise() {
+        let without = serde_json::from_str::<OpenAiCompatibleSettingsContent>(
+            r#"{ "api_url": "http://llm.corp:8000/v1", "available_models": [] }"#,
+        )
+        .expect("settings entry should parse");
+        assert_eq!(without.no_api_key, None);
+
+        let with = serde_json::from_str::<OpenAiCompatibleSettingsContent>(
+            r#"{ "api_url": "http://llm.corp:8000/v1", "available_models": [], "no_api_key": true }"#,
+        )
+        .expect("settings entry should parse");
+        assert_eq!(with.no_api_key, Some(true));
+
+        // A key-less provider is the only one whose saved entry carries the
+        // flag at all, so existing configurations round-trip unchanged.
+        let serialized = serde_json::to_value(&without).expect("settings entry should serialize");
+        assert_eq!(serialized.get("no_api_key"), None);
+    }
 }

@@ -16,6 +16,7 @@ mod upstream;
 use crate::allowlist::Allowlist;
 use anyhow::{Context, Result};
 use futures::channel::mpsc;
+use std::fmt;
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -35,9 +36,9 @@ const MAX_CONCURRENT_CONNECTIONS: usize = 256;
 pub use upstream::UpstreamProxy;
 
 /// Configuration for spawning a proxy.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ProxyConfig {
-    /// Hosts the proxy will allow to be reached.
+    /// Hosts the proxy will allow to be reached. Ignored when `policy` is set.
     pub allowlist: Allowlist,
     /// Optional upstream HTTP proxy to chain through, with `NO_PROXY`-style
     /// bypasses for hosts that should connect direct.
@@ -47,6 +48,60 @@ pub struct ProxyConfig {
     /// block on send. The receiver is async-friendly so `gpui` / `tokio`
     /// callers can poll it from their executor of choice.
     pub events: mpsc::UnboundedSender<ProxyEvent>,
+    /// Replaces `allowlist` and the DNS-rebinding filter for this instance.
+    /// `None` keeps the sandbox policy described on [`DestinationPolicy`].
+    pub policy: Option<Arc<dyn DestinationPolicy>>,
+    /// An outer policy every destination must satisfy *in addition to* the
+    /// decision `allowlist` (or `policy`) reached — the two are ANDed, never
+    /// unioned, so this can only narrow.
+    ///
+    /// This is how one policy nests inside another: the inner decision is the
+    /// smaller box, this is the ceiling around it. This fork uses it to put the
+    /// terminal sandbox's own host allowlist inside the editor-wide egress
+    /// allowlist, so a host the user approved for one sandboxed command still
+    /// cannot be reached unless the editor is allowed to reach it at all.
+    pub outer_policy: Option<Arc<dyn DestinationPolicy>>,
+}
+
+impl fmt::Debug for ProxyConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProxyConfig")
+            .field("allowlist", &self.allowlist)
+            .field("upstream", &self.upstream)
+            .field("policy", &self.policy.as_ref().map(|_| "<custom>"))
+            .field(
+                "outer_policy",
+                &self.outer_policy.as_ref().map(|_| "<custom>"),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+/// A destination policy supplied by the caller, replacing both the
+/// [`Allowlist`] check and the DNS-rebinding filter for one proxy instance.
+///
+/// The built-in policy is written for the sandbox: its only client is
+/// model-driven code running inside an OS sandbox, where an IP-literal target
+/// or a hostname resolving into loopback / private space is an escape attempt
+/// rather than a destination. A caller enforcing a *different* policy supplies
+/// it here instead of loosening that one. This fork points ACP agent, MCP and
+/// npm child processes at the editor's own egress allowlist
+/// (`docs/jp-enhance/DESIGN.md` ADR-F13), which deliberately does permit IP
+/// literals and loopback so that a local LLM server stays reachable.
+///
+/// The same trait also fills [`ProxyConfig::outer_policy`], where an
+/// implementation *narrows* the base decision instead of replacing it.
+pub trait DestinationPolicy: Send + Sync + 'static {
+    fn evaluate(&self, host: &str, port: u16) -> PolicyDecision;
+}
+
+/// What a [`DestinationPolicy`] decided about one destination.
+pub enum PolicyDecision {
+    /// Reachable. `permit_local_addresses` waives the DNS-rebinding filter,
+    /// for policies under which loopback / private destinations are legitimate.
+    Allow { permit_local_addresses: bool },
+    /// Refused. The reason reaches both the client and the event stream.
+    Deny(DenyReason),
 }
 
 /// A request method seen by the proxy.
@@ -87,6 +142,9 @@ pub enum DenyReason {
     /// (DNS-rebinding protection). Not applied when the allowlist allows
     /// any host.
     ResolvedToForbiddenIp { host: String },
+    /// A caller-supplied [`DestinationPolicy`] refused the destination.
+    /// `explanation` is what the client is told.
+    NotPermittedByPolicy { host: String, explanation: String },
 }
 
 impl DenyReason {
@@ -95,6 +153,7 @@ impl DenyReason {
             DenyReason::HostNotInAllowlist { .. } => "destination_ip_prohibited",
             DenyReason::IpLiteralRejected { .. } => "destination_ip_prohibited",
             DenyReason::ResolvedToForbiddenIp { .. } => "destination_ip_prohibited",
+            DenyReason::NotPermittedByPolicy { .. } => "destination_ip_prohibited",
         }
     }
 
@@ -110,6 +169,7 @@ impl DenyReason {
                 "host '{host}' resolves only to loopback/private/link-local addresses, \
                  which sandbox policy blocks"
             ),
+            DenyReason::NotPermittedByPolicy { explanation, .. } => explanation.clone(),
         }
     }
 }
@@ -178,6 +238,8 @@ impl ProxyHandle {
             allowlist: config.allowlist,
             upstream: config.upstream,
             events: config.events,
+            policy: config.policy,
+            outer_policy: config.outer_policy,
             active_connections: AtomicUsize::new(0),
         });
 
@@ -248,6 +310,8 @@ impl ProxyHandle {
             allowlist: config.allowlist,
             upstream: config.upstream,
             events: config.events,
+            policy: config.policy,
+            outer_policy: config.outer_policy,
             active_connections: AtomicUsize::new(0),
         });
 
@@ -346,6 +410,8 @@ pub(crate) struct RuntimeState {
     pub(crate) allowlist: Allowlist,
     pub(crate) upstream: Option<UpstreamProxy>,
     pub(crate) events: mpsc::UnboundedSender<ProxyEvent>,
+    pub(crate) policy: Option<Arc<dyn DestinationPolicy>>,
+    pub(crate) outer_policy: Option<Arc<dyn DestinationPolicy>>,
     active_connections: AtomicUsize,
 }
 

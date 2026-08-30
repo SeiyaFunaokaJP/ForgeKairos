@@ -316,18 +316,18 @@ pub async fn open_remote_project(
                         window.prompt(
                             PromptLevel::Critical,
                             match connection_options {
-                                RemoteConnectionOptions::Ssh(_) => "Failed to connect over SSH",
-                                RemoteConnectionOptions::Wsl(_) => "Failed to connect to WSL",
+                                RemoteConnectionOptions::Ssh(_) => "SSH で接続できませんでした",
+                                RemoteConnectionOptions::Wsl(_) => "WSL に接続できませんでした",
                                 RemoteConnectionOptions::Docker(_) => {
-                                    "Failed to connect to Dev Container"
+                                    "Dev Container に接続できませんでした"
                                 }
                                 #[cfg(any(test, feature = "test-support"))]
                                 RemoteConnectionOptions::Mock(_) => {
-                                    "Failed to connect to mock server"
+                                    "モックサーバーに接続できませんでした"
                                 }
                             },
                             Some(&format!("{e:#}")),
-                            &["Retry", "Cancel"],
+                            &["再試行", "キャンセル"],
                             cx,
                         )
                     })?
@@ -377,18 +377,18 @@ pub async fn open_remote_project(
                         window.prompt(
                             PromptLevel::Critical,
                             match connection_options {
-                                RemoteConnectionOptions::Ssh(_) => "Failed to connect over SSH",
-                                RemoteConnectionOptions::Wsl(_) => "Failed to connect to WSL",
+                                RemoteConnectionOptions::Ssh(_) => "SSH で接続できませんでした",
+                                RemoteConnectionOptions::Wsl(_) => "WSL に接続できませんでした",
                                 RemoteConnectionOptions::Docker(_) => {
-                                    "Failed to connect to Dev Container"
+                                    "Dev Container に接続できませんでした"
                                 }
                                 #[cfg(any(test, feature = "test-support"))]
                                 RemoteConnectionOptions::Mock(_) => {
-                                    "Failed to connect to mock server"
+                                    "モックサーバーに接続できませんでした"
                                 }
                             },
                             Some(&format!("{e:#}")),
-                            &["Retry", "Cancel"],
+                            &["再試行", "キャンセル"],
                             cx,
                         )
                     })?

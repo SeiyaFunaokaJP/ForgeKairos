@@ -131,6 +131,9 @@ pub struct LanguageSettings {
     pub extend_list_on_newline: bool,
     /// Whether to indent list items when pressing tab after a list marker.
     pub indent_list_on_tab: bool,
+    /// Whether pressing enter should first append the two trailing spaces that
+    /// spell a Markdown hard line break.
+    pub hard_break_on_newline: bool,
     /// Inlay hint related settings.
     pub inlay_hints: InlayHintSettings,
     /// Whether to automatically close brackets.
@@ -772,6 +775,7 @@ impl settings::Settings for AllLanguageSettings {
                 extend_comment_on_newline: settings.extend_comment_on_newline.unwrap(),
                 extend_list_on_newline: settings.extend_list_on_newline.unwrap(),
                 indent_list_on_tab: settings.indent_list_on_tab.unwrap(),
+                hard_break_on_newline: settings.hard_break_on_newline.unwrap(),
                 inlay_hints: InlayHintSettings {
                     enabled: inlay_hints.enabled.unwrap(),
                     show_value_hints: inlay_hints.show_value_hints.unwrap(),

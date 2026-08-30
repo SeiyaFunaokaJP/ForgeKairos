@@ -727,7 +727,7 @@ impl PickerDelegate for Delegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Search all files…".into()
+        "すべてのファイルを検索…".into()
     }
 
     fn searchbar_trailer(
@@ -788,30 +788,24 @@ impl PickerDelegate for Delegate {
     ) -> Vec<picker::PickerAction> {
         use gpui::Action as _;
         vec![
-            picker::PickerAction::header("Split…"),
+            picker::PickerAction::header("分割…"),
+            picker::PickerAction::button("左", workspace::pane::SplitLeft::default().boxed_clone()),
             picker::PickerAction::button(
-                "Left",
-                workspace::pane::SplitLeft::default().boxed_clone(),
-            ),
-            picker::PickerAction::button(
-                "Right",
+                "右",
                 workspace::pane::SplitRight::default().boxed_clone(),
             ),
-            picker::PickerAction::button("Up", workspace::pane::SplitUp::default().boxed_clone()),
-            picker::PickerAction::button(
-                "Down",
-                workspace::pane::SplitDown::default().boxed_clone(),
-            ),
+            picker::PickerAction::button("上", workspace::pane::SplitUp::default().boxed_clone()),
+            picker::PickerAction::button("下", workspace::pane::SplitDown::default().boxed_clone()),
             picker::PickerAction::separator(),
             picker::PickerAction::button(
                 if self.selected_matches.len() > 1 {
-                    "Open Multiple"
+                    "複数開く"
                 } else {
-                    "Open File"
+                    "ファイルを開く"
                 },
                 menu::Confirm.boxed_clone(),
             ),
-            picker::PickerAction::button("Open as Tab", super::ToProjectSearch.boxed_clone()),
+            picker::PickerAction::button("タブで開く", super::ToProjectSearch.boxed_clone()),
         ]
     }
 
@@ -1126,15 +1120,15 @@ impl Delegate {
                                             .tooltip(move |_window, cx| {
                                                 let (label, action): (_, &dyn gpui::Action) =
                                                     if is_collapsed {
-                                                        ("Unfold", &Unfold)
+                                                        ("展開", &Unfold)
                                                     } else {
-                                                        ("Fold", &Fold)
+                                                        ("折りたたむ", &Fold)
                                                     };
                                                 Tooltip::with_meta_in(
                                                     label,
                                                     Some(action),
                                                     format!(
-                                                        "{} to toggle all",
+                                                        "{} ですべて切り替え",
                                                         text_for_keystroke(
                                                             &Modifiers::alt(),
                                                             "click",

@@ -107,7 +107,9 @@ impl EditPredictionProvider {
 
     pub fn display_name(&self) -> Option<&'static str> {
         match self {
-            EditPredictionProvider::Zed => Some("Zed AI"),
+            // "Zed" instead of upstream's "Zed AI": the LLM provider page and
+            // the consent list both say "Zed", and users look for that name.
+            EditPredictionProvider::Zed => Some("Zed"),
             EditPredictionProvider::Copilot => Some("GitHub Copilot"),
             EditPredictionProvider::Codestral => Some("Codestral"),
             EditPredictionProvider::Mercury => Some("Mercury"),
@@ -304,11 +306,16 @@ pub struct OllamaEditPredictionSettingsContent {
 pub enum EditPredictionDataCollectionChoice {
     /// Use the preference previously set via the status-bar toggle, or false
     /// if no preference has been stored.
+    // The strum labels are what the settings GUI dropdown displays; the JSON
+    // values stay snake_case English via serde.
     #[default]
+    #[strum(serialize = "既定 (過去の切替に従う)")]
     Default,
     /// Allow Zed to collect training data from open-source projects.
+    #[strum(serialize = "はい")]
     Yes,
     /// Never allow training data collection.
+    #[strum(serialize = "いいえ")]
     No,
 }
 
@@ -607,6 +614,13 @@ pub struct LanguageSettingsContent {
     ///
     /// Default: true
     pub indent_list_on_tab: Option<bool>,
+    /// Whether pressing enter should first append two spaces to the current line,
+    /// which is how Markdown spells a hard line break. Lines where the break would
+    /// be dropped (headings, tables, list items, code fences, blank lines, and lines
+    /// that already end in a break) are left alone.
+    ///
+    /// Default: false
+    pub hard_break_on_newline: Option<bool>,
     /// Inlay hint related settings.
     pub inlay_hints: Option<InlayHintSettingsContent>,
     /// Whether to automatically type closing characters for you. For example,

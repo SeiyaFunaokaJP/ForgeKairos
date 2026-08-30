@@ -2,9 +2,8 @@ use collections::{BTreeMap, HashMap, HashSet};
 use gpui::SharedString;
 use linkify::LinkFinder;
 pub use pulldown_cmark::TagEnd as MarkdownTagEnd;
-use pulldown_cmark::{
-    Alignment, CowStr, HeadingLevel, LinkType, MetadataBlockKind, Options, Parser,
-};
+pub use pulldown_cmark::{Alignment, HeadingLevel};
+use pulldown_cmark::{CowStr, LinkType, MetadataBlockKind, Options, Parser};
 use std::{ops::Range, sync::Arc};
 use util::markdown::generate_heading_slug;
 
@@ -229,6 +228,19 @@ fn is_br_tag(html: &str) -> bool {
         .split_ascii_whitespace()
         .next()
         .is_some_and(|name| name.eq_ignore_ascii_case("br"))
+}
+
+/// Parses `text` into the same event stream the preview renders, for consumers
+/// that need the events without any GPUI state.
+///
+/// HTML blocks are left as raw [`MarkdownEvent::Html`] spans rather than being
+/// parsed into elements, and metadata blocks are kept so callers can skip them
+/// (without [`Options::ENABLE_YAML_STYLE_METADATA_BLOCKS`] a `---` front matter
+/// would parse as a rule followed by a setext heading).
+///
+/// Used by the Markdown → PDF export (DESIGN.md §5.3, ADR-F05).
+pub fn parse_markdown_events(text: &str) -> Vec<(Range<usize>, MarkdownEvent)> {
+    parse_markdown_with_options(text, false, false, true).events
 }
 
 pub(crate) fn parse_markdown_with_options(
@@ -897,7 +909,9 @@ pub struct CodeBlockMetadata {
     pub is_fenced_closed: bool,
 }
 
-fn extract_code_content_range(text: &str) -> Range<usize> {
+/// Range of the content of an inline code span within its source text, i.e. the
+/// span without its surrounding backtick delimiters.
+pub fn extract_code_content_range(text: &str) -> Range<usize> {
     let text_len = text.len();
     if text_len == 0 {
         return 0..0;

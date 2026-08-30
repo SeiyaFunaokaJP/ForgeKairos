@@ -27,6 +27,23 @@ message OpenServerSettings {
   uint64 project_id = 1;
 }
 
+// Pushes the connecting IDE's egress allowlist to the remote host so the
+// host's own outgoing HTTP(S) requests (LSP/node downloads, extensions, LLM
+// providers) are gated by the same list. The allowlist on the client side is
+// the source of truth (see docs/jp-enhance/DESIGN.md ADR-F11); this is sent once,
+// right after the connection is established, and is not re-sent if the local
+// allowlist changes later in the session — the remote host picks up the
+// current allowlist again on its next fresh connection.
+message SetEgressAllowlist {
+  repeated string allowed_hosts = 1;
+  // The user's `proxy_child_processes` choice, so the remote host runs (or
+  // does not run) the same child-process egress proxy for the ACP agents, MCP
+  // servers and npm invocations that execute over there (ADR-F14). Absent —
+  // an older client — means on, which is what the policy file's absent value
+  // means too: the mechanism is opted out of, never into.
+  optional bool proxy_child_processes = 2;
+}
+
 message GetCrashFiles {}
 
 message GetCrashFilesResponse {

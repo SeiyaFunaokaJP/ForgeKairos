@@ -17,13 +17,13 @@ pub enum AiSettingItemStatus {
 impl AiSettingItemStatus {
     fn tooltip_text(&self) -> &'static str {
         match self {
-            Self::Stopped => "Server is stopped.",
-            Self::Starting => "Server is starting.",
-            Self::Running => "Server is active.",
-            Self::Error => "Server has an error.",
-            Self::AuthRequired => "Authentication Required.",
-            Self::ClientSecretRequired => "Client Secret Required.",
-            Self::Authenticating => "Waiting for Authorization…",
+            Self::Stopped => "サーバーは停止しています。",
+            Self::Starting => "サーバーを起動しています。",
+            Self::Running => "サーバーは動作中です。",
+            Self::Error => "サーバーでエラーが発生しています。",
+            Self::AuthRequired => "認証が必要です。",
+            Self::ClientSecretRequired => "クライアントシークレットが必要です。",
+            Self::Authenticating => "認証の完了を待っています…",
         }
     }
 
@@ -60,9 +60,9 @@ impl AiSettingItemSource {
 
     fn tooltip_text(&self, label: &str) -> String {
         match self {
-            Self::Extension => format!("{label} was installed from an extension."),
-            Self::Registry => format!("{label} was installed from the ACP registry."),
-            Self::Custom => format!("{label} was configured manually."),
+            Self::Extension => format!("{label} は拡張機能からインストールされました。"),
+            Self::Registry => format!("{label} は ACP レジストリからインストールされました。"),
+            Self::Custom => format!("{label} は手動で設定されました。"),
         }
     }
 }
@@ -76,6 +76,7 @@ pub struct AiSettingItem {
     icon: Option<AnyElement>,
     label: SharedString,
     detail_label: Option<SharedString>,
+    detail_label_tooltip: Option<SharedString>,
     actions: Vec<AnyElement>,
     details: Option<AnyElement>,
 }
@@ -94,6 +95,7 @@ impl AiSettingItem {
             icon: None,
             label: label.into(),
             detail_label: None,
+            detail_label_tooltip: None,
             actions: Vec::new(),
             details: None,
         }
@@ -106,6 +108,13 @@ impl AiSettingItem {
 
     pub fn detail_label(mut self, detail: impl Into<SharedString>) -> Self {
         self.detail_label = Some(detail.into());
+        self
+    }
+
+    /// Explanation shown on hover over the detail label. Ignored without a
+    /// [`Self::detail_label`] to attach it to.
+    pub fn detail_label_tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
+        self.detail_label_tooltip = Some(tooltip.into());
         self
     }
 
@@ -129,12 +138,14 @@ impl RenderOnce for AiSettingItem {
             icon,
             label,
             detail_label,
+            detail_label_tooltip,
             actions,
             details,
         } = self;
 
         let source_id = format!("source-{}", id);
         let icon_id = format!("icon-{}", id);
+        let detail_id = format!("detail-{}", id);
         let status_tooltip = status.tooltip_text();
         let source_tooltip = source.tooltip_text(&label);
 
@@ -226,9 +237,17 @@ impl RenderOnce for AiSettingItem {
                             )
                             .when_some(detail_label, |this, detail| {
                                 this.child(
-                                    Label::new(detail)
-                                        .color(Color::Muted)
-                                        .size(LabelSize::Small),
+                                    div()
+                                        .id(SharedString::from(detail_id))
+                                        .flex_none()
+                                        .when_some(detail_label_tooltip, |this, tooltip| {
+                                            this.tooltip(Tooltip::text(tooltip))
+                                        })
+                                        .child(
+                                            Label::new(detail)
+                                                .color(Color::Muted)
+                                                .size(LabelSize::Small),
+                                        ),
                                 )
                             }),
                     )
@@ -410,5 +429,63 @@ impl Component for AiSettingItem {
         ];
 
         example_group(examples).vertical().into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{Render, TestAppContext, px, size};
+
+    struct Row;
+
+    impl Render for Row {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            v_flex().size_full().px_8().child(
+                AiSettingItem::new(
+                    "a-context-server-with-a-rather-long-name",
+                    "a-context-server-with-a-rather-long-name",
+                    AiSettingItemStatus::Running,
+                    AiSettingItemSource::Custom,
+                )
+                .detail_label("統制外")
+                .action(IconButton::new("test", IconName::RotateCw).icon_size(IconSize::Small))
+                .action(IconButton::new("configure", IconName::Settings).icon_size(IconSize::Small))
+                .action(IconButton::new("uninstall", IconName::Trash).icon_size(IconSize::Small)),
+            )
+        }
+    }
+
+    /// The row's action buttons must stay laid out inside the window even when
+    /// the label is too long to fit: they are the only way to test, configure or
+    /// remove a server from the list.
+    #[gpui::test]
+    async fn test_actions_stay_inside_a_narrow_row(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+        });
+
+        let (_view, cx) = cx.add_window_view(|_, _| Row);
+        cx.simulate_resize(size(px(360.), px(200.)));
+        cx.run_until_parked();
+
+        let window_width = cx.update(|window, _| window.viewport_size().width);
+        for selector in ["ICON-RotateCw", "ICON-Settings", "ICON-Trash"] {
+            let bounds = cx
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("{selector} should be laid out"));
+            assert!(
+                bounds.size.width > px(0.) && bounds.size.height > px(0.),
+                "{selector} should have a non-zero size, got {:?}",
+                bounds.size
+            );
+            assert!(
+                bounds.right() <= window_width,
+                "{selector} should stay inside the window (right edge {:?} > {window_width:?})",
+                bounds.right()
+            );
+        }
     }
 }

@@ -280,6 +280,14 @@ pub fn settings_file() -> &'static PathBuf {
     SETTINGS_FILE.get_or_init(|| config_dir().join("settings.json"))
 }
 
+/// Returns the path to the `network_allowlist.json` egress policy file.
+/// On Windows this resolves to `%APPDATA%\Zed\network_allowlist.json`.
+/// See `docs/jp-enhance/DESIGN.md` §4 (ADR-F03).
+pub fn network_allowlist_file() -> &'static PathBuf {
+    static NETWORK_ALLOWLIST_FILE: OnceLock<PathBuf> = OnceLock::new();
+    NETWORK_ALLOWLIST_FILE.get_or_init(|| config_dir().join("network_allowlist.json"))
+}
+
 /// Returns the path to the global settings file.
 pub fn global_settings_file() -> &'static PathBuf {
     static GLOBAL_SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();

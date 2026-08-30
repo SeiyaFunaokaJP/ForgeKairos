@@ -28,7 +28,7 @@ use ui::{App, Context, SharedString, ThreadItemWorktreeInfo, WorktreeKind};
 use util::ResultExt as _;
 use workspace::{PathList, SerializedWorkspaceLocation, WorkspaceDb};
 
-use crate::DEFAULT_THREAD_TITLE;
+use crate::is_default_thread_title;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ThreadId(uuid::Uuid);
@@ -129,7 +129,7 @@ fn migrate_thread_metadata(cx: &mut App) -> Task<anyhow::Result<()>> {
                         session_id: Some(entry.id),
                         agent_id: ZED_AGENT_ID.clone(),
                         title: if entry.title.is_empty()
-                            || entry.title.as_ref() == DEFAULT_THREAD_TITLE
+                            || is_default_thread_title(entry.title.as_ref())
                         {
                             None
                         } else {
@@ -1773,7 +1773,7 @@ impl Column for ThreadMetadata {
                 thread_id,
                 session_id: id.map(acp::SessionId::new),
                 agent_id,
-                title: if title.is_empty() || title == DEFAULT_THREAD_TITLE {
+                title: if title.is_empty() || is_default_thread_title(&title) {
                     None
                 } else {
                     Some(title.into())
@@ -1971,6 +1971,46 @@ mod tests {
         assert_eq!(rows[0].title.as_deref(), Some("Agent Generated Title"));
         assert_eq!(rows[0].title_override.as_deref(), Some("User Title"));
         assert_eq!(rows[0].title().as_deref(), Some("User Title"));
+    }
+
+    /// F1-4: `DEFAULT_THREAD_TITLE` を日本語化したので、日本語化前に
+    /// 英語の既定タイトルのまま永続化されたスレッドも「タイトル無し」として
+    /// 読み戻せなければならない (`is_default_thread_title` の互換分岐)。
+    #[gpui::test]
+    async fn test_database_treats_legacy_english_default_title_as_unset(_cx: &mut TestAppContext) {
+        let now = Utc::now();
+        let legacy = make_metadata(
+            "session-legacy",
+            crate::LEGACY_DEFAULT_THREAD_TITLE,
+            now,
+            PathList::new(&[Path::new("/project-a")]),
+        );
+        let current = make_metadata(
+            "session-current",
+            crate::DEFAULT_THREAD_TITLE,
+            now,
+            PathList::new(&[Path::new("/project-a")]),
+        );
+
+        let thread = std::thread::current();
+        let test_name = thread.name().unwrap_or("unknown_test");
+        let db_name = format!("THREAD_METADATA_DB_{}", test_name);
+        let db = ThreadMetadataDb(gpui::block_on(db::open_test_db::<ThreadMetadataDb>(
+            &db_name,
+        )));
+
+        db.save(legacy).await.unwrap();
+        db.save(current).await.unwrap();
+
+        let rows = db.list().unwrap();
+        assert_eq!(rows.len(), 2);
+        for row in &rows {
+            assert_eq!(
+                row.title, None,
+                "既定タイトルは新旧どちらの値でも未設定として読み戻す"
+            );
+            assert_eq!(row.display_title().as_ref(), crate::DEFAULT_THREAD_TITLE);
+        }
     }
 
     #[gpui::test]

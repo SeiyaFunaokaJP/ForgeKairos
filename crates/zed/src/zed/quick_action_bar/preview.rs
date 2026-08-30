@@ -37,21 +37,23 @@ impl QuickActionBar {
             return None;
         };
 
+        // The button opens the preview beside the source, so both stay visible;
+        // the tooltip therefore advertises the "to the side" action's binding.
         let (button_id, tooltip_text, open_action_for_tooltip) = match &preview_target {
             PreviewTarget::Markdown(_) => (
                 "toggle-markdown-preview",
-                "Preview Markdown",
-                &markdown_preview::OpenPreview as &dyn gpui::Action,
+                "Markdown をプレビュー",
+                &markdown_preview::OpenPreviewToTheSide as &dyn gpui::Action,
             ),
             PreviewTarget::Svg(_) => (
                 "toggle-svg-preview",
-                "Preview SVG",
-                &svg_preview::OpenPreview as &dyn gpui::Action,
+                "SVG をプレビュー",
+                &svg_preview::OpenPreviewToTheSide as &dyn gpui::Action,
             ),
             PreviewTarget::TabularData(_) => (
                 "toggle-tabular-preview",
-                "Preview Tabular Data",
-                &tabular_data_preview::OpenPreview as &dyn gpui::Action,
+                "表形式データをプレビュー",
+                &tabular_data_preview::OpenPreviewToTheSide as &dyn gpui::Action,
             ),
         };
 
@@ -69,7 +71,7 @@ impl QuickActionBar {
                     tooltip_text,
                     Some(open_action_for_tooltip),
                     format!(
-                        "{} to open in a split",
+                        "{} で同じタブグループに開く",
                         text_for_keystroke(&alt_click.modifiers, &alt_click.key, cx)
                     ),
                     cx,
@@ -86,45 +88,76 @@ impl QuickActionBar {
                         let Some(pane) = workspace.pane_for(active_item.as_ref()) else {
                             return;
                         };
-                        let open_to_the_side = window.modifiers().alt;
+                        // Splitting is the default: opening the preview in the
+                        // same pane buries the source it was rendered from.
+                        let open_in_same_pane = window.modifiers().alt;
                         match &preview_target {
                             PreviewTarget::Markdown(editor) => {
                                 let editor = editor.clone();
-                                if open_to_the_side {
-                                    MarkdownPreviewView::open_preview_to_the_side_of_pane(
+                                if open_in_same_pane {
+                                    MarkdownPreviewView::open_preview_in_pane(
                                         workspace, editor, pane, window, cx,
                                     );
                                 } else {
-                                    MarkdownPreviewView::open_preview_in_pane(
+                                    MarkdownPreviewView::open_preview_to_the_side_of_pane(
                                         workspace, editor, pane, window, cx,
                                     );
                                 }
                             }
                             PreviewTarget::Svg(buffer) => {
                                 let buffer = buffer.clone();
-                                if open_to_the_side {
-                                    SvgPreviewView::open_preview_to_the_side_of_pane(
+                                if open_in_same_pane {
+                                    SvgPreviewView::open_preview_in_pane(
                                         workspace, buffer, pane, window, cx,
                                     );
                                 } else {
-                                    SvgPreviewView::open_preview_in_pane(
+                                    SvgPreviewView::open_preview_to_the_side_of_pane(
                                         workspace, buffer, pane, window, cx,
                                     );
                                 }
                             }
                             PreviewTarget::TabularData(editor) => {
                                 let editor = editor.clone();
-                                if open_to_the_side {
-                                    TabularDataPreviewPane::open_preview_to_the_side_of_pane(
-                                        workspace, editor, pane, window, cx,
-                                    );
-                                } else {
+                                if open_in_same_pane {
                                     TabularDataPreviewPane::open_preview_in_pane(
                                         editor, pane, window, cx,
+                                    );
+                                } else {
+                                    TabularDataPreviewPane::open_preview_to_the_side_of_pane(
+                                        workspace, editor, pane, window, cx,
                                     );
                                 }
                             }
                         }
+                    });
+                }
+            });
+
+        Some(button.into_any_element())
+    }
+
+    pub fn render_export_pdf_button(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let active_item = self.active_item.as_ref()?;
+        let editor = active_item.act_as::<Editor>(cx)?;
+        if !MarkdownPreviewView::is_markdown_file(&editor, cx) {
+            return None;
+        }
+
+        let button = IconButton::new("export-markdown-to-pdf", IconName::Download)
+            .icon_size(IconSize::Small)
+            .style(ButtonStyle::Subtle)
+            .tooltip(|_window, cx| {
+                Tooltip::for_action("PDF に書き出す", &markdown_preview::ExportToPdf, cx)
+            })
+            .on_click({
+                let workspace_handle = self.workspace.clone();
+                move |_, window, cx| {
+                    let Some(workspace) = workspace_handle.upgrade() else {
+                        return;
+                    };
+                    let editor = editor.clone();
+                    workspace.update(cx, |workspace, cx| {
+                        MarkdownPreviewView::export_to_pdf(workspace, editor, window, cx);
                     });
                 }
             });

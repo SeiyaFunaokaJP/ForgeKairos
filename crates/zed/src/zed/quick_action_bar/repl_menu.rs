@@ -101,7 +101,7 @@ impl QuickActionBar {
                                 h_flex()
                                     .child(
                                         Label::new(format!(
-                                            "kernel: {} ({})",
+                                            "カーネル: {} ({})",
                                             menu_state.kernel_name, menu_state.kernel_language
                                         ))
                                         .size(LabelSize::Small)
@@ -135,9 +135,9 @@ impl QuickActionBar {
                     .custom_entry(
                         move |_window, _cx| {
                             Label::new(if has_nonempty_selection {
-                                "Run Selection"
+                                "選択範囲を実行"
                             } else {
-                                "Run Line"
+                                "行を実行"
                             })
                             .into_any_element()
                         },
@@ -150,7 +150,7 @@ impl QuickActionBar {
                     )
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Interrupt")
+                            Label::new("中断")
                                 .size(LabelSize::Small)
                                 .color(Color::Error)
                                 .into_any_element()
@@ -164,7 +164,7 @@ impl QuickActionBar {
                     )
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Clear Outputs")
+                            Label::new("出力を消去")
                                 .size(LabelSize::Small)
                                 .color(Color::Muted)
                                 .into_any_element()
@@ -179,7 +179,7 @@ impl QuickActionBar {
                     .separator()
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Shut Down Kernel")
+                            Label::new("カーネルを終了")
                                 .size(LabelSize::Small)
                                 .color(Color::Error)
                                 .into_any_element()
@@ -193,7 +193,7 @@ impl QuickActionBar {
                     )
                     .custom_entry(
                         move |_window, _cx| {
-                            Label::new("Restart Kernel")
+                            Label::new("カーネルを再起動")
                                 .size(LabelSize::Small)
                                 .color(Color::Error)
                                 .into_any_element()
@@ -205,7 +205,7 @@ impl QuickActionBar {
                         },
                     )
                     .separator()
-                    .action("View Sessions", Box::new(repl::Sessions))
+                    .action("セッション一覧", Box::new(repl::Sessions))
                     // TODO: Add shut down all kernels action
                     // .action("Shut Down all Kernels", Box::new(gpui::NoAction))
                 })
@@ -220,7 +220,7 @@ impl QuickActionBar {
                     )
                     .width(rems(1.))
                     .disabled(menu_state.popover_disabled),
-                Tooltip::text("REPL Menu"),
+                Tooltip::text("REPL メニュー"),
             );
 
         let button = ButtonLike::new_rounded_left("toggle_repl_icon")
@@ -257,7 +257,7 @@ impl QuickActionBar {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let tooltip: SharedString =
-            SharedString::from(format!("Start REPL for {}", kernel_specification.name()));
+            SharedString::from(format!("{} の REPL を開始", kernel_specification.name()));
 
         Some(
             h_flex()
@@ -350,7 +350,7 @@ impl QuickActionBar {
                                     Label::new(if let Some(name) = current_kernel_name {
                                         name
                                     } else {
-                                        SharedString::from("Select Kernel")
+                                        SharedString::from("カーネルを選択")
                                     })
                                     .size(LabelSize::Small)
                                     .color(if current_kernelspec.is_some() {
@@ -367,14 +367,15 @@ impl QuickActionBar {
                                 .size(IconSize::XSmall),
                         ),
                 ),
-            Tooltip::text("Select Kernel"),
+            Tooltip::text("カーネルを選択"),
         )
         .with_handle(menu_handle)
         .into_any_element()
     }
 
     pub fn render_repl_setup(&self, language: &str, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let tooltip: SharedString = SharedString::from(format!("Setup Zed REPL for {}", language));
+        let tooltip: SharedString =
+            SharedString::from(format!("{} 向けに Zed REPL を設定", language));
         Some(
             h_flex()
                 .gap(DynamicSpacing::Base06.rems(cx))
@@ -403,7 +404,7 @@ fn session_state(session: Entity<Session>, cx: &mut App) -> ReplMenuState {
 
     let fill_fields = || {
         ReplMenuState {
-            tooltip: "Nothing running".into(),
+            tooltip: "実行中のカーネルはありません".into(),
             icon: IconName::ReplNeutral,
             icon_color: Color::Default,
             icon_is_animating: false,
@@ -428,33 +429,28 @@ fn session_state(session: Entity<Session>, cx: &mut App) -> ReplMenuState {
             ..fill_fields()
         };
 
-    let starting = || transitional(format!("{} is starting", kernel_name).into(), true, true);
-    let restarting = || transitional(format!("Restarting {}", kernel_name).into(), true, true);
-    let shutting_down = || {
+    let starting = || transitional(format!("{} を起動中", kernel_name).into(), true, true);
+    let restarting = || transitional(format!("{} を再起動中", kernel_name).into(), true, true);
+    let shutting_down = || transitional(format!("{} を終了中", kernel_name).into(), false, true);
+    let auto_restarting =
+        || transitional(format!("{} を自動再起動中", kernel_name).into(), true, true);
+    let unknown = || {
         transitional(
-            format!("{} is shutting down", kernel_name).into(),
+            format!("{} の状態は不明です", kernel_name).into(),
             false,
             true,
         )
     };
-    let auto_restarting = || {
-        transitional(
-            format!("Auto-restarting {}", kernel_name).into(),
-            true,
-            true,
-        )
-    };
-    let unknown = || transitional(format!("{} state unknown", kernel_name).into(), false, true);
     let other = |state: &str| {
         transitional(
-            format!("{} state: {}", kernel_name, state).into(),
+            format!("{} の状態: {}", kernel_name, state).into(),
             false,
             true,
         )
     };
 
     let shutdown = || ReplMenuState {
-        tooltip: "Nothing running".into(),
+        tooltip: "実行中のカーネルはありません".into(),
         icon: IconName::ReplNeutral,
         icon_color: Color::Default,
         icon_is_animating: false,
@@ -468,13 +464,13 @@ fn session_state(session: Entity<Session>, cx: &mut App) -> ReplMenuState {
         Kernel::Restarting => restarting(),
         Kernel::RunningKernel(kernel) => match &kernel.execution_state() {
             ExecutionState::Idle => ReplMenuState {
-                tooltip: format!("Run code on {} ({})", kernel_name, kernel_language).into(),
+                tooltip: format!("{} ({}) でコードを実行", kernel_name, kernel_language).into(),
                 indicator: Some(Indicator::dot().color(Color::Success)),
                 status: session.kernel.status(),
                 ..fill_fields()
             },
             ExecutionState::Busy => ReplMenuState {
-                tooltip: format!("Interrupt {} ({})", kernel_name, kernel_language).into(),
+                tooltip: format!("{} ({}) を中断", kernel_name, kernel_language).into(),
                 icon_is_animating: true,
                 popover_disabled: false,
                 indicator: None,
@@ -491,7 +487,7 @@ fn session_state(session: Entity<Session>, cx: &mut App) -> ReplMenuState {
         },
         Kernel::StartingKernel(_) => starting(),
         Kernel::ErroredLaunch(e) => ReplMenuState {
-            tooltip: format!("Error with kernel {}: {}", kernel_name, e).into(),
+            tooltip: format!("カーネル {} でエラーが発生しました: {}", kernel_name, e).into(),
             popover_disabled: false,
             indicator: Some(Indicator::dot().color(Color::Error)),
             status: session.kernel.status(),

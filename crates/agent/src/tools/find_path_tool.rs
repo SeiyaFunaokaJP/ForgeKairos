@@ -113,11 +113,11 @@ impl AgentTool for FindPathTool {
         input: Result<Self::Input, serde_json::Value>,
         _cx: &mut App,
     ) -> SharedString {
-        let mut title = "Find paths".to_string();
         if let Ok(input) = input {
-            title.push_str(&format!(" matching “`{}`”", input.glob));
+            format!("“`{}`” に一致するパスを検索", input.glob).into()
+        } else {
+            "パスを検索".into()
         }
-        title.into()
     }
 
     fn run(

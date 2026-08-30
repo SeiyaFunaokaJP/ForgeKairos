@@ -237,7 +237,7 @@ impl Editor {
             self.add_edit_block(
                 target.anchor,
                 "",
-                "Enter bookmark label (Optional)",
+                "ブックマークのラベルを入力 (省略可)",
                 Some(Box::new(move |label: String, _, cx| {
                     bookmark_store.update(cx, |store, cx| {
                         store.toggle_bookmark(target.buffer, target.buffer_anchor, label, cx);
@@ -355,7 +355,7 @@ impl Editor {
                     Editor::open_locations_in_multibuffer(
                         workspace,
                         locations,
-                        "Bookmarks".into(),
+                        "ブックマーク".into(),
                         false,
                         false,
                         MultibufferSelectionMode::First,

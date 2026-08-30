@@ -97,18 +97,18 @@ impl AgentTool for GrepTool {
                 let page = input.page();
                 let regex_str = MarkdownInlineCode(&input.regex);
                 let case_info = if input.case_sensitive {
-                    " (case-sensitive)"
+                    " (大文字と小文字を区別)"
                 } else {
                     ""
                 };
 
                 if page > 1 {
-                    format!("Get page {page} of search results for regex {regex_str}{case_info}")
+                    format!("正規表現 {regex_str}{case_info} の検索結果 {page} ページ目を取得")
                 } else {
-                    format!("Search files for regex {regex_str}{case_info}")
+                    format!("正規表現 {regex_str}{case_info} でファイルを検索")
                 }
             }
-            Err(_) => "Search with regex".into(),
+            Err(_) => "正規表現で検索".into(),
         }
         .into()
     }

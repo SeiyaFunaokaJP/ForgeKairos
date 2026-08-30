@@ -769,21 +769,26 @@ pub async fn compact_response(
     }
 }
 
+/// `api_key` is `None` for a compatible endpoint configured to need no
+/// credential; the `Authorization` header is then omitted.
 pub async fn stream_response(
     client: &dyn HttpClient,
     provider_name: &str,
     api_url: &str,
-    api_key: &str,
+    api_key: Option<&str>,
     request: Request,
     extra_headers: &CustomHeaders,
 ) -> Result<BoxStream<'static, Result<StreamEvent>>, RequestError> {
     let uri = format!("{api_url}/responses");
     let is_streaming = request.stream;
-    let request = HttpRequest::builder()
+    let mut builder = HttpRequest::builder()
         .method(Method::POST)
         .uri(uri)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_key.trim()))
+        .header("Content-Type", "application/json");
+    if let Some(api_key) = api_key {
+        builder = builder.header("Authorization", format!("Bearer {}", api_key.trim()));
+    }
+    let request = builder
         .extra_headers(extra_headers)
         .body(AsyncBody::from(
             serde_json::to_string(&request).map_err(|e| RequestError::Other(e.into()))?,
@@ -1132,7 +1137,7 @@ mod tests {
             http_client.as_ref(),
             "ChatGPT Subscription",
             "https://chatgpt.com/backend-api/codex",
-            "secret",
+            Some("secret"),
             response_test_request(),
             &CustomHeaders::default(),
         ));

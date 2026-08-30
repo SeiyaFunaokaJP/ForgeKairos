@@ -76,7 +76,7 @@ impl LspInstaller for GoLspAdapter {
         static DID_SHOW_NOTIFICATION: AtomicBool = AtomicBool::new(false);
 
         const NOTIFICATION_MESSAGE: &str =
-            "Could not install the Go language server `gopls`, because `go` was not found.";
+            "`go` が見つからないため、Go 言語サーバー `gopls` をインストールできませんでした。";
 
         if delegate.which("go".as_ref()).await.is_none() {
             if DID_SHOW_NOTIFICATION

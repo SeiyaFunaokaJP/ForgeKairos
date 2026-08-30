@@ -142,7 +142,7 @@ impl RenderOnce for AlertModal {
             modal = modal.child(footer);
         } else if has_default_footer {
             let primary_action = self.primary_action.unwrap_or_else(|| "OK".into());
-            let dismiss_label = self.dismiss_label.unwrap_or_else(|| "Cancel".into());
+            let dismiss_label = self.dismiss_label.unwrap_or_else(|| "キャンセル".into());
 
             modal = modal.child(
                 h_flex()

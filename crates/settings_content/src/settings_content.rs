@@ -326,6 +326,19 @@ pub struct SettingsContent {
     /// Settings for developer-oriented instrumentation tools (profilers,
     /// tracers, etc.) that can be toggled at runtime.
     pub instrumentation: Option<InstrumentationSettingsContent>,
+
+    /// AI providers whose "your input may be retained and used for training"
+    /// warning the user has explicitly acknowledged. The settings UI refuses to
+    /// take an API key for, or sign in to, an external provider that is not
+    /// listed here (zed-jp-enhance: see `docs/jp-enhance/DESIGN.md` ADR-F10).
+    ///
+    /// Entries are provider ids. Agent (LLM) providers use their
+    /// `LanguageModelProviderId` (`anthropic`, `openai`, `zed.dev`, ...);
+    /// edit prediction providers are prefixed to keep the two surfaces
+    /// independent (`edit_prediction:copilot`, `edit_prediction:codestral`, ...).
+    ///
+    /// Default: []
+    pub acknowledged_external_ai_providers: Option<Vec<String>>,
 }
 
 /// Configuration for developer-oriented instrumentation tools that collect

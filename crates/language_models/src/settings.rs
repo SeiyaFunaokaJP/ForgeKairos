@@ -89,6 +89,7 @@ impl settings::Settings for AllLanguageModelSettings {
                                 value.custom_headers,
                                 anthropic::RESERVED_HEADER_NAMES,
                             ),
+                            no_api_key: value.no_api_key.unwrap_or(false),
                         },
                     )
                 })
@@ -187,6 +188,7 @@ impl settings::Settings for AllLanguageModelSettings {
                                 value.custom_headers,
                                 &[],
                             ),
+                            no_api_key: value.no_api_key.unwrap_or(false),
                         },
                     )
                 })

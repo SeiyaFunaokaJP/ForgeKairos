@@ -1092,7 +1092,10 @@ impl NativeAgent {
                     if let Err(error) = expand_project_skills_directories(&worktree, cx).await {
                         project_skills_results.push(vec![Err(SkillLoadError {
                             path: PathBuf::from(project_skills_relative_path()),
-                            message: format!("Failed to scan project skills: {}", error),
+                            message: format!(
+                                "プロジェクトのスキルのスキャンに失敗しました: {}",
+                                error
+                            ),
                         })]);
                         continue;
                     }
@@ -1111,7 +1114,7 @@ impl NativeAgent {
                             worktree_results.push(Err(SkillLoadError {
                                 path: skill_file.display_path.clone(),
                                 message: format!(
-                                    "SKILL.md file exceeds maximum size of {}KB",
+                                    "SKILL.md のサイズが上限の {}KB を超えています。",
                                     MAX_SKILL_FILE_SIZE / 1024
                                 ),
                             }));
@@ -1131,7 +1134,7 @@ impl NativeAgent {
                             Err(error) => {
                                 worktree_results.push(Err(SkillLoadError {
                                     path: skill_file.display_path.clone(),
-                                    message: format!("Failed to read file: {}", error),
+                                    message: format!("ファイルの読み込みに失敗しました: {}", error),
                                 }));
                                 continue;
                             }
@@ -4635,7 +4638,7 @@ mod internal_tests {
                 state.skill_loading_issues.iter().any(|issue| {
                     issue.kind == SkillLoadingIssueKind::DescriptionTooLong
                         && issue.path == skill_path
-                        && issue.message.to_string().contains("1024-byte limit")
+                        && issue.message.to_string().contains("上限の 1024 バイト")
                 }),
                 "expected a description-length warning issue, got {:?}",
                 state.skill_loading_issues
@@ -4656,7 +4659,7 @@ mod internal_tests {
                 available_skill
                     .warning
                     .as_ref()
-                    .is_some_and(|warning| warning.contains("1024-byte limit")),
+                    .is_some_and(|warning| warning.contains("上限の 1024 バイト")),
                 "available skill should expose warning text, got {:?}",
                 available_skill.warning
             );
@@ -5468,7 +5471,7 @@ mod internal_tests {
                     .skill_loading_issues
                     .iter()
                     .any(|issue| issue.kind == SkillLoadingIssueKind::LoadFailed
-                        && issue.message.to_string().contains("maximum size")),
+                        && issue.message.to_string().contains("サイズが上限")),
                 "expected a size-limit error, got {:?}",
                 state.skill_loading_issues
             );

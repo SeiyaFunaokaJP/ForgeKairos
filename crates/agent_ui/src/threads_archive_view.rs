@@ -63,7 +63,7 @@ enum ArchiveListItem {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TimeBucket {
+pub(crate) enum TimeBucket {
     Today,
     Yesterday,
     ThisWeek,
@@ -72,7 +72,7 @@ enum TimeBucket {
 }
 
 impl TimeBucket {
-    fn from_dates(reference: NaiveDate, date: NaiveDate) -> Self {
+    pub(crate) fn from_dates(reference: NaiveDate, date: NaiveDate) -> Self {
         if date == reference {
             return TimeBucket::Today;
         }
@@ -90,13 +90,13 @@ impl TimeBucket {
         TimeBucket::Older
     }
 
-    fn label(&self) -> &'static str {
+    pub(crate) fn label(&self) -> &'static str {
         match self {
-            TimeBucket::Today => "Today",
-            TimeBucket::Yesterday => "Yesterday",
-            TimeBucket::ThisWeek => "This Week",
-            TimeBucket::PastWeek => "Past Week",
-            TimeBucket::Older => "Older",
+            TimeBucket::Today => "今日",
+            TimeBucket::Yesterday => "昨日",
+            TimeBucket::ThisWeek => "今週",
+            TimeBucket::PastWeek => "先週",
+            TimeBucket::Older => "それ以前",
         }
     }
 }
@@ -170,7 +170,7 @@ impl ThreadsArchiveView {
 
         let filter_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Search all threads…", window, cx);
+            editor.set_placeholder_text("すべてのスレッドを検索…", window, cx);
             editor
         });
 
@@ -693,7 +693,7 @@ impl ThreadsArchiveView {
                             IconButton::new("cancel-restore", IconName::Close)
                                 .icon_size(IconSize::Small)
                                 .icon_color(Color::Muted)
-                                .tooltip(Tooltip::text("Cancel Restore"))
+                                .tooltip(Tooltip::text("復元をキャンセル"))
                                 .on_click({
                                     let thread_id = thread.thread_id;
                                     cx.listener(move |this, _, _, cx| {
@@ -714,7 +714,7 @@ impl ThreadsArchiveView {
                             .tooltip({
                                 move |_window, cx| {
                                     Tooltip::for_action_in(
-                                        "Delete Thread",
+                                        "スレッドを削除",
                                         &RemoveSelectedThread,
                                         &focus_handle,
                                         cx,
@@ -752,7 +752,7 @@ impl ThreadsArchiveView {
                             .tooltip({
                                 move |_window, cx| {
                                     Tooltip::for_action_in(
-                                        "Archive Thread",
+                                        "スレッドをアーカイブ",
                                         &ArchiveSelectedThread,
                                         &focus_handle,
                                         cx,
@@ -912,7 +912,7 @@ impl ThreadsArchiveView {
                 this.child(
                     IconButton::new("clear-filter", IconName::Close)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Clear Search"))
+                        .tooltip(Tooltip::text("検索をクリア"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.reset_filter_editor_text(window, cx);
                             this.update_items(cx);
@@ -953,9 +953,9 @@ impl ThreadsArchiveView {
         };
 
         let count_label = if entry_count == 1 {
-            "1 thread".to_string()
+            "スレッド 1 件".to_string()
         } else {
-            format!("{} threads", entry_count)
+            format!("スレッド {} 件", entry_count)
         };
 
         h_flex()
@@ -977,7 +977,7 @@ impl ThreadsArchiveView {
                     .child(
                         IconButton::new("new-thread", IconName::Plus)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("Start New Agent Thread"))
+                            .tooltip(Tooltip::text("新しいエージェントスレッドを開始"))
                             .on_click(cx.listener(|_this, _, _, cx| {
                                 cx.emit(ThreadsArchiveViewEvent::NewThread);
                             })),
@@ -985,7 +985,7 @@ impl ThreadsArchiveView {
                     .child(
                         IconButton::new("thread-import", IconName::Download)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("Import Threads"))
+                            .tooltip(Tooltip::text("スレッドをインポート"))
                             .on_click(cx.listener(|_this, _, _, cx| {
                                 cx.emit(ThreadsArchiveViewEvent::Import);
                             })),
@@ -997,9 +997,9 @@ impl ThreadsArchiveView {
                             .toggle_state(self.thread_filter == ThreadFilter::ArchivedOnly)
                             .tooltip(Tooltip::text(
                                 if self.thread_filter == ThreadFilter::ArchivedOnly {
-                                    "Show All Threads"
+                                    "すべてのスレッドを表示"
                                 } else {
-                                    "Show Only Archived Threads"
+                                    "アーカイブ済みのスレッドのみ表示"
                                 },
                             ))
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1017,26 +1017,44 @@ impl ThreadsArchiveView {
 }
 
 pub fn format_history_entry_timestamp(entry_time: DateTime<Utc>) -> String {
-    let now = Utc::now();
-    let duration = now.signed_duration_since(entry_time);
+    format_history_entry_timestamp_at(entry_time, Utc::now())
+}
 
-    let minutes = duration.num_minutes();
-    let hours = duration.num_hours();
-    let days = duration.num_days();
-    let weeks = days / 7;
-    let months = days / 30;
+/// Split out from [`format_history_entry_timestamp`] so the wording can be tested
+/// against a fixed reference instant.
+fn format_history_entry_timestamp_at(entry_time: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    // A timestamp ahead of the clock (skew, or metadata written on another machine)
+    // would underflow `time_format`'s month arithmetic, so pin it to the present:
+    // it reads as 「たった今」.
+    let entry_time = entry_time.min(now);
 
-    if minutes < 60 {
-        format!("{}m", minutes.max(1))
-    } else if hours < 24 {
-        format!("{}h", hours.max(1))
-    } else if days < 7 {
-        format!("{}d", days.max(1))
-    } else if weeks < 4 {
-        format!("{}w", weeks.max(1))
-    } else {
-        format!("{}mo", months.max(1))
+    match (
+        to_local_offset_date_time(entry_time),
+        to_local_offset_date_time(now),
+    ) {
+        (Some(entry_time), Some(now)) => time_format::format_local_timestamp(
+            entry_time,
+            now,
+            time_format::TimestampFormat::Relative,
+        ),
+        // Outside the range `time` can represent (year ±9999); an absolute date is
+        // still more useful than an empty cell.
+        _ => entry_time
+            .with_timezone(&Local)
+            .format("%Y年%-m月%-d日")
+            .to_string(),
     }
+}
+
+/// The offset is taken from `chrono::Local` rather than `time::UtcOffset::current_local_offset`
+/// so that the day boundaries these timestamps fall on always agree with the
+/// [`TimeBucket`] separators above, which group by `chrono::Local` dates.
+fn to_local_offset_date_time(timestamp: DateTime<Utc>) -> Option<time::OffsetDateTime> {
+    let local = timestamp.with_timezone(&Local);
+    let offset = time::UtcOffset::from_whole_seconds(local.offset().local_minus_utc()).ok()?;
+    time::OffsetDateTime::from_unix_timestamp(timestamp.timestamp())
+        .ok()
+        .map(|timestamp| timestamp.to_offset(offset))
 }
 
 impl Focusable for ThreadsArchiveView {
@@ -1052,9 +1070,9 @@ impl Render for ThreadsArchiveView {
 
         let content = if is_empty {
             let message = if has_query {
-                "No threads match your search."
+                "検索条件に一致するスレッドはありません。"
             } else {
-                "No threads yet."
+                "まだスレッドはありません。"
             };
 
             v_flex()
@@ -1293,7 +1311,7 @@ impl PickerDelegate for ProjectPickerDelegate {
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
         format!(
-            "Associate the \"{}\" thread with...",
+            "スレッド \"{}\" の関連付け先を選択...",
             self.thread
                 .title
                 .as_ref()
@@ -1415,7 +1433,7 @@ impl PickerDelegate for ProjectPickerDelegate {
         };
 
         if has_siblings_to_show {
-            entries.push(ProjectPickerEntry::Header("This Window".into()));
+            entries.push(ProjectPickerEntry::Header("このウィンドウ".into()));
 
             if is_empty_query {
                 for (id, workspace) in self.workspaces.iter().enumerate() {
@@ -1442,7 +1460,7 @@ impl PickerDelegate for ProjectPickerDelegate {
         };
 
         if has_recent_to_show {
-            entries.push(ProjectPickerEntry::Header("Recent Projects".into()));
+            entries.push(ProjectPickerEntry::Header("最近のプロジェクト".into()));
 
             if is_empty_query {
                 for (id, workspace) in self.workspaces.iter().enumerate() {
@@ -1492,9 +1510,9 @@ impl PickerDelegate for ProjectPickerDelegate {
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         let text = if self.workspaces.is_empty() {
-            "No recent projects found"
+            "最近のプロジェクトが見つかりません"
         } else {
-            "No matches"
+            "一致なし"
         };
         Some(text.into())
     }
@@ -1611,7 +1629,7 @@ impl PickerDelegate for ProjectPickerDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("open_local_folder", "Choose from Local Folders")
+                    Button::new("open_local_folder", "ローカルフォルダーから選択")
                         .key_binding(KeyBinding::for_action_in(
                             &workspace::Open::default(),
                             &focus_handle,
@@ -1622,7 +1640,7 @@ impl PickerDelegate for ProjectPickerDelegate {
                         })),
                 )
                 .child(
-                    Button::new("select_project", "Select")
+                    Button::new("select_project", "選択")
                         .disabled(!has_selection)
                         .key_binding(KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx))
                         .on_click(cx.listener(move |picker, _, window, cx| {
@@ -1687,5 +1705,68 @@ mod tests {
                 "position {pos} is not a valid UTF-8 boundary in {text:?}"
             );
         }
+    }
+
+    /// Midday UTC keeps every case below on the same local calendar day for any
+    /// real-world offset, so the day-granularity wording does not depend on the
+    /// machine's timezone.
+    fn utc(rfc3339: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(rfc3339)
+            .expect("valid RFC 3339 timestamp")
+            .with_timezone(&Utc)
+    }
+
+    #[track_caller]
+    fn assert_history_timestamp(entry: &str, expected: &str) {
+        let now = utc("2026-06-15T12:00:00Z");
+        assert_eq!(
+            format_history_entry_timestamp_at(utc(entry), now),
+            expected,
+            "entry {entry}"
+        );
+    }
+
+    #[test]
+    fn test_history_entry_timestamp_within_the_hour() {
+        assert_history_timestamp("2026-06-15T11:59:30Z", "たった今");
+        assert_history_timestamp("2026-06-15T11:59:00Z", "1 分前");
+        assert_history_timestamp("2026-06-15T11:55:00Z", "5 分前");
+        assert_history_timestamp("2026-06-15T11:01:00Z", "59 分前");
+    }
+
+    #[test]
+    fn test_history_entry_timestamp_within_the_day() {
+        assert_history_timestamp("2026-06-15T11:00:00Z", "1 時間前");
+        assert_history_timestamp("2026-06-15T09:00:00Z", "3 時間前");
+        assert_history_timestamp("2026-06-14T13:00:00Z", "23 時間前");
+    }
+
+    #[test]
+    fn test_history_entry_timestamp_days_and_weeks() {
+        assert_history_timestamp("2026-06-14T12:00:00Z", "昨日");
+        assert_history_timestamp("2026-06-13T12:00:00Z", "2 日前");
+        assert_history_timestamp("2026-06-09T12:00:00Z", "6 日前");
+        assert_history_timestamp("2026-06-08T12:00:00Z", "1 週間前");
+        assert_history_timestamp("2026-05-25T12:00:00Z", "3 週間前");
+        assert_history_timestamp("2026-05-18T12:00:00Z", "4 週間前");
+    }
+
+    #[test]
+    fn test_history_entry_timestamp_months_and_years() {
+        // Weeks run out first: a month only shows up past 4 whole weeks.
+        assert_history_timestamp("2026-05-15T12:00:00Z", "4 週間前");
+        assert_history_timestamp("2026-05-05T12:00:00Z", "1 か月前");
+        assert_history_timestamp("2026-03-15T12:00:00Z", "3 か月前");
+        assert_history_timestamp("2025-07-15T12:00:00Z", "11 か月前");
+        assert_history_timestamp("2025-06-15T12:00:00Z", "1 年前");
+        assert_history_timestamp("2024-07-15T12:00:00Z", "1 年 11 か月前");
+        assert_history_timestamp("2024-06-15T12:00:00Z", "2 年前");
+    }
+
+    #[test]
+    fn test_history_entry_timestamp_in_the_future_is_pinned_to_now() {
+        // Clock skew, or metadata written on another machine.
+        assert_history_timestamp("2026-06-15T12:30:00Z", "たった今");
+        assert_history_timestamp("2027-01-01T00:00:00Z", "たった今");
     }
 }

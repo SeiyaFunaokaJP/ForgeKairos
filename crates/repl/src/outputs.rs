@@ -199,7 +199,7 @@ impl Output {
                     el.child(
                         IconButton::new(ElementId::Name("copy-output".into()), IconName::Copy)
                             .style(ButtonStyle::Transparent)
-                            .tooltip(Tooltip::text("Copy Output"))
+                            .tooltip(Tooltip::text("出力をコピー"))
                             .on_click(move |_, window, cx| {
                                 let clipboard_content = v.clipboard_content(window, cx);
 
@@ -217,7 +217,7 @@ impl Output {
                             IconName::FileTextOutlined,
                         )
                         .style(ButtonStyle::Transparent)
-                        .tooltip(Tooltip::text("Open in Buffer"))
+                        .tooltip(Tooltip::text("バッファーで開く"))
                         .on_click({
                             let workspace = workspace.clone();
                             move |_, window, cx| {
@@ -323,7 +323,7 @@ impl Output {
                             let full_error = format!("{}: {}\n{}", ename, evalue, traceback_text);
 
                             CopyButton::new("copy-full-error", full_error)
-                                .tooltip_label("Copy Full Error")
+                                .tooltip_label("エラー全体をコピー")
                         })
                         .child(
                             IconButton::new(
@@ -331,7 +331,7 @@ impl Output {
                                 IconName::FileTextOutlined,
                             )
                             .style(ButtonStyle::Transparent)
-                            .tooltip(Tooltip::text("Open Full Error in Buffer"))
+                            .tooltip(Tooltip::text("エラー全体をバッファーで開く"))
                             .on_click({
                                 let ename = err.ename.clone();
                                 let evalue = err.evalue.clone();
@@ -536,7 +536,7 @@ impl ExecutionView {
 
             let editor = cx.new(|cx| {
                 let mut editor = Editor::single_line(window, cx);
-                editor.set_placeholder_text("Type here and press Enter", window, cx);
+                editor.set_placeholder_text("ここに入力して Enter を押してください", window, cx);
                 if password {
                     editor.set_masked(true, cx);
                 }
@@ -753,7 +753,7 @@ impl ExecutionView {
 impl Render for ExecutionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let status = match &self.status {
-            ExecutionStatus::ConnectingToKernel => Label::new("Connecting to kernel...")
+            ExecutionStatus::ConnectingToKernel => Label::new("カーネルに接続しています...")
                 .color(Color::Muted)
                 .into_any_element(),
             ExecutionStatus::Executing => h_flex()
@@ -764,34 +764,36 @@ impl Render for ExecutionView {
                         .color(Color::Muted)
                         .with_rotate_animation(3),
                 )
-                .child(Label::new("Executing...").color(Color::Muted))
+                .child(Label::new("実行しています...").color(Color::Muted))
                 .into_any_element(),
             ExecutionStatus::Finished => Icon::new(IconName::Check)
                 .size(IconSize::Small)
                 .into_any_element(),
-            ExecutionStatus::Unknown => Label::new("Unknown status")
+            ExecutionStatus::Unknown => Label::new("不明な状態")
                 .color(Color::Muted)
                 .into_any_element(),
-            ExecutionStatus::ShuttingDown => Label::new("Kernel shutting down...")
+            ExecutionStatus::ShuttingDown => Label::new("カーネルを終了しています...")
                 .color(Color::Muted)
                 .into_any_element(),
-            ExecutionStatus::Restarting => Label::new("Kernel restarting...")
+            ExecutionStatus::Restarting => Label::new("カーネルを再起動しています...")
                 .color(Color::Muted)
                 .into_any_element(),
-            ExecutionStatus::Shutdown => Label::new("Kernel shutdown")
+            ExecutionStatus::Shutdown => Label::new("カーネルは終了しました")
                 .color(Color::Muted)
                 .into_any_element(),
-            ExecutionStatus::Queued => Label::new("Queued...")
+            ExecutionStatus::Queued => Label::new("待機中...")
                 .color(Color::Muted)
                 .into_any_element(),
-            ExecutionStatus::KernelErrored(error) => Label::new(format!("Kernel error: {}", error))
-                .color(Color::Error)
-                .into_any_element(),
+            ExecutionStatus::KernelErrored(error) => {
+                Label::new(format!("カーネルエラー: {}", error))
+                    .color(Color::Error)
+                    .into_any_element()
+            }
         };
 
         let pending_input_element = self.pending_input.as_ref().map(|pending_input| {
             let prompt_label = if pending_input.prompt.is_empty() {
-                "Input:".to_string()
+                "入力:".to_string()
             } else {
                 pending_input.prompt.clone()
             };

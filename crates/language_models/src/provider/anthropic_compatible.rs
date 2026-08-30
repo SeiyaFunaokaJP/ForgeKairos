@@ -31,6 +31,7 @@ pub struct AnthropicCompatibleSettings {
     pub api_url: String,
     pub available_models: Vec<AvailableModel>,
     pub custom_headers: CustomHeaders,
+    pub no_api_key: bool,
 }
 
 pub struct AnthropicCompatibleLanguageModelProvider {
@@ -43,6 +44,10 @@ pub struct AnthropicCompatibleLanguageModelProvider {
 impl ApiCompatibleProviderSettings for AnthropicCompatibleSettings {
     fn api_url(&self) -> &str {
         &self.api_url
+    }
+
+    fn no_api_key(&self) -> bool {
+        self.no_api_key
     }
 }
 
@@ -317,28 +322,29 @@ impl AnthropicCompatibleLanguageModel {
         let http_client = self.http_client.clone();
         let provider_name = self.provider_name.clone();
 
-        let (api_key, api_url, extra_headers) = self.state.read_with(cx, |state, _cx| {
-            let api_url = state.settings.api_url.clone();
-            (
-                state.api_key_state.key(&api_url),
-                api_url,
-                state.settings.custom_headers.clone(),
-            )
-        });
+        let (api_key, no_api_key, api_url, extra_headers) =
+            self.state.read_with(cx, |state, _cx| {
+                (
+                    state.api_key(),
+                    state.no_api_key(),
+                    state.settings.api_url.clone(),
+                    state.settings.custom_headers.clone(),
+                )
+            });
 
         let beta_headers = self.model.beta_headers();
 
         async move {
-            let Some(api_key) = api_key else {
+            if api_key.is_none() && !no_api_key {
                 return Err(LanguageModelCompletionError::NoApiKey {
                     provider: provider_name,
                 });
-            };
+            }
 
             let request = anthropic::stream_completion(
                 http_client.as_ref(),
                 &api_url,
-                &api_key,
+                api_key.as_deref(),
                 request,
                 beta_headers,
                 &extra_headers,

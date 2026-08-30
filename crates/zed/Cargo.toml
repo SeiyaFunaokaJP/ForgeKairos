@@ -80,7 +80,6 @@ audio.workspace = true
 auto_update.workspace = true
 auto_update_ui.workspace = true
 breadcrumbs.workspace = true
-call.workspace = true
 channel.workspace = true
 chrono.workspace = true
 clap.workspace = true
@@ -88,9 +87,9 @@ cli.workspace = true
 client.workspace = true
 clock = { workspace = true, optional = true }
 codestral.workspace = true
-collab_ui.workspace = true
 collections.workspace = true
 command_palette.workspace = true
+command_palette_hooks.workspace = true
 component.workspace = true
 component_preview.workspace = true
 copilot.workspace = true
@@ -105,6 +104,7 @@ debugger_ui.workspace = true
 dev_container.workspace = true
 diagnostics.workspace = true
 editor.workspace = true
+egress_policy.workspace = true
 encoding_selector.workspace = true
 env_logger.workspace = true
 extension.workspace = true
@@ -117,7 +117,7 @@ fs.workspace = true
 futures.workspace = true
 git.workspace = true
 git_hosting_providers.workspace = true
-git_ui = { workspace = true, features = [ "call" ] }
+git_ui.workspace = true
 git_ui_core.workspace = true
 go_to_line.workspace = true
 gpui = { workspace = true, features = [ "profiler" ] }
@@ -259,7 +259,6 @@ pkg-config = "0.3.22"
 
 [dev-dependencies]
 activity_indicator = { workspace = true, features = ["test-support"] }
-call = { workspace = true, features = ["test-support"] }
 editor = { workspace = true, features = ["test-support"] }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["profiler", "test-support"] }

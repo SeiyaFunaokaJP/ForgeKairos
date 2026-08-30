@@ -1,3 +1,4 @@
+mod ja_labels;
 mod persistence;
 
 use std::{
@@ -119,10 +120,7 @@ impl CommandPalette {
                     return None;
                 }
 
-                Some(Command {
-                    name: humanize_action_name(action.name()),
-                    action,
-                })
+                Some(Command::for_action(action))
             })
             .collect();
 
@@ -184,7 +182,49 @@ pub struct CommandPaletteDelegate {
 
 struct Command {
     name: String,
+    /// Fuzzy-match haystack. For actions that have a Japanese label this is the label followed by
+    /// the English `humanize_action_name` output, so that both spellings find the command
+    /// (DESIGN.md §3). It always starts with `name`, which is what keeps the highlight byte
+    /// offsets produced against it usable for the displayed label.
+    search_text: String,
     action: Box<dyn Action>,
+}
+
+impl Command {
+    fn for_action(action: Box<dyn Action>) -> Self {
+        let humanized = humanize_action_name(action.name());
+        match ja_labels::label_for_action(action.name()) {
+            Some(label) => Self {
+                search_text: format!("{label} {humanized}"),
+                name: label.to_string(),
+                action,
+            },
+            None => Self {
+                search_text: humanized.clone(),
+                name: humanized,
+                action,
+            },
+        }
+    }
+
+    fn from_intercepted(name: String, action: Box<dyn Action>) -> Self {
+        Self {
+            search_text: name.clone(),
+            name,
+            action,
+        }
+    }
+
+    /// Highlight offsets restricted to the displayed label. Matches inside the English alias part
+    /// of [`Self::search_text`] fall outside the label and are dropped, so such a query filters
+    /// correctly but shows no underline.
+    fn highlights_within_name(&self, positions: &[usize]) -> Vec<usize> {
+        positions
+            .iter()
+            .copied()
+            .filter(|position| *position < self.name.len())
+            .collect()
+    }
 }
 
 #[derive(Default)]
@@ -276,6 +316,7 @@ impl Clone for Command {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
+            search_text: self.search_text.clone(),
             action: self.action.boxed_clone(),
         }
     }
@@ -327,10 +368,7 @@ impl CommandPaletteDelegate {
             {
                 matches.remove(idx);
             }
-            commands.push(Command {
-                name: string.clone(),
-                action,
-            });
+            commands.push(Command::from_intercepted(string.clone(), action));
             new_matches.push(StringMatch {
                 candidate_id: commands.len() - 1,
                 string: string.into(),
@@ -392,7 +430,7 @@ impl PickerDelegate for CommandPaletteDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Execute a command...".into()
+        "コマンドを実行...".into()
     }
 
     fn select_history(
@@ -485,7 +523,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                 let candidates = commands
                     .iter()
                     .enumerate()
-                    .map(|(ix, command)| StringMatchCandidate::new(ix, &command.name))
+                    .map(|(ix, command)| StringMatchCandidate::new(ix, &command.search_text))
                     .collect::<Vec<_>>();
 
                 let matches = fuzzy_nucleo::match_strings_async(
@@ -644,7 +682,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                         .justify_between()
                         .child(HighlightedLabel::new(
                             command.name.clone(),
-                            matching_command.positions.clone(),
+                            command.highlights_within_name(&matching_command.positions),
                         ))
                         .child(KeyBinding::for_action_in(
                             &*command.action,
@@ -666,7 +704,7 @@ impl PickerDelegate for CommandPaletteDelegate {
 
         let focus_handle = &self.previous_focus_handle;
         let keybinding_buttons = if keybind.has_binding(window) {
-            Button::new("change", "Change Keybinding…")
+            Button::new("change", "キーバインドを変更…")
                 .key_binding(
                     KeyBinding::for_action_in(&menu::SecondaryConfirm, focus_handle, cx)
                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -675,7 +713,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                     window.dispatch_action(menu::SecondaryConfirm.boxed_clone(), cx);
                 })
         } else {
-            Button::new("add", "Add Keybinding…")
+            Button::new("add", "キーバインドを追加…")
                 .key_binding(
                     KeyBinding::for_action_in(&menu::SecondaryConfirm, focus_handle, cx)
                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -695,7 +733,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .border_color(cx.theme().colors().border_variant)
                 .child(keybinding_buttons)
                 .child(
-                    Button::new("run-action", "Run")
+                    Button::new("run-action", "実行")
                         .key_binding(
                             KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -707,6 +745,28 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .into_any(),
         )
     }
+}
+
+/// Japanese label for an action name, falling back to [`humanize_action_name`].
+///
+/// DESIGN.md §3 方式 2: アクション名から表示名を組み立てる箇所は
+/// `humanize_action_name` を直接呼ばずにこちらを使うと日本語ラベルが効く。
+/// **表示専用**。検索候補として使う場合はコマンドパレット自身
+/// ([`Command::for_action`]) のように英語の humanize 名も併記すること。
+pub fn localized_action_name(action_name: &str) -> String {
+    match ja_labels::label_for_action(action_name) {
+        Some(label) => label.to_string(),
+        None => humanize_action_name(action_name),
+    }
+}
+
+/// 日本語ラベルを登録してあるアクション名の一覧。
+///
+/// `crates/zed` の `test_ja_labels_reference_registered_actions` が
+/// `App::all_action_names()` と突き合わせて綴り間違い・削除済みアクションを検出する
+/// (アクションの登録は `zed` でしか揃わないため検証はあちら側にある)。
+pub fn labeled_action_names() -> impl Iterator<Item = &'static str> {
+    ja_labels::labeled_action_names()
 }
 
 pub fn humanize_action_name(name: &str) -> String {
@@ -827,6 +887,25 @@ mod tests {
     }
 
     #[test]
+    fn test_japanese_label_with_english_alias() {
+        let command = Command::for_action(Box::new(editor::actions::GoToDefinition::default()));
+        assert_eq!(command.name, "定義へ移動");
+        assert_eq!(command.search_text, "定義へ移動 editor: go to definition");
+
+        let alias_offset = command.name.len() + 1;
+        assert_eq!(command.highlights_within_name(&[0, alias_offset]), vec![0]);
+    }
+
+    #[test]
+    fn test_unmapped_action_keeps_humanized_name() {
+        // `menu` 名前空間は ja_labels.rs の対象外なので、対応表に載らないアクションの代表として使う
+        let command = Command::for_action(Box::new(menu::SelectNext));
+        assert_eq!(command.name, "menu: select next");
+        assert_eq!(command.search_text, command.name);
+        assert_eq!(ja_labels::label_for_action("menu::SelectNext"), None);
+    }
+
+    #[test]
     fn test_normalize_query() {
         assert_eq!(
             normalize_action_query("editor: backspace"),
@@ -904,7 +983,10 @@ mod tests {
         cx.simulate_input("bcksp");
 
         palette.read_with(cx, |palette, _| {
-            assert_eq!(palette.delegate.matches[0].string, "editor: backspace");
+            assert_eq!(
+                palette.delegate.matches[0].string,
+                "編集: 前の文字を削除 editor: backspace"
+            );
         });
 
         cx.simulate_keystrokes("enter");
@@ -996,7 +1078,10 @@ mod tests {
 
         cx.simulate_input("Editor::    Backspace");
         palette.read_with(cx, |palette, _| {
-            assert_eq!(palette.delegate.matches[0].string, "editor: backspace");
+            assert_eq!(
+                palette.delegate.matches[0].string,
+                "編集: 前の文字を削除 editor: backspace"
+            );
         });
     }
 

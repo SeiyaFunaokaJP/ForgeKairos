@@ -295,6 +295,101 @@ async fn test_remote_telemetry_event_forwarding(
     );
 }
 
+#[gpui::test]
+async fn test_egress_allowlist_pushed_to_remote_server(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    // ADR-F11 (DESIGN.md §4): the connecting IDE's egress allowlist is the
+    // source of truth and is pushed to `remote_server`'s own `HttpClient`
+    // right after the connection is established.
+    let server_fs = FakeFs::new(server_cx.executor());
+    server_fs.insert_tree(path!("/code"), json!({})).await;
+
+    cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    init_logger();
+
+    // Simulate the local IDE already having a non-empty allowlist before
+    // this connection is made.
+    let (client_policy, errors) =
+        http_client::EgressPolicy::from_host_strings(["api.anthropic.com"]);
+    assert!(errors.is_empty());
+    cx.update(|cx| {
+        cx.set_global(egress_policy::EgressAllowlistGlobal(
+            http_client::EgressPolicyHandle::new(client_policy),
+        ));
+    });
+
+    let (opts, server_session, _) = RemoteClient::fake_server(cx, server_cx);
+    // Stand in for the `AllowlistedHttpClient` that wraps `remote_server`'s
+    // real `ReqwestClient` (see `server.rs::execute_run`), so the test can
+    // observe what the pushed allowlist did to it.
+    let server_egress_policy = http_client::EgressPolicyHandle::default();
+    let http_client = Arc::new(http_client::AllowlistedHttpClient::new(
+        Arc::new(BlockedHttpClient),
+        server_egress_policy.clone(),
+    ));
+    let node_runtime = NodeRuntime::unavailable();
+    let languages = Arc::new(LanguageRegistry::new(cx.executor()));
+    let proxy = Arc::new(ExtensionHostProxy::new());
+    server_cx.update(HeadlessProject::init);
+    let headless = server_cx.new(|cx| {
+        HeadlessProject::new(
+            crate::HeadlessAppState {
+                session: server_session,
+                fs: server_fs.clone(),
+                http_client,
+                node_runtime,
+                languages,
+                extension_host_proxy: proxy,
+                startup_time: std::time::Instant::now(),
+            },
+            false,
+            cx,
+        )
+    });
+
+    let ssh = RemoteClient::connect_mock(opts, cx).await;
+    let project = build_project(ssh, cx);
+    project
+        .update(cx, {
+            let headless = headless.clone();
+            |_, cx| cx.on_release(|_, _| drop(headless))
+        })
+        .detach();
+    cx.executor().run_until_parked();
+
+    let anthropic = http_client::RequestHost::parse("api.anthropic.com").expect("valid host");
+    let openai = http_client::RequestHost::parse("api.openai.com").expect("valid host");
+    assert!(
+        server_egress_policy.allows(&anthropic),
+        "the client's allowlist should have been pushed to the remote host on connect"
+    );
+    assert!(
+        !server_egress_policy.allows(&openai),
+        "hosts absent from the client's allowlist should stay denied on the remote host"
+    );
+
+    // ADR-F14: the same push carries the `proxy_child_processes` choice, and
+    // an allowlisted remote host stands a supervisor up ready to act on it.
+    assert!(
+        headless.read_with(server_cx, |headless, _| headless
+            .child_process_proxy
+            .is_some()),
+        "a remote host whose HTTP client is allowlisted should have a supervisor for it"
+    );
+    // This client never installed an egress policy of its own — no
+    // `egress_policy::init` — so it asks for no proxy on the remote host, and
+    // none is started. That is also what keeps this test from publishing a
+    // process-wide endpoint the rest of the suite would then trip over.
+    assert_eq!(
+        http_client::child_process_proxy(),
+        None,
+        "a client that is not running the child-process proxy must not make the remote host run one"
+    );
+}
+
 async fn do_search_and_assert(
     project: &Entity<Project>,
     query: &str,

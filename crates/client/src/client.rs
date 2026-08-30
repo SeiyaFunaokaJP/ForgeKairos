@@ -1328,6 +1328,19 @@ impl Client {
         credentials: &Credentials,
         cx: &AsyncApp,
     ) -> Task<Result<Connection, EstablishConnectionError>> {
+        // DESIGN.md §4.4 (ADR-F03): collab's RPC connection is a raw WebSocket
+        // opened straight onto a `TcpStream`, so it never passes through the
+        // `HttpClient` funnel the egress allowlist gates. This fork does not
+        // use zed.dev collaboration at all, so the connection is refused here,
+        // before the socket is opened, rather than being allowlist-checked.
+        // The test-support path in `establish_connection` is untouched, so
+        // in-process fake connections still work.
+        if !cfg!(any(test, feature = "test-support")) {
+            return Task::ready(Err(EstablishConnectionError::Other(anyhow!(
+                "collaboration is disabled in this build (egress policy)"
+            ))));
+        }
+
         let release_channel = cx.update(|cx| ReleaseChannel::try_global(cx));
         let app_version = cx.update(|cx| AppVersion::global(cx).to_string());
 

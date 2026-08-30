@@ -119,9 +119,9 @@ impl Render for BufferSearchBar {
                 .map(|editor: Entity<Editor>| editor.read(cx).has_any_buffer_folded(cx))
                 .unwrap_or_default();
             let (icon, tooltip_label) = if is_collapsed {
-                (IconName::ChevronUpDown, "Expand All Files")
+                (IconName::ChevronUpDown, "すべてのファイルを展開")
             } else {
-                (IconName::ChevronDownUp, "Collapse All Files")
+                (IconName::ChevronDownUp, "すべてのファイルを折りたたむ")
             };
 
             let collapse_expand_icon_button = |id| {
@@ -177,12 +177,12 @@ impl Render for BufferSearchBar {
 
         self.query_editor.update(cx, |query_editor, cx| {
             if query_editor.placeholder_text(cx).is_none() {
-                query_editor.set_placeholder_text("Search…", window, cx);
+                query_editor.set_placeholder_text("検索…", window, cx);
             }
         });
 
         self.replacement_editor.update(cx, |editor, cx| {
-            editor.set_placeholder_text("Replace with…", window, cx);
+            editor.set_placeholder_text("置換後の文字列…", window, cx);
         });
 
         let mut color_override = None;
@@ -270,7 +270,7 @@ impl Render for BufferSearchBar {
                     "buffer-search-bar-toggle",
                     IconName::Replace,
                     self.replace_enabled.then_some(ActionButtonState::Toggled),
-                    "Toggle Replace",
+                    "置換の表示切り替え",
                     &ToggleReplace,
                     focus_handle.clone(),
                 ))
@@ -294,7 +294,7 @@ impl Render for BufferSearchBar {
                         let focus_handle = focus_handle.clone();
                         move |_window, cx| {
                             Tooltip::for_action_in(
-                                "Toggle Search Selection",
+                                "選択範囲内を検索",
                                 &ToggleSelection,
                                 &focus_handle,
                                 cx,
@@ -316,7 +316,7 @@ impl Render for BufferSearchBar {
                         self.active_match_index
                             .is_none()
                             .then_some(ActionButtonState::Disabled),
-                        "Select Previous Match",
+                        "前の一致へ",
                         &SelectPreviousMatch,
                         query_focus.clone(),
                     ))
@@ -326,7 +326,7 @@ impl Render for BufferSearchBar {
                         self.active_match_index
                             .is_none()
                             .then_some(ActionButtonState::Disabled),
-                        "Select Next Match",
+                        "次の一致へ",
                         &SelectNextMatch,
                         query_focus.clone(),
                     ))
@@ -347,7 +347,7 @@ impl Render for BufferSearchBar {
                         "buffer-search-nav-button",
                         IconName::SelectAll,
                         Default::default(),
-                        "Select All Matches",
+                        "すべての一致を選択",
                         &SelectAllMatches,
                         query_focus.clone(),
                     ))
@@ -359,7 +359,7 @@ impl Render for BufferSearchBar {
                     "buffer-search",
                     IconName::Close,
                     Default::default(),
-                    "Close Search Bar",
+                    "検索バーを閉じる",
                     &Dismiss,
                     focus_handle.clone(),
                 ))
@@ -393,7 +393,7 @@ impl Render for BufferSearchBar {
                     "buffer-search-replace-button",
                     IconName::ReplaceNext,
                     Default::default(),
-                    "Replace Next Match",
+                    "次を置換",
                     &ReplaceNext,
                     focus_handle.clone(),
                 ))
@@ -401,7 +401,7 @@ impl Render for BufferSearchBar {
                     "buffer-search-replace-button",
                     IconName::ReplaceAll,
                     Default::default(),
-                    "Replace All Matches",
+                    "すべて置換",
                     &ReplaceAll,
                     focus_handle,
                 ));
@@ -446,7 +446,7 @@ impl Render for BufferSearchBar {
                                 "buffer-search",
                                 IconName::Close,
                                 Default::default(),
-                                "Close Search Bar",
+                                "検索バーを閉じる",
                                 &Dismiss,
                                 focus_handle.clone(),
                             )),

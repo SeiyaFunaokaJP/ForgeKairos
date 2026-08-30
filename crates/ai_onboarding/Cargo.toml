@@ -21,6 +21,7 @@ component.workspace = true
 gpui.workspace = true
 language_model.workspace = true
 serde.workspace = true
+settings.workspace = true
 smallvec.workspace = true
 telemetry.workspace = true
 ui.workspace = true

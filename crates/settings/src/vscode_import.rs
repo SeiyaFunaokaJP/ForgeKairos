@@ -172,6 +172,7 @@ impl VsCodeSettings {
 
     pub fn settings_content(&self) -> SettingsContent {
         SettingsContent {
+            acknowledged_external_ai_providers: None,
             agent: self.agent_settings_content(),
             agent_servers: None,
             audio: None,
@@ -561,6 +562,7 @@ impl VsCodeSettings {
             extend_comment_on_newline: None,
             extend_list_on_newline: None,
             indent_list_on_tab: None,
+            hard_break_on_newline: None,
             // In VS Code, `editor.formatOnSaveMode` only applies when `editor.formatOnSave` is enabled.
             format_on_save: self.read_bool("editor.formatOnSave").map(|enabled| {
                 if enabled {

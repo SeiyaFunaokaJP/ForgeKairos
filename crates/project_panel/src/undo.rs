@@ -389,8 +389,8 @@ impl UndoMessage {
             UndoMessage::Changed(_) => {
                 "this is a bug in the manage_undo_and_redo task please report"
             }
-            UndoMessage::Undo => "Undo Failed",
-            UndoMessage::Redo => "Redo Failed",
+            UndoMessage::Undo => "元に戻せませんでした",
+            UndoMessage::Redo => "やり直せませんでした",
         }
     }
 }
@@ -605,9 +605,9 @@ impl Inner {
         // share the parent folder, then it was a simple rename, otherwise it
         // was a move.
         let operation = if from.path.parent() == to.path.parent() {
-            "rename"
+            "名前変更"
         } else {
-            "move"
+            "移動"
         };
 
         let res: Result<Task<Result<CreatedEntry>>> = workspace.update(cx, |workspace, cx| {
@@ -616,7 +616,7 @@ impl Inner {
                     .entry_for_path(from, cx)
                     .map(|entry| entry.id)
                     .with_context(|| {
-                        format!("Failed to {operation} `{from_name}`. It no longer exists.")
+                        format!("`{from_name}` を{operation}できませんでした。すでに存在しません。")
                     })?;
 
                 Ok(project.rename_entry(entry_id, to.clone(), cx))
@@ -635,7 +635,7 @@ impl Inner {
 
             if already_exists {
                 anyhow!(
-                    "Failed to {operation} `{from_name}` to `{to_name}`. A file or folder already exists there."
+                    "`{from_name}` を `{to_name}` へ{operation}できませんでした。同名のファイルまたはフォルダーが既に存在します。"
                 )
             } else {
                 err
@@ -696,17 +696,19 @@ impl Inner {
                 let entry_id = project
                     .entry_for_path(project_path, cx)
                     .map(|entry| entry.id)
-                    .with_context(|| format!("Failed to trash `{name}`. It no longer exists."))?;
+                    .with_context(|| {
+                        format!("`{name}` をゴミ箱へ移動できませんでした。すでに存在しません。")
+                    })?;
 
                 project
                     .trash_entry(entry_id, cx)
-                    .with_context(|| format!("Failed to trash `{name}`."))
+                    .with_context(|| format!("`{name}` をゴミ箱へ移動できませんでした。"))
             })
         })?;
 
         match task.await {
             Ok(trash_id) => Ok(trash_id),
-            Err(err) => Err(err).context(format!("Failed to trash `{name}`.")),
+            Err(err) => Err(err).context(format!("`{name}` をゴミ箱へ移動できませんでした。")),
         }
     }
 
@@ -747,7 +749,7 @@ impl Inner {
                     project_path_display(project, &project_path, path_style, cx)
                 }))
             })
-            .unwrap_or_else(|| "item".to_string());
+            .unwrap_or_else(|| "項目".to_string());
 
         workspace
             .update(cx, |workspace, cx| {
@@ -757,10 +759,10 @@ impl Inner {
             })
             .await
             .map_err(|err| match err.downcast_ref::<TrashRestoreError>() {
-                Some(TrashRestoreError::Collision { .. }) => anyhow!(
-                    "Failed to restore `{name}`. Something already exists at its original location."
-                ),
-                _ => anyhow!("Failed to restore `{name}`. It may have been permanently deleted."),
+                Some(TrashRestoreError::Collision { .. }) => {
+                    anyhow!("`{name}` を復元できませんでした。元の場所に別のファイルが存在します。")
+                }
+                _ => anyhow!("`{name}` を復元できませんでした。完全に削除された可能性があります。"),
             })
     }
 
@@ -892,7 +894,7 @@ impl Inner {
                     PromptLevel::Info,
                     &prompt.message,
                     prompt.detail,
-                    &[prompt.confirmation_label, "Cancel"],
+                    &[prompt.confirmation_label, "キャンセル"],
                     cx,
                 )
             })?

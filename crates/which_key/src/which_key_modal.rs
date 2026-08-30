@@ -90,8 +90,9 @@ impl WhichKeyModal {
             .map(|(keystrokes, action)| {
                 // Map to remaining keystrokes and action name
                 let remaining_keystrokes = keystrokes[pending_keys.len()..].to_vec();
+                // DESIGN.md §3 方式 2: 日本語ラベルがあればそれを使い、無ければ英語の humanize 名
                 let action_name: SharedString =
-                    command_palette::humanize_action_name(action.name()).into();
+                    command_palette::localized_action_name(action.name()).into();
                 (remaining_keystrokes, action_name)
             })
             .collect();
@@ -297,7 +298,11 @@ fn group_bindings(
             // This is a group - create a single entry with just the first keystroke
             let first_keystroke = vec![first_key];
             let count = group_bindings.len();
-            result.push((first_keystroke, format!("+{} keybinds", count).into()));
+            // 先頭の `+` はグループ判定 (`action_name.starts_with('+')`) に使われるので維持する。
+            result.push((
+                first_keystroke,
+                format!("+{} 件のキーバインド", count).into(),
+            ));
         } else {
             // Not a group or empty keystrokes - add all bindings as-is
             result.append(&mut group_bindings);

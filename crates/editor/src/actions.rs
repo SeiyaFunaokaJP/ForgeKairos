@@ -403,6 +403,36 @@ actions!(
         /// Toggles a block quote (`> `) prefix on the selected lines (or the
         /// current line) while in Markdown files.
         ToggleBlockQuote,
+        /// Toggles bold (`**`) around the selection while in Markdown files.
+        ToggleBold,
+        /// Toggles italic (`*`) around the selection while in Markdown files.
+        ToggleItalic,
+        /// Toggles strikethrough (`~~`) around the selection while in Markdown files.
+        ToggleStrikethrough,
+        /// Toggles inline code (`` ` ``) around the selection while in Markdown files.
+        ToggleInlineCode,
+        /// Toggles a level 1 heading on the selected lines while in Markdown files.
+        ToggleHeading1,
+        /// Toggles a level 2 heading on the selected lines while in Markdown files.
+        ToggleHeading2,
+        /// Toggles a level 3 heading on the selected lines while in Markdown files.
+        ToggleHeading3,
+        /// Toggles a bullet list (`- `) on the selected lines while in Markdown files.
+        ToggleBulletList,
+        /// Toggles a numbered list (`1. `) on the selected lines while in Markdown files.
+        ToggleNumberedList,
+        /// Toggles a task list (`- [ ] `) on the selected lines while in Markdown files.
+        ToggleTaskList,
+        /// Inserts a Markdown link around the selection, or an empty one at the cursor.
+        InsertLink,
+        /// Inserts a horizontal rule (`---`) as its own block while in Markdown files.
+        InsertHorizontalRule,
+        /// Wraps the selected lines in a fenced code block while in Markdown files.
+        WrapInCodeBlock,
+        /// Inserts a newline with the opposite hard break behavior of `editor::Newline`:
+        /// it adds the two trailing spaces when `hard_break_on_newline` is off, and
+        /// leaves them out when it is on.
+        NewlineInvertHardBreak,
     ]
 );
 

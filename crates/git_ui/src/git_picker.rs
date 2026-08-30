@@ -28,9 +28,11 @@ pub enum GitPickerTab {
 
 impl Display for GitPickerTab {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // タブの表示ラベル専用。要素 ID は `ToggleButtonGroup` 側で
+        // (グループ名, インデックス) から作られるので翻訳しても影響しない。
         let label = match self {
-            GitPickerTab::Branches => "Branches",
-            GitPickerTab::Stashes => "Stashes",
+            GitPickerTab::Branches => "ブランチ",
+            GitPickerTab::Stashes => "スタッシュ",
         };
         write!(f, "{}", label)
     }
@@ -209,7 +211,7 @@ impl GitPicker {
                     )
                     .tooltip(move |_, cx| {
                         Tooltip::for_action_in(
-                            "Toggle Branch Picker",
+                            "ブランチピッカーを切り替え",
                             &ActivateBranchesTab,
                             &branches_focus_handle,
                             cx,
@@ -226,7 +228,7 @@ impl GitPicker {
                     )
                     .tooltip(move |_, cx| {
                         Tooltip::for_action_in(
-                            "Toggle Stash Picker",
+                            "スタッシュピッカーを切り替え",
                             &ActivateStashTab,
                             &stash_focus_handle,
                             cx,

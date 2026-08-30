@@ -41,6 +41,24 @@ pub struct NpmCommand {
     pub env: HashMap<String, String>,
 }
 
+/// Which proxy an npm invocation is pointed at.
+///
+/// ADR-F14 (F2-7): an AI agent harness is installed and run inside the fork's
+/// egress gate, so its npm traffic — and the traffic of whatever npm shells out
+/// to — has to be judged by the same allowlist as the app's own requests.
+/// Everything else npm is used for here (language servers, formatters, debug
+/// adapters, extensions) sits outside that gate and keeps reaching the registry
+/// the way it did before ADR-F14: routing it through the allowlist would deny
+/// `registry.npmjs.org`, which the ADR never meant to cover.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NpmProxyRouting {
+    /// Only the user's configured `http.proxy`, if any.
+    Direct,
+    /// The fork's child-process egress proxy while it is running, which chains
+    /// onward to the user's configured proxy rather than around it.
+    ThroughEgressProxy,
+}
+
 pub enum VersionStrategy<'a> {
     /// Install if current version doesn't match pinned version
     Pin(&'a Version),
@@ -221,10 +239,43 @@ impl NodeRuntime {
         subcommand: &str,
         args: &[&str],
     ) -> Result<Output> {
+        self.run_npm_subcommand_with_proxy_routing(
+            directory,
+            subcommand,
+            args,
+            NpmProxyRouting::Direct,
+        )
+        .await
+    }
+
+    /// For the one npm invocation that happens inside the fork's egress gate:
+    /// installing an AI agent harness. See [`NpmProxyRouting`].
+    pub async fn run_npm_subcommand_through_egress_proxy(
+        &self,
+        directory: Option<&Path>,
+        subcommand: &str,
+        args: &[&str],
+    ) -> Result<Output> {
+        self.run_npm_subcommand_with_proxy_routing(
+            directory,
+            subcommand,
+            args,
+            NpmProxyRouting::ThroughEgressProxy,
+        )
+        .await
+    }
+
+    async fn run_npm_subcommand_with_proxy_routing(
+        &self,
+        directory: Option<&Path>,
+        subcommand: &str,
+        args: &[&str],
+        proxy_routing: NpmProxyRouting,
+    ) -> Result<Output> {
         let http = self.0.lock().await.http.clone();
         self.instance()
             .await
-            .run_npm_subcommand(directory, http.proxy(), subcommand, args)
+            .run_npm_subcommand(directory, http.proxy(), proxy_routing, subcommand, args)
             .await
     }
 
@@ -248,7 +299,13 @@ impl NodeRuntime {
         let http = self.0.lock().await.http.clone();
         self.instance()
             .await
-            .npm_command(prefix_dir, http.proxy(), subcommand, args)
+            .npm_command(
+                prefix_dir,
+                http.proxy(),
+                NpmProxyRouting::Direct,
+                subcommand,
+                args,
+            )
             .await
     }
 
@@ -268,6 +325,7 @@ impl NodeRuntime {
             .run_npm_subcommand(
                 None,
                 http.proxy(),
+                NpmProxyRouting::Direct,
                 "info",
                 &[
                     name,
@@ -288,7 +346,7 @@ impl NodeRuntime {
                 String::from_utf8_lossy(&output.stdout)
             )
         })?;
-        let before = npm_config_before(instance.as_ref(), http.proxy())
+        let before = npm_config_before(instance.as_ref(), http.proxy(), NpmProxyRouting::Direct)
             .await
             .context("getting npm before config")
             .log_err()
@@ -475,11 +533,12 @@ struct NpmConfig {
 async fn npm_config_before(
     node_runtime: &dyn NodeRuntimeTrait,
     proxy: Option<&Url>,
+    proxy_routing: NpmProxyRouting,
 ) -> Result<Option<String>> {
     // `npm config get before` renders Date values for display. The JSON config output keeps the
     // computed cutoff in the same ISO format used by `npm info --json` release times.
     let output = node_runtime
-        .run_npm_subcommand(None, proxy, "config", &["list", "--json"])
+        .run_npm_subcommand(None, proxy, proxy_routing, "config", &["list", "--json"])
         .await?;
     let config: NpmConfig = serde_json::from_slice(&output.stdout)?;
     Ok(config
@@ -578,6 +637,7 @@ trait NodeRuntimeTrait: Send + Sync {
         &self,
         directory: Option<&Path>,
         proxy: Option<&Url>,
+        proxy_routing: NpmProxyRouting,
         subcommand: &str,
         args: &[&str],
     ) -> Result<Output>;
@@ -586,6 +646,7 @@ trait NodeRuntimeTrait: Send + Sync {
         &self,
         prefix_dir: Option<&Path>,
         proxy: Option<&Url>,
+        proxy_routing: NpmProxyRouting,
         subcommand: &str,
         args: &[&str],
     ) -> Result<NpmCommand>;
@@ -765,11 +826,14 @@ impl NodeRuntimeTrait for ManagedNodeRuntime {
         &self,
         directory: Option<&Path>,
         proxy: Option<&Url>,
+        proxy_routing: NpmProxyRouting,
         subcommand: &str,
         args: &[&str],
     ) -> Result<Output> {
         let attempt = || async {
-            let npm_command = self.npm_command(directory, proxy, subcommand, args).await?;
+            let npm_command = self
+                .npm_command(directory, proxy, proxy_routing, subcommand, args)
+                .await?;
             let mut command = util::command::new_command(npm_command.path);
             command.args(npm_command.args);
             command.envs(npm_command.env);
@@ -805,6 +869,7 @@ impl NodeRuntimeTrait for ManagedNodeRuntime {
         &self,
         prefix_dir: Option<&Path>,
         proxy: Option<&Url>,
+        proxy_routing: NpmProxyRouting,
         subcommand: &str,
         args: &[&str],
     ) -> Result<NpmCommand> {
@@ -827,10 +892,11 @@ impl NodeRuntimeTrait for ManagedNodeRuntime {
             Some(&self.installation_path.join("blank_user_npmrc")),
             Some(&self.installation_path.join("blank_global_npmrc")),
             proxy,
+            proxy_routing,
             subcommand,
             args,
         );
-        let command_env = npm_command_env(&node_binary);
+        let command_env = npm_command_env(&node_binary, proxy_routing);
 
         Ok(NpmCommand {
             path: node_binary,
@@ -932,10 +998,13 @@ impl NodeRuntimeTrait for SystemNodeRuntime {
         &self,
         directory: Option<&Path>,
         proxy: Option<&Url>,
+        proxy_routing: NpmProxyRouting,
         subcommand: &str,
         args: &[&str],
     ) -> anyhow::Result<Output> {
-        let npm_command = self.npm_command(directory, proxy, subcommand, args).await?;
+        let npm_command = self
+            .npm_command(directory, proxy, proxy_routing, subcommand, args)
+            .await?;
         let mut command = util::command::new_command(npm_command.path);
         command.args(npm_command.args);
         command.envs(npm_command.env);
@@ -956,6 +1025,7 @@ impl NodeRuntimeTrait for SystemNodeRuntime {
         &self,
         prefix_dir: Option<&Path>,
         proxy: Option<&Url>,
+        proxy_routing: NpmProxyRouting,
         subcommand: &str,
         args: &[&str],
     ) -> Result<NpmCommand> {
@@ -966,10 +1036,11 @@ impl NodeRuntimeTrait for SystemNodeRuntime {
             None,
             None,
             proxy,
+            proxy_routing,
             subcommand,
             args,
         );
-        let command_env = npm_command_env(&self.node);
+        let command_env = npm_command_env(&self.node, proxy_routing);
 
         Ok(NpmCommand {
             path: self.npm.clone(),
@@ -1081,6 +1152,7 @@ impl NodeRuntimeTrait for UnavailableNodeRuntime {
         &self,
         _: Option<&Path>,
         _: Option<&Url>,
+        _: NpmProxyRouting,
         _: &str,
         _: &[&str],
     ) -> anyhow::Result<Output> {
@@ -1091,6 +1163,7 @@ impl NodeRuntimeTrait for UnavailableNodeRuntime {
         &self,
         _: Option<&Path>,
         _proxy: Option<&Url>,
+        _proxy_routing: NpmProxyRouting,
         _subcommand: &str,
         _args: &[&str],
     ) -> Result<NpmCommand> {
@@ -1106,8 +1179,31 @@ impl NodeRuntimeTrait for UnavailableNodeRuntime {
     }
 }
 
-fn proxy_argument(proxy: Option<&Url>) -> Option<String> {
-    let mut proxy = proxy.cloned()?;
+fn proxy_argument(proxy_routing: NpmProxyRouting, proxy: Option<&Url>) -> Option<String> {
+    let child_process_proxy = match proxy_routing {
+        NpmProxyRouting::ThroughEgressProxy => http_client::child_process_proxy(),
+        NpmProxyRouting::Direct => None,
+    };
+    npm_proxy_argument(child_process_proxy, proxy)
+}
+
+/// ADR-F14 (F2-7): for the invocations that [`NpmProxyRouting`] places inside
+/// the egress gate, npm's own requests go through the fork's child-process
+/// proxy instead of straight out, so that `registry.npmjs.org` — a hole in
+/// ADR-F03 precisely because npm is a child process — is judged by the same
+/// allowlist as everything else. Nothing is lost by preferring it: the fork's
+/// proxy chains through `configured` rather than around it.
+///
+/// Split from [`proxy_argument`] so it can be tested without the process-wide
+/// endpoint slot, which the tests here would otherwise race each other over.
+fn npm_proxy_argument(
+    child_process_proxy: Option<Url>,
+    configured: Option<&Url>,
+) -> Option<String> {
+    let mut proxy = match child_process_proxy {
+        Some(endpoint) => endpoint,
+        None => configured.cloned()?,
+    };
     // Map proxy settings from `http://localhost:10809` to `http://127.0.0.1:10809`
     // NodeRuntime without environment information can not parse `localhost`
     // correctly.
@@ -1128,6 +1224,7 @@ fn build_npm_command_args(
     user_config: Option<&Path>,
     global_config: Option<&Path>,
     proxy: Option<&Url>,
+    proxy_routing: NpmProxyRouting,
     subcommand: &str,
     args: &[&str],
 ) -> Vec<String> {
@@ -1149,7 +1246,7 @@ fn build_npm_command_args(
         command_args.push("--globalconfig".into());
         command_args.push(global_config.to_string_lossy().into_owned());
     }
-    if let Some(proxy_arg) = proxy_argument(proxy) {
+    if let Some(proxy_arg) = proxy_argument(proxy_routing, proxy) {
         command_args.push("--proxy".into());
         command_args.push(proxy_arg);
     }
@@ -1157,10 +1254,21 @@ fn build_npm_command_args(
     command_args
 }
 
-pub fn npm_command_env(node_binary: &Path) -> HashMap<String, String> {
+pub fn npm_command_env(
+    node_binary: &Path,
+    proxy_routing: NpmProxyRouting,
+) -> HashMap<String, String> {
     let mut command_env = HashMap::new();
     let env_path = path_with_node_binary_prepended(node_binary).unwrap_or_default();
     command_env.insert("PATH".into(), env_path.to_string_lossy().into_owned());
+
+    // ADR-F14 (F2-7). `--proxy` (see `proxy_argument`) covers npm's own
+    // requests; these cover what npm shells out to — lifecycle scripts, and
+    // the `npx` package an ACP agent is installed as when it later runs. Scoped
+    // the same way as `--proxy`: only the invocations inside the egress gate.
+    if proxy_routing == NpmProxyRouting::ThroughEgressProxy {
+        http_client::apply_child_process_proxy_env(&mut command_env);
+    }
 
     if let Ok(node_ca_certs) = env::var(NODE_CA_CERTS_ENV_VAR) {
         if !node_ca_certs.is_empty() {
@@ -1196,9 +1304,94 @@ mod tests {
     use semver::{Version, VersionReq};
 
     use super::{
-        NpmInfo, VersionStrategy, build_npm_command_args, deserialize_npm_info_from_response,
-        proxy_argument, select_npm_package_version, should_install_npm_package_version,
+        NpmInfo, NpmProxyRouting, VersionStrategy, build_npm_command_args,
+        deserialize_npm_info_from_response, npm_command_env, npm_proxy_argument, proxy_argument,
+        select_npm_package_version, should_install_npm_package_version,
     };
+
+    #[test]
+    fn the_child_process_egress_proxy_wins_over_the_configured_one() {
+        // ADR-F14: for an invocation inside the egress gate, npm's own requests
+        // must go through the fork's proxy, which chains onward to the user's,
+        // rather than skipping the allowlist.
+        let egress = Url::parse("http://127.0.0.1:54321/").unwrap();
+        let corporate = Url::parse("http://corp.example:3128/").unwrap();
+
+        assert_eq!(
+            npm_proxy_argument(Some(egress.clone()), Some(&corporate)).as_deref(),
+            Some("http://127.0.0.1:54321/")
+        );
+        assert_eq!(
+            npm_proxy_argument(Some(egress), None).as_deref(),
+            Some("http://127.0.0.1:54321/")
+        );
+        // With the feature off, the configured proxy is used exactly as before.
+        assert_eq!(
+            npm_proxy_argument(None, Some(&corporate)).as_deref(),
+            Some("http://corp.example:3128/")
+        );
+        assert_eq!(npm_proxy_argument(None, None), None);
+    }
+
+    /// The only test here that touches the process-wide endpoint slot; the rest
+    /// route [`NpmProxyRouting::Direct`], which never reads it.
+    #[test]
+    fn only_the_agent_install_path_is_routed_through_the_egress_proxy() {
+        // ADR-F14, scoped: a language server's npm invocation must not be
+        // pointed at the allowlist proxy, which would deny `registry.npmjs.org`
+        // and fail the install for a feature the egress gate does not cover.
+        let endpoint = Url::parse("http://127.0.0.1:54321/").unwrap();
+        http_client::set_child_process_proxy(Some(endpoint));
+
+        let language_server_args = build_npm_command_args(
+            None,
+            None,
+            Path::new("/tmp/cache"),
+            None,
+            None,
+            None,
+            NpmProxyRouting::Direct,
+            "install",
+            &["yaml-language-server@latest"],
+        );
+        assert!(!language_server_args.iter().any(|arg| arg == "--proxy"));
+
+        let agent_install_args = build_npm_command_args(
+            None,
+            None,
+            Path::new("/tmp/cache"),
+            None,
+            None,
+            None,
+            NpmProxyRouting::ThroughEgressProxy,
+            "install",
+            &["some-acp-agent"],
+        );
+        let proxy_position = agent_install_args
+            .iter()
+            .position(|arg| arg == "--proxy")
+            .expect("the agent install path keeps the egress proxy argument");
+        assert_eq!(
+            agent_install_args
+                .get(proxy_position + 1)
+                .map(String::as_str),
+            Some("http://127.0.0.1:54321/")
+        );
+
+        let node_binary = Path::new("/usr/bin/node");
+        assert!(
+            !npm_command_env(node_binary, NpmProxyRouting::Direct).contains_key("HTTP_PROXY"),
+            "the egress proxy must not leak into a generic npm environment"
+        );
+        assert_eq!(
+            npm_command_env(node_binary, NpmProxyRouting::ThroughEgressProxy)
+                .get("HTTP_PROXY")
+                .map(String::as_str),
+            Some("http://127.0.0.1:54321/")
+        );
+
+        http_client::set_child_process_proxy(None);
+    }
 
     // Map localhost to 127.0.0.1
     // NodeRuntime without environment information can not parse `localhost` correctly.
@@ -1221,7 +1414,8 @@ mod tests {
 
         for (proxy, mapped_proxy) in CASES {
             let proxy = Url::parse(proxy).unwrap();
-            let proxy = proxy_argument(Some(&proxy)).expect("Proxy was not passed correctly");
+            let proxy = proxy_argument(NpmProxyRouting::Direct, Some(&proxy))
+                .expect("Proxy was not passed correctly");
             assert_eq!(
                 proxy, mapped_proxy,
                 "Incorrectly mapped localhost to 127.0.0.1"
@@ -1238,6 +1432,7 @@ mod tests {
             None,
             None,
             None,
+            NpmProxyRouting::Direct,
             "exec",
             &["--yes", "--", "agent-package"],
         );
@@ -1265,6 +1460,7 @@ mod tests {
             None,
             None,
             None,
+            NpmProxyRouting::Direct,
             "exec",
             &["--yes"],
         );

@@ -491,14 +491,14 @@ impl MessageEditor {
                 let has_selection = editor.has_non_empty_selection(&editor.display_snapshot(cx));
 
                 Some(ContextMenu::build(window, cx, |menu, _, _| {
-                    menu.action("Cut", Box::new(editor::actions::Cut))
+                    menu.action("切り取り", Box::new(editor::actions::Cut))
                         .action_disabled_when(
                             !has_selection,
-                            "Copy",
+                            "コピー",
                             Box::new(editor::actions::Copy),
                         )
-                        .action("Paste", Box::new(editor::actions::Paste))
-                        .action("Paste as Plain Text", Box::new(PasteRaw))
+                        .action("貼り付け", Box::new(editor::actions::Paste))
+                        .action("プレーンテキストとして貼り付け", Box::new(PasteRaw))
                 }))
             });
 
@@ -1628,7 +1628,7 @@ impl MessageEditor {
             files: true,
             directories: false,
             multiple: true,
-            prompt: Some("Select Images".into()),
+            prompt: Some("画像を選択".into()),
         });
 
         window
@@ -3286,8 +3286,8 @@ mod tests {
                     format!("seven.txt b{slash}"),
                     format!("six.txt b{slash}"),
                     format!("five.txt b{slash}"),
-                    "Files & Directories".into(),
-                    "Symbols".into()
+                    "ファイルとディレクトリ".into(),
+                    "シンボル".into()
                 ]
             );
             editor.set_text("", window, cx);
@@ -3321,10 +3321,10 @@ mod tests {
                     format!("seven.txt b{slash}"),
                     format!("six.txt b{slash}"),
                     format!("five.txt b{slash}"),
-                    "Files & Directories".into(),
-                    "Symbols".into(),
-                    "Threads".into(),
-                    "Fetch".into()
+                    "ファイルとディレクトリ".into(),
+                    "シンボル".into(),
+                    "スレッド".into(),
+                    "URL を取得".into()
                 ]
             );
         });

@@ -23,6 +23,7 @@ mod message_editor;
 mod mode_selector;
 mod model_selector;
 mod model_selector_popover;
+mod panel_thread_history;
 mod profile_selector;
 mod terminal_codegen;
 mod terminal_inline_assistant;
@@ -183,7 +184,18 @@ pub(crate) fn open_abs_path_at_point(
         .detach_and_log_err(cx);
 }
 
-pub const DEFAULT_THREAD_TITLE: &str = "New Agent Thread";
+pub const DEFAULT_THREAD_TITLE: &str = "新しいエージェントスレッド";
+
+/// F1-4: `DEFAULT_THREAD_TITLE` を日本語化する前に永続化されたスレッドは、
+/// この英語のタイトルをそのままデータベースに持っている。既定タイトルかどうかの
+/// 判定 (= 表示上はタイトル無しとして扱う) は旧い値も受け付ける必要がある。
+pub const LEGACY_DEFAULT_THREAD_TITLE: &str = "New Agent Thread";
+
+/// スレッドのタイトルが「まだ名前が付いていない」ことを表す既定値かどうか。
+/// 日本語化前に保存された英語の既定値も既定値として扱う。
+pub fn is_default_thread_title(title: &str) -> bool {
+    title == DEFAULT_THREAD_TITLE || title == LEGACY_DEFAULT_THREAD_TITLE
+}
 const PARALLEL_AGENT_LAYOUT_BACKFILL_KEY: &str = "parallel_agent_layout_backfilled";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -217,6 +229,8 @@ actions!(
         ToggleNewThreadMenu,
         /// Toggles the options menu for agent settings and preferences.
         ToggleOptionsMenu,
+        /// Toggles the thread history list shown inside the agent panel.
+        TogglePanelThreadHistory,
         /// Toggles the profile or mode selector for switching between agent profiles.
         ToggleProfileSelector,
         /// Cycles through available session modes.
@@ -734,7 +748,7 @@ fn rerun_rules_to_skills_migration(
             cx.update(|_window, cx| {
                 show_rules_to_skills_migration_toast(
                     &workspace,
-                    "Rules-to-skills migration rerun. Please double-check AGENTS.md and Skills for missing or duplicated prompts.",
+                    "ルールからスキルへの移行を再実行しました。AGENTS.md とスキルにプロンプトの欠落や重複がないか確認してください。",
                     cx,
                 );
             })?;
@@ -977,6 +991,7 @@ mod tests {
             button: true,
             dock: DockPosition::Right,
             flexible: true,
+            panel_thread_history: true,
             default_width: px(300.),
             default_height: px(600.),
             max_content_width: Some(px(850.)),

@@ -501,6 +501,36 @@ impl RemoteClient {
 
                 let heartbeat_task = Self::heartbeat(this.downgrade(), connection_activity_rx, cx);
 
+                // ADR-F11 (DESIGN.md §4): the local IDE's egress allowlist is
+                // the source of truth, so push it now that the connection is
+                // up. Sent with `send`, not `request` — this fork always
+                // builds both binaries together, but staying fire-and-forget
+                // means a peer with no handler for it (a stale server, or a
+                // minimal test double) never leaves this hanging.
+                //
+                // ADR-F14 carries the `proxy_child_processes` choice along, so
+                // that the same toggle governs the ACP agents, MCP servers and
+                // npm invocations that run on the remote host. Like the
+                // allowlist, it is read again on the next fresh connection
+                // rather than re-sent when it changes mid-session.
+                let allowed_hosts = cx
+                    .try_read_global::<egress_policy::EgressAllowlistGlobal, _>(|global, _| {
+                        global
+                            .0
+                            .snapshot()
+                            .patterns()
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                client
+                    .send(proto::SetEgressAllowlist {
+                        allowed_hosts,
+                        proxy_child_processes: Some(egress_policy::proxy_child_processes()),
+                    })
+                    .log_err();
+
                 this.update(cx, |this, _| {
                     this.state = Some(State::Connected {
                         remote_connection,

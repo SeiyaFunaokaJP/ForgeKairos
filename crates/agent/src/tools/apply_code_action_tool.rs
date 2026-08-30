@@ -63,12 +63,12 @@ impl AgentTool for ApplyCodeActionTool {
                     Some(pending.actions.get(index)?.lsp_action.title().to_string())
                 });
             if let Some(title) = title {
-                format!("Apply code action: {title}").into()
+                format!("コードアクションを適用: {title}").into()
             } else {
-                format!("Apply code action #{}", input.index).into()
+                format!("コードアクション #{} を適用", input.index).into()
             }
         } else {
-            "Apply code action".into()
+            "コードアクションを適用".into()
         }
     }
 

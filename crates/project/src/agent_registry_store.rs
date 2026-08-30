@@ -578,7 +578,14 @@ fn resolve_icon_url(entry: &RegistryEntry) -> Option<String> {
     ))
 }
 
-fn current_platform_key() -> Option<&'static str> {
+/// The `{os}-{arch}` key `RegistryBinaryAgent::targets` is keyed by for the
+/// platform this process is running on, matching the format the registry
+/// schema and `agent_server_store::LocalRegistryArchiveAgent::get_command`
+/// both build independently (`{darwin,linux,windows}-{aarch64,x86_64}`).
+/// Exposed so callers outside this module (the F2-5 install consent flow in
+/// `agent_ui`) can look up the archive a binary agent would actually download
+/// without re-deriving the OS/arch pair themselves.
+pub fn current_platform_key() -> Option<&'static str> {
     let os = if cfg!(target_os = "macos") {
         "darwin"
     } else if cfg!(target_os = "linux") {

@@ -22,7 +22,9 @@ use futures::{
 use git::GitHostingProviderRegistry;
 use gpui::{App, AppContext as _, Context, Entity, UpdateGlobal as _};
 use gpui_tokio::Tokio;
-use http_client::{Url, read_proxy_from_env};
+use http_client::{
+    AllowlistedHttpClient, EgressPolicyHandle, HttpClient, Url, read_proxy_from_env,
+};
 use language::LanguageRegistry;
 use net::async_net::{UnixListener, UnixStream};
 use node_runtime::{NodeBinaryOptions, NodeRuntime};
@@ -682,20 +684,30 @@ pub fn execute_run(
 
             let proxy_url = read_proxy_settings(cx);
 
-            let http_client = {
+            // DESIGN.md §4 (ADR-F03) gates the IDE's own HTTP client behind
+            // `AllowlistedHttpClient`; ADR-F11 extends that to this binary too,
+            // since it makes its own outgoing requests (LSP/node downloads,
+            // extensions) on the remote host. The policy starts out empty
+            // (loopback only, deny-by-default) and is filled in once the
+            // connecting client pushes its allowlist — see
+            // `HeadlessProject::handle_set_egress_allowlist`.
+            let http_client: Arc<dyn HttpClient> = {
                 let _guard = Tokio::handle(cx).enter();
-                Arc::new(
-                    ReqwestClient::proxy_and_user_agent(
-                        proxy_url,
-                        &format!(
-                            "Zed-Server/{} ({}; {})",
-                            env!("CARGO_PKG_VERSION"),
-                            std::env::consts::OS,
-                            std::env::consts::ARCH
-                        ),
-                    )
-                    .expect("Could not start HTTP client"),
-                )
+                Arc::new(AllowlistedHttpClient::new(
+                    Arc::new(
+                        ReqwestClient::proxy_and_user_agent(
+                            proxy_url,
+                            &format!(
+                                "Zed-Server/{} ({}; {})",
+                                env!("CARGO_PKG_VERSION"),
+                                std::env::consts::OS,
+                                std::env::consts::ARCH
+                            ),
+                        )
+                        .expect("Could not start HTTP client"),
+                    ),
+                    EgressPolicyHandle::default(),
+                ))
             };
 
             let node_runtime =

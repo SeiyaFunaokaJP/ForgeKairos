@@ -2559,7 +2559,22 @@ impl LocalLspStore {
         });
 
         use util::command::Stdio;
-        let mut child = util::command::new_command(command);
+        // Prefer a copy of `command` bundled next to the Zed executable (e.g. a
+        // shipped `clang-format.exe`) over whatever is on `PATH`, without
+        // changing behavior for absolute/relative paths or when nothing is
+        // bundled (see `resolve_command_next_to_current_exe`).
+        let bundled_command = util::command::resolve_command_next_to_current_exe(command);
+        if let Some(bundled_command) = &bundled_command {
+            log::debug!(
+                "Using bundled external formatter at {bundled_command:?} instead of resolving `{command}` from PATH"
+            );
+        }
+        let mut child = util::command::new_command(
+            bundled_command
+                .as_deref()
+                .map(Path::as_os_str)
+                .unwrap_or_else(|| OsStr::new(command)),
+        );
 
         if let Some(buffer_env) = buffer.env.as_ref() {
             child.envs(buffer_env);

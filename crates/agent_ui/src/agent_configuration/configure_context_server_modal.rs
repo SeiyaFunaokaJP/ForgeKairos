@@ -11,11 +11,10 @@ use gpui::{
 use language::{Language, LanguageRegistry};
 use markdown::{Markdown, MarkdownElement, MarkdownStyle};
 use notifications::status_toast::StatusToast;
-use parking_lot::Mutex;
 use project::{
     context_server_store::{
         ContextServerStatus, ContextServerStore, ServerStatusChangedEvent,
-        registry::ContextServerDescriptorRegistry,
+        registry::ContextServerDescriptorRegistry, wait_for_context_server,
     },
     project_settings::{ContextServerSettings, OAuthClientSettings, ProjectSettings},
     worktree_store::WorktreeStore,
@@ -198,7 +197,7 @@ impl ConfigurationSource {
             } => {
                 let text = editor
                     .as_ref()
-                    .context("No output available")?
+                    .context("設定を取得できませんでした。")?
                     .read(cx)
                     .text(cx);
                 let settings = serde_json_lenient::from_str::<serde_json::Value>(&text)?;
@@ -354,7 +353,7 @@ fn parse_http_input(
     }
     let value: HashMap<String, Temp> = serde_json_lenient::from_str(text)?;
     if value.len() != 1 {
-        anyhow::bail!("Expected exactly one context server configuration");
+        anyhow::bail!("コンテキストサーバーの設定は 1 つだけ指定してください。");
     }
 
     let (key, value) = value.into_iter().next().unwrap();
@@ -562,7 +561,7 @@ impl ConfigureContextServerModal {
                     secret_editor: cx.new(|cx| {
                         let mut editor = Editor::single_line(window, cx);
                         editor.set_placeholder_text(
-                            "Enter client secret (leave empty for public clients)",
+                            "クライアントシークレットを入力 (パブリッククライアントの場合は空欄)",
                             window,
                             cx,
                         );
@@ -747,7 +746,7 @@ impl ConfigureContextServerModal {
             .update(cx, {
                 |workspace, cx| {
                     let status_toast = StatusToast::new(
-                        format!("{} configured successfully.", id.0),
+                        format!("{} を構成しました。", id.0),
                         cx,
                         |this, _cx| {
                             this.icon(
@@ -755,7 +754,7 @@ impl ConfigureContextServerModal {
                                     .size(IconSize::Small)
                                     .color(Color::Muted),
                             )
-                            .action("Dismiss", |_, _| {})
+                            .action("閉じる", |_, _| {})
                         },
                     );
 
@@ -768,8 +767,13 @@ impl ConfigureContextServerModal {
 
 fn parse_input(text: &str) -> Result<(ContextServerId, ContextServerCommand)> {
     let value: serde_json::Value = serde_json_lenient::from_str(text)?;
-    let object = value.as_object().context("Expected object")?;
-    anyhow::ensure!(object.len() == 1, "Expected exactly one key-value pair");
+    let object = value
+        .as_object()
+        .context("JSON オブジェクトを指定してください。")?;
+    anyhow::ensure!(
+        object.len() == 1,
+        "キーと値のペアを 1 つだけ指定してください。"
+    );
     let (context_server_name, value) = object.into_iter().next().unwrap();
     let command: ContextServerCommand = serde_json::from_value(value.clone())?;
     Ok((ContextServerId(context_server_name.clone().into()), command))
@@ -794,15 +798,15 @@ impl EventEmitter<DismissEvent> for ConfigureContextServerModal {}
 impl ConfigureContextServerModal {
     fn render_modal_header(&self) -> ModalHeader {
         let text: SharedString = match &self.source {
-            ConfigurationSource::Existing { .. } => "Configure MCP Server".into(),
-            ConfigurationSource::Extension { id, .. } => format!("Configure {}", id.0).into(),
+            ConfigurationSource::Existing { .. } => "MCP サーバーを構成".into(),
+            ConfigurationSource::Extension { id, .. } => format!("{} を構成", id.0).into(),
         };
         ModalHeader::new().headline(text)
     }
 
     fn render_modal_description(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         const MODAL_DESCRIPTION: &str =
-            "Check the server docs for required arguments and environment variables.";
+            "必要な引数と環境変数についてはサーバーのドキュメントを確認してください。";
 
         if let ConfigurationSource::Extension {
             installation_instructions: Some(installation_instructions),
@@ -878,7 +882,7 @@ impl ConfigureContextServerModal {
                 } = &self.source
                 {
                     Some(
-                        Button::new("open-repository", "Open Repository")
+                        Button::new("open-repository", "リポジトリを開く")
                             .end_icon(
                                 Icon::new(IconName::ArrowUpRight)
                                     .size(IconSize::Small)
@@ -888,7 +892,7 @@ impl ConfigureContextServerModal {
                                 let repository_url = repository_url.clone();
                                 move |_window, cx| {
                                     Tooltip::with_meta(
-                                        "Open Repository",
+                                        "リポジトリを開く",
                                         None,
                                         repository_url.clone(),
                                         cx,
@@ -911,9 +915,9 @@ impl ConfigureContextServerModal {
                         Button::new(
                             "cancel",
                             if self.source.has_configuration_options() {
-                                "Cancel"
+                                "キャンセル"
                             } else {
-                                "Dismiss"
+                                "閉じる"
                             },
                         )
                         .key_binding(
@@ -925,7 +929,7 @@ impl ConfigureContextServerModal {
                         ),
                     )
                     .children(self.source.has_configuration_options().then(|| {
-                        Button::new("configure-server", "Configure Server")
+                        Button::new("configure-server", "サーバーを構成")
                             .disabled(is_busy)
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
@@ -968,13 +972,13 @@ impl ConfigureContextServerModal {
                             .color(Color::Muted),
                     )
                     .child(
-                        Label::new("Authenticate to connect this server")
+                        Label::new("このサーバーに接続するには認証が必要です")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
             )
             .child(
-                Button::new("authenticate-server", "Authenticate")
+                Button::new("authenticate-server", "認証")
                     .style(ButtonStyle::Outlined)
                     .label_size(LabelSize::Small)
                     .on_click({
@@ -1019,7 +1023,7 @@ impl ConfigureContextServerModal {
                     )
                     .child(
                         Label::new(
-                            "Enter your OAuth client secret, or leave empty for public clients",
+                            "OAuth クライアントシークレットを入力してください。パブリッククライアントの場合は空欄のままにします",
                         )
                         .size(LabelSize::Small)
                         .color(Color::Muted),
@@ -1046,7 +1050,7 @@ impl ConfigureContextServerModal {
                         },
                     )))
                     .child(
-                        Button::new("submit-client-secret", "Submit")
+                        Button::new("submit-client-secret", "送信")
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .on_click({
@@ -1074,13 +1078,13 @@ impl ConfigureContextServerModal {
                             .with_rotate_animation(3),
                     )
                     .child(
-                        Label::new("Authenticating…")
+                        Label::new("認証しています…")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
             )
             .child(
-                Button::new("cancel-authentication", "Cancel")
+                Button::new("cancel-authentication", "キャンセル")
                     .style(ButtonStyle::Outlined)
                     .label_size(LabelSize::Small)
                     .on_click({
@@ -1145,7 +1149,7 @@ impl Render for ConfigureContextServerModal {
                                         .child(match &self.state {
                                             State::Idle => div(),
                                             State::Waiting => {
-                                                self.render_loading("Connecting Server…")
+                                                self.render_loading("サーバーに接続しています…")
                                             }
                                             State::AuthRequired { server_id } => {
                                                 self.render_auth_required(&server_id.clone(), cx)
@@ -1171,65 +1175,6 @@ impl Render for ConfigureContextServerModal {
                     .footer(self.render_modal_footer(cx)),
             )
     }
-}
-
-fn wait_for_context_server(
-    context_server_store: &Entity<ContextServerStore>,
-    context_server_id: ContextServerId,
-    cx: &mut App,
-) -> Task<Result<ContextServerStatus, Arc<str>>> {
-    use std::time::Duration;
-
-    const WAIT_TIMEOUT: Duration = Duration::from_secs(120);
-
-    let (tx, rx) = futures::channel::oneshot::channel();
-    let tx = Arc::new(Mutex::new(Some(tx)));
-
-    let context_server_id_for_timeout = context_server_id.clone();
-    let subscription = cx.subscribe(context_server_store, move |_, event, _cx| {
-        let ServerStatusChangedEvent { server_id, status } = event;
-
-        if server_id != &context_server_id {
-            return;
-        }
-
-        match status {
-            ContextServerStatus::Running
-            | ContextServerStatus::AuthRequired
-            | ContextServerStatus::ClientSecretRequired { .. } => {
-                if let Some(tx) = tx.lock().take() {
-                    let _ = tx.send(Ok(status.clone()));
-                }
-            }
-            ContextServerStatus::Stopped => {
-                if let Some(tx) = tx.lock().take() {
-                    let _ = tx.send(Err("Context server stopped running".into()));
-                }
-            }
-            ContextServerStatus::Error(error) => {
-                if let Some(tx) = tx.lock().take() {
-                    let _ = tx.send(Err(error.clone()));
-                }
-            }
-            ContextServerStatus::Starting | ContextServerStatus::Authenticating => {}
-        }
-    });
-
-    cx.spawn(async move |cx| {
-        let timeout = cx.background_executor().timer(WAIT_TIMEOUT);
-        let result = futures::future::select(rx, timeout).await;
-        drop(subscription);
-        match result {
-            futures::future::Either::Left((Ok(inner), _)) => inner,
-            futures::future::Either::Left((Err(_), _)) => {
-                Err(Arc::from("Context server store was dropped"))
-            }
-            futures::future::Either::Right(_) => Err(Arc::from(format!(
-                "Timed out waiting for context server `{}` to start. Check the Zed log for details.",
-                context_server_id_for_timeout
-            ))),
-        }
-    })
 }
 
 pub(crate) fn default_markdown_style(window: &Window, cx: &App) -> MarkdownStyle {

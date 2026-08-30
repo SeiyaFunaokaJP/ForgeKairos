@@ -59,7 +59,7 @@ impl AgentTool for WebSearchTool {
         _input: Result<Self::Input, serde_json::Value>,
         _cx: &mut App,
     ) -> SharedString {
-        "Searching the Web".into()
+        "Web を検索".into()
     }
 
     /// We currently only support Zed Cloud as a provider.

@@ -16,7 +16,7 @@ pub use young_account_banner::YoungAccountBanner;
 use std::sync::Arc;
 
 use client::{Client, UserStore, zed_urls};
-use gpui::{AnyElement, Entity, IntoElement, ParentElement, TaskExt};
+use gpui::{Action, AnyElement, Entity, IntoElement, ParentElement, TaskExt};
 use ui::{Divider, RegisterComponent, Tooltip, Vector, VectorName, prelude::*};
 
 #[derive(PartialEq)]
@@ -148,7 +148,7 @@ impl ZedAiOnboarding {
                 .child(
                     IconButton::new("dismiss_onboarding", IconName::Close)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Dismiss"))
+                        .tooltip(Tooltip::text("閉じる"))
                         .on_click(move |_, window, cx| {
                             telemetry::event!("Banner Dismissed", source = "AI Onboarding",);
                             callback(window, cx)
@@ -158,6 +158,42 @@ impl ZedAiOnboarding {
         })
     }
 
+    /// zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): Zed AI is an external AI
+    /// service, so this card must not offer a way in until the data-retention
+    /// warning has been acknowledged. Consent is granted in the settings window,
+    /// which is also where the egress hosts it needs can be allowed, so this
+    /// only points at it rather than duplicating the checkbox.
+    fn render_consent_required(&self) -> AnyElement {
+        v_flex()
+            .w_full()
+            .relative()
+            .gap_1()
+            .child(Headline::new("Zed AI へようこそ"))
+            .child(
+                Label::new(
+                    "Zed AI は外部の AI サービスです。有効にすると、入力したコード・ファイルの内容・会話が Zed のサーバーへ送信され、事業者の方針によっては保存され、モデルの学習に利用される可能性があります。",
+                )
+                .color(Color::Muted),
+            )
+            .child(
+                Label::new(
+                    "利用するには、設定の「AI」→「LLM プロバイダー」で警告を確認し、有効化のチェックを入れてください。業務で利用する場合は、所属組織のポリシーを必ず確認してください。",
+                )
+                .color(Color::Muted)
+                .mb_2(),
+            )
+            .child(
+                Button::new("open_ai_settings", "AI の設定を開く")
+                    .full_width()
+                    .style(ButtonStyle::Outlined)
+                    .on_click(move |_, window, cx| {
+                        window.dispatch_action(zed_actions::agent::OpenSettings.boxed_clone(), cx);
+                    }),
+            )
+            .children(self.render_dismiss_button())
+            .into_any_element()
+    }
+
     fn render_sign_in_disclaimer(&self, _cx: &mut App) -> AnyElement {
         let signing_in = matches!(self.sign_in_status, SignInStatus::SigningIn);
 
@@ -165,15 +201,15 @@ impl ZedAiOnboarding {
             .w_full()
             .relative()
             .gap_1()
-            .child(Headline::new("Welcome to Zed AI"))
+            .child(Headline::new("Zed AI へようこそ"))
             .child(
-                Label::new("Sign in to try Zed Pro free for 14 days.")
+                Label::new("サインインすると Zed Pro を 14 日間無料でお試しいただけます。")
                     .color(Color::Muted)
                     .mb_2(),
             )
             .child(PlanDefinitions.sign_in_upsell())
             .child(
-                Button::new("sign_in", "Try Zed Pro for Free")
+                Button::new("sign_in", "Zed Pro を無料で試す")
                     .disabled(signing_in)
                     .full_width()
                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
@@ -195,7 +231,7 @@ impl ZedAiOnboarding {
                 .relative()
                 .min_w_0()
                 .gap_1()
-                .child(Headline::new("Welcome to Zed AI"))
+                .child(Headline::new("Zed AI へようこそ"))
                 .child(YoungAccountBanner)
                 .child(
                     v_flex()
@@ -214,7 +250,7 @@ impl ZedAiOnboarding {
                         )
                         .child(PlanDefinitions.pro_plan())
                         .child(
-                            Button::new("pro", "Get Started")
+                            Button::new("pro", "利用を開始")
                                 .full_width()
                                 .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                                 .on_click(move |_, _window, cx| {
@@ -232,7 +268,7 @@ impl ZedAiOnboarding {
                 .w_full()
                 .relative()
                 .gap_1()
-                .child(Headline::new("Welcome to Zed AI"))
+                .child(Headline::new("Zed AI へようこそ"))
                 .child(
                     v_flex()
                         .mt_2()
@@ -247,7 +283,7 @@ impl ZedAiOnboarding {
                                         .buffer_font(cx),
                                 )
                                 .child(
-                                    Label::new("(Current Plan)")
+                                    Label::new("(現在のプラン)")
                                         .size(LabelSize::Small)
                                         .color(Color::Custom(
                                             cx.theme().colors().text_muted.opacity(0.6),
@@ -276,7 +312,7 @@ impl ZedAiOnboarding {
                         )
                         .child(PlanDefinitions.pro_trial(true))
                         .child(
-                            Button::new("pro", "Start Free Trial")
+                            Button::new("pro", "無料トライアルを開始")
                                 .full_width()
                                 .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                                 .on_click(move |_, _window, cx| {
@@ -298,9 +334,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::pro_trial_stamp(cx))
-            .child(Headline::new("Welcome to the Zed Pro Trial"))
+            .child(Headline::new("Zed Pro トライアルへようこそ"))
             .child(
-                Label::new("Here's what you get for the next 14 days:")
+                Label::new("今後 14 日間で利用できる内容は次のとおりです。")
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -315,9 +351,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::certified_user_stamp(cx))
-            .child(Headline::new("Welcome to Zed Pro"))
+            .child(Headline::new("Zed Pro へようこそ"))
             .child(
-                Label::new("Here's what you get:")
+                Label::new("利用できる内容は次のとおりです。")
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -332,9 +368,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::business_stamp(cx))
-            .child(Headline::new("Welcome to Zed Business"))
+            .child(Headline::new("Zed Business へようこそ"))
             .child(
-                Label::new("Here's what you get:")
+                Label::new("利用できる内容は次のとおりです。")
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -349,9 +385,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::vip_stamp(cx))
-            .child(Headline::new("Welcome to Zed VIP"))
+            .child(Headline::new("Zed VIP へようこそ"))
             .child(
-                Label::new("Here's what you get:")
+                Label::new("利用できる内容は次のとおりです。")
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -366,9 +402,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::student_stamp(cx))
-            .child(Headline::new("Welcome to Zed Student"))
+            .child(Headline::new("Zed Student へようこそ"))
             .child(
-                Label::new("Here's what you get:")
+                Label::new("利用できる内容は次のとおりです。")
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -380,6 +416,9 @@ impl ZedAiOnboarding {
 
 impl RenderOnce for ZedAiOnboarding {
     fn render(self, _window: &mut ui::Window, cx: &mut App) -> impl IntoElement {
+        if !settings::external_ai_provider_is_acknowledged(settings::ZED_CLOUD_AI_CONSENT_KEY, cx) {
+            return self.render_consent_required();
+        }
         if matches!(self.sign_in_status, SignInStatus::SignedIn) {
             match self.plan {
                 None => self.render_free_plan_state(cx),

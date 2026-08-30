@@ -535,6 +535,24 @@ impl Editor {
     }
 
     pub fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
+        self.newline_impl(false, window, cx);
+    }
+
+    pub fn newline_invert_hard_break(
+        &mut self,
+        _: &NewlineInvertHardBreak,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.newline_impl(true, window, cx);
+    }
+
+    fn newline_impl(
+        &mut self,
+        invert_hard_break: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.read_only(cx) {
             return;
         }
@@ -651,6 +669,11 @@ impl Editor {
                             )
                         };
 
+                        let insert_hard_break = selection_is_empty
+                            && buffer.language_settings_at(start, cx).hard_break_on_newline
+                                != invert_hard_break
+                            && markdown_hard_break_wanted(&start_point, start, &buffer);
+
                         let (edit_start, new_text, prevent_auto_indent) = match &newline_config {
                             NewlineConfig::ClearCurrentLine => {
                                 let row_start =
@@ -694,8 +717,12 @@ impl Editor {
                                     1 + capacity_for_delimiter
                                         + existing_indent_len
                                         + additional_indent.len as usize
-                                        + extra_line_len,
+                                        + extra_line_len
+                                        + if insert_hard_break { 2 } else { 0 },
                                 );
+                                if insert_hard_break {
+                                    new_text.push_str("  ");
+                                }
                                 new_text.push('\n');
                                 if preserve_indent {
                                     new_text.extend(existing_indent.chars());
@@ -2619,6 +2646,104 @@ fn documentation_delimiter_for_newline(
     }
 }
 
+/// Whether pressing enter at `start` should first append the two spaces that
+/// spell a Markdown hard line break.
+fn markdown_hard_break_wanted(
+    start_point: &Point,
+    start: MultiBufferOffset,
+    buffer: &MultiBufferSnapshot,
+) -> bool {
+    let line_start = buffer.point_to_offset(Point::new(start_point.row, 0));
+    let line_prefix = buffer.text_for_range(line_start..start).collect::<String>();
+    if markdown_hard_break_is_redundant(&line_prefix) {
+        return false;
+    }
+    !is_inside_markdown_code(buffer, start)
+}
+
+/// Lines where two trailing spaces are either dropped by the renderer or simply
+/// unnecessary, mirroring GitLab-Userscript's `skipHardBreak`.
+///
+/// `line_prefix` is the text between the start of the line and the cursor.
+fn markdown_hard_break_is_redundant(line_prefix: &str) -> bool {
+    if line_prefix.trim().is_empty() {
+        return true;
+    }
+
+    let mut tail = line_prefix.chars().rev();
+    match (tail.next(), tail.next()) {
+        // `\` is CommonMark's other spelling of a hard break.
+        (Some('\\'), _) => return true,
+        (Some(last), Some(before_last)) if last.is_whitespace() && before_last.is_whitespace() => {
+            return true;
+        }
+        _ => {}
+    }
+
+    let content = line_prefix.trim_start();
+    let indent = line_prefix.len() - content.len();
+
+    // Headings: trailing whitespace is discarded.
+    if indent <= 3 {
+        let hashes = content.len() - content.trim_start_matches('#').len();
+        if (1..=6).contains(&hashes)
+            && content
+                .get(hashes..)
+                .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+        {
+            return true;
+        }
+    }
+
+    // Table rows: a break inside a cell renders as nothing.
+    if content.starts_with('|') {
+        return true;
+    }
+
+    // List items: enter already starts a new item.
+    let Some(first) = content.chars().next() else {
+        return false;
+    };
+    if matches!(first, '-' | '*' | '+') {
+        return content
+            .get(first.len_utf8()..)
+            .is_some_and(|rest| rest.starts_with(char::is_whitespace));
+    }
+    if first.is_ascii_digit() {
+        let digits = content.len()
+            - content
+                .trim_start_matches(|character: char| character.is_ascii_digit())
+                .len();
+        return content.get(digits..).is_some_and(|rest| {
+            rest.starts_with(['.', ')'])
+                && rest
+                    .get(1..)
+                    .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+        });
+    }
+
+    false
+}
+
+/// Whether `offset` sits in a code span or code block, where a hard break would
+/// only add stray whitespace to the rendered code.
+fn is_inside_markdown_code(buffer: &MultiBufferSnapshot, offset: MultiBufferOffset) -> bool {
+    let Some((node, _)) = buffer.syntax_ancestor(offset..offset) else {
+        return false;
+    };
+    let mut node = Some(node);
+    while let Some(current) = node {
+        if matches!(
+            current.kind(),
+            "fenced_code_block" | "indented_code_block" | "code_span"
+        ) {
+            return true;
+        }
+        node = current.parent();
+    }
+    false
+}
+
 fn list_delimiter_for_newline(
     start_point: &Point,
     buffer: &MultiBufferSnapshot,
@@ -3083,5 +3208,33 @@ impl EntityInputHandler for Editor {
 
     fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
         self.expects_character_input
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::markdown_hard_break_is_redundant;
+
+    // Mirrors the cases in GitLab-Userscript's `test/unit-breaks.js`.
+    #[test]
+    fn test_markdown_hard_break_is_redundant() {
+        assert!(!markdown_hard_break_is_redundant("本文です"));
+        assert!(markdown_hard_break_is_redundant(""));
+        assert!(markdown_hard_break_is_redundant("   "));
+        assert!(markdown_hard_break_is_redundant("本文です  "));
+        assert!(markdown_hard_break_is_redundant("本文です\\"));
+        assert!(!markdown_hard_break_is_redundant("本文です "));
+        assert!(markdown_hard_break_is_redundant("## 見出し"));
+        assert!(!markdown_hard_break_is_redundant("#見出しではない"));
+        assert!(markdown_hard_break_is_redundant("| a | b |"));
+        assert!(markdown_hard_break_is_redundant("  | a | b |"));
+        assert!(markdown_hard_break_is_redundant("- 項目"));
+        assert!(markdown_hard_break_is_redundant("* 項目"));
+        assert!(markdown_hard_break_is_redundant("1. 項目"));
+        assert!(markdown_hard_break_is_redundant("1) 項目"));
+        assert!(markdown_hard_break_is_redundant("    - 項目"));
+        // Block quotes still want manual breaks.
+        assert!(!markdown_hard_break_is_redundant("> 引用"));
+        assert!(!markdown_hard_break_is_redundant("-3 度"));
     }
 }

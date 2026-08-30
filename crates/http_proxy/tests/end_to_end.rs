@@ -8,13 +8,14 @@
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use http_proxy::{
-    Allowlist, DenyReason, HostPattern, ProxyConfig, ProxyEvent, ProxyHandle, RequestMethod,
-    RequestOutcome, UpstreamProxy,
+    Allowlist, DenyReason, DestinationPolicy, HostPattern, PolicyDecision, ProxyConfig, ProxyEvent,
+    ProxyHandle, RequestMethod, RequestOutcome, UpstreamProxy,
 };
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -94,6 +95,27 @@ fn spawn_proxy_with_upstream(
         allowlist,
         upstream,
         events: events_tx,
+        policy: None,
+        outer_policy: None,
+    })
+    .expect("proxy spawn");
+
+    drain_ready(&proxy, &mut events_rx);
+    (proxy, events_rx)
+}
+
+fn spawn_proxy_with_policy(
+    policy: Arc<dyn DestinationPolicy>,
+) -> (ProxyHandle, mpsc::UnboundedReceiver<ProxyEvent>) {
+    let (events_tx, mut events_rx) = mpsc::unbounded();
+    let proxy = ProxyHandle::spawn(ProxyConfig {
+        // Deliberately the strictest allowlist there is: a custom policy must
+        // replace it outright rather than intersect with it.
+        allowlist: Allowlist::empty(),
+        upstream: None,
+        events: events_tx,
+        policy: Some(policy),
+        outer_policy: None,
     })
     .expect("proxy spawn");
 
@@ -108,6 +130,8 @@ fn spawn_unix_proxy(allowlist: Allowlist) -> (ProxyHandle, mpsc::UnboundedReceiv
         allowlist,
         upstream: None,
         events: events_tx,
+        policy: None,
+        outer_policy: None,
     })
     .expect("proxy spawn");
 
@@ -590,4 +614,352 @@ fn dropping_handle_stops_listener() {
         result.is_err(),
         "listener should have stopped after ProxyHandle drop, but new connection succeeded"
     );
+}
+
+/// A stand-in for this fork's egress-allowlist policy (ADR-F13): a set of
+/// exact hostnames plus loopback, with loopback destinations reachable.
+struct HostSetPolicy(&'static [&'static str]);
+
+impl DestinationPolicy for HostSetPolicy {
+    fn evaluate(&self, host: &str, _port: u16) -> PolicyDecision {
+        if host == "localhost" || self.0.contains(&host) {
+            PolicyDecision::Allow {
+                permit_local_addresses: true,
+            }
+        } else {
+            PolicyDecision::Deny(DenyReason::NotPermittedByPolicy {
+                host: host.to_string(),
+                explanation: format!("host '{host}' is not on the network allowlist"),
+            })
+        }
+    }
+}
+
+#[test]
+fn custom_policy_tunnels_connect_to_a_permitted_host() {
+    let (origin_addr, origin_join) = spawn_echo_origin(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello",
+    );
+
+    // The origin lives on loopback, which an empty `Allowlist` plus the
+    // DNS-rebinding filter would deny twice over — so this also covers the
+    // policy replacing both rather than intersecting with them.
+    let (proxy, mut events) = spawn_proxy_with_policy(Arc::new(HostSetPolicy(&["example.com"])));
+    let target = format!("localhost:{}", origin_addr.port());
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client.set_write_timeout(Some(TEST_TIMEOUT)).unwrap();
+    let request = format!("CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n");
+    client.write_all(request.as_bytes()).unwrap();
+
+    let response = read_until_double_crlf(&mut client);
+    let response_text = String::from_utf8_lossy(&response);
+    assert!(
+        response_text.starts_with("HTTP/1.1 200"),
+        "expected the tunnel to open, got: {response_text}"
+    );
+
+    client.write_all(b"hi origin\r\n\r\n").unwrap();
+    client.shutdown(std::net::Shutdown::Write).unwrap();
+    let _ = client.read_to_end(&mut Vec::new());
+
+    let origin_received = origin_join.join().unwrap();
+    assert!(
+        String::from_utf8_lossy(&origin_received).contains("hi origin"),
+        "origin saw: {:?}",
+        String::from_utf8_lossy(&origin_received)
+    );
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt {
+            host,
+            method,
+            outcome,
+            ..
+        } => {
+            assert_eq!(host, "localhost");
+            assert_eq!(method, RequestMethod::Connect);
+            assert!(matches!(outcome, RequestOutcome::Allowed));
+        }
+        other => panic!("expected RequestAttempt, got {other:?}"),
+    }
+}
+
+#[test]
+fn custom_policy_denies_connect_to_a_host_outside_the_allowlist() {
+    let (proxy, mut events) = spawn_proxy_with_policy(Arc::new(HostSetPolicy(&["example.com"])));
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client
+        .write_all(b"CONNECT api.openai.com:443 HTTP/1.1\r\nHost: api.openai.com:443\r\n\r\n")
+        .unwrap();
+
+    let mut response = String::new();
+    client.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 511 "),
+        "expected 511, got: {response}"
+    );
+    assert!(response.contains("api.openai.com"), "{response}");
+    assert!(response.contains("network_allowlist.json"), "{response}");
+    // The sandbox's framing must not leak into a non-sandbox denial.
+    assert!(response.contains("Via: 1.1 zed-egress-proxy"), "{response}");
+    assert!(!response.contains("sandbox"), "{response}");
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt {
+            host,
+            outcome:
+                RequestOutcome::Denied {
+                    reason: DenyReason::NotPermittedByPolicy { .. },
+                },
+            ..
+        } => assert_eq!(host, "api.openai.com"),
+        other => panic!("expected RequestAttempt(Denied), got {other:?}"),
+    }
+}
+
+#[test]
+fn custom_policy_forwards_plain_http_to_a_permitted_host() {
+    let (origin_addr, origin_join) =
+        spawn_echo_origin(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+
+    let (proxy, mut events) = spawn_proxy_with_policy(Arc::new(HostSetPolicy(&[])));
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    let request = format!(
+        "GET http://localhost:{}/data HTTP/1.1\r\nHost: localhost:{}\r\n\r\n",
+        origin_addr.port(),
+        origin_addr.port()
+    );
+    client.write_all(request.as_bytes()).unwrap();
+
+    let mut response = String::new();
+    client.read_to_string(&mut response).unwrap();
+    assert!(response.contains("HTTP/1.1 200"), "client got: {response}");
+
+    let origin_received = origin_join.join().unwrap();
+    let origin_text = String::from_utf8_lossy(&origin_received);
+    assert!(
+        origin_text.starts_with("GET /data HTTP/1.1\r\n"),
+        "origin saw: {origin_text}"
+    );
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt {
+            host,
+            method: RequestMethod::Http(method),
+            outcome: RequestOutcome::Allowed,
+            ..
+        } => {
+            assert_eq!(host, "localhost");
+            assert_eq!(method, "GET");
+        }
+        other => panic!("expected an allowed HTTP attempt, got {other:?}"),
+    }
+}
+
+#[test]
+fn custom_policy_denies_plain_http_to_a_host_outside_the_allowlist() {
+    let (proxy, mut events) = spawn_proxy_with_policy(Arc::new(HostSetPolicy(&["example.com"])));
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client
+        .write_all(
+            b"GET http://telemetry.example/collect HTTP/1.1\r\nHost: telemetry.example\r\n\r\n",
+        )
+        .unwrap();
+
+    let mut response = String::new();
+    client.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 511 "),
+        "expected 511, got: {response}"
+    );
+    assert!(response.contains("telemetry.example"), "{response}");
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt {
+            host,
+            method: RequestMethod::Http(_),
+            outcome:
+                RequestOutcome::Denied {
+                    reason: DenyReason::NotPermittedByPolicy { .. },
+                },
+            ..
+        } => assert_eq!(host, "telemetry.example"),
+        other => panic!("expected RequestAttempt(Denied), got {other:?}"),
+    }
+}
+
+#[test]
+fn custom_policy_decides_ip_literals_the_built_in_one_rejects_outright() {
+    // The built-in policy denies every IP literal; this fork's allowlist can
+    // list one, so a permitted literal must tunnel and an unlisted one must not.
+    let (origin_addr, origin_join) =
+        spawn_echo_origin(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+
+    struct LiteralPolicy;
+    impl DestinationPolicy for LiteralPolicy {
+        fn evaluate(&self, host: &str, _port: u16) -> PolicyDecision {
+            if host == "127.0.0.1" {
+                PolicyDecision::Allow {
+                    permit_local_addresses: true,
+                }
+            } else {
+                PolicyDecision::Deny(DenyReason::NotPermittedByPolicy {
+                    host: host.to_string(),
+                    explanation: format!("host '{host}' is not on the network allowlist"),
+                })
+            }
+        }
+    }
+
+    let (proxy, _events) = spawn_proxy_with_policy(Arc::new(LiteralPolicy));
+    let target = format!("127.0.0.1:{}", origin_addr.port());
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client.set_write_timeout(Some(TEST_TIMEOUT)).unwrap();
+    let request = format!("CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n");
+    client.write_all(request.as_bytes()).unwrap();
+    let response = read_until_double_crlf(&mut client);
+    assert!(
+        String::from_utf8_lossy(&response).starts_with("HTTP/1.1 200"),
+        "an allowlisted IP literal must tunnel: {:?}",
+        String::from_utf8_lossy(&response)
+    );
+    client.write_all(b"hi\r\n\r\n").unwrap();
+    client.shutdown(std::net::Shutdown::Write).unwrap();
+    let _ = client.read_to_end(&mut Vec::new());
+    origin_join.join().unwrap();
+
+    let mut denied = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    denied.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    denied
+        .write_all(b"CONNECT 10.0.0.5:443 HTTP/1.1\r\nHost: 10.0.0.5:443\r\n\r\n")
+        .unwrap();
+    let mut response = String::new();
+    denied.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 511 "),
+        "expected 511, got: {response}"
+    );
+}
+
+/// Stand-in for this fork's editor-wide egress allowlist when it is used as the
+/// ceiling around a sandbox's own host list: one permitted host, and loopback /
+/// private space permitted the way that allowlist permits them.
+struct OuterAllowlist(&'static str);
+
+impl DestinationPolicy for OuterAllowlist {
+    fn evaluate(&self, host: &str, _port: u16) -> PolicyDecision {
+        if host == self.0 {
+            PolicyDecision::Allow {
+                permit_local_addresses: true,
+            }
+        } else {
+            PolicyDecision::Deny(DenyReason::NotPermittedByPolicy {
+                host: host.to_string(),
+                explanation: format!("host '{host}' is not on the network allowlist"),
+            })
+        }
+    }
+}
+
+fn spawn_proxy_nested_within(
+    allowlist: Allowlist,
+    outer_policy: Arc<dyn DestinationPolicy>,
+) -> (ProxyHandle, mpsc::UnboundedReceiver<ProxyEvent>) {
+    let (events_tx, mut events_rx) = mpsc::unbounded();
+    let proxy = ProxyHandle::spawn(ProxyConfig {
+        allowlist,
+        upstream: None,
+        events: events_tx,
+        policy: None,
+        outer_policy: Some(outer_policy),
+    })
+    .expect("proxy spawn");
+
+    drain_ready(&proxy, &mut events_rx);
+    (proxy, events_rx)
+}
+
+#[test]
+fn a_host_the_outer_policy_refuses_is_denied_even_though_the_allowlist_has_it() {
+    let allowlist = Allowlist::from_patterns([HostPattern::parse("denied.example").unwrap()]);
+    let (proxy, mut events) =
+        spawn_proxy_nested_within(allowlist, Arc::new(OuterAllowlist("github.com")));
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client
+        .write_all(b"CONNECT denied.example:443 HTTP/1.1\r\nHost: denied.example:443\r\n\r\n")
+        .unwrap();
+
+    let mut response = String::new();
+    client.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 511 "),
+        "expected 511, got: {response}"
+    );
+    // The denial names the policy that has to be widened, which for an
+    // outer-policy refusal is the editor-wide allowlist, not the sandbox's.
+    assert!(response.contains("Via: 1.1 zed-egress-proxy"), "{response}");
+    assert!(response.contains("network_allowlist.json"), "{response}");
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt {
+            host,
+            outcome:
+                RequestOutcome::Denied {
+                    reason: DenyReason::NotPermittedByPolicy { .. },
+                },
+            ..
+        } => assert_eq!(host, "denied.example"),
+        other => panic!("expected RequestAttempt(NotPermittedByPolicy), got {other:?}"),
+    }
+}
+
+#[test]
+fn a_host_both_policies_permit_tunnels_through() {
+    let (origin_addr, origin_join) =
+        spawn_echo_origin(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+
+    // As in `connect_allowed_host_completes_tunnel_and_emits_events`, the
+    // loopback origin is only reachable because `Allowlist::any()` waives the
+    // sandbox's own checks; here the outer policy has to permit it too.
+    let (proxy, mut events) =
+        spawn_proxy_nested_within(Allowlist::any(), Arc::new(OuterAllowlist("localhost")));
+    let target = format!("localhost:{}", origin_addr.port());
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client.set_write_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client
+        .write_all(format!("CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n").as_bytes())
+        .unwrap();
+
+    let response = read_until_double_crlf(&mut client);
+    let response = String::from_utf8_lossy(&response);
+    assert!(
+        response.starts_with("HTTP/1.1 200"),
+        "expected 200 from proxy, got: {response}"
+    );
+    client.write_all(b"hi origin\r\n\r\n").unwrap();
+    client.shutdown(std::net::Shutdown::Write).unwrap();
+    let _ = client.read_to_end(&mut Vec::new());
+    origin_join.join().unwrap();
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt { host, outcome, .. } => {
+            assert_eq!(host, "localhost");
+            assert!(matches!(outcome, RequestOutcome::Allowed));
+        }
+        other => panic!("expected RequestAttempt, got {other:?}"),
+    }
 }

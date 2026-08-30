@@ -692,13 +692,23 @@ impl AgentServerStore {
                 anyhow::Ok(agent.get_command(vec![], extra_env, &mut cx.to_async()))
             })?
             .await?;
+
+        // ADR-F14: this handler only runs in `remote_server`, and the agent it
+        // describes is spawned on this host, so the egress proxy to point it
+        // at is this host's — the one `AcpConnection::stdio` deliberately
+        // withholds from a remote agent because a loopback port there means a
+        // different machine. Injected after the agent's own settings have had
+        // their say, the same ordering as the local path, so a proxy spelled
+        // out in `agent_servers.<name>.env` still wins.
+        let mut env = command.env.unwrap_or_default();
+        if http_client::child_process_proxy().is_some() {
+            http_client::apply_child_process_proxy_env(&mut env);
+        }
+
         Ok(proto::AgentServerCommand {
             path: command.path.to_string_lossy().into_owned(),
             args: command.args,
-            env: command
-                .env
-                .map(|env| env.into_iter().collect())
-                .unwrap_or_default(),
+            env: env.into_iter().collect(),
             root_dir: envelope
                 .payload
                 .root_dir
@@ -1392,7 +1402,7 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
 
             let (package_name, package_spec) = bounded_npm_package_spec(&package);
             node_runtime
-                .run_npm_subcommand(
+                .run_npm_subcommand_through_egress_proxy(
                     Some(&install_dir),
                     "install",
                     &[package_spec.as_str(), "--save-exact"],
@@ -1405,7 +1415,12 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
             .await?;
 
             let node_binary = node_runtime.binary_path().await?;
-            env.extend(node_runtime::npm_command_env(&node_binary));
+            // The agent process itself runs inside the egress gate (ADR-F14), so
+            // its environment carries the child-process proxy along with PATH.
+            env.extend(node_runtime::npm_command_env(
+                &node_binary,
+                node_runtime::NpmProxyRouting::ThroughEgressProxy,
+            ));
             env.extend(distribution_env);
             env.extend(extra_env);
             env.extend(settings_env);

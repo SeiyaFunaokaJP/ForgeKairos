@@ -637,6 +637,20 @@ impl EditorElement {
             register_action(editor, window, Editor::toggle_comments);
             register_action(editor, window, Editor::toggle_block_comments);
             register_action(editor, window, Editor::toggle_markdown_block_quote);
+            register_action(editor, window, Editor::toggle_markdown_bold);
+            register_action(editor, window, Editor::toggle_markdown_italic);
+            register_action(editor, window, Editor::toggle_markdown_strikethrough);
+            register_action(editor, window, Editor::toggle_markdown_inline_code);
+            register_action(editor, window, Editor::toggle_markdown_heading_1);
+            register_action(editor, window, Editor::toggle_markdown_heading_2);
+            register_action(editor, window, Editor::toggle_markdown_heading_3);
+            register_action(editor, window, Editor::toggle_markdown_bullet_list);
+            register_action(editor, window, Editor::toggle_markdown_numbered_list);
+            register_action(editor, window, Editor::toggle_markdown_task_list);
+            register_action(editor, window, Editor::insert_markdown_link);
+            register_action(editor, window, Editor::insert_markdown_horizontal_rule);
+            register_action(editor, window, Editor::wrap_markdown_in_code_block);
+            register_action(editor, window, Editor::newline_invert_hard_break);
             register_action(editor, window, Editor::unwrap_syntax_node);
             register_action(editor, window, Editor::accept_next_word_edit_prediction);
             register_action(editor, window, Editor::accept_next_line_edit_prediction);
@@ -2719,7 +2733,7 @@ impl EditorElement {
                         });
                     })
                     .tooltip(Tooltip::for_action_title(
-                        "Expand Excerpt",
+                        "抜粋を展開",
                         &crate::actions::ExpandExcerpts::default(),
                     ))
                     .into_any_element();
@@ -6850,7 +6864,7 @@ pub fn render_breadcrumb_text(
                                     h_flex()
                                         .gap_1()
                                         .justify_between()
-                                        .child(Label::new("Show Symbol Outline"))
+                                        .child(Label::new("シンボルのアウトラインを表示"))
                                         .child(ui::KeyBinding::for_action_in(
                                             &zed_actions::outline::ToggleOutline,
                                             &focus_handle,
@@ -6865,7 +6879,7 @@ pub fn render_breadcrumb_text(
                                             .pt_1()
                                             .border_t_1()
                                             .border_color(cx.theme().colors().border_variant)
-                                            .child(Label::new("Right-Click to Copy Path")),
+                                            .child(Label::new("右クリックでパスをコピー")),
                                     )
                                 })
                                 .into_any_element()

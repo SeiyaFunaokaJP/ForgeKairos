@@ -405,7 +405,7 @@ impl OpenCodeLanguageModel {
             let request = anthropic::stream_completion(
                 http_client.as_ref(),
                 &api_url,
-                &api_key,
+                Some(&*api_key),
                 request,
                 None,
                 &extra_headers,
@@ -443,7 +443,7 @@ impl OpenCodeLanguageModel {
                 http_client.as_ref(),
                 &provider_name,
                 &api_url,
-                &api_key,
+                Some(&*api_key),
                 request,
                 &extra_headers,
             );
@@ -480,7 +480,7 @@ impl OpenCodeLanguageModel {
                 http_client.as_ref(),
                 &provider_name,
                 &api_url,
-                &api_key,
+                Some(&*api_key),
                 request,
                 &extra_headers,
             );

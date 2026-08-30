@@ -598,10 +598,14 @@ impl RenderOnce for ThreadItem {
                             this.child(dot_separator())
                         })
                         .when(has_timestamp, |this| {
+                            // Relative timestamps can run to 「1 年 11 か月前」, which would be
+                            // clipped mid-string in a narrow row. The labels before it all
+                            // truncate with an ellipsis, so let them absorb the shrinking.
                             this.child(
                                 Label::new(timestamp.clone())
                                     .size(LabelSize::Small)
-                                    .color(Color::Muted),
+                                    .color(Color::Muted)
+                                    .flex_shrink_0(),
                             )
                         }),
                 )

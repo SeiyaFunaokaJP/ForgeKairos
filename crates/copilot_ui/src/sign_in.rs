@@ -17,7 +17,7 @@ use util::ResultExt as _;
 use workspace::{AppState, Toast, Workspace, notifications::NotificationId};
 
 const COPILOT_SIGN_UP_URL: &str = "https://github.com/features/copilot";
-const ERROR_LABEL: &str = "Copilot Edit Predictions had issues starting. You can try reinstalling it and signing in again.";
+const ERROR_LABEL: &str = "Copilot Edit Predictions の起動に問題が発生しました。再インストールして、もう一度サインインしてみてください。";
 
 struct CopilotStatusToast;
 
@@ -27,18 +27,26 @@ pub fn initiate_sign_in(copilot: Entity<Copilot>, window: &mut Window, cx: &mut 
 }
 
 pub fn initiate_sign_out(copilot: Entity<Copilot>, window: &mut Window, cx: &mut App) {
-    copilot_toast(Some("Signing out of Copilot Edit Predictions…"), window, cx);
+    copilot_toast(
+        Some("Copilot Edit Predictions からサインアウトしています…"),
+        window,
+        cx,
+    );
 
     let sign_out_task = copilot.update(cx, |copilot, cx| copilot.sign_out(cx));
     window
         .spawn(cx, async move |cx| match sign_out_task.await {
             Ok(()) => cx.update(|window, cx| {
-                copilot_toast(Some("Signed out of Copilot Edit Predictions"), window, cx)
+                copilot_toast(
+                    Some("Copilot Edit Predictions からサインアウトしました"),
+                    window,
+                    cx,
+                )
             }),
             Err(err) => cx.update(|window, cx| {
                 if let Some(workspace) = Workspace::for_window(window, cx) {
                     workspace.update(cx, |workspace, cx| {
-                        workspace.show_error(format!("Error: {err}"), cx);
+                        workspace.show_error(format!("エラー: {err}"), cx);
                     })
                 } else {
                     log::error!("{:?}", err);
@@ -70,7 +78,7 @@ fn open_copilot_code_verification_window(copilot: &Entity<Copilot>, window: &Win
             is_resizable: false,
             is_movable: true,
             titlebar: Some(gpui::TitlebarOptions {
-                title: Some("Use GitHub Copilot in Zed".into()),
+                title: Some("Zed で GitHub Copilot を使用".into()),
                 appears_transparent: true,
                 ..Default::default()
             }),
@@ -141,9 +149,9 @@ pub fn initiate_sign_in_impl(
         Status::Starting { task } => {
             copilot_toast(
                 Some(if is_reinstall {
-                    "Copilot Edit Predictions is reinstalling…"
+                    "Copilot Edit Predictions を再インストールしています…"
                 } else {
-                    "Copilot Edit Predictions is starting…"
+                    "Copilot Edit Predictions を起動しています…"
                 }),
                 window,
                 cx,
@@ -153,9 +161,11 @@ pub fn initiate_sign_in_impl(
                 .spawn(cx, async move |cx| {
                     task.await;
                     cx.update(|window, cx| match copilot.read(cx).status() {
-                        Status::Authorized => {
-                            copilot_toast(Some("Copilot Edit Predictions has started."), window, cx)
-                        }
+                        Status::Authorized => copilot_toast(
+                            Some("Copilot Edit Predictions が起動しました。"),
+                            window,
+                            cx,
+                        ),
                         _ => {
                             copilot_toast(None, window, cx);
                             copilot
@@ -254,7 +264,11 @@ impl CopilotCodeVerification {
                     .p_1()
                     .justify_between()
                     .child(Label::new(data.user_code.clone()))
-                    .child(Label::new(if copied { "Copied!" } else { "Copy" })),
+                    .child(Label::new(if copied {
+                        "コピーしました"
+                    } else {
+                        "コピー"
+                    })),
             )
             .on_click({
                 let user_code = data.user_code.clone();
@@ -272,9 +286,9 @@ impl CopilotCodeVerification {
         cx: &mut Context<Self>,
     ) -> impl Element {
         let connect_button_label = if connect_clicked {
-            "Waiting for connection…"
+            "接続を待機しています…"
         } else {
-            "Connect to GitHub"
+            "GitHub に接続"
         };
 
         v_flex()
@@ -283,18 +297,18 @@ impl CopilotCodeVerification {
             .items_center()
             .text_center()
             .child(
-                Headline::new("Use GitHub Copilot Edit Predictions in Zed")
+                Headline::new("Zed で GitHub Copilot Edit Predictions を使用")
                     .size(HeadlineSize::Large),
             )
             .child(
                 Label::new(
-                    "Using Copilot edit predictions requires an active subscription on GitHub.",
+                    "Copilot の編集予測を使用するには、GitHub の有効なサブスクリプションが必要です。",
                 )
                 .color(Color::Muted),
             )
             .child(Self::render_device_code(data, cx))
             .child(
-                Label::new("Paste this code into GitHub after clicking the button below.")
+                Label::new("下のボタンをクリックした後、このコードを GitHub に貼り付けてください。")
                     .color(Color::Muted),
             )
             .child(
@@ -356,7 +370,7 @@ impl CopilotCodeVerification {
                             }),
                     )
                     .child(
-                        Button::new("copilot-enable-cancel-button", "Cancel")
+                        Button::new("copilot-enable-cancel-button", "キャンセル")
                             .full_width()
                             .size(ButtonSize::Medium)
                             .on_click(cx.listener(|_, _, _, cx| {
@@ -371,12 +385,13 @@ impl CopilotCodeVerification {
             .gap_2()
             .text_center()
             .justify_center()
-            .child(Headline::new("Copilot Edit Predictions Enabled!").size(HeadlineSize::Large))
             .child(
-                Label::new("You're all set to use Copilot edit predictions.").color(Color::Muted),
+                Headline::new("Copilot Edit Predictions が有効になりました")
+                    .size(HeadlineSize::Large),
             )
+            .child(Label::new("Copilot の編集予測を使用する準備が整いました。").color(Color::Muted))
             .child(
-                Button::new("copilot-enabled-done-button", "Done")
+                Button::new("copilot-enabled-done-button", "完了")
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .size(ButtonSize::Medium)
@@ -390,26 +405,29 @@ impl CopilotCodeVerification {
             .as_deref()
             .unwrap_or(COPILOT_SIGN_UP_URL)
             .to_owned();
-        let description = "Enable Copilot edit predictions by connecting your existing license once you have subscribed or renewed your subscription.";
+        let description = "サブスクリプションの購入または更新後、既存のライセンスを接続して Copilot の編集予測を有効にしてください。";
 
         v_flex()
             .gap_2()
             .text_center()
             .justify_center()
             .child(
-                Headline::new("You must have an active GitHub Copilot subscription.")
+                Headline::new("有効な GitHub Copilot のサブスクリプションが必要です")
                     .size(HeadlineSize::Large),
             )
             .child(Label::new(description).color(Color::Warning))
             .child(
-                Button::new("copilot-subscribe-button", "Subscribe on GitHub")
-                    .full_width()
-                    .style(ButtonStyle::Outlined)
-                    .size(ButtonSize::Medium)
-                    .on_click(move |_, _, cx| cx.open_url(&sign_up_url)),
+                Button::new(
+                    "copilot-subscribe-button",
+                    "GitHub でサブスクリプションを購入",
+                )
+                .full_width()
+                .style(ButtonStyle::Outlined)
+                .size(ButtonSize::Medium)
+                .on_click(move |_, _, cx| cx.open_url(&sign_up_url)),
             )
             .child(
-                Button::new("copilot-subscribe-cancel-button", "Cancel")
+                Button::new("copilot-subscribe-cancel-button", "キャンセル")
                     .full_width()
                     .size(ButtonSize::Medium)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(DismissEvent))),
@@ -421,12 +439,12 @@ impl CopilotCodeVerification {
             .gap_2()
             .text_center()
             .justify_center()
-            .child(Headline::new("An Error Happened").size(HeadlineSize::Large))
+            .child(Headline::new("エラーが発生しました").size(HeadlineSize::Large))
             .child(Label::new(ERROR_LABEL).color(Color::Muted))
             .child(
                 Button::new(
                     "copilot-subscribe-button",
-                    "Reinstall Copilot Edit Predictions and Sign In",
+                    "Copilot Edit Predictions を再インストールしてサインイン",
                 )
                 .full_width()
                 .style(ButtonStyle::Outlined)
@@ -582,7 +600,11 @@ impl CopilotChatCodeVerification {
                     .p_1()
                     .justify_between()
                     .child(Label::new(user_code.clone()))
-                    .child(Label::new(if copied { "Copied!" } else { "Copy" })),
+                    .child(Label::new(if copied {
+                        "コピーしました"
+                    } else {
+                        "コピー"
+                    })),
             )
             .on_click(move |_, window, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(user_code.clone()));
@@ -596,9 +618,9 @@ impl CopilotChatCodeVerification {
         cx: &mut Context<Self>,
     ) -> impl Element {
         let connect_button_label = if connect_clicked {
-            "Waiting for connection…"
+            "接続を待機しています…"
         } else {
-            "Connect to GitHub"
+            "GitHub に接続"
         };
 
         v_flex()
@@ -606,15 +628,19 @@ impl CopilotChatCodeVerification {
             .gap_2p5()
             .items_center()
             .text_center()
-            .child(Headline::new("Use GitHub Copilot Chat in Zed").size(HeadlineSize::Large))
+            .child(Headline::new("Zed で GitHub Copilot Chat を使用").size(HeadlineSize::Large))
             .child(
-                Label::new("Using Copilot Chat requires an active subscription on GitHub.")
-                    .color(Color::Muted),
+                Label::new(
+                    "Copilot Chat を使用するには、GitHub の有効なサブスクリプションが必要です。",
+                )
+                .color(Color::Muted),
             )
             .child(Self::render_device_code(&device_flow.user_code, cx))
             .child(
-                Label::new("Paste this code into GitHub after clicking the button below.")
-                    .color(Color::Muted),
+                Label::new(
+                    "下のボタンをクリックした後、このコードを GitHub に貼り付けてください。",
+                )
+                .color(Color::Muted),
             )
             .child(
                 v_flex()
@@ -634,7 +660,7 @@ impl CopilotChatCodeVerification {
                             }),
                     )
                     .child(
-                        Button::new("copilot-chat-enable-cancel-button", "Cancel")
+                        Button::new("copilot-chat-enable-cancel-button", "キャンセル")
                             .full_width()
                             .size(ButtonSize::Medium)
                             .on_click(cx.listener(|_, _, _, cx| {
@@ -649,10 +675,10 @@ impl CopilotChatCodeVerification {
             .gap_2()
             .text_center()
             .justify_center()
-            .child(Headline::new("Copilot Chat Enabled!").size(HeadlineSize::Large))
-            .child(Label::new("You're all set to use Copilot Chat.").color(Color::Muted))
+            .child(Headline::new("Copilot Chat が有効になりました").size(HeadlineSize::Large))
+            .child(Label::new("Copilot Chat を使用する準備が整いました。").color(Color::Muted))
             .child(
-                Button::new("copilot-chat-enabled-done-button", "Done")
+                Button::new("copilot-chat-enabled-done-button", "完了")
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .size(ButtonSize::Medium)
@@ -665,10 +691,10 @@ impl CopilotChatCodeVerification {
             .gap_2()
             .text_center()
             .justify_center()
-            .child(Headline::new("An Error Happened").size(HeadlineSize::Large))
+            .child(Headline::new("エラーが発生しました").size(HeadlineSize::Large))
             .child(Label::new(message.to_owned()).color(Color::Muted))
             .child(
-                Button::new("copilot-chat-error-cancel-button", "Cancel")
+                Button::new("copilot-chat-error-cancel-button", "キャンセル")
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .size(ButtonSize::Medium)
@@ -860,9 +886,9 @@ impl ConfigurationView {
             "Copilot Chat"
         };
         if self.is_starting() {
-            Some(format!("Starting {product}…").into())
+            Some(format!("{product} を起動しています…").into())
         } else if self.is_signing_in() {
-            Some(format!("Signing into {product}…").into())
+            Some(format!("{product} にサインインしています…").into())
         } else {
             None
         }
@@ -888,9 +914,9 @@ impl ConfigurationView {
 
     fn render_sign_in_button(&self, edit_prediction: bool) -> impl IntoElement {
         let label = if edit_prediction {
-            "Sign in to GitHub"
+            "GitHub にサインイン"
         } else {
-            "Sign In"
+            "サインイン"
         };
 
         Button::new("sign_in", label)
@@ -918,9 +944,9 @@ impl ConfigurationView {
 
     fn render_reinstall_button(&self, edit_prediction: bool) -> impl IntoElement {
         let label = if edit_prediction {
-            "Reinstall and Sign in"
+            "再インストールしてサインイン"
         } else {
-            "Reinstall Copilot and Sign in"
+            "Copilot を再インストールしてサインイン"
         };
 
         Button::new("reinstall_and_sign_in", label)
@@ -955,7 +981,7 @@ impl ConfigurationView {
                     v_flex()
                         .w_full()
                         .max_w_1_2()
-                        .child(Label::new("Authenticate To Use"))
+                        .child(Label::new("認証が必要"))
                         .child(
                             Label::new(description)
                                 .color(Color::Muted)
@@ -965,8 +991,8 @@ impl ConfigurationView {
                 .child(action)
         };
 
-        let start_label = "To use Copilot for edit predictions, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot subscription.".into();
-        let no_status_label = "Copilot Edit Predictions requires an active GitHub Copilot subscription. Please ensure Copilot Edit Predictions is configured and try again, or use a different edit predictions provider.".into();
+        let start_label = "編集予測に Copilot を使用するには、GitHub にログインしている必要があります。GitHub アカウントに有効な Copilot のサブスクリプションが必要な点にご注意ください。".into();
+        let no_status_label = "Copilot Edit Predictions には有効な GitHub Copilot のサブスクリプションが必要です。Copilot Edit Predictions が設定済みであることを確認してもう一度お試しいただくか、別の編集予測プロバイダーを使用してください。".into();
 
         if let Some(msg) = self.loading_message() {
             container(
@@ -996,8 +1022,8 @@ impl ConfigurationView {
     }
 
     fn render_for_chat(&self) -> impl IntoElement {
-        let start_label = "To use Zed's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription.";
-        let no_status_label = "Copilot Chat requires an active GitHub Copilot subscription. Please ensure Copilot Chat is configured and try again, or use a different LLM provider.";
+        let start_label = "Zed のエージェントで GitHub Copilot Chat を使用するには、GitHub にログインしている必要があります。GitHub アカウントに有効な Copilot Chat のサブスクリプションが必要な点にご注意ください。";
+        let no_status_label = "Copilot Chat には有効な GitHub Copilot のサブスクリプションが必要です。Copilot Chat が設定済みであることを確認してもう一度お試しいただくか、別の LLM プロバイダーを使用してください。";
 
         let (label, button) = if let Some(msg) = self.loading_message() {
             (
@@ -1006,7 +1032,7 @@ impl ConfigurationView {
             )
         } else if self.is_error() {
             (
-                "Copilot Chat had an issue signing in. Please try again.",
+                "Copilot Chat のサインインで問題が発生しました。もう一度お試しください。",
                 self.render_sign_in_button(false).into_any_element(),
             )
         } else if self.has_no_status() {
@@ -1034,8 +1060,8 @@ impl Render for ConfigurationView {
         let edit_prediction = self.edit_prediction;
 
         if is_authenticated(cx) {
-            return ConfiguredApiCard::new("copilot-authorized", "Authorized")
-                .button_label("Sign Out")
+            return ConfiguredApiCard::new("copilot-authorized", "認証済み")
+                .button_label("サインアウト")
                 .on_click(move |_, window, cx| {
                     if edit_prediction {
                         if let Some(auth) = GlobalCopilotAuth::try_global(cx) {

@@ -45,7 +45,7 @@ use ui::{
 use util::{ResultExt as _, paths::PathStyle, rel_path::RelPath};
 use workspace::{
     AppState, MultiWorkspace, OpenOptions, OpenVisible, Workspace, WorkspaceSettings,
-    client_side_decorations,
+    client_side_decorations, create_and_open_local_file,
 };
 use zed_actions::{
     AGENT_SKILLS_SETTINGS_PATH, OpenProjectSettings, OpenSettings, OpenSettingsAt,
@@ -58,8 +58,8 @@ use crate::components::{
     text_field_a11y_state, theme_picker,
 };
 use crate::pages::{
-    CustomAgentForm, LlmProviderForm, McpServerForm, render_input_audio_device_dropdown,
-    render_output_audio_device_dropdown,
+    CustomAgentForm, LlmProviderForm, McpServerForm, NetworkAllowlistState, load_network_allowlist,
+    render_input_audio_device_dropdown, render_output_audio_device_dropdown,
 };
 
 const NAVBAR_CONTAINER_TAB_INDEX: isize = 0;
@@ -511,12 +511,12 @@ fn init_renderers(cx: &mut App) {
                     settings_window,
                     item,
                     settings_file,
-                    Button::new("open-in-settings-file", "Edit in settings.json")
+                    Button::new("open-in-settings-file", "settings.json で編集")
                         .style(ButtonStyle::Outlined)
                         .size(ButtonSize::Medium)
                         .tab_index(0_isize)
                         .tooltip(Tooltip::for_action_title_in(
-                            "Edit in settings.json",
+                            "settings.json で編集",
                             &OpenCurrentFile,
                             &settings_window.focus_handle,
                         ))
@@ -837,6 +837,9 @@ fn open_settings_editor_with(
         existing_window
             .update(cx, |settings_window, window, cx| {
                 settings_window.original_window = workspace_handle;
+                // Reusing the window can re-point it at another workspace, and
+                // with it another project's context server store.
+                pages::retarget_mcp_server_subscription(settings_window, cx);
 
                 window.activate_window();
                 callback(settings_window, window, cx);
@@ -959,6 +962,8 @@ pub struct SettingsWindow {
     pub(crate) hidden_deleted_skill_directory_paths: HashSet<PathBuf>,
     pub(crate) regex_validation_error: Option<String>,
     pub(crate) sandbox_host_validation_error: Option<String>,
+    /// Contents of `network_allowlist.json`, loaded when its sub page opens.
+    pub(crate) network_allowlist: NetworkAllowlistState,
     last_copied_link_path: Option<&'static str>,
     /// Cached configuration views per provider, created lazily.
     pub(crate) provider_configuration_views:
@@ -976,6 +981,10 @@ pub struct SettingsWindow {
     pub(crate) llm_provider_add_focus_handle: FocusHandle,
     /// State for the active "add/edit custom MCP server" form sub-page, if open.
     pub(crate) mcp_server_form: Option<McpServerForm>,
+    /// Live state of the MCP servers page: its subscription to the project's
+    /// context server store, plus per-server connection test and client secret
+    /// input state.
+    pub(crate) mcp_page: pages::McpPageState,
     /// Stable focus handle for the MCP "Add Server" button, so it can show a
     /// focus ring when the page auto-focuses it on open (which happens via mouse,
     /// where `focus_visible` styling would otherwise be suppressed).
@@ -1215,46 +1224,49 @@ impl SettingsPageItem {
                                 ),
                         )
                         .child(
-                            Button::new(
-                                ("sub-page".into(), sub_page_link.title.clone()),
-                                "Configure",
-                            )
-                            .aria_label(format!("Configure {}", sub_page_link.title))
-                            .tab_index(0_isize)
-                            .end_icon(
-                                Icon::new(IconName::ChevronRight)
-                                    .size(IconSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .style(ButtonStyle::OutlinedGhost)
-                            .size(ButtonSize::Medium)
-                            .on_click({
-                                let sub_page_link = sub_page_link.clone();
-                                cx.listener(move |this, _, window, cx| {
-                                    let header_text = this
-                                        .sub_page_stack
-                                        .last()
-                                        .map(|sub_page| sub_page.link.title.clone())
-                                        .or_else(|| {
-                                            this.current_page()
-                                                .items
-                                                .iter()
-                                                .take(item_index)
-                                                .rev()
-                                                .find_map(|item| {
-                                                    item.header_text().map(SharedString::new_static)
-                                                })
-                                        });
+                            Button::new(("sub-page".into(), sub_page_link.title.clone()), "設定")
+                                .aria_label(format!("{} を設定", sub_page_link.title))
+                                .tab_index(0_isize)
+                                .end_icon(
+                                    Icon::new(IconName::ChevronRight)
+                                        .size(IconSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .style(ButtonStyle::OutlinedGhost)
+                                .size(ButtonSize::Medium)
+                                .on_click({
+                                    let sub_page_link = sub_page_link.clone();
+                                    cx.listener(move |this, _, window, cx| {
+                                        let header_text = this
+                                            .sub_page_stack
+                                            .last()
+                                            .map(|sub_page| sub_page.link.title.clone())
+                                            .or_else(|| {
+                                                this.current_page()
+                                                    .items
+                                                    .iter()
+                                                    .take(item_index)
+                                                    .rev()
+                                                    .find_map(|item| {
+                                                        item.header_text()
+                                                            .map(SharedString::new_static)
+                                                    })
+                                            });
 
-                                    let Some(header) = header_text else {
-                                        unreachable!(
-                                            "All items always have a section header above them"
+                                        let Some(header) = header_text else {
+                                            unreachable!(
+                                                "All items always have a section header above them"
+                                            )
+                                        };
+
+                                        this.push_sub_page(
+                                            sub_page_link.clone(),
+                                            header,
+                                            window,
+                                            cx,
                                         )
-                                    };
-
-                                    this.push_sub_page(sub_page_link.clone(), header, window, cx)
-                                })
-                            }),
+                                    })
+                                }),
                         )
                         .child(render_settings_item_link(
                             sub_page_link.title.clone(),
@@ -1416,8 +1428,8 @@ fn render_settings_item_layout(
                                 IconButton::new("reset-to-default-btn", IconName::Undo)
                                     .icon_color(Color::Muted)
                                     .icon_size(IconSize::Small)
-                                    .aria_label("Reset to Default")
-                                    .tooltip(Tooltip::text("Reset to Default"))
+                                    .aria_label("既定値に戻す")
+                                    .tooltip(Tooltip::text("既定値に戻す"))
                                     .on_click(move |_, window, cx| {
                                         reset_to_default(window, cx);
                                     }),
@@ -1489,9 +1501,9 @@ fn render_settings_item(
                     )
                     .tooltip(|_, cx| {
                         Tooltip::with_meta(
-                            "Overridden by Organization",
+                            "組織の設定で上書きされています",
                             None,
-                            "Contact your organization admins to adjust this setting.",
+                            "この設定を変更するには組織の管理者に連絡してください。",
                             cx,
                         )
                     }),
@@ -1548,8 +1560,8 @@ fn render_settings_item_link(
                 .icon_color(link_icon_color)
                 .icon_size(IconSize::Small)
                 .shape(IconButtonShape::Square)
-                .aria_label("Copy Link")
-                .tooltip(Tooltip::text("Copy Link"))
+                .aria_label("リンクをコピー")
+                .tooltip(Tooltip::text("リンクをコピー"))
                 .when_some(json_path, |this, path| {
                     this.on_click(cx.listener(move |this, _, _, cx| {
                         let link = format!("zed://settings/{}", path);
@@ -1645,6 +1657,12 @@ impl PartialEq for SettingItem {
 enum SubPageType {
     Language,
     SkillCreator,
+    /// The egress allowlist page, which reads its state from a file of its own
+    /// rather than from `SettingsStore`, and so has to be told when it opens.
+    NetworkAllowlist,
+    /// The MCP servers page, whose live state comes from the active project's
+    /// `ContextServerStore` and so has to subscribe to it when it opens.
+    McpServers,
     #[default]
     Other,
 }
@@ -1772,7 +1790,7 @@ impl SettingsWindow {
         let current_file = SettingsUiFile::User;
         let search_bar = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("Search settings…", window, cx);
+            editor.set_placeholder_text("設定を検索…", window, cx);
             editor
         });
         cx.subscribe(&search_bar, |this, _, event: &EditorEvent, cx| {
@@ -1997,6 +2015,7 @@ impl SettingsWindow {
             hidden_deleted_skill_directory_paths: HashSet::default(),
             regex_validation_error: None,
             sandbox_host_validation_error: None,
+            network_allowlist: NetworkAllowlistState::default(),
             list_state,
             last_copied_link_path: None,
             provider_configuration_views: HashMap::default(),
@@ -2005,6 +2024,7 @@ impl SettingsWindow {
             llm_provider_form: None,
             llm_provider_add_focus_handle: cx.focus_handle(),
             mcp_server_form: None,
+            mcp_page: pages::McpPageState::default(),
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
@@ -2014,6 +2034,12 @@ impl SettingsWindow {
         this.fetch_files(window, cx);
         this.build_ui(window, cx);
         this.build_search_index();
+
+        // Loaded up front rather than only when its own sub page opens: the
+        // external-AI consent blocks on the AI pages report whether a provider's
+        // hosts are already allowed, and an unread file would read as an empty
+        // allowlist (ADR-F10).
+        pages::load_network_allowlist(&mut this, cx);
 
         this.search_bar.update(cx, |editor, cx| {
             editor.focus_handle(cx).focus(window, cx);
@@ -2841,7 +2867,7 @@ impl SettingsWindow {
         h_flex()
             .id("settings-ui-files-header")
             .role(Role::Group)
-            .aria_label("Settings File")
+            .aria_label("設定ファイル")
             .w_full()
             .gap_1()
             .justify_between()
@@ -2906,7 +2932,7 @@ impl SettingsWindow {
                                         }),
                                     )
                                     .style(DropdownStyle::Subtle)
-                                    .trigger_tooltip(Tooltip::text("View Other Projects"))
+                                    .trigger_tooltip(Tooltip::text("他のプロジェクトを表示"))
                                     .trigger_icon(IconName::ChevronDown)
                                     .attach(gpui::Anchor::BottomLeft)
                                     .offset(gpui::Point {
@@ -2919,11 +2945,11 @@ impl SettingsWindow {
                     }),
             )
             .child(
-                Button::new(edit_in_json_id, "Edit in settings.json")
+                Button::new(edit_in_json_id, "settings.json で編集")
                     .tab_index(0_isize)
                     .style(ButtonStyle::OutlinedGhost)
                     .tooltip(Tooltip::for_action_title_in(
-                        "Edit in settings.json",
+                        "settings.json で編集",
                         &OpenCurrentFile,
                         &self.focus_handle,
                     ))
@@ -2986,7 +3012,7 @@ impl SettingsWindow {
         h_flex()
             .id("settings-ui-search")
             .role(Role::SearchInput)
-            .aria_label("Search Settings")
+            .aria_label("設定を検索")
             .aria_value(a11y_value)
             .track_focus(&self.search_bar.focus_handle(cx))
             .a11y_synthetic_children(a11y_text_runs)
@@ -3161,7 +3187,7 @@ impl SettingsWindow {
                 v_flex()
                     .id("settings-ui-nav")
                     .role(Role::Tree)
-                    .aria_label("Settings Navigation")
+                    .aria_label("設定のナビゲーション")
                     .flex_1()
                     .overflow_hidden()
                     .track_focus(&self.navbar_focus_handle.focus_handle(cx))
@@ -3444,7 +3470,7 @@ impl SettingsWindow {
                 "sub-page-scope-picker",
                 scope_name,
                 ContextMenu::build(window, cx, move |mut menu, _, _| {
-                    menu = menu.header("Scope");
+                    menu = menu.header("適用範囲");
 
                     for ix in allowed_file_indices {
                         let (file, focus_handle) = &self.files[ix];
@@ -3474,7 +3500,7 @@ impl SettingsWindow {
                 }),
             )
             .style(DropdownStyle::Subtle)
-            .trigger_tooltip(Tooltip::text("Change Scope"))
+            .trigger_tooltip(Tooltip::text("適用範囲を変更"))
             .attach(gpui::Anchor::BottomLeft)
             .offset(gpui::Point {
                 x: px(0.0),
@@ -3521,9 +3547,9 @@ impl SettingsWindow {
             .items_center()
             .justify_center()
             .gap_1()
-            .child(Label::new("No Results"))
+            .child(Label::new("結果がありません"))
             .child(
-                Label::new(format!("No settings match \"{}\"", search_query))
+                Label::new(format!("「{}」に一致する設定はありません", search_query))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -3538,7 +3564,7 @@ impl SettingsWindow {
         let mut page_content = v_flex()
             .id("settings-ui-page")
             .role(Role::Group)
-            .aria_label("Settings Content")
+            .aria_label("設定の内容")
             .size_full();
 
         let has_active_search = !self.search_bar.read(cx).is_empty(cx);
@@ -3729,7 +3755,7 @@ impl SettingsWindow {
             let is_skills_page =
                 current_sub_page.link.json_path == Some(AGENT_SKILLS_SETTINGS_PATH);
             let is_llm_providers_page = current_sub_page.link.json_path == Some("llm_providers")
-                && current_sub_page.link.title.as_ref() == "LLM Providers";
+                && current_sub_page.link.title.as_ref() == "LLM プロバイダー";
             let is_external_agents_page = current_sub_page.link.json_path == Some("agent_servers");
             let is_mcp_servers_page = current_sub_page.link.json_path == Some("context_servers");
 
@@ -3757,11 +3783,11 @@ impl SettingsWindow {
                         .flex_shrink_0()
                         .when(current_sub_page.link.in_json, |this| {
                             this.child(
-                                Button::new("open-in-settings-file", "Edit in settings.json")
+                                Button::new("open-in-settings-file", "settings.json で編集")
                                     .tab_index(0_isize)
                                     .style(ButtonStyle::OutlinedGhost)
                                     .tooltip(Tooltip::for_action_title_in(
-                                        "Edit in settings.json",
+                                        "settings.json で編集",
                                         &OpenCurrentFile,
                                         &self.focus_handle,
                                     ))
@@ -3775,7 +3801,7 @@ impl SettingsWindow {
                         })
                         .when(is_skills_page, |this| {
                             this.child(
-                                Button::new("open-skill-creator", "Create Skill")
+                                Button::new("open-skill-creator", "スキルを作成")
                                     .tab_index(0_isize)
                                     .style(ButtonStyle::OutlinedGhost)
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -3833,7 +3859,7 @@ impl SettingsWindow {
                     )
                     .action_slot(
                         div().pr_1().pb_1().child(
-                            Button::new("fix-in-json", "Fix in settings.json")
+                            Button::new("fix-in-json", "settings.json で修正")
                                 .tab_index(0_isize)
                                 .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -3850,7 +3876,7 @@ impl SettingsWindow {
                 .gap_2()
                 .when_some(parse_error, |this, err| {
                     this.child(banner(
-                        "Failed to load your settings. Some values may be incorrect and changes may be lost.",
+                        "設定を読み込めませんでした。一部の値が正しくない可能性があり、変更が失われることがあります。",
                         err,
                         &mut self.shown_errors,
                         cx,
@@ -3858,17 +3884,17 @@ impl SettingsWindow {
                 })
                 .map(|this| match &error.migration_status {
                     settings::MigrationStatus::Succeeded => this.child(banner(
-                        "Your settings are out of date, and need to be updated.",
+                        "設定が古い形式のため、更新が必要です。",
                         match &self.current_file {
-                            SettingsUiFile::User => "They can be automatically migrated to the latest version.",
-                            SettingsUiFile::Server(_) | SettingsUiFile::Project(_)  => "They must be manually migrated to the latest version."
+                            SettingsUiFile::User => "最新の形式へ自動的に移行できます。",
+                            SettingsUiFile::Server(_) | SettingsUiFile::Project(_)  => "最新の形式へ手動で移行する必要があります。"
                         }.to_string(),
                         &mut self.shown_errors,
                         cx,
                     )),
                     settings::MigrationStatus::Failed { error: err } if !parse_failed => this
                         .child(banner(
-                            "Your settings file is out of date, automatic migration failed",
+                            "設定ファイルが古い形式で、自動移行に失敗しました",
                             err.clone(),
                             &mut self.shown_errors,
                             cx,
@@ -3900,10 +3926,10 @@ impl SettingsWindow {
                         v_flex()
                             .my_0p5()
                             .gap_0p5()
-                            .child(Label::new("Restricted Mode"))
+                            .child(Label::new("制限モード"))
                             .child(
                                 Label::new(
-                                    "This project is in restricted mode. Some project settings may not apply.",
+                                    "このプロジェクトは制限モードで開いています。一部のプロジェクト設定は適用されません。",
                                 )
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
@@ -3911,7 +3937,7 @@ impl SettingsWindow {
                     )
                     .action_slot(
                         div().pr_2().pb_1().child(
-                            Button::new("manage-trust", "Manage Trust")
+                            Button::new("manage-trust", "信頼設定を管理")
                                 .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                                 .on_click(cx.listener(move |_this, _, window, cx| {
                                     if let Some(original_window) = original_window {
@@ -4048,6 +4074,33 @@ impl SettingsWindow {
                     .tab_index(CONTENT_GROUP_TAB_INDEX)
                     .child(page_content),
             )
+    }
+
+    /// Opens `network_allowlist.json` in the workspace this settings window was
+    /// launched from, creating it from `template` when it is not there yet.
+    /// Mirrors [`Self::open_current_settings_file`] for [`SettingsUiFile::User`],
+    /// which is the only scope the allowlist has.
+    pub(crate) fn open_network_allowlist_file(
+        &mut self,
+        template: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(original_window) = self.original_window else {
+            return;
+        };
+        original_window
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace
+                    .workspace()
+                    .clone()
+                    .update(cx, |workspace, cx| {
+                        open_network_allowlist_in_workspace(template, workspace, window, cx);
+                    });
+            })
+            .ok();
+
+        window.remove_window();
     }
 
     /// This function will create a new settings file if one doesn't exist
@@ -4197,6 +4250,17 @@ impl SettingsWindow {
         cx: &mut Context<SettingsWindow>,
     ) {
         self.sandbox_host_validation_error = None;
+        // This page's values come from `network_allowlist.json`, not from
+        // `SettingsStore`, so opening it is what triggers the read.
+        if sub_page_link.r#type == SubPageType::NetworkAllowlist {
+            load_network_allowlist(self, cx);
+        }
+        // This page's status indicators are driven by the project's context
+        // server store, which it has to subscribe to; the project can differ
+        // from the last time the page was open.
+        if sub_page_link.r#type == SubPageType::McpServers {
+            pages::open_mcp_servers_page(self, cx);
+        }
         self.sub_page_stack
             .push(SubPage::new(sub_page_link, section_header));
         self.content_focus_handle.focus_handle(cx).focus(window, cx);
@@ -4280,7 +4344,7 @@ impl SettingsWindow {
         self.skill_creator_page = Some((page.clone(), subscription));
 
         let sub_page_link = SubPageLink {
-            title: "Create Skill".into(),
+            title: "スキルを作成".into(),
             r#type: SubPageType::SkillCreator,
             description: None,
             search_aliases: &[],
@@ -4290,7 +4354,7 @@ impl SettingsWindow {
             render: pages::render_skill_creator_page,
         };
 
-        self.push_sub_page(sub_page_link, "Agent".into(), window, cx);
+        self.push_sub_page(sub_page_link, "エージェントの設定".into(), window, cx);
 
         let creating_from_url = !matches!(open_mode, pages::SkillCreatorOpenMode::Url { .. });
         page.update(cx, |page, cx| {
@@ -4348,7 +4412,7 @@ impl SettingsWindow {
                             .take(item_index)
                             .rev()
                             .find_map(|item| item.header_text().map(SharedString::new_static))
-                            .unwrap_or_else(|| "Settings".into());
+                            .unwrap_or_else(|| "設定".into());
 
                         self.push_sub_page(sub_page_link.clone(), section_header, window, cx);
                         return true;
@@ -4404,10 +4468,12 @@ impl SettingsWindow {
     pub(crate) fn pop_sub_page(&mut self, window: &mut Window, cx: &mut Context<SettingsWindow>) {
         self.regex_validation_error = None;
         self.sandbox_host_validation_error = None;
-        if let Some(popped) = self.sub_page_stack.pop()
-            && popped.link.r#type == SubPageType::SkillCreator
-        {
-            self.skill_creator_page = None;
+        if let Some(popped) = self.sub_page_stack.pop() {
+            match popped.link.r#type {
+                SubPageType::SkillCreator => self.skill_creator_page = None,
+                SubPageType::McpServers => self.mcp_page = pages::McpPageState::default(),
+                _ => {}
+            }
         }
         self.content_focus_handle.focus_handle(cx).focus(window, cx);
         cx.notify();
@@ -4593,6 +4659,51 @@ pub(crate) fn all_projects(
                 }),
         )
         .filter(move |project| seen_project_ids.insert(project.entity_id()))
+}
+
+/// `network_allowlist.json` is not a settings file, so it goes through
+/// [`create_and_open_local_file`] instead of [`open_user_settings_in_workspace`]:
+/// the file often does not exist yet, and an empty buffer would be a poor
+/// starting point for hand-editing it.
+fn open_network_allowlist_in_workspace(
+    template: &'static str,
+    workspace: &mut Workspace,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let project = workspace.project().clone();
+
+    cx.spawn_in(window, async move |workspace, cx| {
+        let config_dir = project
+            .update(cx, |project, cx| {
+                project.try_windows_path_to_wsl(paths::config_dir().as_path(), cx)
+            })
+            .await?;
+        // Same dedicated worktree the settings files are opened through, so that
+        // opening this file does not restart language servers for the others.
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(&config_dir, false, cx)
+            })
+            .await
+            .ok();
+        workspace
+            .update_in(cx, |_workspace, window, cx| {
+                create_and_open_local_file(
+                    paths::network_allowlist_file().as_path(),
+                    window,
+                    cx,
+                    move || template.into(),
+                )
+            })?
+            .await?;
+
+        workspace.update_in(cx, |_, window, cx| {
+            window.activate_window();
+            cx.notify();
+        })
+    })
+    .detach_and_log_err(cx);
 }
 
 fn open_user_settings_in_workspace(
@@ -5314,6 +5425,7 @@ pub mod test {
                 hidden_deleted_skill_directory_paths: HashSet::default(),
                 regex_validation_error: None,
                 sandbox_host_validation_error: None,
+                network_allowlist: NetworkAllowlistState::default(),
                 last_copied_link_path: None,
                 provider_configuration_views: HashMap::default(),
                 configuring_provider: None,
@@ -5321,6 +5433,7 @@ pub mod test {
                 llm_provider_form: None,
                 llm_provider_add_focus_handle: cx.focus_handle(),
                 mcp_server_form: None,
+                mcp_page: pages::McpPageState::default(),
                 mcp_add_server_focus_handle: cx.focus_handle(),
                 custom_agent_form: None,
                 external_agent_add_focus_handle: cx.focus_handle(),
@@ -5453,6 +5566,7 @@ pub mod test {
             hidden_deleted_skill_directory_paths: HashSet::default(),
             regex_validation_error: None,
             sandbox_host_validation_error: None,
+            network_allowlist: NetworkAllowlistState::default(),
             last_copied_link_path: None,
             provider_configuration_views: HashMap::default(),
             configuring_provider: None,
@@ -5460,6 +5574,7 @@ pub mod test {
             llm_provider_form: None,
             llm_provider_add_focus_handle: cx.focus_handle(),
             mcp_server_form: None,
+            mcp_page: pages::McpPageState::default(),
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
@@ -5737,6 +5852,163 @@ pub mod test {
                 cx,
             ));
         });
+    }
+
+    fn real_settings_pages(cx: &mut gpui::TestAppContext) -> Vec<SettingsPage> {
+        cx.update(|cx| {
+            register_settings(cx);
+            let app_state = AppState::test(cx);
+            AppState::set_global(app_state, cx);
+            page_data::settings_data(cx)
+        })
+    }
+
+    fn sub_page_titles(page: &SettingsPage) -> Vec<&str> {
+        page.items
+            .iter()
+            .filter_map(|item| match item {
+                SettingsPageItem::SubPageLink(link) => Some(link.title.as_ref()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The section header an item sits under, which is what
+    /// [`SettingsWindow::push_sub_page`] records as the breadcrumb parent.
+    fn section_of(page: &SettingsPage, item_index: usize) -> &'static str {
+        page.items[..item_index]
+            .iter()
+            .rev()
+            .find_map(|item| match item {
+                SettingsPageItem::SectionHeader(header) => Some(*header),
+                _ => None,
+            })
+            .expect("every item should sit under a section header")
+    }
+
+    /// The "外部通信と AI" page was dissolved back into "AI" and "ネットワーク"
+    /// (ユーザー決定 2026-08-29, reversing the page split of ADR-F13). The
+    /// consent gates it hosted stay; only the separate page is gone.
+    #[gpui::test]
+    fn egress_and_ai_page_is_dissolved_into_ai_and_network(cx: &mut gpui::TestAppContext) {
+        let pages = real_settings_pages(cx);
+
+        assert!(
+            !pages.iter().any(|page| page.title == "外部通信と AI"),
+            "the egress-and-AI page must not be registered any more"
+        );
+
+        let ai_page = pages
+            .iter()
+            .find(|page| page.title == "AI")
+            .expect("the AI page should exist");
+
+        let (agent_enabled_index, _) = ai_page
+            .items
+            .iter()
+            .enumerate()
+            .find(|(_, item)| match item {
+                SettingsPageItem::SettingItem(item) => {
+                    item.field.json_path() == Some("agent.enabled")
+                }
+                _ => false,
+            })
+            .expect("the agent.enabled toggle should live on the AI page");
+        assert_eq!(
+            agent_enabled_index, 1,
+            "the toggle belongs at the very top of the page, right after its header"
+        );
+        assert_eq!(section_of(ai_page, agent_enabled_index), "全般");
+
+        let agent_enabled_writers = pages
+            .iter()
+            .flat_map(|page| page.items.iter())
+            .filter(|item| match item {
+                SettingsPageItem::SettingItem(item) => {
+                    item.field.json_path() == Some("agent.enabled")
+                }
+                _ => false,
+            })
+            .count();
+        assert_eq!(
+            agent_enabled_writers, 1,
+            "agent.enabled must keep exactly one UI writer (ADR-F13)"
+        );
+
+        assert!(
+            sub_page_titles(ai_page).contains(&"承諾済みの外部 AI プロバイダー"),
+            "the consent list moved onto the AI page"
+        );
+
+        let network_page = pages
+            .iter()
+            .find(|page| page.title == "ネットワーク")
+            .expect("the network page should exist");
+        let (allowlist_index, _) = network_page
+            .items
+            .iter()
+            .enumerate()
+            .find(|(_, item)| {
+                matches!(item, SettingsPageItem::SubPageLink(link)
+                    if link.r#type == SubPageType::NetworkAllowlist)
+            })
+            .expect("the allowlist moved back onto the network page");
+        assert_eq!(section_of(network_page, allowlist_index), "外部通信の統制");
+
+        assert!(
+            !pages
+                .iter()
+                .any(|page| sub_page_titles(page).contains(&"プロバイダーの選択")),
+            "the separate edit prediction enablement sub-page is gone; the AI page's \
+             「プロバイダーの設定」 now shows the dropdown in every state"
+        );
+    }
+
+    /// The status bar (`edit_prediction_ui`) and the onboarding upsell
+    /// (`ai_onboarding`) both dispatch `OpenSettingsAt` with this path when a
+    /// provider still needs its ADR-F10 consent, and
+    /// [`open_settings_editor_at_target`] only opens the sub-page when the path
+    /// resolves to exactly one item.
+    #[gpui::test]
+    fn edit_prediction_deep_link_resolves_to_one_ai_page_sub_page(cx: &mut gpui::TestAppContext) {
+        const DEEP_LINK_PATH: &str = "edit_predictions.providers";
+
+        let pages = real_settings_pages(cx);
+        let matches = pages
+            .iter()
+            .flat_map(|page| page.items.iter().map(move |item| (page, item)))
+            .filter(|(_, item)| {
+                let json_path = match item {
+                    SettingsPageItem::DynamicItem(DynamicItem {
+                        discriminant: item, ..
+                    })
+                    | SettingsPageItem::SettingItem(item) => item
+                        .field
+                        .json_path()
+                        .map(|path| path.trim_end_matches('$')),
+                    SettingsPageItem::SubPageLink(link) => link.json_path,
+                    _ => None,
+                };
+                // Mirrors `filter_by_json_path`.
+                json_path.is_some_and(|path| {
+                    path.strip_prefix(DEEP_LINK_PATH)
+                        .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let [(page, item)] = matches.as_slice() else {
+            panic!(
+                "{DEEP_LINK_PATH} should resolve to exactly one item, got {}",
+                matches.len()
+            );
+        };
+        assert_eq!(page.title, "AI");
+        assert!(
+            matches!(item, SettingsPageItem::SubPageLink(link)
+                if link.title.as_ref() == "プロバイダーの設定"),
+            "the deep link should land on the edit prediction provider sub-page"
+        );
     }
 
     #[gpui::test]
@@ -6239,7 +6511,7 @@ pub mod test {
                 1,
                 "Skills sub-page should stay open when switching scope"
             );
-            assert_eq!(settings_window.sub_page_stack[0].link.title, "Skills");
+            assert_eq!(settings_window.sub_page_stack[0].link.title, "スキル");
             assert_eq!(
                 displayed_skill_names(settings_window, cx),
                 ["project-skill"]
@@ -6336,7 +6608,7 @@ pub mod test {
                 .collect();
             assert_eq!(
                 titles,
-                ["Skills", "Create Skill"],
+                ["スキル", "スキルを作成"],
                 "skill creator should be pushed on top of the skills page"
             );
             assert!(
@@ -6429,7 +6701,7 @@ pub mod test {
                     .collect();
                 assert_eq!(
                     titles,
-                    ["Skills", "Create Skill"],
+                    ["スキル", "スキルを作成"],
                     "skill creator should be pushed on top of the skills page"
                 );
             })

@@ -66,9 +66,9 @@ impl Render for DiagnosticIndicator {
                 .map_or(&*diagnostic.message, |(first, _)| first);
             let diagnostics_already_active = self.any_active_diagnostics(cx);
             let tooltip = if !diagnostics_already_active {
-                "Expand Diagnostics"
+                "診断を展開"
             } else {
-                "Next Diagnostic"
+                "次の問題へ"
             };
             Some(
                 Button::new("diagnostic_message", SharedString::new(message))
@@ -91,22 +91,16 @@ impl Render for DiagnosticIndicator {
         };
 
         let diagnostics_label = match (self.summary.error_count, self.summary.warning_count) {
-            (0, 0) => "Project diagnostics: no problems".to_string(),
+            (0, 0) => "プロジェクトの診断: 問題なし".to_string(),
             (errors, warnings) => {
                 let mut parts = Vec::new();
                 if errors > 0 {
-                    parts.push(format!(
-                        "{errors} error{}",
-                        if errors == 1 { "" } else { "s" }
-                    ));
+                    parts.push(format!("エラー {errors} 件"));
                 }
                 if warnings > 0 {
-                    parts.push(format!(
-                        "{warnings} warning{}",
-                        if warnings == 1 { "" } else { "s" }
-                    ));
+                    parts.push(format!("警告 {warnings} 件"));
                 }
-                format!("Project diagnostics: {}", parts.join(", "))
+                format!("プロジェクトの診断: {}", parts.join(", "))
             }
         };
 
@@ -117,7 +111,7 @@ impl Render for DiagnosticIndicator {
                     .tab_index(0isize)
                     .aria_label(diagnostics_label)
                     .tooltip(move |_window, cx| {
-                        Tooltip::for_action("Project Diagnostics", &Deploy, cx)
+                        Tooltip::for_action("プロジェクトの診断", &Deploy, cx)
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
                         if let Some(workspace) = this.workspace.upgrade() {

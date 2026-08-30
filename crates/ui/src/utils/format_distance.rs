@@ -94,7 +94,7 @@ fn distance_string(
     add_suffix: bool,
     hide_prefix: bool,
 ) -> String {
-    let suffix = if distance < 0 { " from now" } else { " ago" };
+    let suffix = if distance < 0 { "後" } else { "前" };
 
     let distance = distance.abs();
 
@@ -104,117 +104,92 @@ fn distance_string(
     let months = distance / 2_592_000;
 
     let string = if distance < 5 && include_seconds {
-        if hide_prefix {
-            "5 seconds"
-        } else {
-            "less than 5 seconds"
-        }
-        .to_string()
+        if hide_prefix { "5 秒" } else { "5 秒未満" }.to_string()
     } else if distance < 10 && include_seconds {
         if hide_prefix {
-            "10 seconds"
+            "10 秒"
         } else {
-            "less than 10 seconds"
+            "10 秒未満"
         }
         .to_string()
     } else if distance < 20 && include_seconds {
         if hide_prefix {
-            "20 seconds"
+            "20 秒"
         } else {
-            "less than 20 seconds"
+            "20 秒未満"
         }
         .to_string()
     } else if distance < 40 && include_seconds {
-        "half a minute".to_string()
+        "30 秒".to_string()
     } else if distance < 60 && include_seconds {
-        if hide_prefix {
-            "a minute"
-        } else {
-            "less than a minute"
-        }
-        .to_string()
+        if hide_prefix { "1 分" } else { "1 分未満" }.to_string()
     } else if distance < 90 && include_seconds {
-        "1 minute".to_string()
+        "1 分".to_string()
     } else if distance < 30 {
-        if hide_prefix {
-            "a minute"
-        } else {
-            "less than a minute"
-        }
-        .to_string()
+        if hide_prefix { "1 分" } else { "1 分未満" }.to_string()
     } else if distance < 90 {
-        "1 minute".to_string()
+        "1 分".to_string()
     } else if distance < 2_700 {
-        format!("{} minutes", minutes)
+        format!("{} 分", minutes)
     } else if distance < 5_400 {
         if hide_prefix {
-            "1 hour"
+            "1 時間"
         } else {
-            "about 1 hour"
+            "約 1 時間"
         }
         .to_string()
     } else if distance < 86_400 {
         if hide_prefix {
-            format!("{} hours", hours)
+            format!("{} 時間", hours)
         } else {
-            format!("about {} hours", hours)
+            format!("約 {} 時間", hours)
         }
     } else if distance < 172_800 {
-        "1 day".to_string()
+        "1 日".to_string()
     } else if distance < 2_592_000 {
-        format!("{} days", days)
+        format!("{} 日", days)
     } else if distance < 5_184_000 {
         if hide_prefix {
-            "1 month"
+            "1 か月"
         } else {
-            "about 1 month"
+            "約 1 か月"
         }
         .to_string()
     } else if distance < 7_776_000 {
         if hide_prefix {
-            "2 months"
+            "2 か月"
         } else {
-            "about 2 months"
+            "約 2 か月"
         }
         .to_string()
     } else if distance < 31_540_000 {
-        format!("{} months", months)
+        format!("{} か月", months)
     } else if distance < 39_425_000 {
-        if hide_prefix {
-            "1 year"
-        } else {
-            "about 1 year"
-        }
-        .to_string()
+        if hide_prefix { "1 年" } else { "約 1 年" }.to_string()
     } else if distance < 55_195_000 {
-        if hide_prefix { "1 year" } else { "over 1 year" }.to_string()
+        if hide_prefix { "1 年" } else { "1 年以上" }.to_string()
     } else if distance < 63_080_000 {
-        if hide_prefix {
-            "2 years"
-        } else {
-            "almost 2 years"
-        }
-        .to_string()
+        if hide_prefix { "2 年" } else { "2 年近く" }.to_string()
     } else {
         let years = distance / 31_536_000;
         let remaining_months = (distance % 31_536_000) / 2_592_000;
 
         if remaining_months < 3 {
             if hide_prefix {
-                format!("{} years", years)
+                format!("{} 年", years)
             } else {
-                format!("about {} years", years)
+                format!("約 {} 年", years)
             }
         } else if remaining_months < 9 {
             if hide_prefix {
-                format!("{} years", years)
+                format!("{} 年", years)
             } else {
-                format!("over {} years", years)
+                format!("{} 年以上", years)
             }
         } else if hide_prefix {
-            format!("{} years", years + 1)
+            format!("{} 年", years + 1)
         } else {
-            format!("almost {} years", years + 1)
+            format!("{} 年近く", years + 1)
         }
     };
 
@@ -227,7 +202,7 @@ fn distance_string(
 
 /// Get the time difference between two dates into a relative human readable string.
 ///
-/// For example, "less than a minute ago", "about 2 hours ago", "3 months from now", etc.
+/// For example, "1 分未満前", "約 2 時間前", "3 か月後", etc.
 ///
 /// Use [`format_distance_from_now`] to compare a NaiveDateTime against now.
 pub fn format_distance(
@@ -244,7 +219,7 @@ pub fn format_distance(
 
 /// Get the time difference between a date and now as relative human readable string.
 ///
-/// For example, "less than a minute ago", "about 2 hours ago", "3 months from now", etc.
+/// For example, "1 分未満前", "約 2 時間前", "3 か月後", etc.
 pub fn format_distance_from_now(
     datetime: DateTimeType,
     include_seconds: bool,
@@ -273,7 +248,7 @@ mod tests {
         );
 
         assert_eq!(
-            "about 2 hours",
+            "約 2 時間",
             format_distance(date, base_date.to_naive(), false, false, false)
         );
     }
@@ -290,7 +265,7 @@ mod tests {
         );
 
         assert_eq!(
-            "about 2 hours from now",
+            "約 2 時間後",
             format_distance(date, base_date.to_naive(), false, true, false)
         );
     }
@@ -307,90 +282,42 @@ mod tests {
         );
 
         assert_eq!(
-            "over 54 years ago",
+            "54 年以上前",
             format_distance(date, base_date.to_naive(), false, true, false)
         );
     }
 
     #[test]
     fn test_format_distance_string() {
-        assert_eq!(
-            distance_string(3, false, false, false),
-            "less than a minute"
-        );
-        assert_eq!(
-            distance_string(7, false, false, false),
-            "less than a minute"
-        );
-        assert_eq!(
-            distance_string(13, false, false, false),
-            "less than a minute"
-        );
-        assert_eq!(
-            distance_string(21, false, false, false),
-            "less than a minute"
-        );
-        assert_eq!(distance_string(45, false, false, false), "1 minute");
-        assert_eq!(distance_string(61, false, false, false), "1 minute");
-        assert_eq!(distance_string(1920, false, false, false), "32 minutes");
-        assert_eq!(distance_string(3902, false, false, false), "about 1 hour");
-        assert_eq!(distance_string(18002, false, false, false), "about 5 hours");
-        assert_eq!(distance_string(86470, false, false, false), "1 day");
-        assert_eq!(distance_string(345880, false, false, false), "4 days");
-        assert_eq!(
-            distance_string(2764800, false, false, false),
-            "about 1 month"
-        );
-        assert_eq!(
-            distance_string(5184000, false, false, false),
-            "about 2 months"
-        );
-        assert_eq!(distance_string(10368000, false, false, false), "4 months");
-        assert_eq!(
-            distance_string(34694000, false, false, false),
-            "about 1 year"
-        );
-        assert_eq!(
-            distance_string(47310000, false, false, false),
-            "over 1 year"
-        );
-        assert_eq!(
-            distance_string(61503000, false, false, false),
-            "almost 2 years"
-        );
-        assert_eq!(
-            distance_string(160854000, false, false, false),
-            "about 5 years"
-        );
-        assert_eq!(
-            distance_string(236550000, false, false, false),
-            "over 7 years"
-        );
-        assert_eq!(
-            distance_string(249166000, false, false, false),
-            "almost 8 years"
-        );
+        assert_eq!(distance_string(3, false, false, false), "1 分未満");
+        assert_eq!(distance_string(7, false, false, false), "1 分未満");
+        assert_eq!(distance_string(13, false, false, false), "1 分未満");
+        assert_eq!(distance_string(21, false, false, false), "1 分未満");
+        assert_eq!(distance_string(45, false, false, false), "1 分");
+        assert_eq!(distance_string(61, false, false, false), "1 分");
+        assert_eq!(distance_string(1920, false, false, false), "32 分");
+        assert_eq!(distance_string(3902, false, false, false), "約 1 時間");
+        assert_eq!(distance_string(18002, false, false, false), "約 5 時間");
+        assert_eq!(distance_string(86470, false, false, false), "1 日");
+        assert_eq!(distance_string(345880, false, false, false), "4 日");
+        assert_eq!(distance_string(2764800, false, false, false), "約 1 か月");
+        assert_eq!(distance_string(5184000, false, false, false), "約 2 か月");
+        assert_eq!(distance_string(10368000, false, false, false), "4 か月");
+        assert_eq!(distance_string(34694000, false, false, false), "約 1 年");
+        assert_eq!(distance_string(47310000, false, false, false), "1 年以上");
+        assert_eq!(distance_string(61503000, false, false, false), "2 年近く");
+        assert_eq!(distance_string(160854000, false, false, false), "約 5 年");
+        assert_eq!(distance_string(236550000, false, false, false), "7 年以上");
+        assert_eq!(distance_string(249166000, false, false, false), "8 年近く");
     }
 
     #[test]
     fn test_format_distance_string_include_seconds() {
-        assert_eq!(
-            distance_string(3, true, false, false),
-            "less than 5 seconds"
-        );
-        assert_eq!(
-            distance_string(7, true, false, false),
-            "less than 10 seconds"
-        );
-        assert_eq!(
-            distance_string(13, true, false, false),
-            "less than 20 seconds"
-        );
-        assert_eq!(distance_string(21, true, false, false), "half a minute");
-        assert_eq!(
-            distance_string(45, true, false, false),
-            "less than a minute"
-        );
-        assert_eq!(distance_string(61, true, false, false), "1 minute");
+        assert_eq!(distance_string(3, true, false, false), "5 秒未満");
+        assert_eq!(distance_string(7, true, false, false), "10 秒未満");
+        assert_eq!(distance_string(13, true, false, false), "20 秒未満");
+        assert_eq!(distance_string(21, true, false, false), "30 秒");
+        assert_eq!(distance_string(45, true, false, false), "1 分未満");
+        assert_eq!(distance_string(61, true, false, false), "1 分");
     }
 }

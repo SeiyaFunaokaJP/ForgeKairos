@@ -9,8 +9,7 @@ use std::path::{Component, Path};
 use std::sync::LazyLock;
 use util::shell::ShellKind;
 
-const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "Blocked by built-in security rule. This operation is considered too \
-     harmful to be allowed, and cannot be overridden by settings.";
+const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "組み込みのセキュリティルールによりブロックされました。この操作は許可するには危険すぎると判断されており、設定で上書きすることはできません。";
 const INVALID_TERMINAL_COMMAND_MESSAGE: &str = "The terminal command could not be approved because terminal does not \
      allow shell substitutions or interpolations in permission-protected commands. Forbidden examples include $VAR, \
      ${VAR}, $(...), backticks, $((...)), <(...), and >(...). Resolve those values before calling terminal, or ask \
@@ -608,6 +607,7 @@ mod tests {
             show_turn_stats: false,
             show_merge_conflict_indicator: true,
             sidebar_side: Default::default(),
+            panel_thread_history: true,
             thinking_display: Default::default(),
         }
     }
@@ -1194,7 +1194,7 @@ mod tests {
         match decision {
             ToolPermissionDecision::Deny(message) => {
                 assert!(
-                    message.contains("built-in security rule"),
+                    message.contains("組み込みのセキュリティルール"),
                     "expected hardcoded denial message, got: {message}"
                 );
             }
@@ -1208,7 +1208,7 @@ mod tests {
         match decision {
             ToolPermissionDecision::Deny(message) => {
                 assert!(
-                    message.contains("built-in security rule"),
+                    message.contains("組み込みのセキュリティルール"),
                     "expected hardcoded denial message, got: {message}"
                 );
             }

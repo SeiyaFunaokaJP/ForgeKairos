@@ -130,6 +130,40 @@ pub fn test_settings() -> &'static str {
             crate::default_settings().as_ref(),
         )
         .unwrap();
+        // This fork ships the agent off by default (docs/jp-enhance/DESIGN.md
+        // ADR-F09). Tests across the workspace assume upstream's "on" default -
+        // the multi-workspace sidebar in particular is gated on it and its
+        // absence changes every layout measurement - so opt back in here rather
+        // than in each crate's `init_test`. Tests that care about the off state
+        // set it themselves.
+        util::merge_non_null_json_value_into(
+            serde_json::json!({ "agent": { "enabled": true } }),
+            &mut value,
+        );
+        // Same story for telemetry: this fork ships it off (F2-1), but
+        // upstream tests (e.g. remote_server's telemetry forwarding test)
+        // assume events are actually queued.
+        util::merge_non_null_json_value_into(
+            serde_json::json!({ "telemetry": { "diagnostics": true, "metrics": true } }),
+            &mut value,
+        );
+        // This fork defaults to the VSCode 風 arrangement (files left, agent
+        // right), i.e. `PanelLayout::EDITOR`, while upstream defaults to
+        // `PanelLayout::AGENT`. Upstream tests assert against the agent preset
+        // (agent_settings::test_get_layout, test_set_layout_minimal_diff) and
+        // several workspace/panel tests measure the default dock sides, so keep
+        // the upstream docks here. Tests that care about the fork default set
+        // it themselves.
+        util::merge_non_null_json_value_into(
+            serde_json::json!({
+                "agent": { "dock": "left" },
+                "project_panel": { "dock": "right" },
+                "outline_panel": { "dock": "right" },
+                "collaboration_panel": { "dock": "right" },
+                "git_panel": { "dock": "right" },
+            }),
+            &mut value,
+        );
         #[cfg(not(target_os = "windows"))]
         util::merge_non_null_json_value_into(
             serde_json::json!({

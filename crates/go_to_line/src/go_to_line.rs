@@ -133,12 +133,7 @@ impl GoToLine {
         });
         let line_editor_change = cx.subscribe_in(&line_editor, window, Self::on_line_editor_event);
 
-        let current_text = format!(
-            "Current Line: {} of {} (column {})",
-            line,
-            last_line + 1,
-            column
-        );
+        let current_text = format!("現在の行: {} / {} (列 {})", line, last_line + 1, column);
 
         Self {
             line_editor,
@@ -313,13 +308,13 @@ impl Render for GoToLine {
             } else {
                 self.current_line.saturating_sub(offset.unsigned_abs())
             };
-            format!("Go to line {target_line} ({offset:+} from current)").into()
+            format!("{target_line} 行目へ移動 (現在位置から {offset:+})").into()
         } else {
             match self.line_and_char_from_query(cx) {
                 Some((line, Some(character))) => {
-                    format!("Go to line {line}, character {character}").into()
+                    format!("{line} 行 {character} 文字目へ移動").into()
                 }
-                Some((line, None)) => format!("Go to line {line}").into(),
+                Some((line, None)) => format!("{line} 行目へ移動").into(),
                 None => self.current_text.clone(),
             }
         };

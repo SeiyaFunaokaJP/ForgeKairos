@@ -1,4 +1,5 @@
 mod async_body;
+mod egress;
 #[cfg(not(target_family = "wasm"))]
 pub mod github;
 #[cfg(all(not(target_family = "wasm"), feature = "github-download"))]
@@ -7,6 +8,12 @@ pub mod github_download;
 pub use anyhow::{Result, anyhow};
 pub use async_body::{AsyncBody, Inner, Json};
 use derive_more::Deref;
+pub use egress::{
+    AllowlistedHttpClient, BUILTIN_ALLOWLIST, BuiltinAllow, EgressDenied, EgressPolicy,
+    EgressPolicyHandle, HostPattern, HostPatternError, RequestHost, UPDATE_REPO,
+    apply_child_process_proxy_env, child_process_proxy, env_overrides_child_process_proxy,
+    hosts_required_to_download, set_child_process_proxy,
+};
 pub use http::{self, Method, Request, Response, StatusCode, Uri, request::Builder};
 use http::{HeaderName, HeaderValue};
 
@@ -168,6 +175,18 @@ pub trait HttpClient: 'static + Send + Sync {
         }
     }
 
+    /// The egress allowlist gating this client, if this instance is (or
+    /// wraps) an [`AllowlistedHttpClient`]. Lets code that only receives an
+    /// `Arc<dyn HttpClient>` — e.g. `remote_server`, which builds the process
+    /// HTTP client once at startup — reach the same handle to update it
+    /// later (once the connecting IDE pushes its allowlist; see
+    /// `docs/jp-enhance/DESIGN.md` ADR-F11), without every `HttpClient`
+    /// construction site having to thread a separate `EgressPolicyHandle`
+    /// through by hand.
+    fn egress_policy(&self) -> Option<&EgressPolicyHandle> {
+        None
+    }
+
     #[cfg(feature = "test-support")]
     fn as_fake(&self) -> &FakeHttpClient {
         panic!("called as_fake on {}", type_name::<Self>())
@@ -213,6 +232,10 @@ impl HttpClient for HttpClientWithProxy {
 
     fn proxy(&self) -> Option<&Url> {
         self.proxy.as_ref()
+    }
+
+    fn egress_policy(&self) -> Option<&EgressPolicyHandle> {
+        self.client.egress_policy()
     }
 
     #[cfg(feature = "test-support")]
@@ -346,6 +369,13 @@ impl HttpClient for HttpClientWithUrl {
 
     fn proxy(&self) -> Option<&Url> {
         self.client.proxy.as_ref()
+    }
+
+    // Without this the trait's `None` default would win over the `Deref` to
+    // `HttpClientWithProxy`, and the process-wide client — which every caller
+    // reaches as an `HttpClientWithUrl` — would report no allowlist at all.
+    fn egress_policy(&self) -> Option<&EgressPolicyHandle> {
+        self.client.egress_policy()
     }
 
     #[cfg(feature = "test-support")]

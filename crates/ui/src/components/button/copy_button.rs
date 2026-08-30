@@ -47,7 +47,7 @@ impl CopyButton {
             message: message.into(),
             icon_size: IconSize::Small,
             disabled: false,
-            tooltip_label: "Copy".into(),
+            tooltip_label: "コピー".into(),
             visible_on_hover: None,
             custom_on_click: None,
         }
@@ -94,7 +94,7 @@ impl RenderOnce for CopyButton {
         let is_copied = state.read(cx).is_copied();
 
         let (icon, color, tooltip) = if is_copied {
-            (IconName::Check, Color::Success, "Copied!".into())
+            (IconName::Check, Color::Success, "コピーしました".into())
         } else {
             (IconName::Copy, Color::Muted, self.tooltip_label)
         };

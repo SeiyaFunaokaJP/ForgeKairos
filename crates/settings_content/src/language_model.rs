@@ -44,6 +44,12 @@ pub struct AnthropicCompatibleSettingsContent {
     pub api_url: String,
     pub available_models: Vec<AnthropicCompatibleAvailableModel>,
     pub custom_headers: Option<HashMap<String, String>>,
+    /// Connect without any credential, for servers that require no
+    /// authentication. When set, no `x-api-key` header is sent and the provider
+    /// counts as configured without a keychain entry.
+    ///
+    /// Default: false
+    pub no_api_key: Option<bool>,
 }
 
 #[with_fallible_options]
@@ -408,6 +414,12 @@ pub struct OpenAiCompatibleSettingsContent {
     pub api_url: String,
     pub available_models: Vec<OpenAiCompatibleAvailableModel>,
     pub custom_headers: Option<HashMap<String, String>>,
+    /// Connect without any credential, for servers that require no
+    /// authentication. When set, no `Authorization` header is sent and the
+    /// provider counts as configured without a keychain entry.
+    ///
+    /// Default: false
+    pub no_api_key: Option<bool>,
 }
 
 #[with_fallible_options]
