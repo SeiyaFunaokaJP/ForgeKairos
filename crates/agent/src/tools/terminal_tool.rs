@@ -131,10 +131,17 @@ pub struct SandboxedTerminalToolInput {
     /// Set to `true` only if the command needs outbound network access to
     /// hosts you can't enumerate up front.
     ///
-    /// This grants unrestricted outbound network access. On platforms that
+    /// This lifts the sandbox's own host restriction, not the editor's: traffic
+    /// is still capped by the user's network allowlist, so a host missing from
+    /// that list stays unreachable and the denial says so. On platforms that
     /// support host-specific grants, prefer `allow_hosts` with specific
     /// hostnames whenever possible, so the user knows what's being approved.
     /// Requesting it triggers a user approval prompt.
+    #[cfg_attr(
+        any(target_os = "macos", target_os = "linux"),
+        doc = "\nThat cap is enforced by the same HTTP/HTTPS proxy `allow_hosts` \
+        uses, so use `https://` URLs rather than `git@`/`ssh://` here too."
+    )]
     #[serde(default)]
     pub allow_all_hosts: Option<bool>,
     /// Paths the command needs to write to outside the default-writable

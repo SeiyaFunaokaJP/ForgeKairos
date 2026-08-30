@@ -79,7 +79,9 @@ pub enum SandboxNetworkAccess {
     /// through an in-process proxy and confining the command to the proxy's
     /// loopback port.
     Restricted(Allowlist),
-    /// Allow unrestricted outbound network access.
+    /// Impose no host restriction of the sandbox's own. Traffic is still
+    /// capped by the editor-wide egress allowlist where one is published —
+    /// see [`sandbox::SandboxNetPolicy::Unrestricted`], which this becomes.
     All,
 }
 

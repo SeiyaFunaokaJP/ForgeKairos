@@ -963,3 +963,98 @@ fn a_host_both_policies_permit_tunnels_through() {
         other => panic!("expected RequestAttempt, got {other:?}"),
     }
 }
+
+/// An `allow_all_hosts` sandbox reaches the proxy as `Allowlist::any()`: every
+/// sandbox-side check waived, the ceiling left deciding alone. A host the
+/// ceiling doesn't list is still refused — the point of proxying that grant at
+/// all rather than handing it the raw network.
+#[test]
+fn an_allow_any_sandbox_is_still_refused_a_host_the_outer_policy_lacks() {
+    let (proxy, mut events) =
+        spawn_proxy_nested_within(Allowlist::any(), Arc::new(OuterAllowlist("github.com")));
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client
+        .write_all(b"CONNECT evil.example:443 HTTP/1.1\r\nHost: evil.example:443\r\n\r\n")
+        .unwrap();
+
+    let mut response = String::new();
+    client.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 511 "),
+        "expected 511, got: {response}"
+    );
+    assert!(response.contains("network allowlist"), "{response}");
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt {
+            host,
+            outcome:
+                RequestOutcome::Denied {
+                    reason: DenyReason::NotPermittedByPolicy { .. },
+                },
+            ..
+        } => assert_eq!(host, "evil.example"),
+        other => panic!("expected RequestAttempt(NotPermittedByPolicy), got {other:?}"),
+    }
+}
+
+/// …and an IP literal, which `Allowlist::any()` alone is defined to permit, is
+/// refused on the same grounds.
+#[test]
+fn an_allow_any_sandbox_is_still_refused_an_ip_literal_the_outer_policy_lacks() {
+    let (proxy, _events) =
+        spawn_proxy_nested_within(Allowlist::any(), Arc::new(OuterAllowlist("github.com")));
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client
+        .write_all(b"CONNECT 10.0.0.5:443 HTTP/1.1\r\nHost: 10.0.0.5:443\r\n\r\n")
+        .unwrap();
+
+    let mut response = String::new();
+    client.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 511 "),
+        "expected 511, got: {response}"
+    );
+}
+
+/// The half that has to survive the nesting: an unrestricted sandbox has always
+/// been able to reach the local machine, and this fork's egress allowlist
+/// exempts loopback, so an IP-literal loopback target still connects.
+#[test]
+fn an_allow_any_sandbox_still_reaches_loopback_the_outer_policy_permits() {
+    let (origin_addr, origin_join) =
+        spawn_echo_origin(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+    let (proxy, mut events) =
+        spawn_proxy_nested_within(Allowlist::any(), Arc::new(OuterAllowlist("127.0.0.1")));
+    let target = format!("127.0.0.1:{}", origin_addr.port());
+
+    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port())).unwrap();
+    client.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client.set_write_timeout(Some(TEST_TIMEOUT)).unwrap();
+    client
+        .write_all(format!("CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n").as_bytes())
+        .unwrap();
+
+    let response = read_until_double_crlf(&mut client);
+    let response = String::from_utf8_lossy(&response);
+    assert!(
+        response.starts_with("HTTP/1.1 200"),
+        "expected 200 from proxy, got: {response}"
+    );
+    client.write_all(b"hi origin\r\n\r\n").unwrap();
+    client.shutdown(std::net::Shutdown::Write).unwrap();
+    let _ = client.read_to_end(&mut Vec::new());
+    origin_join.join().unwrap();
+
+    match next_event(&mut events) {
+        ProxyEvent::RequestAttempt { host, outcome, .. } => {
+            assert_eq!(host, "127.0.0.1");
+            assert!(matches!(outcome, RequestOutcome::Allowed));
+        }
+        other => panic!("expected RequestAttempt, got {other:?}"),
+    }
+}

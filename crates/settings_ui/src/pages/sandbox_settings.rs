@@ -12,6 +12,12 @@ use crate::components::{SettingsInputField, SettingsSectionHeader};
 
 const DOMAINS_DESCRIPTION: &str = "各項目は完全一致のドメイン (github.com)、または先頭の *. によるサブドメインのワイルドカード (*.npmjs.org) です。IP アドレスとローカルドメインは指定できません。ここでの許可が効くのは IDE 全体のネットワーク許可リストの範囲内だけで、そちらに無いホストは、ここに登録しても接続できません。";
 
+/// The "allow every domain" switch lifts the *sandbox's* own host list, not the
+/// editor-wide egress allowlist that list sits inside — see ADR-F17. Saying so
+/// here keeps the switch from reading as an escape hatch from that allowlist,
+/// which is exactly what it is not.
+const ALLOW_ALL_HOSTS_DESCRIPTION: &str = "サンドボックス内のコマンドが、確認なしで任意のドメインへネットワーク接続できるようにします。外すのはサンドボックス側の制限だけなので、実際に接続できるのは IDE 全体のネットワーク許可リストの範囲内です (ローカルホストは常に接続できます)。";
+
 const WRITE_PATHS_DESCRIPTION: &str = "各項目は絶対パスで指定します。保護された Git のメタデータを除き、その配下すべてに書き込みアクセスを許可します。";
 
 pub(crate) fn render_sandbox_settings_page(
@@ -116,10 +122,7 @@ pub(crate) fn render_sandbox_settings_page(
                     SwitchField::new(
                         "sandbox-allow-all-hosts",
                         Some("すべてのドメインを許可"),
-                        Some(
-                            "サンドボックス内のコマンドが、確認なしで任意のドメインへネットワーク接続できるようにします。"
-                                .into(),
-                        ),
+                        Some(ALLOW_ALL_HOSTS_DESCRIPTION.into()),
                         permissions.allow_all_hosts,
                         move |state, _window, cx| {
                             set_allow_all_hosts(*state == ToggleState::Selected, cx);

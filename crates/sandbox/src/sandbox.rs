@@ -7,7 +7,9 @@
 //! constructs and owns; callers only describe intent via [`SandboxPolicy`].
 //! That proxy also enforces the editor-wide ceiling published through
 //! [`set_network_ceiling`], so a command's allowed hosts can only ever narrow
-//! what the application as a whole is permitted to reach.
+//! what the application as a whole is permitted to reach. An *unrestricted*
+//! grant is no exception: while a ceiling is published it too runs through the
+//! proxy, waiving only the sandbox's own checks.
 
 use std::{
     collections::HashMap,
@@ -112,7 +114,15 @@ pub enum SandboxFsPolicy {
 /// Outbound-network policy for a sandboxed command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SandboxNetPolicy {
-    /// Allow unrestricted outbound network access.
+    /// Impose no host restriction of the sandbox's *own* — the command may
+    /// reach anything the editor as a whole may reach.
+    ///
+    /// This is not an exemption from the editor-wide ceiling
+    /// ([`set_network_ceiling`]). While one is published the command still runs
+    /// through the proxy, with an allow-everything base decision (IP literals
+    /// and loopback included), so the ceiling is the only policy left deciding.
+    /// With no ceiling published there is nothing left to enforce and the
+    /// command gets the raw network with no proxy in front of it.
     Unrestricted,
     /// Block all outbound network access.
     Blocked,
@@ -127,9 +137,13 @@ pub enum SandboxNetPolicy {
 /// A sandboxed command reaches a host only when
 /// [`SandboxNetPolicy::Restricted`] *and* this policy both permit it — the
 /// hosts approved for one command narrow what the editor as a whole may reach,
-/// they never widen it. `None` (the default) leaves the per-command allowlist
-/// as the only check, which is what the sandbox test helpers and any embedder
-/// with no editor-wide policy get.
+/// they never widen it. [`SandboxNetPolicy::Unrestricted`] is the degenerate
+/// case of the same rule, not a way out of it: the command's own half of the
+/// decision permits everything, so while a ceiling is published the command is
+/// still proxied and this policy alone decides. `None` (the default) leaves the
+/// per-command allowlist as the only check and an unrestricted grant genuinely
+/// unrestricted, which is what the sandbox test helpers and any embedder with
+/// no editor-wide policy get.
 ///
 /// A process-wide slot rather than a field on [`SandboxPolicy`]: the ceiling is
 /// a property of the running application, identical for every command, and this
@@ -508,12 +522,19 @@ struct FsSetup {
 /// the first [`Sandbox::wrap`] so its upstream-proxy chaining can read the
 /// command's environment.
 enum NetSetup {
+    /// The command talks to the network directly. Only reachable when nothing
+    /// is left to enforce: the policy was [`SandboxNetPolicy::Unrestricted`]
+    /// *and* no [`NETWORK_CEILING`] is published.
     Unrestricted,
     Blocked,
     // Restricted networking is rejected up front on Windows, so this variant is
     // never constructed there.
     #[cfg(not(target_os = "windows"))]
     Restricted {
+        /// The command's own half of the decision. `Allowlist::any()` is how an
+        /// unrestricted grant under a ceiling is expressed: it waives every
+        /// sandbox-side check (host patterns, IP literals, the DNS-rebinding
+        /// filter) and leaves the ceiling as the only policy that can refuse.
         allowlist: Allowlist,
     },
 }
@@ -582,7 +603,7 @@ impl Sandbox {
         };
 
         let network = match policy.network {
-            SandboxNetPolicy::Unrestricted => NetSetup::Unrestricted,
+            SandboxNetPolicy::Unrestricted => resolve_unrestricted_network(),
             SandboxNetPolicy::Blocked => NetSetup::Blocked,
             SandboxNetPolicy::Restricted { allowed_domains } => {
                 resolve_restricted_network(&allowed_domains)?
@@ -727,8 +748,10 @@ impl Sandbox {
                 policy: None,
                 // The command's own allowlist is the inner box; the editor-wide
                 // egress allowlist, when the app published one, is the ceiling
-                // around it. Read per proxy so a policy published (or
-                // withdrawn) after this process started still applies.
+                // around it. For an unrestricted grant the inner box is
+                // `Allowlist::any()`, so the ceiling is all that remains. Read
+                // per proxy so a policy published (or withdrawn) after this
+                // process started still applies.
                 outer_policy: network_ceiling(),
             };
             #[cfg(target_os = "linux")]
@@ -1012,6 +1035,44 @@ pub fn run_sandbox_launcher_if_invoked() {
 // with no writable binds rather than re-deriving paths from the opaque
 // locations.
 
+/// Whether a [`SandboxNetPolicy::Unrestricted`] grant still has to run through
+/// the proxy, because an editor-wide ceiling is published for it to sit under.
+///
+/// Read from the process-wide slot rather than captured once, so a ceiling
+/// installed after this process started still applies — the same reason
+/// [`Sandbox::ensure_restricted_proxy`] reads it per proxy.
+#[cfg(not(target_os = "windows"))]
+fn unrestricted_is_capped_by_ceiling() -> bool {
+    network_ceiling().is_some()
+}
+
+/// Turn a [`SandboxNetPolicy::Unrestricted`] grant into a plan.
+///
+/// "Unrestricted" scopes the *sandbox's* own restrictions, not the editor's:
+/// under a published ceiling the command is proxied like any other, with an
+/// allow-any base decision so the ceiling is the only thing left that can
+/// refuse a host. Without a ceiling there is nothing to enforce, and standing a
+/// proxy up anyway would only narrow the grant to HTTP(S) for no benefit — so
+/// that case keeps the raw network it has always had.
+#[cfg(not(target_os = "windows"))]
+fn resolve_unrestricted_network() -> NetSetup {
+    if unrestricted_is_capped_by_ceiling() {
+        NetSetup::Restricted {
+            allowlist: Allowlist::any(),
+        }
+    } else {
+        NetSetup::Unrestricted
+    }
+}
+
+/// Windows has no restricted-network sandbox at all (see
+/// [`unsupported_restricted_network_on_windows`]), so there is no proxy to nest
+/// an unrestricted grant inside and it stays as it was.
+#[cfg(target_os = "windows")]
+fn resolve_unrestricted_network() -> NetSetup {
+    NetSetup::Unrestricted
+}
+
 #[cfg(not(target_os = "windows"))]
 fn resolve_restricted_network(allowed_domains: &[String]) -> Result<NetSetup, SandboxError> {
     let mut patterns = Vec::with_capacity(allowed_domains.len());
@@ -1041,6 +1102,13 @@ fn unsupported_restricted_network_on_windows() -> SandboxError {
 #[cfg(target_os = "linux")]
 fn linux_probe_network(network: &SandboxNetPolicy) -> linux_bubblewrap::NetworkAccess {
     match network {
+        // Mirror what the real run will do. Under a ceiling an unrestricted
+        // grant is proxied, which needs the *unshared* network namespace —
+        // strictly harder to create than the shared one `All` probes, so
+        // probing `All` here could report a sandbox this host cannot build.
+        SandboxNetPolicy::Unrestricted if unrestricted_is_capped_by_ceiling() => {
+            linux_bubblewrap::NetworkAccess::LocalhostPort(0)
+        }
         SandboxNetPolicy::Unrestricted => linux_bubblewrap::NetworkAccess::All,
         SandboxNetPolicy::Blocked => linux_bubblewrap::NetworkAccess::None,
         // The probe only needs the network namespace flag, not a real port.
@@ -1313,6 +1381,74 @@ mod tests {
             hosts(&["a.com"]).merge(SandboxNetPolicy::Unrestricted),
             SandboxNetPolicy::Unrestricted
         );
+    }
+
+    /// Stand-in for the editor-wide egress ceiling. What it decides is the
+    /// proxy's business (and is tested there); all these tests need is for one
+    /// to exist.
+    struct TestCeiling;
+
+    impl DestinationPolicy for TestCeiling {
+        fn evaluate(&self, _host: &str, _port: u16) -> http_proxy::PolicyDecision {
+            http_proxy::PolicyDecision::Allow {
+                permit_local_addresses: true,
+            }
+        }
+    }
+
+    /// The ceiling lives in a process-wide slot, so tests that install one have
+    /// to take turns. A poisoned lock just means an earlier test panicked; the
+    /// slot is overwritten on entry either way, so recovering is right.
+    static CEILING_SLOT: RwLock<()> = RwLock::new(());
+
+    fn with_ceiling<R>(ceiling: Option<Arc<dyn DestinationPolicy>>, body: impl FnOnce() -> R) -> R {
+        let _guard = CEILING_SLOT
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        set_network_ceiling(ceiling);
+        let result = body();
+        set_network_ceiling(None);
+        result
+    }
+
+    fn unrestricted_network_sandbox() -> Sandbox {
+        Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Restricted {
+                writable_paths: Vec::new(),
+                protected_paths: Vec::new(),
+            },
+            network: SandboxNetPolicy::Unrestricted,
+        })
+        .expect("an unrestricted network grant is valid on every platform")
+    }
+
+    /// The ADR-F17 hole: an `allow_all_hosts` grant used to skip the proxy
+    /// entirely, which meant the editor-wide allowlist never got to see the
+    /// command's traffic. It has to be proxied like any other grant.
+    #[test]
+    fn unrestricted_network_is_proxied_so_the_ceiling_still_applies() {
+        with_ceiling(Some(Arc::new(TestCeiling)), || {
+            let sandbox = unrestricted_network_sandbox();
+            match &sandbox.network {
+                // Allow-any waives the sandbox's own checks — its half of the
+                // decision — and leaves the ceiling as the only one that can
+                // refuse a host.
+                NetSetup::Restricted { allowlist } => assert!(allowlist.allows_any()),
+                NetSetup::Unrestricted | NetSetup::Blocked => {
+                    panic!("an unrestricted grant under a ceiling must still be proxied")
+                }
+            }
+        });
+    }
+
+    /// No ceiling, nothing to enforce: proxying would only narrow the grant to
+    /// HTTP(S) for no benefit, so this stays the raw network it always was.
+    #[test]
+    fn unrestricted_network_stays_unproxied_when_no_ceiling_is_published() {
+        with_ceiling(None, || {
+            let sandbox = unrestricted_network_sandbox();
+            assert!(matches!(&sandbox.network, NetSetup::Unrestricted));
+        });
     }
 
     #[test]

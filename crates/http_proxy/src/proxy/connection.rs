@@ -1195,6 +1195,55 @@ mod tests {
         assert!(!grant.permit_local_addresses);
     }
 
+    /// What an `allow_all_hosts` sandbox becomes once it is nested inside this
+    /// fork's egress ceiling: its own half of the decision permits everything,
+    /// so the ceiling is the only policy left that can refuse a host. Before
+    /// ADR-F17's follow-up such a grant skipped the proxy entirely and the
+    /// ceiling never saw the traffic at all.
+    #[test]
+    fn an_allow_any_inner_decision_leaves_the_outer_policy_deciding_alone() {
+        let mut state = runtime_state(Allowlist::any());
+        state.outer_policy = Some(Arc::new(OuterAllowlist::new("github.com")));
+
+        // On the ceiling: through, and the local-address waiver allow-any
+        // carries survives (this ceiling grants it too).
+        let grant = evaluate_destination("github.com", 443, &state).expect("the ceiling allows it");
+        assert!(grant.permit_local_addresses);
+
+        // Off it: refused, even though the sandbox itself would have waved
+        // every host through.
+        match evaluate_destination("evil.example", 443, &state) {
+            Err(DenyReason::NotPermittedByPolicy { host, .. }) => assert_eq!(host, "evil.example"),
+            other => panic!("expected an outer-policy denial, got {other:?}"),
+        }
+
+        // Including IP literals and private space, which allow-any on its own
+        // is defined to permit.
+        assert!(evaluate_destination("10.0.0.5", 443, &state).is_err());
+    }
+
+    /// The half of that grant which must survive: an unrestricted sandbox has
+    /// always reached the local machine (a local LLM server, say), and the
+    /// egress allowlist exempts loopback, so nesting must not close it.
+    #[test]
+    fn an_allow_any_inner_decision_still_reaches_loopback_the_ceiling_permits() {
+        let mut state = runtime_state(Allowlist::any());
+        state.outer_policy = Some(Arc::new(OuterAllowlist::new("localhost")));
+
+        let grant = evaluate_destination("localhost", 80, &state).expect("both halves allow it");
+        assert!(grant.permit_local_addresses);
+        match plan_route("localhost", 80, &grant, &state) {
+            Ok(Route::Direct(pinned)) => {
+                let addrs: Vec<SocketAddr> = pinned.socket_addrs().collect();
+                assert!(!addrs.is_empty());
+                assert!(addrs.iter().all(|addr| addr.ip().is_loopback()));
+            }
+            Ok(Route::ViaUpstream(_)) => panic!("expected direct route"),
+            Err(RouteFailure::Denied(reason)) => panic!("unexpected denial: {reason:?}"),
+            Err(RouteFailure::Error(error)) => panic!("unexpected error: {error}"),
+        }
+    }
+
     #[test]
     fn parse_authority_form_basic() {
         let (h, p) = parse_authority_form("github.com:443").unwrap();
