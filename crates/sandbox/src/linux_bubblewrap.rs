@@ -887,7 +887,11 @@ fn validate_binds(socket_path: &Path, paths: &[PathBuf]) -> Result<()> {
 ///
 /// Returns `None` on an architecture seccompiler can't target (we ship on
 /// x86_64/aarch64, so that is not a configuration we run in practice).
-fn build_command_seccomp_program() -> Result<Option<seccompiler::BpfProgram>> {
+///
+/// `pub(crate)` so the remote-sandbox helper (`linux_remote_helper`) can install
+/// the identical `AF_UNIX`-blocking filter on its untrusted command; the two must
+/// not drift.
+pub(crate) fn build_command_seccomp_program() -> Result<Option<seccompiler::BpfProgram>> {
     use seccompiler::{
         BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
         SeccompRule, TargetArch,
@@ -962,7 +966,10 @@ fn build_command_seccomp_program() -> Result<Option<seccompiler::BpfProgram>> {
 /// `exec`. `apply_filter` also sets `PR_SET_NO_NEW_PRIVS`. On an unsupported
 /// architecture there is no filter to install — log and proceed rather than
 /// break the sandbox on a platform we don't ship.
-fn install_command_seccomp_filter() -> Result<()> {
+///
+/// `pub(crate)` so `linux_remote_helper` installs the same filter right before it
+/// `exec`s the untrusted command.
+pub(crate) fn install_command_seccomp_filter() -> Result<()> {
     match build_command_seccomp_program()? {
         Some(program) => seccompiler::apply_filter(&program)
             .context("installing sandbox command seccomp filter")?,
@@ -1224,6 +1231,11 @@ fn path_is_on_windows_fs(path: &Path) -> bool {
         Ok(stat) => {
             // `f_type` is `i64` on glibc but `u64` on musl, so widen it
             // losslessly instead of comparing against a fixed-width constant.
+            #[allow(
+                clippy::useless_conversion,
+                reason = "the conversion is a real widen on glibc (i64) and a no-op on musl (u64); \
+                          clippy only sees the musl case when cross-compiling the remote server"
+            )]
             u64::try_from(stat.filesystem_type().0)
                 .is_ok_and(|fs_type| fs_type == V9FS_MAGIC || fs_type == FUSE_SUPER_MAGIC)
         }

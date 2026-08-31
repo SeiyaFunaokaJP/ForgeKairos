@@ -214,13 +214,22 @@ pub(crate) fn sandboxing_enabled(cx: &App) -> bool {
 }
 
 /// Whether sandboxing is *applicable* for this project at all — the feature is
-/// enabled, the project is local, and the platform has a sandbox integration —
-/// independent of the persistent `allow_unsandboxed` setting. Used by the UI to
-/// distinguish "sandboxing isn't relevant here" (don't show the indicator) from
-/// "sandboxing is available but turned off in settings" (show it, struck out).
+/// enabled, the platform has a sandbox integration, and the project is either
+/// local or (ADR-F18) an SSH-remote Linux host that can enforce the sandbox on
+/// its side. Independent of the persistent `allow_unsandboxed` setting. Used by
+/// the UI to distinguish "sandboxing isn't relevant here" (don't show the
+/// indicator) from "sandboxing is available but turned off in settings" (show
+/// it, struck out).
 pub(crate) fn sandboxing_available_for_project(project: &Project, cx: &App) -> bool {
-    sandboxing_enabled(cx)
-        && project.is_local()
+    if !sandboxing_enabled(cx) {
+        return false;
+    }
+    // ADR-F18: an SSH-remote Linux project enforces the sandbox on the remote
+    // host, so it is available regardless of the client's own OS.
+    if project.remote_supports_agent_sandbox(cx) {
+        return true;
+    }
+    project.is_local()
         && cfg!(any(
             target_os = "macos",
             target_os = "linux",

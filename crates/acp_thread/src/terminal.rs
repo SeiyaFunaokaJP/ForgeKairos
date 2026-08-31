@@ -10,7 +10,7 @@ use project::Project;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap as StdHashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::ExitStatus,
     sync::{
         Arc,
@@ -19,7 +19,7 @@ use std::{
     time::Instant,
 };
 use task::Shell;
-use util::get_default_system_shell_preferring_bash;
+use util::{get_default_system_shell_preferring_bash, paths::PathStyle, rel_path::RelPath};
 
 /// Request to run a terminal command inside an OS-level sandbox.
 ///
@@ -362,6 +362,78 @@ pub(crate) const WSL_SANDBOX_WRAP_TIMEOUT: std::time::Duration = std::time::Dura
 /// The sandbox owns the network proxy (for restricted-network policies) and any
 /// per-command policy file; the env it returns already routes through that
 /// proxy when applicable.
+/// ADR-F18: build the command that runs `inner_command inner_args` inside the
+/// on-host remote sandbox helper (which is the remote server binary re-invoked
+/// with `--remote-sandbox-helper`).
+///
+/// The program is `/bin/sh`, running `exec "$HOME/<helper>" "$@"`, so the helper
+/// — installed at a `$HOME`-relative path — resolves regardless of which
+/// directory ssh happens to `cd` into, and every policy argument reaches the
+/// helper as its own argv element (no shell re-quoting). The helper itself
+/// `--chdir`s into the real working directory once its jail is in place.
+pub(crate) fn build_remote_sandbox_command(
+    remote_binary: &RelPath,
+    wrap: &SandboxWrap,
+    cwd: Option<&Path>,
+    inner_command: String,
+    inner_args: Vec<String>,
+) -> (String, Vec<String>) {
+    let network = match &wrap.network {
+        SandboxNetworkAccess::None => sandbox::RemoteSandboxNetwork::Blocked,
+        SandboxNetworkAccess::All => sandbox::RemoteSandboxNetwork::AnyHost,
+        SandboxNetworkAccess::Restricted(allowlist) => {
+            if allowlist.allows_any() {
+                sandbox::RemoteSandboxNetwork::AnyHost
+            } else {
+                sandbox::RemoteSandboxNetwork::Hosts(
+                    allowlist
+                        .patterns()
+                        .iter()
+                        .map(|pattern| pattern.to_string())
+                        .collect(),
+                )
+            }
+        }
+    };
+
+    let mut writable: Vec<String> = wrap
+        .writable_paths
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    for grant in &wrap.extra_write_paths {
+        let path = grant.resolved.as_ref().unwrap_or(&grant.requested);
+        writable.push(path.to_string_lossy().into_owned());
+    }
+    let protected: Vec<String> = wrap
+        .protected_paths
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    // Run the command in its working directory, or the first writable subtree.
+    let chdir = cwd
+        .map(|path| path.to_string_lossy().into_owned())
+        .or_else(|| writable.first().cloned());
+
+    let helper_argv = sandbox::build_remote_sandbox_helper_argv(
+        &writable,
+        &protected,
+        &network,
+        wrap.allow_fs_write,
+        chdir.as_deref(),
+    );
+
+    // `$0` is a placeholder; `"$@"` forwards $1.. (the helper argv + inner
+    // command) to the helper verbatim.
+    let relative = remote_binary.display(PathStyle::Unix).into_owned();
+    let script = format!("exec \"$HOME/{relative}\" \"$@\"");
+    let mut args = vec!["-c".to_string(), script, "zed-remote-sandbox".to_string()];
+    args.extend(helper_argv);
+    args.push(inner_command);
+    args.extend(inner_args);
+    ("/bin/sh".to_string(), args)
+}
+
 pub(crate) async fn prepare_sandbox_wrap(
     program: String,
     args: Vec<String>,

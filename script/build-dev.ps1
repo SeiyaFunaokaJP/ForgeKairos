@@ -10,12 +10,15 @@ BUILD-WINDOWS.md のハマりどころを自動で回避する:
 - 並列度は常に -j 8 (無制限だと rustc がメモリ枯渇で落ちる)
 - SSH リモート用の remote_server (musl 静的) を zed.exe の隣に同梱する。
   zig / cargo-zigbuild / rustup target が無ければ自動で導入する (-SkipRemoteServer で省略)
+- リモートサンドボックス (ADR-F18) 用の slirp4netns 静的バイナリを GitHub リリースから
+  取得し zed.exe の隣に置く (-SkipSlirp4netns で省略)
 
 .EXAMPLE
 powershell -NoProfile -File script\build-dev.ps1
 powershell -NoProfile -File script\build-dev.ps1 -Run
 powershell -NoProfile -File script\build-dev.ps1 -FreeDisk
 powershell -NoProfile -File script\build-dev.ps1 -SkipRemoteServer
+powershell -NoProfile -File script\build-dev.ps1 -SkipSlirp4netns
 #>
 param(
     # ビルド成功後に zed.exe を起動する
@@ -25,7 +28,9 @@ param(
     # cli.exe のビルドを省略する (コンソール連携を使わない場合)
     [switch]$SkipCli,
     # SSH リモート用 remote_server アーティファクトの生成を省略する
-    [switch]$SkipRemoteServer
+    [switch]$SkipRemoteServer,
+    # SSH リモートのサンドボックス用 slirp4netns 静的バイナリの取得を省略する (ADR-F18)
+    [switch]$SkipSlirp4netns
 )
 
 $ErrorActionPreference = 'Stop'
@@ -225,6 +230,45 @@ function Build-RemoteServerArtifact {
         ((Get-Item $binaryPath).Length / 1MB))
 }
 
+# --- リモートサンドボックス用 slirp4netns の同梱 (ADR-F18) --------------------
+# リモート (SSH Linux) で AI エージェントのコマンドを netns で隔離する際、ゲスト
+# netns の外向き転送を slirp4netns が担う (host-loopback の egress プロキシへ
+# --outbound-addr=127.0.0.1 で橋渡しし、外部 NAT は殺す)。zed.exe の隣に
+# slirp4netns-linux-x86_64 を置いておくと crates/remote が接続時に ~/.zed_server/
+# へ自動アップロードする (remote_server アーティファクトと同じ供給経路)。
+#
+# ライセンス: slirp4netns = GPLv2+ (本フォーク GPL-3 と両立)、内部の libslirp =
+# MIT/BSD。配布時は README / BUILD-WINDOWS.md の note に従うこと。
+$slirp4netnsVersion = 'v1.2.3'
+function Get-Slirp4netnsBinary {
+    # 静的リンクの単一バイナリ (公式リリース資産 slirp4netns-x86_64)。glibc 非依存
+    # なので 18.04 / 24.04 の双方で動く (実機で確認済み)。
+    $artifactPath = Join-Path $repoRoot 'target\debug\slirp4netns-linux-x86_64'
+    # ネットワーク取得物でリポジトリ内ソースには依存しないので、存在すればスキップする
+    # (mtime 比較ではなく実体の有無。remote_server と違いバージョン固定のため)。
+    if (Test-Path $artifactPath) {
+        Write-Host ("slirp4netns は取得済みです: {0}" -f $artifactPath)
+        return
+    }
+    $artifactDir = Split-Path -Parent $artifactPath
+    if (-not (Test-Path $artifactDir)) {
+        New-Item -ItemType Directory -Force $artifactDir | Out-Null
+    }
+    $uri = "https://github.com/rootless-containers/slirp4netns/releases/download/$slirp4netnsVersion/slirp4netns-x86_64"
+    Write-Host ("slirp4netns {0} を取得しています: {1}" -f $slirp4netnsVersion, $uri)
+    $previousProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'  # Invoke-WebRequest の進捗描画は大容量で遅い
+    try {
+        Invoke-WebRequest -Uri $uri -OutFile $artifactPath -UseBasicParsing
+    } finally {
+        $ProgressPreference = $previousProgress
+    }
+    if (-not (Test-Path $artifactPath) -or (Get-Item $artifactPath).Length -lt 100000) {
+        throw "slirp4netns の取得に失敗したか、ファイルが不正です: $artifactPath"
+    }
+    Write-Host ("slirp4netns: {0} ({1:N1} MB)" -f $artifactPath, ((Get-Item $artifactPath).Length / 1MB))
+}
+
 # --- ビルド (-j 8 固定。無制限並列は rustc がメモリ枯渇で落ちる) ------------
 Write-Host 'cargo build -p zed -j 8 …'
 cargo build -p zed -j 8
@@ -248,6 +292,16 @@ if (-not $SkipRemoteServer) {
     } catch {
         Write-Warning ("remote_server アーティファクトを用意できませんでした: {0}" -f $_.Exception.Message)
         Write-Warning 'SSH リモート接続時にサーバーバイナリを供給できません。-SkipRemoteServer で明示的に省略できます。'
+    }
+}
+
+if (-not $SkipSlirp4netns) {
+    # zed.exe 自体のビルドは成功しているので、ここでの失敗は警告に留める
+    try {
+        Get-Slirp4netnsBinary
+    } catch {
+        Write-Warning ("slirp4netns を用意できませんでした: {0}" -f $_.Exception.Message)
+        Write-Warning 'リモートサンドボックス (ADR-F18) の netns 隔離が利用できません。-SkipSlirp4netns で明示的に省略できます。'
     }
 }
 

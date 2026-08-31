@@ -107,3 +107,6 @@ upstream (Zed) のライセンスを継承する: 主に **GPL-3.0-or-later**、
 (各クレートの表記に従う。`LICENSE-GPL` / `LICENSE-APACHE` 参照)。
 clang-format バイナリを同梱して配布する場合は LLVM の LICENSE.TXT
 (Apache-2.0 with LLVM Exceptions) を併せて同梱すること。
+リモートサンドボックス (ADR-F18) の `slirp4netns` バイナリを同梱して配布する場合は、
+その **GPLv2+** ライセンス (本フォークの GPL-3 と両立) を、内部の **libslirp** (MIT/BSD)
+の表記とともに配布物に含めること。

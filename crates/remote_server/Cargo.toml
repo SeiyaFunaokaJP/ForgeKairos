@@ -61,6 +61,9 @@ remote.workspace = true
 reqwest_client.workspace = true
 rpc.workspace = true
 rust-embed = { workspace = true, optional = true, features = ["debug-embed"] }
+# ADR-F18: the remote server binary doubles as the on-host sandbox helper for
+# SSH-remote Linux agent commands (`--remote-sandbox-helper`).
+sandbox.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -26,6 +26,12 @@ use http_proxy::{DestinationPolicy, ProxyHandle};
 #[cfg(target_os = "linux")]
 mod linux_bubblewrap;
 
+/// ADR-F18: the on-host sandbox helper for SSH-remote Linux agent commands. The
+/// execution half is Linux-only (it is the remote host); the argv builder that
+/// the client uses to invoke it is cross-platform and lives below.
+#[cfg(target_os = "linux")]
+mod linux_remote_helper;
+
 #[cfg(target_os = "macos")]
 mod macos_seatbelt;
 
@@ -1027,6 +1033,161 @@ pub fn run_sandbox_launcher_if_invoked() {
     {
         linux_bubblewrap::run_launcher_if_invoked();
         linux_bubblewrap::run_wsl_helper_if_invoked();
+    }
+}
+
+// ===========================================================================
+// ADR-F18: remote (SSH) Linux sandbox helper — cross-platform surface
+// ===========================================================================
+
+/// Argv marker for the remote sandbox helper's stage-1 invocation. The client
+/// (any OS) builds this into the command it runs on the remote host; the remote
+/// `remote_server` binary detects it at the top of `main`.
+pub const REMOTE_SANDBOX_HELPER_FLAG: &str = "--remote-sandbox-helper";
+
+/// Outbound-network intent for a remote sandboxed command, as the client
+/// requests it. The remote proxy enforces exactly this; there is no host-side
+/// egress ceiling on the remote (a documented boundary — the editor-wide
+/// allowlist is not shipped to the remote proxy).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RemoteSandboxNetwork {
+    /// No outbound access at all: the holder's network namespace is left empty
+    /// (no slirp, no proxy).
+    Blocked,
+    /// Any host, still only through the enforcing proxy (so the `--outbound-addr`
+    /// isolation and the `AF_UNIX` seccomp guard still apply).
+    AnyHost,
+    /// Only these host patterns (exact host or leading-`*.` wildcard).
+    Hosts(Vec<String>),
+}
+
+/// Build the argv (everything after the helper binary path) for a remote
+/// sandboxed command, up to and including the trailing `--`. The caller appends
+/// the inner `program` and its `args` after the returned vector.
+///
+/// Pure and platform-independent (the client is often Windows), so it is unit
+/// tested on every platform. Its decode half lives in the Linux-only
+/// `linux_remote_helper` module and is round-trip tested there.
+pub fn build_remote_sandbox_helper_argv(
+    writable_paths: &[String],
+    protected_paths: &[String],
+    network: &RemoteSandboxNetwork,
+    allow_fs_write: bool,
+    chdir: Option<&str>,
+) -> Vec<String> {
+    let mut argv = vec![REMOTE_SANDBOX_HELPER_FLAG.to_string()];
+    match network {
+        RemoteSandboxNetwork::Blocked => argv.extend(["--net".to_string(), "blocked".to_string()]),
+        RemoteSandboxNetwork::AnyHost => argv.extend(["--net".to_string(), "any".to_string()]),
+        RemoteSandboxNetwork::Hosts(hosts) => {
+            argv.extend(["--net".to_string(), "hosts".to_string()]);
+            for host in hosts {
+                argv.extend(["--allow-host".to_string(), host.clone()]);
+            }
+        }
+    }
+    if allow_fs_write {
+        argv.push("--allow-fs-write".to_string());
+    }
+    for path in writable_paths {
+        argv.extend(["--writable".to_string(), path.clone()]);
+    }
+    for path in protected_paths {
+        argv.extend(["--protected".to_string(), path.clone()]);
+    }
+    if let Some(chdir) = chdir {
+        argv.extend(["--chdir".to_string(), chdir.to_string()]);
+    }
+    argv.push("--".to_string());
+    argv
+}
+
+/// Handle a possible re-exec of this binary as the remote sandbox helper. A
+/// no-op off Linux and when the argv doesn't match. Call at the very top of the
+/// remote server's `main`, before argument parsing.
+#[doc(hidden)]
+pub fn run_remote_sandbox_helper_if_invoked() {
+    #[cfg(target_os = "linux")]
+    {
+        linux_remote_helper::run_if_invoked();
+    }
+}
+
+#[cfg(test)]
+mod remote_sandbox_helper_argv_tests {
+    use super::*;
+
+    #[test]
+    fn blocked_network_omits_hosts() {
+        let argv = build_remote_sandbox_helper_argv(
+            &["/home/u/proj".to_string()],
+            &["/home/u/proj/.git".to_string()],
+            &RemoteSandboxNetwork::Blocked,
+            false,
+            Some("/home/u/proj"),
+        );
+        assert_eq!(
+            argv,
+            vec![
+                "--remote-sandbox-helper",
+                "--net",
+                "blocked",
+                "--writable",
+                "/home/u/proj",
+                "--protected",
+                "/home/u/proj/.git",
+                "--chdir",
+                "/home/u/proj",
+                "--",
+            ]
+        );
+    }
+
+    #[test]
+    fn hosts_network_lists_each_host() {
+        let argv = build_remote_sandbox_helper_argv(
+            &[],
+            &[],
+            &RemoteSandboxNetwork::Hosts(vec!["example.com".into(), "*.rust-lang.org".into()]),
+            false,
+            None,
+        );
+        assert_eq!(
+            argv,
+            vec![
+                "--remote-sandbox-helper",
+                "--net",
+                "hosts",
+                "--allow-host",
+                "example.com",
+                "--allow-host",
+                "*.rust-lang.org",
+                "--",
+            ]
+        );
+    }
+
+    #[test]
+    fn any_network_and_allow_fs_write() {
+        let argv = build_remote_sandbox_helper_argv(
+            &["/w".to_string()],
+            &[],
+            &RemoteSandboxNetwork::AnyHost,
+            true,
+            None,
+        );
+        assert_eq!(
+            argv,
+            vec![
+                "--remote-sandbox-helper",
+                "--net",
+                "any",
+                "--allow-fs-write",
+                "--writable",
+                "/w",
+                "--",
+            ]
+        );
     }
 }
 

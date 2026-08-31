@@ -22,6 +22,11 @@ struct Cli {
 }
 
 fn main() -> anyhow::Result<()> {
+    // ADR-F18: when this binary is re-invoked on the remote host as the sandbox
+    // helper (`--remote-sandbox-helper …`), handle it before clap sees the
+    // helper's own argv. Neither stage returns if it matched.
+    sandbox::run_remote_sandbox_helper_if_invoked();
+
     let cli = Cli::parse();
 
     if let Some(socket_path) = &cli.askpass {

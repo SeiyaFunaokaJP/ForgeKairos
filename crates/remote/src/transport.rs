@@ -281,6 +281,25 @@ pub(crate) fn find_bundled_server_artifact(platform: RemotePlatform) -> Option<P
     find_bundled_server_artifact_in_dirs(platform, &[exe_dir, bin_dir])
 }
 
+/// Locates the bundled `slirp4netns` binary shipped with the application for
+/// ADR-F18's remote Linux sandbox. Mirrors [`find_bundled_server_artifact`]: it
+/// looks next to the running executable and in its `bin` subdirectory. Only
+/// meaningful for a Linux remote (slirp4netns is Linux-only); returns `None`
+/// otherwise. `script/build-dev.ps1` places `slirp4netns-linux-x86_64` next to
+/// `zed.exe`.
+pub(crate) fn find_bundled_slirp4netns(platform: RemotePlatform) -> Option<PathBuf> {
+    if platform.os != RemoteOs::Linux {
+        return None;
+    }
+    let name = format!("slirp4netns-{}-{}", platform.os, platform.arch);
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let bin_dir = exe_dir.join("bin");
+    [exe_dir, bin_dir]
+        .iter()
+        .map(|dir| dir.join(&name))
+        .find(|candidate| candidate.is_file())
+}
+
 #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 async fn build_remote_server_from_source(
     platform: &crate::RemotePlatform,

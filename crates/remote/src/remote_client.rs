@@ -50,6 +50,7 @@ use std::{
 use util::{
     ResultExt,
     paths::{PathStyle, RemotePathBuf},
+    rel_path::RelPath,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -974,6 +975,12 @@ impl RemoteClient {
         Some(self.remote_connection()?.default_system_shell())
     }
 
+    /// ADR-F18: the installed remote server binary path (relative to the remote
+    /// `$HOME`), used to invoke it as the on-host sandbox helper.
+    pub fn remote_server_binary_path(&self) -> Option<Arc<RelPath>> {
+        self.remote_connection()?.remote_server_binary_path()
+    }
+
     pub fn shares_network_interface(&self) -> bool {
         self.remote_connection()
             .map_or(false, |connection| connection.shares_network_interface())
@@ -1662,6 +1669,14 @@ pub trait RemoteConnection: Send + Sync {
     fn shell(&self) -> String;
     fn default_system_shell(&self) -> String;
     fn has_wsl_interop(&self) -> bool;
+
+    /// ADR-F18: the installed remote server binary path (relative to the remote
+    /// `$HOME`, e.g. `.zed_server/zed-remote-server-…`), used to invoke that same
+    /// binary as the on-host sandbox helper. `None` until it has been installed,
+    /// or for connections that do not provision one.
+    fn remote_server_binary_path(&self) -> Option<Arc<RelPath>> {
+        None
+    }
 
     #[cfg(any(test, feature = "test-support"))]
     fn simulate_disconnect(&self, _: &AsyncApp) {}

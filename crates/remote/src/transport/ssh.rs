@@ -571,6 +571,10 @@ impl RemoteConnection for SshRemoteConnection {
         self.ssh_platform
     }
 
+    fn remote_server_binary_path(&self) -> Option<Arc<RelPath>> {
+        self.remote_binary_path.clone()
+    }
+
     fn remote_os_version(&self) -> Option<String> {
         self.ssh_os_version.clone()
     }
@@ -853,7 +857,55 @@ impl SshRemoteConnection {
                 .await?,
         );
 
+        // ADR-F18: install the bundled `slirp4netns` next to the remote server
+        // binary so the on-host sandbox helper can find it. Best-effort: a
+        // missing slirp only disables remote agent sandboxing (the helper fails
+        // closed at run time); it must not block the connection or human
+        // terminals.
+        if let Err(error) = this.ensure_slirp4netns_binary(&delegate, cx).await {
+            log::warn!("could not install slirp4netns for the remote sandbox: {error:#}");
+        }
+
         Ok(this)
+    }
+
+    /// ADR-F18: ensure `~/.zed_server/slirp4netns` exists on a Linux remote,
+    /// uploading the bundled binary if it is absent. Idempotent (skips when a
+    /// working `slirp4netns` is already present) and a no-op on non-Linux
+    /// remotes.
+    async fn ensure_slirp4netns_binary(
+        &self,
+        delegate: &Arc<dyn RemoteClientDelegate>,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        if self.ssh_platform.os != RemoteOs::Linux {
+            return Ok(());
+        }
+        let dst_path = paths::remote_server_dir_relative()
+            .join(RelPath::from_unix_str("slirp4netns").context("building slirp4netns dst path")?);
+        let already_present = self
+            .socket
+            .run_command(
+                self.ssh_shell_kind,
+                &dst_path.display(self.path_style()),
+                &["--version"],
+                true,
+            )
+            .await
+            .is_ok();
+        if already_present {
+            return Ok(());
+        }
+        let Some(bundled_path) = super::find_bundled_slirp4netns(self.ssh_platform) else {
+            anyhow::bail!("no slirp4netns bundled next to this executable");
+        };
+        log::info!(
+            "installing bundled slirp4netns for the remote sandbox: {}",
+            bundled_path.display()
+        );
+        self.upload_and_install_server_binary(&bundled_path, &dst_path, delegate, cx)
+            .await
+            .context("installing bundled slirp4netns")
     }
 
     async fn ensure_server_binary(

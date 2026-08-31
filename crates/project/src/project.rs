@@ -2251,6 +2251,21 @@ impl Project {
         self.remote_client.clone()
     }
 
+    /// ADR-F18: whether this project can run agent commands inside the on-host
+    /// sandbox helper — an SSH-remote **Linux** host that has provisioned the
+    /// remote server binary (which doubles as the helper). `false` for local,
+    /// Windows/macOS remotes, and WSL/Docker remotes (which don't expose a
+    /// server-binary path and use their own mechanisms), so those keep their
+    /// existing behavior.
+    #[inline]
+    pub fn remote_supports_agent_sandbox(&self, cx: &App) -> bool {
+        self.remote_client.as_ref().is_some_and(|client| {
+            let client = client.read(cx);
+            client.remote_platform().os == remote::RemoteOs::Linux
+                && client.remote_server_binary_path().is_some()
+        })
+    }
+
     #[inline]
     pub fn user_store(&self) -> Entity<UserStore> {
         self.user_store.clone()

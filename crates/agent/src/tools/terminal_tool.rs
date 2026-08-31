@@ -430,26 +430,36 @@ async fn run_terminal_tool(
     let selection = input.selection;
     let sandbox_input = input.sandbox.clone().unwrap_or_default();
 
-    let (working_dir, authorize, sandboxing, is_local_project, wsl_zed_release) =
-        cx.update(|cx| {
-            let working_dir =
-                working_dir(&input.cd, &project, cx).map_err(|err| err.to_string())?;
-            let context =
-                crate::ToolPermissionContext::new(TerminalTool::NAME, vec![input.command.clone()]);
-            let authorize =
-                event_stream.authorize(SharedString::new(input.command.clone()), context, cx);
-            let sandboxing =
-                input.sandbox.is_some() && sandboxing_enabled_for_project(project.read(cx), cx);
-            let is_local_project = project.read(cx).is_local();
-            let wsl_zed_release = wsl_zed_release(cx);
-            Result::<_, String>::Ok((
-                working_dir,
-                authorize,
-                sandboxing,
-                is_local_project,
-                wsl_zed_release,
-            ))
-        })?;
+    let (
+        working_dir,
+        authorize,
+        sandboxing,
+        is_local_project,
+        is_remote_linux_project,
+        wsl_zed_release,
+    ) = cx.update(|cx| {
+        let working_dir = working_dir(&input.cd, &project, cx).map_err(|err| err.to_string())?;
+        let context =
+            crate::ToolPermissionContext::new(TerminalTool::NAME, vec![input.command.clone()]);
+        let authorize =
+            event_stream.authorize(SharedString::new(input.command.clone()), context, cx);
+        let sandboxing =
+            input.sandbox.is_some() && sandboxing_enabled_for_project(project.read(cx), cx);
+        let is_local_project = project.read(cx).is_local();
+        // ADR-F18: on an SSH-remote Linux project the sandbox is enforced on the
+        // remote host by the helper, so every client-side path/probe step below
+        // is skipped (the client filesystem is not the command's filesystem).
+        let is_remote_linux_project = project.read(cx).remote_supports_agent_sandbox(cx);
+        let wsl_zed_release = wsl_zed_release(cx);
+        Result::<_, String>::Ok((
+            working_dir,
+            authorize,
+            sandboxing,
+            is_local_project,
+            is_remote_linux_project,
+            wsl_zed_release,
+        ))
+    })?;
 
     authorize.await.map_err(|e| e.to_string())?;
 
@@ -540,8 +550,11 @@ async fn run_terminal_tool(
     // confines the sandbox to its port. A non-local project's terminal can't
     // reach the proxy, and Windows does not support this path yet. Reject the
     // narrower request rather than silently widening it to all-host access.
-    let can_restrict_to_hosts =
-        (cfg!(target_os = "macos") || cfg!(target_os = "linux")) && is_local_project;
+    let can_restrict_to_hosts = ((cfg!(target_os = "macos") || cfg!(target_os = "linux"))
+        && is_local_project)
+        // ADR-F18: an SSH-remote Linux host runs its own enforcing proxy, so
+        // host-scoped network grants are supported there regardless of client OS.
+        || is_remote_linux_project;
     if !can_restrict_to_hosts && matches!(network, NetworkRequest::Hosts(_)) {
         return Err(
             "This platform or project cannot restrict sandboxed network access to specific hosts. Use `allow_all_hosts: true` if the command needs network access."
@@ -562,69 +575,83 @@ async fn run_terminal_tool(
         Vec::new()
     };
 
-    // On Linux the sandbox (bwrap) can only bind a path that already exists,
-    // and granting a not-yet-existing path would silently widen the grant to
-    // its nearest existing ancestor directory. Reject anything that
-    // isn't an already-existing directory so the user is only ever asked to
-    // approve — and only ever grants — exactly the paths shown to them.
-    #[cfg(target_os = "linux")]
-    for path in &write_paths {
-        if !path.is_dir() {
-            return Err(format!(
-                "Cannot request sandbox write access to `{}`: on Linux, write access can only \
-                 be granted to directories that already exist. To create a new directory to write \
-                 into, use the `create_directory` tool (which creates it and grants write access to \
-                 exactly that directory) rather than requesting its parent. To modify existing \
-                 files, request write access to the existing directory that contains them, not the \
-                 file path itself.",
-                path.display()
-            ));
+    // ADR-F18: for an SSH-remote Linux project the requested paths name files on
+    // the *remote* host; the client must not touch its own filesystem (no
+    // `is_dir`, no canonicalize, no WSL resolution). Pass them through raw — the
+    // on-host helper canonicalizes and inode-pins them where they actually live.
+    let write_paths: Vec<settings::GrantedWritePath> = if is_remote_linux_project {
+        write_paths
+            .into_iter()
+            .map(|requested| settings::GrantedWritePath::resolved(requested.clone(), requested))
+            .collect()
+    } else {
+        // On Linux the sandbox (bwrap) can only bind a path that already exists,
+        // and granting a not-yet-existing path would silently widen the grant to
+        // its nearest existing ancestor directory. Reject anything that
+        // isn't an already-existing directory so the user is only ever asked to
+        // approve — and only ever grants — exactly the paths shown to them.
+        #[cfg(target_os = "linux")]
+        for path in &write_paths {
+            if !path.is_dir() {
+                return Err(format!(
+                    "Cannot request sandbox write access to `{}`: on Linux, write access can only \
+                     be granted to directories that already exist. To create a new directory to write \
+                     into, use the `create_directory` tool (which creates it and grants write access to \
+                     exactly that directory) rather than requesting its parent. To modify existing \
+                     files, request write access to the existing directory that contains them, not the \
+                     file path itself.",
+                    path.display()
+                ));
+            }
         }
-    }
 
-    // Resolve each requested path to its canonical target now, at approval
-    // intake, and carry the pair forward. Persisting the resolved canonical is
-    // what lets enforcement rebuild the grant via a verifying reopen rather than
-    // re-resolving the requested path by string (closing a symlink TOCTOU). A
-    // path that can't be resolved is dropped — fail-closed.
-    #[cfg(not(target_os = "windows"))]
-    let write_paths: Vec<settings::GrantedWritePath> = write_paths
-        .into_iter()
-        .filter_map(|requested| match sandbox::resolve_canonical(&requested) {
-            Ok(resolved) => Some(settings::GrantedWritePath::resolved(requested, resolved)),
-            Err(error) => {
-                log::warn!(
-                    "could not resolve sandbox write path {}: {error}",
-                    requested.display()
-                );
-                None
-            }
-        })
-        .collect();
-    #[cfg(target_os = "windows")]
-    let write_paths: Vec<settings::GrantedWritePath> = {
-        let Some(release) = wsl_zed_release.clone() else {
-            return Err("Could not select a Linux Zed release for WSL sandboxing".to_string());
-        };
-        let mut resolved_paths = Vec::with_capacity(write_paths.len());
-        for requested in write_paths {
-            match sandbox::resolve_canonical_for_grant(requested.clone(), release.clone()).await {
-                Ok(resolved) => {
-                    resolved_paths.push(settings::GrantedWritePath::resolved_on_fs(
-                        requested,
-                        resolved.canonical,
-                        resolved.on_windows_fs,
-                    ));
-                }
-                Err(error) => {
-                    log::warn!(
-                        "could not resolve sandbox write path {} in WSL: {error:#}",
-                        requested.display()
-                    );
-                }
-            }
+        // Resolve each requested path to its canonical target now, at approval
+        // intake, and carry the pair forward. Persisting the resolved canonical is
+        // what lets enforcement rebuild the grant via a verifying reopen rather than
+        // re-resolving the requested path by string (closing a symlink TOCTOU). A
+        // path that can't be resolved is dropped — fail-closed.
+        #[cfg(not(target_os = "windows"))]
+        {
+            write_paths
+                .into_iter()
+                .filter_map(|requested| match sandbox::resolve_canonical(&requested) {
+                    Ok(resolved) => Some(settings::GrantedWritePath::resolved(requested, resolved)),
+                    Err(error) => {
+                        log::warn!(
+                            "could not resolve sandbox write path {}: {error}",
+                            requested.display()
+                        );
+                        None
+                    }
+                })
+                .collect()
         }
-        resolved_paths
+        #[cfg(target_os = "windows")]
+        {
+            let Some(release) = wsl_zed_release.clone() else {
+                return Err("Could not select a Linux Zed release for WSL sandboxing".to_string());
+            };
+            let mut resolved_paths = Vec::with_capacity(write_paths.len());
+            for requested in write_paths {
+                match sandbox::resolve_canonical_for_grant(requested.clone(), release.clone()).await
+                {
+                    Ok(resolved) => {
+                        resolved_paths.push(settings::GrantedWritePath::resolved_on_fs(
+                            requested,
+                            resolved.canonical,
+                            resolved.on_windows_fs,
+                        ));
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "could not resolve sandbox write path {} in WSL: {error:#}",
+                            requested.display()
+                        );
+                    }
+                }
+            }
+            resolved_paths
+        }
     };
 
     let request = crate::sandboxing::SandboxRequest {
@@ -651,6 +678,9 @@ async fn run_terminal_tool(
     if sandboxing
         && !want_unsandboxed
         && !unsandboxed_floor
+        // ADR-F18: the DrvFs warning is about the client's WSL filesystem and is
+        // meaningless for a remote Linux project (which has no WSL layer).
+        && !is_remote_linux_project
         && persistent.warn_ntfs_grants
         && sandbox::wsl_distro_registered()
     {
@@ -757,89 +787,97 @@ async fn run_terminal_tool(
                 wsl_zed_release: wsl_zed_release.clone(),
             };
 
-            // The viability check runs a brief probe subprocess, so do it off
-            // the main thread. On Linux the sandbox can genuinely be unavailable
-            // (missing `bwrap`, disabled user namespaces, …); rather than
-            // silently failing open, we ask the user how to proceed and let them
-            // retry after fixing their environment. (On other platforms the
-            // probe never fails, so this prompt is Linux-only.)
-            // Each retry re-probes from scratch, so the failure reason shown to
-            // the user reflects the *current* environment (e.g. it can change
-            // from "no bwrap" to "bwrap is setuid" after they install one).
-            #[cfg(target_os = "linux")]
-            {
-                let mut retries = 0usize;
-                loop {
+            // ADR-F18: the sandbox for a remote Linux project is built on the
+            // remote host, so there is nothing to probe on the client. The helper
+            // performs its own capability check (Landlock / mount / userns /
+            // slirp) and fails closed with a clear error at run time.
+            if is_remote_linux_project {
+                Some(wrap)
+            } else {
+                // The viability check runs a brief probe subprocess, so do it off
+                // the main thread. On Linux the sandbox can genuinely be unavailable
+                // (missing `bwrap`, disabled user namespaces, …); rather than
+                // silently failing open, we ask the user how to proceed and let them
+                // retry after fixing their environment. (On other platforms the
+                // probe never fails, so this prompt is Linux-only.)
+                // Each retry re-probes from scratch, so the failure reason shown to
+                // the user reflects the *current* environment (e.g. it can change
+                // from "no bwrap" to "bwrap is setuid" after they install one).
+                #[cfg(target_os = "linux")]
+                {
+                    let mut retries = 0usize;
+                    loop {
+                        let probe_wrap = wrap.clone();
+                        let error = match cx
+                            .background_executor()
+                            .spawn(async move { probe_wrap.can_create_sandbox() })
+                            .await
+                        {
+                            Ok(()) => break Some(wrap),
+                            Err(error) => error,
+                        };
+
+                        // Distinct from the intentional skips above (settings / thread
+                        // grant): the sandbox was requested but couldn't be created.
+                        log::warn!(
+                            "Failed to create a sandbox for an agent terminal command: {error:?}"
+                        );
+
+                        let decision = cx
+                            .update(|cx| {
+                                event_stream.authorize_sandbox_fallback(
+                                    Some(input.command.clone()),
+                                    error.user_facing_message(),
+                                    Some(error.docs_section().to_string()),
+                                    retries,
+                                    cx,
+                                )
+                            })
+                            .await;
+                        match decision {
+                            Ok(SandboxFallbackDecision::Retry) => {
+                                retries += 1;
+                                continue;
+                            }
+                            Ok(SandboxFallbackDecision::RunUnsandboxed) => {
+                                sandbox_not_applied =
+                                    Some(acp_thread::SandboxNotAppliedReason::ErrorLinuxWsl(error));
+                                break None;
+                            }
+                            Ok(SandboxFallbackDecision::Deny) | Err(_) => {
+                                return Ok(format!(
+                                    "Command cancelled: the sandbox could not be created ({}) and \
+                                 the user declined to run it without one.",
+                                    error.user_facing_message()
+                                ));
+                            }
+                        }
+                    }
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
                     let probe_wrap = wrap.clone();
-                    let error = match cx
+                    match cx
                         .background_executor()
                         .spawn(async move { probe_wrap.can_create_sandbox() })
                         .await
                     {
-                        Ok(()) => break Some(wrap),
-                        Err(error) => error,
-                    };
-
-                    // Distinct from the intentional skips above (settings / thread
-                    // grant): the sandbox was requested but couldn't be created.
-                    log::warn!(
-                        "Failed to create a sandbox for an agent terminal command: {error:?}"
-                    );
-
-                    let decision = cx
-                        .update(|cx| {
-                            event_stream.authorize_sandbox_fallback(
-                                Some(input.command.clone()),
-                                error.user_facing_message(),
-                                Some(error.docs_section().to_string()),
-                                retries,
-                                cx,
-                            )
-                        })
-                        .await;
-                    match decision {
-                        Ok(SandboxFallbackDecision::Retry) => {
-                            retries += 1;
-                            continue;
-                        }
-                        Ok(SandboxFallbackDecision::RunUnsandboxed) => {
-                            sandbox_not_applied =
-                                Some(acp_thread::SandboxNotAppliedReason::ErrorLinuxWsl(error));
-                            break None;
-                        }
-                        Ok(SandboxFallbackDecision::Deny) | Err(_) => {
-                            return Ok(format!(
-                                "Command cancelled: the sandbox could not be created ({}) and \
-                                 the user declined to run it without one.",
+                        Ok(()) => Some(wrap),
+                        Err(error) => {
+                            // Off Linux the probe only fails when the policy itself
+                            // can't be built (e.g. a required write grant or `.git`
+                            // protection no longer exists or fails its verifying
+                            // reopen). Running the command anyway would silently
+                            // drop access the user approved — or a safety-critical
+                            // protection — so fail closed with the reason instead.
+                            log::warn!(
+                                "Failed to create a sandbox for an agent terminal command: {error:?}"
+                            );
+                            return Err(format!(
+                                "Cannot create a sandbox for this command: {}",
                                 error.user_facing_message()
                             ));
                         }
-                    }
-                }
-            }
-            #[cfg(not(target_os = "linux"))]
-            {
-                let probe_wrap = wrap.clone();
-                match cx
-                    .background_executor()
-                    .spawn(async move { probe_wrap.can_create_sandbox() })
-                    .await
-                {
-                    Ok(()) => Some(wrap),
-                    Err(error) => {
-                        // Off Linux the probe only fails when the policy itself
-                        // can't be built (e.g. a required write grant or `.git`
-                        // protection no longer exists or fails its verifying
-                        // reopen). Running the command anyway would silently
-                        // drop access the user approved — or a safety-critical
-                        // protection — so fail closed with the reason instead.
-                        log::warn!(
-                            "Failed to create a sandbox for an agent terminal command: {error:?}"
-                        );
-                        return Err(format!(
-                            "Cannot create a sandbox for this command: {}",
-                            error.user_facing_message()
-                        ));
                     }
                 }
             }

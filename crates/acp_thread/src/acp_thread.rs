@@ -4434,6 +4434,71 @@ impl AcpThread {
                     })
                     .unwrap_or_else(|| get_default_system_shell_preferring_bash());
 
+                // ADR-F18: an SSH-remote Linux project enforces the sandbox on
+                // the remote host. When one is requested, rewrite the command to
+                // invoke the on-host helper (`--remote-sandbox-helper`) and skip
+                // the client-side (WSL/bwrap/Seatbelt) sandbox path entirely. The
+                // helper does its own network proxy + FS jail on the remote, so
+                // no client-side `Sandbox` handle is created.
+                let remote_helper_binary = if sandbox_wrap.is_some() {
+                    project.update(cx, |project, cx| {
+                        if project.remote_supports_agent_sandbox(cx) {
+                            project
+                                .remote_client()
+                                .and_then(|client| client.read(cx).remote_server_binary_path())
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                };
+                if let Some(remote_binary) = remote_helper_binary {
+                    let wrap = sandbox_wrap
+                        .expect("a remote helper binary is only resolved when a wrap was requested");
+                    let (inner_command, inner_args) =
+                        task::ShellBuilder::new(&Shell::Program(shell), false)
+                            .non_interactive()
+                            .redirect_stdin_to_dev_null()
+                            .build(Some(command.clone()), &args);
+                    let (task_command, task_args) = build_remote_sandbox_command(
+                        &remote_binary,
+                        &wrap,
+                        cwd.as_deref(),
+                        inner_command,
+                        inner_args,
+                    );
+                    let terminal = project
+                        .update(cx, |project, cx| {
+                            project.create_terminal_task(
+                                task::SpawnInTerminal {
+                                    command: Some(task_command),
+                                    args: task_args,
+                                    // `cwd: None`: the helper is invoked via a
+                                    // `$HOME`-relative path and does its own
+                                    // `--chdir`, so ssh's own cwd is irrelevant.
+                                    cwd: None,
+                                    env,
+                                    ..Default::default()
+                                },
+                                cx,
+                            )
+                        })
+                        .await?;
+                    return anyhow::Ok(cx.new(|cx| {
+                        Terminal::new(
+                            terminal_id,
+                            &format!("{} {}", command, args.join(" ")),
+                            cwd,
+                            output_byte_limit.map(|l| l as usize),
+                            terminal,
+                            language_registry,
+                            None,
+                            cx,
+                        )
+                    }));
+                }
+
                 // The sandbox owns the network proxy (for restricted-network
                 // policies) and injects the child's proxy env vars, returning
                 // the env to spawn with. On Windows, restricted host access is
