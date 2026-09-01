@@ -778,8 +778,13 @@ fn landlock_handled_write_access(abi: i32) -> u64 {
     access
 }
 
-/// The subset that applies to a single non-directory file (a `/dev` node), so a
-/// `>/dev/null` redirect works.
+/// The subset that applies to a single **non-directory** inode (a regular file,
+/// a symlink target, or a `/dev` node), so e.g. a `>file.txt` truncate or a
+/// `>/dev/null` redirect works. Deliberately omits every directory-only access
+/// (`MAKE_*`, `REMOVE_*`, `READ_DIR`, `REFER`): Landlock rejects a `PATH_BENEATH`
+/// rule with `EINVAL` if it grants any of those on the fd of a non-directory.
+/// `READ_FILE` is likewise omitted — reads are never *handled*, so re-granting
+/// them would exceed the ruleset's handled set (also `EINVAL`).
 fn landlock_file_write_access(abi: i32) -> u64 {
     let mut access = LANDLOCK_ACCESS_FS_WRITE_FILE;
     if abi >= 3 {
@@ -789,6 +794,40 @@ fn landlock_file_write_access(abi: i32) -> u64 {
         access |= LANDLOCK_ACCESS_FS_IOCTL_DEV;
     }
     access
+}
+
+/// The write accesses to *allow* on one pinned entry, chosen from whether it is
+/// a directory and clamped to the ruleset's `handled` mask.
+///
+/// A directory can carry the full handled write set (create/remove/rename
+/// entries beneath it, write its files); a **non-directory** — a regular file, a
+/// symlink target, or a device node — may carry only the file-type accesses,
+/// because Landlock returns `EINVAL` from `landlock_add_rule` when a
+/// directory-only access (`MAKE_*`, `REMOVE_*`, `READ_DIR`, `REFER`) is granted
+/// on a non-directory fd. This is the exact trap the writable-root child
+/// enumeration hit: granting the whole handled set on a plain `file.txt` sitting
+/// beside a protected `.git` failed closed and blocked every command.
+///
+/// The result is intersected with `handled` so it can never contain a bit the
+/// ruleset did not handle (that too is an `EINVAL` source, independent of inode
+/// type).
+fn landlock_entry_write_access(is_dir: bool, abi: i32, handled: u64) -> u64 {
+    let requested = if is_dir {
+        landlock_handled_write_access(abi)
+    } else {
+        landlock_file_write_access(abi)
+    };
+    requested & handled
+}
+
+/// Whether the inode behind `fd` is a directory. `fd` may be an `O_PATH` handle
+/// (`fstat` is one of the few operations `O_PATH` permits), which is what the
+/// Landlock rule path opens — so the type is read from the *same* fd the rule
+/// pins, leaving no window for the object to change type between the check and
+/// the rule.
+fn fd_is_dir(fd: RawFd) -> Result<bool> {
+    let stat = nix::sys::stat::fstat(fd).map_err(|errno| anyhow!("fstat failed: {errno}"))?;
+    Ok(stat.st_mode & libc::S_IFMT == libc::S_IFDIR)
 }
 
 /// Open an `O_PATH` handle pinning the inode named by `path` (following
@@ -842,7 +881,7 @@ fn apply_landlock(
         // Unrestricted writes: allow the whole root. Landlock is additive-allow,
         // so protected paths under `/` cannot be re-restricted here (mount-jail
         // does protect them); this matches the documented Landlock trade-off.
-        add_path_rule(ruleset.as_raw_fd(), Path::new("/"), handled)
+        add_path_rule(ruleset.as_raw_fd(), Path::new("/"), handled, abi)
             .context("allowing write on / for allow_fs_write")?;
     } else {
         for writable in writable_paths {
@@ -850,8 +889,10 @@ fn apply_landlock(
         }
     }
 
-    // Always allow the standard ephemeral write locations.
-    let file_access = landlock_file_write_access(abi);
+    // Always allow the standard ephemeral write locations. These are character
+    // devices (non-directories), so `add_path_rule` narrows the granted access
+    // to the file-type subset for them (a directory-only access here would be
+    // rejected with `EINVAL`, just as it was for the writable-root children).
     for dev in [
         "/dev/null",
         "/dev/zero",
@@ -861,14 +902,14 @@ fn apply_landlock(
         "/dev/urandom",
     ] {
         // Best-effort: a missing node is simply skipped.
-        let _ = add_path_rule(ruleset.as_raw_fd(), Path::new(dev), file_access);
+        let _ = add_path_rule(ruleset.as_raw_fd(), Path::new(dev), handled, abi);
     }
     // A **private** per-command temp directory (not all of `/tmp`): granting `/tmp`
     // wholesale would recursively re-expose any writable/protected path that
     // happens to live under it (e.g. a `.git` inside a `/tmp` worktree). The
     // command's `TMPDIR` is pointed here by the caller (mount-jail gives a
     // private tmpfs at `/tmp` instead).
-    add_path_rule(ruleset.as_raw_fd(), private_tmp, handled).with_context(|| {
+    add_path_rule(ruleset.as_raw_fd(), private_tmp, handled, abi).with_context(|| {
         format!(
             "allowing write on private temp dir {}",
             private_tmp.display()
@@ -901,7 +942,7 @@ fn grant_writable_subtree(
     writable: &Path,
     protected_pins: &[CanonicalPathBuf],
     handled: u64,
-    _abi: i32,
+    abi: i32,
 ) -> Result<()> {
     let writable_pin = match pin_path(writable) {
         Ok(pin) => pin,
@@ -922,7 +963,7 @@ fn grant_writable_subtree(
         .any(|protected| protected.path().starts_with(writable_pin.path()));
 
     if !has_protected_descendant {
-        add_path_rule(ruleset_fd, writable_pin.path(), handled)
+        add_path_rule(ruleset_fd, writable_pin.path(), handled, abi)
             .with_context(|| format!("allowing write on {}", writable_pin.path().display()))?;
         return Ok(());
     }
@@ -942,16 +983,24 @@ fn grant_writable_subtree(
         if is_protected {
             continue;
         }
-        add_path_rule(ruleset_fd, child_pin.path(), handled)
+        // Grant write on the child. `add_path_rule` reads the child's inode type
+        // and narrows the access accordingly: a plain file (e.g. `file.txt`)
+        // beside the protected `.git` gets only the file-type accesses, so the
+        // directory-only bits in `handled` no longer trip `EINVAL`.
+        add_path_rule(ruleset_fd, child_pin.path(), handled, abi)
             .with_context(|| format!("allowing write on {}", child_pin.path().display()))?;
     }
     Ok(())
 }
 
-/// Add a `LANDLOCK_RULE_PATH_BENEATH` rule allowing `access` beneath `path`,
+/// Add a `LANDLOCK_RULE_PATH_BENEATH` rule granting write beneath `path`,
 /// pinning the inode by an `O_PATH` fd (so no path is re-resolved at enforcement
-/// time).
-fn add_path_rule(ruleset_fd: RawFd, path: &Path, access: u64) -> Result<()> {
+/// time). The exact access is chosen from the pinned inode's type via
+/// [`landlock_entry_write_access`]: a directory receives the full handled write
+/// set, a non-directory only file-type accesses — otherwise Landlock rejects the
+/// rule with `EINVAL`. `handled` is the ruleset's handled mask and `abi` the
+/// detected Landlock ABI (both bound the accesses that can be requested).
+fn add_path_rule(ruleset_fd: RawFd, path: &Path, handled: u64, abi: i32) -> Result<()> {
     use std::os::unix::fs::OpenOptionsExt as _;
     let file = std::fs::OpenOptions::new()
         .read(true)
@@ -959,6 +1008,9 @@ fn add_path_rule(ruleset_fd: RawFd, path: &Path, access: u64) -> Result<()> {
         .open(path)
         .with_context(|| format!("opening {}", path.display()))?;
     let fd = OwnedFd::from(file);
+    let is_dir = fd_is_dir(fd.as_raw_fd())
+        .with_context(|| format!("determining inode type of {}", path.display()))?;
+    let access = landlock_entry_write_access(is_dir, abi, handled);
     let attr = LandlockPathBeneathAttr {
         allowed_access: access,
         parent_fd: fd.as_raw_fd(),
@@ -1347,5 +1399,42 @@ mod tests {
             join_absolute(Path::new("/tmp/root"), Path::new("/home/u/p")),
             PathBuf::from("/tmp/root/home/u/p")
         );
+    }
+
+    #[test]
+    fn non_directory_entry_access_omits_directory_only_rights() {
+        // The bug this guards: granting a directory-only access on a regular
+        // file's fd makes `landlock_add_rule` fail with EINVAL, which failed the
+        // whole sandbox closed and blocked every command on 24.04.
+        let abi = 3;
+        let handled = landlock_handled_write_access(abi);
+        let dir = landlock_entry_write_access(true, abi, handled);
+        let file = landlock_entry_write_access(false, abi, handled);
+
+        let directory_only = LANDLOCK_ACCESS_FS_MAKE_DIR
+            | LANDLOCK_ACCESS_FS_MAKE_REG
+            | LANDLOCK_ACCESS_FS_MAKE_CHAR
+            | LANDLOCK_ACCESS_FS_MAKE_SOCK
+            | LANDLOCK_ACCESS_FS_MAKE_FIFO
+            | LANDLOCK_ACCESS_FS_MAKE_BLOCK
+            | LANDLOCK_ACCESS_FS_MAKE_SYM
+            | LANDLOCK_ACCESS_FS_REMOVE_DIR
+            | LANDLOCK_ACCESS_FS_REMOVE_FILE
+            | LANDLOCK_ACCESS_FS_REFER;
+
+        assert_eq!(
+            file & directory_only,
+            0,
+            "a non-directory entry must carry no directory-only access"
+        );
+        assert!(
+            file & LANDLOCK_ACCESS_FS_WRITE_FILE != 0,
+            "a non-directory entry must still be writable"
+        );
+        assert_eq!(dir & directory_only, directory_only & handled);
+        // Every granted bit must be one the ruleset handles, or the kernel
+        // rejects the rule with EINVAL regardless of inode type.
+        assert_eq!(file & !handled, 0);
+        assert_eq!(dir & !handled, 0);
     }
 }
