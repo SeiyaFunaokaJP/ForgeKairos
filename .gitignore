@@ -63,3 +63,10 @@ crates/docs_preprocessor/actions.json
 
 # Fork-internal working docs (dev notes; may contain environment details)
 /docs/jp-enhance/
+
+# Windows release bundling byproducts (script/bundle-windows.ps1)
+/inno/
+/AGS_SDK-*/
+/AGS_SDK_*.zip
+/Microsoft.Windows.Console.ConPTY.*.nupkg
+/conpty/
