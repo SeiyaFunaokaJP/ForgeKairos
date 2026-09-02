@@ -14,8 +14,13 @@ pub const EDITORCONFIG_NAME: &str = ".editorconfig";
 /// The application name, used to derive platform-specific data, config, cache,
 /// and state directory paths.
 ///
-/// Forks should change this to avoid colliding with Zed's user data.
-pub const APP_NAME: &str = "Zed";
+/// zed-jp-enhance: renamed from upstream's "Zed" so this fork keeps its own
+/// data/config/cache/state directories and never shares them with an official
+/// Zed install on the same machine. Hyphenated (no spaces) on purpose: the
+/// lowercased form is used for XDG paths that are interpolated into remote
+/// `bash -c` command strings on SSH hosts (e.g. `--log-file
+/// ~/.local/share/zed-jp-enhance/...`), where a space would break quoting.
+pub const APP_NAME: &str = "Zed-JP-Enhance";
 
 /// Lowercased form of [`APP_NAME`], for use in XDG-style paths on
 /// Linux/FreeBSD and the macOS `~/.config` fallback.

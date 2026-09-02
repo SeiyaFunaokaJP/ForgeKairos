@@ -4,14 +4,16 @@
 mod reliability;
 mod zed;
 
-// Ensure the binary name stays in sync with APP_NAME so that the paths used
-// at runtime (data dir, config dir, etc.) match what the binary is called.
+// zed-jp-enhance: upstream asserted APP_NAME_LOWERCASE == the binary name.
+// This fork deliberately decouples them: the binary stays `zed` (Zed.exe) so the
+// updater, installer, and remote-server naming keep working, while APP_NAME is
+// `Zed-JP-Enhance` so our data/config/cache/state directories never collide with
+// an official Zed install. The binary name is what we actually depend on staying
+// stable, so assert that instead.
 const _: () = assert!(
-    paths::APP_NAME_LOWERCASE
-        .as_bytes()
-        .eq_ignore_ascii_case(env!("CARGO_BIN_NAME").as_bytes()),
-    "paths::APP_NAME_LOWERCASE must match the binary name. \
-     Forks: update APP_NAME in crates/paths/src/paths.rs when renaming the binary.",
+    env!("CARGO_BIN_NAME").as_bytes().eq_ignore_ascii_case(b"zed"),
+    "zed-jp-enhance keeps the binary named `zed` for updater/installer compatibility; \
+     APP_NAME (data dir) is intentionally separate — see crates/paths/src/paths.rs.",
 );
 
 use agent_ui::AgentPanel;

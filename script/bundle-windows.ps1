@@ -454,8 +454,8 @@ function BuildInstaller {
             $appSetupName = "zed-windows-$Architecture-setup"
             # Must match the runtime mutex in crates\zed\src\zed\windows_only_instance.rs,
             # which is "{app_identifier()}-Instance-Mutex" and app_identifier()
-            # returns "Zed-Editor-Stable" for the stable channel.
-            $appMutex = "Zed-Editor-Stable-Instance-Mutex"
+            # returns "Zed-JP-Enhance-Editor-Stable" for the stable channel.
+            $appMutex = "Zed-JP-Enhance-Editor-Stable-Instance-Mutex"
             # The launched binary stays Zed.exe (ADR-F16 update mechanism and the
             # remote-server discovery both assume it); only the display name changes.
             $appExeName = "Zed"
@@ -479,8 +479,8 @@ function BuildInstaller {
             $appDisplayName = "Zed Preview"
             $appSetupName = "zed-windows-$Architecture-setup"
             # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
-            # returns "Zed-Editor-Preview" for the preview channel.
-            $appMutex = "Zed-Editor-Preview-Instance-Mutex"
+            # returns "Zed-JP-Enhance-Editor-Preview" for the preview channel.
+            $appMutex = "Zed-JP-Enhance-Editor-Preview-Instance-Mutex"
             $appExeName = "Zed"
             $regValueName = "ZedPreview"
             $appUserId = "ZedIndustries.Zed.Preview"
@@ -495,8 +495,8 @@ function BuildInstaller {
             $appDisplayName = "Zed Nightly"
             $appSetupName = "zed-windows-$Architecture-setup"
             # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
-            # returns "Zed-Editor-Nightly" for the nightly channel.
-            $appMutex = "Zed-Editor-Nightly-Instance-Mutex"
+            # returns "Zed-JP-Enhance-Editor-Nightly" for the nightly channel.
+            $appMutex = "Zed-JP-Enhance-Editor-Nightly-Instance-Mutex"
             $appExeName = "Zed"
             $regValueName = "ZedNightly"
             $appUserId = "ZedIndustries.Zed.Nightly"
@@ -511,8 +511,8 @@ function BuildInstaller {
             $appDisplayName = "Zed Dev"
             $appSetupName = "zed-windows-$Architecture-setup"
             # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
-            # returns "Zed-Editor-Dev" for the dev channel.
-            $appMutex = "Zed-Editor-Dev-Instance-Mutex"
+            # returns "Zed-JP-Enhance-Editor-Dev" for the dev channel.
+            $appMutex = "Zed-JP-Enhance-Editor-Dev-Instance-Mutex"
             $appExeName = "Zed"
             $regValueName = "ZedDev"
             $appUserId = "ZedIndustries.Zed.Dev"

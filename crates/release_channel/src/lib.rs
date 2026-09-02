@@ -43,11 +43,14 @@ pub static RELEASE_CHANNEL: LazyLock<ReleaseChannel> =
 /// The app identifier for the current release channel, Windows only.
 #[cfg(target_os = "windows")]
 pub fn app_identifier() -> &'static str {
+    // zed-jp-enhance: fork-specific identifiers so the single-instance mutex and
+    // named pipe never collide with an official Zed install — the fork can run
+    // alongside Zed instead of one hijacking the other's instance.
     match *RELEASE_CHANNEL {
-        ReleaseChannel::Dev => "Zed-Editor-Dev",
-        ReleaseChannel::Nightly => "Zed-Editor-Nightly",
-        ReleaseChannel::Preview => "Zed-Editor-Preview",
-        ReleaseChannel::Stable => "Zed-Editor-Stable",
+        ReleaseChannel::Dev => "Zed-JP-Enhance-Editor-Dev",
+        ReleaseChannel::Nightly => "Zed-JP-Enhance-Editor-Nightly",
+        ReleaseChannel::Preview => "Zed-JP-Enhance-Editor-Preview",
+        ReleaseChannel::Stable => "Zed-JP-Enhance-Editor-Stable",
     }
 }
 
