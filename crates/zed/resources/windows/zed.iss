@@ -2,10 +2,10 @@
 AppId={#AppId}
 AppName={#AppName}
 AppVerName={#AppDisplayName}
-AppPublisher=Zed Industries
-AppPublisherURL=https://www.zed.dev/
-AppSupportURL=https://www.zed.dev/
-AppUpdatesURL=https://www.zed.dev/
+AppPublisher=zed-jp-enhance contributors
+AppPublisherURL=https://github.com/SeiyaFunaokaJP/zed-jp-enhance
+AppSupportURL=https://github.com/SeiyaFunaokaJP/zed-jp-enhance/issues
+AppUpdatesURL=https://github.com/SeiyaFunaokaJP/zed-jp-enhance/releases
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 DisableReadyPage=yes

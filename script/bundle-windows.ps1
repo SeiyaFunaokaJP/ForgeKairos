@@ -40,8 +40,34 @@ function Get-VSArch {
     }
 }
 
+function Find-VsDevShell {
+    # This fork is developed on VS 2022 Enterprise, while CI and other machines
+    # may only have Professional, Community, or the standalone Build Tools.
+    # Probe the known editions in descending order, then fall back to vswhere
+    # so a non-default install location is still found.
+    $base = "C:\Program Files\Microsoft Visual Studio\2022"
+    foreach ($edition in @("Enterprise", "Professional", "Community", "BuildTools")) {
+        $candidate = Join-Path $base "$edition\Common7\Tools\Launch-VsDevShell.ps1"
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        $installPath = & $vswhere -latest -products * -property installationPath 2>$null | Select-Object -First 1
+        if ($installPath) {
+            $candidate = Join-Path $installPath "Common7\Tools\Launch-VsDevShell.ps1"
+            if (Test-Path $candidate) {
+                return $candidate
+            }
+        }
+    }
+    throw "Could not find Launch-VsDevShell.ps1. Install Visual Studio 2022 (Enterprise/Professional/Community) or the Build Tools with the C++ workload."
+}
+
 Push-Location
-& "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Launch-VsDevShell.ps1" -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture)
+$vsDevShell = Find-VsDevShell
+& $vsDevShell -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture)
 Pop-Location
 
 $target = "$Architecture-pc-windows-msvc"
@@ -154,6 +180,157 @@ function BuildRemoteServer {
     Write-Output "Remote server compressed successfully"
 }
 
+function Get-ZigPath {
+    $zig = Get-Command zig -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($zig) { return $zig.Source }
+
+    # winget-installed zig is not always on PATH; probe its known locations.
+    $wingetCandidates = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\zig.zig_*\zig-*\zig.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\zig.exe')
+    )
+    foreach ($pattern in $wingetCandidates) {
+        $found = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($found) { return $found.FullName }
+    }
+    return $null
+}
+
+function Install-Zig {
+    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+        throw "zig not found and winget is unavailable; install zig from https://ziglang.org/ and put it on PATH."
+    }
+    Write-Output "zig not found; installing via winget (winget install -e --id zig.zig) ..."
+    # winget returns non-zero even when already installed, so we re-probe for the
+    # binary afterwards instead of trusting the exit code.
+    winget install -e --id zig.zig --accept-source-agreements --accept-package-agreements --silent | Out-Host
+}
+
+function Compress-ToGzip {
+    param([string]$SourcePath, [string]$DestinationPath)
+
+    $source = $null
+    $destination = $null
+    $gzipStream = $null
+    try {
+        $source = [IO.File]::OpenRead($SourcePath)
+        $destination = [IO.File]::Create($DestinationPath)
+        $gzipStream = New-Object System.IO.Compression.GZipStream($destination, [System.IO.Compression.CompressionMode]::Compress)
+        $source.CopyTo($gzipStream)
+    } finally {
+        # GZipStream writes its footer on close, so dispose it before destination.
+        if ($gzipStream) { $gzipStream.Dispose() }
+        if ($destination) { $destination.Dispose() }
+        if ($source) { $source.Dispose() }
+    }
+}
+
+function BuildLinuxRemoteServer {
+    # SSH-to-Linux remoting needs a Linux remote_server binary shipped alongside
+    # Zed.exe. This fork blocks egress by default, so the server cannot be fetched
+    # on demand; crates/remote/src/transport.rs uploads a bundled artifact named
+    # "zed-remote-server-linux-x86_64.gz" found in {app} or {app}\bin.
+    #
+    # This mirrors BuildRemoteServer (a plain --release build) but cross-compiles
+    # to musl with cargo-zigbuild for a single static binary independent of the
+    # target host's glibc. We deliberately do NOT pass --features debug-embed:
+    # that feature only forces rust-embed to embed assets in DEBUG builds (used by
+    # script/build-dev.ps1); a --release build embeds already, exactly like the
+    # canonical Windows BuildRemoteServer above.
+    $linuxTarget = "x86_64-unknown-linux-musl"
+    $linuxTargetDir = "$env:ZED_WORKSPACE\target\remote_server_linux"
+    $binaryPath = "$linuxTargetDir\$linuxTarget\release\remote_server"
+    $artifactPath = "$innoDir\bin\zed-remote-server-linux-x86_64.gz"
+
+    $zigPath = Get-ZigPath
+    if (-not $zigPath) {
+        Install-Zig
+        $zigPath = Get-ZigPath
+    }
+    if (-not $zigPath) {
+        throw "zig still not found after install; open a new shell or put zig on PATH."
+    }
+    $zigDir = Split-Path -Parent $zigPath
+    if (($env:PATH -split ';') -notcontains $zigDir) {
+        $env:PATH = "$zigDir;$env:PATH"
+        Write-Output "Added zig to PATH: $zigDir"
+    }
+
+    Write-Output "rustup target add $linuxTarget ..."
+    rustup target add $linuxTarget
+    if ($LASTEXITCODE -ne 0) {
+        throw "rustup target add $linuxTarget failed (exit $LASTEXITCODE)."
+    }
+
+    if (-not (Get-Command cargo-zigbuild -CommandType Application -ErrorAction SilentlyContinue)) {
+        Write-Output "Installing cargo-zigbuild (cargo install cargo-zigbuild --locked) ..."
+        cargo install cargo-zigbuild --locked
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo install cargo-zigbuild failed (exit $LASTEXITCODE)."
+        }
+    }
+
+    # musl static link; strip=debuginfo drops DWARF but keeps symbol names (so
+    # backtraces still resolve). Scoped to this build and restored afterwards so
+    # it cannot leak into any other cargo invocation.
+    $previousRustFlags = $env:RUSTFLAGS
+    $rustFlags = "-C target-feature=+crt-static -C strip=debuginfo"
+    if ($previousRustFlags) { $rustFlags = "$previousRustFlags $rustFlags" }
+    if ($env:ZED_ZSTD_MUSL_LIB) { $rustFlags = "$rustFlags -C link-arg=-L$env:ZED_ZSTD_MUSL_LIB" }
+
+    $env:RUSTFLAGS = $rustFlags
+    try {
+        Write-Output "cargo zigbuild -p remote_server --release --target $linuxTarget ..."
+        cargo zigbuild -p remote_server --release --target $linuxTarget --target-dir $linuxTargetDir
+        $buildExitCode = $LASTEXITCODE
+    } finally {
+        if ($null -eq $previousRustFlags) {
+            if (Test-Path Env:\RUSTFLAGS) { Remove-Item Env:\RUSTFLAGS }
+        } else {
+            $env:RUSTFLAGS = $previousRustFlags
+        }
+    }
+    if ($buildExitCode -ne 0) {
+        throw "cargo zigbuild -p remote_server --release failed (exit $buildExitCode)."
+    }
+    if (-not (Test-Path $binaryPath)) {
+        throw "Linux remote_server build reported success but the artifact is missing: $binaryPath"
+    }
+
+    Write-Output "Compressing Linux remote_server to $artifactPath"
+    Compress-ToGzip -SourcePath $binaryPath -DestinationPath $artifactPath
+    Write-Output ("Linux remote_server: {0} ({1:N1} MB compressed / {2:N1} MB uncompressed)" -f `
+        $artifactPath, `
+        ((Get-Item $artifactPath).Length / 1MB), `
+        ((Get-Item $binaryPath).Length / 1MB))
+}
+
+function DownloadSlirp4netns {
+    # ADR-F18 remote sandbox: on a Linux remote, agent commands run in a netns and
+    # slirp4netns provides their (proxied, egress-restricted) outbound path. Shipped
+    # next to Zed.exe as "slirp4netns-linux-x86_64"; crates/remote uploads it on
+    # connect, mirroring the remote_server artifact. Static single binary, so it is
+    # glibc-independent. License: slirp4netns is GPLv2+ (compatible with this GPL-3
+    # fork); its bundled libslirp is MIT/BSD.
+    $slirp4netnsVersion = "v1.2.3"
+    $artifactPath = "$innoDir\bin\slirp4netns-linux-x86_64"
+    $uri = "https://github.com/rootless-containers/slirp4netns/releases/download/$slirp4netnsVersion/slirp4netns-x86_64"
+    Write-Output ("Downloading slirp4netns {0} from {1}" -f $slirp4netnsVersion, $uri)
+    $previousProgress = $ProgressPreference
+    $ProgressPreference = "SilentlyContinue"  # progress rendering is slow for large downloads
+    try {
+        Invoke-WebRequest -Uri $uri -OutFile $artifactPath -UseBasicParsing
+    } finally {
+        $ProgressPreference = $previousProgress
+    }
+    if (-not (Test-Path $artifactPath) -or (Get-Item $artifactPath).Length -lt 100000) {
+        throw "slirp4netns download failed or the file is invalid: $artifactPath"
+    }
+    Write-Output ("slirp4netns: {0} ({1:N1} MB)" -f $artifactPath, ((Get-Item $artifactPath).Length / 1MB))
+}
+
 function ZipZedAndItsFriendsDebug {
     $items = @(
         ".\$CargoOutDir\zed.pdb",
@@ -264,27 +441,46 @@ function BuildInstaller {
     $issFilePath = "$innoDir\zed.iss"
     switch ($channel) {
         "stable" {
-            $appId = "{{2DB0DA96-CA55-49BB-AF4F-64AF36A86712}"
+            # Fork-only AppId, distinct from upstream Zed's {2DB0DA96-...} so this
+            # installer never overwrites or uninstalls an official Zed install on
+            # the same machine. Once shipped this GUID must never change (it keys
+            # the uninstall entry and in-place upgrades).
+            $appId = "{{9924BCC9-2563-4389-B8F4-37F62D0954C7}"
             $appIconName = "app-icon"
-            $appName = "Zed"
-            $appDisplayName = "Zed"
-            $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Stable-Instance-Mutex"
+            $appName = "Zed JP Enhance"
+            $appDisplayName = "Zed JP Enhance"
+            # Must match auto_update's asset_name() exactly (all lowercase):
+            # zed-windows-x86_64-setup.exe. OutputBaseFilename in zed.iss uses this.
+            $appSetupName = "zed-windows-$Architecture-setup"
+            # Must match the runtime mutex in crates\zed\src\zed\windows_only_instance.rs,
+            # which is "{app_identifier()}-Instance-Mutex" and app_identifier()
+            # returns "Zed-Editor-Stable" for the stable channel.
+            $appMutex = "Zed-Editor-Stable-Instance-Mutex"
+            # The launched binary stays Zed.exe (ADR-F16 update mechanism and the
+            # remote-server discovery both assume it); only the display name changes.
             $appExeName = "Zed"
-            $regValueName = "Zed"
+            # Fork-specific ProgId prefix so file associations do not clobber an
+            # official Zed install's HKCU entries. Installer-local; the running app
+            # does not reference this name.
+            $regValueName = "ZedJPEnhance"
+            # AppUserModelID and the appx package identity are intentionally left as
+            # upstream: the appx name/hash is baked into the signed AppxManifest.xml
+            # and cannot be rebranded here without re-signing.
             $appUserId = "ZedIndustries.Zed"
-            $appShellNameShort = "Z&ed"
+            $appShellNameShort = "Zed JP &Enhance"
             $appAppxFullName = "ZedIndustries.Zed_1.0.0.0_neutral__japxn1gcva8rg"
         }
         "preview" {
-            $appId = "{{F70E4811-D0E2-4D88-AC99-D63752799F95}"
+            # Fork-only AppId (upstream preview was {F70E4811-...}). Not built by
+            # this stable-only fork, but kept off upstream's GUID space for safety.
+            $appId = "{{7C80B45F-ADD1-4E31-AD8E-43A6005A64F4}"
             $appIconName = "app-icon-preview"
             $appName = "Zed Preview"
             $appDisplayName = "Zed Preview"
-            $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Preview-Instance-Mutex"
+            $appSetupName = "zed-windows-$Architecture-setup"
+            # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
+            # returns "Zed-Editor-Preview" for the preview channel.
+            $appMutex = "Zed-Editor-Preview-Instance-Mutex"
             $appExeName = "Zed"
             $regValueName = "ZedPreview"
             $appUserId = "ZedIndustries.Zed.Preview"
@@ -292,13 +488,15 @@ function BuildInstaller {
             $appAppxFullName = "ZedIndustries.Zed.Preview_1.0.0.0_neutral__japxn1gcva8rg"
         }
         "nightly" {
-            $appId = "{{1BDB21D3-14E7-433C-843C-9C97382B2FE0}"
+            # Fork-only AppId (upstream nightly was {1BDB21D3-...}).
+            $appId = "{{EF65D849-2DAF-46EF-9B85-016677EEDFEB}"
             $appIconName = "app-icon-nightly"
             $appName = "Zed Nightly"
             $appDisplayName = "Zed Nightly"
-            $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Nightly-Instance-Mutex"
+            $appSetupName = "zed-windows-$Architecture-setup"
+            # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
+            # returns "Zed-Editor-Nightly" for the nightly channel.
+            $appMutex = "Zed-Editor-Nightly-Instance-Mutex"
             $appExeName = "Zed"
             $regValueName = "ZedNightly"
             $appUserId = "ZedIndustries.Zed.Nightly"
@@ -306,13 +504,15 @@ function BuildInstaller {
             $appAppxFullName = "ZedIndustries.Zed.Nightly_1.0.0.0_neutral__japxn1gcva8rg"
         }
         "dev" {
-            $appId = "{{8357632E-24A4-4F32-BA97-E575B4D1FE5D}"
+            # Fork-only AppId (upstream dev was {8357632E-...}).
+            $appId = "{{FBF63EC8-33D5-4339-8E91-58FD6DAE5653}"
             $appIconName = "app-icon-dev"
             $appName = "Zed Dev"
             $appDisplayName = "Zed Dev"
-            $appSetupName = "Zed-$Architecture"
-            # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Zed-Dev-Instance-Mutex"
+            $appSetupName = "zed-windows-$Architecture-setup"
+            # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
+            # returns "Zed-Editor-Dev" for the dev channel.
+            $appMutex = "Zed-Editor-Dev-Instance-Mutex"
             $appExeName = "Zed"
             $regValueName = "ZedDev"
             $appUserId = "ZedIndustries.Zed.Dev"
@@ -325,10 +525,25 @@ function BuildInstaller {
         }
     }
 
-    # Windows runner 2022 default has iscc in PATH, https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md
-    # Currently, we are using Windows 2022 runner.
-    # Windows runner 2025 doesn't have iscc in PATH for now, https://github.com/actions/runner-images/issues/11228
-    $innoSetupPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+    # Locate ISCC.exe (Inno Setup 6). It may sit under Program Files, Program
+    # Files (x86), or -- when installed per-user via winget, as on this fork's
+    # build machine -- under %LOCALAPPDATA%\Programs. Fall back to PATH last.
+    $isccCandidates = @(
+        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+        "C:\Program Files\Inno Setup 6\ISCC.exe",
+        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe")
+    )
+    $innoSetupPath = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $innoSetupPath) {
+        $isccOnPath = Get-Command ISCC.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($isccOnPath) {
+            $innoSetupPath = $isccOnPath.Source
+        }
+    }
+    if (-not $innoSetupPath) {
+        throw "ISCC.exe (Inno Setup 6) not found. Install it (e.g. winget install -e --id JRSoftware.InnoSetup) or put ISCC.exe on PATH."
+    }
+    Write-Host "Using Inno Setup compiler: $innoSetupPath"
 
     $definitions = @{
         "AppId"          = $appId
@@ -392,6 +607,12 @@ ZipZedAndItsFriendsDebug
 DownloadAMDGpuServices
 DownloadConpty
 CollectFiles
+# Ship the Linux SSH-remote artifacts inside {app}\bin so remoting works with no
+# network access (this fork blocks egress by default). Must run after CollectFiles
+# (which creates and populates bin\) and before BuildInstaller (whose bin\* glob
+# picks them up), and after all MSVC cargo builds so the musl RUSTFLAGS stay isolated.
+BuildLinuxRemoteServer
+DownloadSlirp4netns
 BuildInstaller
 
 if($env:CI) {
@@ -401,8 +622,8 @@ if($env:CI) {
 if ($buildSuccess) {
     Write-Output "Build successful"
     if ($Install) {
-        Write-Output "Installing Zed..."
-        Start-Process -FilePath "$env:ZED_WORKSPACE/target/ZedEditorUserSetup-x64-$env:RELEASE_VERSION.exe"
+        Write-Output "Installing Zed JP Enhance..."
+        Start-Process -FilePath "$env:ZED_WORKSPACE/target/zed-windows-$Architecture-setup.exe"
     }
     exit 0
 }
