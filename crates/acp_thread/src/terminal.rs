@@ -434,6 +434,89 @@ pub(crate) fn build_remote_sandbox_command(
     ("/bin/sh".to_string(), args)
 }
 
+/// ADR-F18: the exit code the on-host remote sandbox helper uses to signal that
+/// it refused to run the command because it could not build the isolation
+/// (fail-closed). Mirrors `SANDBOX_SETUP_FAILED_EXIT_CODE` in
+/// `sandbox::linux_remote_helper`.
+pub const REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE: u32 = 126;
+
+/// The stderr marker the helper prints before the structured `<code>: <detail>`
+/// failure line (see `sandbox::linux_remote_helper::fail_closed`). The client
+/// keys the fail-closed detection on this exact prefix so an ordinary command's
+/// output can never masquerade as a sandbox-creation failure.
+const REMOTE_SANDBOX_FAILURE_MARKER: &str = "zed-remote-sandbox: ";
+
+/// Shared Japanese lead-in for every remote sandbox-creation failure
+/// (GLOSSARY §5).
+const REMOTE_SANDBOX_FAILURE_PREFIX: &str =
+    "リモートホストでサンドボックスを作成できませんでした: ";
+
+/// One-line, user-facing hint appended when a remote sandbox-creation failure is
+/// surfaced: how to opt out of sandboxing, and the egress-control cost of doing
+/// so. `allow_unsandboxed` is a settings key, so it stays untranslated
+/// (GLOSSARY §1).
+pub const REMOTE_SANDBOX_UNSANDBOX_HINT: &str = "サンドボックスを無効化するには設定 `allow_unsandboxed` を有効にしてください \
+     (ただし外部通信の統制も外れます)。";
+
+/// ADR-F18: recognize the fail-closed signature the remote sandbox helper emits
+/// — exit code 126 *and* a `zed-remote-sandbox: <code>: <detail>` marker line at
+/// the start of stderr — and return the user-facing Japanese explanation for
+/// `<code>` (GLOSSARY §5).
+///
+/// Returns `None` for anything else, so an ordinary non-zero command exit is
+/// never mistaken for a sandbox-creation failure: **both** the exact exit code
+/// and the marker prefix must be present. `output` is the terminal's combined
+/// stdout/stderr; only the first (marker) line is parsed. The command never ran
+/// when this fires, so the caller should present the reason rather than treat
+/// the exit code as the command's own result.
+pub fn remote_sandbox_setup_failure_message(
+    exit_code: Option<u32>,
+    output: &str,
+) -> Option<String> {
+    if exit_code != Some(REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE) {
+        return None;
+    }
+    let code = remote_sandbox_failure_code(output)?;
+    Some(remote_sandbox_failure_message_for_code(code))
+}
+
+/// Extract `<code>` from a `zed-remote-sandbox: <code>: <detail>` marker at the
+/// start of `output` (leading blank lines tolerated). Returns `None` when the
+/// marker prefix is absent or no `<code>:` follows it, so the detection cannot
+/// fire on unrelated terminal output.
+fn remote_sandbox_failure_code(output: &str) -> Option<&str> {
+    let line = output.trim_start().lines().next()?;
+    let rest = line.strip_prefix(REMOTE_SANDBOX_FAILURE_MARKER)?;
+    // Codes contain no colon, so the first `:` ends the code and begins the
+    // (ignored) human-readable detail.
+    let (code, _detail) = rest.split_once(':')?;
+    let code = code.trim();
+    if code.is_empty() {
+        return None;
+    }
+    Some(code)
+}
+
+/// Map a helper failure `<code>` to its user-facing Japanese message (GLOSSARY
+/// §5), prefixed with the shared "could not create the sandbox" lead-in. An
+/// unrecognized code falls back to naming the raw code (`不明な理由 (<code>)`) so
+/// a future helper addition still surfaces something actionable rather than
+/// nothing.
+fn remote_sandbox_failure_message_for_code(code: &str) -> String {
+    let reason = match code {
+        "slirp-missing" => "slirp4netns がリモートに配置されていません (ネットワーク隔離に必要)。",
+        "userns-failed" => "ユーザー名前空間を作成できません (無効化されている可能性があります)。",
+        "no-fs-backend" => "ファイル隔離の方式 (Landlock / mount) がどちらも使えません。",
+        "landlock-failed" | "mount-failed" => "ファイル書込制限を適用できませんでした。",
+        "proxy-failed" | "slirp-failed" => "ネットワーク統制を確立できませんでした。",
+        "seccomp-failed" => "システムコール制限を適用できませんでした。",
+        "exec-failed" | "chdir-failed" => "サンドボックス内でコマンドを起動できませんでした。",
+        "bad-args" => "サンドボックスの起動引数が不正です (内部エラー)。",
+        other => return format!("{REMOTE_SANDBOX_FAILURE_PREFIX}不明な理由 ({other})"),
+    };
+    format!("{REMOTE_SANDBOX_FAILURE_PREFIX}{reason}")
+}
+
 pub(crate) async fn prepare_sandbox_wrap(
     program: String,
     args: Vec<String>,
@@ -742,6 +825,136 @@ pub(crate) fn disable_pagers_through_env(env: &mut collections::HashMap<String, 
     env.insert("PAGER".into(), "".into());
     // Override user core.pager (e.g. delta) which Git prefers over PAGER
     env.insert("GIT_PAGER".into(), "cat".into());
+}
+
+#[cfg(test)]
+mod remote_sandbox_failure_tests {
+    use super::*;
+
+    /// The complete set of failure codes the helper can emit (mirrors
+    /// `sandbox::linux_remote_helper`). Kept here so the test breaks if a code
+    /// is added without a translation.
+    const ALL_CODES: &[&str] = &[
+        "slirp-missing",
+        "userns-failed",
+        "no-fs-backend",
+        "landlock-failed",
+        "mount-failed",
+        "proxy-failed",
+        "slirp-failed",
+        "seccomp-failed",
+        "exec-failed",
+        "chdir-failed",
+        "bad-args",
+    ];
+
+    /// Every known code maps to a concrete Japanese message carrying the shared
+    /// prefix, and none falls through to the unknown-code branch.
+    #[test]
+    fn every_known_code_has_a_translation() {
+        for code in ALL_CODES {
+            let output = format!("zed-remote-sandbox: {code}: some detail\n");
+            let message = remote_sandbox_setup_failure_message(Some(126), &output)
+                .unwrap_or_else(|| panic!("code {code} should be recognized"));
+            assert!(
+                message.starts_with(REMOTE_SANDBOX_FAILURE_PREFIX),
+                "message for {code} must carry the shared prefix: {message}"
+            );
+            assert!(
+                !message.contains("不明な理由"),
+                "known code {code} must not fall back to the unknown branch: {message}"
+            );
+        }
+    }
+
+    /// A few representative codes map to their exact GLOSSARY §5 wording, and
+    /// aliased codes share one message.
+    #[test]
+    fn representative_codes_map_to_exact_wording() {
+        assert_eq!(
+            remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: slirp-missing: x"),
+            Some(
+                "リモートホストでサンドボックスを作成できませんでした: \
+                 slirp4netns がリモートに配置されていません (ネットワーク隔離に必要)。"
+                    .to_string()
+            )
+        );
+        // `landlock-failed` and `mount-failed` are aliases for one message.
+        assert_eq!(
+            remote_sandbox_setup_failure_message(
+                Some(126),
+                "zed-remote-sandbox: landlock-failed: x"
+            ),
+            remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: mount-failed: x"),
+        );
+    }
+
+    /// An unknown code falls back to naming the raw code, still prefixed.
+    #[test]
+    fn unknown_code_falls_back_to_naming_it() {
+        assert_eq!(
+            remote_sandbox_setup_failure_message(
+                Some(126),
+                "zed-remote-sandbox: brand-new-code: detail",
+            ),
+            Some(
+                "リモートホストでサンドボックスを作成できませんでした: 不明な理由 (brand-new-code)"
+                    .to_string()
+            )
+        );
+    }
+
+    /// The two conditions are independent: exit 126 without the marker, and the
+    /// marker without exit 126, both yield `None` — an ordinary non-zero exit is
+    /// never mistaken for a sandbox-creation failure.
+    #[test]
+    fn requires_both_exit_code_and_marker() {
+        // Exit 126 but ordinary output (a real command that happens to exit 126,
+        // e.g. "permission denied" from a shell).
+        assert_eq!(
+            remote_sandbox_setup_failure_message(Some(126), "bash: ./run: Permission denied\n"),
+            None
+        );
+        // The marker present but a different (or absent) exit code: the helper
+        // only exits 126 on this path, so anything else is not it.
+        assert_eq!(
+            remote_sandbox_setup_failure_message(Some(1), "zed-remote-sandbox: slirp-missing: x"),
+            None
+        );
+        assert_eq!(
+            remote_sandbox_setup_failure_message(None, "zed-remote-sandbox: slirp-missing: x"),
+            None
+        );
+        // A command that merely echoes the phrase mid-output (not as the first
+        // line) does not trip the detector.
+        assert_eq!(
+            remote_sandbox_setup_failure_message(
+                Some(126),
+                "regular line\nzed-remote-sandbox: slirp-missing: x\n",
+            ),
+            None
+        );
+        // Empty output with exit 126 is an ordinary failure, not a sandbox one.
+        assert_eq!(remote_sandbox_setup_failure_message(Some(126), ""), None);
+    }
+
+    /// Leading blank lines before the marker are tolerated, and a malformed
+    /// marker (no `<code>:`) does not fire.
+    #[test]
+    fn tolerates_leading_blank_lines_but_needs_a_code() {
+        assert!(
+            remote_sandbox_setup_failure_message(
+                Some(126),
+                "\n\nzed-remote-sandbox: userns-failed: detail",
+            )
+            .is_some()
+        );
+        // Marker prefix present but nothing resembling `<code>:` after it.
+        assert_eq!(
+            remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: no-colon-here"),
+            None
+        );
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]

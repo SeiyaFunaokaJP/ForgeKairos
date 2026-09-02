@@ -1345,6 +1345,20 @@ fn process_content(
         }
     } else {
         let exit_code = output.exit_status.as_ref().and_then(|s| s.exit_code);
+        // ADR-F18: the on-host remote sandbox helper fails closed with exit 126
+        // and a `zed-remote-sandbox: <code>:` marker line when it cannot build
+        // the isolation, so the command never ran. Recognize that exact
+        // signature (never a plain non-zero exit) and explain the reason in
+        // Japanese — plus how to opt out — instead of the generic "failed with
+        // exit code 126", which would read as if the command itself failed.
+        if let Some(reason) =
+            acp_thread::remote_sandbox_setup_failure_message(exit_code, &output.output)
+        {
+            return format!(
+                "{reason}\n{hint}\n\n{content}",
+                hint = acp_thread::REMOTE_SANDBOX_UNSANDBOX_HINT,
+            );
+        }
         match exit_code {
             Some(0) => {
                 if is_empty {
@@ -2113,6 +2127,79 @@ mod tests {
             result.contains("failed with exit code 1"),
             "Expected failure message, got: {}",
             result
+        );
+    }
+
+    /// ADR-F18: a fail-closed remote sandbox helper (exit 126 + marker) is
+    /// explained in Japanese with the opt-out hint, and the raw marker line is
+    /// kept for detail — not reported as an ordinary "failed with exit code
+    /// 126".
+    #[test]
+    fn test_process_content_remote_sandbox_failure() {
+        let output = acp::TerminalOutputResponse::new(
+            "zed-remote-sandbox: slirp-missing: slirp4netns was not found next to the remote \
+             server binary"
+                .to_string(),
+            false,
+        )
+        .exit_status(acp::TerminalExitStatus::new().exit_code(126));
+
+        let result = process_content(
+            output,
+            "cargo build",
+            false,
+            false,
+            TerminalOutputSelection::default(),
+        );
+
+        assert!(
+            result.contains("リモートホストでサンドボックスを作成できませんでした"),
+            "Expected the JP sandbox-failure lead-in, got: {result}"
+        );
+        assert!(
+            result.contains("slirp4netns がリモートに配置されていません"),
+            "Expected the slirp-missing reason, got: {result}"
+        );
+        assert!(
+            result.contains("allow_unsandboxed"),
+            "Expected the opt-out hint, got: {result}"
+        );
+        assert!(
+            !result.contains("failed with exit code"),
+            "Must not read as an ordinary command failure, got: {result}"
+        );
+        // The raw marker line is preserved for detail.
+        assert!(
+            result.contains("zed-remote-sandbox: slirp-missing:"),
+            "Expected the raw marker line to be kept, got: {result}"
+        );
+    }
+
+    /// An ordinary command that genuinely exits 126 (e.g. "permission denied")
+    /// must not be mistaken for a sandbox-creation failure.
+    #[test]
+    fn test_process_content_plain_exit_126_is_not_a_sandbox_failure() {
+        let output = acp::TerminalOutputResponse::new(
+            "bash: ./deploy.sh: Permission denied".to_string(),
+            false,
+        )
+        .exit_status(acp::TerminalExitStatus::new().exit_code(126));
+
+        let result = process_content(
+            output,
+            "./deploy.sh",
+            false,
+            false,
+            TerminalOutputSelection::default(),
+        );
+
+        assert!(
+            result.contains("failed with exit code 126"),
+            "Expected the ordinary failure message, got: {result}"
+        );
+        assert!(
+            !result.contains("サンドボックス"),
+            "Must not surface the sandbox explanation for a plain failure, got: {result}"
         );
     }
 
