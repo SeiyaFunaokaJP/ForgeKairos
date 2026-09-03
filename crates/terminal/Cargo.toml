@@ -23,18 +23,26 @@ doctest = false
 async-channel.workspace = true
 alacritty_terminal.workspace = true
 anyhow.workspace = true
+chrono.workspace = true
 collections.workspace = true
+fs.workspace = true
 futures.workspace = true
 futures-lite.workspace = true
 gpui.workspace = true
 itertools.workspace = true
 libc.workspace = true
 log.workspace = true
+paths.workspace = true
+# Must resolve to the same `polling` as `alacritty_terminal`: the session log
+# tap implements alacritty's `EventedReadWrite`, whose signatures use its types.
+polling = "3.8"
 regex.workspace = true
 release_channel.workspace = true
 schemars.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 settings.workspace = true
+settings_json.workspace = true
 sysinfo.workspace = true
 task.workspace = true
 theme.workspace = true

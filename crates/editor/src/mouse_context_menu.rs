@@ -13,6 +13,7 @@ use std::ops::Range;
 use text::PointUtf16;
 use workspace::OpenInTerminal;
 use zed_actions::agent::AddSelectionToThread;
+use zed_actions::browser::{AskCopilot, SearchSelection};
 use zed_actions::preview::{
     markdown::OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide,
     svg::OpenPreviewToTheSide as OpenSvgPreviewToTheSide,
@@ -277,6 +278,11 @@ pub fn deploy_context_menu(
                 )
                 .when(!disable_ai && has_selections, |this| {
                     this.action("エージェントスレッドに追加", Box::new(AddSelectionToThread))
+                })
+                // 内蔵ブラウザー (ADR-F19)。ハンドラは `browser_panel` 側にある。
+                .when(has_selections, |this| {
+                    this.action("選択テキストを Web で検索", Box::new(SearchSelection))
+                        .action("選択テキストを Copilot に聞く", Box::new(AskCopilot))
                 })
                 .separator()
                 .action("切り取り", Box::new(Cut))

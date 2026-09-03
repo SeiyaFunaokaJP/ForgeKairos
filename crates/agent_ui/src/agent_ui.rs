@@ -804,6 +804,7 @@ fn maybe_backfill_editor_layout(fs: Arc<dyn Fs>, is_new_install: bool, cx: &mut 
 fn update_command_palette_filter(cx: &mut App) {
     let disable_ai = DisableAiSettings::get_global(cx).disable_ai;
     let agent_enabled = AgentSettings::get_global(cx).enabled;
+    let sidebar_enabled = AgentSettings::get_global(cx).sidebar_enabled;
 
     let edit_prediction_provider = AllLanguageSettings::get_global(cx)
         .edit_predictions
@@ -876,7 +877,13 @@ fn update_command_palette_filter(cx: &mut App) {
             filter.show_namespace("zed_predict_onboarding");
             filter.show_action_types(&[TypeId::of::<zed_actions::OpenZedPredictOnboarding>()]);
 
-            filter.show_namespace("multi_workspace");
+            // The sidebar actions all early-return while the sidebar is off, so
+            // keep them out of the palette instead of offering no-ops.
+            if sidebar_enabled {
+                filter.show_namespace("multi_workspace");
+            } else {
+                filter.hide_namespace("multi_workspace");
+            }
         }
 
         // Hide `agent: manage skills` — skills are surfaced through the
@@ -1027,6 +1034,7 @@ mod tests {
             sandbox_permissions: Default::default(),
             show_turn_stats: false,
             show_merge_conflict_indicator: true,
+            sidebar_enabled: true,
             sidebar_side: Default::default(),
             thinking_display: Default::default(),
         };

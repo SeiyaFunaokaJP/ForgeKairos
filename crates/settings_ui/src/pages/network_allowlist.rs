@@ -61,6 +61,10 @@ pub(crate) struct NetworkAllowlistState {
     /// for. Only that flow shows it, so an invalid host typed on this page does
     /// not light up every provider section on the AI pages.
     error_from_consent: bool,
+    /// What the last consent-driven allowlist change did, and the consent key it
+    /// was made for. Keyed rather than global so that revoking one provider does
+    /// not print its note under every other provider's card.
+    consent_notice: Option<(SharedString, SharedString)>,
     /// At most one file operation is in flight; each new one awaits its
     /// predecessor instead of replacing it, so two quick edits cannot land out
     /// of order.
@@ -75,6 +79,7 @@ impl Default for NetworkAllowlistState {
             proxy_child_processes: true,
             error: None,
             error_from_consent: false,
+            consent_notice: None,
             task: None,
         }
     }
@@ -120,10 +125,43 @@ impl NetworkAllowlistState {
         })
     }
 
+    /// Whether one entry names `host` outright, as opposed to merely covering
+    /// it. This is what the external-AI consent blocks report as "registered"
+    /// for a provider, and the only kind of entry withdrawing consent removes:
+    /// a `*.corp.example` covering `api.corp.example` was written for more than
+    /// this provider.
+    pub(crate) fn lists_host(&self, host: &str) -> bool {
+        let Ok(host) = http_client::HostPattern::parse(host) else {
+            return false;
+        };
+        let host = host.to_string();
+        self.entries.iter().any(|entry| {
+            http_client::HostPattern::parse(entry).is_ok_and(|entry| entry.to_string() == host)
+        })
+    }
+
     /// The message from the last failed allowlist write the consent flow asked
     /// for, so that it can be reported where the button was pressed.
     pub(crate) fn consent_error(&self) -> Option<SharedString> {
         self.error.clone().filter(|_| self.error_from_consent)
+    }
+
+    /// What the last consent-driven allowlist change did, if it was made for
+    /// `key`.
+    pub(crate) fn consent_notice(&self, key: &str) -> Option<SharedString> {
+        self.consent_notice
+            .as_ref()
+            .filter(|(notice_key, _)| notice_key.as_ref() == key)
+            .map(|(_, notice)| notice.clone())
+    }
+
+    /// [`Self::consent_notice`] regardless of which provider it was made for.
+    /// Only the acknowledged-providers list uses this: revoking there removes
+    /// the row the keyed note would have hung under.
+    pub(crate) fn consent_notice_text(&self) -> Option<SharedString> {
+        self.consent_notice
+            .as_ref()
+            .map(|(_, notice)| notice.clone())
     }
 }
 
@@ -143,6 +181,11 @@ enum Operation {
     /// page has been opened, so it must not send a `Write` built from a
     /// possibly-unread `entries`.
     Add(Vec<String>),
+    /// Drop these hosts from whatever is on disk, matching whole entries only.
+    /// The inverse of `Add`, issued when an external-AI consent is withdrawn
+    /// (ADR-F10), and subject to the same "the page may never have been opened"
+    /// reasoning.
+    Remove(Vec<String>),
     /// Write `proxy_child_processes`, leaving the rest of the file alone.
     SetProxyChildProcesses(bool),
 }
@@ -161,6 +204,17 @@ fn run(
     operation: Operation,
     cx: &mut Context<SettingsWindow>,
 ) {
+    run_for_consent(settings_window, operation, None, cx);
+}
+
+/// [`run`], additionally recording what a consent-driven change did under
+/// `notice_key` once the write has landed.
+fn run_for_consent(
+    settings_window: &mut SettingsWindow,
+    operation: Operation,
+    notice: Option<(SharedString, SharedString)>,
+    cx: &mut Context<SettingsWindow>,
+) {
     let fs = <dyn Fs>::global(cx);
     let path = paths::network_allowlist_file().clone();
 
@@ -173,10 +227,12 @@ fn run(
         Operation::SetProxyChildProcesses(enabled) => {
             settings_window.network_allowlist.proxy_child_processes = *enabled;
         }
-        Operation::Reload | Operation::Add(_) => {}
+        Operation::Reload | Operation::Add(_) | Operation::Remove(_) => {}
     }
     settings_window.network_allowlist.error = None;
-    settings_window.network_allowlist.error_from_consent = matches!(operation, Operation::Add(_));
+    settings_window.network_allowlist.error_from_consent =
+        matches!(operation, Operation::Add(_) | Operation::Remove(_));
+    settings_window.network_allowlist.consent_notice = None;
 
     // Taking the previous task rather than dropping it keeps an in-flight write
     // alive, and awaiting it serializes the file operations.
@@ -194,6 +250,8 @@ fn run(
             // provoked while this was in flight must not be wiped out.
             if let Some(error) = error {
                 this.network_allowlist.error = Some(error);
+            } else if let Some(notice) = notice {
+                this.network_allowlist.consent_notice = Some(notice);
             }
             cx.notify();
         })
@@ -239,6 +297,13 @@ async fn apply(
         // assume this page has been opened.
         Operation::Add(hosts) => {
             if let Err(write_error) = egress_policy::add_allowed_hosts(&fs, path, &hosts).await {
+                error = Some(SharedString::from(format!(
+                    "許可リストを保存できませんでした: {write_error:#}"
+                )));
+            }
+        }
+        Operation::Remove(hosts) => {
+            if let Err(write_error) = egress_policy::remove_allowed_hosts(&fs, path, &hosts).await {
                 error = Some(SharedString::from(format!(
                     "許可リストを保存できませんでした: {write_error:#}"
                 )));
@@ -459,13 +524,58 @@ pub(crate) fn add_allowed_hosts(
     run(settings_window, Operation::Add(canonical), cx);
 }
 
-/// Clears the banner shown for the last failed allowlist file operation.
+/// Drops hosts from `network_allowlist.json`, the inverse of
+/// [`add_allowed_hosts`] and with the same "this page may never have been
+/// opened" reasoning: the removal is applied to what is on disk.
+///
+/// `notice` is what the consent block that asked for this shows once the write
+/// lands, keyed by the consent key so it appears under that provider only.
+/// Hosts that could never have been written (they do not parse) are dropped
+/// here; an empty request writes nothing at all, which is what makes pressing
+/// the button twice harmless.
+pub(crate) fn remove_allowed_hosts(
+    settings_window: &mut SettingsWindow,
+    hosts: &[SharedString],
+    notice: (SharedString, SharedString),
+    cx: &mut Context<SettingsWindow>,
+) {
+    let canonical: Vec<String> = hosts
+        .iter()
+        .filter_map(|host| canonicalize_host(host).ok())
+        .collect();
+    if canonical.is_empty() {
+        return;
+    }
+    run_for_consent(
+        settings_window,
+        Operation::Remove(canonical),
+        Some(notice),
+        cx,
+    );
+}
+
+/// Records a consent-block message that needed no file write — "nothing was
+/// removed, because another provider still needs these hosts".
+pub(crate) fn set_consent_notice(
+    settings_window: &mut SettingsWindow,
+    notice: (SharedString, SharedString),
+    cx: &mut Context<SettingsWindow>,
+) {
+    settings_window.network_allowlist.error = None;
+    settings_window.network_allowlist.error_from_consent = false;
+    settings_window.network_allowlist.consent_notice = Some(notice);
+    cx.notify();
+}
+
+/// Clears the banner shown for the last failed allowlist file operation, and
+/// the note shown for the last successful consent-driven one.
 pub(crate) fn dismiss_error(
     settings_window: &mut SettingsWindow,
     cx: &mut Context<SettingsWindow>,
 ) {
     settings_window.network_allowlist.error = None;
     settings_window.network_allowlist.error_from_consent = false;
+    settings_window.network_allowlist.consent_notice = None;
     cx.notify();
 }
 
@@ -952,6 +1062,89 @@ mod tests {
             ],
             "an entry already present must not be duplicated, and the existing ones must survive"
         );
+    }
+
+    /// `Operation::Remove` is what withdrawing an external-AI consent issues
+    /// (ADR-F10). Like `Add` it works against what is on disk, and it must take
+    /// away only the entry that names the host.
+    #[gpui::test]
+    async fn remove_takes_back_what_add_put_in(cx: &mut gpui::TestAppContext) {
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                Path::new(util::path!("/config")),
+                serde_json::json!({
+                    "network_allowlist.json": "{ \"allowed_hosts\": [\"*.corp.example\"] }\n"
+                }),
+            )
+            .await;
+
+        let (loaded, error) = apply(
+            fs.clone(),
+            &path,
+            Operation::Add(vec!["api.anthropic.com".to_string()]),
+        )
+        .await;
+        assert_eq!(error, None);
+        assert_eq!(
+            loaded.entries,
+            vec![
+                "*.corp.example".to_string(),
+                "api.anthropic.com".to_string()
+            ]
+        );
+
+        let (loaded, error) = apply(
+            fs.clone(),
+            &path,
+            Operation::Remove(vec!["api.anthropic.com".to_string()]),
+        )
+        .await;
+        assert_eq!(error, None);
+        assert_eq!(
+            loaded.entries,
+            vec!["*.corp.example".to_string()],
+            "revoking one provider must not disturb an entry the user wrote"
+        );
+
+        // Pressing revoke on a provider whose hosts were never registered.
+        let (loaded, error) = apply(
+            fs.clone(),
+            &path,
+            Operation::Remove(vec!["api.openai.com".to_string()]),
+        )
+        .await;
+        assert_eq!(error, None);
+        assert_eq!(loaded.entries, vec!["*.corp.example".to_string()]);
+    }
+
+    /// What the consent blocks call "registered", and the only kind of entry a
+    /// revoke removes: coverage by a wildcard is not this provider's entry.
+    #[test]
+    fn lists_host_matches_whole_entries_only() {
+        let state = NetworkAllowlistState {
+            status: Status::Present,
+            entries: vec![
+                "*.corp.example".to_string(),
+                "API.Anthropic.COM".to_string(),
+            ],
+            ..Default::default()
+        };
+
+        assert!(state.lists_host("api.anthropic.com"));
+        assert!(state.lists_host("*.corp.example"));
+        assert!(
+            !state.lists_host("api.corp.example"),
+            "covered by the wildcard, but not an entry of its own"
+        );
+        assert!(
+            state.allows("api.corp.example"),
+            "it is still allowed, which is why the two questions are separate"
+        );
+        assert!(!state.lists_host("api.openai.com"));
+        assert!(!state.lists_host("not a host"));
     }
 
     #[gpui::test]

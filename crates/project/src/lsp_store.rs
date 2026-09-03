@@ -126,7 +126,7 @@ use std::{
     convert::TryInto,
     ffi::OsStr,
     iter, mem,
-    ops::{ControlFlow, Range},
+    ops::{ControlFlow, Range, RangeInclusive},
     path::{self, Path, PathBuf},
     pin::pin,
     rc::Rc,
@@ -1881,8 +1881,10 @@ impl LocalLspStore {
             Formatter::External { command, arguments } => {
                 let logger = zlog::scoped!(logger => "command");
 
-                if buffer.ranges.is_some() {
-                    zlog::debug!(logger => "External formatter does not support range formatting; skipping");
+                if buffer.ranges.is_some()
+                    && !settings::external_formatter_arguments_support_ranges(arguments.as_deref())
+                {
+                    zlog::debug!(logger => "External formatter has no line placeholders in its arguments, so it cannot honor a selection; skipping");
                     return Ok(());
                 }
 
@@ -2585,13 +2587,21 @@ impl LocalLspStore {
         }
 
         if let Some(arguments) = arguments {
-            child.args(arguments.iter().map(|arg| {
-                if let Some(buffer_abs_path) = buffer.abs_path.as_ref() {
-                    arg.replace("{buffer_path}", &buffer_abs_path.to_string_lossy())
-                } else {
-                    arg.replace("{buffer_path}", "Untitled")
-                }
-            }));
+            let buffer_path = match buffer.abs_path.as_ref() {
+                Some(buffer_abs_path) => buffer_abs_path.to_string_lossy().into_owned(),
+                None => "Untitled".to_string(),
+            };
+            let line_ranges = match buffer.ranges.as_deref() {
+                Some(ranges) if !ranges.is_empty() => buffer.handle.read_with(cx, |buffer, _cx| {
+                    selection_line_ranges(ranges, &buffer.snapshot())
+                }),
+                _ => Vec::new(),
+            };
+            child.args(expand_external_formatter_arguments(
+                arguments,
+                &buffer_path,
+                &line_ranges,
+            ));
         }
 
         let mut child = child
@@ -5512,7 +5522,9 @@ impl LspStore {
                         )
                 }
                 Formatter::Prettier => true,
-                Formatter::External { .. } => false,
+                Formatter::External { arguments, .. } => {
+                    settings::external_formatter_arguments_support_ranges(arguments.as_deref())
+                }
                 Formatter::LanguageServer(settings::LanguageServerFormatterSpecifier::Current) => {
                     self.check_if_capable_for_proto_request(
                         buffer,
@@ -15167,9 +15179,97 @@ fn extend_formatting_transaction(
     })
 }
 
+/// The lines an external formatter should be pointed at for the given
+/// selections, 1-based and inclusive so that they can be handed straight to
+/// tools like `clang-format --lines=<start>:<end>`.
+fn selection_line_ranges(
+    ranges: &[Range<Anchor>],
+    snapshot: &BufferSnapshot,
+) -> Vec<RangeInclusive<u32>> {
+    merge_line_ranges(
+        ranges
+            .iter()
+            .map(|range| {
+                let start = range.start.to_point(snapshot);
+                let end = range.end.to_point(snapshot);
+                // A multi-line selection that stops at column 0 (what dragging
+                // down the gutter produces) does not actually cover that last
+                // line, and formatting it would move text the user never
+                // selected.
+                let end_row = if end.row > start.row && end.column == 0 {
+                    end.row - 1
+                } else {
+                    end.row
+                };
+                (start.row + 1)..=(end_row + 1)
+            })
+            .collect(),
+    )
+}
+
+/// Overlapping and adjacent line ranges are collapsed: formatters accept
+/// repeated line arguments, but overlapping ones make them reflow the same
+/// region more than once.
+fn merge_line_ranges(mut ranges: Vec<RangeInclusive<u32>>) -> Vec<RangeInclusive<u32>> {
+    ranges.sort_by_key(|range| (*range.start(), *range.end()));
+    let mut merged: Vec<RangeInclusive<u32>> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        match merged.last_mut() {
+            Some(last) if *range.start() <= last.end().saturating_add(1) => {
+                let end = (*last.end()).max(*range.end());
+                *last = *last.start()..=end;
+            }
+            _ => merged.push(range),
+        }
+    }
+    merged
+}
+
+/// Substitute the placeholders documented on `Formatter::External::arguments`.
+///
+/// `line_ranges` is empty when the whole buffer is being formatted, and in that
+/// case arguments naming the line placeholders are dropped rather than expanded:
+/// there is no formatter-independent way to spell "every line", and the command
+/// already defaults to the whole buffer without them.
+fn expand_external_formatter_arguments(
+    arguments: &[String],
+    buffer_path: &str,
+    line_ranges: &[RangeInclusive<u32>],
+) -> Vec<String> {
+    let mut expanded = Vec::with_capacity(arguments.len());
+    for argument in arguments {
+        if !settings::argument_names_line_placeholders(argument) {
+            expanded.push(argument.replace(
+                settings::EXTERNAL_FORMATTER_BUFFER_PATH_PLACEHOLDER,
+                buffer_path,
+            ));
+            continue;
+        }
+        for line_range in line_ranges {
+            expanded.push(
+                argument
+                    .replace(
+                        settings::EXTERNAL_FORMATTER_BUFFER_PATH_PLACEHOLDER,
+                        buffer_path,
+                    )
+                    .replace(
+                        settings::EXTERNAL_FORMATTER_START_LINE_PLACEHOLDER,
+                        &line_range.start().to_string(),
+                    )
+                    .replace(
+                        settings::EXTERNAL_FORMATTER_END_LINE_PLACEHOLDER,
+                        &line_range.end().to_string(),
+                    ),
+            );
+        }
+    }
+    expanded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use text::Point;
 
     #[test]
     fn should_log_lsp_request_failure_suppresses_known_noise() {
@@ -15189,5 +15289,125 @@ mod tests {
             "Get diagnostics via rust-analyzer failed: Server reset the connection"
         ));
         assert!(should_log_lsp_request_failure("something else entirely"));
+    }
+
+    fn args(arguments: &[&str]) -> Vec<String> {
+        arguments.iter().map(|arg| arg.to_string()).collect()
+    }
+
+    #[test]
+    fn external_formatter_arguments_drop_line_placeholders_for_whole_buffer() {
+        let arguments = args(&[
+            "--style=GNU",
+            "--lines={start_line}:{end_line}",
+            "--assume-filename={buffer_path}",
+        ]);
+
+        assert_eq!(
+            expand_external_formatter_arguments(&arguments, "I:/work/main.c", &[]),
+            args(&["--style=GNU", "--assume-filename=I:/work/main.c"]),
+        );
+    }
+
+    #[test]
+    fn external_formatter_arguments_repeat_once_per_selected_range() {
+        let arguments = args(&[
+            "--style=GNU",
+            "--lines={start_line}:{end_line}",
+            "--assume-filename={buffer_path}",
+        ]);
+
+        assert_eq!(
+            expand_external_formatter_arguments(&arguments, "Untitled", &[3..=7, 20..=20]),
+            args(&[
+                "--style=GNU",
+                "--lines=3:7",
+                "--lines=20:20",
+                "--assume-filename=Untitled",
+            ]),
+        );
+    }
+
+    #[test]
+    fn external_formatter_arguments_expand_both_placeholders_in_one_argument() {
+        // Separate arguments and a single combined one both have to survive the
+        // per-range expansion, since formatters spell this either way.
+        let arguments = args(&["--start={start_line}", "--end={end_line}"]);
+
+        assert_eq!(
+            expand_external_formatter_arguments(&arguments, "Untitled", &[2..=4, 9..=11]),
+            args(&["--start=2", "--start=9", "--end=4", "--end=11"]),
+        );
+    }
+
+    #[test]
+    fn external_formatter_arguments_support_ranges_requires_a_placeholder() {
+        assert!(!settings::external_formatter_arguments_support_ranges(None));
+        assert!(!settings::external_formatter_arguments_support_ranges(
+            Some(&args(&["--assume-filename={buffer_path}"]))
+        ));
+        assert!(settings::external_formatter_arguments_support_ranges(Some(
+            &args(&["--lines={start_line}:{end_line}"])
+        )));
+        assert!(settings::external_formatter_arguments_support_ranges(Some(
+            &args(&["--end={end_line}"])
+        )));
+    }
+
+    #[test]
+    fn line_ranges_merge_when_overlapping_or_adjacent() {
+        assert_eq!(merge_line_ranges(vec![]), Vec::<RangeInclusive<u32>>::new());
+        assert_eq!(merge_line_ranges(vec![5..=9, 1..=3]), vec![1..=3, 5..=9]);
+        // Overlapping.
+        assert_eq!(merge_line_ranges(vec![1..=5, 4..=9]), vec![1..=9]);
+        // Adjacent: `1..=3` and `4..=6` cover one contiguous region.
+        assert_eq!(merge_line_ranges(vec![1..=3, 4..=6]), vec![1..=6]);
+        // Fully contained ranges must not shrink the range they sit in.
+        assert_eq!(merge_line_ranges(vec![1..=20, 5..=6]), vec![1..=20]);
+        assert_eq!(
+            merge_line_ranges(vec![10..=12, 1..=2, 11..=30, 100..=100]),
+            vec![1..=2, 10..=30, 100..=100],
+        );
+    }
+
+    #[gpui::test]
+    fn selection_line_ranges_are_one_based_and_merged(cx: &mut gpui::App) {
+        let buffer = cx.new(|cx| Buffer::local("aa\nbb\ncc\ndd\nee\nff\ngg\n", cx));
+        let snapshot = buffer.read(cx).snapshot();
+        let anchor_range = |start: (u32, u32), end: (u32, u32)| {
+            snapshot.anchor_before(Point::new(start.0, start.1))
+                ..snapshot.anchor_after(Point::new(end.0, end.1))
+        };
+
+        // An empty selection formats the line the cursor is on.
+        assert_eq!(
+            selection_line_ranges(&[anchor_range((0, 1), (0, 1))], &snapshot),
+            vec![1..=1],
+        );
+
+        // Rows are 0-based in the buffer and 1-based in the arguments.
+        assert_eq!(
+            selection_line_ranges(&[anchor_range((2, 0), (3, 2))], &snapshot),
+            vec![3..=4],
+        );
+
+        // A selection ending at column 0 does not reach into that row.
+        assert_eq!(
+            selection_line_ranges(&[anchor_range((2, 0), (4, 0))], &snapshot),
+            vec![3..=4],
+        );
+
+        // Out-of-order, overlapping selections collapse into one range.
+        assert_eq!(
+            selection_line_ranges(
+                &[
+                    anchor_range((5, 0), (6, 1)),
+                    anchor_range((0, 0), (1, 1)),
+                    anchor_range((1, 0), (2, 1)),
+                ],
+                &snapshot,
+            ),
+            vec![1..=3, 6..=7],
+        );
     }
 }

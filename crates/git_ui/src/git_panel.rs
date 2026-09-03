@@ -32,8 +32,8 @@ use git::Oid;
 use git::commit::ParsedCommitMessage;
 use git::repository::{
     Branch, CommitData, CommitDetails, CommitOptions, CommitSummary, DiffType, FetchOptions,
-    GitCommitTemplate, InitialGraphCommitData, LogOrder, LogSource, PushOptions, Remote,
-    RemoteCommandOutput, ResetMode, Upstream, UpstreamTracking, UpstreamTrackingStatus,
+    GitCommitTemplate, InitialGraphCommitData, LogOrder, LogSource, PatchSource, PushOptions,
+    Remote, RemoteCommandOutput, ResetMode, Upstream, UpstreamTracking, UpstreamTrackingStatus,
 };
 use git::stash::GitStash;
 use git::status::{DiffStat, StageStatus};
@@ -64,7 +64,7 @@ use notifications::status_toast::StatusToast;
 use panel::PanelHeader;
 use project::git_store::GitAccess;
 use project::{
-    Fs, Project, ProjectPath,
+    DirectoryLister, Fs, Project, ProjectPath,
     git_store::{
         CommitDataState, GitStoreEvent, Repository, RepositoryEvent, RepositoryId, pending_op,
     },
@@ -382,6 +382,11 @@ fn git_panel_context_menu(
                 "未追跡ファイルをゴミ箱へ移動",
                 TrashUntrackedFiles.boxed_clone(),
             )
+            .separator()
+            .action("パッチファイルを作成…", git::CreatePatch.boxed_clone())
+            .action("パッチファイルを適用…", git::ApplyPatch.boxed_clone())
+            .separator()
+            .action("リポジトリを初期化", git::Init.boxed_clone())
     })
 }
 
@@ -4191,6 +4196,573 @@ impl GitPanel {
             anyhow::Ok(())
         })
         .detach_and_log_err(cx);
+    }
+
+    /// Opens the branch picker so the chosen branch can be merged into the
+    /// current one.
+    pub(crate) fn deploy_merge_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let workspace_handle = self.workspace.clone();
+        let panel = cx.weak_entity();
+        let on_select: branch_picker::SelectBranchCallback =
+            Arc::new(move |branch, _window, cx| {
+                let branch_name: SharedString = branch.name().to_owned().into();
+                let panel = panel.clone();
+                cx.defer(move |cx| {
+                    panel
+                        .update(cx, |panel, cx| panel.merge_branch(branch_name, cx))
+                        .ok();
+                });
+            });
+
+        workspace.update(cx, |workspace, cx| {
+            workspace.toggle_modal(window, cx, |window, cx| {
+                branch_picker::select_modal(
+                    workspace_handle,
+                    Some(repository),
+                    None,
+                    on_select,
+                    window,
+                    cx,
+                )
+            });
+        });
+    }
+
+    pub(crate) fn merge_branch(&mut self, branch: SharedString, cx: &mut Context<Self>) {
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+
+        let merge = repository.update(cx, |repository, cx| {
+            repository.merge(branch.to_string(), cx)
+        });
+        cx.spawn(async move |this, cx| {
+            let output = merge.await?;
+            this.update(cx, |this, cx| match output {
+                Ok(output) if output.succeeded() => {
+                    this.show_git_output_toast(
+                        "merge",
+                        format!("{branch} をマージしました。"),
+                        &output,
+                        cx,
+                    );
+                }
+                // `git merge` signals conflicts with a non-zero status too, but
+                // the working tree is now in a state the conflict UI can help
+                // with, so it must not read as a plain failure.
+                Ok(output) if output.stdout.contains("CONFLICT") => {
+                    this.show_git_output_toast(
+                        "merge",
+                        "マージでコンフリクトが発生しました。競合を解決してからコミットしてください。",
+                        &output,
+                        cx,
+                    );
+                }
+                Ok(output) => this.show_error_toast(
+                    "merge",
+                    anyhow::anyhow!("{}", output.failure_message()),
+                    cx,
+                ),
+                Err(e) => this.show_error_toast("merge", e, cx),
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    /// Fetches, then hard-resets the current branch onto its remote counterpart,
+    /// throwing away everything that is not on the remote.
+    pub(crate) fn reset_to_remote(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.can_push_and_pull(cx) {
+            return;
+        }
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        let Some(branch) = repository.read(cx).branch.clone() else {
+            self.show_error_toast(
+                "reset",
+                anyhow::anyhow!("現在のブランチを取得できませんでした。"),
+                cx,
+            );
+            return;
+        };
+
+        let upstream = branch
+            .upstream
+            .as_ref()
+            .filter(|upstream| matches!(upstream.tracking, UpstreamTracking::Tracked(_)));
+        let target_ref = upstream
+            .and_then(|upstream| upstream.stripped_ref_name())
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("origin/{}", branch.name()));
+        let remote_name = upstream
+            .and_then(|upstream| upstream.remote_name())
+            .unwrap_or("origin")
+            .to_owned();
+
+        let prompt = window.prompt(
+            PromptLevel::Warning,
+            "ローカルをリモートの状態に合わせますか?",
+            Some(&format!(
+                "{remote_name} をフェッチしてから git reset --hard {target_ref} を実行します。\
+                 \nコミットしていない変更と、リモートに無いコミットはすべて失われます。"
+            )),
+            &["リモートに合わせる", "キャンセル"],
+            cx,
+        );
+
+        cx.spawn_in(window, async move |this, cx| {
+            if prompt.await.ok() != Some(0) {
+                return Ok(());
+            }
+
+            // The remote-operation slot is claimed only after the user confirms,
+            // so the panel does not show a fetch as running while the prompt is
+            // still up.
+            let askpass = this.update_in(cx, |this, window, cx| {
+                this.start_remote_operation(RemoteOperationKind::Fetch, cx)
+                    .then(|| this.askpass_delegate(format!("git fetch {remote_name}"), window, cx))
+            })?;
+            let Some(askpass) = askpass else {
+                return Ok(());
+            };
+            let _clear_pending_remote_operation = cx.on_drop(&this, |this, cx| {
+                this.clear_remote_operation(cx);
+            });
+
+            let fetch = repository.update(cx, |repository, cx| {
+                repository.fetch(
+                    FetchOptions::Remote(Remote {
+                        name: remote_name.clone().into(),
+                    }),
+                    askpass,
+                    cx,
+                )
+            });
+            if let Err(e) = fetch.await? {
+                this.update(cx, |this, cx| this.show_error_toast("fetch", e, cx))
+                    .ok();
+                return Ok(());
+            }
+
+            let reset = repository.update(cx, |repository, cx| {
+                repository.reset_hard(target_ref.clone(), cx)
+            });
+            let output = reset.await?;
+            this.update(cx, |this, cx| match output {
+                Ok(output) if output.succeeded() => this.show_git_output_toast(
+                    "reset",
+                    format!("ローカルを {target_ref} の状態に合わせました。"),
+                    &output,
+                    cx,
+                ),
+                Ok(output) => this.show_error_toast(
+                    "reset --hard",
+                    anyhow::anyhow!("{}", output.failure_message()),
+                    cx,
+                ),
+                Err(e) => this.show_error_toast("reset --hard", e, cx),
+            })
+            .ok();
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    pub(crate) fn create_patch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let project = self.project.clone();
+
+        let sources = [
+            (PatchSource::Worktree, "作業ツリーの変更 (git diff)"),
+            (PatchSource::Index, "ステージ済みの変更 (git diff --cached)"),
+            (
+                PatchSource::HeadCommit,
+                "直近のコミット (git format-patch -1 HEAD)",
+            ),
+        ];
+        let selection = picker_prompt::prompt(
+            "パッチファイルに含める内容を選択",
+            sources
+                .iter()
+                .map(|(_, label)| SharedString::new_static(label))
+                .collect(),
+            self.workspace.clone(),
+            window,
+            cx,
+        );
+
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(index) = selection.await else {
+                return Ok(());
+            };
+            let Some(&(source, _)) = sources.get(index) else {
+                return Ok(());
+            };
+
+            let output = repository
+                .update(cx, |repository, _| repository.create_patch(source))
+                .await??;
+            if !output.succeeded() {
+                this.update(cx, |this, cx| {
+                    this.show_error_toast(
+                        "diff",
+                        anyhow::anyhow!("{}", output.failure_message()),
+                        cx,
+                    )
+                })
+                .ok();
+                return Ok(());
+            }
+            if output.stdout.trim().is_empty() {
+                this.update(cx, |this, cx| {
+                    this.show_error_toast(
+                        "diff",
+                        anyhow::anyhow!("パッチファイルにする変更がありませんでした。"),
+                        cx,
+                    )
+                })
+                .ok();
+                return Ok(());
+            }
+
+            let destination = workspace.update_in(cx, |workspace, window, cx| {
+                workspace.prompt_for_new_path(
+                    DirectoryLister::Project(project.clone()),
+                    Some(source.suggested_file_name().to_owned()),
+                    window,
+                    cx,
+                )
+            })?;
+            let Some(destination) = destination
+                .await
+                .ok()
+                .flatten()
+                .and_then(|mut paths| paths.pop())
+            else {
+                return Ok(());
+            };
+
+            // Saving through the project (rather than the local filesystem) is
+            // what makes this work for remote projects: the path came from the
+            // project's own directory lister, so it lives on the repository's
+            // host, not necessarily on this machine.
+            let (worktree, relative_path) = project
+                .update(cx, |project, cx| {
+                    project.find_or_create_worktree(&destination, false, cx)
+                })
+                .await?;
+            let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+            let buffer = project
+                .update(cx, |project, cx| project.create_buffer(None, false, cx))
+                .await?;
+            buffer.update(cx, |buffer, cx| {
+                buffer.set_line_ending(language::LineEnding::Unix, cx);
+                buffer.set_text(output.stdout.as_str(), cx);
+            });
+            project
+                .update(cx, |project, cx| {
+                    project.save_buffer_as(
+                        buffer,
+                        ProjectPath {
+                            worktree_id,
+                            path: relative_path,
+                        },
+                        cx,
+                    )
+                })
+                .await?;
+
+            let displayed_path = destination.to_string_lossy().into_owned();
+            this.update(cx, |this, cx| {
+                this.show_success_toast(
+                    format!("パッチファイルを保存しました: {displayed_path}"),
+                    cx,
+                );
+            })
+            .ok();
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    pub(crate) fn apply_patch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let project = self.project.clone();
+
+        let patch_path = workspace.update(cx, |workspace, cx| {
+            workspace.prompt_for_open_path(
+                gpui::PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: false,
+                    prompt: Some("適用するパッチファイルを選択".into()),
+                },
+                DirectoryLister::Project(project.clone()),
+                window,
+                cx,
+            )
+        });
+
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(patch_path) = patch_path
+                .await
+                .ok()
+                .flatten()
+                .and_then(|mut paths| paths.pop())
+            else {
+                return Ok(());
+            };
+
+            let (worktree, relative_path) = project
+                .update(cx, |project, cx| {
+                    project.find_or_create_worktree(&patch_path, false, cx)
+                })
+                .await?;
+            let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+            let buffer = project
+                .update(cx, |project, cx| {
+                    project.open_buffer(
+                        ProjectPath {
+                            worktree_id,
+                            path: relative_path,
+                        },
+                        cx,
+                    )
+                })
+                .await?;
+            let contents = buffer.read_with(cx, |buffer, _| buffer.text());
+
+            // Plain `git apply` is all-or-nothing, so it is the safe first
+            // attempt. `--3way` is the "try harder" retry: it can apply a patch
+            // whose context has drifted, but it also stages what it applies and
+            // may leave conflict markers behind, which must not happen on top of
+            // an already half-applied patch.
+            let plain = repository
+                .update(cx, |repository, cx| {
+                    repository.apply_patch(contents.clone(), false, cx)
+                })
+                .await??;
+            let (output, used_three_way) = if plain.succeeded() {
+                (plain, false)
+            } else {
+                let three_way = repository
+                    .update(cx, |repository, cx| {
+                        repository.apply_patch(contents, true, cx)
+                    })
+                    .await??;
+                (three_way, true)
+            };
+
+            this.update(cx, |this, cx| {
+                if output.succeeded() && used_three_way {
+                    this.show_git_output_toast(
+                        "apply",
+                        "パッチファイルを 3-way マージで適用し、ステージしました。",
+                        &output,
+                        cx,
+                    );
+                } else if output.succeeded() {
+                    this.show_success_toast("パッチファイルを適用しました。", cx);
+                } else {
+                    this.show_error_toast(
+                        "apply",
+                        anyhow::anyhow!("{}", output.failure_message()),
+                        cx,
+                    );
+                }
+            })
+            .ok();
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    pub(crate) fn add_remote(
+        &mut self,
+        remote_name: String,
+        remote_url: String,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        let remote_name = remote_name.trim().to_owned();
+        let remote_url = remote_url.trim().to_owned();
+        if remote_name.is_empty() || remote_url.is_empty() {
+            self.show_error_toast(
+                "remote add",
+                anyhow::anyhow!("リモート名と URL の両方を入力してください。"),
+                cx,
+            );
+            return;
+        }
+
+        let create = repository.update(cx, |repository, _| {
+            repository.create_remote(remote_name.clone(), remote_url)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = create.await?;
+            this.update(cx, |this, cx| match result {
+                Ok(()) => {
+                    this.show_success_toast(format!("リモート {remote_name} を追加しました。"), cx)
+                }
+                Err(e) => this.show_error_toast("remote add", e, cx),
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    pub(crate) fn remove_remote(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        let remotes = repository.update(cx, |repository, _| repository.get_remotes(None, false));
+        let workspace = self.workspace.clone();
+
+        cx.spawn_in(window, async move |this, cx| {
+            let remotes = match remotes.await? {
+                Ok(remotes) => remotes,
+                Err(e) => {
+                    this.update(cx, |this, cx| this.show_error_toast("remote", e, cx))
+                        .ok();
+                    return Ok(());
+                }
+            };
+            if remotes.is_empty() {
+                this.update(cx, |this, cx| {
+                    this.show_error_toast(
+                        "remote",
+                        anyhow::anyhow!("削除できるリモートがありません。"),
+                        cx,
+                    )
+                })
+                .ok();
+                return Ok(());
+            }
+
+            let selection = cx.update(|window, cx| {
+                picker_prompt::prompt(
+                    "削除するリモートを選択",
+                    remotes.iter().map(|remote| remote.name.clone()).collect(),
+                    workspace,
+                    window,
+                    cx,
+                )
+            })?;
+            let Some(remote) = selection
+                .await
+                .and_then(|index| remotes.get(index).cloned())
+            else {
+                return Ok(());
+            };
+            let remote_name = remote.name.to_string();
+
+            // `picker_prompt` confirms a single-entry list without any
+            // interaction, so the destructive step needs its own confirmation.
+            let confirmed = cx.update(|window, cx| {
+                window.prompt(
+                    PromptLevel::Warning,
+                    &format!("リモート {remote_name} を削除しますか?"),
+                    Some("このリモートの追跡ブランチも削除されます。"),
+                    &["削除", "キャンセル"],
+                    cx,
+                )
+            })?;
+            if confirmed.await.ok() != Some(0) {
+                return Ok(());
+            }
+
+            let remove = repository.update(cx, |repository, _| {
+                repository.remove_remote(remote_name.clone())
+            });
+            let result = remove.await?;
+            this.update(cx, |this, cx| match result {
+                Ok(()) => {
+                    this.show_success_toast(format!("リモート {remote_name} を削除しました。"), cx)
+                }
+                Err(e) => this.show_error_toast("remote remove", e, cx),
+            })
+            .ok();
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    fn show_success_toast(&self, message: impl Into<SharedString>, cx: &mut App) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let message = message.into();
+        workspace.update(cx, |workspace, cx| {
+            let toast = StatusToast::new(message, cx, |this, _cx| {
+                this.icon(
+                    Icon::new(IconName::GitBranch)
+                        .size(IconSize::Small)
+                        .color(Color::Muted),
+                )
+                .dismiss_button(true)
+            });
+            workspace.toggle_status_toast(toast, cx);
+        });
+    }
+
+    /// Success toast that also offers the command's own output, which is where
+    /// git explains what it did (fast-forward, conflicted paths, …).
+    fn show_git_output_toast(
+        &self,
+        operation: &'static str,
+        message: impl Into<SharedString>,
+        output: &git::repository::GitCommandOutput,
+        cx: &mut App,
+    ) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let message = message.into();
+        let log = format!("stdout:\n{}\nstderr:\n{}", output.stdout, output.stderr);
+        workspace.update(cx, |workspace, cx| {
+            let workspace_weak = cx.weak_entity();
+            let toast = StatusToast::new(message, cx, move |this, _cx| {
+                this.icon(
+                    Icon::new(IconName::GitBranch)
+                        .size(IconSize::Small)
+                        .color(Color::Muted),
+                )
+                .action("ログを表示", move |window, cx| {
+                    let log = log.clone();
+                    workspace_weak
+                        .update(cx, move |workspace, cx| {
+                            open_output(operation, workspace, &log, window, cx)
+                        })
+                        .ok();
+                })
+                .dismiss_button(true)
+            });
+            workspace.toggle_status_toast(toast, cx);
+        });
     }
 
     /// Updates git's configuration, adding the directory of the current

@@ -746,6 +746,96 @@ pub fn delete_branch_flag(is_remote_tracking_ref: bool, force: bool) -> &'static
     }
 }
 
+/// Raw result of [`GitRepository::run_command`].
+///
+/// A non-zero exit status is deliberately *not* an error: `git merge` reports
+/// conflicts and `git apply` reports rejected hunks that way, and the caller
+/// needs their stdout/stderr to tell the user what actually happened.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GitCommandOutput {
+    pub stdout: String,
+    pub stderr: String,
+    /// `None` when the process was terminated by a signal.
+    pub exit_code: Option<i32>,
+}
+
+impl GitCommandOutput {
+    pub fn succeeded(&self) -> bool {
+        self.exit_code == Some(0)
+    }
+
+    /// Human-readable reason a command failed. stderr comes first because git
+    /// puts its diagnostics there, and notification toasts only show the head
+    /// of the text.
+    pub fn failure_message(&self) -> String {
+        let mut message = String::new();
+        for part in [self.stderr.trim(), self.stdout.trim()] {
+            if part.is_empty() {
+                continue;
+            }
+            if !message.is_empty() {
+                message.push('\n');
+            }
+            message.push_str(part);
+        }
+        if !message.is_empty() {
+            return message;
+        }
+        match self.exit_code {
+            Some(code) => format!("git がステータス {code} で終了しました。"),
+            None => "git が異常終了しました。".to_string(),
+        }
+    }
+}
+
+/// Subcommands that [`GitRepository::run_command`] accepts.
+///
+/// `run_command` is reachable from the remote-project RPC, and git treats
+/// leading `-c key=value` / `--exec-path=…` arguments as configuration
+/// (`core.pager`, `core.sshCommand`, aliases, …) from which it will happily
+/// launch an arbitrary program. Pinning the first argument to a known
+/// subcommand keeps this one escape hatch limited to the operations the git
+/// panel actually needs.
+pub const ALLOWED_GIT_COMMANDS: &[&str] = &["apply", "diff", "format-patch", "merge", "reset"];
+
+/// What a patch file created from the git panel should contain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchSource {
+    /// Unstaged changes in the working tree (`git diff`).
+    Worktree,
+    /// Staged changes (`git diff --cached`).
+    Index,
+    /// The most recent commit, as a mailbox-format patch (`git format-patch -1 HEAD`).
+    HeadCommit,
+}
+
+impl PatchSource {
+    pub fn args(self) -> Vec<String> {
+        match self {
+            // `--binary` keeps the patch appliable when a binary file changed;
+            // without it `git apply` rejects the hunk with "no binary data".
+            Self::Worktree => vec!["diff".into(), "--binary".into()],
+            Self::Index => vec!["diff".into(), "--binary".into(), "--cached".into()],
+            Self::HeadCommit => vec![
+                "format-patch".into(),
+                "--binary".into(),
+                "--stdout".into(),
+                "-1".into(),
+                "HEAD".into(),
+            ],
+        }
+    }
+
+    /// Default file name offered in the save dialog.
+    pub fn suggested_file_name(self) -> &'static str {
+        match self {
+            Self::Worktree => "worktree.patch",
+            Self::Index => "staged.patch",
+            Self::HeadCommit => "head-commit.patch",
+        }
+    }
+}
+
 pub trait GitRepository: Send + Sync {
     /// Returns the contents of an entry in the repository's index, or None if there is no entry for the given path.
     ///
@@ -1015,6 +1105,19 @@ pub trait GitRepository: Send + Sync {
 
     /// Run git diff
     fn diff(&self, diff: DiffType) -> BoxFuture<'_, Result<String>>;
+
+    /// Runs one of [`ALLOWED_GIT_COMMANDS`] in the repository, handing back the
+    /// raw output rather than failing on a non-zero exit status.
+    ///
+    /// This is the single escape hatch behind the git panel's merge / hard
+    /// reset / patch operations, so that each of them costs one typed wrapper
+    /// on [`crate::repository::GitRepository`] instead of its own RPC message.
+    fn run_command(
+        &self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        env: Arc<HashMap<String, String>>,
+    ) -> BoxFuture<'_, Result<GitCommandOutput>>;
 
     fn diff_stat(
         &self,
@@ -2443,6 +2546,49 @@ impl GitRepository for RealGitRepository {
                     String::from_utf8_lossy(&output.stderr)
                 );
                 Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            })
+            .boxed()
+    }
+
+    fn run_command(
+        &self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        env: Arc<HashMap<String, String>>,
+    ) -> BoxFuture<'_, Result<GitCommandOutput>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let subcommand = args.first().context("no git subcommand given")?;
+                anyhow::ensure!(
+                    ALLOWED_GIT_COMMANDS.contains(&subcommand.as_str()),
+                    "unsupported git command: {subcommand}"
+                );
+
+                let git = git?;
+                let mut command = git.build_command(&args);
+                command.envs(env.iter());
+
+                let output = if let Some(stdin_contents) = stdin {
+                    let mut child = command
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()?;
+                    let mut child_stdin = child.stdin.take().context("git command has no stdin")?;
+                    child_stdin.write_all(stdin_contents.as_bytes()).await?;
+                    child_stdin.flush().await?;
+                    drop(child_stdin);
+                    child.output().await?
+                } else {
+                    command.output().await?
+                };
+
+                Ok(GitCommandOutput {
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    exit_code: output.status.code(),
+                })
             })
             .boxed()
     }
@@ -4967,6 +5113,267 @@ mod tests {
                 .to_string()
                 .contains("expected .git file to start with 'gitdir: '"),
             "unexpected error: {error:#}"
+        );
+    }
+
+    fn open_repository(dot_git_parent: &Path, cx: &mut TestAppContext) -> RealGitRepository {
+        RealGitRepository::new(
+            &dot_git_parent.join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .expect("failed to open repository")
+    }
+
+    #[gpui::test]
+    async fn test_run_command_rejects_arguments_that_are_not_a_known_subcommand(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let repository = open_repository(repo_dir.path(), cx);
+
+        // A leading `-c` would let a caller point git at an arbitrary program.
+        let error = repository
+            .run_command(
+                vec![
+                    "-c".into(),
+                    "core.pager=arbitrary-program".into(),
+                    "log".into(),
+                ],
+                None,
+                Arc::new(HashMap::default()),
+            )
+            .await
+            .expect_err("configuration arguments must be rejected");
+        assert!(
+            error.to_string().contains("unsupported git command"),
+            "unexpected error: {error:#}"
+        );
+
+        let error = repository
+            .run_command(vec!["log".into()], None, Arc::new(HashMap::default()))
+            .await
+            .expect_err("subcommands outside the allowlist must be rejected");
+        assert!(
+            error.to_string().contains("unsupported git command"),
+            "unexpected error: {error:#}"
+        );
+
+        let error = repository
+            .run_command(Vec::new(), None, Arc::new(HashMap::default()))
+            .await
+            .expect_err("an empty command must be rejected");
+        assert!(
+            error.to_string().contains("no git subcommand"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_create_and_remove_remote(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let repository = open_repository(repo_dir.path(), cx);
+
+        repository
+            .create_remote(
+                "upstream".to_string(),
+                "https://example.com/repo.git".to_string(),
+            )
+            .await
+            .unwrap();
+
+        let remotes = repository.get_all_remotes().await.unwrap();
+        assert_eq!(
+            remotes
+                .iter()
+                .map(|remote| remote.name.to_string())
+                .collect::<Vec<_>>(),
+            vec!["upstream".to_string()]
+        );
+        assert_eq!(
+            repository.remote_url("upstream").await.as_deref(),
+            Some("https://example.com/repo.git")
+        );
+
+        repository
+            .remove_remote("upstream".to_string())
+            .await
+            .unwrap();
+        assert!(repository.get_all_remotes().await.unwrap().is_empty());
+    }
+
+    #[gpui::test]
+    async fn test_merge_fast_forwards_the_current_branch(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        fs::write(repo_dir.path().join("file.txt"), "base\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "initial"]);
+        git_command(repo_dir.path(), ["switch", "-c", "feature"]);
+        fs::write(repo_dir.path().join("feature.txt"), "feature\n").unwrap();
+        git_command(repo_dir.path(), ["add", "feature.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "feature"]);
+        git_command(repo_dir.path(), ["switch", "main"]);
+
+        let repository = open_repository(repo_dir.path(), cx);
+        let output = repository
+            .run_command(
+                vec!["merge".into(), "feature".into()],
+                None,
+                Arc::new(test_commit_envs()),
+            )
+            .await
+            .unwrap();
+
+        assert!(output.succeeded(), "{}", output.failure_message());
+        assert!(repo_dir.path().join("feature.txt").exists());
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["rev-parse", "HEAD"]),
+            git_command_output(repo_dir.path(), ["rev-parse", "feature"])
+        );
+    }
+
+    #[gpui::test]
+    async fn test_merge_reports_conflicts_instead_of_erroring(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        fs::write(repo_dir.path().join("file.txt"), "base\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "initial"]);
+        git_command(repo_dir.path(), ["switch", "-c", "feature"]);
+        fs::write(repo_dir.path().join("file.txt"), "feature\n").unwrap();
+        git_command(repo_dir.path(), ["commit", "-am", "feature"]);
+        git_command(repo_dir.path(), ["switch", "main"]);
+        fs::write(repo_dir.path().join("file.txt"), "main\n").unwrap();
+        git_command(repo_dir.path(), ["commit", "-am", "main"]);
+
+        let repository = open_repository(repo_dir.path(), cx);
+        let output = repository
+            .run_command(
+                vec!["merge".into(), "feature".into()],
+                None,
+                Arc::new(test_commit_envs()),
+            )
+            .await
+            .expect("a conflicted merge must not be reported as a failed command");
+
+        assert!(!output.succeeded());
+        assert!(
+            output.stdout.contains("CONFLICT"),
+            "unexpected stdout: {}",
+            output.stdout
+        );
+    }
+
+    #[gpui::test]
+    async fn test_reset_hard_matches_the_remote_tracking_branch(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let (_remote_directory, clone_directory) =
+            clone_remote_repository_with_main_and_feature(temp_dir.path());
+
+        fs::write(clone_directory.join("file.txt"), "local commit\n").unwrap();
+        git_command(&clone_directory, ["commit", "-am", "local only"]);
+        fs::write(clone_directory.join("file.txt"), "uncommitted\n").unwrap();
+
+        let repository = open_repository(&clone_directory, cx);
+        let output = repository
+            .run_command(
+                vec!["reset".into(), "--hard".into(), "origin/main".into()],
+                None,
+                Arc::new(HashMap::default()),
+            )
+            .await
+            .unwrap();
+
+        assert!(output.succeeded(), "{}", output.failure_message());
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("file.txt")).unwrap(),
+            "main"
+        );
+        assert_eq!(
+            git_command_output(&clone_directory, ["rev-parse", "HEAD"]),
+            git_command_output(&clone_directory, ["rev-parse", "origin/main"])
+        );
+    }
+
+    #[gpui::test]
+    async fn test_patch_creation_and_application_round_trip(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let file_path = repo_dir.path().join("file.txt");
+        fs::write(&file_path, "base\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "initial"]);
+        fs::write(&file_path, "changed\n").unwrap();
+
+        let repository = open_repository(repo_dir.path(), cx);
+        let env = Arc::new(test_commit_envs());
+
+        let patch = repository
+            .run_command(PatchSource::Worktree.args(), None, env.clone())
+            .await
+            .unwrap();
+        assert!(patch.succeeded(), "{}", patch.failure_message());
+        assert!(!patch.stdout.trim().is_empty());
+
+        git_command(repo_dir.path(), ["checkout", "--", "file.txt"]);
+        assert_eq!(fs::read_to_string(&file_path).unwrap(), "base\n");
+
+        let applied = repository
+            .run_command(
+                vec!["apply".into()],
+                Some(patch.stdout.clone()),
+                env.clone(),
+            )
+            .await
+            .unwrap();
+        assert!(applied.succeeded(), "{}", applied.failure_message());
+        assert_eq!(fs::read_to_string(&file_path).unwrap(), "changed\n");
+
+        let head_patch = repository
+            .run_command(PatchSource::HeadCommit.args(), None, env.clone())
+            .await
+            .unwrap();
+        assert!(head_patch.succeeded(), "{}", head_patch.failure_message());
+        assert!(
+            head_patch.stdout.starts_with("From "),
+            "format-patch should produce a mailbox patch, got: {}",
+            &head_patch.stdout[..head_patch.stdout.len().min(80)]
+        );
+
+        let rejected = repository
+            .run_command(
+                vec!["apply".into()],
+                Some("this is not a patch\n".to_string()),
+                env,
+            )
+            .await
+            .expect("a rejected patch must not be reported as a failed command");
+        assert!(!rejected.succeeded());
+        assert!(
+            !rejected.stderr.trim().is_empty(),
+            "git's complaint must reach the caller"
         );
     }
 

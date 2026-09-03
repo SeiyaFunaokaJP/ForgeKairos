@@ -163,6 +163,19 @@ impl TerminalPanel {
                                             "タスクを実行",
                                             zed_actions::Spawn::modal().boxed_clone(),
                                         )
+                                        .separator()
+                                        .action(
+                                            "クイック接続…",
+                                            crate::session_tools::QuickConnect.boxed_clone(),
+                                        )
+                                        .action(
+                                            "マクロを実行…",
+                                            crate::session_tools::RunMacro.boxed_clone(),
+                                        )
+                                        .action(
+                                            "マクロの編集…",
+                                            crate::session_tools::EditMacros.boxed_clone(),
+                                        )
                                 });
 
                                 Some(menu)
@@ -224,6 +237,22 @@ impl TerminalPanel {
                 (None, right_children)
             });
         });
+    }
+
+    /// The view hosting `terminal`, if it lives in this panel. Used after
+    /// spawning a quick-connect terminal, whose spawn only hands back the
+    /// `Terminal` itself.
+    pub fn terminal_view_for(
+        &self,
+        terminal: &Entity<Terminal>,
+        cx: &App,
+    ) -> Option<Entity<TerminalView>> {
+        self.center.panes().into_iter().find_map(|pane| {
+            pane.read(cx).items().find_map(|item| {
+                let view = item.downcast::<TerminalView>()?;
+                (view.read(cx).terminal() == terminal).then_some(view)
+            })
+        })
     }
 
     fn serialization_key(workspace: &Workspace) -> Option<String> {

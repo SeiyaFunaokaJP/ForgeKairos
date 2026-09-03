@@ -1,4 +1,5 @@
 mod persistence;
+pub mod session_tools;
 pub mod terminal_element;
 pub mod terminal_panel;
 mod terminal_path_like_target;
@@ -36,6 +37,8 @@ use terminal::{
     Clear, Copy, Event, HoveredWord, MaybeNavigationTarget, Modes, Paste, PasteText, Point, Range,
     ScrollLineDown, ScrollLineUp, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop,
     Search, ShowCharacterPalette, TaskState, TaskStatus, Terminal, TerminalBounds, ToggleViMode,
+    session_log,
+    terminal_macro::{MacroProgress, TerminalMacro},
     terminal_settings::{CursorShape, TerminalSettings},
 };
 use terminal_element::TerminalElement;
@@ -96,6 +99,14 @@ actions!(
     [
         /// Reruns the last executed task in the terminal.
         RerunTask,
+        /// ターミナルの出力をファイルに記録し始めます (保存先を選びます)。
+        StartSessionLog,
+        /// ターミナルの出力の記録を止めます。
+        StopSessionLog,
+        /// 記録中のログファイルをファイルマネージャーで表示します。
+        OpenSessionLog,
+        /// 実行中のマクロを中止します。
+        CancelMacro,
     ]
 );
 
@@ -106,6 +117,7 @@ pub struct RenameTerminal;
 
 pub fn init(cx: &mut App) {
     terminal_panel::init(cx);
+    session_tools::init(cx);
 
     register_serializable_item::<TerminalView>(cx);
 
@@ -155,8 +167,22 @@ pub struct TerminalView {
     self_handle: WeakEntity<Self>,
     rename_editor: Option<Entity<Editor>>,
     rename_editor_subscription: Option<Subscription>,
+    macro_run: Option<MacroRun>,
+    macro_status: Option<MacroStatus>,
     _subscriptions: Vec<Subscription>,
     _terminal_subscriptions: Vec<Subscription>,
+}
+
+struct MacroRun {
+    name: SharedString,
+    progress: MacroProgress,
+    /// Dropping this cancels the run, so it must stay owned by the view.
+    _task: Task<()>,
+}
+
+enum MacroStatus {
+    Finished(SharedString),
+    Failed(SharedString),
 }
 
 #[derive(Default, Clone)]
@@ -277,7 +303,7 @@ impl TerminalView {
             cx.observe_global::<SettingsStore>(Self::settings_changed),
         ];
 
-        Self {
+        let mut this = Self {
             terminal,
             workspace: workspace_handle,
             project,
@@ -302,9 +328,20 @@ impl TerminalView {
             self_handle: cx.entity().downgrade(),
             rename_editor: None,
             rename_editor_subscription: None,
+            macro_run: None,
+            macro_status: None,
             _subscriptions: subscriptions,
             _terminal_subscriptions: terminal_subscriptions,
+        };
+
+        if TerminalSettings::get_global(cx).session_log.auto
+            && this.terminal.read(cx).is_pty()
+            && let Err(error) = this.start_session_log_at_default_path(None, cx)
+        {
+            log::warn!("could not start the automatic terminal session log: {error:#}");
         }
+
+        this
     }
 
     /// Enable 'embedded' mode where the terminal displays the full content with an optional limit of lines.
@@ -316,6 +353,12 @@ impl TerminalView {
         self.mode = TerminalMode::Embedded {
             max_lines_when_unfocused,
         };
+        // `new` cannot tell an embedded terminal from a standalone one, so an
+        // automatic session log started there is undone once the host declares
+        // itself; the agent's terminals are not sessions the user is running.
+        self.terminal.update(cx, |terminal, cx| {
+            terminal.stop_session_log(cx);
+        });
         cx.notify();
     }
 
@@ -514,6 +557,257 @@ impl TerminalView {
         cx.emit(Event::Wakeup);
     }
 
+    pub fn session_log_path(&self, cx: &App) -> Option<PathBuf> {
+        self.terminal
+            .read(cx)
+            .session_log_path()
+            .map(Path::to_path_buf)
+    }
+
+    /// Builds the path a new log would take from `terminal.session_log`.
+    fn default_session_log_path(&self, host: Option<&str>, cx: &App) -> PathBuf {
+        let settings = &TerminalSettings::get_global(cx).session_log;
+        let title = self.terminal.read(cx).title(false);
+        session_log::default_log_path(settings, &title, host)
+    }
+
+    /// Starts logging without asking, used by `terminal.session_log.auto` and
+    /// by quick connect.
+    pub fn start_session_log_at_default_path(
+        &mut self,
+        host: Option<&str>,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<()> {
+        let path = self.default_session_log_path(host, cx);
+        let options = TerminalSettings::get_global(cx).session_log.options();
+        self.terminal.update(cx, |terminal, cx| {
+            terminal.start_session_log(path, options, cx)
+        })
+    }
+
+    fn start_session_log(
+        &mut self,
+        _: &StartSessionLog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let suggested = self.default_session_log_path(None, cx);
+        let directory = suggested
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        let file_name = suggested
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        let options = TerminalSettings::get_global(cx).session_log.options();
+        let prompt = cx.prompt_for_new_path(&directory, file_name.as_deref());
+
+        cx.spawn_in(window, async move |this, cx| {
+            let path = match prompt.await {
+                Ok(Ok(Some(path))) => path,
+                Ok(Ok(None)) => return,
+                Ok(Err(error)) => {
+                    this.update(cx, |this, cx| {
+                        this.report_error(format!("保存先を選べませんでした: {error}"), cx);
+                    })
+                    .ok();
+                    return;
+                }
+                Err(_) => return,
+            };
+            this.update(cx, |this, cx| {
+                let started = this.terminal.update(cx, |terminal, cx| {
+                    terminal.start_session_log(path, options, cx)
+                });
+                if let Err(error) = started {
+                    this.report_error(format!("ログを開始できませんでした: {error}"), cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn stop_session_log(&mut self, _: &StopSessionLog, _: &mut Window, cx: &mut Context<Self>) {
+        self.terminal.update(cx, |terminal, cx| {
+            terminal.stop_session_log(cx);
+        });
+        cx.notify();
+    }
+
+    fn open_session_log(&mut self, _: &OpenSessionLog, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = self.session_log_path(cx) {
+            cx.reveal_path(&path);
+        }
+    }
+
+    /// Starts `terminal_macro` against this terminal, replacing any run that is
+    /// already in flight.
+    pub fn run_macro(&mut self, terminal_macro: TerminalMacro, cx: &mut Context<Self>) {
+        let name = SharedString::from(terminal_macro.name.clone());
+        let step_count = terminal_macro.steps.len();
+        let view = cx.weak_entity();
+        let run = terminal::terminal_macro::run_macro(
+            self.terminal.clone(),
+            terminal_macro,
+            {
+                move |progress, cx| {
+                    // A closed terminal view simply has no progress to show.
+                    view.update(cx, |this, cx| {
+                        if let Some(run) = this.macro_run.as_mut() {
+                            run.progress = progress;
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            },
+            cx,
+        );
+
+        let task = cx.spawn({
+            let name = name.clone();
+            async move |this, cx| {
+                let result = run.await;
+                this.update(cx, |this, cx| {
+                    this.macro_run = None;
+                    this.macro_status = Some(match result {
+                        Ok(()) => {
+                            MacroStatus::Finished(format!("マクロ「{name}」が完了しました").into())
+                        }
+                        Err(error) => {
+                            MacroStatus::Failed(format!("マクロ「{name}」: {error}").into())
+                        }
+                    });
+                    cx.notify();
+                })
+                .ok();
+            }
+        });
+
+        self.macro_status = None;
+        self.macro_run = Some(MacroRun {
+            name,
+            progress: MacroProgress {
+                step_index: 0,
+                step_count,
+            },
+            _task: task,
+        });
+        cx.notify();
+    }
+
+    fn cancel_macro(&mut self, _: &CancelMacro, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(run) = self.macro_run.take() {
+            self.macro_status = Some(MacroStatus::Failed(
+                format!("マクロ「{}」を中止しました", run.name).into(),
+            ));
+            cx.notify();
+        }
+    }
+
+    fn report_error(&mut self, message: String, cx: &mut Context<Self>) {
+        if self
+            .workspace
+            .update(cx, |workspace, cx| {
+                workspace.show_error(message.clone(), cx)
+            })
+            .is_err()
+        {
+            log::error!("{message}");
+        }
+    }
+
+    /// The strip above the terminal that shows the recording indicator and the
+    /// progress of a running macro. Absent when neither applies.
+    fn render_session_status_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let log_path = self.session_log_path(cx);
+        if log_path.is_none() && self.macro_run.is_none() && self.macro_status.is_none() {
+            return None;
+        }
+
+        let colors = cx.theme().colors();
+        let mut bar = h_flex()
+            .w_full()
+            .flex_none()
+            .gap_2()
+            .px_2()
+            .py_0p5()
+            .bg(colors.title_bar_background)
+            .border_b_1()
+            .border_color(colors.border_variant);
+
+        if let Some(path) = log_path {
+            let display_path = path.display().to_string();
+            let file_name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| display_path.clone());
+            bar = bar
+                .child(
+                    Icon::new(IconName::Circle)
+                        .size(IconSize::XSmall)
+                        .color(Color::Error),
+                )
+                .child(
+                    Button::new("session-log-path", format!("記録中: {file_name}"))
+                        .label_size(LabelSize::Small)
+                        .tooltip(Tooltip::text(format!(
+                            "{display_path}\nクリックするとフォルダーを開きます。"
+                        )))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.open_session_log(&OpenSessionLog, window, cx);
+                        })),
+                )
+                .child(
+                    Button::new("session-log-stop", "記録を停止")
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.stop_session_log(&StopSessionLog, window, cx);
+                        })),
+                );
+        }
+
+        if let Some(run) = self.macro_run.as_ref() {
+            bar = bar
+                .child(Divider::vertical())
+                .child(
+                    Label::new(format!(
+                        "マクロ「{}」実行中 ({}/{})",
+                        run.name,
+                        run.progress.step_index + 1,
+                        run.progress.step_count
+                    ))
+                    .size(LabelSize::Small),
+                )
+                .child(
+                    Button::new("macro-cancel", "中止")
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.cancel_macro(&CancelMacro, window, cx);
+                        })),
+                );
+        } else if let Some(status) = self.macro_status.as_ref() {
+            let (message, color) = match status {
+                MacroStatus::Finished(message) => (message.clone(), Color::Success),
+                MacroStatus::Failed(message) => (message.clone(), Color::Error),
+            };
+            bar = bar
+                .child(Label::new(message).size(LabelSize::Small).color(color))
+                .child(
+                    Button::new("macro-status-dismiss", "閉じる")
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.macro_status = None;
+                            cx.notify();
+                        })),
+                );
+        }
+
+        Some(bar.into_any_element())
+    }
+
     pub fn deploy_context_menu(
         &mut self,
         position: GpuiPoint<Pixels>,
@@ -526,6 +820,7 @@ impl TerminalView {
             .upgrade()
             .and_then(|workspace| workspace.read(cx).panel::<TerminalPanel>(cx))
             .is_some_and(|terminal_panel| terminal_panel.read(cx).assistant_enabled());
+        let recording = self.session_log_path(cx).is_some();
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
@@ -549,6 +844,17 @@ impl TerminalView {
                     !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| menu.action("画面を消去", Box::new(Clear)),
                 )
+                .when(self.shows_workspace_actions(), |menu| {
+                    menu.separator()
+                        .when(!recording, |menu| {
+                            menu.action("ログの記録を開始…", Box::new(StartSessionLog))
+                        })
+                        .when(recording, |menu| {
+                            menu.action("ログの記録を停止", Box::new(StopSessionLog))
+                                .action("ログファイルの場所を開く", Box::new(OpenSessionLog))
+                        })
+                        .action("マクロを実行…", Box::new(session_tools::RunMacro))
+                })
                 .when(
                     assistant_enabled && !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| {
@@ -1226,6 +1532,7 @@ fn subscribe_for_terminal_events(
                     ),
                 },
                 Event::BreadcrumbsChanged => cx.emit(ItemEvent::UpdateBreadcrumbs),
+                Event::SessionLogChanged => cx.notify(),
                 Event::CloseTerminal => cx.emit(ItemEvent::CloseItem),
                 Event::SelectionsChanged => {
                     window.invalidate_character_coordinates();
@@ -1368,6 +1675,10 @@ impl Render for TerminalView {
             .on_action(cx.listener(TerminalView::select_all))
             .on_action(cx.listener(TerminalView::rerun_task))
             .on_action(cx.listener(TerminalView::rename_terminal))
+            .on_action(cx.listener(TerminalView::start_session_log))
+            .on_action(cx.listener(TerminalView::stop_session_log))
+            .on_action(cx.listener(TerminalView::open_session_log))
+            .on_action(cx.listener(TerminalView::cancel_macro))
             .on_key_down(cx.listener(Self::key_down))
             .on_mouse_down(
                 MouseButton::Right,
@@ -1393,35 +1704,42 @@ impl Render for TerminalView {
                 }),
             )
             .child(
-                // TODO: Oddly this wrapper div is needed for TerminalElement to not steal events from the context menu
-                div()
-                    .id("terminal-view-container")
+                v_flex()
                     .size_full()
-                    .bg(cx.theme().colors().editor_background)
-                    .child(TerminalElement::new(
-                        terminal_handle,
-                        terminal_view_handle,
-                        self.workspace.clone(),
-                        self.focus_handle.clone(),
-                        focused,
-                        self.should_show_cursor(focused, cx),
-                        self.block_below_cursor.clone(),
-                        self.mode.clone(),
-                    ))
-                    .when(self.content_mode(window, cx).is_scrollable(), |div| {
-                        let colors = cx.theme().colors();
-                        div.custom_scrollbars(
-                            Scrollbars::for_settings::<TerminalScrollbarSettingsWrapper>()
-                                .show_along(ScrollAxes::Vertical)
-                                .with_stable_track_along(
-                                    ScrollAxes::Vertical,
-                                    colors.editor_background,
+                    .children(self.render_session_status_bar(cx))
+                    .child(
+                        // TODO: Oddly this wrapper div is needed for TerminalElement to not steal events from the context menu
+                        div()
+                            .id("terminal-view-container")
+                            .w_full()
+                            .flex_1()
+                            .min_h_0()
+                            .bg(cx.theme().colors().editor_background)
+                            .child(TerminalElement::new(
+                                terminal_handle,
+                                terminal_view_handle,
+                                self.workspace.clone(),
+                                self.focus_handle.clone(),
+                                focused,
+                                self.should_show_cursor(focused, cx),
+                                self.block_below_cursor.clone(),
+                                self.mode.clone(),
+                            ))
+                            .when(self.content_mode(window, cx).is_scrollable(), |div| {
+                                let colors = cx.theme().colors();
+                                div.custom_scrollbars(
+                                    Scrollbars::for_settings::<TerminalScrollbarSettingsWrapper>()
+                                        .show_along(ScrollAxes::Vertical)
+                                        .with_stable_track_along(
+                                            ScrollAxes::Vertical,
+                                            colors.editor_background,
+                                        )
+                                        .tracked_scroll_handle(&self.scroll_handle),
+                                    window,
+                                    cx,
                                 )
-                                .tracked_scroll_handle(&self.scroll_handle),
-                            window,
-                            cx,
-                        )
-                    }),
+                            }),
+                    ),
             )
             .children(self.context_menu.as_ref().map(|(menu, position, _)| {
                 deferred(
@@ -1559,6 +1877,13 @@ impl Item for TerminalView {
                         )
                     }),
             )
+            .when(terminal.session_log_path().is_some(), |this| {
+                this.child(
+                    Icon::new(IconName::Circle)
+                        .size(IconSize::XSmall)
+                        .color(Color::Error),
+                )
+            })
             .into_any()
     }
 
@@ -1728,11 +2053,20 @@ impl Item for TerminalView {
         cx: &mut Context<Self>,
     ) -> Vec<(SharedString, Box<dyn gpui::Action>)> {
         let terminal = self.terminal.read(cx);
+        // NOTE: `workspace::pane` compares the "名前の変更" label to decide
+        // where to place this entry; leave that string alone.
+        let mut actions: Vec<(SharedString, Box<dyn gpui::Action>)> = Vec::new();
         if terminal.task().is_none() {
-            vec![("名前の変更".into(), Box::new(RenameTerminal))]
-        } else {
-            Vec::new()
+            actions.push(("名前の変更".into(), Box::new(RenameTerminal)));
         }
+        if terminal.session_log_path().is_some() {
+            actions.push(("ログの記録を停止".into(), Box::new(StopSessionLog)));
+            actions.push(("ログファイルの場所を開く".into(), Box::new(OpenSessionLog)));
+        } else {
+            actions.push(("ログの記録を開始…".into(), Box::new(StartSessionLog)));
+        }
+        actions.push(("マクロを実行…".into(), Box::new(session_tools::RunMacro)));
+        actions
     }
 
     fn buffer_kind(&self, _: &App) -> workspace::item::ItemBufferKind {

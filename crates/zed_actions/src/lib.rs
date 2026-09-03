@@ -883,6 +883,23 @@ pub mod wsl_actions {
     }
 }
 
+/// Built-in browser panel actions that lower crates (the editor context menu)
+/// need to reference; the panel itself lives in `crates/browser_panel`
+/// (`docs/jp-enhance/DESIGN.md` §4.19, ADR-F19).
+pub mod browser {
+    use gpui::actions;
+
+    actions!(
+        browser_panel,
+        [
+            /// 選択テキストを Web で検索します。
+            SearchSelection,
+            /// 選択テキストを Copilot に聞きます。
+            AskCopilot,
+        ]
+    );
+}
+
 pub mod preview {
     pub mod markdown {
         use gpui::actions;

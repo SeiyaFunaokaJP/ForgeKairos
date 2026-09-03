@@ -8,21 +8,22 @@ use gpui::{App, AsyncApp, Context, Entity, Task, TaskExt};
 use http_client::{CustomHeaders, HttpClient};
 use language_model::{
     ApiKeyState, AuthenticateError, DisabledReason, EnvVar, IconOrSvg, InlineDescription,
-    LanguageModel, LanguageModelCompletionError, LanguageModelCompletionEvent, LanguageModelId,
-    LanguageModelName, LanguageModelProvider, LanguageModelProviderId, LanguageModelProviderName,
-    LanguageModelProviderState, LanguageModelRequest, LanguageModelRequestTool,
-    LanguageModelToolChoice, LanguageModelToolUse, LanguageModelToolUseId, MessageContent,
-    ProviderSettingsView, RateLimiter, Role, StopReason, SubPageProviderSettings, TokenUsage,
-    env_var,
+    LanguageModel, LanguageModelCompletionError, LanguageModelCompletionEvent,
+    LanguageModelEffortLevel, LanguageModelId, LanguageModelName, LanguageModelProvider,
+    LanguageModelProviderId, LanguageModelProviderName, LanguageModelProviderState,
+    LanguageModelRequest, LanguageModelRequestTool, LanguageModelToolChoice, LanguageModelToolUse,
+    LanguageModelToolUseId, MessageContent, ProviderSettingsView, RateLimiter, ReasoningEffort,
+    Role, StopReason, SubPageProviderSettings, TokenUsage, env_var,
 };
 use menu;
 use ollama::{
     ChatMessage, ChatOptions, ChatRequest, ChatResponseDelta, OLLAMA_API_URL, OllamaFunctionCall,
-    OllamaFunctionTool, OllamaToolCall, get_models, show_model, stream_chat_completion,
+    OllamaFunctionTool, OllamaToolCall, ThinkValue, get_models, show_model, stream_chat_completion,
 };
 pub use settings::OllamaAvailableModel as AvailableModel;
 use settings::{Settings, SettingsStore, update_settings_file};
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use ui::{
@@ -359,6 +360,44 @@ pub struct OllamaLanguageModel {
     disabled: Option<DisabledReason>,
 }
 
+/// Ollama で選べる思考の深さ。`think` に強度文字列を受け付けるモデルにだけ存在する。
+/// 表示名は標準の [`ReasoningEffort`] と一致する値だけ日本語化され、それ以外
+/// (ユーザーが `thinking_levels` に書いた独自の値) は原文のまま出る。
+fn thinking_effort_levels(model: &ollama::Model) -> Vec<LanguageModelEffortLevel> {
+    if !model.supports_thinking.unwrap_or(false) {
+        return Vec::new();
+    }
+
+    let Some(levels) = model.thinking_levels.as_ref() else {
+        return Vec::new();
+    };
+
+    let default_level = levels
+        .iter()
+        .find(|level| level.as_str() == ReasoningEffort::Medium.value())
+        .or_else(|| levels.first());
+
+    levels
+        .iter()
+        .map(|level| LanguageModelEffortLevel {
+            name: ReasoningEffort::from_str(level)
+                .map_or_else(|_| level.clone().into(), |effort| effort.label().into()),
+            value: level.clone().into(),
+            is_default: default_level.is_some_and(|default| default == level),
+        })
+        .collect()
+}
+
+fn selected_thinking_level(model: &ollama::Model, effort: Option<&str>) -> Option<String> {
+    let effort = effort?;
+    model
+        .thinking_levels
+        .as_ref()?
+        .iter()
+        .find(|level| level.as_str() == effort)
+        .cloned()
+}
+
 impl OllamaLanguageModel {
     fn to_ollama_request(&self, request: LanguageModelRequest) -> Result<ChatRequest> {
         if request.contains_custom_tool_input() {
@@ -476,10 +515,15 @@ impl OllamaLanguageModel {
                 temperature: request.temperature.or(Some(1.0)),
                 ..Default::default()
             }),
-            think: self
-                .model
-                .supports_thinking
-                .map(|supports_thinking| supports_thinking && request.thinking_allowed),
+            think: self.model.supports_thinking.map(|supports_thinking| {
+                let thinking = supports_thinking && request.thinking_allowed;
+                match selected_thinking_level(&self.model, request.thinking_effort.as_deref())
+                    .filter(|_| thinking)
+                {
+                    Some(level) => ThinkValue::Level(level),
+                    None => ThinkValue::Enabled(thinking),
+                }
+            }),
             tools: if self.model.supports_tools.unwrap_or(false) {
                 request
                     .tools
@@ -520,6 +564,10 @@ impl LanguageModel for OllamaLanguageModel {
 
     fn supports_thinking(&self) -> bool {
         self.model.supports_thinking.unwrap_or(false)
+    }
+
+    fn supported_effort_levels(&self) -> Vec<LanguageModelEffortLevel> {
+        thinking_effort_levels(&self.model)
     }
 
     fn supports_tool_choice(&self, choice: LanguageModelToolChoice) -> bool {
@@ -1134,6 +1182,10 @@ fn merge_settings_into_models(
             model.supports_tools = setting_model.supports_tools;
             model.supports_vision = setting_model.supports_images;
             model.supports_thinking = setting_model.supports_thinking;
+            model.thinking_levels = setting_model
+                .thinking_levels
+                .clone()
+                .or_else(|| ollama::default_thinking_levels(&setting_model.name));
         } else {
             models.insert(
                 setting_model.name.clone(),
@@ -1145,6 +1197,10 @@ fn merge_settings_into_models(
                     supports_tools: setting_model.supports_tools,
                     supports_vision: setting_model.supports_images,
                     supports_thinking: setting_model.supports_thinking,
+                    thinking_levels: setting_model
+                        .thinking_levels
+                        .clone()
+                        .or_else(|| ollama::default_thinking_levels(&setting_model.name)),
                     disabled: None,
                 },
             );
@@ -1191,6 +1247,7 @@ mod tests {
                 supports_tools: None,
                 supports_vision: None,
                 supports_thinking: None,
+                thinking_levels: None,
                 disabled: None,
             },
         );
@@ -1204,6 +1261,7 @@ mod tests {
                 supports_tools: None,
                 supports_vision: None,
                 supports_thinking: None,
+                thinking_levels: None,
                 disabled: None,
             },
         );
@@ -1217,6 +1275,7 @@ mod tests {
                 supports_tools: Some(true),
                 supports_images: None,
                 supports_thinking: None,
+                thinking_levels: None,
             },
             AvailableModel {
                 name: "qwen2.5-coder:3b".to_string(),
@@ -1226,6 +1285,7 @@ mod tests {
                 supports_tools: Some(true),
                 supports_images: None,
                 supports_thinking: None,
+                thinking_levels: None,
             },
         ];
 
@@ -1249,5 +1309,131 @@ mod tests {
             "3b model should have its own display_name"
         );
         assert_eq!(model_3b.max_tokens, 6000);
+    }
+
+    /// API から発見したモデル (設定で上書きしていない状態)。
+    fn discovered_model(name: &str) -> ollama::Model {
+        ollama::Model::new(name, None, None, None, Some(true))
+    }
+
+    /// `thinking_levels` を設定で明示したモデル。
+    fn model_with_levels(name: &str, levels: &[&str]) -> ollama::Model {
+        ollama::Model {
+            thinking_levels: Some(levels.iter().map(|level| (*level).to_owned()).collect()),
+            ..discovered_model(name)
+        }
+    }
+
+    #[test]
+    fn test_effort_levels_for_thinking_level_models() {
+        let model = discovered_model("gpt-oss:20b");
+        let levels = thinking_effort_levels(&model);
+        assert_eq!(
+            levels
+                .iter()
+                .map(|level| level.value.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["low", "medium", "high"]
+        );
+        assert_eq!(
+            levels
+                .iter()
+                .map(|level| level.display_name())
+                .collect::<Vec<_>>(),
+            vec!["低", "中", "高"]
+        );
+        assert_eq!(
+            levels
+                .iter()
+                .find(|level| level.is_default)
+                .map(|level| level.value.clone()),
+            Some("medium".into())
+        );
+    }
+
+    #[test]
+    fn test_effort_levels_from_settings_and_off_switches() {
+        let explicit = model_with_levels("qwen3:8b", &["low", "ultra"]);
+        let levels = thinking_effort_levels(&explicit);
+        assert_eq!(
+            levels
+                .iter()
+                .map(|level| (level.value.as_ref(), level.display_name(), level.is_default))
+                .collect::<Vec<_>>(),
+            vec![("low", "低".into(), true), ("ultra", "ultra".into(), false)],
+            "レベルに medium が無ければ先頭が既定になり、独自レベルの表示名は原文のまま"
+        );
+
+        assert!(
+            thinking_effort_levels(&discovered_model("qwen3:8b")).is_empty(),
+            "レベル非対応のモデルはオン/オフのみ"
+        );
+
+        let not_thinking = ollama::Model {
+            supports_thinking: Some(false),
+            ..discovered_model("gpt-oss:20b")
+        };
+        assert!(
+            thinking_effort_levels(&not_thinking).is_empty(),
+            "思考自体が無効なモデルにレベルを出さない"
+        );
+    }
+
+    #[test]
+    fn test_settings_thinking_levels_reach_the_model() {
+        let mut models: HashMap<String, ollama::Model> = HashMap::default();
+        let available_models = vec![
+            AvailableModel {
+                name: "gpt-oss:20b".to_string(),
+                display_name: None,
+                max_tokens: 4096,
+                keep_alive: None,
+                supports_tools: Some(true),
+                supports_images: None,
+                supports_thinking: Some(true),
+                thinking_levels: None,
+            },
+            AvailableModel {
+                name: "qwen3:8b".to_string(),
+                display_name: None,
+                max_tokens: 4096,
+                keep_alive: None,
+                supports_tools: Some(true),
+                supports_images: None,
+                supports_thinking: Some(true),
+                thinking_levels: Some(vec!["low".to_string(), "high".to_string()]),
+            },
+        ];
+
+        merge_settings_into_models(&mut models, &available_models, None);
+
+        assert_eq!(
+            models
+                .get("gpt-oss:20b")
+                .and_then(|model| model.thinking_levels.clone()),
+            ollama::default_thinking_levels("gpt-oss:20b"),
+            "gpt-oss は設定が無くても自動検出する"
+        );
+        assert_eq!(
+            models
+                .get("qwen3:8b")
+                .and_then(|model| model.thinking_levels.clone()),
+            Some(vec!["low".to_string(), "high".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_selected_thinking_level_ignores_unsupported_values() {
+        let model = discovered_model("gpt-oss:20b");
+        assert_eq!(
+            selected_thinking_level(&model, Some("high")),
+            Some("high".to_string())
+        );
+        assert_eq!(selected_thinking_level(&model, Some("xhigh")), None);
+        assert_eq!(selected_thinking_level(&model, None), None);
+        assert_eq!(
+            selected_thinking_level(&discovered_model("qwen3:8b"), Some("high")),
+            None
+        );
     }
 }

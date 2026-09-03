@@ -136,8 +136,13 @@ pub fn test_settings() -> &'static str {
         // absence changes every layout measurement - so opt back in here rather
         // than in each crate's `init_test`. Tests that care about the off state
         // set it themselves.
+        // `agent.sidebar_enabled` rides along for the same reason: this fork
+        // hides the window-wide threads sidebar by default (the agent panel has
+        // its own history), but `multi_workspace_enabled` gates on it, so
+        // leaving it off would change every layout measurement upstream tests
+        // make.
         util::merge_non_null_json_value_into(
-            serde_json::json!({ "agent": { "enabled": true } }),
+            serde_json::json!({ "agent": { "enabled": true, "sidebar_enabled": true } }),
             &mut value,
         );
         // Same story for telemetry: this fork ships it off (F2-1), but

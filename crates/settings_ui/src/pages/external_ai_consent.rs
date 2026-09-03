@@ -28,6 +28,7 @@ use crate::pages::network_allowlist;
 const EDIT_PREDICTION_PREFIX: &str = "edit_prediction:";
 
 /// One provider the user has to opt into before it can be configured.
+#[derive(Clone)]
 pub(crate) struct ConsentTarget {
     /// Value stored in `acknowledged_external_ai_providers`.
     pub key: SharedString,
@@ -228,6 +229,155 @@ fn set_acknowledged(key: SharedString, acknowledged: bool, cx: &mut App) {
     settings::update_settings_file(fs, cx, move |settings, _| {
         apply_acknowledgement(settings, &key, acknowledged);
     });
+}
+
+/// Withdraws consent *and* closes the egress the consent opened.
+///
+/// Adding a host and consenting were two separate presses (the checkbox and
+/// 「許可リストに追加」), so it would be defensible to make removing it two as
+/// well — but that left the allowlist quietly holding a provider's hosts after
+/// the user believed they had revoked it, with no control anywhere on the card
+/// to take them back out. Revoking therefore does both, and says what it
+/// removed; hosts another still-acknowledged provider needs are kept and named,
+/// so the note is never a claim the file does not back up.
+fn revoke(
+    settings_window: &mut SettingsWindow,
+    key: SharedString,
+    hosts: &[SharedString],
+    cx: &mut Context<SettingsWindow>,
+) {
+    set_acknowledged(key.clone(), false, cx);
+    release_hosts(settings_window, &key, hosts, cx);
+    cx.notify();
+}
+
+/// Takes this provider's hosts back out of `network_allowlist.json`, keeping
+/// the ones another acknowledged provider still needs, and records what
+/// happened for the block the button was pressed in.
+///
+/// Only entries naming a host outright are removed — see
+/// [`NetworkAllowlistState::lists_host`] — so a broader `*.corp.example` the
+/// user wrote for their own reasons is never collateral damage.
+fn release_hosts(
+    settings_window: &mut SettingsWindow,
+    key: &SharedString,
+    hosts: &[SharedString],
+    cx: &mut Context<SettingsWindow>,
+) {
+    let still_needed = hosts_needed_by_other_acknowledged_providers(key, cx);
+    let (release, kept) = hosts_to_release(
+        hosts,
+        |host| settings_window.network_allowlist.lists_host(host),
+        &still_needed,
+    );
+
+    if release.is_empty() {
+        if kept.is_empty() {
+            return;
+        }
+        network_allowlist::set_consent_notice(
+            settings_window,
+            (key.clone(), kept_notice(&kept)),
+            cx,
+        );
+        return;
+    }
+
+    let mut notice = format!("許可リストから削除しました: {}", joined(&release));
+    if !kept.is_empty() {
+        notice.push_str(&format!("。{}", kept_notice(&kept)));
+    }
+    network_allowlist::remove_allowed_hosts(
+        settings_window,
+        &release,
+        (key.clone(), notice.into()),
+        cx,
+    );
+}
+
+fn joined(hosts: &[SharedString]) -> String {
+    hosts
+        .iter()
+        .map(SharedString::to_string)
+        .collect::<Vec<_>>()
+        .join("、")
+}
+
+fn kept_notice(kept: &[SharedString]) -> SharedString {
+    format!(
+        "他の承諾済みプロバイダーが使用しているため、次のホストは残しました: {}",
+        joined(kept)
+    )
+    .into()
+}
+
+/// Splits `hosts` into the ones to drop from the allowlist and the ones to keep.
+///
+/// A host is dropped when it is registered as an entry of its own and no other
+/// acknowledged provider needs it. `is_registered` is
+/// [`NetworkAllowlistState::lists_host`] in production; taking it as a closure
+/// keeps this decision testable without a settings window.
+fn hosts_to_release(
+    hosts: &[SharedString],
+    is_registered: impl Fn(&str) -> bool,
+    still_needed: &[SharedString],
+) -> (Vec<SharedString>, Vec<SharedString>) {
+    let canonical = |host: &str| {
+        http_client::HostPattern::parse(host)
+            .ok()
+            .map(|pattern| pattern.to_string())
+    };
+    let still_needed: Vec<String> = still_needed
+        .iter()
+        .filter_map(|host| canonical(host.as_ref()))
+        .collect();
+
+    let mut release = Vec::new();
+    let mut kept = Vec::new();
+    for host in hosts {
+        if !is_registered(host.as_ref()) {
+            continue;
+        }
+        let is_needed = canonical(host.as_ref()).is_some_and(|host| still_needed.contains(&host));
+        if is_needed {
+            if !kept.contains(host) {
+                kept.push(host.clone());
+            }
+        } else if !release.contains(host) {
+            release.push(host.clone());
+        }
+    }
+    (release, kept)
+}
+
+/// The union of the hosts every acknowledged provider *other than* `key` needs.
+///
+/// Providers share hosts — `github.com` belongs to both Copilot surfaces,
+/// `zed.dev` to Zed Cloud's chat and edit prediction — so revoking one must not
+/// close the egress another one is still relying on.
+fn hosts_needed_by_other_acknowledged_providers(key: &SharedString, cx: &App) -> Vec<SharedString> {
+    let mut hosts = Vec::new();
+    for other in acknowledged_provider_keys(cx) {
+        if &other == key {
+            continue;
+        }
+        if let Some(target) = target_for_acknowledged_key(&other, cx) {
+            hosts.extend(target.hosts);
+        }
+    }
+    hosts
+}
+
+/// The consent target behind a key stored in
+/// `acknowledged_external_ai_providers`, so that a surface holding only the key
+/// — the acknowledged-providers list — can still say which hosts it opened.
+fn target_for_acknowledged_key(key: &SharedString, cx: &App) -> Option<ConsentTarget> {
+    if let Some(id) = key.as_ref().strip_prefix(EDIT_PREDICTION_PREFIX) {
+        return super::edit_prediction_provider_setup::edit_prediction_consent_targets(cx)
+            .into_iter()
+            .find(|target| target.key.as_ref().strip_prefix(EDIT_PREDICTION_PREFIX) == Some(id));
+    }
+    llm_provider_target(key, display_name_for_acknowledged_key(key, cx), cx)
 }
 
 /// Records consent as part of a settings update the caller is already making,
@@ -448,9 +598,15 @@ pub(crate) fn render_warning_content(
         .into_any_element()
 }
 
-/// The hosts this provider needs in `network_allowlist.json`, with a button
-/// that adds the missing ones. Declining is simply not pressing it: egress stays
-/// closed and the provider will fail to connect, which is the intended default.
+/// The hosts this provider needs in `network_allowlist.json`, each with its own
+/// registration state, plus a button that adds the missing ones. Declining is
+/// simply not pressing it: egress stays closed and the provider will fail to
+/// connect, which is the intended default.
+///
+/// When consent has been withdrawn but the hosts are still registered — the
+/// state a user is left in by every revoke made before this was wired up — the
+/// block also offers the inverse button, so the allowlist can be brought back in
+/// line with the consent from the card the consent lives on.
 pub(crate) fn render_hosts(
     settings_window: &SettingsWindow,
     target: &ConsentTarget,
@@ -469,13 +625,41 @@ pub(crate) fn render_hosts(
         .cloned()
         .collect();
     let all_allowed = is_loaded && missing.is_empty();
-    let hosts_label = target
+    // "Registered" here means an entry naming the host outright, which is what a
+    // removal can act on — a host merely covered by a `*.corp.example` the user
+    // wrote is allowed, but not this provider's entry to take away.
+    let registered: Vec<SharedString> = target
         .hosts
         .iter()
-        .map(SharedString::to_string)
-        .collect::<Vec<_>>()
-        .join("、");
-    let button_id = SharedString::from(format!("external-ai-allowlist-{}", target.key));
+        .filter(|host| allowlist.lists_host(host))
+        .cloned()
+        .collect();
+    let stale = is_loaded && !registered.is_empty() && !is_acknowledged(&target.key, cx);
+
+    // Collected eagerly: a lazy iterator would hold its borrow of `cx` into the
+    // `cx.listener` calls further down the builder chain.
+    let host_labels: Vec<AnyElement> = target
+        .hosts
+        .iter()
+        .map(|host| {
+            let state = if !is_loaded {
+                ""
+            } else if allowlist.allows(host) {
+                " (登録済み)"
+            } else {
+                " (未登録)"
+            };
+            h_flex()
+                .gap_0p5()
+                .child(
+                    Label::new(host.clone())
+                        .size(LabelSize::Small)
+                        .buffer_font(cx),
+                )
+                .child(Label::new(state).size(LabelSize::Small).color(Color::Muted))
+                .into_any_element()
+        })
+        .collect();
 
     v_flex()
         .gap_0p5()
@@ -488,56 +672,122 @@ pub(crate) fn render_hosts(
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
-                .child(Label::new(hosts_label).size(LabelSize::Small).buffer_font(cx))
+                .children(host_labels)
+                .when(!is_loaded, |this| {
+                    this.child(
+                        Label::new("(許可リストを読み込み中です)")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                })
                 .child(
-                    Label::new(if !is_loaded {
-                        "(許可リストを読み込み中です)"
-                    } else if all_allowed {
-                        "(登録済み)"
-                    } else {
-                        "(未登録)"
-                    })
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
-                )
-                .child(
-                    Button::new(button_id, "許可リストに追加")
-                        .label_size(LabelSize::Small)
-                        .style(ButtonStyle::Outlined)
-                        .disabled(!is_loaded || all_allowed)
-                        .start_icon(
-                            Icon::new(IconName::Plus)
-                                .size(IconSize::XSmall)
-                                .color(Color::Muted),
-                        )
-                        .tooltip(Tooltip::text(
-                            "network_allowlist.json に追加します。追加しない場合、このプロバイダーへの通信は拒否されたままになります",
-                        ))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            network_allowlist::add_allowed_hosts(this, &missing, cx);
-                        })),
+                    Button::new(
+                        SharedString::from(format!("external-ai-allowlist-{}", target.key)),
+                        "許可リストに追加",
+                    )
+                    .label_size(LabelSize::Small)
+                    .style(ButtonStyle::Outlined)
+                    .disabled(!is_loaded || all_allowed)
+                    .start_icon(
+                        Icon::new(IconName::Plus)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .tooltip(Tooltip::text(
+                        "network_allowlist.json に追加します。追加しない場合、このプロバイダーへの通信は拒否されたままになります",
+                    ))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        network_allowlist::add_allowed_hosts(this, &missing, cx);
+                    })),
                 ),
         )
-        .when_some(allowlist.consent_error(), |this, error| {
-            this.child(
-                h_flex()
-                    .gap_2()
-                    .child(Label::new(error).size(LabelSize::Small).color(Color::Error))
-                    .child(
-                        Button::new(
-                            SharedString::from(format!(
-                                "external-ai-allowlist-dismiss-{}",
-                                target.key
-                            )),
-                            "閉じる",
-                        )
-                        .label_size(LabelSize::Small)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            network_allowlist::dismiss_error(this, cx);
-                        })),
-                    ),
-            )
+        .when(stale, |this| {
+            this.child(render_release_hosts_row(target, registered, cx))
         })
+        .when_some(allowlist.consent_notice(&target.key), |this, notice| {
+            this.child(render_consent_message(
+                target,
+                notice,
+                Color::Muted,
+                "notice",
+                cx,
+            ))
+        })
+        .when_some(allowlist.consent_error(), |this, error| {
+            this.child(render_consent_message(
+                target,
+                error,
+                Color::Error,
+                "dismiss",
+                cx,
+            ))
+        })
+        .into_any_element()
+}
+
+/// A one-line message from the last allowlist write, with a way to clear it.
+fn render_consent_message(
+    target: &ConsentTarget,
+    message: SharedString,
+    color: Color,
+    id: &'static str,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    h_flex()
+        .gap_2()
+        .flex_wrap()
+        .child(Label::new(message).size(LabelSize::Small).color(color))
+        .child(
+            Button::new(
+                SharedString::from(format!("external-ai-allowlist-{id}-{}", target.key)),
+                "閉じる",
+            )
+            .label_size(LabelSize::Small)
+            .on_click(cx.listener(|this, _, _, cx| {
+                network_allowlist::dismiss_error(this, cx);
+            })),
+        )
+        .into_any_element()
+}
+
+/// The "you revoked this, but its hosts are still open" row. Shown only while
+/// the consent is missing and at least one of the provider's hosts is an entry
+/// of its own, so it is an offer to fix a state the user can see, never a
+/// standing invitation to prune the allowlist from an AI card.
+fn render_release_hosts_row(
+    target: &ConsentTarget,
+    registered: Vec<SharedString>,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let key = target.key.clone();
+
+    h_flex()
+        .flex_wrap()
+        .gap_1p5()
+        .child(
+            Label::new("承諾していませんが、上のホストは許可リストに登録されたままです。")
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+        )
+        .child(
+            Button::new(
+                SharedString::from(format!("external-ai-allowlist-remove-{key}")),
+                "許可ホストを削除",
+            )
+            .label_size(LabelSize::Small)
+            .style(ButtonStyle::Outlined)
+            .start_icon(
+                Icon::new(IconName::Trash)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .tooltip(Tooltip::text(
+                "このプロバイダーのホストを network_allowlist.json から削除します。他の承諾済みプロバイダーが必要とするホストと、ワイルドカードなど別に書かれた項目は残します",
+            ))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                release_hosts(this, &key, &registered, cx);
+            })),
+        )
         .into_any_element()
 }
 
@@ -587,20 +837,23 @@ pub(crate) fn render_consent_gate(
 /// per-provider summary, the acknowledged-providers list and the edit
 /// prediction "Zed" card — goes through here, so there is one control and one
 /// wording for it.
+///
+/// `hosts` are the provider's hosts, which the withdrawal also takes back out
+/// of the egress allowlist (see [`revoke`]).
 pub(crate) fn render_revoke_button(
     id: SharedString,
     key: SharedString,
+    hosts: Vec<SharedString>,
     cx: &mut Context<SettingsWindow>,
 ) -> Button {
     Button::new(id, "承諾を取り消す")
         .label_size(LabelSize::Small)
         .style(ButtonStyle::Outlined)
         .tooltip(Tooltip::text(
-            "承諾を取り消すと、再び警告が表示され設定できなくなります",
+            "承諾を取り消すと、再び警告が表示され設定できなくなります。このプロバイダーのために許可リストへ登録したホストも削除します",
         ))
-        .on_click(cx.listener(move |_, _, _, cx| {
-            set_acknowledged(key.clone(), false, cx);
-            cx.notify();
+        .on_click(cx.listener(move |this, _, _, cx| {
+            revoke(this, key.clone(), &hosts, cx);
         }))
 }
 
@@ -630,6 +883,7 @@ pub(crate) fn render_acknowledged_row(
         .child(render_revoke_button(
             SharedString::from(format!("external-ai-revoke-{key}")),
             key,
+            target.hosts.clone(),
             cx,
         ))
         .into_any_element()
@@ -707,18 +961,42 @@ fn display_name_for_acknowledged_key(key: &SharedString, cx: &App) -> SharedStri
 /// per-provider consent gate (`render_consent_summary` above) uses, so there
 /// is exactly one place that writes `acknowledged_external_ai_providers`.
 pub(crate) fn render_acknowledged_ai_providers_page(
-    _settings_window: &SettingsWindow,
+    settings_window: &SettingsWindow,
     scroll_handle: &ScrollHandle,
     _window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
     let keys = acknowledged_provider_keys(cx);
+    // Revoking from this page removes the row along with the provider, so the
+    // note about what left the allowlist has nowhere else to go.
+    let notice = settings_window.network_allowlist.consent_notice_text();
 
     v_flex()
         .id("acknowledged-ai-providers-page")
         .size_full()
         .pt_2()
         .pb_16()
+        .when_some(notice, |this, notice| {
+            this.child(
+                h_flex()
+                    .px_8()
+                    .py_1()
+                    .gap_2()
+                    .flex_wrap()
+                    .child(
+                        Label::new(notice)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        Button::new("acknowledged-ai-providers-dismiss-notice", "閉じる")
+                            .label_size(LabelSize::Small)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                network_allowlist::dismiss_error(this, cx);
+                            })),
+                    ),
+            )
+        })
         .map(|this| {
             if keys.is_empty() {
                 this.px_8()
@@ -731,7 +1009,7 @@ pub(crate) fn render_acknowledged_ai_providers_page(
                     .overflow_y_scroll()
                     .children(keys.into_iter().enumerate().flat_map(|(index, key)| {
                         let mut elements: Vec<AnyElement> =
-                            vec![render_acknowledged_provider_row(key, cx)];
+                            vec![render_acknowledged_provider_row(settings_window, key, cx)];
                         if index + 1 < row_count {
                             elements.push(
                                 div()
@@ -748,11 +1026,22 @@ pub(crate) fn render_acknowledged_ai_providers_page(
 }
 
 fn render_acknowledged_provider_row(
+    settings_window: &SettingsWindow,
     key: SharedString,
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
     let name = display_name_for_acknowledged_key(&key, cx);
     let show_raw_key = name != key;
+    // Resolved from the key alone so that revoking here closes the same egress
+    // revoking from the provider's own card would.
+    let hosts = target_for_acknowledged_key(&key, cx)
+        .map(|target| target.hosts)
+        .unwrap_or_default();
+    let registered = hosts
+        .iter()
+        .filter(|host| settings_window.network_allowlist.lists_host(host))
+        .cloned()
+        .collect::<Vec<_>>();
 
     h_flex()
         .w_full()
@@ -773,11 +1062,20 @@ fn render_acknowledged_provider_row(
                             .color(Color::Muted)
                             .buffer_font(cx),
                     )
+                })
+                .when(!registered.is_empty(), |this| {
+                    this.child(
+                        Label::new(format!("許可リストに登録済み: {}", joined(&registered)))
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .buffer_font(cx),
+                    )
                 }),
         )
         .child(render_revoke_button(
             SharedString::from(format!("external-ai-revoke-list-{key}")),
             key,
+            hosts,
             cx,
         ))
         .into_any_element()
@@ -980,6 +1278,63 @@ mod tests {
             content.acknowledged_external_ai_providers.clone()
         });
         assert_eq!(without_consent, Some(Vec::new()));
+    }
+
+    /// Withdrawing consent has to close exactly what consent opened: entries
+    /// naming one of the provider's hosts, minus anything another provider the
+    /// user has consented to still needs.
+    #[test]
+    fn revoking_releases_only_this_providers_own_entries() {
+        let hosts = [
+            SharedString::from("api.githubcopilot.com"),
+            SharedString::from("github.com"),
+            SharedString::from("api.github.com"),
+        ];
+        let registered = ["api.githubcopilot.com", "github.com"];
+        let is_registered = |host: &str| registered.contains(&host);
+
+        let (release, kept) = hosts_to_release(&hosts, is_registered, &[]);
+        assert_eq!(
+            release,
+            vec![
+                SharedString::from("api.githubcopilot.com"),
+                SharedString::from("github.com")
+            ],
+            "a host that is not an entry of its own has nothing to release"
+        );
+        assert!(kept.is_empty());
+
+        // The edit prediction Copilot card is still acknowledged, and it needs
+        // `github.com` to sign in with.
+        let (release, kept) = hosts_to_release(
+            &hosts,
+            is_registered,
+            &[SharedString::from("github.com"), "api.github.com".into()],
+        );
+        assert_eq!(release, vec![SharedString::from("api.githubcopilot.com")]);
+        assert_eq!(kept, vec![SharedString::from("github.com")]);
+
+        // Nothing registered: revoking is a settings-only change and must not
+        // queue a write.
+        let (release, kept) = hosts_to_release(&hosts, |_| false, &[]);
+        assert!(release.is_empty());
+        assert!(kept.is_empty());
+    }
+
+    /// The comparison is on the canonical entry, so a hand-written spelling in
+    /// `network_allowlist.json` is still recognised as this provider's.
+    #[test]
+    fn released_hosts_are_matched_canonically() {
+        let hosts = [SharedString::from("api.anthropic.com")];
+        let (release, _) = hosts_to_release(
+            &hosts,
+            |host| host == "api.anthropic.com",
+            &[SharedString::from("API.Anthropic.COM.")],
+        );
+        assert!(
+            release.is_empty(),
+            "another provider needing the same host in a different spelling still counts"
+        );
     }
 
     #[test]

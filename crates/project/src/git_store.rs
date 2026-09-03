@@ -36,10 +36,10 @@ use git::{
     repository::{
         Branch, BranchesScanResult, CommitData, CommitDetails, CommitFileStatus, CommitOptions,
         CreateWorktreeTarget, DiffStatType, DiffType, FetchOptions, FileHistoryChangedFileSets,
-        GitCommitTemplate, GitRepository, GitRepositoryCheckpoint, InitialGraphCommitData,
-        LogOrder, LogSource, PushOptions, Remote, RemoteCommandOutput, RepoPath, ResetMode,
-        SearchCommitArgs, UpstreamTrackingStatus, Worktree as GitWorktree, delete_branch_flag,
-        is_binary_content,
+        GitCommandOutput, GitCommitTemplate, GitRepository, GitRepositoryCheckpoint,
+        InitialGraphCommitData, LogOrder, LogSource, PatchSource, PushOptions, Remote,
+        RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs, UpstreamTrackingStatus,
+        Worktree as GitWorktree, delete_branch_flag, is_binary_content,
     },
     stash::{GitStash, StashEntry},
     status::{
@@ -937,6 +937,7 @@ impl GitStore {
         client.add_entity_request_handler(Self::handle_rename_branch);
         client.add_entity_request_handler(Self::handle_create_remote);
         client.add_entity_request_handler(Self::handle_remove_remote);
+        client.add_entity_request_handler(Self::handle_run_command);
         client.add_entity_request_handler(Self::handle_delete_branch);
         client.add_entity_request_handler(Self::handle_git_init);
         client.add_entity_request_handler(Self::handle_push);
@@ -4571,6 +4572,29 @@ impl GitStore {
         }
 
         Ok(proto::GitDiffResponse { diff })
+    }
+
+    async fn handle_run_command(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::GitRunCommand>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::GitRunCommandResponse> {
+        let repository_id = RepositoryId::from_proto(envelope.payload.repository_id);
+        let repository_handle = Self::repository_for_request(&this, repository_id, &mut cx)?;
+        let args = envelope.payload.args;
+        let stdin = envelope.payload.stdin;
+
+        let output = repository_handle
+            .update(&mut cx, |repository_handle, _| {
+                repository_handle.run_git_command(args, stdin)
+            })
+            .await??;
+
+        Ok(proto::GitRunCommandResponse {
+            stdout: output.stdout,
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        })
     }
 
     async fn handle_tree_diff(
@@ -9454,6 +9478,119 @@ impl Repository {
                 }
             }
         })
+    }
+
+    /// Runs a single git subcommand in this repository (locally, or on the host
+    /// of a remote project) and returns its raw output.
+    ///
+    /// The subcommand is validated against [`git::repository::ALLOWED_GIT_COMMANDS`]
+    /// where it runs. Prefer the typed wrappers below over calling this directly.
+    pub fn run_git_command(
+        &mut self,
+        args: Vec<String>,
+        stdin: Option<String>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let status = SharedString::from(format!("git {}", args.join(" ")));
+        self.send_job(
+            "run_git_command",
+            Some(status),
+            move |repo, _cx| async move {
+                match repo {
+                    RepositoryState::Local(LocalRepositoryState {
+                        backend,
+                        environment,
+                        ..
+                    }) => backend.run_command(args, stdin, environment).await,
+                    RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                        let response = client
+                            .request(proto::GitRunCommand {
+                                project_id: project_id.0,
+                                repository_id: id.to_proto(),
+                                args,
+                                stdin,
+                            })
+                            .await?;
+
+                        Ok(GitCommandOutput {
+                            stdout: response.stdout,
+                            stderr: response.stderr,
+                            exit_code: response.exit_code,
+                        })
+                    }
+                }
+            },
+        )
+    }
+
+    /// `git merge <committish>`. Conflicts come back as a successful future with
+    /// a non-zero [`GitCommandOutput::exit_code`], not as an error.
+    pub fn merge(
+        &mut self,
+        committish: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let receiver = self.run_git_command(vec!["merge".into(), committish], None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// `git reset --hard <committish>`. Discards uncommitted work; callers must
+    /// confirm with the user first.
+    pub fn reset_hard(
+        &mut self,
+        committish: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let receiver =
+            self.run_git_command(vec!["reset".into(), "--hard".into(), committish], None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Produces the text of a patch file without touching the working tree.
+    pub fn create_patch(
+        &mut self,
+        source: PatchSource,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        self.run_git_command(source.args(), None)
+    }
+
+    /// `git apply` of a patch produced elsewhere. `contents` is streamed to the
+    /// repository host over stdin so this works for remote projects, where the
+    /// chosen patch file may not exist on the host at all.
+    pub fn apply_patch(
+        &mut self,
+        contents: String,
+        three_way: bool,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let mut args = vec!["apply".to_string()];
+        if three_way {
+            args.push("--3way".into());
+        }
+        // No file argument: `git apply` reads the patch from stdin.
+        let receiver = self.run_git_command(args, Some(contents));
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Refreshes git state after a command that may have rewritten the working
+    /// tree, mirroring what [`Self::reset`] does.
+    fn schedule_scan_after_worktree_change(&mut self, cx: &mut Context<Self>) {
+        let scan_updates_tx =
+            self.git_store()
+                .and_then(|git_store| match &git_store.read(cx).state {
+                    GitStoreState::Local { downstream, .. } => Some(
+                        downstream
+                            .as_ref()
+                            .map(|downstream| downstream.updates_tx.clone()),
+                    ),
+                    _ => None,
+                });
+        if let Some(updates_tx) = scan_updates_tx {
+            self.schedule_scan(updates_tx, cx);
+        }
     }
 
     pub fn create_branch(

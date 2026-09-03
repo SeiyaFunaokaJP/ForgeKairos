@@ -246,7 +246,57 @@ pub fn init(cx: &mut App) {
                     panel.pull(true, window, cx);
                 });
             });
+            workspace.register_action(|workspace, _: &git::ResetToRemote, window, cx| {
+                let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                    return;
+                };
+                panel.update(cx, |panel, cx| {
+                    panel.reset_to_remote(window, cx);
+                });
+            });
         }
+        workspace.register_action(|workspace, _: &git::Merge, window, cx| {
+            let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                return;
+            };
+            panel.update(cx, |panel, cx| {
+                panel.deploy_merge_picker(window, cx);
+            });
+        });
+        workspace.register_action(|workspace, _: &git::CreatePatch, window, cx| {
+            let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                return;
+            };
+            panel.update(cx, |panel, cx| {
+                panel.create_patch(window, cx);
+            });
+        });
+        workspace.register_action(|workspace, _: &git::ApplyPatch, window, cx| {
+            let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                return;
+            };
+            panel.update(cx, |panel, cx| {
+                panel.apply_patch(window, cx);
+            });
+        });
+        workspace.register_action(
+            |workspace, _: &zed_actions::git::CreateRemote, window, cx| {
+                let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                    return;
+                };
+                workspace.toggle_modal(window, cx, |window, cx| {
+                    AddRemoteModal::new(panel, window, cx)
+                });
+            },
+        );
+        workspace.register_action(|workspace, _: &git::RemoveRemote, window, cx| {
+            let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                return;
+            };
+            panel.update(cx, |panel, cx| {
+                panel.remove_remote(window, cx);
+            });
+        });
         workspace.register_action(|workspace, action: &git::StashAll, window, cx| {
             let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
                 return;
@@ -1072,6 +1122,21 @@ mod remote_button {
                         .action("プッシュ", git::Push.boxed_clone())
                         .action("プッシュ先を指定してプッシュ", git::PushTo.boxed_clone())
                         .action("強制プッシュ", git::ForcePush.boxed_clone())
+                        .separator()
+                        .action("ブランチをマージ…", git::Merge.boxed_clone())
+                        .action(
+                            "リモートの状態に強制的に合わせる…",
+                            git::ResetToRemote.boxed_clone(),
+                        )
+                        .separator()
+                        .action(
+                            "リモートを追加…",
+                            zed_actions::git::CreateRemote.boxed_clone(),
+                        )
+                        .action("リモートを削除…", git::RemoveRemote.boxed_clone())
+                        .separator()
+                        .action("パッチファイルを作成…", git::CreatePatch.boxed_clone())
+                        .action("パッチファイルを適用…", git::ApplyPatch.boxed_clone())
                 }))
             })
             .anchor(Anchor::TopRight)
@@ -1355,6 +1420,80 @@ impl Render for GitCloneModal {
 impl EventEmitter<DismissEvent> for GitCloneModal {}
 
 impl ModalView for GitCloneModal {}
+
+/// Two-field prompt behind `git::CreateRemote` (`git remote add <name> <url>`).
+struct AddRemoteModal {
+    panel: Entity<GitPanel>,
+    name_input: Entity<ui_input::InputField>,
+    url_input: Entity<ui_input::InputField>,
+}
+
+impl AddRemoteModal {
+    fn new(panel: Entity<GitPanel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let name_input = cx.new(|cx| {
+            let input = ui_input::InputField::new(window, cx, "origin")
+                .label("リモート名")
+                .tab_stop(true)
+                .tab_index(0);
+            // `origin` is the name git itself uses for a first remote, so
+            // pre-filling it leaves only the URL to type in the common case.
+            input.set_text("origin", window, cx);
+            input
+        });
+        let url_input = cx.new(|cx| {
+            ui_input::InputField::new(window, cx, "https://github.com/owner/repo.git")
+                .label("URL")
+                .tab_stop(true)
+                .tab_index(1)
+        });
+
+        window.focus(&url_input.focus_handle(cx), cx);
+
+        Self {
+            panel,
+            name_input,
+            url_input,
+        }
+    }
+}
+
+impl Focusable for AddRemoteModal {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.url_input.focus_handle(cx)
+    }
+}
+
+impl Render for AddRemoteModal {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .elevation_3(cx)
+            .w(rems(34.))
+            .p_2()
+            .gap_2()
+            .child(self.name_input.clone())
+            .child(self.url_input.clone())
+            .child(
+                Label::new("git remote add を実行します。")
+                    .color(Color::Muted)
+                    .size(LabelSize::Small),
+            )
+            .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| {
+                cx.emit(DismissEvent);
+            }))
+            .on_action(cx.listener(|this, _: &menu::Confirm, _window, cx| {
+                let remote_name = this.name_input.read(cx).text(cx);
+                let remote_url = this.url_input.read(cx).text(cx);
+                this.panel.update(cx, |panel, cx| {
+                    panel.add_remote(remote_name, remote_url, cx);
+                });
+                cx.emit(DismissEvent);
+            }))
+    }
+}
+
+impl EventEmitter<DismissEvent> for AddRemoteModal {}
+
+impl ModalView for AddRemoteModal {}
 
 #[cfg(test)]
 mod view_commit_tests {

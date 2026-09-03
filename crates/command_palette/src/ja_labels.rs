@@ -753,6 +753,16 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("terminal::SelectAll", "ターミナル: すべて選択"),
     ("terminal::RenameTerminal", "ターミナル: 名前の変更"),
     ("terminal::RerunTask", "ターミナル: タスクを再実行"),
+    ("terminal::StartSessionLog", "ターミナル: ログの記録を開始…"),
+    ("terminal::StopSessionLog", "ターミナル: ログの記録を停止"),
+    (
+        "terminal::OpenSessionLog",
+        "ターミナル: ログファイルの場所を開く",
+    ),
+    ("terminal::RunMacro", "ターミナル: マクロを実行…"),
+    ("terminal::EditMacros", "ターミナル: マクロの編集…"),
+    ("terminal::CancelMacro", "ターミナル: マクロを中止"),
+    ("terminal::QuickConnect", "ターミナル: クイック接続…"),
     ("terminal::ScrollToTop", "ターミナル: 先頭までスクロール"),
     ("terminal::ScrollToBottom", "ターミナル: 末尾までスクロール"),
     (
@@ -807,6 +817,15 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("git::PullRebase", "Git: リベースしてプル"),
     ("git::Fetch", "Git: フェッチ"),
     ("git::FetchFrom", "Git: 取得元を指定してフェッチ"),
+    ("git::Merge", "Git: ブランチをマージ"),
+    (
+        "git::ResetToRemote",
+        "Git: リモートの状態に強制的に合わせる",
+    ),
+    ("git::CreateRemote", "Git: リモートを追加"),
+    ("git::RemoveRemote", "Git: リモートを削除"),
+    ("git::CreatePatch", "Git: パッチファイルを作成"),
+    ("git::ApplyPatch", "Git: パッチファイルを適用"),
     ("git::Init", "Git: リポジトリを初期化"),
     ("git::Clone", "Git: リポジトリをクローン"),
     ("git::SelectRepo", "Git: リポジトリを選択"),
@@ -1617,6 +1636,36 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "skill_creator::FocusPreviousField",
         "スキル作成: 前の入力欄へ",
+    ),
+    // browser_panel (ADR-F19)
+    ("browser_panel::Toggle", "ブラウザー: パネルの表示切り替え"),
+    (
+        "browser_panel::ToggleFocus",
+        "ブラウザー: パネルのフォーカス切り替え",
+    ),
+    ("browser_panel::NavigateBack", "ブラウザー: 戻る"),
+    ("browser_panel::NavigateForward", "ブラウザー: 進む"),
+    ("browser_panel::Reload", "ブラウザー: 再読み込み"),
+    (
+        "browser_panel::FocusAddressBar",
+        "ブラウザー: アドレスバーにフォーカス",
+    ),
+    (
+        "browser_panel::SubmitAddress",
+        "ブラウザー: 入力した URL を開く",
+    ),
+    ("browser_panel::GoHome", "ブラウザー: ホームを開く"),
+    (
+        "browser_panel::OpenInExternalBrowser",
+        "ブラウザー: 外部ブラウザーで開く",
+    ),
+    (
+        "browser_panel::SearchSelection",
+        "ブラウザー: 選択テキストを Web で検索",
+    ),
+    (
+        "browser_panel::AskCopilot",
+        "ブラウザー: 選択テキストを Copilot に聞く",
     ),
 ];
 

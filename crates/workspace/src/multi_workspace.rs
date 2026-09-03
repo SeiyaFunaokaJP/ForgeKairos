@@ -350,9 +350,7 @@ impl MultiWorkspace {
         });
         let quit_subscription = cx.on_app_quit(Self::app_will_quit);
         let settings_subscription = cx.observe_global_in::<settings::SettingsStore>(window, {
-            let mut previous_multi_workspace_enabled = !DisableAiSettings::get_global(cx)
-                .disable_ai
-                && AgentSettings::get_global(cx).enabled;
+            let mut previous_multi_workspace_enabled = Self::multi_workspace_enabled_globally(cx);
             move |this, window, cx| {
                 let multi_workspace_enabled = this.multi_workspace_enabled(cx);
                 if previous_multi_workspace_enabled && !multi_workspace_enabled {
@@ -430,7 +428,16 @@ impl MultiWorkspace {
     }
 
     pub fn multi_workspace_enabled(&self, cx: &App) -> bool {
-        !DisableAiSettings::get_global(cx).disable_ai && AgentSettings::get_global(cx).enabled
+        Self::multi_workspace_enabled_globally(cx)
+    }
+
+    /// Same predicate as [`Self::multi_workspace_enabled`], usable before the
+    /// entity exists (the settings subscription in `new` needs the initial
+    /// value). Keep the two in sync: if this drifts, the collapse subscription
+    /// stops firing for whichever flag it forgot about.
+    fn multi_workspace_enabled_globally(cx: &App) -> bool {
+        let agent = AgentSettings::get_global(cx);
+        !DisableAiSettings::get_global(cx).disable_ai && agent.enabled && agent.sidebar_enabled
     }
 
     pub fn toggle_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -502,6 +509,13 @@ impl MultiWorkspace {
     /// Restores the sidebar to open state from persisted session data without
     /// firing a telemetry event, since this is not a user-initiated action.
     pub(crate) fn restore_open_sidebar(&mut self, cx: &mut Context<Self>) {
+        // A session serialized while the sidebar was enabled must not resurrect
+        // `sidebar_open` after it has been turned off: the collapse
+        // subscription only fires on a transition, so nothing else would clear
+        // it, and the title bar keys its threads-list chrome off this flag.
+        if !self.multi_workspace_enabled(cx) {
+            return;
+        }
         self.apply_open_sidebar(cx);
     }
 

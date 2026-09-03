@@ -17,13 +17,33 @@ use settings::{
 };
 use ui::{
     Banner, ButtonLink, Checkbox, ConfiguredApiCard, ContextMenu, Divider, DividerColor,
-    DropdownMenu, DropdownStyle, IconPosition, PopoverMenu, ToggleState, prelude::*,
+    DropdownMenu, DropdownStyle, IconPosition, PopoverMenu, ToggleState, Tooltip, prelude::*,
 };
 use util::ResultExt as _;
 
 use crate::SettingsWindow;
 use crate::components::SettingsInputField;
 use crate::pages::external_ai_consent;
+
+/// Provider id of the native Anthropic provider (`anthropic::ANTHROPIC_PROVIDER_ID`),
+/// which is API-key only. Duplicated rather than imported for the same reason
+/// `external_ai_consent` duplicates its endpoint table: one string is not worth
+/// a dependency on the vendor crate.
+const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
+
+/// Why a Claude subscription does not appear next to "OpenAI (サブスクリプション)".
+///
+/// Anthropic's consumer terms scope a Claude Pro / Max subscription to
+/// Anthropic's own apps and Claude Code, so this fork deliberately does not
+/// implement a subscription sign-in for the native provider — the sanctioned
+/// route is the Claude Code agent over ACP (ADR-F12), which the button next to
+/// this text installs and configures.
+const CLAUDE_SUBSCRIPTION_HINT: &str =
+    "Anthropic (Claude) のサブスクリプションは Claude Code エージェントで利用できます。";
+
+const CLAUDE_SUBSCRIPTION_NOTE: &str = "Claude Pro / Max のサブスクリプションはここでは使えません (API キーの従量課金のみ)。サブスクリプションで使うには「Claude Code」エージェントを利用してください。";
+
+const OPEN_CLAUDE_CODE_LABEL: &str = "Claude Code エージェントの設定を開く";
 
 pub(crate) fn render_llm_providers_page(
     settings_window: &SettingsWindow,
@@ -40,6 +60,7 @@ pub(crate) fn render_llm_providers_page(
         .pb_16()
         .track_scroll(scroll_handle)
         .overflow_y_scroll()
+        .child(render_claude_subscription_hint(settings_window, cx))
         .children(
             providers
                 .iter()
@@ -50,6 +71,83 @@ pub(crate) fn render_llm_providers_page(
                 .collect::<Vec<_>>(),
         )
         .into_any_element()
+}
+
+/// The one-line answer to "where is the Anthropic subscription?", at the top of
+/// the list rather than on the Anthropic card, because the question is prompted
+/// by seeing "OpenAI (サブスクリプション)" in the list.
+fn render_claude_subscription_hint(
+    settings_window: &SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) -> impl IntoElement {
+    h_flex()
+        .pt_4()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .flex_wrap()
+        .child(
+            Label::new(CLAUDE_SUBSCRIPTION_HINT)
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+        )
+        .child(render_open_claude_code_button(
+            "llm-providers-open-claude-code",
+            settings_window,
+            cx,
+        ))
+}
+
+/// Jumps to the ACP agent registry, where the Claude Code CLI is installed and
+/// configured (ADR-F12). Disabled when the settings window has no workspace to
+/// open it in, exactly like the "open network_allowlist.json" button.
+fn render_open_claude_code_button(
+    id: &'static str,
+    settings_window: &SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) -> Button {
+    let has_workspace = settings_window.original_window.is_some();
+
+    Button::new(id, OPEN_CLAUDE_CODE_LABEL)
+        .label_size(LabelSize::Small)
+        .style(ButtonStyle::Outlined)
+        .disabled(!has_workspace)
+        .end_icon(
+            Icon::new(IconName::ArrowUpRight)
+                .size(IconSize::XSmall)
+                .color(Color::Muted),
+        )
+        .tooltip(Tooltip::text(if has_workspace {
+            "設定ウィンドウを閉じ、エージェントの一覧を開きます。ここから Claude Code をインストールすると、エージェントパネルで使えるようになります"
+        } else {
+            "エージェントの一覧を開くにはプロジェクトのウィンドウが必要です"
+        }))
+        .on_click(cx.listener(|this, _, window, cx| {
+            this.open_agent_registry(window, cx);
+        }))
+}
+
+/// The same answer again on the Anthropic card itself, for the user who goes
+/// looking for the subscription under the vendor's own name.
+fn render_claude_subscription_note(
+    settings_window: &SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) -> impl IntoElement {
+    v_flex()
+        .pt_2p5()
+        .w_full()
+        .min_w_0()
+        .gap_1()
+        .child(
+            Label::new(CLAUDE_SUBSCRIPTION_NOTE)
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+        )
+        .child(h_flex().child(render_open_claude_code_button(
+            "anthropic-open-claude-code",
+            settings_window,
+            cx,
+        )))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -209,6 +307,9 @@ fn render_provider_section(
         .gap_1p5()
         .child(render_provider_header(provider_name, provider.icon(), cx))
         .child(body)
+        .when(provider_id.0.as_ref() == ANTHROPIC_PROVIDER_ID, |this| {
+            this.child(render_claude_subscription_note(settings_window, cx))
+        })
         .into_any_element()
 }
 

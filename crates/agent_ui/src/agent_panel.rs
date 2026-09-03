@@ -2251,6 +2251,7 @@ impl AgentPanel {
                 TerminalEvent::BlinkChanged(_)
                 | TerminalEvent::SelectionsChanged
                 | TerminalEvent::NewNavigationTarget(_)
+                | TerminalEvent::SessionLogChanged
                 | TerminalEvent::Open(_) => {}
             },
         );
@@ -5835,10 +5836,12 @@ impl AgentPanel {
                                 "パネル内のスレッド履歴の切り替え",
                                 Box::new(TogglePanelThreadHistory),
                             )
-                            .action(
-                                "スレッドサイドバーの切り替え",
-                                Box::new(ToggleWorkspaceSidebar),
-                            );
+                            .when(AgentSettings::get_global(cx).sidebar_enabled, |menu| {
+                                menu.action(
+                                    "スレッドサイドバーの切り替え",
+                                    Box::new(ToggleWorkspaceSidebar),
+                                )
+                            });
 
                         if has_auth_methods || supports_logout {
                             menu = menu.separator()

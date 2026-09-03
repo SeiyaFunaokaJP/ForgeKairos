@@ -51,6 +51,9 @@ pub struct Model {
     pub max_tokens: u64,
     pub supports_tool_calls: bool,
     pub supports_images: bool,
+    /// 推論内容 (`reasoning_content`) を返すモデルかどうか。LM Studio の API は
+    /// 能力を申告しないため設定で宣言する。
+    pub supports_thinking: bool,
 }
 
 impl Model {
@@ -60,6 +63,7 @@ impl Model {
         max_tokens: Option<u64>,
         supports_tool_calls: bool,
         supports_images: bool,
+        supports_thinking: bool,
     ) -> Self {
         Self {
             name: name.to_owned(),
@@ -67,6 +71,7 @@ impl Model {
             max_tokens: max_tokens.unwrap_or(2048),
             supports_tool_calls,
             supports_images,
+            supports_thinking,
         }
     }
 

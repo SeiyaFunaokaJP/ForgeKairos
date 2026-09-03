@@ -508,7 +508,9 @@ message Envelope {
     RefreshDocumentSymbols refresh_document_symbols = 477;
     BlameBufferAtRevision blame_buffer_at_revision = 478;
     BlameBufferAtRevisionResponse blame_buffer_at_revision_response = 479;
-    SetEgressAllowlist set_egress_allowlist = 480; // current max
+    SetEgressAllowlist set_egress_allowlist = 480;
+    GitRunCommand git_run_command = 481;
+    GitRunCommandResponse git_run_command_response = 482; // current max
   }
 
   reserved 87 to 88;

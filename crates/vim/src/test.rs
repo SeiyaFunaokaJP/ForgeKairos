@@ -50,6 +50,49 @@ async fn test_initially_disabled(cx: &mut gpui::TestAppContext) {
     cx.assert_editor_state("hjklˇ");
 }
 
+// The status-bar toggle and `workspace::ToggleVimMode` share this write. A
+// settings file that already says `"vim_mode": true` has to end up saying
+// `false`; dropping the key instead would leave the user stuck in Vim mode.
+#[gpui::test]
+fn test_toggle_vim_mode_writes_explicit_boolean(cx: &mut gpui::TestAppContext) {
+    VimTestContext::init(cx);
+
+    cx.update(|cx| {
+        let store = cx.global::<SettingsStore>();
+
+        let disabled = store
+            .new_text_for_update("{\n  \"vim_mode\": true\n}\n".to_string(), |content| {
+                crate::write_toggled_vim_mode(content, true)
+            })
+            .unwrap();
+        assert!(
+            disabled.contains("\"vim_mode\": false"),
+            "turning Vim off must write false, got: {disabled}"
+        );
+
+        let enabled = store
+            .new_text_for_update("{\n  \"vim_mode\": false\n}\n".to_string(), |content| {
+                crate::write_toggled_vim_mode(content, false)
+            })
+            .unwrap();
+        assert!(
+            enabled.contains("\"vim_mode\": true"),
+            "turning Vim on must write true, got: {enabled}"
+        );
+
+        let from_helix = store
+            .new_text_for_update(
+                "{\n  \"vim_mode\": false,\n  \"helix_mode\": true\n}\n".to_string(),
+                |content| crate::write_toggled_vim_mode(content, false),
+            )
+            .unwrap();
+        assert!(
+            from_helix.contains("\"helix_mode\": false"),
+            "enabling Vim must clear an existing helix_mode, got: {from_helix}"
+        );
+    });
+}
+
 #[perf]
 #[gpui::test]
 async fn test_neovim(cx: &mut gpui::TestAppContext) {

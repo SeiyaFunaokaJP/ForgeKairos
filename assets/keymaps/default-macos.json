@@ -716,6 +716,8 @@
       "cmd-shift-s": "workspace::SaveAs",
       "cmd-shift-n": "workspace::NewWindow",
       "ctrl-`": "terminal_panel::Toggle",
+      "cmd-ctrl-alt-k": "terminal::QuickConnect",
+      "cmd-ctrl-alt-m": "terminal::RunMacro",
       "cmd-1": ["workspace::ActivatePane", 0],
       "cmd-2": ["workspace::ActivatePane", 1],
       "cmd-3": ["workspace::ActivatePane", 2],
@@ -1672,6 +1674,40 @@
       "cmd-enter": "skill_creator::SaveSkill",
       "tab": "skill_creator::FocusNextField",
       "shift-tab": "skill_creator::FocusPreviousField",
+    },
+  },
+  // 内蔵ブラウザーパネル (ADR-F19)
+  {
+    "context": "Workspace",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-alt-shift-u": "browser_panel::ToggleFocus",
+    },
+  },
+  {
+    "context": "Editor && mode == full",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-alt-shift-q": "browser_panel::SearchSelection",
+      "cmd-alt-shift-a": "browser_panel::AskCopilot",
+    },
+  },
+  {
+    "context": "BrowserPanel",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-[": "browser_panel::NavigateBack",
+      "cmd-]": "browser_panel::NavigateForward",
+      "cmd-r": "browser_panel::Reload",
+      "cmd-shift-h": "browser_panel::GoHome",
+      "cmd-l": "browser_panel::FocusAddressBar",
+    },
+  },
+  {
+    "context": "BrowserPanel > Editor && mode == single_line",
+    "use_key_equivalents": true,
+    "bindings": {
+      "enter": "browser_panel::SubmitAddress",
     },
   },
 ]

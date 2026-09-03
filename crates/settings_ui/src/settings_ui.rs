@@ -4103,6 +4103,28 @@ impl SettingsWindow {
         window.remove_window();
     }
 
+    /// Opens the ACP agent registry — where an agent CLI such as Claude Code is
+    /// installed (ADR-F12) — in the workspace this settings window was launched
+    /// from, and closes the settings window so the registry is what the user
+    /// lands on.
+    ///
+    /// The registry is a workspace item, not a settings page, so it cannot be
+    /// pushed as a sub page here; dispatching the action into the original
+    /// window is the same route [`Self::open_network_allowlist_file`] takes to
+    /// reach the editor.
+    pub(crate) fn open_agent_registry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(original_window) = self.original_window else {
+            return;
+        };
+        original_window
+            .update(cx, |_multi_workspace, window, cx| {
+                window.dispatch_action(Box::new(zed_actions::AcpRegistry), cx);
+            })
+            .log_err();
+
+        window.remove_window();
+    }
+
     /// This function will create a new settings file if one doesn't exist
     /// if the current file is a project settings with a valid worktree id
     /// We do this because the settings ui allows initializing project settings

@@ -264,6 +264,59 @@ pub fn parse_file(contents: &str) -> PolicyFile {
     }
 }
 
+/// The spelling an entry takes in the file, or `None` when it is not a valid
+/// allowlist entry at all.
+fn canonical_entry(host: &str) -> Option<String> {
+    HostPattern::parse(host)
+        .ok()
+        .map(|pattern| pattern.to_string())
+}
+
+/// `entries` with `hosts` appended, skipping ones already listed and ones that
+/// are not valid entries. Order is preserved so a hand-maintained file keeps
+/// its shape.
+///
+/// Split out from [`add_allowed_hosts`] so the list arithmetic can be reasoned
+/// about — and tested — without a filesystem.
+pub fn entries_with_hosts_added(entries: &[String], hosts: &[String]) -> Vec<String> {
+    let mut entries = entries.to_vec();
+    for host in hosts {
+        let Some(canonical) = canonical_entry(host) else {
+            log::warn!("egress allowlist: skipping invalid host {host:?}");
+            continue;
+        };
+        if !entries
+            .iter()
+            .any(|entry| canonical_entry(entry).as_deref() == Some(canonical.as_str()))
+        {
+            entries.push(canonical);
+        }
+    }
+    entries
+}
+
+/// `entries` without the ones that name exactly one of `hosts`.
+///
+/// Matching is on the canonical spelling of the whole entry, never on coverage:
+/// a `*.corp.example` entry stays even when `api.corp.example` is being
+/// released, because that entry was written to cover more than this one host and
+/// dropping it would revoke access the user never asked to revoke. Entries that
+/// no longer parse are left alone for the same reason.
+pub fn entries_with_hosts_removed(entries: &[String], hosts: &[String]) -> Vec<String> {
+    let removed: Vec<String> = hosts
+        .iter()
+        .filter_map(|host| canonical_entry(host))
+        .collect();
+    entries
+        .iter()
+        .filter(|entry| match canonical_entry(entry) {
+            Some(canonical) => !removed.contains(&canonical),
+            None => true,
+        })
+        .cloned()
+        .collect()
+}
+
 /// Adds `hosts` to `network_allowlist.json` at `path`, preserving whatever
 /// else is in the file — including comments — and skipping hosts already
 /// listed there. Each host is canonicalized the way [`HostPattern::parse`]
@@ -286,6 +339,38 @@ pub async fn add_allowed_hosts(
     path: &Path,
     hosts: &[String],
 ) -> anyhow::Result<Vec<String>> {
+    rewrite_allowed_hosts(fs, path, |entries| entries_with_hosts_added(entries, hosts)).await
+}
+
+/// Drops `hosts` from `network_allowlist.json` at `path`, the exact inverse of
+/// [`add_allowed_hosts`] and with the same guarantees about the rest of the
+/// file. Only entries naming one of `hosts` outright are dropped — see
+/// [`entries_with_hosts_removed`] for why coverage is not enough.
+///
+/// Writes nothing at all when no entry matches, so a repeated call (or one made
+/// against a file that never had these hosts) leaves the file byte-for-byte as
+/// it was and cannot create it.
+///
+/// Backs the ADR-F10 revoke path: withdrawing consent for an external AI
+/// provider takes the hosts that consent opened back out of the allowlist.
+pub async fn remove_allowed_hosts(
+    fs: &Arc<dyn Fs>,
+    path: &Path,
+    hosts: &[String],
+) -> anyhow::Result<Vec<String>> {
+    rewrite_allowed_hosts(fs, path, |entries| {
+        entries_with_hosts_removed(entries, hosts)
+    })
+    .await
+}
+
+/// Read-modify-write of the `allowed_hosts` array alone, leaving every other
+/// byte of the file — comments included — where it was.
+async fn rewrite_allowed_hosts(
+    fs: &Arc<dyn Fs>,
+    path: &Path,
+    update: impl FnOnce(&[String]) -> Vec<String>,
+) -> anyhow::Result<Vec<String>> {
     let exists = fs.is_file(path).await;
     let existing = if exists {
         fs.load(path)
@@ -295,7 +380,7 @@ pub async fn add_allowed_hosts(
         String::new()
     };
 
-    let mut entries = if existing.trim().is_empty() {
+    let previous = if existing.trim().is_empty() {
         Vec::new()
     } else {
         settings_json::parse_json_with_comments::<NetworkAllowlistFile>(&existing)
@@ -303,15 +388,13 @@ pub async fn add_allowed_hosts(
             .allowed_hosts
     };
 
-    for host in hosts {
-        let Ok(pattern) = HostPattern::parse(host) else {
-            log::warn!("egress allowlist: skipping invalid host {host:?}");
-            continue;
-        };
-        let canonical = pattern.to_string();
-        if !entries.iter().any(|entry| entry == &canonical) {
-            entries.push(canonical);
-        }
+    let entries = update(&previous);
+    // A no-op update must not rewrite the file — and, when there is no file
+    // yet, must not create one. The watch would reload for nothing, and a
+    // caller that fires twice (a button pressed again, or the double-reporting
+    // `SwitchField`) has to be harmless.
+    if entries == previous {
+        return Ok(entries);
     }
 
     let indent_size = settings_json::infer_json_indent_size(&existing);
@@ -662,6 +745,153 @@ mod tests {
                 .await
                 .expect("a bad entry must not fail the whole write");
         assert_eq!(entries, vec!["good.example".to_string()]);
+    }
+
+    /// The list arithmetic behind both write paths, without a filesystem.
+    #[test]
+    fn hosts_are_added_and_removed_by_canonical_entry() {
+        let entries = vec![
+            "*.corp.example".to_string(),
+            "API.Anthropic.COM".to_string(),
+            "10.0.0.5".to_string(),
+        ];
+
+        assert_eq!(
+            entries_with_hosts_added(
+                &entries,
+                &["api.anthropic.com".to_string(), "zed.dev".to_string()]
+            ),
+            vec![
+                "*.corp.example".to_string(),
+                "API.Anthropic.COM".to_string(),
+                "10.0.0.5".to_string(),
+                "zed.dev".to_string(),
+            ],
+            "a host already listed in another spelling must not be added again"
+        );
+
+        assert_eq!(
+            entries_with_hosts_removed(&entries, &["api.anthropic.com".to_string()]),
+            vec!["*.corp.example".to_string(), "10.0.0.5".to_string()],
+            "the entry naming the host goes, in whatever spelling it was written"
+        );
+
+        assert_eq!(
+            entries_with_hosts_removed(&entries, &["api.corp.example".to_string()]),
+            entries,
+            "a wildcard entry that merely covers the host was written for more \
+             than this host and has to survive"
+        );
+
+        assert_eq!(
+            entries_with_hosts_removed(&entries, &["not a host".to_string(), String::new()]),
+            entries,
+            "an unparsable host matches nothing rather than everything"
+        );
+
+        assert_eq!(
+            entries_with_hosts_removed(&["*.*".to_string()], &["*.*".to_string()]),
+            vec!["*.*".to_string()],
+            "an entry the policy itself would skip is left for the user to fix"
+        );
+    }
+
+    /// The ADR-F10 revoke path: what consent opened, withdrawing it closes.
+    #[gpui::test]
+    async fn remove_allowed_hosts_drops_only_the_named_entries(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                std::path::Path::new(util::path!("/config")),
+                serde_json::json!({
+                    "network_allowlist.json": "// keep me\n{ \"allowed_hosts\": [\"api.anthropic.com\", \"*.corp.example\"] }\n"
+                }),
+            )
+            .await;
+
+        let handle = cx.update(|cx| watch(fs.clone(), path.clone(), cx));
+        cx.run_until_parked();
+        let anthropic = RequestHost::parse("api.anthropic.com").expect("host should parse");
+        assert!(handle.allows(&anthropic));
+
+        let entries = remove_allowed_hosts(&fs, &path, &["api.anthropic.com".to_string()])
+            .await
+            .expect("write should succeed");
+        assert_eq!(entries, vec!["*.corp.example".to_string()]);
+
+        let on_disk = fake_fs.load(&path).await.expect("file should exist");
+        assert!(
+            on_disk.contains("// keep me"),
+            "the comment outside allowed_hosts must survive the rewrite"
+        );
+        cx.run_until_parked();
+        assert!(
+            !handle.allows(&anthropic),
+            "the running policy has to lose the host too"
+        );
+
+        // Pressing revoke again, or revoking a provider whose host was never
+        // registered, has to leave the file exactly as it is.
+        let unchanged = fake_fs.load(&path).await.expect("file should exist");
+        let entries = remove_allowed_hosts(&fs, &path, &["api.anthropic.com".to_string()])
+            .await
+            .expect("a no-op removal should succeed");
+        assert_eq!(entries, vec!["*.corp.example".to_string()]);
+        assert_eq!(
+            fake_fs.load(&path).await.expect("file should exist"),
+            unchanged
+        );
+    }
+
+    #[gpui::test]
+    async fn remove_allowed_hosts_never_creates_the_file(cx: &mut TestAppContext) {
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                std::path::Path::new(util::path!("/config")),
+                serde_json::json!({}),
+            )
+            .await;
+
+        let entries = remove_allowed_hosts(&fs, &path, &["zed.dev".to_string()])
+            .await
+            .expect("removing from a missing file is not an error");
+        assert!(entries.is_empty());
+        assert!(!fake_fs.is_file(&path).await);
+    }
+
+    #[gpui::test]
+    async fn remove_allowed_hosts_refuses_to_rewrite_an_unparsable_file(cx: &mut TestAppContext) {
+        let broken = "{ \"allowed_hosts\": [\n";
+        let fake_fs = fs::FakeFs::new(cx.background_executor.clone());
+        let fs: Arc<dyn Fs> = fake_fs.clone();
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fake_fs
+            .insert_tree(
+                std::path::Path::new(util::path!("/config")),
+                serde_json::json!({ "network_allowlist.json": broken }),
+            )
+            .await;
+
+        assert!(
+            remove_allowed_hosts(&fs, &path, &["zed.dev".to_string()])
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            fake_fs
+                .load(&path)
+                .await
+                .expect("file should still be there"),
+            broken,
+            "a file that cannot be parsed must be left exactly as it was"
+        );
     }
 
     #[gpui::test]

@@ -2,6 +2,7 @@ mod dev_container_suggest;
 pub mod disconnected_overlay;
 mod remote_connections;
 mod remote_servers;
+mod remote_status_indicator;
 pub mod sidebar_recent_projects;
 mod ssh_config;
 
@@ -35,6 +36,7 @@ use picker::{
 use project::{Worktree, git_store::Repository};
 pub use remote_connections::RemoteSettings;
 pub use remote_servers::RemoteServerProjects;
+pub use remote_status_indicator::RemoteStatusIndicator;
 use settings::{DefaultOpenBehavior, Settings, WorktreeId};
 use workspace::ProjectGroupKey;
 

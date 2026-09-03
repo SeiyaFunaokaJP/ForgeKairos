@@ -30,6 +30,7 @@ use alacritty_terminal::{
 };
 use anyhow::{Context as _, Result};
 use futures::channel::mpsc::UnboundedSender;
+use polling::{Event as PollingEvent, PollMode, Poller};
 use util::paths::PathStyle;
 use vte::ansi::Handler;
 #[cfg(target_os = "windows")]
@@ -41,6 +42,7 @@ use crate::{
     Selection, SelectionRange, SelectionSide, SelectionType, TerminalBackendEvent, TerminalBounds,
     ViMotion,
     pty_info::ProcessIdGetter,
+    session_log::SessionLogTap,
     terminal_settings::{AlternateScroll, CursorShape as SettingsCursorShape},
 };
 
@@ -200,12 +202,90 @@ pub(super) fn new_term(
     Arc::new(FairMutex::new(term))
 }
 
+/// Wraps a PTY so every byte read from it is also handed to a
+/// [`SessionLogTap`].
+///
+/// `EventedReadWrite::reader` hands back `&mut Self::Reader`, so a wrapper
+/// cannot own a reader that borrows the inner PTY. Making the wrapper itself
+/// the reader (`type Reader = Self`) sidesteps that without unsafe code: the
+/// event loop's `pty.reader().read(..)` lands directly in the `io::Read` impl
+/// below, which delegates to the inner reader and then tees.
+pub(super) struct TeePty<P> {
+    inner: P,
+    tap: SessionLogTap,
+}
+
+impl<P> TeePty<P> {
+    fn new(inner: P, tap: SessionLogTap) -> Self {
+        Self { inner, tap }
+    }
+}
+
+impl<P: tty::EventedReadWrite> io::Read for TeePty<P> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.inner.reader().read(buf)?;
+        if read > 0 {
+            self.tap.record(&buf[..read]);
+        }
+        Ok(read)
+    }
+}
+
+impl<P: tty::EventedReadWrite> tty::EventedReadWrite for TeePty<P> {
+    type Reader = Self;
+    type Writer = P::Writer;
+
+    unsafe fn register(
+        &mut self,
+        poller: &Arc<Poller>,
+        interest: PollingEvent,
+        mode: PollMode,
+    ) -> io::Result<()> {
+        unsafe { self.inner.register(poller, interest, mode) }
+    }
+
+    fn reregister(
+        &mut self,
+        poller: &Arc<Poller>,
+        interest: PollingEvent,
+        mode: PollMode,
+    ) -> io::Result<()> {
+        self.inner.reregister(poller, interest, mode)
+    }
+
+    fn deregister(&mut self, poller: &Arc<Poller>) -> io::Result<()> {
+        self.inner.deregister(poller)
+    }
+
+    fn reader(&mut self) -> &mut Self::Reader {
+        self
+    }
+
+    fn writer(&mut self) -> &mut Self::Writer {
+        self.inner.writer()
+    }
+}
+
+impl<P: tty::EventedPty> tty::EventedPty for TeePty<P> {
+    fn next_child_event(&mut self) -> Option<tty::ChildEvent> {
+        self.inner.next_child_event()
+    }
+}
+
+impl<P: alacritty_terminal::event::OnResize> alacritty_terminal::event::OnResize for TeePty<P> {
+    fn on_resize(&mut self, window_size: WindowSize) {
+        self.inner.on_resize(window_size);
+    }
+}
+
 pub(super) fn spawn_event_loop(
     term: Arc<AlacrittyTermLock>,
     events_tx: UnboundedSender<PtyEvent>,
     pty: AlacrittyPty,
     drain_on_exit: bool,
+    session_log_tap: SessionLogTap,
 ) -> Result<PtySender> {
+    let pty = TeePty::new(pty, session_log_tap);
     let event_loop = EventLoop::new(term, ZedListener(events_tx), pty, drain_on_exit, false)
         .context("failed to create event loop")?;
     let pty_tx = event_loop.channel();
@@ -1106,9 +1186,77 @@ fn all_search_matches<'a, T>(
 
 #[cfg(test)]
 mod tests {
+    use std::io::Read as _;
     use std::sync::Arc;
 
     use super::*;
+    use alacritty_terminal::tty::EventedReadWrite as _;
+
+    struct FakePty {
+        reader: io::Cursor<Vec<u8>>,
+        writer: Vec<u8>,
+    }
+
+    impl tty::EventedReadWrite for FakePty {
+        type Reader = io::Cursor<Vec<u8>>;
+        type Writer = Vec<u8>;
+
+        unsafe fn register(
+            &mut self,
+            _: &Arc<Poller>,
+            _: PollingEvent,
+            _: PollMode,
+        ) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn reregister(&mut self, _: &Arc<Poller>, _: PollingEvent, _: PollMode) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn deregister(&mut self, _: &Arc<Poller>) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn reader(&mut self) -> &mut Self::Reader {
+            &mut self.reader
+        }
+
+        fn writer(&mut self) -> &mut Self::Writer {
+            &mut self.writer
+        }
+    }
+
+    #[test]
+    fn tee_pty_duplicates_reads_only_while_a_tap_is_installed() {
+        let tap = SessionLogTap::default();
+        let mut pty = TeePty::new(
+            FakePty {
+                reader: io::Cursor::new(b"before-tapafter-tap".to_vec()),
+                writer: Vec::new(),
+            },
+            tap.clone(),
+        );
+
+        let mut buffer = [0u8; 10];
+        let read = pty.reader().read(&mut buffer).expect("read succeeds");
+        assert_eq!(&buffer[..read], b"before-tap");
+
+        let (sender, receiver) = async_channel::unbounded();
+        tap.install(sender);
+
+        let read = pty.reader().read(&mut buffer).expect("read succeeds");
+        assert_eq!(&buffer[..read], b"after-tap");
+
+        assert_eq!(
+            receiver.try_recv().expect("tapped chunk"),
+            b"after-tap".to_vec()
+        );
+        assert!(
+            receiver.try_recv().is_err(),
+            "untapped read was not recorded"
+        );
+    }
 
     #[test]
     fn terminal_hyperlink_from_alacritty_keeps_alacritty_storage() {

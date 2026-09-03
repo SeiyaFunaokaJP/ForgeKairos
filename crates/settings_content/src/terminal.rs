@@ -193,6 +193,36 @@ pub struct TerminalSettingsContent {
     ///
     /// Default: "system"
     pub bell: Option<TerminalBell>,
+    /// Session log (TeraTerm-style output recording) settings.
+    pub session_log: Option<TerminalSessionLogContent>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct TerminalSessionLogContent {
+    /// Whether every new terminal starts recording its output automatically.
+    ///
+    /// Default: false
+    pub auto: Option<bool>,
+    /// Directory the log files are written to. `~` is expanded.
+    /// When unset, logs go to Zed's log directory under `terminal-sessions`.
+    ///
+    /// Default: null
+    pub directory: Option<String>,
+    /// File name for a new log. Supports the placeholders `{date}`, `{time}`,
+    /// `{title}`, `{host}` and `{pid}`.
+    ///
+    /// Default: "{date}_{time}_{title}.log"
+    pub file_name_template: Option<String>,
+    /// Whether to filter ANSI/VT escape sequences so the log reads as plain
+    /// text, the way TeraTerm's text log does.
+    ///
+    /// Default: true
+    pub strip_control_sequences: Option<bool>,
+    /// Whether to prefix each logged line with `[YYYY-MM-DD HH:MM:SS] `.
+    ///
+    /// Default: false
+    pub timestamps: Option<bool>,
 }
 
 /// Shell configuration to open the terminal with.

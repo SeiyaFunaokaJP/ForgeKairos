@@ -178,6 +178,7 @@ impl VsCodeSettings {
             audio: None,
             auto_update: None,
             base_keymap: Some(BaseKeymapContent::VSCode),
+            browser: None,
             calls: None,
             collaboration_panel: None,
             credentials_url: None,
@@ -900,6 +901,7 @@ impl VsCodeSettings {
                     }
                 }),
             button: None,
+            session_log: None,
             copy_on_select: self.read_bool("terminal.integrated.copyOnSelection"),
             cursor_shape: self.read_enum("terminal.integrated.cursorStyle", |s| match s {
                 "block" => Some(CursorShapeContent::Block),

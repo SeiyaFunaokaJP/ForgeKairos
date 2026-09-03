@@ -293,6 +293,14 @@ pub fn network_allowlist_file() -> &'static PathBuf {
     NETWORK_ALLOWLIST_FILE.get_or_init(|| config_dir().join("network_allowlist.json"))
 }
 
+/// Returns the path to the `terminal_sessions.json` file, which holds the
+/// saved quick-connect entries and terminal macros.
+/// On Windows this resolves to `%APPDATA%\Zed\terminal_sessions.json`.
+pub fn terminal_sessions_file() -> &'static PathBuf {
+    static TERMINAL_SESSIONS_FILE: OnceLock<PathBuf> = OnceLock::new();
+    TERMINAL_SESSIONS_FILE.get_or_init(|| config_dir().join("terminal_sessions.json"))
+}
+
 /// Returns the path to the global settings file.
 pub fn global_settings_file() -> &'static PathBuf {
     static GLOBAL_SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();

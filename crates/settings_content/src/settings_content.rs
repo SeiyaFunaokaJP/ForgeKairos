@@ -218,6 +218,9 @@ pub struct SettingsContent {
     /// Default: VSCode
     pub base_keymap: Option<BaseKeymapContent>,
 
+    /// Settings for the built-in browser panel.
+    pub browser: Option<BrowserSettingsContent>,
+
     /// Configuration for the collab panel visual settings.
     pub collaboration_panel: Option<PanelSettingsContent>,
 
@@ -709,6 +712,65 @@ pub struct CallSettingsContent {
     ///
     /// Default: false
     pub share_on_join: Option<bool>,
+}
+
+/// A single entry of `browser.bookmarks`.
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema, Debug)]
+pub struct BrowserBookmarkContent {
+    /// The label shown on the bookmark button.
+    pub name: String,
+    /// The URL the bookmark opens.
+    pub url: String,
+}
+
+#[with_fallible_options]
+#[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
+pub struct BrowserSettingsContent {
+    /// Whether to show the browser panel button in the status bar.
+    ///
+    /// Default: true
+    pub button: Option<bool>,
+
+    /// Where to dock the browser panel. Can be 'left' or 'right'.
+    ///
+    /// Default: right
+    pub dock: Option<DockPosition>,
+
+    /// Default width of the browser panel in pixels.
+    ///
+    /// Default: 480
+    pub default_width: Option<PixelSetting>,
+
+    /// The page opened when the browser panel first loads.
+    ///
+    /// Default: https://github.com/copilot
+    pub home_url: Option<String>,
+
+    /// The URL template used when the address bar input is not a URL, and for
+    /// `browser_panel::SearchSelection`. `{query}` is replaced with the
+    /// percent-encoded query.
+    ///
+    /// Default: https://www.google.com/search?q={query}
+    pub search_url: Option<String>,
+
+    /// The URL template used by `browser_panel::AskCopilot`. `{query}` is
+    /// replaced with the percent-encoded query when present; without the
+    /// placeholder the page is opened as-is and the query is put on the
+    /// clipboard instead.
+    ///
+    /// Default: https://github.com/copilot
+    pub copilot_url: Option<String>,
+
+    /// Bookmark buttons shown under the browser panel toolbar.
+    pub bookmarks: Option<Vec<BrowserBookmarkContent>>,
+
+    /// Whether the built-in browser goes through the egress allowlist proxy.
+    ///
+    /// The browser is human-driven, so like the terminal it is outside egress
+    /// control by default (ADR-F19).
+    ///
+    /// Default: false
+    pub use_egress_proxy: Option<bool>,
 }
 
 #[with_fallible_options]

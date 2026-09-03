@@ -156,6 +156,71 @@ pub(crate) fn render_edit_prediction_setup_page(
         .into_any_element()
 }
 
+/// The endpoint the Copilot edit prediction provider signs in against: the
+/// enterprise URI when one is configured, and Copilot's own otherwise.
+fn copilot_edit_prediction_api_url(cx: &App) -> String {
+    AllLanguageSettings::get_global(cx)
+        .edit_predictions
+        .copilot
+        .enterprise_uri
+        .clone()
+        .filter(|uri| !uri.trim().is_empty())
+        .unwrap_or_else(|| COPILOT_API_URL.to_string())
+}
+
+/// Every edit prediction provider's consent target, built exactly as the cards
+/// above build them.
+///
+/// `external_ai_consent` needs this to answer "is this host still needed by
+/// something else the user has consented to?" when a consent is withdrawn: the
+/// `edit_prediction:` keys stored in `acknowledged_external_ai_providers` carry
+/// no endpoint of their own, and the settings each of these reads live in
+/// crates `external_ai_consent` does not depend on. `Zed` is deliberately absent
+/// — it shares the `zed.dev` key with the LLM provider, which that lookup
+/// resolves on its own.
+pub(crate) fn edit_prediction_consent_targets(cx: &App) -> Vec<ConsentTarget> {
+    [
+        external_ai_consent::edit_prediction_target(
+            "open_ai_compatible_api",
+            "OpenAI Compatible API",
+            Some(&open_ai_compatible_api_url(cx)),
+            &[],
+            None,
+        ),
+        external_ai_consent::edit_prediction_target(
+            "ollama",
+            "Ollama",
+            Some(&ollama_edit_prediction_api_url(cx)),
+            &[],
+            None,
+        ),
+        external_ai_consent::edit_prediction_target(
+            "copilot",
+            "GitHub Copilot",
+            Some(&copilot_edit_prediction_api_url(cx)),
+            &["github.com", "api.github.com"],
+            None,
+        ),
+        external_ai_consent::edit_prediction_target(
+            "codestral",
+            "Codestral",
+            Some(&codestral_api_url(cx)),
+            &[],
+            None,
+        ),
+        external_ai_consent::edit_prediction_target(
+            "mercury",
+            "Mercury",
+            Some(MERCURY_API_URL),
+            &["api-feedback.inceptionlabs.ai"],
+            None,
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
 /// `Zed` is the one edit prediction provider whose consent key is shared with an
 /// agent (LLM) provider, so both surfaces have to say so.
 const ZED_CONSENT_SHARED_NOTE: &str = "この承諾は「AI」ページの LLM プロバイダー「Zed」と共通です。取り消すと編集予測とエージェントの両方に反映されます。";
@@ -955,17 +1020,10 @@ fn render_github_copilot_provider(
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> Option<impl IntoElement> {
-    let api_url = AllLanguageSettings::get_global(cx)
-        .edit_predictions
-        .copilot
-        .enterprise_uri
-        .clone()
-        .filter(|uri| !uri.trim().is_empty())
-        .unwrap_or_else(|| COPILOT_API_URL.to_string());
     let consent = external_ai_consent::edit_prediction_target(
         "copilot",
         "GitHub Copilot",
-        Some(&api_url),
+        Some(&copilot_edit_prediction_api_url(cx)),
         &["github.com", "api.github.com"],
         Some(
             "編集予測の通信は Copilot の言語サーバー (別プロセス) が行うため、外部通信の許可リストの対象外です。ホストの登録は Zed 本体からのサインインにのみ効きます。",

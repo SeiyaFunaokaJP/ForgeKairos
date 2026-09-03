@@ -1204,6 +1204,21 @@ impl GitRepository for FakeGitRepository {
         future::ready(Ok(String::new())).boxed()
     }
 
+    fn run_command(
+        &self,
+        args: Vec<String>,
+        _stdin: Option<String>,
+        _env: Arc<HashMap<String, String>>,
+    ) -> BoxFuture<'_, Result<git::repository::GitCommandOutput>> {
+        // There is no git binary behind the fake repository, so rather than
+        // pretending a command succeeded we make the missing support explicit.
+        let subcommand = args.first().cloned().unwrap_or_default();
+        future::ready(Err(anyhow::anyhow!(
+            "`git {subcommand}` is not supported by the fake git repository"
+        )))
+        .boxed()
+    }
+
     fn diff_stat(
         &self,
         diff: git::repository::DiffStatType,

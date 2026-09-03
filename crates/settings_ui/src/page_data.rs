@@ -80,6 +80,7 @@ pub(crate) fn settings_data(cx: &App) -> Vec<SettingsPage> {
         collaboration_page(),
         ai_page(cx),
         network_page(),
+        browser_page(),
         developer_page(cx),
     ]
 }
@@ -8295,7 +8296,7 @@ fn collaboration_page() -> SettingsPage {
 }
 
 fn ai_page(cx: &App) -> SettingsPage {
-    fn general_section() -> [SettingsPageItem; 9] {
+    fn general_section() -> [SettingsPageItem; 10] {
         [
             SettingsPageItem::SectionHeader("全般"),
             // The only UI writer of `agent.enabled` (ADR-F13, `docs/jp-enhance/DESIGN.md`):
@@ -8327,6 +8328,22 @@ fn ai_page(cx: &App) -> SettingsPage {
                 }),
                 metadata: None,
                 files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "スレッドサイドバー",
+                description: "ウィンドウ幅のスレッドサイドバーを表示します。オフのときはエージェントパネル内のスレッド履歴を使います。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.sidebar_enabled"),
+                    pick: |settings_content| {
+                        settings_content.agent.as_ref()?.sidebar_enabled.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.agent.get_or_insert_default().sidebar_enabled = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "スレッドサイドバーの位置",
@@ -8375,6 +8392,11 @@ fn ai_page(cx: &App) -> SettingsPage {
                     "bedrock",
                     "chat",
                     "claude",
+                    // The page answers "where is the Claude subscription?": it
+                    // is the Claude Code agent, not an entry in this list.
+                    "claude code",
+                    "claude max",
+                    "claude pro",
                     "copilot",
                     "gemini",
                     "github",
@@ -8389,6 +8411,7 @@ fn ai_page(cx: &App) -> SettingsPage {
                     "openai",
                     "opencode",
                     "provider",
+                    "subscription",
                     "vercel",
                     "xai",
                 ],
@@ -10946,6 +10969,180 @@ fn write_helix_mode_inner(settings: &mut SettingsContent, value: Option<bool>) {
         settings.vim_mode = Some(false);
     }
     settings.helix_mode = value;
+}
+
+/// 内蔵ブラウザー (ADR-F19)。ブックマークは構造体の配列なので、宣言的な
+/// `SettingItem` では表現できず settings.json への導線だけを出す。
+fn browser_page() -> SettingsPage {
+    fn browsing_section() -> [SettingsPageItem; 5] {
+        [
+            SettingsPageItem::SectionHeader("ブラウジング"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "ホーム URL",
+                description: "ブラウザーパネルを開いたときに最初に表示するページです。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.home_url"),
+                    pick: |settings_content| settings_content.browser.as_ref()?.home_url.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.browser.get_or_insert_default().home_url = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("https://github.com/copilot"),
+                    display_confirm_button: true,
+                    display_clear_button: true,
+                    confirm_on_focus_out: true,
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "検索 URL",
+                description: "アドレスバーの入力が URL でなかったときと、「選択テキストを Web で検索」で使う URL です。{query} が検索語に置き換わります。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.search_url"),
+                    pick: |settings_content| settings_content.browser.as_ref()?.search_url.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.browser.get_or_insert_default().search_url = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("https://www.google.com/search?q={query}"),
+                    display_confirm_button: true,
+                    display_clear_button: true,
+                    confirm_on_focus_out: true,
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Copilot URL",
+                description: "「選択テキストを Copilot に聞く」で開く URL です。{query} を書くとそこに質問が埋め込まれます。プレースホルダーが無い場合は選択テキストをクリップボードにコピーします。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.copilot_url"),
+                    pick: |settings_content| {
+                        settings_content.browser.as_ref()?.copilot_url.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.browser.get_or_insert_default().copilot_url = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("https://github.com/copilot"),
+                    display_confirm_button: true,
+                    display_clear_button: true,
+                    confirm_on_focus_out: true,
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "ブックマーク",
+                description: "ブラウザーパネルのツールバーの下に並べるブックマークです。名前と URL の組を settings.json で編集します。",
+                field: Box::new(
+                    SettingField {
+                        organization_override: None,
+                        json_path: Some("browser.bookmarks"),
+                        pick: |settings_content| {
+                            settings_content.browser.as_ref()?.bookmarks.as_ref()
+                        },
+                        write: |settings_content, value, _| {
+                            settings_content.browser.get_or_insert_default().bookmarks = value;
+                        },
+                    }
+                    .unimplemented(),
+                ),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
+    fn panel_section() -> [SettingsPageItem; 4] {
+        [
+            SettingsPageItem::SectionHeader("ブラウザーパネル"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "ブラウザーパネルのボタン",
+                description: "ステータスバーにブラウザーパネルのボタンを表示します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.button"),
+                    pick: |settings_content| settings_content.browser.as_ref()?.button.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.browser.get_or_insert_default().button = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "ブラウザーパネルのドック位置",
+                description: "ブラウザーパネルをドッキングする位置です。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.dock"),
+                    pick: |settings_content| settings_content.browser.as_ref()?.dock.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.browser.get_or_insert_default().dock = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "ブラウザーパネルの既定の幅",
+                description: "ブラウザーパネルの既定の幅 (ピクセル) です。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.default_width"),
+                    pick: |settings_content| {
+                        settings_content.browser.as_ref()?.default_width.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .browser
+                            .get_or_insert_default()
+                            .default_width = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
+    fn egress_section() -> [SettingsPageItem; 2] {
+        [
+            SettingsPageItem::SectionHeader("外部通信"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "内蔵ブラウザーを許可リストの対象にする",
+                description: "オンにすると内蔵ブラウザーの通信も外部通信の許可リストで制限されます。既定では人間操作のターミナルと同様に許可リストの対象外です。切り替えは内蔵ブラウザーの次回起動から反映されます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.use_egress_proxy"),
+                    pick: |settings_content| {
+                        settings_content.browser.as_ref()?.use_egress_proxy.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .browser
+                            .get_or_insert_default()
+                            .use_egress_proxy = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
+    SettingsPage {
+        title: "ブラウザー",
+        items: concat_sections![browsing_section(), panel_section(), egress_section()],
+    }
 }
 
 #[cfg(test)]

@@ -153,6 +153,8 @@ pub enum IconName {
     FontSize,
     FontWeight,
     Forgejo,
+    FormatDocument,
+    FormatSelection,
     ForwardArrow,
     ForwardArrowUp,
     GenericClose,

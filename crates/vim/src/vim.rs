@@ -282,6 +282,20 @@ actions!(
     ]
 );
 
+/// Flips `vim_mode` for [`ToggleVimMode`]. Always writes an explicit boolean
+/// instead of removing the key: a user file that says `"vim_mode": true` has to
+/// end up saying `false`, otherwise the setting would silently fall back to
+/// whatever the defaults say and the toggle would look like it did nothing.
+pub(crate) fn write_toggled_vim_mode(
+    setting: &mut settings::SettingsContent,
+    currently_enabled: bool,
+) {
+    setting.vim_mode = Some(!currently_enabled);
+    if let Some(helix_mode) = &mut setting.helix_mode {
+        *helix_mode = false;
+    }
+}
+
 /// Initializes the `vim` crate.
 pub fn init(cx: &mut App) {
     VimGlobals::register(cx);
@@ -293,10 +307,7 @@ pub fn init(cx: &mut App) {
             let fs = workspace.app_state().fs.clone();
             let currently_enabled = VimModeSetting::get_global(cx).0;
             update_settings_file(fs, cx, move |setting, _| {
-                setting.vim_mode = Some(!currently_enabled);
-                if let Some(helix_mode) = &mut setting.helix_mode {
-                    *helix_mode = false;
-                }
+                write_toggled_vim_mode(setting, currently_enabled)
             })
         });
 

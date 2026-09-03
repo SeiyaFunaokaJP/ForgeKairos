@@ -662,6 +662,8 @@
       "shift-new": "workspace::NewWindow",
       "ctrl-shift-n": "workspace::NewWindow",
       "ctrl-`": "terminal_panel::Toggle",
+      "ctrl-shift-alt-k": "terminal::QuickConnect",
+      "ctrl-shift-alt-m": "terminal::RunMacro",
       "f10": ["app_menu::OpenApplicationMenu", "Zed"],
       "alt-1": ["workspace::ActivatePane", 0],
       "alt-2": ["workspace::ActivatePane", 1],
@@ -1588,6 +1590,36 @@
       "ctrl-enter": "skill_creator::SaveSkill",
       "tab": "skill_creator::FocusNextField",
       "shift-tab": "skill_creator::FocusPreviousField",
+    },
+  },
+  // 内蔵ブラウザーパネル (ADR-F19)
+  {
+    "context": "Workspace",
+    "bindings": {
+      "ctrl-alt-shift-u": "browser_panel::ToggleFocus",
+    },
+  },
+  {
+    "context": "Editor && mode == full",
+    "bindings": {
+      "ctrl-alt-shift-q": "browser_panel::SearchSelection",
+      "ctrl-alt-shift-a": "browser_panel::AskCopilot",
+    },
+  },
+  {
+    "context": "BrowserPanel",
+    "bindings": {
+      "alt-left": "browser_panel::NavigateBack",
+      "alt-right": "browser_panel::NavigateForward",
+      "f5": "browser_panel::Reload",
+      "alt-home": "browser_panel::GoHome",
+      "ctrl-l": "browser_panel::FocusAddressBar",
+    },
+  },
+  {
+    "context": "BrowserPanel > Editor && mode == single_line",
+    "bindings": {
+      "enter": "browser_panel::SubmitAddress",
     },
   },
 ]

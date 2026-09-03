@@ -243,6 +243,22 @@ message GitDiffResponse {
   string diff = 1;
 }
 
+// Runs a single git subcommand in a repository. The subcommand is validated
+// against an allowlist on the host before it runs; see ALLOWED_GIT_COMMANDS.
+message GitRunCommand {
+  uint64 project_id = 1;
+  uint64 repository_id = 2;
+  repeated string args = 3;
+  optional string stdin = 4;
+}
+
+message GitRunCommandResponse {
+  string stdout = 1;
+  string stderr = 2;
+  // Absent when the process was terminated by a signal.
+  optional int32 exit_code = 3;
+}
+
 message GitInit {
   uint64 project_id = 1;
   string abs_path = 2;

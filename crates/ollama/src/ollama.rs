@@ -11,6 +11,29 @@ pub use settings::KeepAlive;
 
 pub const OLLAMA_API_URL: &str = "http://localhost:11434";
 
+/// `think` に強度を渡せるモデルで使える標準のレベル。
+/// Ollama 側の受理値なのでシリアライズ用の文字列であり、翻訳してはいけない。
+pub const DEFAULT_THINKING_LEVELS: [&str; 3] = ["low", "medium", "high"];
+
+/// `think` を bool ではなく強度文字列で受け取るモデルの接頭辞。
+/// 2026 年時点で該当するのは gpt-oss 系のみ (`gpt-oss:20b` など)。
+const THINKING_LEVEL_MODEL_PREFIXES: [&str; 1] = ["gpt-oss"];
+
+/// 設定で `thinking_levels` が指定されていないモデルの既定レベル。
+/// 強度を受け付けないモデルに文字列を送ると Ollama が 400 を返すため、
+/// 既知のモデルにだけ付ける。
+pub fn default_thinking_levels(name: &str) -> Option<Vec<String>> {
+    THINKING_LEVEL_MODEL_PREFIXES
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+        .then(|| {
+            DEFAULT_THINKING_LEVELS
+                .iter()
+                .map(|level| (*level).to_owned())
+                .collect()
+        })
+}
+
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Model {
@@ -21,6 +44,8 @@ pub struct Model {
     pub supports_tools: Option<bool>,
     pub supports_vision: Option<bool>,
     pub supports_thinking: Option<bool>,
+    /// `think` に渡せる強度レベル。`None` は bool のオン/オフのみ対応。
+    pub thinking_levels: Option<Vec<String>>,
     pub disabled: Option<String>,
 }
 
@@ -45,6 +70,7 @@ impl Model {
             supports_tools,
             supports_vision,
             supports_thinking,
+            thinking_levels: default_thinking_levels(name),
             disabled: None,
         }
     }
@@ -58,6 +84,7 @@ impl Model {
             supports_tools: None,
             supports_vision: None,
             supports_thinking: None,
+            thinking_levels: None,
             disabled: Some(reason),
         }
     }
@@ -124,6 +151,16 @@ pub enum OllamaTool {
     Function { function: OllamaFunctionTool },
 }
 
+/// `/api/chat` の `think` は真偽値のほかに強度文字列 ("low" / "medium" / "high") を
+/// 受け付ける (gpt-oss 系)。untagged なので `true` / `"high"` がそのまま出る。
+/// 真偽値を先に並べているのは、untagged の判定が定義順で行われるため。
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum ThinkValue {
+    Enabled(bool),
+    Level(String),
+}
+
 #[derive(Serialize, Debug)]
 pub struct ChatRequest {
     pub model: String,
@@ -132,7 +169,7 @@ pub struct ChatRequest {
     pub keep_alive: KeepAlive,
     pub options: Option<ChatOptions>,
     pub tools: Vec<OllamaTool>,
-    pub think: Option<bool>,
+    pub think: Option<ThinkValue>,
 }
 
 // https://github.com/ollama/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values
@@ -402,6 +439,82 @@ pub async fn show_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn chat_request(think: Option<ThinkValue>) -> ChatRequest {
+        ChatRequest {
+            model: "gpt-oss:20b".to_string(),
+            messages: vec![ChatMessage::User {
+                content: "hi".to_string(),
+                images: None,
+            }],
+            stream: true,
+            keep_alive: KeepAlive::indefinite(),
+            options: None,
+            tools: Vec::new(),
+            think,
+        }
+    }
+
+    #[test]
+    fn serialize_think_as_bool_or_level() {
+        let enabled = serde_json::to_value(chat_request(Some(ThinkValue::Enabled(true))))
+            .expect("serializing think=true");
+        assert_eq!(enabled["think"], serde_json::json!(true));
+
+        let disabled = serde_json::to_value(chat_request(Some(ThinkValue::Enabled(false))))
+            .expect("serializing think=false");
+        assert_eq!(disabled["think"], serde_json::json!(false));
+
+        let level = serde_json::to_value(chat_request(Some(ThinkValue::Level("high".to_string()))))
+            .expect("serializing think=\"high\"");
+        assert_eq!(level["think"], serde_json::json!("high"));
+
+        let absent = serde_json::to_value(chat_request(None)).expect("serializing think=null");
+        assert_eq!(absent["think"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn deserialize_think_prefers_bool_over_level() {
+        assert_eq!(
+            serde_json::from_value::<ThinkValue>(serde_json::json!(true))
+                .expect("deserializing bool"),
+            ThinkValue::Enabled(true)
+        );
+        assert_eq!(
+            serde_json::from_value::<ThinkValue>(serde_json::json!("medium"))
+                .expect("deserializing level"),
+            ThinkValue::Level("medium".to_string())
+        );
+    }
+
+    #[test]
+    fn thinking_levels_are_detected_for_gpt_oss_only() {
+        assert_eq!(
+            default_thinking_levels("gpt-oss:20b"),
+            Some(vec![
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string()
+            ])
+        );
+        assert_eq!(default_thinking_levels("gpt-oss"), {
+            Some(
+                DEFAULT_THINKING_LEVELS
+                    .iter()
+                    .map(|level| (*level).to_owned())
+                    .collect(),
+            )
+        });
+        assert_eq!(default_thinking_levels("qwen3:8b"), None);
+        assert_eq!(
+            Model::new("gpt-oss:120b", None, None, None, Some(true)).thinking_levels,
+            default_thinking_levels("gpt-oss:120b")
+        );
+        assert_eq!(
+            Model::new("qwen3:8b", None, None, None, Some(true)).thinking_levels,
+            None
+        );
+    }
 
     #[test]
     fn parse_completion() {

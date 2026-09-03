@@ -52,6 +52,26 @@ pub struct TerminalSettings {
     pub path_hyperlink_timeout_ms: u64,
     pub show_count_badge: bool,
     pub bell: TerminalBell,
+    pub session_log: SessionLogSettings,
+}
+
+/// Resolved `terminal.session_log` settings. See [`crate::session_log`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionLogSettings {
+    pub auto: bool,
+    pub directory: Option<String>,
+    pub file_name_template: String,
+    pub strip_control_sequences: bool,
+    pub timestamps: bool,
+}
+
+impl SessionLogSettings {
+    pub fn options(&self) -> crate::session_log::SessionLogOptions {
+        crate::session_log::SessionLogOptions {
+            strip_control_sequences: self.strip_control_sequences,
+            timestamps: self.timestamps,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -136,6 +156,18 @@ impl settings::Settings for TerminalSettings {
             path_hyperlink_timeout_ms: project_content.path_hyperlink_timeout_ms.unwrap(),
             show_count_badge: user_content.show_count_badge.unwrap(),
             bell: user_content.bell.unwrap(),
+            session_log: {
+                let session_log = user_content.session_log.unwrap();
+                SessionLogSettings {
+                    auto: session_log.auto.unwrap(),
+                    directory: session_log
+                        .directory
+                        .filter(|directory| !directory.trim().is_empty()),
+                    file_name_template: session_log.file_name_template.unwrap(),
+                    strip_control_sequences: session_log.strip_control_sequences.unwrap(),
+                    timestamps: session_log.timestamps.unwrap(),
+                }
+            },
         }
     }
 }

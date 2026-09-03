@@ -217,6 +217,10 @@ pub struct OllamaAvailableModel {
     pub supports_images: Option<bool>,
     /// Whether to enable think mode
     pub supports_thinking: Option<bool>,
+    /// Thinking effort levels this model accepts in Ollama's `think` parameter,
+    /// for example `["low", "medium", "high"]`. Only some models (e.g. `gpt-oss`)
+    /// accept a level instead of a plain on/off; leave unset for those that don't.
+    pub thinking_levels: Option<Vec<String>>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, JsonSchema, MergeFrom)]
@@ -309,6 +313,8 @@ pub struct LmStudioAvailableModel {
     pub max_tokens: u64,
     pub supports_tool_calls: bool,
     pub supports_images: bool,
+    /// Whether the model emits thinking (reasoning) content.
+    pub supports_thinking: Option<bool>,
 }
 
 #[with_fallible_options]

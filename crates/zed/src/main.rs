@@ -11,7 +11,9 @@ mod zed;
 // an official Zed install. The binary name is what we actually depend on staying
 // stable, so assert that instead.
 const _: () = assert!(
-    env!("CARGO_BIN_NAME").as_bytes().eq_ignore_ascii_case(b"zed"),
+    env!("CARGO_BIN_NAME")
+        .as_bytes()
+        .eq_ignore_ascii_case(b"zed"),
     "zed-jp-enhance keeps the binary named `zed` for updater/installer compatibility; \
      APP_NAME (data dir) is intentionally separate — see crates/paths/src/paths.rs.",
 );
@@ -791,6 +793,7 @@ fn main() {
         title_bar::init(cx);
         notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
         git_ui::init(cx);
+        browser_panel::init(cx);
         feedback::init(cx);
         markdown_preview::init(cx);
         tabular_data_preview::init(cx);

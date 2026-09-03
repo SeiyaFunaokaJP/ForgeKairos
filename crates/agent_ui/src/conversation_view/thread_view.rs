@@ -4420,8 +4420,7 @@ impl ThreadView {
                                     .gap_0p5()
                                     .child(self.render_add_context_button(cx))
                                     .child(self.render_follow_toggle(cx))
-                                    .children(self.render_fast_mode_control(cx))
-                                    .children(self.render_thinking_control(cx)),
+                                    .children(self.render_fast_mode_control(cx)),
                             )
                             .child(
                                 h_flex()
@@ -4430,11 +4429,21 @@ impl ThreadView {
                                     .gap_1()
                                     .children(self.render_token_usage(cx))
                                     .children(self.profile_selector.clone())
-                                    .map(|this| match self.config_options_view.clone() {
-                                        Some(config_view) => this.child(config_view),
-                                        None => this
-                                            .children(self.mode_selector.clone())
-                                            .children(self.model_selector.clone()),
+                                    // 思考の制御はモデルセレクターの直左に置く。
+                                    // 左クラスターに埋もれていて見つからないという
+                                    // 指摘があったため (F5 系)。
+                                    .map({
+                                        let thinking_control = self.render_thinking_control(cx);
+                                        let config_options_view = self.config_options_view.clone();
+                                        let mode_selector = self.mode_selector.clone();
+                                        let model_selector = self.model_selector.clone();
+                                        move |this| match config_options_view {
+                                            Some(config_view) => this.child(config_view),
+                                            None => this
+                                                .children(mode_selector)
+                                                .children(thinking_control)
+                                                .children(model_selector),
+                                        }
                                     })
                                     .child(self.render_send_button(cx)),
                             ),
@@ -5115,95 +5124,121 @@ impl ThreadView {
         let thread = self.as_native_thread(cx)?.read(cx);
         let model = thread.model()?;
 
-        let supports_thinking = model.supports_thinking();
-        if !supports_thinking {
-            return None;
+        let disabled_icon_color = Color::Custom(cx.theme().colors().icon_disabled.opacity(0.8));
+
+        // 非対応モデルでもアイコンだけは残す。ボタンごと消すと「思考レベルの
+        // 指定機能自体が無い」と誤解されるため、無効状態 + 理由のツールチップで出す
+        // (ツールチップは disabled でも表示される)。
+        if !model.supports_thinking() {
+            return Some(
+                IconButton::new("thinking-mode", IconName::ThinkingModeOff)
+                    .icon_size(IconSize::Small)
+                    .icon_color(disabled_icon_color)
+                    .disabled(true)
+                    .tooltip(Tooltip::text("このモデルは思考モードに対応していません"))
+                    .into_any_element(),
+            );
         }
+
+        let effort_levels = model.supported_effort_levels();
+        let selected_effort = thread.thinking_effort().cloned();
 
         // A toggle would be dishonest for models that always think: only
         // offer the effort selector.
         if !model.supports_disabling_thinking() {
-            let effort_levels = model.supported_effort_levels();
             if effort_levels.is_empty() {
                 return None;
             }
             return Some(
-                self.render_effort_selector(
-                    effort_levels,
-                    thread.thinking_effort().cloned(),
-                    true,
-                    cx,
-                )
-                .into_any_element(),
+                self.render_effort_selector(effort_levels, selected_effort, true, cx)
+                    .into_any_element(),
             );
         }
 
         let thinking = thread.thinking_enabled();
+        let has_effort_levels = !effort_levels.is_empty();
+        let split = thinking && has_effort_levels;
 
-        let (tooltip_label, icon, color) = if thinking {
-            ("思考モードを無効化", IconName::ThinkingMode, Color::Accent)
+        let (icon, color) = if thinking {
+            (IconName::ThinkingMode, Color::Accent)
         } else {
-            (
-                "思考モードを有効化",
-                IconName::ThinkingModeOff,
-                Color::Custom(cx.theme().colors().icon_disabled.opacity(0.8)),
-            )
+            (IconName::ThinkingModeOff, disabled_icon_color)
         };
+
+        let label: SharedString = if !thinking {
+            "思考: オフ".into()
+        } else {
+            match thinking_effort_label(&effort_levels, selected_effort.as_deref()) {
+                Some(level) => format!("思考: {level}").into(),
+                None => "思考: オン".into(),
+            }
+        };
+
+        let tooltip_label = if thinking {
+            "思考モードを無効にします"
+        } else {
+            "思考モードを有効にします"
+        };
+        let tooltip_meta = (!has_effort_levels)
+            .then_some("このモデルは思考のオン/オフのみ対応しています (レベル指定は非対応)");
 
         let focus_handle = self.message_editor.focus_handle(cx);
 
-        let thinking_toggle = IconButton::new("thinking-mode", icon)
-            .icon_size(IconSize::Small)
-            .icon_color(color)
-            .tooltip(move |_, cx| {
-                Tooltip::for_action_in(tooltip_label, &ToggleThinkingMode, &focus_handle, cx)
-            })
-            .on_click(cx.listener(move |this, _, _window, cx| {
-                if let Some(thread) = this.as_native_thread(cx) {
-                    thread.update(cx, |thread, cx| {
-                        let enable_thinking = !thread.thinking_enabled();
-                        thread.set_thinking_enabled(enable_thinking, cx);
+        let thinking_toggle = if split {
+            ButtonLike::new_rounded_left("thinking-mode")
+        } else {
+            ButtonLike::new("thinking-mode")
+        }
+        .child(
+            h_flex()
+                .gap_1()
+                .child(Icon::new(icon).size(IconSize::Small).color(color))
+                .child(Label::new(label).size(LabelSize::Small).color(Color::Muted)),
+        )
+        .tooltip(move |_, cx| match tooltip_meta {
+            Some(meta) => Tooltip::with_meta_in(
+                tooltip_label,
+                Some(&ToggleThinkingMode),
+                meta,
+                &focus_handle,
+                cx,
+            ),
+            None => Tooltip::for_action_in(tooltip_label, &ToggleThinkingMode, &focus_handle, cx),
+        })
+        .on_click(cx.listener(move |this, _, _window, cx| {
+            if let Some(thread) = this.as_native_thread(cx) {
+                thread.update(cx, |thread, cx| {
+                    let enable_thinking = !thread.thinking_enabled();
+                    thread.set_thinking_enabled(enable_thinking, cx);
 
-                        let favorite_key = thread.model().map(|model| {
-                            (model.provider_id().0.to_string(), model.id().0.to_string())
-                        });
-                        let fs = thread.project().read(cx).fs().clone();
-                        update_settings_file(fs, cx, move |settings, _| {
-                            if let Some(agent) = settings.agent.as_mut() {
-                                if let Some(default_model) = agent.default_model.as_mut() {
-                                    default_model.enable_thinking = enable_thinking;
-                                }
-                                if let Some((provider_id, model_id)) = &favorite_key {
-                                    agent.update_favorite_model(
-                                        provider_id,
-                                        model_id,
-                                        |favorite| favorite.enable_thinking = enable_thinking,
-                                    );
-                                }
+                    let favorite_key = thread
+                        .model()
+                        .map(|model| (model.provider_id().0.to_string(), model.id().0.to_string()));
+                    let fs = thread.project().read(cx).fs().clone();
+                    update_settings_file(fs, cx, move |settings, _| {
+                        if let Some(agent) = settings.agent.as_mut() {
+                            if let Some(default_model) = agent.default_model.as_mut() {
+                                default_model.enable_thinking = enable_thinking;
                             }
-                        });
+                            if let Some((provider_id, model_id)) = &favorite_key {
+                                agent.update_favorite_model(provider_id, model_id, |favorite| {
+                                    favorite.enable_thinking = enable_thinking
+                                });
+                            }
+                        }
                     });
-                }
-            }));
+                });
+            }
+        }));
 
-        if model.supported_effort_levels().is_empty() {
+        if !split {
             return Some(thinking_toggle.into_any_element());
         }
 
-        if !model.supported_effort_levels().is_empty() && !thinking {
-            return Some(thinking_toggle.into_any_element());
-        }
-
-        let left_btn = thinking_toggle;
-        let right_btn = self.render_effort_selector(
-            model.supported_effort_levels(),
-            thread.thinking_effort().cloned(),
-            false,
-            cx,
-        );
+        let right_btn = self.render_effort_selector(effort_levels, selected_effort, false, cx);
 
         Some(
-            SplitButton::new(left_btn, right_btn.into_any_element())
+            SplitButton::new(thinking_toggle, right_btn.into_any_element())
                 .style(SplitButtonStyle::Transparent)
                 .into_any_element(),
         )
@@ -5218,11 +5253,6 @@ impl ThreadView {
     ) -> impl IntoElement {
         let weak_self = cx.weak_entity();
 
-        let default_effort_level = supported_effort_levels
-            .iter()
-            .find(|effort_level| effort_level.is_default)
-            .cloned();
-
         let selected = selected_effort.and_then(|effort| {
             supported_effort_levels
                 .iter()
@@ -5230,10 +5260,20 @@ impl ThreadView {
                 .cloned()
         });
 
-        let label = selected
-            .clone()
-            .or(default_effort_level)
-            .map_or("強度を選択".into(), |effort| effort.name);
+        let label: SharedString = thinking_effort_label(
+            &supported_effort_levels,
+            selected.as_ref().map(|level| level.value.as_ref()),
+        )
+        .map_or_else(
+            || "強度を選択".into(),
+            |level| {
+                if standalone {
+                    format!("思考: {level}").into()
+                } else {
+                    level
+                }
+            },
+        );
 
         let (label_color, icon) = if self.thinking_effort_menu_handle.is_deployed() {
             (Color::Accent, IconName::ChevronUp)
@@ -5292,9 +5332,10 @@ impl ThreadView {
                     .child(Icon::new(icon).size(IconSize::XSmall).color(Color::Muted)),
             )
         } else {
+            // 分割ボタンでは左のトグルが「思考: 高」まで表示するので、
+            // 右側はメニューを開く矢印だけにして幅を詰める。
             ButtonLike::new_rounded_right("effort-selector-trigger")
-                .child(Label::new(label).size(LabelSize::Small).color(label_color))
-                .child(Icon::new(icon).size(IconSize::XSmall).color(Color::Muted))
+                .child(Icon::new(icon).size(IconSize::XSmall).color(label_color))
         };
 
         PopoverMenu::new("effort-selector")
@@ -5310,7 +5351,7 @@ impl ThreadView {
                         let is_selected = selected
                             .as_ref()
                             .is_some_and(|selected| selected.value == effort_level.value);
-                        let entry = ContextMenuEntry::new(effort_level.name)
+                        let entry = ContextMenuEntry::new(effort_level.display_name())
                             .toggleable(IconPosition::End, is_selected);
 
                         menu.push_item(entry.handler({
@@ -12647,6 +12688,43 @@ mod tests {
         ))
     }
 
+    fn effort_level(value: &str, is_default: bool) -> LanguageModelEffortLevel {
+        LanguageModelEffortLevel {
+            name: value.to_string().into(),
+            value: value.to_string().into(),
+            is_default,
+        }
+    }
+
+    #[test]
+    fn test_thinking_effort_label_falls_back_to_the_default_level() {
+        let levels = [
+            effort_level("low", false),
+            effort_level("medium", true),
+            effort_level("high", false),
+        ];
+
+        assert_eq!(
+            thinking_effort_label(&levels, Some("high")),
+            Some("高".into())
+        );
+        assert_eq!(
+            thinking_effort_label(&levels, None),
+            Some("中".into()),
+            "未選択なら既定レベルを表示する"
+        );
+        assert_eq!(
+            thinking_effort_label(&levels, Some("nonexistent")),
+            Some("中".into()),
+            "モデルを切り替えた直後など、対応しない値が残っていても既定に戻す"
+        );
+        assert_eq!(
+            thinking_effort_label(&[], Some("high")),
+            None,
+            "レベル非対応のモデルは深さのラベルを持たない"
+        );
+    }
+
     fn mcp_command(name: &str) -> acp::AvailableCommand {
         acp::AvailableCommand::new(name, "").meta(acp_thread::meta_with_command_category(
             acp_thread::CommandCategory::Mcp,
@@ -12891,6 +12969,19 @@ mod tests {
             assert_eq!(editor.selections.newest::<Point>(&snapshot).head().row, 1);
         });
     }
+}
+
+/// ツールバーに出す思考の深さの表示名。未選択ならプロバイダーの既定レベルを、
+/// 深さの概念が無いモデル (レベル無し) なら `None` を返す。
+fn thinking_effort_label(
+    effort_levels: &[LanguageModelEffortLevel],
+    selected_effort: Option<&str>,
+) -> Option<SharedString> {
+    effort_levels
+        .iter()
+        .find(|level| Some(level.value.as_ref()) == selected_effort)
+        .or_else(|| effort_levels.iter().find(|level| level.is_default))
+        .map(|level| level.display_name())
 }
 
 const FAST_MODE_WARNING_NAMESPACE: &str = "fast-mode-warning-dismissed";

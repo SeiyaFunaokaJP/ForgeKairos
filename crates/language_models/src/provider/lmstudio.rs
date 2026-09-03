@@ -111,6 +111,7 @@ impl State {
                             .or_else(|| model.max_context_length),
                         model.capabilities.supports_tool_calls(),
                         model.capabilities.supports_images() || model.r#type == ModelType::Vlm,
+                        false,
                     )
                 })
                 .collect();
@@ -286,6 +287,7 @@ impl LanguageModelProvider for LmStudioLanguageModelProvider {
                     max_tokens: model.max_tokens,
                     supports_tool_calls: model.supports_tool_calls,
                     supports_images: model.supports_images,
+                    supports_thinking: model.supports_thinking.unwrap_or(false),
                 },
             );
         }
@@ -532,6 +534,10 @@ impl LanguageModel for LmStudioLanguageModel {
 
     fn supports_images(&self) -> bool {
         self.model.supports_images
+    }
+
+    fn supports_thinking(&self) -> bool {
+        self.model.supports_thinking
     }
 
     fn telemetry_id(&self) -> String {

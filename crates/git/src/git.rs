@@ -139,6 +139,16 @@ actions!(
         AddToGitInfoExclude,
         /// Copies the current branch name to the clipboard.
         CopyBranchName,
+        /// 登録済みのリモートリポジトリを削除します。
+        RemoveRemote,
+        /// 選択したブランチを現在のブランチにマージします。
+        Merge,
+        /// フェッチしてから、ローカルをリモートの状態に強制的に合わせます (未コミットの変更は失われます)。
+        ResetToRemote,
+        /// 変更内容からパッチファイルを作成します。
+        CreatePatch,
+        /// パッチファイルを作業ツリーに適用します。
+        ApplyPatch,
     ]
 );
 

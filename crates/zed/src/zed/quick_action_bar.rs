@@ -1,3 +1,4 @@
+mod format;
 pub mod markdown_bar;
 mod preview;
 mod repl_menu;
@@ -37,6 +38,7 @@ const MAX_CODE_ACTION_MENU_LINES: u32 = 16;
 
 pub struct QuickActionBar {
     _inlay_hints_enabled_subscription: Option<Subscription>,
+    _format_selection_subscription: Option<Subscription>,
     _ai_settings_subscription: Subscription,
     active_item: Option<Box<dyn ItemHandle>>,
     buffer_search_bar: Entity<BufferSearchBar>,
@@ -68,6 +70,7 @@ impl QuickActionBar {
 
         let mut this = Self {
             _inlay_hints_enabled_subscription: None,
+            _format_selection_subscription: None,
             _ai_settings_subscription: ai_settings_subscription,
             active_item: None,
             buffer_search_bar,
@@ -708,6 +711,7 @@ impl Render for QuickActionBar {
         h_flex()
             .id("quick action bar")
             .gap(DynamicSpacing::Base01.rems(cx))
+            .children(self.render_format_buttons(cx))
             .children(self.render_repl_menu(cx))
             .children(self.render_preview_button(cx))
             .children(self.render_export_pdf_button(cx))
@@ -781,6 +785,7 @@ impl ToolbarItemView for QuickActionBar {
         cx: &mut Context<Self>,
     ) -> ToolbarItemLocation {
         self.active_item = active_pane_item.map(ItemHandle::boxed_clone);
+        self.observe_format_target(active_pane_item, cx);
         if let Some(active_item) = active_pane_item {
             self._inlay_hints_enabled_subscription.take();
 

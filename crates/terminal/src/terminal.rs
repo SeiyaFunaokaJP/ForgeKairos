@@ -2,6 +2,8 @@ mod mappings;
 
 mod alacritty;
 mod pty_info;
+pub mod session_log;
+pub mod terminal_macro;
 pub mod terminal_settings;
 
 #[cfg(not(windows))]
@@ -75,6 +77,7 @@ use crate::alacritty::{
 };
 use crate::mappings::colors::to_vte_rgb;
 use crate::mappings::keys::to_esc_str;
+use crate::session_log::{SessionLog, SessionLogOptions, SessionLogTap};
 
 /// Process-wide flag set by headless hosts (e.g. the eval CLI) that have no
 /// controlling TTY. In such sandboxes PTY allocation and acquiring a
@@ -676,6 +679,9 @@ pub enum Event {
     SelectionsChanged,
     NewNavigationTarget(Option<MaybeNavigationTarget>),
     Open(MaybeNavigationTarget),
+    /// A session log was started or stopped; views showing the recording
+    /// indicator need to re-render.
+    SessionLogChanged,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1018,6 +1024,8 @@ impl TerminalBuilder {
             keyboard_input_sent: false,
             init_command_startup_marker: None,
             init_command_startup_tx: None,
+            session_log_tap: SessionLogTap::default(),
+            session_log: None,
             event_loop_task: Task::ready(Ok(())),
             background_executor: background_executor.clone(),
             path_style,
@@ -1158,6 +1166,9 @@ impl TerminalBuilder {
             //Spawn a task so the Alacritty EventLoop (or the subprocess reader) can communicate with us
             //TODO: Remove with a bounded sender which can be dispatched on &self
             let (events_tx, events_rx) = unbounded();
+            // Installed into the PTY reader up front so session logging can be
+            // switched on later without rebuilding the terminal.
+            let session_log_tap = SessionLogTap::default();
             //Set up the terminal...
             let term = new_term(
                 &config,
@@ -1236,8 +1247,13 @@ impl TerminalBuilder {
                 let pty_info = PtyProcessInfo::new(ProcessIdGetter::from(&pty));
 
                 //And connect them together
-                let pty_tx =
-                    spawn_event_loop(term.clone(), events_tx, pty, pty_options.drain_on_exit)?;
+                let pty_tx = spawn_event_loop(
+                    term.clone(),
+                    events_tx,
+                    pty,
+                    pty_options.drain_on_exit,
+                    session_log_tap.clone(),
+                )?;
 
                 (
                     TerminalType::Pty {
@@ -1295,6 +1311,8 @@ impl TerminalBuilder {
                 keyboard_input_sent: false,
                 init_command_startup_marker: None,
                 init_command_startup_tx: None,
+                session_log_tap,
+                session_log: None,
                 event_loop_task: Task::ready(Ok(())),
                 background_executor,
                 path_style,
@@ -1480,6 +1498,8 @@ pub struct Terminal {
     keyboard_input_sent: bool,
     init_command_startup_marker: Option<String>,
     init_command_startup_tx: Option<Sender<()>>,
+    session_log_tap: SessionLogTap,
+    session_log: Option<SessionLog>,
     event_loop_task: Task<Result<(), anyhow::Error>>,
     background_executor: BackgroundExecutor,
     path_style: PathStyle,
@@ -2132,6 +2152,45 @@ impl Terminal {
     /// input.
     pub fn write_init_command(&mut self, input: impl Into<Cow<'static, [u8]>>) {
         self.write_input(input);
+    }
+
+    /// Starts appending everything the PTY produces to `path`.
+    ///
+    /// Replaces any log already running on this terminal. Display-only
+    /// terminals have no PTY to tap, so this reports an error rather than
+    /// creating a file that would stay empty.
+    pub fn start_session_log(
+        &mut self,
+        path: PathBuf,
+        options: SessionLogOptions,
+        cx: &mut Context<Self>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            self.is_pty(),
+            "このターミナルは出力を記録できません (PTY がありません)"
+        );
+        self.session_log = None;
+        let log = session_log::start(
+            path,
+            options,
+            self.session_log_tap.clone(),
+            &self.background_executor,
+        )?;
+        self.session_log = Some(log);
+        cx.emit(Event::SessionLogChanged);
+        Ok(())
+    }
+
+    pub fn stop_session_log(&mut self, cx: &mut Context<Self>) -> Option<PathBuf> {
+        let path = self.session_log.take().map(|log| log.path().to_path_buf());
+        if path.is_some() {
+            cx.emit(Event::SessionLogChanged);
+        }
+        path
+    }
+
+    pub fn session_log_path(&self) -> Option<&Path> {
+        self.session_log.as_ref().map(SessionLog::path)
     }
 
     pub fn is_pty(&self) -> bool {

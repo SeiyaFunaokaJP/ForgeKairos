@@ -1,16 +1,23 @@
-use gpui::{
-    App, Context, Element, Entity, FontWeight, Render, Subscription, WeakEntity, Window, div,
-};
-use ui::text_for_keystrokes;
+use gpui::{Action, App, Context, Entity, FontWeight, Render, Subscription, WeakEntity, Window};
+use settings::SettingsStore;
+use ui::{ButtonLike, Tooltip, text_for_keystrokes};
+use vim_mode_setting::HelixModeSetting;
 use workspace::{HideStatusItem, StatusItemView, item::ItemHandle, ui::prelude::*};
 
-use crate::{Vim, VimEvent, VimGlobals};
+use crate::{ToggleHelixMode, ToggleVimMode, Vim, VimEvent, VimGlobals};
+
+const DISABLE_TITLE: &str = "Vim モードを無効にします";
+const DISABLE_META: &str =
+    "無効にすると VSCode と同じように、ファイルを開いた直後からそのまま文字を入力できます。";
+const ENABLE_TITLE: &str = "Vim モードを有効にします";
+const ENABLE_META: &str = "有効にすると Vim のキーバインドで操作します。";
 
 /// The ModeIndicator displays the current mode in the status bar.
 pub struct ModeIndicator {
     vim: Option<WeakEntity<Vim>>,
     pending_keys: Option<String>,
     vim_subscription: Option<Subscription>,
+    _settings_subscription: Subscription,
 }
 
 impl ModeIndicator {
@@ -45,10 +52,16 @@ impl ModeIndicator {
         })
         .detach();
 
+        // Turning Vim mode off drops the `Vim` entity without notifying this
+        // view, so without this the toggle would keep showing the last mode
+        // until something else forced a redraw.
+        let settings_subscription = cx.observe_global::<SettingsStore>(|_, cx| cx.notify());
+
         Self {
             vim: None,
             pending_keys: None,
             vim_subscription: None,
+            _settings_subscription: settings_subscription,
         }
     }
 
@@ -60,6 +73,44 @@ impl ModeIndicator {
 
     fn vim(&self) -> Option<Entity<Vim>> {
         self.vim.as_ref().and_then(|vim| vim.upgrade())
+    }
+
+    /// The action that flips modal editing on or off. `ToggleVimMode` would
+    /// move a Helix user over to Vim instead of letting them type normally, so
+    /// while Helix is the active mode the button has to go through Helix's own
+    /// toggle (which clears `vim_mode` too).
+    fn toggle_action(cx: &App) -> Box<dyn Action> {
+        if HelixModeSetting::is_enabled(cx) {
+            ToggleHelixMode.boxed_clone()
+        } else {
+            ToggleVimMode.boxed_clone()
+        }
+    }
+
+    /// The compact button shown whenever there is no mode to display: modal
+    /// editing is off, or it is on but no editor has been focused yet. Either
+    /// way the status bar keeps an obvious, mouse-only way back to plain
+    /// VSCode-style editing.
+    fn render_toggle_button(enabled: bool, cx: &App) -> Button {
+        let action = Self::toggle_action(cx);
+        let tooltip_action = action.boxed_clone();
+        let (label, title, meta) = if enabled {
+            ("Vim: オン", DISABLE_TITLE, DISABLE_META)
+        } else {
+            ("Vim: オフ", ENABLE_TITLE, ENABLE_META)
+        };
+
+        Button::new("vim-mode-toggle", label)
+            .label_size(LabelSize::Small)
+            .color(if enabled {
+                Color::Default
+            } else {
+                Color::Muted
+            })
+            .tab_index(0isize)
+            .aria_label(title)
+            .tooltip(move |_window, cx| Tooltip::with_meta(title, Some(&*tooltip_action), meta, cx))
+            .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
     }
 
     fn current_operators_description(&self, vim: Entity<Vim>, cx: &mut Context<Self>) -> String {
@@ -89,9 +140,13 @@ impl ModeIndicator {
 
 impl Render for ModeIndicator {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !Vim::enabled(cx) {
+            return Self::render_toggle_button(false, cx).into_any_element();
+        }
+
         let vim = self.vim();
         let Some(vim) = vim else {
-            return div().hidden().into_any_element();
+            return Self::render_toggle_button(true, cx).into_any_element();
         };
 
         let vim_readable = vim.read(cx);
@@ -145,38 +200,51 @@ impl Render for ModeIndicator {
             };
             (pending.into(), Some(mode))
         };
-        h_flex()
-            .gap_1()
-            .when(!label.is_empty(), |el| {
-                el.child(
-                    Label::new(label)
-                        .line_height_style(LineHeightStyle::UiLabel)
-                        .weight(FontWeight::MEDIUM),
-                )
+
+        let action = Self::toggle_action(cx);
+        let tooltip_action = action.boxed_clone();
+
+        ButtonLike::new("vim-mode-indicator")
+            .tab_index(0isize)
+            .aria_label(DISABLE_TITLE)
+            .tooltip(move |_window, cx| {
+                Tooltip::with_meta(DISABLE_TITLE, Some(&*tooltip_action), DISABLE_META, cx)
             })
-            .when_some(mode, |el, mode| {
-                el.child(
-                    v_flex()
-                        .when(bg_color != system_transparent, |el| el.px_2())
-                        // match with other icons at the bottom that use default buttons
-                        .h(ButtonSize::Default.rems())
-                        .justify_center()
-                        .rounded_sm()
-                        .bg(bg_color)
-                        .child(
-                            Label::new(mode)
-                                .size(LabelSize::Small)
+            .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
+            .child(
+                h_flex()
+                    .gap_1()
+                    .when(!label.is_empty(), |el| {
+                        el.child(
+                            Label::new(label)
                                 .line_height_style(LineHeightStyle::UiLabel)
-                                .weight(FontWeight::MEDIUM)
-                                .when(
-                                    bg_color != system_transparent
-                                        && vim_mode_text != system_transparent,
-                                    |el| el.color(Color::Custom(vim_mode_text)),
+                                .weight(FontWeight::MEDIUM),
+                        )
+                    })
+                    .when_some(mode, |el, mode| {
+                        el.child(
+                            v_flex()
+                                .when(bg_color != system_transparent, |el| el.px_2())
+                                // match with other icons at the bottom that use default buttons
+                                .h(ButtonSize::Default.rems())
+                                .justify_center()
+                                .rounded_sm()
+                                .bg(bg_color)
+                                .child(
+                                    Label::new(mode)
+                                        .size(LabelSize::Small)
+                                        .line_height_style(LineHeightStyle::UiLabel)
+                                        .weight(FontWeight::MEDIUM)
+                                        .when(
+                                            bg_color != system_transparent
+                                                && vim_mode_text != system_transparent,
+                                            |el| el.color(Color::Custom(vim_mode_text)),
+                                        ),
                                 ),
-                        ),
-                )
-            })
-            .into_any()
+                        )
+                    }),
+            )
+            .into_any_element()
     }
 }
 
@@ -190,7 +258,8 @@ impl StatusItemView for ModeIndicator {
     }
 
     fn hide_setting(&self, _: &App) -> Option<HideStatusItem> {
-        // The Vim mode indicator is only visible while Vim mode is on.
+        // This item doubles as the only GUI switch for Vim mode, so hiding it
+        // would strand users who turned Vim on by accident with no way back.
         None
     }
 }

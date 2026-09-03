@@ -1069,6 +1069,18 @@ pub enum Formatter {
         /// The external program to run.
         command: String,
         /// The arguments to pass to the program.
+        ///
+        /// Supported placeholders:
+        ///
+        /// - `{buffer_path}`: the path of the buffer being formatted, or
+        ///   `Untitled` when it has never been saved.
+        /// - `{start_line}` and `{end_line}`: the first and last line of a
+        ///   selected range, 1-based and inclusive. An argument naming either
+        ///   of them is repeated once per selected range when formatting
+        ///   selections (e.g. `"--lines={start_line}:{end_line}"` for
+        ///   clang-format), and is dropped when formatting the whole buffer.
+        ///   Naming them is also what marks the command as able to format
+        ///   selections at all.
         arguments: Option<Vec<String>>,
     },
     /// Files should be formatted using a code action executed by language servers.
@@ -1076,6 +1088,32 @@ pub enum Formatter {
     /// Format code using a language server.
     #[serde(untagged)]
     LanguageServer(LanguageServerFormatterSpecifier),
+}
+
+/// Placeholder for the buffer path in an external formatter's arguments.
+pub const EXTERNAL_FORMATTER_BUFFER_PATH_PLACEHOLDER: &str = "{buffer_path}";
+/// Placeholder for the first line (1-based, inclusive) of a selected range.
+pub const EXTERNAL_FORMATTER_START_LINE_PLACEHOLDER: &str = "{start_line}";
+/// Placeholder for the last line (1-based, inclusive) of a selected range.
+pub const EXTERNAL_FORMATTER_END_LINE_PLACEHOLDER: &str = "{end_line}";
+
+/// External formatters are always handed the whole buffer on stdin, so the only
+/// way one can honor a selection is by being told which lines to touch. Naming
+/// the line placeholders in the arguments is therefore what opts a command into
+/// range formatting.
+pub fn external_formatter_arguments_support_ranges(arguments: Option<&[String]>) -> bool {
+    arguments.is_some_and(|arguments| {
+        arguments
+            .iter()
+            .any(|argument| argument_names_line_placeholders(argument))
+    })
+}
+
+/// Whether a single argument carries either line placeholder, and therefore has
+/// to be expanded once per selected range instead of being passed through.
+pub fn argument_names_line_placeholders(argument: &str) -> bool {
+    argument.contains(EXTERNAL_FORMATTER_START_LINE_PLACEHOLDER)
+        || argument.contains(EXTERNAL_FORMATTER_END_LINE_PLACEHOLDER)
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema, MergeFrom)]

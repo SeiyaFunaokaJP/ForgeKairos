@@ -114,6 +114,31 @@ Zed automatically discovers models that Ollama has pulled. To disable autodiscov
 }
 ```
 
+Some Ollama models (currently the `gpt-oss` family) accept a thinking *level*
+instead of a plain on/off in the `think` parameter. Zed enables the effort picker
+for those automatically; for any other model, declare the levels yourself with
+`thinking_levels`:
+
+```json [settings]
+{
+  "language_models": {
+    "ollama": {
+      "available_models": [
+        {
+          "name": "gpt-oss:20b",
+          "max_tokens": 32768,
+          "supports_thinking": true,
+          "thinking_levels": ["low", "medium", "high"]
+        }
+      ]
+    }
+  }
+}
+```
+
+Without `thinking_levels`, thinking is sent as `true`/`false` and only the on/off
+toggle is offered.
+
 ### Ollama Context Length {#ollama-context}
 
 Zed requests to Ollama include context length as the `num_ctx` parameter. By default, Zed uses `4096` tokens.
@@ -154,6 +179,28 @@ Use LM Studio for local models with Zed Agent, Inline Assistant, and similar mod
 4. In Zed, select an LM Studio model from the model dropdown.
 
 If your LM Studio server requires a key, enter the key in the provider UI or set `LMSTUDIO_API_KEY`.
+
+LM Studio does not report whether a model reasons, so mark reasoning models with
+`supports_thinking` to get the thinking toggle and the thinking block in the
+agent panel:
+
+```json [settings]
+{
+  "language_models": {
+    "lmstudio": {
+      "available_models": [
+        {
+          "name": "qwen3-8b",
+          "max_tokens": 32768,
+          "supports_tool_calls": true,
+          "supports_images": false,
+          "supports_thinking": true
+        }
+      ]
+    }
+  }
+}
+```
 
 ## Local OpenAI-Compatible Servers {#openai-compatible}
 

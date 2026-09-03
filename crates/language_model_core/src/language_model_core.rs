@@ -495,6 +495,18 @@ pub struct LanguageModelEffortLevel {
     pub is_default: bool,
 }
 
+impl LanguageModelEffortLevel {
+    /// UI に出す表示名。各プロバイダーは `name` に upstream 由来の英語ラベルを入れるため、
+    /// 値が標準の [`ReasoningEffort`] と一致するものだけここで日本語に差し替える。
+    /// プロバイダー独自のレベル名 (標準の値に対応しないもの) は原文のまま返す。
+    pub fn display_name(&self) -> SharedString {
+        match ReasoningEffort::from_str(&self.value) {
+            Ok(effort) => SharedString::new_static(effort.japanese_label()),
+            Err(_) => self.name.clone(),
+        }
+    }
+}
+
 /// An error that occurred when trying to authenticate the language model provider.
 #[derive(Debug, Error)]
 pub enum AuthenticateError {
@@ -645,11 +657,42 @@ impl ReasoningEffort {
             Self::Max => "max",
         }
     }
+
+    /// 日本語 UI 用のラベル。`label()` は upstream 由来の英語表示名で、
+    /// プロバイダーが `LanguageModelEffortLevel::name` に詰める値として残してある。
+    pub fn japanese_label(self) -> &'static str {
+        match self {
+            Self::None => "なし",
+            Self::Minimal => "最小",
+            Self::Low => "低",
+            Self::Medium => "中",
+            Self::High => "高",
+            Self::XHigh => "最高",
+            Self::Max => "最大",
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_effort_level_display_name() {
+        let standard = LanguageModelEffortLevel {
+            name: "Extra High".into(),
+            value: "xhigh".into(),
+            is_default: false,
+        };
+        assert_eq!(standard.display_name(), "最高");
+
+        let custom = LanguageModelEffortLevel {
+            name: "Ultra".into(),
+            value: "ultra".into(),
+            is_default: false,
+        };
+        assert_eq!(custom.display_name(), "Ultra");
+    }
 
     #[test]
     fn test_from_cloud_failure_with_upstream_http_error() {

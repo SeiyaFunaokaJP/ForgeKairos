@@ -210,6 +210,10 @@ pub struct AgentSettingsContent {
     ///
     /// Default: true
     pub flexible: Option<bool>,
+    /// Whether the window-wide threads sidebar is available at all.
+    ///
+    /// Default: false
+    pub sidebar_enabled: Option<bool>,
     /// Where to position the threads sidebar.
     ///
     /// Default: left
@@ -367,6 +371,10 @@ pub struct AgentSettingsContent {
 impl AgentSettingsContent {
     pub fn set_dock(&mut self, dock: DockPosition) {
         self.dock = Some(dock);
+    }
+
+    pub fn set_sidebar_enabled(&mut self, enabled: bool) {
+        self.sidebar_enabled = Some(enabled);
     }
 
     pub fn set_sidebar_side(&mut self, position: SidebarDockPosition) {
