@@ -509,7 +509,12 @@ fn remote_sandbox_failure_message_for_code(code: &str) -> String {
         "no-fs-backend" => "ファイル隔離の方式 (Landlock / mount) がどちらも使えません。",
         "landlock-failed" | "mount-failed" => "ファイル書込制限を適用できませんでした。",
         "protected-pin-failed" => {
-            "保護対象のパス (`.git` / `~/.ssh` など) を確認できませんでした (権限などを確認してください)。"
+            "保護対象のパス (`.git` / `~/.ssh` / `~/.bashrc` などの認証情報・シェル初期化ファイル) を\
+             確認できませんでした (権限などを確認してください)。"
+        }
+        "home-unknown" => {
+            "リモートのホームディレクトリを特定できませんでした \
+             (常に保護するパスを確定できないため実行しません)。"
         }
         "proxy-failed" | "slirp-failed" | "relay-failed" => {
             "ネットワーク統制を確立できませんでした。"
@@ -895,8 +900,11 @@ mod remote_sandbox_failure_tests {
             remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: mount-failed: x"),
         );
         // A protected path the helper could not pin is its own reason: the
-        // command never ran *because* `.git`/`~/.ssh` could not be verified,
-        // which is not the same as the write restriction failing to apply.
+        // command never ran *because* one of the protected paths could not be
+        // verified, which is not the same as the write restriction failing to
+        // apply. The helper protects the account's credentials and shell init
+        // files (relative to the remote `$HOME`) on top of the project's `.git`,
+        // so the wording names those rather than `.git` alone.
         assert_eq!(
             remote_sandbox_setup_failure_message(
                 Some(126),
@@ -904,8 +912,22 @@ mod remote_sandbox_failure_tests {
             ),
             Some(
                 "リモートホストでサンドボックスを作成できませんでした: \
-                 保護対象のパス (`.git` / `~/.ssh` など) を確認できませんでした \
-                 (権限などを確認してください)。"
+                 保護対象のパス (`.git` / `~/.ssh` / `~/.bashrc` などの認証情報・シェル初期化ファイル) を\
+                 確認できませんでした (権限などを確認してください)。"
+                    .to_string()
+            )
+        );
+        // The helper refuses to run at all when it cannot work out which `$HOME`
+        // those built-in protected paths belong to.
+        assert_eq!(
+            remote_sandbox_setup_failure_message(
+                Some(126),
+                "zed-remote-sandbox: home-unknown: neither $HOME nor the passwd database …"
+            ),
+            Some(
+                "リモートホストでサンドボックスを作成できませんでした: \
+                 リモートのホームディレクトリを特定できませんでした \
+                 (常に保護するパスを確定できないため実行しません)。"
                     .to_string()
             )
         );

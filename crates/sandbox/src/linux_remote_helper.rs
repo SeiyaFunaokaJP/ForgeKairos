@@ -90,6 +90,39 @@ pub(crate) fn run_if_invoked() {
     run_helper(invocation);
 }
 
+/// Route this crate's `log` records to stderr, but **only** when
+/// `ZED_REMOTE_SANDBOX_LOG` is set in the environment.
+///
+/// The helper runs inside the remote server binary before any logger exists, so
+/// its diagnostics (the effective protected list, paths it declined to grant)
+/// would otherwise go nowhere. They cannot be printed unconditionally either:
+/// the helper's stderr *is* the agent command's stderr, and the model reads it.
+/// Off by default, one env var away when a host needs diagnosing.
+struct HelperLogger;
+
+impl log::Log for HelperLogger {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record) {
+        eprintln!("zed-remote-sandbox[{}] {}", record.level(), record.args());
+    }
+
+    fn flush(&self) {}
+}
+
+static HELPER_LOGGER: HelperLogger = HelperLogger;
+
+fn init_helper_logging() {
+    if std::env::var_os("ZED_REMOTE_SANDBOX_LOG").is_none() {
+        return;
+    }
+    if log::set_logger(&HELPER_LOGGER).is_ok() {
+        log::set_max_level(log::LevelFilter::Info);
+    }
+}
+
 /// Emit the structured, machine-readable failure line the client parses and exit
 /// fail-closed. Never returns. `code` is a stable token; `detail` is human text.
 fn fail_closed(code: &str, detail: &str) -> ! {
@@ -185,7 +218,8 @@ fn network_requested(network: &RemoteSandboxNetwork) -> bool {
     reason = "the remote sandbox helper is a standalone process, not the GPUI app; \
               waiting on the holder and slirp children with blocking APIs is correct here"
 )]
-fn run_helper(invocation: Stage1Invocation) -> ! {
+fn run_helper(mut invocation: Stage1Invocation) -> ! {
+    init_helper_logging();
     // Reclaim scratch directories from earlier runs that died before their own
     // cleanup. Cheap, and these hosts have small disks.
     sweep_stale_temp_dirs();
@@ -195,6 +229,25 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
         Ok(backend) => backend,
         Err(error) => fail_closed("no-fs-backend", &format!("{error:#}")),
     };
+
+    // Add the protected paths the client cannot know about (see
+    // `BUILTIN_PROTECTED_HOME_RELATIVE`). Resolved here in the parent, where the
+    // environment is still the user's ssh session's, and before the fork so the
+    // holder pins them along with the client's `.git` list.
+    let Some(home) = remote_home_dir() else {
+        fail_closed(
+            "home-unknown",
+            "neither $HOME nor the passwd database names an absolute home directory, \
+             so the paths that must always be protected cannot be determined",
+        );
+    };
+    invocation.protected_paths = merge_builtin_protected_paths(invocation.protected_paths, &home);
+    log::info!(
+        "[remote-sandbox] protecting {} paths ({} built-ins under HOME {})",
+        invocation.protected_paths.len(),
+        BUILTIN_PROTECTED_HOME_RELATIVE.len(),
+        home.display()
+    );
 
     let self_exe = std::env::current_exe().unwrap_or_default();
     let network_on = network_requested(&invocation.network);
@@ -1127,6 +1180,119 @@ fn pin_path(path: &Path) -> Result<CanonicalPathBuf> {
     CanonicalPathBuf::resolve(path).with_context(|| format!("pinning {}", path.display()))
 }
 
+/// Paths — relative to the remote account's `$HOME` — that are protected on
+/// **every** run, whatever the client asked for.
+///
+/// The client only knows to protect the project's `.git` locations
+/// (`agent::sandboxing::sandbox_git_dirs`), which silently assumes the
+/// worktree does not *contain* the account's own secrets. It regularly does: the
+/// saved SSH connection in this fork opens `/home/<user>` itself, and then
+/// everything below is a writable worktree — `~/.ssh/authorized_keys` (grant
+/// yourself a login), `~/.bashrc` (run on the next login), `~/.zed_server/…`
+/// (overwrite the remote server binary and get code execution on the next
+/// connect), `~/.local/bin` and `~/.cargo/bin` (binaries already on `PATH`),
+/// plus every credential store. A sandbox that blocks the network but lets the
+/// command write those is not a sandbox, so the *helper* — the one component
+/// that always runs on the host and knows its real `$HOME` — adds them itself
+/// rather than trusting the client's list.
+///
+/// Semantics: **readable, never writable/creatable/deletable**. Entries that do
+/// not exist are skipped (they cannot be pinned and there is nothing to
+/// protect); an entry that exists but cannot be pinned fails the command closed
+/// (see [`pin_protected_paths`]). Both directories and plain files appear here —
+/// the rule layer narrows a non-directory's Landlock rights for exactly this
+/// reason.
+///
+/// `/etc` and the rest of the system directories need no entry: they are outside
+/// any worktree, and neither backend grants write outside the worktree
+/// (Landlock never emits a rule for them; the mount jail's root is read-only).
+const BUILTIN_PROTECTED_HOME_RELATIVE: &[&str] = &[
+    // Credentials and keys.
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".azure",
+    ".kube",
+    ".config/gh",
+    ".docker/config.json",
+    ".netrc",
+    ".git-credentials",
+    // This fork's own remote install: the server binary the next connection
+    // executes, and the state directory beside it.
+    ".zed_server",
+    ".local/share/zed-jp-enhance",
+    // Binaries already on `PATH` for the next interactive shell.
+    ".cargo/bin",
+    ".local/bin",
+    // Shell init: written once, executed on every later login.
+    ".bashrc",
+    ".bash_profile",
+    ".profile",
+    ".zshrc",
+    ".zprofile",
+    ".zshenv",
+    ".config/fish",
+    ".bash_logout",
+];
+
+/// The remote account's home directory: `$HOME` when it is absolute (the helper
+/// is launched from the user's own ssh session, so it is set), otherwise the
+/// passwd database.
+fn remote_home_dir() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        if home.is_absolute() {
+            return Some(home);
+        }
+    }
+    home_dir_from_passwd()
+}
+
+/// `getpwuid(getuid())->pw_dir`, for the case where `$HOME` is unset or
+/// relative.
+fn home_dir_from_passwd() -> Option<PathBuf> {
+    // SAFETY: `getpwuid` takes a scalar and returns a pointer into a static
+    // buffer that stays valid until the next passwd call; we copy out of it
+    // immediately and make no other passwd call. The helper is single-threaded
+    // at this point, so the non-`_r` variant is sound.
+    let entry = unsafe { libc::getpwuid(libc::getuid()) };
+    if entry.is_null() {
+        return None;
+    }
+    // SAFETY: non-null passwd entry from the call above; `pw_dir` is either NULL
+    // or a NUL-terminated string owned by that buffer.
+    let dir = unsafe { (*entry).pw_dir };
+    if dir.is_null() {
+        return None;
+    }
+    // SAFETY: as above — a NUL-terminated C string valid for this read.
+    let dir = unsafe { std::ffi::CStr::from_ptr(dir) };
+    let home = PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes()));
+    home.is_absolute().then_some(home)
+}
+
+/// Resolve [`BUILTIN_PROTECTED_HOME_RELATIVE`] against `home`. A trailing
+/// separator on `$HOME` is absorbed by `Path::join`, so `/home/u` and `/home/u/`
+/// yield the same paths.
+fn builtin_protected_paths(home: &Path) -> Vec<PathBuf> {
+    BUILTIN_PROTECTED_HOME_RELATIVE
+        .iter()
+        .map(|relative| home.join(relative))
+        .collect()
+}
+
+/// Append the built-in protected paths to the client's list, dropping ones the
+/// client already named (which would otherwise be pinned twice).
+fn merge_builtin_protected_paths(requested: Vec<PathBuf>, home: &Path) -> Vec<PathBuf> {
+    let mut merged = requested;
+    for builtin in builtin_protected_paths(home) {
+        if !merged.contains(&builtin) {
+            merged.push(builtin);
+        }
+    }
+    merged
+}
+
 /// Pin every protected path, **failing closed** when one exists but cannot be
 /// pinned.
 ///
@@ -1150,6 +1316,15 @@ fn pin_protected_paths(paths: &[PathBuf]) -> Result<Vec<CanonicalPathBuf>> {
                 // notably an unsearchable parent, which reports
                 // `PermissionDenied` here too — means we cannot tell what is at
                 // that path, so it must not be treated as absent.
+                //
+                //
+                // A **dangling symlink** is therefore *not* absent: the entry is
+                // there, only its target isn't, and a write through it creates
+                // that target — which for `~/.bashrc -> dotfiles/bashrc` inside
+                // a writable home directory would be executed at the next login.
+                // The built-in set makes this reachable in a way the `.git`-only
+                // list never was, so it stays fail-closed (loud, and the failure
+                // detail names the path) rather than silently unprotected.
                 let missing = std::fs::symlink_metadata(path)
                     .err()
                     .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound);
@@ -1200,11 +1375,23 @@ fn apply_landlock(
     let ruleset = unsafe { OwnedFd::from_raw_fd(ruleset_fd) };
 
     if allow_fs_write {
-        // Unrestricted writes: allow the whole root. Landlock is additive-allow,
-        // so protected paths under `/` cannot be re-restricted here (mount-jail
-        // does protect them); this matches the documented Landlock trade-off.
-        add_path_rule(ruleset.as_raw_fd(), Path::new("/"), handled, abi)
-            .context("allowing write on / for allow_fs_write")?;
+        // Unrestricted writes: allow the whole root — but still carved around
+        // the protected paths, exactly as a worktree root is. Landlock is
+        // additive-allow, so "everything except `~/.ssh`" can only be expressed
+        // by granting `/`'s entries one level at a time down to each protected
+        // path (a handful of directories: `/`, `/home`, `$HOME`, and the few
+        // `$HOME` subdirectories that contain one). This matches the mount jail,
+        // which re-binds the protected paths read-only under `allow_fs_write`
+        // too — turning off the write restriction was never meant to hand out
+        // the account's ssh keys.
+        grant_writable_subtree(
+            ruleset.as_raw_fd(),
+            Path::new("/"),
+            protected_pins,
+            handled,
+            abi,
+        )
+        .context("allowing write on / for allow_fs_write")?;
     } else {
         for writable in writable_paths {
             grant_writable_subtree(ruleset.as_raw_fd(), writable, protected_pins, handled, abi)?;
@@ -1251,14 +1438,20 @@ fn apply_landlock(
     Ok(())
 }
 
-/// Grant write on a writable root, carving out any protected path that is a
-/// *direct child* of it (notably `.git`): rather than a single recursive rule on
-/// the root — which Landlock's additive-allow model could never re-restrict — we
-/// enumerate the root's entries and grant each one except the protected ones.
+/// Grant write on a writable root, carving out every protected path inside it
+/// (the project's `.git`, and the built-in `$HOME` set when the worktree *is*
+/// the home directory): rather than a single recursive rule on the root — which
+/// Landlock's additive-allow model could never re-restrict — the root's entries
+/// are enumerated and granted one by one, skipping the protected ones and
+/// descending into any entry that merely *contains* one.
 ///
-/// The cost is that creating a brand-new entry *directly* in the root is denied
-/// (existing entries, and everything under them, stay writable). When the root
-/// has no protected descendant we grant it wholesale and keep full behavior.
+/// The cost is that creating a brand-new entry *directly* in a carved directory
+/// is denied (existing entries, and everything under them, stay writable). It is
+/// unavoidable: `MAKE_REG` on a directory is inherited by every directory below
+/// it, so a rule that lets the command create `~/newfile` necessarily lets it
+/// create `~/.ssh/authorized_keys` too. When a directory has no protected
+/// descendant it is granted wholesale and keeps full behavior — which is still
+/// the common case, since a project below `$HOME` never contains one of these.
 fn grant_writable_subtree(
     ruleset_fd: RawFd,
     writable: &Path,
@@ -1278,39 +1471,132 @@ fn grant_writable_subtree(
             return Ok(());
         }
     };
+    grant_subtree_excluding_protected(ruleset_fd, &writable_pin, protected_pins, handled, abi, 0)
+}
 
-    // Does any protected path sit inside this writable root?
-    let has_protected_descendant = protected_pins
-        .iter()
-        .any(|protected| protected.path().starts_with(writable_pin.path()));
-
-    if !has_protected_descendant {
-        add_path_rule(ruleset_fd, writable_pin.path(), handled, abi)
-            .with_context(|| format!("allowing write on {}", writable_pin.path().display()))?;
+/// One level of [`grant_writable_subtree`]'s carve. `dir_pin` is the directory
+/// being granted or carved; `depth` is 0 for the writable root itself.
+fn grant_subtree_excluding_protected(
+    ruleset_fd: RawFd,
+    dir_pin: &CanonicalPathBuf,
+    protected_pins: &[CanonicalPathBuf],
+    handled: u64,
+    abi: i32,
+    depth: usize,
+) -> Result<()> {
+    let dir = dir_pin.path();
+    // The directory itself is protected: grant nothing. The recursion never
+    // descends into a protected entry, so this only fires when the *writable
+    // root* is one — in which case protection wins over the write grant.
+    if protected_pins.iter().any(|protected| protected == dir_pin) {
+        log::warn!(
+            "[remote-sandbox] granting no write on {}: it is a protected path",
+            dir.display()
+        );
         return Ok(());
     }
+    // A protected path *strictly inside* this directory forces the carve; one
+    // that *is* this directory was just handled above.
+    let has_protected_descendant = protected_pins.iter().any(|protected| {
+        let protected = protected.path();
+        protected.starts_with(dir) && protected != dir
+    });
+    if !has_protected_descendant {
+        return add_path_rule(ruleset_fd, dir, handled, abi)
+            .with_context(|| format!("allowing write on {}", dir.display()));
+    }
 
-    // Enumerate direct children and grant each non-protected one.
-    let entries = std::fs::read_dir(writable_pin.path())
-        .with_context(|| format!("reading {}", writable_pin.path().display()))?;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        // Below the root, an unlistable directory grants nothing rather than
+        // failing the command: granting it wholesale is the one thing we must
+        // not do (it would re-expose the protected path underneath), and the
+        // command can still be perfectly able to do its job without writing
+        // there. The root itself is different — if the worktree cannot be
+        // listed, nothing sensible can be granted at all.
+        Err(error) if depth > 0 => {
+            log::warn!(
+                "[remote-sandbox] granting no write under {} (cannot list it: {error})",
+                dir.display()
+            );
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(anyhow::Error::new(error))
+                .with_context(|| format!("reading {}", dir.display()));
+        }
+    };
+
     for entry in entries {
-        let entry = entry.with_context(|| format!("reading {}", writable_pin.path().display()))?;
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                log::warn!(
+                    "[remote-sandbox] skipping an entry of {} ({error})",
+                    dir.display()
+                );
+                continue;
+            }
+        };
         let child = entry.path();
         let Ok(child_pin) = pin_path(&child) else {
             continue;
         };
-        let is_protected = protected_pins
+        if protected_pins
             .iter()
-            .any(|protected| protected == &child_pin);
-        if is_protected {
+            .any(|protected| protected == &child_pin)
+        {
+            continue;
+        }
+        // `pin_path` follows symlinks, so a symlink child resolves to whatever
+        // it points at. Only an entry that really lives *below* this directory
+        // is granted or descended into. That keeps two things true at once:
+        // granting `link -> /` would hand write access to the whole filesystem
+        // (something the uncarved single rule on the root never does, since
+        // Landlock decides on the resolved inode), and descending through
+        // `link -> ..` would recurse forever. A symlink whose target is inside
+        // the worktree stays writable through the target's own grant.
+        if !child_pin.path().starts_with(dir) || child_pin.path() == dir {
+            log::warn!(
+                "[remote-sandbox] not granting write on {} (it resolves to {}, outside {})",
+                child.display(),
+                child_pin.path().display(),
+                dir.display()
+            );
+            continue;
+        }
+        // An entry that contains a protected path is carved in turn instead of
+        // being granted wholesale — this is what keeps `~/.config/gh` and
+        // `~/.local/share/zed-jp-enhance` protected while `~/.config` and
+        // `~/.local` are inside a writable home directory.
+        if protected_pins
+            .iter()
+            .any(|protected| protected.path().starts_with(child_pin.path()))
+        {
+            grant_subtree_excluding_protected(
+                ruleset_fd,
+                &child_pin,
+                protected_pins,
+                handled,
+                abi,
+                depth + 1,
+            )?;
             continue;
         }
         // Grant write on the child. `add_path_rule` reads the child's inode type
         // and narrows the access accordingly: a plain file (e.g. `file.txt`)
         // beside the protected `.git` gets only the file-type accesses, so the
         // directory-only bits in `handled` no longer trip `EINVAL`.
-        add_path_rule(ruleset_fd, child_pin.path(), handled, abi)
-            .with_context(|| format!("allowing write on {}", child_pin.path().display()))?;
+        //
+        // One entry that cannot take a rule must not fail the whole command
+        // closed (that is how the `EINVAL` bug above blocked every command on
+        // 24.04): it is skipped, which denies writes there and nothing else.
+        if let Err(error) = add_path_rule(ruleset_fd, child_pin.path(), handled, abi) {
+            log::warn!(
+                "[remote-sandbox] not granting write on {}: {error:#}",
+                child_pin.path().display()
+            );
+        }
     }
     Ok(())
 }
@@ -1879,6 +2165,17 @@ mod tests {
                 .is_empty()
         );
 
+        // A dangling symlink is *not* absent: the entry exists, and a write
+        // through it would create its target (a `~/.bashrc -> dotfiles/bashrc`
+        // inside a writable home directory then runs at the next login). We
+        // cannot pin what it points at, so the command must not run.
+        let dangling = root.path().join("dangling");
+        std::os::unix::fs::symlink(root.path().join("nowhere"), &dangling).expect("symlink");
+        assert!(
+            pin_protected_paths(&[dangling]).is_err(),
+            "a dangling protected symlink must fail closed"
+        );
+
         // Present but unreachable (its parent cannot be searched): we cannot
         // tell what is there, so the command must not run.
         let closed = root.path().join("closed");
@@ -1915,6 +2212,193 @@ mod tests {
             pins.expect("a 0300 directory must still pin").len(),
             1,
             "the protected path must be pinned, not skipped"
+        );
+    }
+
+    /// The built-in set is resolved against `$HOME`, including the multi-segment
+    /// and file entries, and a trailing separator on `$HOME` changes nothing.
+    #[test]
+    fn builtin_protected_paths_resolve_against_home() {
+        let paths = builtin_protected_paths(Path::new("/home/u"));
+        for expected in [
+            "/home/u/.ssh",
+            "/home/u/.zed_server",
+            "/home/u/.config/gh",
+            "/home/u/.config/fish",
+            "/home/u/.docker/config.json",
+            "/home/u/.local/share/zed-jp-enhance",
+            "/home/u/.local/bin",
+            "/home/u/.cargo/bin",
+            "/home/u/.bashrc",
+            "/home/u/.profile",
+        ] {
+            assert!(
+                paths.contains(&PathBuf::from(expected)),
+                "{expected} must always be protected"
+            );
+        }
+        assert!(
+            paths.iter().all(|path| path.starts_with("/home/u")),
+            "every built-in entry is home-relative"
+        );
+        assert_eq!(
+            builtin_protected_paths(Path::new("/home/u/")),
+            paths,
+            "a trailing separator on $HOME must not change the resolved paths"
+        );
+    }
+
+    /// Built-in entries that don't exist are skipped rather than failing the
+    /// command, and a **file** entry pins as a non-directory (so the rule layer
+    /// narrows its Landlock rights instead of tripping `EINVAL`).
+    #[test]
+    fn builtin_protected_paths_pin_the_entries_that_exist() {
+        let home = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(home.path().join(".ssh")).expect("create .ssh");
+        std::fs::write(home.path().join(".bashrc"), "x").expect("write .bashrc");
+
+        let pins = pin_protected_paths(&builtin_protected_paths(home.path()))
+            .expect("absent built-in entries must be skipped, not fatal");
+        assert_eq!(pins.len(), 2, "only the two entries that exist are pinned");
+
+        let directory = pins
+            .iter()
+            .find(|pin| pin.path().ends_with(".ssh"))
+            .expect(".ssh must be pinned");
+        let file = pins
+            .iter()
+            .find(|pin| pin.path().ends_with(".bashrc"))
+            .expect(".bashrc must be pinned");
+        assert!(fd_is_dir(directory.fd().as_raw_fd()).expect("fstat .ssh"));
+        assert!(
+            !fd_is_dir(file.fd().as_raw_fd()).expect("fstat .bashrc"),
+            "a file entry must pin as a non-directory"
+        );
+    }
+
+    /// The built-ins are added to the client's list, not substituted for it, and
+    /// a path the client already named is not pinned twice.
+    #[test]
+    fn merge_adds_the_builtins_without_duplicating() {
+        let merged = merge_builtin_protected_paths(
+            vec![
+                PathBuf::from("/srv/proj/.git"),
+                PathBuf::from("/home/u/.ssh"),
+            ],
+            Path::new("/home/u"),
+        );
+        assert_eq!(
+            merged.first(),
+            Some(&PathBuf::from("/srv/proj/.git")),
+            "the client's `.git` list is kept"
+        );
+        assert_eq!(
+            merged
+                .iter()
+                .filter(|path| path.as_path() == Path::new("/home/u/.ssh"))
+                .count(),
+            1,
+            "a path the client already sent must not be added twice"
+        );
+        assert_eq!(merged.len(), 1 + BUILTIN_PROTECTED_HOME_RELATIVE.len());
+    }
+
+    /// Landlock end-to-end for the shape the built-in set creates: with the
+    /// worktree *being* the home directory, a protected **file** (`.bashrc`) and
+    /// a protected **nested** directory (`.config/gh`) must be unwritable while
+    /// their siblings stay writable, and a symlink pointing out of the worktree
+    /// must not smuggle a write grant to its target.
+    ///
+    /// `landlock_restrict_self` and `PR_SET_NO_NEW_PRIVS` restrict the calling
+    /// *thread*, so enforcing in a dedicated one leaves the rest of the test
+    /// process unrestricted.
+    #[test]
+    fn landlock_protects_files_and_nested_dirs_inside_a_writable_root() {
+        let abi = landlock_abi();
+        if abi < 1 {
+            // No Landlock on this kernel (18.04's 5.4), which uses the mount
+            // jail instead.
+            return;
+        }
+        let root = tempfile::tempdir().expect("tempdir");
+        let private_tmp = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        std::fs::write(root.path().join(".bashrc"), "original\n").expect("write .bashrc");
+        std::fs::write(root.path().join("other.txt"), "x").expect("write other.txt");
+        std::fs::create_dir(root.path().join("sub")).expect("create sub");
+        std::fs::create_dir_all(root.path().join(".config/gh")).expect("create .config/gh");
+        std::fs::create_dir(root.path().join(".config/nvim")).expect("create .config/nvim");
+        std::os::unix::fs::symlink(outside.path(), root.path().join("escape"))
+            .expect("symlink escape");
+
+        let protected =
+            pin_protected_paths(&[root.path().join(".bashrc"), root.path().join(".config/gh")])
+                .expect("pinning the protected entries");
+        let writable = vec![root.path().to_path_buf()];
+        let root_path = root.path().to_path_buf();
+        let tmp_path = private_tmp.path().to_path_buf();
+
+        let results = std::thread::spawn(move || -> Result<Vec<(&'static str, bool)>> {
+            apply_landlock(abi, &writable, &protected, false, &tmp_path)?;
+            let append =
+                |path: PathBuf| std::fs::OpenOptions::new().append(true).open(path).is_ok();
+            let create = |path: PathBuf| {
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(path)
+                    .is_ok()
+            };
+            Ok(vec![
+                (".bashrc", append(root_path.join(".bashrc"))),
+                ("other.txt", append(root_path.join("other.txt"))),
+                ("sub/new.txt", create(root_path.join("sub/new.txt"))),
+                (
+                    ".config/gh/hijack",
+                    create(root_path.join(".config/gh/hijack")),
+                ),
+                (
+                    ".config/nvim/init.lua",
+                    create(root_path.join(".config/nvim/init.lua")),
+                ),
+                ("new-in-root.txt", create(root_path.join("new-in-root.txt"))),
+                ("escape/new.txt", create(root_path.join("escape/new.txt"))),
+            ])
+        })
+        .join()
+        .expect("the enforcing thread panicked")
+        .expect("applying landlock");
+        let allowed: std::collections::HashMap<&str, bool> = results.into_iter().collect();
+
+        assert!(
+            !allowed[".bashrc"],
+            "a protected file inside the writable root must not be writable"
+        );
+        assert!(
+            !allowed[".config/gh/hijack"],
+            "a protected directory nested below the writable root must not be writable"
+        );
+        assert!(
+            !allowed["escape/new.txt"],
+            "a symlink out of the worktree must not carry a write grant to its target"
+        );
+        assert!(
+            allowed["other.txt"],
+            "an ordinary file beside a protected one stays writable"
+        );
+        assert!(
+            allowed["sub/new.txt"],
+            "creating files in an existing subdirectory stays allowed"
+        );
+        assert!(
+            allowed[".config/nvim/init.lua"],
+            "a sibling of the protected nested directory stays writable"
+        );
+        assert!(
+            !allowed["new-in-root.txt"],
+            "the accepted trade-off: a carved root cannot take brand-new entries \
+             (Landlock cannot allow that without also allowing them in `.ssh`)"
         );
     }
 
