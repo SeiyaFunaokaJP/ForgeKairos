@@ -2608,7 +2608,20 @@ impl LocalLspStore {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()?;
+            .spawn()
+            .with_context(|| {
+                // A formatter that is simply not installed is the most common
+                // way for "format" to appear to do nothing, and the bare OS
+                // error ("program not found") does not say where Zed looked.
+                let searched = util::command::command_search_dirs_next_to_current_exe()
+                    .iter()
+                    .map(|dir| dir.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "failed to run external formatter `{command}` (searched {searched}, then PATH)"
+                )
+            })?;
 
         let stdin = child.stdin.as_mut().context("failed to acquire stdin")?;
         let text = buffer

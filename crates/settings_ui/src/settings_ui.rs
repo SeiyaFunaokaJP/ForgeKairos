@@ -995,6 +995,10 @@ pub struct SettingsWindow {
     /// show a focus ring when the page auto-focuses it on open (which happens via
     /// mouse, where `focus_visible` styling would otherwise be suppressed).
     pub(crate) external_agent_add_focus_handle: FocusHandle,
+    /// Value passed to the official Claude Code CLI's `--effort` flag by the
+    /// "launch in terminal" button on the LLM providers page. Holds the CLI's own
+    /// level strings verbatim; `None` means "leave the flag off" (ADR-F20).
+    pub(crate) claude_code_effort: Option<SharedString>,
     skill_creator_page: Option<(Entity<pages::SkillCreatorPage>, Subscription)>,
 }
 
@@ -2028,6 +2032,7 @@ impl SettingsWindow {
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
+            claude_code_effort: None,
             skill_creator_page: None,
         };
 
@@ -4103,22 +4108,52 @@ impl SettingsWindow {
         window.remove_window();
     }
 
-    /// Opens the ACP agent registry — where an agent CLI such as Claude Code is
-    /// installed (ADR-F12) — in the workspace this settings window was launched
-    /// from, and closes the settings window so the registry is what the user
-    /// lands on.
+    /// Runs the official Claude Code install command in the integrated terminal
+    /// of the workspace this settings window was launched from (ADR-F20).
     ///
-    /// The registry is a workspace item, not a settings page, so it cannot be
-    /// pushed as a sub page here; dispatching the action into the original
-    /// window is the same route [`Self::open_network_allowlist_file`] takes to
-    /// reach the editor.
-    pub(crate) fn open_agent_registry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// The fork ships no copy of the CLI; this only runs the vendor's own
+    /// `npm install -g` line with the user's own `npm`.
+    pub(crate) fn install_claude_code(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.dispatch_in_original_window(
+            Box::new(zed_actions::terminal::InstallClaudeCode),
+            window,
+            cx,
+        );
+    }
+
+    /// Starts the official `claude` CLI in a new integrated terminal, optionally
+    /// with the CLI's own `--effort <level>` flag (ADR-F20).
+    pub(crate) fn launch_claude_code(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let effort = self
+            .claude_code_effort
+            .as_ref()
+            .map(|effort| effort.to_string());
+        self.dispatch_in_original_window(
+            Box::new(zed_actions::terminal::LaunchClaudeCode { effort }),
+            window,
+            cx,
+        );
+    }
+
+    /// Dispatches an action into the workspace this settings window was launched
+    /// from, then closes the settings window so the result is what the user lands
+    /// on.
+    ///
+    /// Terminal tabs and workspace items are not settings pages, so they cannot
+    /// be pushed as a sub page here; dispatching into the original window is the
+    /// same route [`Self::open_network_allowlist_file`] takes to reach the editor.
+    fn dispatch_in_original_window(
+        &mut self,
+        action: Box<dyn gpui::Action>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(original_window) = self.original_window else {
             return;
         };
         original_window
             .update(cx, |_multi_workspace, window, cx| {
-                window.dispatch_action(Box::new(zed_actions::AcpRegistry), cx);
+                window.dispatch_action(action, cx);
             })
             .log_err();
 
@@ -5459,6 +5494,7 @@ pub mod test {
                 mcp_add_server_focus_handle: cx.focus_handle(),
                 custom_agent_form: None,
                 external_agent_add_focus_handle: cx.focus_handle(),
+                claude_code_effort: None,
                 skill_creator_page: None,
             }
         }
@@ -5600,6 +5636,7 @@ pub mod test {
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
+            claude_code_effort: None,
             skill_creator_page: None,
         };
 

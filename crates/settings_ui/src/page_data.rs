@@ -8393,7 +8393,8 @@ fn ai_page(cx: &App) -> SettingsPage {
                     "chat",
                     "claude",
                     // The page answers "where is the Claude subscription?": it
-                    // is the Claude Code agent, not an entry in this list.
+                    // is the official Claude Code CLI run in the integrated
+                    // terminal, not an entry in this list (ADR-F20).
                     "claude code",
                     "claude max",
                     "claude pro",
@@ -8403,10 +8404,13 @@ fn ai_page(cx: &App) -> SettingsPage {
                     "google",
                     "gpt",
                     "grok",
+                    // The Claude Code install / launch buttons live on this page.
+                    "install",
                     "llama",
                     "llm",
                     "lm studio",
                     "mistral",
+                    "npm",
                     "ollama",
                     "openai",
                     "opencode",
@@ -10971,10 +10975,10 @@ fn write_helix_mode_inner(settings: &mut SettingsContent, value: Option<bool>) {
     settings.helix_mode = value;
 }
 
-/// 内蔵ブラウザー (ADR-F19)。ブックマークは構造体の配列なので、宣言的な
-/// `SettingItem` では表現できず settings.json への導線だけを出す。
+/// 内蔵ブラウザー (ADR-F19)。ブックマークは設定ではなく `browser_bookmarks.json`
+/// にあり、ブラウザーパネル内のブックマークペインで編集するのでここには出さない。
 fn browser_page() -> SettingsPage {
-    fn browsing_section() -> [SettingsPageItem; 5] {
+    fn browsing_section() -> [SettingsPageItem; 4] {
         [
             SettingsPageItem::SectionHeader("ブラウジング"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -11037,25 +11041,6 @@ fn browser_page() -> SettingsPage {
                     confirm_on_focus_out: true,
                     ..Default::default()
                 })),
-                files: USER,
-            }),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "ブックマーク",
-                description: "ブラウザーパネルのツールバーの下に並べるブックマークです。名前と URL の組を settings.json で編集します。",
-                field: Box::new(
-                    SettingField {
-                        organization_override: None,
-                        json_path: Some("browser.bookmarks"),
-                        pick: |settings_content| {
-                            settings_content.browser.as_ref()?.bookmarks.as_ref()
-                        },
-                        write: |settings_content, value, _| {
-                            settings_content.browser.get_or_insert_default().bookmarks = value;
-                        },
-                    }
-                    .unimplemented(),
-                ),
-                metadata: None,
                 files: USER,
             }),
         ]

@@ -12,6 +12,8 @@ BUILD-WINDOWS.md のハマりどころを自動で回避する:
   zig / cargo-zigbuild / rustup target が無ければ自動で導入する (-SkipRemoteServer で省略)
 - リモートサンドボックス (ADR-F18) 用の slirp4netns 静的バイナリを GitHub リリースから
   取得し zed.exe の隣に置く (-SkipSlirp4netns で省略)
+- C の既定フォーマッタ (DESIGN.md §5.2) が使う clang-format.exe を
+  target\debug\bin\ へ置く (-SkipClangFormat で省略)
 
 .EXAMPLE
 powershell -NoProfile -File script\build-dev.ps1
@@ -19,6 +21,7 @@ powershell -NoProfile -File script\build-dev.ps1 -Run
 powershell -NoProfile -File script\build-dev.ps1 -FreeDisk
 powershell -NoProfile -File script\build-dev.ps1 -SkipRemoteServer
 powershell -NoProfile -File script\build-dev.ps1 -SkipSlirp4netns
+powershell -NoProfile -File script\build-dev.ps1 -ClangFormatPath C:\LLVM\bin\clang-format.exe
 #>
 param(
     # ビルド成功後に zed.exe を起動する
@@ -30,7 +33,11 @@ param(
     # SSH リモート用 remote_server アーティファクトの生成を省略する
     [switch]$SkipRemoteServer,
     # SSH リモートのサンドボックス用 slirp4netns 静的バイナリの取得を省略する (ADR-F18)
-    [switch]$SkipSlirp4netns
+    [switch]$SkipSlirp4netns,
+    # C の既定フォーマッタ用 clang-format.exe の同梱を省略する
+    [switch]$SkipClangFormat,
+    # 同梱する clang-format.exe の入手元。存在しなければ VS 2022 同梱の LLVM を探す
+    [string]$ClangFormatPath = 'I:\CustomFormatter\bin\win32\clang-format.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -269,6 +276,36 @@ function Get-Slirp4netnsBinary {
     Write-Host ("slirp4netns: {0} ({1:N1} MB)" -f $artifactPath, ((Get-Item $artifactPath).Length / 1MB))
 }
 
+# --- C の既定フォーマッタ用 clang-format の同梱 (DESIGN.md §5.2) -------------
+# languages.C / languages.C++ の formatter.external は裸の "clang-format" を呼ぶ。
+# crates/util の resolve_command_next_to_current_exe が「zed.exe と同じフォルダ →
+# その bin\ → PATH」の順で解決するので、bin\ に置けば PATH 設定なしで動く。
+# zed.exe とは独立したファイルなので、ビルドの成否や zed.exe の実行中とは無関係に
+# 置き換えられる (実行中の Zed はフォーマットのたびに解決し直す)。
+function Copy-ClangFormat {
+    $destination = Join-Path $repoRoot 'target\debug\bin\clang-format.exe'
+
+    $source = $null
+    if ($ClangFormatPath -and (Test-Path -PathType Leaf $ClangFormatPath)) {
+        $source = (Resolve-Path $ClangFormatPath).Path
+    } else {
+        # VS 2022 の C++ ワークロードに付いてくる LLVM。エディションは実機ごとに違う
+        $vsCandidates = @('Enterprise', 'Professional', 'Community', 'BuildTools') |
+            ForEach-Object { "C:\Program Files\Microsoft Visual Studio\2022\$_\VC\Tools\Llvm\bin\clang-format.exe" }
+        $source = $vsCandidates | Where-Object { Test-Path -PathType Leaf $_ } | Select-Object -First 1
+        if (-not $source) {
+            throw "clang-format.exe が見つかりません (-ClangFormatPath '$ClangFormatPath'、および VS 2022 の VC\Tools\Llvm\bin)。"
+        }
+    }
+
+    $destinationDir = Split-Path -Parent $destination
+    if (-not (Test-Path $destinationDir)) {
+        New-Item -ItemType Directory -Force $destinationDir | Out-Null
+    }
+    Copy-Item -Path $source -Destination $destination -Force
+    Write-Host ("clang-format: {0} <- {1}" -f $destination, $source)
+}
+
 # --- ビルド (-j 8 固定。無制限並列は rustc がメモリ枯渇で落ちる) ------------
 Write-Host 'cargo build -p zed -j 8 …'
 cargo build -p zed -j 8
@@ -302,6 +339,16 @@ if (-not $SkipSlirp4netns) {
     } catch {
         Write-Warning ("slirp4netns を用意できませんでした: {0}" -f $_.Exception.Message)
         Write-Warning 'リモートサンドボックス (ADR-F18) の netns 隔離が利用できません。-SkipSlirp4netns で明示的に省略できます。'
+    }
+}
+
+if (-not $SkipClangFormat) {
+    # zed.exe 自体のビルドは成功しているので、ここでの失敗は警告に留める
+    try {
+        Copy-ClangFormat
+    } catch {
+        Write-Warning ("clang-format を用意できませんでした: {0}" -f $_.Exception.Message)
+        Write-Warning 'C ファイルのフォーマットが無効になります (-ClangFormatPath で入手元を指定できます)。'
     }
 }
 

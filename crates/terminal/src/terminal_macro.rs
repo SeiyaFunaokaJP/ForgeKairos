@@ -220,6 +220,10 @@ pub fn serialize_sessions_file(file: &TerminalSessionsFile) -> Result<String> {
 /// disk. Registered as a global so every window shares one copy.
 pub struct TerminalSessionStore {
     file: TerminalSessionsFile,
+    /// Whether the first read of the file has landed. Until it has, `file` is
+    /// empty for want of data rather than because the user has nothing saved,
+    /// and writing it back would truncate the real file.
+    loaded: bool,
     fs: Arc<dyn Fs>,
     path: PathBuf,
     _watch: Task<()>,
@@ -254,7 +258,12 @@ impl TerminalSessionStore {
                 let file = parse_sessions_file(&contents);
                 if this
                     .update(cx, |this, cx| {
-                        if this.file != file {
+                        // The very first read always notifies, even when it
+                        // matches the empty default: observers render
+                        // 「読み込み中…」 until then and have to be told that the
+                        // (possibly empty) real contents are now in hand.
+                        if !this.loaded || this.file != file {
+                            this.loaded = true;
                             this.file = file;
                             cx.notify();
                         }
@@ -268,6 +277,7 @@ impl TerminalSessionStore {
 
         Self {
             file: TerminalSessionsFile::default(),
+            loaded: false,
             fs,
             path,
             _watch: watch,
@@ -276,6 +286,12 @@ impl TerminalSessionStore {
 
     pub fn file(&self) -> &TerminalSessionsFile {
         &self.file
+    }
+
+    /// Whether the file has been read at least once. UI that writes the whole
+    /// file back must not do so before this is true.
+    pub fn is_loaded(&self) -> bool {
+        self.loaded
     }
 
     pub fn macros(&self) -> &[TerminalMacro] {
@@ -299,6 +315,7 @@ impl TerminalSessionStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
         self.file = file;
+        self.loaded = true;
         cx.notify();
         let text = match serialize_sessions_file(&self.file) {
             Ok(text) => text,

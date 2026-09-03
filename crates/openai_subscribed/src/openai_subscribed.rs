@@ -537,6 +537,39 @@ impl OpenAiSubscribedLanguageModel {
     }
 }
 
+/// Effort levels the agent thread toolbar offers for a ChatGPT subscription
+/// model. Split out of the [`LanguageModel`] impl so it can be unit-tested
+/// without a provider state entity (the same shape `bedrock` uses).
+///
+/// `none` is dropped because the toolbar's separate on/off toggle already covers
+/// "do not think"; the level names stay in English here and are translated once,
+/// in `LanguageModelEffortLevel::display_name`.
+fn supported_effort_levels(model: &ChatGptModel) -> Vec<LanguageModelEffortLevel> {
+    let default_effort = model.default_reasoning_effort();
+    model
+        .supported_reasoning_efforts()
+        .iter()
+        .copied()
+        .filter_map(|effort| {
+            let (name, value) = match effort {
+                ReasoningEffort::None => return None,
+                ReasoningEffort::Minimal => ("Minimal", "minimal"),
+                ReasoningEffort::Low => ("Low", "low"),
+                ReasoningEffort::Medium => ("Medium", "medium"),
+                ReasoningEffort::High => ("High", "high"),
+                ReasoningEffort::XHigh => ("Extra High", "xhigh"),
+                ReasoningEffort::Max => ("Max", "max"),
+            };
+
+            Some(LanguageModelEffortLevel {
+                name: name.into(),
+                value: value.into(),
+                is_default: Some(effort) == default_effort,
+            })
+        })
+        .collect()
+}
+
 fn codex_extra_headers(
     credentials: &CodexCredentials,
     routing_cache_key: Option<&str>,
@@ -830,29 +863,7 @@ impl LanguageModel for OpenAiSubscribedLanguageModel {
     }
 
     fn supported_effort_levels(&self) -> Vec<LanguageModelEffortLevel> {
-        let default_effort = self.model.default_reasoning_effort();
-        self.model
-            .supported_reasoning_efforts()
-            .iter()
-            .copied()
-            .filter_map(|effort| {
-                let (name, value) = match effort {
-                    ReasoningEffort::None => return None,
-                    ReasoningEffort::Minimal => ("Minimal", "minimal"),
-                    ReasoningEffort::Low => ("Low", "low"),
-                    ReasoningEffort::Medium => ("Medium", "medium"),
-                    ReasoningEffort::High => ("High", "high"),
-                    ReasoningEffort::XHigh => ("Extra High", "xhigh"),
-                    ReasoningEffort::Max => ("Max", "max"),
-                };
-
-                Some(LanguageModelEffortLevel {
-                    name: name.into(),
-                    value: value.into(),
-                    is_default: Some(effort) == default_effort,
-                })
-            })
-            .collect()
+        supported_effort_levels(&self.model)
     }
 
     fn telemetry_id(&self) -> String {
@@ -1322,7 +1333,60 @@ mod tests {
     use parking_lot::Mutex;
     use std::future::Future;
     use std::pin::Pin;
+    use std::str::FromStr as _;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// The agent thread toolbar only shows its "思考の深さ" selector when the model
+    /// reports effort levels, so the subscription provider must report them
+    /// (ユーザー要望「think レベルは claude や gpt などサブスク系も変更したいよね」).
+    #[test]
+    fn subscription_models_report_effort_levels() {
+        for model in ChatGptModel::all() {
+            let levels = supported_effort_levels(&model);
+
+            assert!(
+                !levels.is_empty(),
+                "{} should offer thinking effort levels",
+                model.id()
+            );
+            assert!(
+                levels.iter().all(|level| level.value != "none"),
+                "{} should not offer `none` (the toolbar's on/off toggle covers it)",
+                model.id()
+            );
+            assert_eq!(
+                levels.iter().filter(|level| level.is_default).count(),
+                1,
+                "{} should mark exactly one default level",
+                model.id()
+            );
+            for level in &levels {
+                assert!(
+                    ReasoningEffort::from_str(&level.value).is_ok(),
+                    "{} reported an effort value the UI cannot label: {}",
+                    model.id(),
+                    level.value
+                );
+            }
+        }
+    }
+
+    /// A model discovered from the catalog that reports no reasoning levels must
+    /// not grow an empty selector.
+    #[test]
+    fn discovered_model_without_reasoning_reports_no_effort_levels() {
+        let model = ChatGptModel::Discovered(Box::new(DiscoveredChatGptModel {
+            id: "gpt-test".into(),
+            display_name: "GPT Test".into(),
+            max_token_count: 1024,
+            supports_images: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![ReasoningEffort::None],
+            supports_priority: false,
+        }));
+
+        assert!(supported_effort_levels(&model).is_empty());
+    }
 
     #[gpui::test]
     async fn test_concurrent_refresh_deduplicates(cx: &mut TestAppContext) {

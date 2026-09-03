@@ -35,15 +35,26 @@ const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
 ///
 /// Anthropic's consumer terms scope a Claude Pro / Max subscription to
 /// Anthropic's own apps and Claude Code, so this fork deliberately does not
-/// implement a subscription sign-in for the native provider — the sanctioned
-/// route is the Claude Code agent over ACP (ADR-F12), which the button next to
-/// this text installs and configures.
-const CLAUDE_SUBSCRIPTION_HINT: &str =
-    "Anthropic (Claude) のサブスクリプションは Claude Code エージェントで利用できます。";
+/// implement a subscription sign-in for the native provider (ADR-F20). The
+/// sanctioned route is the *official, unmodified* CLI: the buttons next to this
+/// text only run the vendor's own install command and then start `claude` in the
+/// integrated terminal instead of a separate command prompt. Nothing about the
+/// CLI is bundled, wrapped or re-authenticated here.
+const CLAUDE_SUBSCRIPTION_HINT: &str = "Anthropic (Claude) のサブスクリプションは、公式の Claude Code CLI をこの IDE のターミナルで実行して利用します。";
 
-const CLAUDE_SUBSCRIPTION_NOTE: &str = "Claude Pro / Max のサブスクリプションはここでは使えません (API キーの従量課金のみ)。サブスクリプションで使うには「Claude Code」エージェントを利用してください。";
+const CLAUDE_SUBSCRIPTION_NOTE: &str = "Claude Pro / Max のサブスクリプションはここでは使えません (API キーの従量課金のみ)。サブスクリプションで使うには、公式の Claude Code CLI を公式のインストールコマンドで導入し、この IDE のターミナルで実行してください (CLI は同梱していません)。";
 
-const OPEN_CLAUDE_CODE_LABEL: &str = "Claude Code エージェントの設定を開く";
+const INSTALL_CLAUDE_CODE_LABEL: &str = "Claude Code をインストール (公式コマンド)";
+
+const LAUNCH_CLAUDE_CODE_LABEL: &str = "ターミナルで Claude Code を起動";
+
+/// Levels accepted by the official CLI's `--effort` flag, verified locally with
+/// `claude --help` ("Effort level for the current session (low, medium, high,
+/// xhigh, max)"). These are passed to the CLI verbatim, so they are **not**
+/// translated; only the "leave the flag off" entry gets a Japanese name.
+const CLAUDE_CODE_EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+
+const CLAUDE_CODE_DEFAULT_EFFORT_LABEL: &str = "既定";
 
 pub(crate) fn render_llm_providers_page(
     settings_window: &SettingsWindow,
@@ -60,7 +71,7 @@ pub(crate) fn render_llm_providers_page(
         .pb_16()
         .track_scroll(scroll_handle)
         .overflow_y_scroll()
-        .child(render_claude_subscription_hint(settings_window, cx))
+        .child(render_claude_subscription_hint(settings_window, window, cx))
         .children(
             providers
                 .iter()
@@ -78,76 +89,179 @@ pub(crate) fn render_llm_providers_page(
 /// by seeing "OpenAI (サブスクリプション)" in the list.
 fn render_claude_subscription_hint(
     settings_window: &SettingsWindow,
+    window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
-    h_flex()
+    v_flex()
         .pt_4()
         .w_full()
         .min_w_0()
-        .gap_2()
-        .flex_wrap()
+        .gap_1p5()
         .child(
             Label::new(CLAUDE_SUBSCRIPTION_HINT)
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
-        .child(render_open_claude_code_button(
-            "llm-providers-open-claude-code",
+        .child(render_claude_code_buttons(
+            "llm-providers",
             settings_window,
+            window,
             cx,
         ))
-}
-
-/// Jumps to the ACP agent registry, where the Claude Code CLI is installed and
-/// configured (ADR-F12). Disabled when the settings window has no workspace to
-/// open it in, exactly like the "open network_allowlist.json" button.
-fn render_open_claude_code_button(
-    id: &'static str,
-    settings_window: &SettingsWindow,
-    cx: &mut Context<SettingsWindow>,
-) -> Button {
-    let has_workspace = settings_window.original_window.is_some();
-
-    Button::new(id, OPEN_CLAUDE_CODE_LABEL)
-        .label_size(LabelSize::Small)
-        .style(ButtonStyle::Outlined)
-        .disabled(!has_workspace)
-        .end_icon(
-            Icon::new(IconName::ArrowUpRight)
-                .size(IconSize::XSmall)
-                .color(Color::Muted),
-        )
-        .tooltip(Tooltip::text(if has_workspace {
-            "設定ウィンドウを閉じ、エージェントの一覧を開きます。ここから Claude Code をインストールすると、エージェントパネルで使えるようになります"
-        } else {
-            "エージェントの一覧を開くにはプロジェクトのウィンドウが必要です"
-        }))
-        .on_click(cx.listener(|this, _, window, cx| {
-            this.open_agent_registry(window, cx);
-        }))
 }
 
 /// The same answer again on the Anthropic card itself, for the user who goes
 /// looking for the subscription under the vendor's own name.
 fn render_claude_subscription_note(
     settings_window: &SettingsWindow,
+    window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
     v_flex()
         .pt_2p5()
         .w_full()
         .min_w_0()
-        .gap_1()
+        .gap_1p5()
         .child(
             Label::new(CLAUDE_SUBSCRIPTION_NOTE)
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
-        .child(h_flex().child(render_open_claude_code_button(
-            "anthropic-open-claude-code",
+        .child(render_claude_code_buttons(
+            "anthropic",
             settings_window,
+            window,
             cx,
-        )))
+        ))
+}
+
+/// The two sanctioned routes to a Claude subscription, plus the CLI's own
+/// `--effort` choice (ADR-F20):
+///
+/// 1. run the vendor's official install command, and
+/// 2. start the resulting `claude` binary in the integrated terminal.
+///
+/// Both are disabled without a workspace to run the terminal in, exactly like
+/// the "open network_allowlist.json" button.
+fn render_claude_code_buttons(
+    id_prefix: &'static str,
+    settings_window: &SettingsWindow,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> impl IntoElement {
+    let has_workspace = settings_window.original_window.is_some();
+    let no_workspace_tooltip = "ターミナルで実行するにはプロジェクトのウィンドウが必要です";
+
+    h_flex()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .flex_wrap()
+        .child(
+            Button::new(
+                ElementId::Name(format!("{id_prefix}-install-claude-code").into()),
+                INSTALL_CLAUDE_CODE_LABEL,
+            )
+            .label_size(LabelSize::Small)
+            .style(ButtonStyle::Outlined)
+            .disabled(!has_workspace)
+            .start_icon(
+                Icon::new(IconName::Download)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .tooltip(Tooltip::text(if has_workspace {
+                "設定ウィンドウを閉じ、統合ターミナルで公式のインストールコマンド \
+                 `npm install -g @anthropic-ai/claude-code` を実行します。\
+                 Node.js (npm) が必要です"
+            } else {
+                no_workspace_tooltip
+            }))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.install_claude_code(window, cx);
+            })),
+        )
+        .child(
+            Button::new(
+                ElementId::Name(format!("{id_prefix}-launch-claude-code").into()),
+                LAUNCH_CLAUDE_CODE_LABEL,
+            )
+            .label_size(LabelSize::Small)
+            .style(ButtonStyle::Outlined)
+            .disabled(!has_workspace)
+            .start_icon(
+                Icon::new(IconName::Terminal)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .tooltip(Tooltip::text(if has_workspace {
+                "設定ウィンドウを閉じ、プロジェクトのディレクトリで `claude` を統合ターミナルから起動します"
+            } else {
+                no_workspace_tooltip
+            }))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.launch_claude_code(window, cx);
+            })),
+        )
+        .child(render_claude_code_effort_selector(
+            id_prefix,
+            settings_window,
+            window,
+            cx,
+        ))
+}
+
+/// Picks the value handed to the official CLI's `--effort` flag. Level names are
+/// the CLI's own, so they stay untranslated (GLOSSARY §1); only "既定" (= omit
+/// the flag) is ours.
+fn render_claude_code_effort_selector(
+    id_prefix: &'static str,
+    settings_window: &SettingsWindow,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> impl IntoElement {
+    let selected = settings_window.claude_code_effort.clone();
+    let label: SharedString = match &selected {
+        Some(effort) => format!("思考の深さ: {effort}").into(),
+        None => format!("思考の深さ: {CLAUDE_CODE_DEFAULT_EFFORT_LABEL}").into(),
+    };
+
+    let settings_window = cx.weak_entity();
+    let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+        let entries = std::iter::once((CLAUDE_CODE_DEFAULT_EFFORT_LABEL, None)).chain(
+            CLAUDE_CODE_EFFORT_LEVELS
+                .into_iter()
+                .map(|level| (level, Some(SharedString::new_static(level)))),
+        );
+
+        for (entry_label, value) in entries {
+            let is_selected = value == selected;
+            let settings_window = settings_window.clone();
+            menu.push_item(
+                ui::ContextMenuEntry::new(entry_label)
+                    .toggleable(IconPosition::End, is_selected)
+                    .handler(move |_window, cx| {
+                        let value = value.clone();
+                        settings_window
+                            .update(cx, |this, cx| {
+                                this.claude_code_effort = value;
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
+            );
+        }
+        menu
+    });
+
+    DropdownMenu::new(
+        ElementId::Name(format!("{id_prefix}-claude-code-effort").into()),
+        label,
+        menu,
+    )
+    .style(DropdownStyle::Outlined)
+    .trigger_size(ButtonSize::Compact)
+    .aria_label("Claude Code の思考の深さ (--effort)")
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -308,7 +422,7 @@ fn render_provider_section(
         .child(render_provider_header(provider_name, provider.icon(), cx))
         .child(body)
         .when(provider_id.0.as_ref() == ANTHROPIC_PROVIDER_ID, |this| {
-            this.child(render_claude_subscription_note(settings_window, cx))
+            this.child(render_claude_subscription_note(settings_window, window, cx))
         })
         .into_any_element()
 }

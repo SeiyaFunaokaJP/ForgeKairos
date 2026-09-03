@@ -3,7 +3,10 @@ Param(
     [Parameter()][Alias('i')][switch]$Install,
     [Parameter()][Alias('h')][switch]$Help,
     [Parameter()][Alias('a')][string]$Architecture,
-    [Parameter()][string]$Name
+    [Parameter()][string]$Name,
+    # Source of the clang-format.exe shipped in {app}\bin (see CopyClangFormat).
+    # Defaults to this fork's reference copy; falls back to VS 2022's bundled LLVM.
+    [Parameter()][string]$ClangFormatPath = "I:\CustomFormatter\bin\win32\clang-format.exe"
 )
 
 . "$PSScriptRoot/lib/workspace.ps1"
@@ -331,6 +334,38 @@ function DownloadSlirp4netns {
     Write-Output ("slirp4netns: {0} ({1:N1} MB)" -f $artifactPath, ((Get-Item $artifactPath).Length / 1MB))
 }
 
+function CopyClangFormat {
+    # The C / C++ defaults in assets/settings/default.json format through a bare
+    # "clang-format" external command, which crates/util resolves as {app} ->
+    # {app}\bin -> PATH. Nothing installs clang-format on a user's machine, so
+    # without this copy the default formatter silently does nothing.
+    #
+    # License: clang-format is part of LLVM (Apache-2.0 with LLVM Exceptions).
+    # crates\zed\resources\windows\licenses\LLVM-LICENSE.txt ships alongside it,
+    # copied into $innoDir by PrepareForBundle and installed by zed.iss.
+    $destination = "$innoDir\bin\clang-format.exe"
+
+    if ($ClangFormatPath -and (Test-Path -PathType Leaf $ClangFormatPath)) {
+        $source = (Resolve-Path $ClangFormatPath).Path
+    } else {
+        # LLVM shipped with the VS 2022 C++ workload; the edition varies per machine.
+        $vsCandidates = @("Enterprise", "Professional", "Community", "BuildTools") |
+            ForEach-Object { "C:\Program Files\Microsoft Visual Studio\2022\$_\VC\Tools\Llvm\bin\clang-format.exe" }
+        $source = $vsCandidates | Where-Object { Test-Path -PathType Leaf $_ } | Select-Object -First 1
+        if (-not $source) {
+            throw "clang-format.exe not found (tried -ClangFormatPath '$ClangFormatPath' and VS 2022's VC\Tools\Llvm\bin). Pass -ClangFormatPath to point at one."
+        }
+    }
+
+    Copy-Item -Path $source -Destination $destination -Force
+    Write-Output ("clang-format: {0} <- {1} ({2:N1} MB)" -f $destination, $source, ((Get-Item $destination).Length / 1MB))
+
+    $licenseFile = "$innoDir\licenses\LLVM-LICENSE.txt"
+    if (-not (Test-Path -PathType Leaf $licenseFile)) {
+        throw "Missing $licenseFile; clang-format may not be shipped without LLVM's license."
+    }
+}
+
 function ZipZedAndItsFriendsDebug {
     $items = @(
         ".\$CargoOutDir\zed.pdb",
@@ -613,6 +648,9 @@ CollectFiles
 # picks them up), and after all MSVC cargo builds so the musl RUSTFLAGS stay isolated.
 BuildLinuxRemoteServer
 DownloadSlirp4netns
+# Ships the C/C++ default formatter's binary in {app}\bin, resolved there at
+# runtime by crates/util's resolve_command_next_to_current_exe.
+CopyClangFormat
 BuildInstaller
 
 if($env:CI) {

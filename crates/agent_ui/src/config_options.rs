@@ -30,6 +30,48 @@ use crate::{
 
 const PICKER_THRESHOLD: usize = 5;
 
+/// ACP エージェントが返す設定オプションのうち、思考の深さ (reasoning effort) に
+/// あたるものを見分ける。
+///
+/// ACP スレッドには `LanguageModel` が無いのでツールバーのネイティブな思考
+/// コントロールは出ず、代わりにこの `ConfigOptionsView` が同じ位置に置かれる。
+/// エージェントは `name` を英語で返してくるので、**表示だけ**日本語にする。
+/// `id` と値 (`SessionConfigValueId`) はプロトコル上の比較対象なので触らない。
+fn is_thought_level_option(option: &acp::SessionConfigOption) -> bool {
+    if option.category.as_ref() == Some(&acp::SessionConfigOptionCategory::ThoughtLevel) {
+        return true;
+    }
+
+    // カテゴリを付けてこないエージェント (Claude Code / Codex の一部バージョン) 向けの
+    // 保険。id は安定した機械可読の識別子なので、これで拾う。
+    let id = option.id.0.to_ascii_lowercase();
+    ["effort", "reasoning", "thinking", "thought"]
+        .iter()
+        .any(|needle| id.contains(needle))
+}
+
+/// 思考の深さオプションの日本語表示名。`ReasoningEffort::japanese_label()` に
+/// 集約された 1 箇所を経由するので、ネイティブのプロバイダーと必ず同じ語になる。
+/// 標準の値に対応しない独自レベルはエージェントの原文をそのまま出す。
+fn thought_level_value_name(value_id: &acp::SessionConfigValueId, name: &str) -> String {
+    language_model::LanguageModelEffortLevel {
+        name: SharedString::from(name.to_string()),
+        value: SharedString::from(value_id.0.to_string()),
+        is_default: false,
+    }
+    .display_name()
+    .to_string()
+}
+
+/// オプション自体の表示名。既知の種別だけ日本語にし、それ以外はエージェントの
+/// 原文を出す (エージェント固有のオプション名を勝手に訳すと必ずズレるため)。
+fn config_option_display_name(option: &acp::SessionConfigOption) -> SharedString {
+    if is_thought_level_option(option) {
+        return "思考の深さ".into();
+    }
+    option.name.clone().into()
+}
+
 pub struct ConfigOptionsView {
     config_options: Rc<dyn AgentSessionConfigOptions>,
     selectors: Vec<Entity<ConfigOptionSelector>>,
@@ -386,8 +428,14 @@ impl ConfigOptionSelector {
 
         match &option.kind {
             acp::SessionConfigKind::Select(select) => {
-                find_option_name(&select.options, &select.current_value)
-                    .unwrap_or_else(|| "不明".to_string())
+                let Some(name) = find_option_name(&select.options, &select.current_value) else {
+                    return "不明".to_string();
+                };
+                if is_thought_level_option(&option) {
+                    thought_level_value_name(&select.current_value, &name)
+                } else {
+                    name
+                }
             }
             _ => "不明".to_string(),
         }
@@ -425,11 +473,16 @@ impl ConfigOptionSelector {
         let value_name = self.current_value_name();
         let mut graphemes = value_name.graphemes(true);
         let truncated = graphemes.by_ref().take(32).collect::<String>();
-        let display_name = if graphemes.next().is_some() {
+        let mut display_name = if graphemes.next().is_some() {
             format!("{truncated}…")
         } else {
             truncated
         };
+        // 値だけだと何のコントロールか分からないので、思考の深さのときは
+        // ネイティブの思考コントロール (`thread_view.rs`) と同じ「思考: 高」の形にする。
+        if is_thought_level_option(&option) {
+            display_name = format!("思考: {display_name}");
+        }
 
         Button::new(
             ElementId::Name(format!("config-option-{}", option.id.0).into()),
@@ -463,7 +516,7 @@ impl Render for ConfigOptionSelector {
                     .as_ref()
                     .is_some_and(|category| self.handles_category_keybindings(category));
                 let option_category = option.category.clone();
-                let option_name = option.name.clone();
+                let option_name = config_option_display_name(&option);
                 let option_description: Option<SharedString> =
                     option.description.clone().map(Into::into);
 
@@ -542,7 +595,7 @@ impl Render for ConfigOptionSelector {
             }
             acp::SessionConfigKind::Boolean(boolean) => {
                 let option_id = option.id.clone();
-                let option_name: SharedString = option.name.clone().into();
+                let option_name = config_option_display_name(&option);
                 let option_description: Option<SharedString> =
                     option.description.clone().map(Into::into);
                 let tooltip_name = option_name.clone();
@@ -928,13 +981,24 @@ fn extract_options(
         return Vec::new();
     };
 
+    // メニューの項目名はトリガーボタンの表示と揃える必要がある
+    // (思考の深さだけ日本語のレベル名になる)。
+    let is_thought_level = is_thought_level_option(&option);
+    let value_name = |value: &acp::SessionConfigValueId, name: &str| {
+        if is_thought_level {
+            thought_level_value_name(value, name)
+        } else {
+            name.to_string()
+        }
+    };
+
     match &option.kind {
         acp::SessionConfigKind::Select(select) => match &select.options {
             acp::SessionConfigSelectOptions::Ungrouped(options) => options
                 .iter()
                 .map(|opt| ConfigOptionValue {
+                    name: value_name(&opt.value, &opt.name),
                     value: opt.value.clone(),
-                    name: opt.name.clone(),
                     description: opt.description.clone(),
                     group: None,
                 })
@@ -943,8 +1007,8 @@ fn extract_options(
                 .iter()
                 .flat_map(|group| {
                     group.options.iter().map(|opt| ConfigOptionValue {
+                        name: value_name(&opt.value, &opt.name),
                         value: opt.value.clone(),
-                        name: opt.name.clone(),
                         description: opt.description.clone(),
                         group: Some(group.name.clone()),
                     })
@@ -1278,6 +1342,65 @@ mod tests {
         });
 
         assert!(!handled);
+    }
+
+    /// ACP スレッド (Claude Code / Codex) の思考の深さは `LanguageModel` ではなく
+    /// エージェントの config option として来る。ツールバーの表示だけ日本語に
+    /// なることを固定する (値 / id は原文のまま)。
+    #[test]
+    fn thought_level_config_option_is_labelled_in_japanese() {
+        let option = acp::SessionConfigOption::select(
+            "reasoning_effort",
+            "Reasoning Effort",
+            "high",
+            vec![
+                acp::SessionConfigSelectOption::new("low", "Low"),
+                acp::SessionConfigSelectOption::new("medium", "Medium"),
+                acp::SessionConfigSelectOption::new("high", "High"),
+                acp::SessionConfigSelectOption::new("turbo", "Turbo"),
+            ],
+        );
+        let config_id = option.id.clone();
+
+        assert!(is_thought_level_option(&option));
+        assert_eq!(config_option_display_name(&option), "思考の深さ");
+
+        let config_options: Rc<dyn AgentSessionConfigOptions> =
+            Rc::new(TestSessionConfigOptions::new(vec![option]));
+        let names = extract_options(&config_options, &config_id)
+            .into_iter()
+            .map(|option| option.name)
+            .collect::<Vec<_>>();
+
+        // 標準の値は日本語、エージェント独自の値は原文のまま。
+        assert_eq!(names, vec!["低", "中", "高", "Turbo"]);
+    }
+
+    #[test]
+    fn other_config_options_keep_the_agents_own_names() {
+        let option = acp::SessionConfigOption::select(
+            "model",
+            "Model",
+            "small",
+            vec![
+                acp::SessionConfigSelectOption::new("small", "Small"),
+                acp::SessionConfigSelectOption::new("large", "Large"),
+            ],
+        )
+        .category(acp::SessionConfigOptionCategory::Model);
+        let config_id = option.id.clone();
+
+        assert!(!is_thought_level_option(&option));
+        assert_eq!(config_option_display_name(&option), "Model");
+
+        let config_options: Rc<dyn AgentSessionConfigOptions> =
+            Rc::new(TestSessionConfigOptions::new(vec![option]));
+        let names = extract_options(&config_options, &config_id)
+            .into_iter()
+            .map(|option| option.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["Small", "Large"]);
     }
 
     #[derive(Default)]

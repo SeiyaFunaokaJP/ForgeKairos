@@ -1028,12 +1028,8 @@
     // (GitHub Copilot はプロンプトを渡すクエリパラメーターを公開していないため、
     // 既定はプレースホルダー無し)。
     "copilot_url": "https://github.com/copilot",
-    // ツールバーの下に並べるブックマークボタン。
-    "bookmarks": [
-      { "name": "GitHub Copilot", "url": "https://github.com/copilot" },
-      { "name": "Microsoft Copilot", "url": "https://copilot.microsoft.com/" },
-      { "name": "Google", "url": "https://www.google.com/" },
-    ],
+    // ブックマークは設定ではなく `browser_bookmarks.json` (settings.json と同じ
+    // フォルダー) に保存され、ブラウザーパネル内のブックマークペインで編集する。
     // オンにすると内蔵ブラウザーの通信も外部通信の許可リストで制限される。
     // 既定では人間操作のターミナルと同様に許可リストの対象外 (ADR-F19)。
     "use_egress_proxy": false,
@@ -2372,7 +2368,8 @@
       },
       // zed-jp-enhance: CustomFormatter (C Indented-Brace Formatter) 相当の既定。
       // GNU ベース + 制御文/関数名の後に空白、1 行形式の禁止、case ラベル字下げ。
-      // clang-format が PATH 上に必要 (docs/jp-enhance/BUILD-WINDOWS.md 参照)。
+      // clang-format は `zed.exe` と同じフォルダ → その `bin\` → PATH の順に解決する
+      // (docs/jp-enhance/BUILD-WINDOWS.md「clang-format」参照)。
       // `--lines={start_line}:{end_line}` は「選択範囲をフォーマット」用。
       // 選択範囲ごとに 1 回ずつ展開され (1 始まり・両端含む)、ファイル全体の
       // フォーマットではこの引数ごと落ちる。
@@ -2391,6 +2388,20 @@
       "use_on_type_format": false,
       "prettier": {
         "allowed": false,
+      },
+      // C と同じ既定を適用する。`.h` は Zed では C ではなく C++ に分類される
+      // (crates/grammars/src/cpp/config.toml の path_suffixes) ので、ここを空に
+      // すると同じプロジェクトのヘッダーだけ整形されない。スタイル文字列自体が
+      // `Language: Cpp` なので C++ でもそのまま有効。
+      "formatter": {
+        "external": {
+          "command": "clang-format",
+          "arguments": [
+            "--style={Language: Cpp, BasedOnStyle: GNU, SpaceBeforeParens: Always, ColumnLimit: 120, AlignEscapedNewlines: Left, SortIncludes: Never, IndentCaseLabels: true, AllowShortFunctionsOnASingleLine: None, AllowShortBlocksOnASingleLine: Never, AllowShortIfStatementsOnASingleLine: Never, AllowShortLoopsOnASingleLine: false, AllowShortCaseLabelsOnASingleLine: false, AllowShortEnumsOnASingleLine: false}",
+            "--lines={start_line}:{end_line}",
+            "--assume-filename={buffer_path}",
+          ],
+        },
       },
     },
     "CSharp": {

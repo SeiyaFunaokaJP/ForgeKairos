@@ -70,6 +70,9 @@ impl QuickActionBar {
             Some(formatter) => format!("このファイルは {formatter} でフォーマットします。"),
             None => NO_FORMATTER_MESSAGE.to_string(),
         };
+        // Resolved lazily inside the tooltip closure: it hits the filesystem
+        // (and walks PATH), while this render runs on every editor notify.
+        let external_command = external_formatter_command(language_settings.formatter.as_ref());
         let selection_tooltip = match &formatter {
             None => NO_FORMATTER_MESSAGE.to_string(),
             // Reported before the "no selection" case: this one holds for the
@@ -102,10 +105,15 @@ impl QuickActionBar {
             .tooltip({
                 let focus_handle = focus_handle.clone();
                 move |_window, cx| {
+                    let mut meta = document_tooltip.clone();
+                    if let Some(command) = &external_command {
+                        meta.push(' ');
+                        meta.push_str(&external_command_location(command));
+                    }
                     Tooltip::with_meta_in(
                         FORMAT_DOCUMENT_LABEL,
                         Some(&Format),
-                        document_tooltip.clone(),
+                        meta,
                         &focus_handle,
                         cx,
                     )
@@ -176,6 +184,30 @@ fn formatter_display_name(formatters: &[Formatter], prettier_allowed: bool) -> O
     (!names.is_empty()).then(|| names.join(" → "))
 }
 
+/// The command of the external formatter that would run on this buffer, if any.
+/// Only the first one is reported: the tooltip has room for one location, and a
+/// chain that starts with a missing binary already fails at its first step.
+fn external_formatter_command(formatters: &[Formatter]) -> Option<String> {
+    formatters.iter().find_map(|formatter| match formatter {
+        Formatter::External { command, .. } => Some(command.clone()),
+        _ => None,
+    })
+}
+
+/// Where the external formatter binary will actually be found, resolved the same
+/// way `LspStore::format_via_external_command` resolves it. Formatting failures
+/// themselves stay out of the way (ADR-F07), so a binary that was never
+/// installed would otherwise make the button look simply broken.
+fn external_command_location(command: &str) -> String {
+    if let Some(path) = util::command::resolve_command_next_to_current_exe(command) {
+        return format!("実行ファイル: {}", path.display());
+    }
+    match which::which(command) {
+        Ok(path) => format!("実行ファイル: {}", path.display()),
+        Err(_) => format!("{command} が見つかりません (PATH または bin\\ に配置してください)。"),
+    }
+}
+
 /// An external formatter can only format a selection when its arguments name
 /// the line placeholders, and that is something the user can add, so the
 /// disabled button says so instead of claiming the tool is incapable.
@@ -244,6 +276,22 @@ mod tests {
             )
             .as_deref(),
             Some("言語サーバー → Prettier"),
+        );
+    }
+
+    #[test]
+    fn test_external_formatter_command() {
+        assert_eq!(external_formatter_command(&[Formatter::Prettier]), None);
+        assert_eq!(
+            external_formatter_command(&[
+                Formatter::None,
+                Formatter::External {
+                    command: "clang-format".to_string(),
+                    arguments: None,
+                },
+            ])
+            .as_deref(),
+            Some("clang-format"),
         );
     }
 

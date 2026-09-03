@@ -9,7 +9,7 @@ use std::sync::Arc;
 use editor::Editor;
 use gpui::{
     App, AsyncWindowContext, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Render,
-    Task, WeakEntity, Window, actions,
+    Subscription, Task, WeakEntity, Window, actions,
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
@@ -24,10 +24,11 @@ use terminal::{
 };
 use ui::{
     Checkbox, ContextMenu, DropdownMenu, DropdownStyle, ListItem, ListItemSpacing, Modal,
-    ModalFooter, ModalHeader, Section, ToggleState, Tooltip, prelude::*,
+    ModalFooter, ModalHeader, Section, SectionHeader, ToggleState, Tooltip, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Panel as _, Workspace};
+use zed_actions::terminal::{InstallClaudeCode, LaunchClaudeCode};
 
 use crate::{TerminalPanel, TerminalView};
 
@@ -74,8 +75,163 @@ pub fn init(cx: &mut App) {
                 QuickConnectModal::new(store, workspace_handle, window, cx)
             });
         });
+        workspace.register_action(|workspace, _: &InstallClaudeCode, window, cx| {
+            spawn_claude_code_command(workspace, ClaudeCodeCommand::Install, window, cx);
+        });
+        workspace.register_action(|workspace, action: &LaunchClaudeCode, window, cx| {
+            spawn_claude_code_command(
+                workspace,
+                ClaudeCodeCommand::Launch {
+                    effort: action.effort.clone(),
+                },
+                window,
+                cx,
+            );
+        });
     })
     .detach();
+}
+
+/// 公式パッケージ名。フォークは Claude Code を同梱せず (ADR-F20)、公式の npm
+/// インストールコマンドをそのまま実行するだけにする。Zed 同梱の Node ランタイムは
+/// 使わず、ユーザーの PATH 上の `npm` を使う。
+const CLAUDE_CODE_PACKAGE: &str = "@anthropic-ai/claude-code";
+const NPM_PROGRAM: &str = "npm";
+const CLAUDE_CODE_PROGRAM: &str = "claude";
+
+enum ClaudeCodeCommand {
+    Install,
+    Launch { effort: Option<String> },
+}
+
+/// 公式 CLI を統合ターミナルの新しいタブで実行する。
+///
+/// ここで組み立てるコマンドは**人間がターミナルに打つのと同じ実行経路**なので、
+/// ADR-F18 (リモートのエージェント実行と違い人間のターミナルは対象外) /
+/// ADR-F19 と同じ扱いで **egress 許可リストの対象外**。プロキシ注入も
+/// 許可リストへのホスト追加も不要で、ここでは一切行わない。
+fn spawn_claude_code_command(
+    workspace: &mut Workspace,
+    command: ClaudeCodeCommand,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let (program, args, task_id, label) = match &command {
+        ClaudeCodeCommand::Install => (
+            NPM_PROGRAM.to_string(),
+            vec![
+                "install".to_string(),
+                "-g".to_string(),
+                CLAUDE_CODE_PACKAGE.to_string(),
+            ],
+            "terminal::install-claude-code",
+            "Claude Code をインストール".to_string(),
+        ),
+        ClaudeCodeCommand::Launch { effort } => {
+            let mut args = Vec::new();
+            if let Some(effort) = effort {
+                // `--effort <level>` は公式 CLI のオプション。レベル名は CLI が
+                // 受け取る値をそのまま渡す (訳さない)。
+                args.push("--effort".to_string());
+                args.push(effort.clone());
+            }
+            (
+                CLAUDE_CODE_PROGRAM.to_string(),
+                args,
+                "terminal::launch-claude-code",
+                "Claude Code".to_string(),
+            )
+        }
+    };
+
+    let command_label = if args.is_empty() {
+        program.clone()
+    } else {
+        format!("{program} {}", args.join(" "))
+    };
+    let cwd = crate::first_project_directory(workspace, cx);
+    // リモートプロジェクトではコマンドはリモートのシェルで動くので、
+    // ローカルの PATH を調べても意味がない (事前チェックを飛ばす)。
+    let check_local_path = !workspace.project().read(cx).is_remote();
+
+    cx.spawn_in(window, async move |workspace, cx| {
+        if check_local_path {
+            let lookup_program = program.clone();
+            let found = cx
+                .background_spawn(async move { which::which(&lookup_program) })
+                .await;
+            if found.is_err() {
+                let message = claude_code_missing_program_message(&program);
+                workspace
+                    .update(cx, |workspace, cx| workspace.show_error(message, cx))
+                    .ok();
+                return;
+            }
+        }
+
+        let spawn_task = SpawnInTerminal {
+            id: TaskId(task_id.to_string()),
+            full_label: label.clone(),
+            label,
+            command: Some(program),
+            args,
+            command_label,
+            cwd,
+            use_new_terminal: true,
+            allow_concurrent_runs: true,
+            reveal: RevealStrategy::Always,
+            reveal_target: RevealTarget::Dock,
+            show_summary: false,
+            // 何が実行されるのかを利用者がその場で確認できるよう、
+            // 実行するコマンド行をターミナルに表示する。
+            show_command: true,
+            show_rerun: true,
+            ..SpawnInTerminal::default()
+        };
+
+        let Some(spawn) = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.panel::<TerminalPanel>(cx).map(|terminal_panel| {
+                    terminal_panel.update(cx, |terminal_panel, cx| {
+                        terminal_panel.spawn_task(&spawn_task, window, cx)
+                    })
+                })
+            })
+            .ok()
+            .flatten()
+        else {
+            workspace
+                .update(cx, |workspace, cx| {
+                    workspace.show_error("ターミナルパネルが利用できません。".to_string(), cx)
+                })
+                .ok();
+            return;
+        };
+
+        if let Err(error) = spawn.await {
+            workspace
+                .update(cx, |workspace, cx| {
+                    workspace.show_error(
+                        format!("ターミナルでコマンドを実行できませんでした: {error}"),
+                        cx,
+                    )
+                })
+                .ok();
+        }
+    })
+    .detach();
+}
+
+fn claude_code_missing_program_message(program: &str) -> String {
+    if program == NPM_PROGRAM {
+        "npm が PATH 上に見つかりません。Claude Code のインストールには Node.js が必要です。\
+         https://nodejs.org/ から Node.js をインストールしてから、もう一度お試しください。"
+            .to_string()
+    } else {
+        "claude が PATH 上に見つかりません。先に「Claude Code をインストール (公式コマンド)」\
+         を実行してください。"
+            .to_string()
+    }
 }
 
 fn workspace_fs(workspace: &Workspace) -> Option<Arc<dyn Fs>> {
@@ -143,6 +299,7 @@ fn run_macro_on_active_terminal(
 
 pub struct MacroPicker {
     picker: Entity<Picker<MacroPickerDelegate>>,
+    _subscriptions: [Subscription; 2],
 }
 
 impl MacroPicker {
@@ -154,14 +311,30 @@ impl MacroPicker {
     ) -> Self {
         let macros = store.read(cx).macros().to_vec();
         let delegate = MacroPickerDelegate {
-            store,
+            store: store.clone(),
             workspace,
             matches: (0..macros.len()).collect(),
             macros,
             selected_index: 0,
         };
         let picker = cx.new(|cx| Picker::uniform_list(delegate, window, cx));
-        Self { picker }
+        // The store loads `terminal_sessions.json` asynchronously, so the first
+        // time this modal is opened it is built against an empty store and has
+        // to re-query once the file lands.
+        let store_loaded = cx.observe_in(&store, window, |this, _, window, cx| {
+            this.picker
+                .update(cx, |picker, cx| picker.refresh(window, cx));
+        });
+        // The modal layer only listens to this wrapper, so the picker's own
+        // dismissals (Esc, confirm) have to be forwarded or the modal never
+        // closes.
+        let picker_dismissed = cx.subscribe(&picker, |_, _, _: &DismissEvent, cx| {
+            cx.emit(DismissEvent);
+        });
+        Self {
+            picker,
+            _subscriptions: [store_loaded, picker_dismissed],
+        }
     }
 }
 
@@ -205,13 +378,24 @@ impl MacroPickerDelegate {
         cx: &mut Context<Picker<Self>>,
     ) {
         let store = self.store.clone();
-        self.workspace
-            .update(cx, |workspace, cx| {
-                workspace.toggle_modal(window, cx, |window, cx| {
-                    MacroEditor::new(store, edited, window, cx)
-                });
-            })
-            .log_err();
+        let workspace = self.workspace.clone();
+        // Swapping modals goes through `ModalLayer::hide_modal`, which reads the
+        // outgoing modal's focus handle — and `MacroPicker` forwards that to this
+        // very picker. Doing it inline would read the picker while this handler
+        // still has it leased, which panics with a double lease (on Windows the
+        // window stops repainting first, so it reads as a freeze). Deferring lets
+        // the effect cycle return the picker first; `toggle_modal` then closes
+        // this picker and opens the editor as one swap, so no separate
+        // `DismissEvent` is emitted that could race ahead and close the editor.
+        window.defer(cx, move |window, cx| {
+            workspace
+                .update(cx, |workspace, cx| {
+                    workspace.toggle_modal(window, cx, |window, cx| {
+                        MacroEditor::new(store, edited, window, cx)
+                    });
+                })
+                .log_err();
+        });
     }
 }
 
@@ -239,8 +423,12 @@ impl PickerDelegate for MacroPickerDelegate {
         "マクロ名で絞り込み…".into()
     }
 
-    fn no_matches_text(&self, _: &mut Window, _: &mut App) -> Option<SharedString> {
-        Some("保存済みのマクロがありません".into())
+    fn no_matches_text(&self, _: &mut Window, cx: &mut App) -> Option<SharedString> {
+        if self.store.read(cx).is_loaded() {
+            Some("保存済みのマクロがありません".into())
+        } else {
+            Some("読み込み中…".into())
+        }
     }
 
     fn update_matches(
@@ -360,6 +548,11 @@ impl PickerDelegate for MacroPickerDelegate {
 // -------------------------------------------------------------------------
 // Macro editor
 // -------------------------------------------------------------------------
+
+/// Shown when a save is attempted before `terminal_sessions.json` has been read
+/// once; writing then would rewrite the file from an empty in-memory copy.
+const LOADING_ERROR: &str =
+    "設定ファイルの読み込みが終わっていません。少し待ってからもう一度お試しください。";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StepKind {
@@ -487,14 +680,17 @@ fn parse_seconds(value: &str) -> Option<u64> {
 
 pub struct MacroEditor {
     store: Entity<TerminalSessionStore>,
-    /// Name the macro had when the editor opened, so a rename replaces the
-    /// original entry instead of adding a second one.
+    /// Name the macro had when the form was last loaded, so a rename replaces
+    /// the original entry instead of adding a second one.
     original_name: Option<String>,
     name: Entity<Editor>,
     description: Entity<Editor>,
     steps: Vec<StepRow>,
     error: Option<SharedString>,
+    /// Macro whose 削除 has been asked for but not yet confirmed.
+    pending_delete: Option<String>,
     focus_handle: FocusHandle,
+    _store_loaded: Subscription,
 }
 
 impl MacroEditor {
@@ -504,37 +700,67 @@ impl MacroEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let edited = edited.unwrap_or_default();
         let name = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
             editor.set_placeholder_text("マクロ名", window, cx);
-            editor.set_text(edited.name.clone(), window, cx);
             editor
         });
         let description = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
             editor.set_placeholder_text("説明 (省略可)", window, cx);
-            editor.set_text(edited.description.clone(), window, cx);
             editor
         });
-        let steps = edited
+        let focus_handle = cx.focus_handle();
+        // `terminal_sessions.json` is read asynchronously, so an editor opened
+        // before the first read landed would otherwise show an empty list of
+        // saved macros for as long as it stays open.
+        let store_loaded = cx.observe(&store, |_, _, cx| cx.notify());
+
+        let mut this = Self {
+            store,
+            original_name: None,
+            name,
+            description,
+            steps: Vec::new(),
+            error: None,
+            pending_delete: None,
+            focus_handle,
+            _store_loaded: store_loaded,
+        };
+        this.load_macro(edited, window, cx);
+        this
+    }
+
+    /// Points the form at `edited`, or at a blank new macro when it is `None`.
+    fn load_macro(
+        &mut self,
+        edited: Option<TerminalMacro>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let edited = edited.unwrap_or_default();
+        self.original_name = (!edited.name.is_empty()).then(|| edited.name.clone());
+        self.name.update(cx, |editor, cx| {
+            editor.set_text(edited.name, window, cx);
+        });
+        self.description.update(cx, |editor, cx| {
+            editor.set_text(edited.description, window, cx);
+        });
+        self.steps = edited
             .steps
             .iter()
             .map(|step| StepRow::new(step, window, cx))
             .collect();
+        self.error = None;
+        self.pending_delete = None;
+        window.focus(&self.name.focus_handle(cx), cx);
+        cx.notify();
+    }
 
-        let focus_handle = cx.focus_handle();
-        window.focus(&name.focus_handle(cx), cx);
-
-        Self {
-            store,
-            original_name: (!edited.name.is_empty()).then_some(edited.name),
-            name,
-            description,
-            steps,
-            error: None,
-            focus_handle,
-        }
+    /// The saved macros the list shows. Read straight from the store so the
+    /// list is whatever is on disk right now, not a copy taken at open time.
+    fn listed_macros(&self, cx: &App) -> Vec<TerminalMacro> {
+        self.store.read(cx).macros().to_vec()
     }
 
     fn add_step(&mut self, kind: StepKind, window: &mut Window, cx: &mut Context<Self>) {
@@ -555,6 +781,14 @@ impl MacroEditor {
     }
 
     fn save(&mut self, cx: &mut Context<Self>) {
+        // Writing before the first read would rewrite the file from an empty
+        // in-memory copy, dropping every macro and connection already in it.
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
+
         let name = self.name.read(cx).text(cx).trim().to_string();
         if name.is_empty() {
             self.error = Some("マクロ名を入力してください。".into());
@@ -614,22 +848,104 @@ impl MacroEditor {
         .detach();
     }
 
-    fn delete_macro(&mut self, cx: &mut Context<Self>) {
-        let Some(original_name) = self.original_name.clone() else {
-            cx.emit(DismissEvent);
+    fn request_delete(&mut self, name: String, cx: &mut Context<Self>) {
+        self.pending_delete = Some(name);
+        self.error = None;
+        cx.notify();
+    }
+
+    fn confirm_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(name) = self.pending_delete.take() else {
             return;
         };
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
+
         let write = self.store.update(cx, |store, cx| {
             let mut file = store.file().clone();
-            file.macros
-                .retain(|candidate| candidate.name != original_name);
+            file.macros.retain(|candidate| candidate.name != name);
             store.write(file, cx)
         });
+        // The form was showing the macro that just went away, so put it back to
+        // a blank new macro rather than leaving a rename of a deleted entry.
+        if self.original_name.as_deref() == Some(name.as_str()) {
+            self.load_macro(None, window, cx);
+        }
+        cx.notify();
+
         cx.spawn(async move |this, cx| {
-            write.await.log_err();
-            this.update(cx, |_, cx| cx.emit(DismissEvent)).ok();
+            if let Err(error) = write.await {
+                this.update(cx, |this, cx| {
+                    this.error = Some(format!("削除できませんでした: {error}").into());
+                    cx.notify();
+                })
+                .ok();
+            }
         })
         .detach();
+    }
+
+    fn render_macro_list(&self, cx: &mut Context<Self>) -> AnyElement {
+        if !self.store.read(cx).is_loaded() {
+            return Label::new("読み込み中…")
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element();
+        }
+
+        let macros = self.listed_macros(cx);
+        if macros.is_empty() {
+            return Label::new("保存済みのマクロがありません")
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element();
+        }
+
+        let editing = self.original_name.clone();
+        v_flex()
+            .id("saved-macros")
+            .max_h(rems(10.))
+            .overflow_y_scroll()
+            .gap_0p5()
+            .children(
+                macros
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, terminal_macro)| {
+                        let name = terminal_macro.name.clone();
+                        let selected = editing.as_deref() == Some(name.as_str());
+                        let detail = format!("{} ステップ", terminal_macro.steps.len());
+                        h_flex()
+                            .w_full()
+                            .gap_1()
+                            .justify_between()
+                            .child(
+                                Button::new(("saved-macro", index), name.clone())
+                                    .full_width()
+                                    .toggle_state(selected)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.load_macro(Some(terminal_macro.clone()), window, cx);
+                                    })),
+                            )
+                            .child(
+                                Label::new(detail)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(
+                                IconButton::new(("delete-saved-macro", index), IconName::Trash)
+                                    .icon_size(IconSize::Small)
+                                    .tooltip(Tooltip::text("このマクロを削除します"))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.request_delete(name.clone(), cx);
+                                    })),
+                            )
+                    }),
+            )
+            .into_any_element()
     }
 
     fn render_step(
@@ -809,7 +1125,13 @@ impl Render for MacroEditor {
         let steps = (0..self.steps.len())
             .map(|index| self.render_step(index, window, cx).into_any_element())
             .collect::<Vec<_>>();
-        let can_delete = self.original_name.is_some();
+        let saved_macros = self.render_macro_list(cx);
+        let form_header = match &self.original_name {
+            Some(name) => format!("『{name}』を編集"),
+            None => "新規マクロ".to_string(),
+        };
+        let editing = self.original_name.clone();
+        let pending_delete = self.pending_delete.clone();
 
         v_flex()
             .w(rems(40.))
@@ -821,34 +1143,90 @@ impl Render for MacroEditor {
                 Modal::new("terminal-macro-editor", None)
                     .header(ModalHeader::new().headline("マクロの編集"))
                     .section(
-                        Section::new().child(
-                            v_flex()
-                                .gap_2()
-                                .child(self.name.clone())
-                                .child(self.description.clone())
-                                .children(steps)
-                                .child(
-                                    h_flex().gap_1().child(
-                                        Button::new("add-step", "ステップを追加")
-                                            .start_icon(Icon::new(IconName::Plus))
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.add_step(StepKind::Send, window, cx);
-                                            })),
-                                    ),
-                                )
-                                .when_some(self.error.clone(), |this, error| {
-                                    this.child(Label::new(error).color(Color::Error))
-                                }),
-                        ),
+                        Section::new()
+                            .header(
+                                SectionHeader::new("保存済みのマクロ").end_slot(
+                                    Button::new("new-macro", "新規作成")
+                                        .start_icon(Icon::new(IconName::Plus))
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.load_macro(None, window, cx);
+                                        })),
+                                ),
+                            )
+                            .child(saved_macros),
+                    )
+                    .section(
+                        Section::new()
+                            .header(SectionHeader::new(form_header))
+                            .child(
+                                v_flex()
+                                    .gap_2()
+                                    .child(self.name.clone())
+                                    .child(self.description.clone())
+                                    .children(steps)
+                                    .child(
+                                        h_flex().gap_1().child(
+                                            Button::new("add-step", "ステップを追加")
+                                                .start_icon(Icon::new(IconName::Plus))
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.add_step(StepKind::Send, window, cx);
+                                                })),
+                                        ),
+                                    )
+                                    .when_some(pending_delete, |this, name| {
+                                        this.child(
+                                            h_flex()
+                                                .w_full()
+                                                .gap_1()
+                                                .justify_between()
+                                                .child(
+                                                    Label::new(format!(
+                                                        "『{name}』を削除しますか？"
+                                                    ))
+                                                    .size(LabelSize::Small),
+                                                )
+                                                .child(
+                                                    h_flex()
+                                                        .gap_1()
+                                                        .child(
+                                                            Button::new("confirm-delete", "削除")
+                                                                .color(Color::Error)
+                                                                .on_click(cx.listener(
+                                                                    |this, _, window, cx| {
+                                                                        this.confirm_delete(
+                                                                            window, cx,
+                                                                        );
+                                                                    },
+                                                                )),
+                                                        )
+                                                        .child(
+                                                            Button::new(
+                                                                "cancel-delete",
+                                                                "キャンセル",
+                                                            )
+                                                            .on_click(cx.listener(
+                                                                |this, _, _, cx| {
+                                                                    this.pending_delete = None;
+                                                                    cx.notify();
+                                                                },
+                                                            )),
+                                                        ),
+                                                ),
+                                        )
+                                    })
+                                    .when_some(self.error.clone(), |this, error| {
+                                        this.child(Label::new(error).color(Color::Error))
+                                    }),
+                            ),
                     )
                     .footer(
                         ModalFooter::new()
-                            .when(can_delete, |footer| {
+                            .when_some(editing, |footer, name| {
                                 footer.start_slot(
                                     Button::new("delete-macro", "削除")
                                         .color(Color::Error)
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.delete_macro(cx);
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.request_delete(name.clone(), cx);
                                         })),
                                 )
                             })
@@ -874,8 +1252,10 @@ impl Render for MacroEditor {
 impl EventEmitter<DismissEvent> for MacroEditor {}
 
 impl Focusable for MacroEditor {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    // The modal layer focuses whatever this returns once the modal is shown, so
+    // handing it the name field is what makes the form typable on open.
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.name.focus_handle(cx)
     }
 }
 
@@ -923,6 +1303,7 @@ pub struct QuickConnectModal {
     log: bool,
     error: Option<SharedString>,
     focus_handle: FocusHandle,
+    _store_loaded: Subscription,
 }
 
 impl QuickConnectModal {
@@ -952,6 +1333,9 @@ impl QuickConnectModal {
         let log = TerminalSettings::get_global(cx).session_log.auto;
         let focus_handle = cx.focus_handle();
         window.focus(&host.focus_handle(cx), cx);
+        // The saved-connection list and the macro dropdown both read the store
+        // on every render, and the file lands asynchronously.
+        let store_loaded = cx.observe(&store, |_, _, cx| cx.notify());
 
         Self {
             store,
@@ -965,6 +1349,7 @@ impl QuickConnectModal {
             log,
             error: None,
             focus_handle,
+            _store_loaded: store_loaded,
         }
     }
 
@@ -1045,6 +1430,13 @@ impl QuickConnectModal {
     }
 
     fn save_connection(&mut self, cx: &mut Context<Self>) {
+        // See `MacroEditor::save`: writing before the first read truncates the
+        // file to whatever little the store happens to hold.
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
         let connection = match self.form_connection(cx) {
             Ok(connection) => connection,
             Err(message) => {
@@ -1078,6 +1470,11 @@ impl QuickConnectModal {
     }
 
     fn delete_connection(&mut self, name: String, cx: &mut Context<Self>) {
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
         let write = self.store.update(cx, |store, cx| {
             let mut file = store.file().clone();
             file.connections.retain(|candidate| candidate.name != name);
@@ -1274,6 +1671,12 @@ fn missing_program_message(program: &str) -> String {
 
 impl QuickConnectModal {
     fn render_saved_connections(&self, cx: &mut Context<Self>) -> AnyElement {
+        if !self.store.read(cx).is_loaded() {
+            return Label::new("読み込み中…")
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element();
+        }
         let connections = self.store.read(cx).connections().to_vec();
         v_flex()
             .gap_0p5()
@@ -1499,7 +1902,271 @@ impl ModalView for QuickConnectModal {}
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        cell::Cell,
+        path::{Path, PathBuf},
+        rc::Rc,
+    };
+
+    use gpui::{TestAppContext, VisualTestContext};
+    use project::{FakeFs, Project};
+    use settings::SettingsStore;
+    use terminal::terminal_macro::parse_sessions_file;
+    use util::path;
+    use workspace::MultiWorkspace;
+
     use super::*;
+
+    fn sessions_path() -> PathBuf {
+        PathBuf::from(path!("/config/terminal_sessions.json"))
+    }
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+        });
+    }
+
+    /// A workspace over a fake fs that already holds `sessions_json`, plus a
+    /// store pointed at it. The store is deliberately *not* pumped: every test
+    /// that wants the file read has to say so, because the whole point of these
+    /// tests is what the UI does before and after that read lands.
+    async fn init_workspace(
+        cx: &mut TestAppContext,
+        sessions_json: &str,
+    ) -> (
+        Arc<FakeFs>,
+        Entity<Workspace>,
+        gpui::WindowHandle<MultiWorkspace>,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/config"),
+            serde_json::json!({ "terminal_sessions.json": sessions_json }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [], cx).await;
+        let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace = window
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the test window should have a workspace");
+        (fs, workspace, window)
+    }
+
+    fn new_store(fs: &Arc<FakeFs>, cx: &mut VisualTestContext) -> Entity<TerminalSessionStore> {
+        let fs = fs.clone();
+        cx.update(|_, cx| cx.new(|cx| TerminalSessionStore::new(fs, sessions_path(), cx)))
+    }
+
+    fn open_editor(
+        workspace: &Entity<Workspace>,
+        store: &Entity<TerminalSessionStore>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<MacroEditor> {
+        let store = store.clone();
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_modal(window, cx, |window, cx| {
+                MacroEditor::new(store, None, window, cx)
+            });
+            workspace
+                .active_modal::<MacroEditor>(cx)
+                .expect("the editor should be the active modal")
+        })
+    }
+
+    fn open_picker(
+        workspace: &Entity<Workspace>,
+        store: &Entity<TerminalSessionStore>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<MacroPicker> {
+        let store = store.clone();
+        workspace.update_in(cx, |workspace, window, cx| {
+            let handle = cx.weak_entity();
+            workspace.toggle_modal(window, cx, |window, cx| {
+                MacroPicker::new(store, handle, window, cx)
+            });
+            workspace
+                .active_modal::<MacroPicker>(cx)
+                .expect("the picker should be the active modal")
+        })
+    }
+
+    fn picker_names(picker: &Entity<MacroPicker>, cx: &mut VisualTestContext) -> Vec<String> {
+        picker.update(cx, |picker, cx| {
+            let picker = picker.picker.read(cx);
+            (0..picker.delegate.match_count())
+                .filter_map(|index| {
+                    let index = *picker.delegate.matches.get(index)?;
+                    Some(picker.delegate.macros.get(index)?.name.clone())
+                })
+                .collect()
+        })
+    }
+
+    #[gpui::test]
+    async fn the_editor_lists_the_macros_the_store_loads(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                // 保存済みのマクロ
+                "macros": [
+                    { "name": "ログイン", "steps": [{ "type": "send", "text": "enable" }] },
+                    { "name": "設定保存", "steps": [] },
+                    { "name": "再起動", "steps": [] }
+                ]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+
+        let editor = open_editor(&workspace, &store, cx);
+
+        // Opened before the file was read: the list has nothing to show yet.
+        cx.update(|_, cx| {
+            assert!(!store.read(cx).is_loaded());
+            assert!(editor.read(cx).listed_macros(cx).is_empty());
+        });
+
+        let redrawn = Rc::new(Cell::new(false));
+        let _observer = cx.update(|_, cx| {
+            cx.observe(&editor, {
+                let redrawn = redrawn.clone();
+                move |_, _| redrawn.set(true)
+            })
+        });
+
+        cx.run_until_parked();
+
+        cx.update(|_, cx| {
+            assert!(store.read(cx).is_loaded());
+            let names = editor
+                .read(cx)
+                .listed_macros(cx)
+                .into_iter()
+                .map(|terminal_macro| terminal_macro.name)
+                .collect::<Vec<_>>();
+            assert_eq!(names, vec!["ログイン", "設定保存", "再起動"]);
+        });
+        assert!(
+            redrawn.get(),
+            "the editor must be re-rendered when the store finishes loading"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_picker_lists_macros_that_arrive_after_it_opened(cx: &mut TestAppContext) {
+        let (fs, workspace, window) =
+            init_workspace(cx, r#"{ "macros": [{ "name": "ログイン", "steps": [] }] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+
+        let picker = open_picker(&workspace, &store, cx);
+        assert!(picker_names(&picker, cx).is_empty());
+
+        cx.run_until_parked();
+        assert_eq!(picker_names(&picker, cx), vec!["ログイン".to_string()]);
+    }
+
+    #[gpui::test]
+    async fn editing_from_the_picker_swaps_in_the_editor(cx: &mut TestAppContext) {
+        let (fs, workspace, window) =
+            init_workspace(cx, r#"{ "macros": [{ "name": "ログイン", "steps": [] }] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(picker_names(&picker, cx), vec!["ログイン".to_string()]);
+
+        // 「編集」 runs inside a `Picker` update. Swapping the modal from there
+        // used to read the picker while it was leased, which panicked.
+        picker.update_in(cx, |picker, window, cx| {
+            picker.picker.update(cx, |picker, cx| {
+                let edited = picker.delegate.selected_macro().cloned();
+                assert!(edited.is_some(), "a macro should be selected");
+                picker.delegate.open_editor(edited, window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        workspace.update(cx, |workspace, cx| {
+            let editor = workspace
+                .active_modal::<MacroEditor>(cx)
+                .expect("the editor should have replaced the picker");
+            assert_eq!(
+                editor.read(cx).original_name.as_deref(),
+                Some("ログイン"),
+                "the editor should have loaded the selected macro"
+            );
+            assert!(
+                workspace.active_modal::<MacroPicker>(cx).is_none(),
+                "the picker should be gone"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn saving_writes_the_file_and_the_picker_follows(cx: &mut TestAppContext) {
+        let (fs, workspace, window) =
+            init_workspace(cx, r#"{ "macros": [{ "name": "既存", "steps": [] }] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("新しいマクロ", window, cx);
+            });
+            editor.add_step(StepKind::Send, window, cx);
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text("show version", window, cx);
+            });
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(
+            saved
+                .macros
+                .iter()
+                .map(|terminal_macro| terminal_macro.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["既存", "新しいマクロ"]
+        );
+        assert_eq!(
+            saved.macros[1].steps,
+            vec![MacroStep::Send {
+                text: "show version".to_string(),
+                newline: true
+            }]
+        );
+
+        workspace.update(cx, |workspace, cx| {
+            assert!(
+                workspace.active_modal::<MacroEditor>(cx).is_none(),
+                "a successful save should close the editor"
+            );
+        });
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(
+            picker_names(&picker, cx),
+            vec!["既存".to_string(), "新しいマクロ".to_string()]
+        );
+    }
 
     #[test]
     fn seconds_round_trip_through_the_editor_fields() {

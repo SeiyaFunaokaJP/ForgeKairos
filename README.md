@@ -53,7 +53,7 @@
   専用整形バー (タブ行の下)、Enter で hard break (行末スペース 2 つ) を補うオプション
 - **Markdown → PDF** 書き出し (Edge headless)。ツールバー / プレビュー / タブ右クリックから
 - プレビューは**分割表示が既定** (alt+クリックで同一ペイン)
-- エージェント用 **repo map** ツール、**C フォーマッタ既定** (clang-format 同梱対応)
+- エージェント用 **repo map** ツール、**C / C++ フォーマッタ既定** (clang-format を同梱)
 - **VSCode ライクな既定** — プロジェクトパネル左 / AI チャット右 / メニューバー常時表示 /
   ターミナル Ctrl+F 検索 / タイトルバーに AI チャット開閉ボタン
 
@@ -77,8 +77,9 @@ remote_server (musl) のクロスビルドと同梱配置 (zig を winget で自
   (または `Start-Process`) で起動**する
 - コンソールから `zed <パス>` のように使うには `cli.exe` が `zed.exe` の隣に必要
   (`build-dev.ps1` が一緒にビルドする)
-- C フォーマットを使う場合は `clang-format.exe` を `zed.exe` の隣 (または `bin\`) に置くか、
-  PATH に通す
+- C / C++ のフォーマットに使う `clang-format.exe` は `build-dev.ps1` が
+  `target\debug\bin\` へ置く (`-ClangFormatPath` で入手元を指定 / `-SkipClangFormat` で省略)。
+  手動で `zed.exe` の隣 (または `bin\`) に置くか PATH に通してもよい
 
 ### 初回起動時の状態 (意図した既定)
 
@@ -105,8 +106,10 @@ remote_server (musl) のクロスビルドと同梱配置 (zig を winget で自
 
 upstream (Zed) のライセンスを継承する: 主に **GPL-3.0-or-later**、一部 Apache-2.0
 (各クレートの表記に従う。`LICENSE-GPL` / `LICENSE-APACHE` 参照)。
-clang-format バイナリを同梱して配布する場合は LLVM の LICENSE.TXT
-(Apache-2.0 with LLVM Exceptions) を併せて同梱すること。
+C / C++ の既定フォーマッタが使う **clang-format** バイナリは LLVM プロジェクトの一部で、
+**Apache-2.0 with LLVM Exceptions**。Windows インストーラーはこれを `{app}\bin\clang-format.exe`
+として同梱し、ライセンス全文を `{app}\licenses\LLVM-LICENSE.txt` に配置する
+(リポジトリ上の実体は `crates/zed/resources/windows/licenses/LLVM-LICENSE.txt`)。
 リモートサンドボックス (ADR-F18) の `slirp4netns` バイナリを同梱して配布する場合は、
 その **GPLv2+** ライセンス (本フォークの GPL-3 と両立) を、内部の **libslirp** (MIT/BSD)
 の表記とともに配布物に含めること。

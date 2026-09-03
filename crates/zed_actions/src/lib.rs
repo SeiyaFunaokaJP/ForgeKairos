@@ -424,6 +424,31 @@ pub mod project_panel {
         ]
     );
 }
+/// Claude Code の導線 (ADR-F20)。ハンドラーは `terminal_view::session_tools` にあり、
+/// 設定ウィンドウのような別ウィンドウからは元のワークスペースへディスパッチして使う。
+pub mod terminal {
+    use gpui::Action;
+    use schemars::JsonSchema;
+    use serde::Deserialize;
+
+    /// 公式のインストールコマンドを統合ターミナルで実行して Claude Code CLI を導入します。
+    #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+    #[action(namespace = terminal)]
+    #[serde(deny_unknown_fields)]
+    pub struct InstallClaudeCode;
+
+    /// プロジェクトのディレクトリで Claude Code CLI を統合ターミナルから起動します。
+    #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+    #[action(namespace = terminal)]
+    #[serde(deny_unknown_fields)]
+    pub struct LaunchClaudeCode {
+        /// 公式 CLI の `--effort` に渡す値 (`low` / `medium` / `high` 等)。
+        /// 未指定なら `--effort` を付けず CLI の既定に任せる。
+        #[serde(default)]
+        pub effort: Option<String>,
+    }
+}
+
 pub mod feedback {
     use gpui::actions;
 

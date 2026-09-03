@@ -35,9 +35,21 @@ pub fn new_command(program: impl AsRef<OsStr>) -> Command {
 /// where silently preferring a same-named binary shipped next to Zed would be
 /// surprising.
 pub fn resolve_command_next_to_current_exe(command: &str) -> Option<PathBuf> {
-    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    resolve_bare_command_in_dirs(command, &command_search_dirs_next_to_current_exe())
+}
+
+/// The directories [`resolve_command_next_to_current_exe`] looks in, in order.
+/// Exposed so a "command not found" message can name them instead of leaving
+/// the user to guess where a bundled binary is supposed to go.
+pub fn command_search_dirs_next_to_current_exe() -> Vec<PathBuf> {
+    let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+    else {
+        return Vec::new();
+    };
     let bin_dir = exe_dir.join("bin");
-    resolve_bare_command_in_dirs(command, &[exe_dir, bin_dir])
+    vec![exe_dir, bin_dir]
 }
 
 fn resolve_bare_command_in_dirs(command: &str, dirs: &[PathBuf]) -> Option<PathBuf> {

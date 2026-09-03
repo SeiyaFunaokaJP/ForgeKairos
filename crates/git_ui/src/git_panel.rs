@@ -18,7 +18,7 @@ use crate::{
     git_panel_settings::GitPanelSettings, git_status_icon, repository_selector::RepositorySelector,
 };
 use agent_settings::{AgentSettings, UserAgentsMd};
-use anyhow::Context as _;
+use anyhow::{Context as _, Result};
 use askpass::AskPassDelegate;
 use client::zed_urls;
 use collections::{BTreeMap, HashMap, HashSet};
@@ -4204,9 +4204,6 @@ impl GitPanel {
         let Some(repository) = self.active_repository.clone() else {
             return;
         };
-        let Some(workspace) = self.workspace.upgrade() else {
-            return;
-        };
         let workspace_handle = self.workspace.clone();
         let panel = cx.weak_entity();
         let on_select: branch_picker::SelectBranchCallback =
@@ -4220,17 +4217,26 @@ impl GitPanel {
                 });
             });
 
-        workspace.update(cx, |workspace, cx| {
-            workspace.toggle_modal(window, cx, |window, cx| {
-                branch_picker::select_modal(
-                    workspace_handle,
-                    Some(repository),
-                    None,
-                    on_select,
-                    window,
-                    cx,
-                )
-            });
+        // `git::Merge` is registered on the workspace, so the workspace entity
+        // is still leased by its own action dispatch while we run. Updating it
+        // here would be a second lease of the same entity, which aborts the
+        // process; deferring hands the leased entities back first.
+        cx.defer_in(window, move |_, window, cx| {
+            let modal_workspace = workspace_handle.clone();
+            workspace_handle
+                .update(cx, |workspace, cx| {
+                    workspace.toggle_modal(window, cx, |window, cx| {
+                        branch_picker::select_modal(
+                            modal_workspace,
+                            Some(repository),
+                            None,
+                            on_select,
+                            window,
+                            cx,
+                        )
+                    });
+                })
+                .ok();
         });
     }
 
@@ -4381,9 +4387,7 @@ impl GitPanel {
         let Some(repository) = self.active_repository.clone() else {
             return;
         };
-        let Some(workspace) = self.workspace.upgrade() else {
-            return;
-        };
+        let workspace = self.workspace.clone();
         let project = self.project.clone();
 
         let sources = [
@@ -4400,66 +4404,104 @@ impl GitPanel {
                 .iter()
                 .map(|(_, label)| SharedString::new_static(label))
                 .collect(),
-            self.workspace.clone(),
+            workspace.clone(),
             window,
             cx,
         );
 
         cx.spawn_in(window, async move |this, cx| {
             let Some(index) = selection.await else {
-                return Ok(());
+                return;
             };
             let Some(&(source, _)) = sources.get(index) else {
-                return Ok(());
+                return;
             };
 
-            let output = repository
-                .update(cx, |repository, _| repository.create_patch(source))
-                .await??;
-            if !output.succeeded() {
-                this.update(cx, |this, cx| {
-                    this.show_error_toast(
-                        "diff",
-                        anyhow::anyhow!("{}", output.failure_message()),
-                        cx,
-                    )
-                })
-                .ok();
-                return Ok(());
+            match Self::write_new_patch(repository, workspace, project, source, cx).await {
+                Ok(Some(destination)) => {
+                    this.update(cx, |this, cx| {
+                        this.show_success_toast(
+                            format!("パッチファイルを保存しました: {destination}"),
+                            cx,
+                        );
+                    })
+                    .ok();
+                }
+                // The user dismissed the save dialog.
+                Ok(None) => {}
+                Err(error) => {
+                    this.update(cx, |this, cx| this.show_error_toast("diff", error, cx))
+                        .ok();
+                }
             }
-            if output.stdout.trim().is_empty() {
-                this.update(cx, |this, cx| {
-                    this.show_error_toast(
-                        "diff",
-                        anyhow::anyhow!("パッチファイルにする変更がありませんでした。"),
-                        cx,
-                    )
-                })
-                .ok();
-                return Ok(());
-            }
+        })
+        .detach();
+    }
 
-            let destination = workspace.update_in(cx, |workspace, window, cx| {
-                workspace.prompt_for_new_path(
-                    DirectoryLister::Project(project.clone()),
-                    Some(source.suggested_file_name().to_owned()),
-                    window,
-                    cx,
-                )
-            })?;
-            let Some(destination) = destination
+    /// Body of [`Self::create_patch`], from running git to writing the file.
+    ///
+    /// Returns the destination the patch was written to, or `None` if the user
+    /// dismissed the save dialog.
+    async fn write_new_patch(
+        repository: Entity<Repository>,
+        workspace: WeakEntity<Workspace>,
+        project: Entity<Project>,
+        source: PatchSource,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<Option<String>> {
+        let output = repository
+            .update(cx, |repository, _| repository.create_patch(source))
+            .await??;
+        anyhow::ensure!(output.succeeded(), "{}", output.failure_message());
+        anyhow::ensure!(
+            !output.stdout.trim().is_empty(),
+            "パッチファイルにする変更がありませんでした。"
+        );
+
+        // The file dialog is opened from inside this task on purpose. The git
+        // actions are registered on the workspace (`Workspace::register_action`),
+        // so the workspace entity is still leased by its own action dispatch
+        // while the panel method runs; calling `prompt_for_new_path` from there
+        // would lease the same entity twice and abort the process.
+        let destination = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.prompt_for_new_path(
+                Self::patch_directory_lister(workspace, cx),
+                Some(source.suggested_file_name().to_owned()),
+                window,
+                cx,
+            )
+        })?;
+        // A dropped sender means the dialog went away without a choice, which
+        // is the same outcome as an explicit cancel.
+        let Some(destination) = destination
+            .await
+            .ok()
+            .flatten()
+            .and_then(|mut paths| paths.pop())
+        else {
+            return Ok(None);
+        };
+
+        let fs = project.read_with(cx, |project, _| {
+            project.is_local().then(|| project.fs().clone())
+        });
+        if let Some(fs) = fs {
+            // Written straight to the file system. Routing this through
+            // `find_or_create_worktree` + `save_buffer_as` would attach a
+            // worktree for the destination to the project and start scanning
+            // it, just to write one file the user does not want opened.
+            fs.atomic_write(destination.clone(), output.stdout)
                 .await
-                .ok()
-                .flatten()
-                .and_then(|mut paths| paths.pop())
-            else {
-                return Ok(());
-            };
-
-            // Saving through the project (rather than the local filesystem) is
-            // what makes this work for remote projects: the path came from the
-            // project's own directory lister, so it lives on the repository's
-            // host, not necessarily on this machine.
+                .with_context(|| {
+                    format!(
+                        "パッチファイル {} を保存できませんでした",
+                        destination.display()
+                    )
+                })?;
+        } else {
+            // Remote project: the path came from the host's own directory
+            // lister, so it exists there and not necessarily on this machine.
+            // Writing through the project is what gets the bytes to the host.
             let (worktree, relative_path) = project
                 .update(cx, |project, cx| {
                     project.find_or_create_worktree(&destination, false, cx)
@@ -4485,31 +4527,66 @@ impl GitPanel {
                     )
                 })
                 .await?;
+        }
 
-            let displayed_path = destination.to_string_lossy().into_owned();
-            this.update(cx, |this, cx| {
-                this.show_success_toast(
-                    format!("パッチファイルを保存しました: {displayed_path}"),
-                    cx,
-                );
-            })
-            .ok();
-
-            anyhow::Ok(())
-        })
-        .detach_and_log_err(cx);
+        Ok(Some(destination.to_string_lossy().into_owned()))
     }
 
     pub(crate) fn apply_patch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(repository) = self.active_repository.clone() else {
             return;
         };
-        let Some(workspace) = self.workspace.upgrade() else {
-            return;
-        };
+        let workspace = self.workspace.clone();
         let project = self.project.clone();
 
-        let patch_path = workspace.update(cx, |workspace, cx| {
+        cx.spawn_in(window, async move |this, cx| {
+            match Self::apply_chosen_patch(repository, workspace, project, cx).await {
+                Ok(Some((output, used_three_way))) => {
+                    this.update(cx, |this, cx| {
+                        if output.succeeded() && used_three_way {
+                            this.show_git_output_toast(
+                                "apply",
+                                "パッチファイルを 3-way マージで適用し、ステージしました。",
+                                &output,
+                                cx,
+                            );
+                        } else if output.succeeded() {
+                            this.show_success_toast("パッチファイルを適用しました。", cx);
+                        } else {
+                            this.show_error_toast(
+                                "apply",
+                                anyhow::anyhow!("{}", output.failure_message()),
+                                cx,
+                            );
+                        }
+                    })
+                    .ok();
+                }
+                // The user dismissed the file dialog.
+                Ok(None) => {}
+                Err(error) => {
+                    this.update(cx, |this, cx| this.show_error_toast("apply", error, cx))
+                        .ok();
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Body of [`Self::apply_patch`], from picking the file to running git.
+    ///
+    /// Returns git's output plus whether the `--3way` retry produced it, or
+    /// `None` if the user dismissed the file dialog.
+    async fn apply_chosen_patch(
+        repository: Entity<Repository>,
+        workspace: WeakEntity<Workspace>,
+        project: Entity<Project>,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<Option<(git::repository::GitCommandOutput, bool)>> {
+        // Opened from inside the task for the same reason as in
+        // [`Self::write_new_patch`]: the workspace entity is still leased by
+        // the action dispatch that got us here.
+        let patch_path = workspace.update_in(cx, |workspace, window, cx| {
             workspace.prompt_for_open_path(
                 gpui::PathPromptOptions {
                     files: true,
@@ -4517,22 +4594,34 @@ impl GitPanel {
                     multiple: false,
                     prompt: Some("適用するパッチファイルを選択".into()),
                 },
-                DirectoryLister::Project(project.clone()),
+                Self::patch_directory_lister(workspace, cx),
                 window,
                 cx,
             )
+        })?;
+        let Some(patch_path) = patch_path
+            .await
+            .ok()
+            .flatten()
+            .and_then(|mut paths| paths.pop())
+        else {
+            return Ok(None);
+        };
+
+        let fs = project.read_with(cx, |project, _| {
+            project.is_local().then(|| project.fs().clone())
         });
-
-        cx.spawn_in(window, async move |this, cx| {
-            let Some(patch_path) = patch_path
-                .await
-                .ok()
-                .flatten()
-                .and_then(|mut paths| paths.pop())
-            else {
-                return Ok(());
-            };
-
+        let contents = if let Some(fs) = fs {
+            // Read directly, for the same reason the local save writes
+            // directly: opening the patch through the project would add a
+            // worktree and a buffer for a file the user only wants applied.
+            fs.load(&patch_path).await.with_context(|| {
+                format!(
+                    "パッチファイル {} を読み込めませんでした",
+                    patch_path.display()
+                )
+            })?
+        } else {
             let (worktree, relative_path) = project
                 .update(cx, |project, cx| {
                     project.find_or_create_worktree(&patch_path, false, cx)
@@ -4550,52 +4639,41 @@ impl GitPanel {
                     )
                 })
                 .await?;
-            let contents = buffer.read_with(cx, |buffer, _| buffer.text());
+            buffer.read_with(cx, |buffer, _| buffer.text())
+        };
 
-            // Plain `git apply` is all-or-nothing, so it is the safe first
-            // attempt. `--3way` is the "try harder" retry: it can apply a patch
-            // whose context has drifted, but it also stages what it applies and
-            // may leave conflict markers behind, which must not happen on top of
-            // an already half-applied patch.
-            let plain = repository
-                .update(cx, |repository, cx| {
-                    repository.apply_patch(contents.clone(), false, cx)
-                })
-                .await??;
-            let (output, used_three_way) = if plain.succeeded() {
-                (plain, false)
-            } else {
-                let three_way = repository
-                    .update(cx, |repository, cx| {
-                        repository.apply_patch(contents, true, cx)
-                    })
-                    .await??;
-                (three_way, true)
-            };
-
-            this.update(cx, |this, cx| {
-                if output.succeeded() && used_three_way {
-                    this.show_git_output_toast(
-                        "apply",
-                        "パッチファイルを 3-way マージで適用し、ステージしました。",
-                        &output,
-                        cx,
-                    );
-                } else if output.succeeded() {
-                    this.show_success_toast("パッチファイルを適用しました。", cx);
-                } else {
-                    this.show_error_toast(
-                        "apply",
-                        anyhow::anyhow!("{}", output.failure_message()),
-                        cx,
-                    );
-                }
+        // Plain `git apply` is all-or-nothing, so it is the safe first
+        // attempt. `--3way` is the "try harder" retry: it can apply a patch
+        // whose context has drifted, but it also stages what it applies and
+        // may leave conflict markers behind, which must not happen on top of
+        // an already half-applied patch.
+        let plain = repository
+            .update(cx, |repository, cx| {
+                repository.apply_patch(contents.clone(), false, cx)
             })
-            .ok();
+            .await??;
+        if plain.succeeded() {
+            return Ok(Some((plain, false)));
+        }
+        let three_way = repository
+            .update(cx, |repository, cx| {
+                repository.apply_patch(contents, true, cx)
+            })
+            .await??;
+        Ok(Some((three_way, true)))
+    }
 
-            anyhow::Ok(())
-        })
-        .detach_and_log_err(cx);
+    /// Mirrors `Pane::save_item`: local projects get the platform's own file
+    /// dialog, remote ones the in-app picker that lists the host's files.
+    fn patch_directory_lister(workspace: &Workspace, cx: &App) -> DirectoryLister {
+        if workspace.project().read(cx).is_local() {
+            DirectoryLister::Local(
+                workspace.project().clone(),
+                workspace.app_state().fs.clone(),
+            )
+        } else {
+            DirectoryLister::Project(workspace.project().clone())
+        }
     }
 
     pub(crate) fn add_remote(
@@ -9759,6 +9837,7 @@ mod tests {
     use serde_json::json;
     use settings::SettingsStore;
     use std::any::TypeId;
+    use std::path::PathBuf;
     use theme::LoadThemes;
     use util::path;
     use util::rel_path::rel_path;
@@ -9938,6 +10017,230 @@ mod tests {
         await_git_panel_entries(&panel, &mut cx).await;
 
         (fs, project, workspace, panel, cx)
+    }
+
+    /// Same as [`setup_git_panel_with_changes`], but with the panel docked.
+    /// The patch actions are registered on the *workspace* and look the panel
+    /// up with `workspace.panel::<GitPanel>()`, so a dispatched action only
+    /// reaches the panel once it has been added.
+    async fn setup_docked_git_panel(
+        cx: &mut TestAppContext,
+    ) -> (
+        Arc<FakeFs>,
+        Entity<Project>,
+        Entity<Workspace>,
+        Entity<GitPanel>,
+        VisualTestContext,
+    ) {
+        let (fs, project, workspace, panel, mut cx) = setup_git_panel_with_changes(
+            cx,
+            json!({
+                ".git": {},
+                "file": "modified\n",
+            }),
+            &[("file", StatusCode::Modified)],
+        )
+        .await;
+
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            workspace.add_panel(panel.clone(), window, cx);
+        });
+        cx.run_until_parked();
+
+        (fs, project, workspace, panel, cx)
+    }
+
+    fn set_fake_git_command_output(fs: &FakeFs, args: &str, stdout: &str) {
+        fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+            state.command_outputs.insert(
+                args.to_owned(),
+                git::repository::GitCommandOutput {
+                    stdout: stdout.to_owned(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                },
+            );
+        })
+        .expect("fake repository should exist");
+    }
+
+    fn fake_git_command_log(fs: &FakeFs) -> Vec<(Vec<String>, Option<String>)> {
+        fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+            state.run_command_log.clone()
+        })
+        .expect("fake repository should exist")
+    }
+
+    const TEST_PATCH: &str = concat!(
+        "diff --git a/file b/file\n",
+        "--- a/file\n",
+        "+++ b/file\n",
+        "@@ -1 +1 @@\n",
+        "-original\n",
+        "+modified\n",
+    );
+
+    /// `git::CreatePatch` is registered with `Workspace::register_action`, so
+    /// the workspace entity is leased for the whole handler. Opening the save
+    /// dialog from there updated the same entity a second time, which aborts
+    /// the process; this drives the action the way the menu item does.
+    #[gpui::test]
+    async fn test_create_patch_saves_without_updating_the_leased_workspace(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (fs, project, _workspace, _panel, mut cx) = setup_docked_git_panel(cx).await;
+        set_fake_git_command_output(&fs, "diff --binary", TEST_PATCH);
+
+        cx.dispatch_action(git::CreatePatch);
+        cx.run_until_parked();
+
+        // Confirm the first source, "作業ツリーの変更 (git diff)".
+        cx.dispatch_action(menu::Confirm);
+        cx.run_until_parked();
+
+        let destination = PathBuf::from(path!("/elsewhere/worktree.patch"));
+        cx.simulate_new_path_selection({
+            let destination = destination.clone();
+            move |_| Some(destination)
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            fake_git_command_log(&fs),
+            vec![(
+                vec!["diff".to_string(), "--binary".to_string()],
+                None::<String>
+            )]
+        );
+        assert_eq!(
+            fs.load(&destination).await.expect("patch file was written"),
+            TEST_PATCH
+        );
+        // The destination is outside the project on purpose: saving it must not
+        // attach a worktree for its directory, which is what used to make the
+        // panel scan an arbitrary directory just to write one file.
+        project.read_with(&cx, |project, cx| {
+            assert_eq!(project.worktrees(cx).count(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_create_patch_reports_an_empty_diff(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, _panel, mut cx) = setup_docked_git_panel(cx).await;
+        set_fake_git_command_output(&fs, "diff --binary", "");
+
+        cx.dispatch_action(git::CreatePatch);
+        cx.run_until_parked();
+        cx.dispatch_action(menu::Confirm);
+        cx.run_until_parked();
+
+        // Nothing to save, so the save dialog must never open.
+        assert!(!cx.did_prompt_for_new_path());
+    }
+
+    /// The apply counterpart of the create test: `git::ApplyPatch` reached the
+    /// file dialog through the still-leased workspace entity.
+    #[gpui::test]
+    async fn test_apply_patch_runs_git_apply(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, project, _workspace, _panel, mut cx) = setup_docked_git_panel(cx).await;
+        fs.insert_tree(
+            path!("/elsewhere"),
+            json!({
+                "fix.patch": TEST_PATCH,
+            }),
+        )
+        .await;
+        set_fake_git_command_output(&fs, "apply", "");
+
+        cx.dispatch_action(git::ApplyPatch);
+        cx.run_until_parked();
+
+        cx.simulate_path_prompt_response(|options| {
+            assert!(options.files);
+            assert!(!options.directories);
+            assert!(!options.multiple);
+            Some(vec![PathBuf::from(path!("/elsewhere/fix.patch"))])
+        });
+        cx.run_until_parked();
+
+        // A single plain `git apply` with the patch on stdin: the `--3way`
+        // retry only runs when the plain attempt fails.
+        assert_eq!(
+            fake_git_command_log(&fs),
+            vec![(vec!["apply".to_string()], Some(TEST_PATCH.to_string()))]
+        );
+        // Reading the patch must not pull its directory into the project.
+        project.read_with(&cx, |project, cx| {
+            assert_eq!(project.worktrees(cx).count(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_apply_patch_retries_with_three_way(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, _panel, mut cx) = setup_docked_git_panel(cx).await;
+        fs.insert_tree(
+            path!("/elsewhere"),
+            json!({
+                "fix.patch": TEST_PATCH,
+            }),
+        )
+        .await;
+        fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+            state.command_outputs.insert(
+                "apply".into(),
+                git::repository::GitCommandOutput {
+                    stdout: String::new(),
+                    stderr: "error: patch does not apply\n".into(),
+                    exit_code: Some(1),
+                },
+            );
+            state.command_outputs.insert(
+                "apply --3way".into(),
+                git::repository::GitCommandOutput {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                },
+            );
+        })
+        .expect("fake repository should exist");
+
+        cx.dispatch_action(git::ApplyPatch);
+        cx.run_until_parked();
+        cx.simulate_path_prompt_response(|_| {
+            Some(vec![PathBuf::from(path!("/elsewhere/fix.patch"))])
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            fake_git_command_log(&fs),
+            vec![
+                (vec!["apply".to_string()], Some(TEST_PATCH.to_string())),
+                (
+                    vec!["apply".to_string(), "--3way".to_string()],
+                    Some(TEST_PATCH.to_string())
+                ),
+            ]
+        );
+    }
+
+    /// `git::Merge` has the same shape as the patch actions: it is registered
+    /// on the workspace and opened its modal from the leased entity.
+    #[gpui::test]
+    async fn test_merge_picker_opens_from_a_dispatched_action(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (_fs, _project, workspace, _panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        cx.dispatch_action(git::Merge);
+        cx.run_until_parked();
+
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            assert!(workspace.has_active_modal(window, cx));
+        });
     }
 
     #[gpui::test]

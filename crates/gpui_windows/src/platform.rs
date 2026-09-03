@@ -174,8 +174,14 @@ impl WindowsPlatform {
             .context("CreateWindowExW did not run correctly")?;
         let handle = result?;
 
-        let disable_direct_composition = std::env::var(DISABLE_DIRECT_COMPOSITION)
-            .is_ok_and(|value| value == "true" || value == "1");
+        // zed-jp-enhance (ADR-F19): DirectComposition composes GPUI's opaque swap chain
+        // above every child HWND, which leaves the WebView2 browser panel invisible.
+        // The fork therefore defaults to the plain HWND swap chain; the upstream
+        // behaviour can be restored with GPUI_ENABLE_DIRECT_COMPOSITION=1.
+        let env_flag =
+            |name: &str| std::env::var(name).is_ok_and(|value| value == "true" || value == "1");
+        let disable_direct_composition =
+            env_flag(DISABLE_DIRECT_COMPOSITION) || !env_flag(ENABLE_DIRECT_COMPOSITION);
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(dispatcher);
 

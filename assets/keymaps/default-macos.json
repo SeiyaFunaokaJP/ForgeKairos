@@ -1701,6 +1701,8 @@
       "cmd-r": "browser_panel::Reload",
       "cmd-shift-h": "browser_panel::GoHome",
       "cmd-l": "browser_panel::FocusAddressBar",
+      "cmd-d": "browser_panel::AddBookmark",
+      "cmd-shift-o": "browser_panel::ToggleBookmarks",
     },
   },
   {

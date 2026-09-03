@@ -28,13 +28,17 @@ use webview2_com::{
 };
 use windows::{
     Win32::{
-        Foundation::{E_POINTER, HWND, RECT},
+        Foundation::{E_POINTER, HWND, LPARAM, RECT},
         UI::{
             Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE},
-            WindowsAndMessaging::IsIconic,
+            WindowsAndMessaging::{
+                EnumChildWindows, GWL_EXSTYLE, GetClassNameW, GetWindowLongPtrW, GetWindowRect,
+                HWND_TOP, IsIconic, IsWindowVisible, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOMOVE,
+                SWP_NOSIZE, SetWindowPos, ShowWindow, WS_EX_NOREDIRECTIONBITMAP,
+            },
         },
     },
-    core::{HSTRING, Interface as _, PCWSTR},
+    core::{BOOL, HSTRING, Interface as _, PCWSTR},
 };
 
 /// Everything the WebView2 callbacks need to tell the GPUI side about.
@@ -60,6 +64,35 @@ pub(crate) enum WebViewEvent {
     /// A `target="_blank"` navigation; the panel hosts a single view, so it is
     /// re-targeted at the current view instead of spawning a browser window.
     OpenInPlace(String),
+}
+
+/// Where the browsing surface should sit, in GPUI's logical pixels relative to
+/// the window's client origin, plus why it is (not) shown. Passed as one value
+/// because the panel recomputes all of it on every paint.
+pub(crate) struct Viewport {
+    pub(crate) origin_x: f32,
+    pub(crate) origin_y: f32,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) scale_factor: f32,
+    /// `None` when the surface should be shown; otherwise why it is hidden.
+    /// Only used for logging, so the reason has to be a `'static` label.
+    pub(crate) hidden_reason: Option<&'static str>,
+}
+
+/// Whether the host window was created with `WS_EX_NOREDIRECTIONBITMAP`, which
+/// `gpui_windows` does unless `GPUI_DISABLE_DIRECT_COMPOSITION` is set.
+///
+/// Such a window has no DWM redirection surface, and child HWNDs have nowhere
+/// to draw; on top of that gpui binds its composition tree with
+/// `CreateTargetForHwnd(hwnd, topmost = true)`, which composites gpui's own
+/// (opaque) swap chain *above* every child window. Either one on its own is
+/// enough to make a windowed-hosted WebView2 invisible, so the panel warns
+/// instead of leaving the user with a blank surface.
+pub(crate) fn host_uses_direct_composition(host_hwnd: isize) -> bool {
+    let hwnd = HWND(host_hwnd as *mut c_void);
+    let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    (ex_style as u32) & WS_EX_NOREDIRECTIONBITMAP.0 != 0
 }
 
 pub(crate) struct WebView {
@@ -88,6 +121,11 @@ struct State {
     applied_scale: Option<f64>,
     applied_visible: Option<bool>,
     page_has_focus: bool,
+    hidden_reason: Option<&'static str>,
+    /// The render widget is nudged to the top of the sibling order once, the
+    /// first time the surface is made visible; it is a workaround, not
+    /// something to repeat per frame.
+    nudged_child_windows: bool,
 }
 
 impl WebView {
@@ -105,6 +143,7 @@ impl WebView {
             events,
             state: RefCell::new(State {
                 scale: 1.0,
+                hidden_reason: Some("the panel has not been painted yet"),
                 ..Default::default()
             }),
         });
@@ -120,6 +159,12 @@ impl WebView {
             }
         }
         let options: ICoreWebView2EnvironmentOptions = options.into();
+        log::info!(
+            "WebView2: requesting an environment (host hwnd {host_hwnd:#x}, user data folder {}, proxy {}, direct composition on the host window: {})",
+            user_data_folder.display(),
+            proxy_endpoint.unwrap_or("none"),
+            host_uses_direct_composition(host_hwnd),
+        );
         let user_data_folder = HSTRING::from(user_data_folder.as_os_str());
 
         let handler = {
@@ -127,7 +172,10 @@ impl WebView {
             CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(
                 move |result, environment| {
                     match result.and_then(|()| environment.ok_or_else(|| E_POINTER.into())) {
-                        Ok(environment) => inner.create_controller(environment),
+                        Ok(environment) => {
+                            log::info!("WebView2: environment created");
+                            inner.create_controller(environment)
+                        }
                         Err(error) => inner.report_failure(&error),
                     }
                     Ok(())
@@ -148,47 +196,48 @@ impl WebView {
         Ok(Self { inner })
     }
 
-    /// Places the browsing surface under the panel's content area. `bounds` is
-    /// in GPUI logical pixels relative to the window's client origin.
-    pub(crate) fn sync_viewport(
-        &self,
-        origin_x: f32,
-        origin_y: f32,
-        width: f32,
-        height: f32,
-        scale_factor: f32,
-        visible: bool,
-    ) {
-        let scale = scale_factor.max(0.1) as f64;
-        let to_device = |value: f32| (value * scale_factor).round() as i32;
-        let left = to_device(origin_x);
-        let top = to_device(origin_y);
+    /// Places the browsing surface under the panel's content area.
+    /// `ICoreWebView2Controller::SetBounds` wants client-area coordinates of the
+    /// parent HWND in physical pixels, so GPUI's logical bounds are multiplied
+    /// by the window's scale factor here (and nowhere else: WebView2 is told not
+    /// to follow the monitor DPI on its own).
+    pub(crate) fn sync_viewport(&self, viewport: Viewport) {
+        let scale = viewport.scale_factor.max(0.1) as f64;
+        let to_device = |value: f32| (value * viewport.scale_factor).round() as i32;
+        let left = to_device(viewport.origin_x);
+        let top = to_device(viewport.origin_y);
         let bounds = RECT {
             left,
             top,
-            right: left + to_device(width).max(0),
-            bottom: top + to_device(height).max(0),
+            right: left + to_device(viewport.width).max(0),
+            bottom: top + to_device(viewport.height).max(0),
         };
-        let visible = visible
-            && bounds.right > bounds.left
-            && bounds.bottom > bounds.top
-            && !unsafe { IsIconic(self.inner.host_hwnd) }.as_bool();
+
+        let mut hidden_reason = viewport.hidden_reason;
+        if hidden_reason.is_none() && (bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+            hidden_reason = Some("the content rect is empty");
+        }
+        if hidden_reason.is_none() && unsafe { IsIconic(self.inner.host_hwnd) }.as_bool() {
+            hidden_reason = Some("the window is minimized");
+        }
 
         {
             let mut state = self.inner.state.borrow_mut();
             state.bounds = bounds;
             state.scale = scale;
-            state.visible = visible;
+            state.visible = hidden_reason.is_none();
+            state.hidden_reason = hidden_reason;
         }
         self.inner.apply_viewport();
     }
 
     /// Hides the surface without touching the cached geometry, so the next
     /// paint can show it again in place.
-    pub(crate) fn hide(&self) {
+    pub(crate) fn hide(&self, reason: &'static str) {
         {
             let mut state = self.inner.state.borrow_mut();
             state.visible = false;
+            state.hidden_reason = Some(reason);
         }
         self.inner.apply_viewport();
     }
@@ -196,10 +245,14 @@ impl WebView {
     pub(crate) fn navigate(&self, url: &str) {
         match self.inner.webview() {
             Some(webview) => {
-                let url = HSTRING::from(url);
-                unsafe { webview.Navigate(PCWSTR(url.as_ptr())) }.log_err();
+                log::info!("WebView2: navigating to {url}");
+                let wide = HSTRING::from(url);
+                unsafe { webview.Navigate(PCWSTR(wide.as_ptr())) }.log_err();
             }
-            None => self.inner.state.borrow_mut().pending_url = Some(url.to_string()),
+            None => {
+                log::info!("WebView2: queueing a navigation to {url} until the controller exists");
+                self.inner.state.borrow_mut().pending_url = Some(url.to_string());
+            }
         }
     }
 
@@ -285,6 +338,10 @@ impl Inner {
             ))
         };
 
+        log::info!(
+            "WebView2: creating a controller on host hwnd {:#x}",
+            self.host_hwnd.0 as isize
+        );
         if let Err(error) =
             unsafe { environment.CreateCoreWebView2Controller(self.host_hwnd, &handler) }
         {
@@ -321,11 +378,21 @@ impl Inner {
             (state.pending_url.take(), state.pending_dark_mode.take())
         };
 
+        log::info!(
+            "WebView2: controller created on host hwnd {:#x}",
+            self.host_hwnd.0 as isize
+        );
+
         if let Some(dark) = pending_dark_mode {
             apply_dark_mode(&webview, dark);
         }
         self.apply_viewport();
+        // Always take the inventory once, even when the surface stays hidden:
+        // it is the one log line that separates "WebView2 never attached" from
+        // "the child window exists but is never composited".
+        log_child_windows(self.host_hwnd, false);
         if let Some(url) = pending_url {
+            log::info!("WebView2: navigating to the queued {url}");
             let url = HSTRING::from(url.as_str());
             unsafe { webview.Navigate(PCWSTR(url.as_ptr())) }.log_err();
         }
@@ -400,6 +467,10 @@ impl Inner {
                             },
                         );
                     }
+                    log::info!(
+                        "WebView2: navigation completed (succeeded: {})",
+                        succeeded.as_bool()
+                    );
                     send_on(
                         &events,
                         WebViewEvent::LoadFinished {
@@ -482,7 +553,7 @@ impl Inner {
     fn apply_viewport(&self) {
         // Collect the deltas, drop the borrow, then talk to WebView2: the calls
         // below can re-enter handlers that write to `state`.
-        let (controller, scale, bounds, visible) = {
+        let (controller, scale, bounds, visible, hidden_reason) = {
             let state = self.state.borrow();
             let Some(controller) = state.controller.clone() else {
                 return;
@@ -492,6 +563,7 @@ impl Inner {
                 (state.applied_scale != Some(state.scale)).then_some(state.scale),
                 (state.applied_bounds != Some(state.bounds)).then_some(state.bounds),
                 (state.applied_visible != Some(state.visible)).then_some(state.visible),
+                state.hidden_reason,
             )
         };
 
@@ -502,6 +574,7 @@ impl Inner {
                 .log_err()
                 .is_some()
             {
+                log::info!("WebView2: rasterization scale set to {scale}");
                 self.state.borrow_mut().applied_scale = Some(scale);
             }
         }
@@ -509,6 +582,13 @@ impl Inner {
         if let Some(bounds) = bounds
             && unsafe { controller.SetBounds(bounds) }.log_err().is_some()
         {
+            log::info!(
+                "WebView2: bounds set to ({}, {})-({}, {}) in physical pixels",
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom
+            );
             self.state.borrow_mut().applied_bounds = Some(bounds);
         }
 
@@ -517,7 +597,22 @@ impl Inner {
                 .log_err()
                 .is_some()
         {
-            self.state.borrow_mut().applied_visible = Some(visible);
+            match hidden_reason {
+                Some(reason) => log::info!("WebView2: surface hidden because {reason}"),
+                None => log::info!("WebView2: surface shown"),
+            }
+            // The borrow has to be gone before `log_child_windows` talks to
+            // Win32, and holding it across the `if` would deadlock this cell.
+            let first_show = {
+                let mut state = self.state.borrow_mut();
+                state.applied_visible = Some(visible);
+                let first_show = visible && !state.nudged_child_windows;
+                state.nudged_child_windows |= visible;
+                first_show
+            };
+            if first_show {
+                log_child_windows(self.host_hwnd, true);
+            }
         }
     }
 
@@ -545,6 +640,80 @@ impl Inner {
 /// callbacks until the controller is closed, so a closed channel is expected.
 fn send_on(events: &UnboundedSender<WebViewEvent>, event: WebViewEvent) {
     events.unbounded_send(event).ok();
+}
+
+unsafe extern "system" fn collect_child_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    // The pointer comes straight from `log_child_windows` below, which keeps
+    // the `Vec` alive for the whole call.
+    let children = unsafe { &mut *(lparam.0 as *mut Vec<HWND>) };
+    children.push(hwnd);
+    true.into()
+}
+
+/// Logs what WebView2 actually parented under the host window, and - when
+/// `nudge` is set - pushes its render widget to the top of the sibling order.
+///
+/// This is diagnostics first: when the surface is configured correctly but the
+/// user still sees nothing, the log tells whether the child HWND exists and
+/// where Windows thinks it is - which separates "WebView2 never attached" from
+/// "the child window is fine but the compositor never shows it" (see
+/// [`host_uses_direct_composition`]). `nudge` is only passed while the surface
+/// is meant to be on screen; forcing a window we deliberately hid back into
+/// view would make it eat mouse input over the panel's content area.
+fn log_child_windows(host_hwnd: HWND, nudge: bool) {
+    let mut children: Vec<HWND> = Vec::new();
+    // The return value only says whether the callback ran to the end, which it
+    // always does here; an empty `children` is the real "nothing found" signal.
+    let _enumerated = unsafe {
+        EnumChildWindows(
+            Some(host_hwnd),
+            Some(collect_child_window),
+            LPARAM(&mut children as *mut _ as isize),
+        )
+    };
+
+    if children.is_empty() {
+        log::warn!(
+            "WebView2: the host window has no child windows; the browsing surface was never attached"
+        );
+        return;
+    }
+
+    for child in children {
+        let mut class = [0u16; 128];
+        let written = unsafe { GetClassNameW(child, &mut class) };
+        let class = String::from_utf16_lossy(&class[..written.max(0) as usize]);
+        let mut rect = RECT::default();
+        unsafe { GetWindowRect(child, &mut rect) }.log_err();
+        log::info!(
+            "WebView2: child window {:#x} class {class} visible {} at ({}, {})-({}, {}) in screen pixels",
+            child.0 as isize,
+            unsafe { IsWindowVisible(child) }.as_bool(),
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom
+        );
+
+        if nudge {
+            // Belt and braces: WebView2 shows its own child, but a window that
+            // was parented while the host was hidden has been seen to stay
+            // hidden. The return value is "was it visible before", not an error.
+            let _previously_visible = unsafe { ShowWindow(child, SW_SHOWNA) };
+            unsafe {
+                SetWindowPos(
+                    child,
+                    Some(HWND_TOP),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                )
+            }
+            .log_err();
+        }
+    }
 }
 
 fn apply_dark_mode(webview: &ICoreWebView2, dark: bool) {

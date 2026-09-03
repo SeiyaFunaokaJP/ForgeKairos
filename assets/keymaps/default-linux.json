@@ -1614,6 +1614,8 @@
       "f5": "browser_panel::Reload",
       "alt-home": "browser_panel::GoHome",
       "ctrl-l": "browser_panel::FocusAddressBar",
+      "ctrl-d": "browser_panel::AddBookmark",
+      "ctrl-shift-o": "browser_panel::ToggleBookmarks",
     },
   },
   {

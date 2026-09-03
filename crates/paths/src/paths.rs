@@ -301,6 +301,14 @@ pub fn terminal_sessions_file() -> &'static PathBuf {
     TERMINAL_SESSIONS_FILE.get_or_init(|| config_dir().join("terminal_sessions.json"))
 }
 
+/// Returns the path to the `browser_bookmarks.json` file, which holds the
+/// bookmark tree of the built-in browser panel (ADR-F19).
+/// On Windows this resolves to `%APPDATA%\Zed\browser_bookmarks.json`.
+pub fn browser_bookmarks_file() -> &'static PathBuf {
+    static BROWSER_BOOKMARKS_FILE: OnceLock<PathBuf> = OnceLock::new();
+    BROWSER_BOOKMARKS_FILE.get_or_init(|| config_dir().join("browser_bookmarks.json"))
+}
+
 /// Returns the path to the global settings file.
 pub fn global_settings_file() -> &'static PathBuf {
     static GLOBAL_SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();

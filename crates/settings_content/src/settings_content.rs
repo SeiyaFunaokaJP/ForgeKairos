@@ -714,15 +714,6 @@ pub struct CallSettingsContent {
     pub share_on_join: Option<bool>,
 }
 
-/// A single entry of `browser.bookmarks`.
-#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema, Debug)]
-pub struct BrowserBookmarkContent {
-    /// The label shown on the bookmark button.
-    pub name: String,
-    /// The URL the bookmark opens.
-    pub url: String,
-}
-
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
 pub struct BrowserSettingsContent {
@@ -760,9 +751,6 @@ pub struct BrowserSettingsContent {
     ///
     /// Default: https://github.com/copilot
     pub copilot_url: Option<String>,
-
-    /// Bookmark buttons shown under the browser panel toolbar.
-    pub bookmarks: Option<Vec<BrowserBookmarkContent>>,
 
     /// Whether the built-in browser goes through the egress allowlist proxy.
     ///

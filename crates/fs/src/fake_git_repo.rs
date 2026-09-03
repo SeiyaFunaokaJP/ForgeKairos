@@ -13,8 +13,8 @@ use git::{
     repository::{
         AskPassDelegate, Branch, CommitData, CommitDataReader, CommitDetails, CommitOptions,
         CreateWorktreeTarget, FetchOptions, FileHistoryChangedFileSets, GRAPH_CHUNK_SIZE,
-        GitRepository, GitRepositoryCheckpoint, InitialGraphCommitData, LogOrder, LogSource,
-        PushOptions, RefEdit, Remote, RepoPath, ResetMode, SearchCommitArgs, Worktree,
+        GitCommandOutput, GitRepository, GitRepositoryCheckpoint, InitialGraphCommitData, LogOrder,
+        LogSource, PushOptions, RefEdit, Remote, RepoPath, ResetMode, SearchCommitArgs, Worktree,
         commit_hash_search_query,
     },
     stash::GitStash,
@@ -81,6 +81,13 @@ pub struct FakeGitRepositoryState {
     pub commit_data: HashMap<Oid, FakeCommitDataEntry>,
     pub stash_entries: GitStash,
     pub commit_template: Option<GitCommitTemplate>,
+    /// Canned results for [`GitRepository::run_command`], keyed by the
+    /// arguments joined with spaces (for example `"diff --binary"`). There is
+    /// no git binary behind the fake repository, so tests that exercise
+    /// `run_command` have to say what git would have printed.
+    pub command_outputs: HashMap<String, GitCommandOutput>,
+    /// Every [`GitRepository::run_command`] call, in order, as `(args, stdin)`.
+    pub run_command_log: Vec<(Vec<String>, Option<String>)>,
 }
 
 impl FakeGitRepositoryState {
@@ -108,6 +115,8 @@ impl FakeGitRepositoryState {
             commit_history: Vec::new(),
             stash_entries: Default::default(),
             commit_template: None,
+            command_outputs: Default::default(),
+            run_command_log: Vec::new(),
         }
     }
 }
@@ -1207,16 +1216,21 @@ impl GitRepository for FakeGitRepository {
     fn run_command(
         &self,
         args: Vec<String>,
-        _stdin: Option<String>,
+        stdin: Option<String>,
         _env: Arc<HashMap<String, String>>,
-    ) -> BoxFuture<'_, Result<git::repository::GitCommandOutput>> {
-        // There is no git binary behind the fake repository, so rather than
-        // pretending a command succeeded we make the missing support explicit.
-        let subcommand = args.first().cloned().unwrap_or_default();
-        future::ready(Err(anyhow::anyhow!(
-            "`git {subcommand}` is not supported by the fake git repository"
-        )))
-        .boxed()
+    ) -> BoxFuture<'_, Result<GitCommandOutput>> {
+        self.with_state_async(false, move |state| {
+            let key = args.join(" ");
+            state.run_command_log.push((args, stdin));
+            // There is no git binary behind the fake repository, so a command
+            // the test did not prepare an answer for stays an explicit error
+            // rather than a silent success.
+            state
+                .command_outputs
+                .get(&key)
+                .cloned()
+                .with_context(|| format!("`git {key}` is not supported by the fake git repository"))
+        })
     }
 
     fn diff_stat(
