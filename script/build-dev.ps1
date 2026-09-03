@@ -45,12 +45,17 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
 # --- CMake (VS 同梱) の PATH 補完 -------------------------------------------
+# crates/remote/src/transport.rs::ensure_cmake_available と同じ候補集合
+# (Enterprise/Professional/Community/BuildTools x 両方の Program Files) を探す。
+# ここで見つからないと、開発ビルドの SSH 接続でも同じ探索が失敗し、cmake 不在の
+# 日本語エラーになる (BUILD-WINDOWS.md 「開発ビルドで SSH 接続に失敗する」参照)。
 if (-not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
-    $vsCmakeCandidates = @(
-        'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin',
-        'C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin',
-        'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
-    )
+    $vsCmakeCandidates = @('Enterprise', 'Professional', 'Community', 'BuildTools') | ForEach-Object {
+        $edition = $_
+        @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ } | ForEach-Object {
+            Join-Path $_ "Microsoft Visual Studio\2022\$edition\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+        }
+    }
     $found = $vsCmakeCandidates | Where-Object { Test-Path (Join-Path $_ 'cmake.exe') } | Select-Object -First 1
     if ($found) {
         $env:PATH = "$found;$env:PATH"

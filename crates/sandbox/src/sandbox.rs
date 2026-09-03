@@ -38,6 +38,11 @@ mod macos_seatbelt;
 #[cfg(target_os = "windows")]
 mod windows_wsl;
 
+/// ADR-F18: the locations every sandbox protects regardless of what the caller
+/// asked for. Shared by [`Sandbox::new`] (the local backends) and the SSH-remote
+/// helper.
+mod protected_paths;
+
 mod util;
 
 #[cfg(target_os = "macos")]
@@ -355,6 +360,240 @@ fn linux_location_is_equal_or_descendant(
     }
 }
 
+/// Whether a built-in protected entry that does not exist yet can still be
+/// protected on this platform.
+///
+/// Seatbelt matches a path *literal*, so a rule for a path that doesn't exist
+/// yet still denies its creation — worth having, since creating `~/.bashrc` is
+/// as good as rewriting it. Bubblewrap (native Linux, and inside WSL) can only
+/// re-bind an object that exists, so there the backend drops such an entry
+/// anyway; on Windows keeping it would additionally cost a `wslpath` round-trip
+/// on every command, because missing resolutions are deliberately not cached.
+const PROTECTS_NOT_YET_EXISTING_PATHS: bool = cfg!(target_os = "macos");
+
+/// Add the built-in protected set ([`protected_paths`]) to the caller's list, so
+/// a worktree that *is* the home directory can't be used to rewrite the
+/// account's credentials, shell init files, `PATH` binaries, or this fork's own
+/// settings.
+///
+/// This lives in the enforcement layer rather than in the callers that build a
+/// policy because the agent reaches `Sandbox` by several routes (the terminal
+/// tool, a thread's persisted grants, the status UI's probe) and any one of them
+/// that forgot would be a silent hole. It is the local counterpart of what
+/// `linux_remote_helper::run_helper` does on an SSH host, and follows the same
+/// rules:
+///
+/// - an entry that isn't there is skipped, unless the backend can protect a
+///   not-yet-existing path anyway (see [`PROTECTS_NOT_YET_EXISTING_PATHS`]);
+/// - an entry that exists but cannot be captured fails the command **closed**: a
+///   dropped protection is not a missing restriction, it is a granted one. A
+///   *dangling symlink* counts as existing, because a write "through" it creates
+///   its target — `~/.bashrc -> dotfiles/bashrc` pointing into the worktree
+///   would be executed at the next login;
+/// - an entry the caller already named is not added twice
+///   ([`HostFilesystemLocation`] compares filesystem objects, not path text); and
+/// - a writable grant that is the same object as, or inside, a built-in entry is
+///   refused, exactly as an overlap with a caller-supplied protected path is.
+fn add_builtin_protected_paths(
+    requested: Vec<HostFilesystemLocation>,
+    writable_paths: &[HostFilesystemLocation],
+) -> Result<Vec<HostFilesystemLocation>, SandboxError> {
+    let Some(home) = protected_paths::home_dir_from_environment() else {
+        return Err(SandboxError::Other(
+            "ホームディレクトリを特定できないため、常に保護するパス (認証情報・シェル初期化\
+             ファイル・設定ディレクトリ) を確定できません。サンドボックスを構築せずに中止します。"
+                .to_string(),
+        ));
+    };
+    let application_directories = protected_paths::app_state_directories_from_environment();
+    let builtin_paths =
+        protected_paths::local_builtin_protected_paths(&home, &application_directories);
+    let requested_count = requested.len();
+    let merged = merge_protected_paths(requested, writable_paths, builtin_paths)?;
+
+    log::debug!(
+        "[sandbox] protecting {} paths ({} built-ins under {})",
+        merged.len(),
+        merged.len() - requested_count,
+        home.display()
+    );
+    Ok(merged)
+}
+
+/// The capture-and-merge half of [`add_builtin_protected_paths`], split out so
+/// it can be exercised against a temporary directory instead of the real home.
+fn merge_protected_paths(
+    requested: Vec<HostFilesystemLocation>,
+    writable_paths: &[HostFilesystemLocation],
+    builtin_paths: Vec<PathBuf>,
+) -> Result<Vec<HostFilesystemLocation>, SandboxError> {
+    let mut merged = requested;
+    for path in builtin_paths {
+        let missing = std::fs::symlink_metadata(&path)
+            .err()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+        if missing && !PROTECTS_NOT_YET_EXISTING_PATHS {
+            continue;
+        }
+        let location = match HostFilesystemLocation::capture(&path) {
+            Ok(location) => location,
+            Err(_) if missing => continue,
+            Err(error) => {
+                return Err(SandboxError::Other(format!(
+                    "常に保護するパス `{}` を確認できませんでした ({error})。\
+                     保護できないままコマンドを実行しないため、中止します。",
+                    path.display()
+                )));
+            }
+        };
+        for writable_path in writable_paths {
+            if writable_path_overlaps_protected_path(writable_path, &location) {
+                return Err(SandboxError::InvalidRequest(format!(
+                    "書込を許可したパス `{}` は常に保護するパス `{}` と重なります \
+                     (認証情報・シェル初期化ファイル・設定ディレクトリへの書込は許可できません)。",
+                    writable_path.untrusted_path_display(),
+                    location.untrusted_path_display()
+                )));
+            }
+        }
+        if merged.contains(&location) {
+            continue;
+        }
+        merged.push(location);
+    }
+    Ok(merged)
+}
+
+#[cfg(test)]
+mod builtin_protected_paths_tests {
+    use super::*;
+
+    fn capture(path: &Path) -> HostFilesystemLocation {
+        HostFilesystemLocation::capture(path).expect("capture existing path")
+    }
+
+    /// A fake home directory holding one protected *directory* and one
+    /// protected *file*, plus the path of an entry that isn't there.
+    fn fake_home() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
+        let home = tempfile::tempdir().expect("create temp home");
+        let ssh = home.path().join(".ssh");
+        let bashrc = home.path().join(".bashrc");
+        std::fs::create_dir(&ssh).expect("create .ssh");
+        std::fs::write(&bashrc, "x").expect("write .bashrc");
+        let missing = home.path().join(".aws");
+        (home, ssh, bashrc, missing)
+    }
+
+    #[test]
+    fn existing_entries_are_protected_and_absent_ones_are_skipped() {
+        let (_home, ssh, bashrc, missing) = fake_home();
+
+        let merged = merge_protected_paths(
+            Vec::new(),
+            &[],
+            vec![ssh.clone(), bashrc.clone(), missing],
+        )
+        .expect("an absent built-in entry must be skipped, not fatal");
+
+        assert!(merged.contains(&capture(&ssh)), "a directory entry");
+        assert!(merged.contains(&capture(&bashrc)), "a plain-file entry");
+        assert_eq!(
+            merged.len(),
+            if PROTECTS_NOT_YET_EXISTING_PATHS { 3 } else { 2 }
+        );
+    }
+
+    #[test]
+    fn an_entry_the_caller_already_named_is_not_added_twice() {
+        let (_home, ssh, _bashrc, _missing) = fake_home();
+
+        let merged = merge_protected_paths(vec![capture(&ssh)], &[], vec![ssh.clone()])
+            .expect("merging the caller's own entry must succeed");
+
+        assert_eq!(merged.len(), 1, "the same object must not be pinned twice");
+    }
+
+    /// A write grant *inside* a built-in entry is refused rather than silently
+    /// winning or silently losing: the command would otherwise run believing it
+    /// has access it does not have, or with access it must not have.
+    #[test]
+    fn a_writable_grant_covered_by_a_builtin_entry_is_refused() {
+        let (_home, ssh, _bashrc, _missing) = fake_home();
+        let inside = ssh.join("keys");
+        std::fs::create_dir(&inside).expect("create .ssh/keys");
+
+        for writable_path in [ssh.clone(), inside] {
+            let error = merge_protected_paths(
+                Vec::new(),
+                &[capture(&writable_path)],
+                vec![ssh.clone()],
+            )
+            .expect_err("a grant to a built-in protected path must be refused");
+            assert!(matches!(error, SandboxError::InvalidRequest(_)));
+        }
+    }
+
+    /// A **dangling symlink** is not "absent": the entry is there, and a write
+    /// through it *creates* its target — `~/.bashrc -> dotfiles/bashrc` inside
+    /// the worktree would be executed at the next login. So it fails closed.
+    ///
+    /// Linux-only: macOS resolves a missing leaf through its parent, so the
+    /// capture succeeds there and the Seatbelt literal is emitted instead.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_dangling_symlink_entry_fails_closed() {
+        let home = tempfile::tempdir().expect("create temp home");
+        let bashrc = home.path().join(".bashrc");
+        std::os::unix::fs::symlink(home.path().join("dotfiles/bashrc"), &bashrc)
+            .expect("create dangling symlink");
+
+        let error = merge_protected_paths(Vec::new(), &[], vec![bashrc])
+            .expect_err("a dangling protected entry must not be treated as absent");
+        assert!(matches!(error, SandboxError::Other(_)));
+    }
+
+    /// The home directory must be discoverable, or the built-in set can't be
+    /// determined and every sandboxed command fails closed.
+    #[test]
+    fn the_home_directory_resolves_from_the_environment() {
+        assert!(protected_paths::home_dir_from_environment().is_some());
+    }
+
+    /// `Sandbox::new` — not its callers — is what applies the built-in set, and
+    /// it applies it even when the caller asked for unrestricted writes.
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn sandbox_new_applies_the_builtin_set_even_when_unrestricted() {
+        let home = protected_paths::home_dir_from_environment()
+            .expect("a machine running the sandbox has a home directory");
+        let sandbox = Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Unrestricted {
+                protected_paths: Vec::new(),
+            },
+            network: SandboxNetPolicy::Blocked,
+        })
+        .expect("the built-in set must resolve");
+
+        let protected = sandbox.protected_paths();
+        for path in protected_paths::local_builtin_protected_paths(
+            &home,
+            &protected_paths::app_state_directories_from_environment(),
+        ) {
+            if !PROTECTS_NOT_YET_EXISTING_PATHS && !path.exists() {
+                continue;
+            }
+            let Ok(location) = HostFilesystemLocation::capture(&path) else {
+                continue;
+            };
+            assert!(
+                protected.contains(&location),
+                "{} must be protected even with unrestricted writes",
+                path.display()
+            );
+        }
+    }
+}
+
 impl SandboxFsPolicy {
     /// Unrestricted access dominates; otherwise the writable subtrees union.
     pub fn merge(self, other: SandboxFsPolicy) -> SandboxFsPolicy {
@@ -590,7 +829,11 @@ impl Sandbox {
             SandboxFsPolicy::Unrestricted { protected_paths } => FsSetup {
                 allow_fs_write: true,
                 writable_paths: Vec::new(),
-                protected_paths,
+                // Even "allow every write" does not hand out the account's ssh
+                // keys or let the command rewrite this fork's own settings —
+                // same rule the SSH-remote helper applies under
+                // `--allow-fs-write` (ADR-F18).
+                protected_paths: add_builtin_protected_paths(protected_paths, &[])?,
             },
             SandboxFsPolicy::Restricted {
                 writable_paths,
@@ -600,6 +843,7 @@ impl Sandbox {
                     &writable_paths,
                     &protected_paths,
                 )?;
+                let protected_paths = add_builtin_protected_paths(protected_paths, &writable_paths)?;
                 FsSetup {
                     allow_fs_write: false,
                     writable_paths,

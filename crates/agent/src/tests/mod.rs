@@ -1341,9 +1341,9 @@ fn test_permission_options_terminal_with_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"Always for terminal"));
-    assert!(labels.contains(&"Always for `cargo build` commands"));
-    assert!(labels.contains(&"Only this time"));
+    assert!(labels.contains(&"ターミナルは常に"));
+    assert!(labels.contains(&"`cargo build` コマンドは常に"));
+    assert!(labels.contains(&"今回のみ"));
 }
 
 #[test]
@@ -1361,9 +1361,9 @@ fn test_permission_options_terminal_command_with_flag_second_token() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"Always for terminal"));
-    assert!(labels.contains(&"Always for `ls` commands"));
-    assert!(labels.contains(&"Only this time"));
+    assert!(labels.contains(&"ターミナルは常に"));
+    assert!(labels.contains(&"`ls` コマンドは常に"));
+    assert!(labels.contains(&"今回のみ"));
 }
 
 #[test]
@@ -1381,9 +1381,9 @@ fn test_permission_options_terminal_single_word_command() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"Always for terminal"));
-    assert!(labels.contains(&"Always for `whoami` commands"));
-    assert!(labels.contains(&"Only this time"));
+    assert!(labels.contains(&"ターミナルは常に"));
+    assert!(labels.contains(&"`whoami` コマンドは常に"));
+    assert!(labels.contains(&"今回のみ"));
 }
 
 #[test]
@@ -1400,8 +1400,8 @@ fn test_permission_options_edit_file_with_path_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"Always for edit file"));
-    assert!(labels.contains(&"Always for `src/`"));
+    assert!(labels.contains(&"ファイル編集は常に"));
+    assert!(labels.contains(&"`src/` は常に"));
 }
 
 #[test]
@@ -1418,8 +1418,8 @@ fn test_permission_options_fetch_with_domain_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"Always for fetch"));
-    assert!(labels.contains(&"Always for `docs.rs`"));
+    assert!(labels.contains(&"URL の取得は常に"));
+    assert!(labels.contains(&"`docs.rs` は常に"));
 }
 
 #[test]
@@ -1439,8 +1439,8 @@ fn test_permission_options_without_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"Always for terminal"));
-    assert!(labels.contains(&"Only this time"));
+    assert!(labels.contains(&"ターミナルは常に"));
+    assert!(labels.contains(&"今回のみ"));
     assert!(!labels.iter().any(|label| label.contains("commands")));
 }
 
@@ -1520,14 +1520,14 @@ fn test_permission_options_terminal_pipeline_produces_dropdown_with_patterns() {
 
     assert_eq!(tool_name, TerminalTool::NAME);
 
-    // Should have "Always for terminal" and "Only this time" choices
+    // Should have "ターミナルは常に" and "今回のみ" choices
     assert_eq!(choices.len(), 2);
     let labels: Vec<&str> = choices
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"Always for terminal"));
-    assert!(labels.contains(&"Only this time"));
+    assert!(labels.contains(&"ターミナルは常に"));
+    assert!(labels.contains(&"今回のみ"));
 
     // Should have per-command patterns for "cargo test" and "tail"
     assert_eq!(patterns.len(), 2);
@@ -7883,7 +7883,7 @@ async fn test_fetch_tool_follows_same_host_redirect(cx: &mut TestAppContext) {
     );
 }
 
-/// Approving one pending tool call with "Always for <tool>" auto-resolves
+/// Approving one pending tool call with "<tool>は常に" auto-resolves
 /// sibling pending authorizations for the same tool in the same turn.
 #[gpui::test]
 async fn test_always_allow_resolves_pending_authorizations(cx: &mut TestAppContext) {
@@ -8172,7 +8172,7 @@ async fn test_unrelated_settings_change_does_not_resolve_pending_authorization(
     assert!(!result.is_error);
 }
 
-/// Approving one pending tool call with "Always for <tool A>" must not
+/// Approving one pending tool call with "<tool A>は常に" must not
 /// dismiss a sibling pending authorization for a *different* tool: the
 /// persisted rule is scoped to tool A, so tool B's prompt stays visible
 /// and waits for the user.

@@ -243,12 +243,12 @@ impl LanguageServerState {
                                         .size(IconSize::XSmall),
                                 )
                                 .child(
-                                    Label::new("Project is in Restricted Mode")
+                                    Label::new("プロジェクトは制限モードです")
                                         .size(LabelSize::Small),
                                 ),
                         )
                         .child(
-                            Label::new("Language Servers can't run until you trust this project.")
+                            Label::new("このプロジェクトを信頼するまで、言語サーバーは実行できません。")
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -1368,7 +1368,7 @@ impl Render for LspButton {
         let (indicator, description) = if is_restricted {
             (
                 Some(Indicator::dot().color(Color::Warning)),
-                "Restricted Mode",
+                "制限モード",
             )
         } else if has_errors {
             (

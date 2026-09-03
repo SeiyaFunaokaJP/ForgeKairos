@@ -57,6 +57,9 @@ use std::process::Command;
 use crate::REMOTE_SANDBOX_HELPER_FLAG;
 use crate::RemoteSandboxNetwork;
 use crate::linux_bubblewrap::install_command_seccomp_filter;
+use crate::protected_paths::{
+    UNIX_PROTECTED_HOME_RELATIVE, home_dir_from_environment, merge_remote_builtin_protected_paths,
+};
 use crate::util::CanonicalPathBuf;
 
 /// Exit code for "the sandbox could not be built" (mirrors the Bubblewrap
@@ -231,21 +234,22 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     };
 
     // Add the protected paths the client cannot know about (see
-    // `BUILTIN_PROTECTED_HOME_RELATIVE`). Resolved here in the parent, where the
+    // `crate::protected_paths`). Resolved here in the parent, where the
     // environment is still the user's ssh session's, and before the fork so the
     // holder pins them along with the client's `.git` list.
-    let Some(home) = remote_home_dir() else {
+    let Some(home) = home_dir_from_environment() else {
         fail_closed(
             "home-unknown",
             "neither $HOME nor the passwd database names an absolute home directory, \
              so the paths that must always be protected cannot be determined",
         );
     };
-    invocation.protected_paths = merge_builtin_protected_paths(invocation.protected_paths, &home);
+    invocation.protected_paths =
+        merge_remote_builtin_protected_paths(invocation.protected_paths, &home);
     log::info!(
         "[remote-sandbox] protecting {} paths ({} built-ins under HOME {})",
         invocation.protected_paths.len(),
-        BUILTIN_PROTECTED_HOME_RELATIVE.len(),
+        UNIX_PROTECTED_HOME_RELATIVE.len(),
         home.display()
     );
 
@@ -1180,119 +1184,6 @@ fn pin_path(path: &Path) -> Result<CanonicalPathBuf> {
     CanonicalPathBuf::resolve(path).with_context(|| format!("pinning {}", path.display()))
 }
 
-/// Paths — relative to the remote account's `$HOME` — that are protected on
-/// **every** run, whatever the client asked for.
-///
-/// The client only knows to protect the project's `.git` locations
-/// (`agent::sandboxing::sandbox_git_dirs`), which silently assumes the
-/// worktree does not *contain* the account's own secrets. It regularly does: the
-/// saved SSH connection in this fork opens `/home/<user>` itself, and then
-/// everything below is a writable worktree — `~/.ssh/authorized_keys` (grant
-/// yourself a login), `~/.bashrc` (run on the next login), `~/.zed_server/…`
-/// (overwrite the remote server binary and get code execution on the next
-/// connect), `~/.local/bin` and `~/.cargo/bin` (binaries already on `PATH`),
-/// plus every credential store. A sandbox that blocks the network but lets the
-/// command write those is not a sandbox, so the *helper* — the one component
-/// that always runs on the host and knows its real `$HOME` — adds them itself
-/// rather than trusting the client's list.
-///
-/// Semantics: **readable, never writable/creatable/deletable**. Entries that do
-/// not exist are skipped (they cannot be pinned and there is nothing to
-/// protect); an entry that exists but cannot be pinned fails the command closed
-/// (see [`pin_protected_paths`]). Both directories and plain files appear here —
-/// the rule layer narrows a non-directory's Landlock rights for exactly this
-/// reason.
-///
-/// `/etc` and the rest of the system directories need no entry: they are outside
-/// any worktree, and neither backend grants write outside the worktree
-/// (Landlock never emits a rule for them; the mount jail's root is read-only).
-const BUILTIN_PROTECTED_HOME_RELATIVE: &[&str] = &[
-    // Credentials and keys.
-    ".ssh",
-    ".gnupg",
-    ".aws",
-    ".azure",
-    ".kube",
-    ".config/gh",
-    ".docker/config.json",
-    ".netrc",
-    ".git-credentials",
-    // This fork's own remote install: the server binary the next connection
-    // executes, and the state directory beside it.
-    ".zed_server",
-    ".local/share/zed-jp-enhance",
-    // Binaries already on `PATH` for the next interactive shell.
-    ".cargo/bin",
-    ".local/bin",
-    // Shell init: written once, executed on every later login.
-    ".bashrc",
-    ".bash_profile",
-    ".profile",
-    ".zshrc",
-    ".zprofile",
-    ".zshenv",
-    ".config/fish",
-    ".bash_logout",
-];
-
-/// The remote account's home directory: `$HOME` when it is absolute (the helper
-/// is launched from the user's own ssh session, so it is set), otherwise the
-/// passwd database.
-fn remote_home_dir() -> Option<PathBuf> {
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        if home.is_absolute() {
-            return Some(home);
-        }
-    }
-    home_dir_from_passwd()
-}
-
-/// `getpwuid(getuid())->pw_dir`, for the case where `$HOME` is unset or
-/// relative.
-fn home_dir_from_passwd() -> Option<PathBuf> {
-    // SAFETY: `getpwuid` takes a scalar and returns a pointer into a static
-    // buffer that stays valid until the next passwd call; we copy out of it
-    // immediately and make no other passwd call. The helper is single-threaded
-    // at this point, so the non-`_r` variant is sound.
-    let entry = unsafe { libc::getpwuid(libc::getuid()) };
-    if entry.is_null() {
-        return None;
-    }
-    // SAFETY: non-null passwd entry from the call above; `pw_dir` is either NULL
-    // or a NUL-terminated string owned by that buffer.
-    let dir = unsafe { (*entry).pw_dir };
-    if dir.is_null() {
-        return None;
-    }
-    // SAFETY: as above — a NUL-terminated C string valid for this read.
-    let dir = unsafe { std::ffi::CStr::from_ptr(dir) };
-    let home = PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes()));
-    home.is_absolute().then_some(home)
-}
-
-/// Resolve [`BUILTIN_PROTECTED_HOME_RELATIVE`] against `home`. A trailing
-/// separator on `$HOME` is absorbed by `Path::join`, so `/home/u` and `/home/u/`
-/// yield the same paths.
-fn builtin_protected_paths(home: &Path) -> Vec<PathBuf> {
-    BUILTIN_PROTECTED_HOME_RELATIVE
-        .iter()
-        .map(|relative| home.join(relative))
-        .collect()
-}
-
-/// Append the built-in protected paths to the client's list, dropping ones the
-/// client already named (which would otherwise be pinned twice).
-fn merge_builtin_protected_paths(requested: Vec<PathBuf>, home: &Path) -> Vec<PathBuf> {
-    let mut merged = requested;
-    for builtin in builtin_protected_paths(home) {
-        if !merged.contains(&builtin) {
-            merged.push(builtin);
-        }
-    }
-    merged
-}
-
 /// Pin every protected path, **failing closed** when one exists but cannot be
 /// pinned.
 ///
@@ -1982,6 +1873,7 @@ fn path_to_cstring(path: &Path) -> Result<CString> {
 mod tests {
     use super::*;
     use crate::build_remote_sandbox_helper_argv;
+    use crate::protected_paths::remote_builtin_protected_paths;
 
     /// Round-trip the builder through the stage-1 decoder to lock the argv
     /// protocol both sides share.
@@ -2219,7 +2111,7 @@ mod tests {
     /// and file entries, and a trailing separator on `$HOME` changes nothing.
     #[test]
     fn builtin_protected_paths_resolve_against_home() {
-        let paths = builtin_protected_paths(Path::new("/home/u"));
+        let paths = remote_builtin_protected_paths(Path::new("/home/u"));
         for expected in [
             "/home/u/.ssh",
             "/home/u/.zed_server",
@@ -2242,7 +2134,7 @@ mod tests {
             "every built-in entry is home-relative"
         );
         assert_eq!(
-            builtin_protected_paths(Path::new("/home/u/")),
+            remote_builtin_protected_paths(Path::new("/home/u/")),
             paths,
             "a trailing separator on $HOME must not change the resolved paths"
         );
@@ -2257,7 +2149,7 @@ mod tests {
         std::fs::create_dir(home.path().join(".ssh")).expect("create .ssh");
         std::fs::write(home.path().join(".bashrc"), "x").expect("write .bashrc");
 
-        let pins = pin_protected_paths(&builtin_protected_paths(home.path()))
+        let pins = pin_protected_paths(&remote_builtin_protected_paths(home.path()))
             .expect("absent built-in entries must be skipped, not fatal");
         assert_eq!(pins.len(), 2, "only the two entries that exist are pinned");
 
@@ -2280,7 +2172,7 @@ mod tests {
     /// a path the client already named is not pinned twice.
     #[test]
     fn merge_adds_the_builtins_without_duplicating() {
-        let merged = merge_builtin_protected_paths(
+        let merged = merge_remote_builtin_protected_paths(
             vec![
                 PathBuf::from("/srv/proj/.git"),
                 PathBuf::from("/home/u/.ssh"),
@@ -2300,7 +2192,7 @@ mod tests {
             1,
             "a path the client already sent must not be added twice"
         );
-        assert_eq!(merged.len(), 1 + BUILTIN_PROTECTED_HOME_RELATIVE.len());
+        assert_eq!(merged.len(), 1 + UNIX_PROTECTED_HOME_RELATIVE.len());
     }
 
     /// Landlock end-to-end for the shape the built-in set creates: with the

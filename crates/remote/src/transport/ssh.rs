@@ -947,8 +947,12 @@ impl SshRemoteConnection {
             .await
             .is_ok();
 
+        // Recorded regardless of outcome (built, skipped, or failed) so that,
+        // if every other fallback below also comes up empty, the final error
+        // can explain *why* no source build bailed us out — cmake/zig
+        // missing from $PATH is the recurring cause (TODO F11 ⑬).
         #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
-        match super::build_remote_server_from_source(
+        let source_build_status = match super::build_remote_server_from_source(
             &self.ssh_platform,
             delegate.as_ref(),
             binary_exists_on_server,
@@ -985,14 +989,23 @@ impl SshRemoteConnection {
                     .context("installing locally built server binary")?;
                 return Ok(dst_path.into());
             }
-            Ok(None) => {}
+            Ok(None) => {
+                let build_remote_server = std::env::var("ZED_BUILD_REMOTE_SERVER")
+                    .unwrap_or_else(|_| "nocompress (既定)".to_string());
+                format!("実行せず (ZED_BUILD_REMOTE_SERVER={build_remote_server})")
+            }
             // A missing cross-compilation toolchain (zig, cargo-zigbuild, cmake) must not be
             // fatal here: the bundled artifact below is exactly the fallback for that case.
-            Err(error) => log::warn!(
-                "failed to build the remote server from source, \
-                 falling back to a bundled or downloaded binary: {error:#}"
-            ),
-        }
+            Err(error) => {
+                log::warn!(
+                    "failed to build the remote server from source, \
+                     falling back to a bundled or downloaded binary: {error:#}"
+                );
+                format!("{error:#}")
+            }
+        };
+        #[cfg(not(any(debug_assertions, feature = "build-remote-server-binary")))]
+        let source_build_status = "このビルドにはソースビルド機能が含まれていません".to_string();
 
         if binary_exists_on_server {
             log::info!(
@@ -1022,12 +1035,27 @@ impl SshRemoteConnection {
             ReleaseChannel::Dev => {
                 let [bundled_artifact_name, _] =
                     super::bundled_server_artifact_names(self.ssh_platform);
+                let bundled_search_dirs = super::bundled_server_search_dirs()
+                    .map(|dirs| {
+                        dirs.iter()
+                            .map(|dir| dir.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join(" / ")
+                    })
+                    .unwrap_or_else(|| {
+                        "実行ファイルの場所を特定できなかったため未検索".to_string()
+                    });
                 anyhow::bail!(
-                    "no remote server binary is available: none at ({:?}) on the remote, \
-                     no `{}` bundled next to this executable, \
-                     and building one from source produced nothing (see ZED_BUILD_REMOTE_SERVER)",
-                    dst_path,
-                    bundled_artifact_name
+                    "リモートサーバーのバイナリが用意できませんでした。\
+                     リモート側 {} に無し / \
+                     同梱アーティファクト `{}` が {} に無し / \
+                     ソースからのビルド: {}。\
+                     cmake や zig が PATH に無いと自動ビルドが失敗します。\
+                     script\\build-dev.ps1 でビルドすると同梱アーティファクトを用意できます。",
+                    dst_path.display(self.path_style()),
+                    bundled_artifact_name,
+                    bundled_search_dirs,
+                    source_build_status,
                 )
             }
             _ => Ok(Some(AppVersion::global(cx))),
@@ -1066,7 +1094,7 @@ impl SshRemoteConnection {
                 Ok(_) => {
                     self.extract_server_binary(&dst_path, &tmp_path_compressed, delegate, cx)
                         .await
-                        .context("extracting server binary")?;
+                        .context("リモートサーバーのバイナリを展開できませんでした")?;
                     return Ok(dst_path.into());
                 }
                 Err(e) => {
@@ -1077,6 +1105,13 @@ impl SshRemoteConnection {
             }
         }
 
+        // Reached only once both the remote-side download and the two
+        // earlier local fallbacks (already present, bundled next to the
+        // exe) have all come up empty, so a failure here means this
+        // connection has no server binary at all. This fork blocks egress
+        // by default, so an allowlist rejection is the expected failure
+        // mode on a non-`Dev` channel — the same guidance the `Dev`-channel
+        // error above gives is repeated here for that reason.
         let src_path = delegate
             .download_server_binary_locally(
                 self.ssh_platform,
@@ -1085,13 +1120,18 @@ impl SshRemoteConnection {
                 cx,
             )
             .await
-            .context("downloading server binary locally")?;
+            .context("リモートサーバーのバイナリをローカルにダウンロードできませんでした")
+            .context(
+                "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。\
+                 本フォークは既定で外部通信を遮断しています。script\\build-dev.ps1 でビルドして \
+                 同梱アーティファクトを用意するか、許可リストに配信元を追加してください",
+            )?;
         self.upload_local_server_binary(&src_path, &tmp_path_compressed, delegate, cx)
             .await
-            .context("uploading server binary")?;
+            .context("リモートサーバーのバイナリをアップロードできませんでした")?;
         self.extract_server_binary(&dst_path, &tmp_path_compressed, delegate, cx)
             .await
-            .context("extracting server binary")?;
+            .context("リモートサーバーのバイナリを展開できませんでした")?;
         Ok(dst_path.into())
     }
 

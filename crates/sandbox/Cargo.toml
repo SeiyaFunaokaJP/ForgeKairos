@@ -85,6 +85,10 @@ gpui = { workspace = true, features = ["test-support"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 tempfile.workspace = true
 
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+# The built-in protected-path tests build a fake home directory on disk.
+tempfile.workspace = true
+
 [target.'cfg(target_os = "windows")'.dependencies]
 smol.workspace = true
 # Structural WSL-installed check (registered distros under HKCU\...\Lxss)

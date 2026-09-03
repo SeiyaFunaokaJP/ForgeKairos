@@ -910,6 +910,36 @@ pub enum ToolPermissionScope {
     AgentSkills,
 }
 
+/// Japanese display name for a built-in Agent tool's internal name, used in the
+/// "always allow/deny for <tool>" permission-scope dropdown. Only the tools that
+/// commonly reach this dropdown (write/execute/network tools) are mapped; any
+/// other tool name (including MCP tool names, which are defined by external
+/// servers and can't be mapped statically) falls back to the internal name with
+/// underscores replaced by spaces.
+fn localized_tool_name_for_permission(tool_name: &str) -> String {
+    let localized = if tool_name == TerminalTool::NAME || tool_name == SandboxedTerminalTool::NAME
+    {
+        "ターミナル"
+    } else if tool_name == CopyPathTool::NAME {
+        "コピー"
+    } else if tool_name == MovePathTool::NAME {
+        "移動"
+    } else if tool_name == EditFileTool::NAME {
+        "ファイル編集"
+    } else if tool_name == WriteFileTool::NAME {
+        "ファイル書き込み"
+    } else if tool_name == DeletePathTool::NAME {
+        "削除"
+    } else if tool_name == CreateDirectoryTool::NAME {
+        "ディレクトリ作成"
+    } else if tool_name == FetchTool::NAME {
+        "URL の取得"
+    } else {
+        return tool_name.replace('_', " ");
+    };
+    localized.to_string()
+}
+
 impl ToolPermissionContext {
     pub fn new(tool_name: impl Into<String>, input_values: Vec<String>) -> Self {
         Self {
@@ -1011,12 +1041,18 @@ impl ToolPermissionContext {
                     choices.push(acp_thread::PermissionOptionChoice {
                         allow: acp::PermissionOption::new(
                             acp::PermissionOptionId::new(format!("always_allow:{}", tool_name)),
-                            format!("Always for {}", tool_name.replace('_', " ")),
+                            format!(
+                                "{}は常に",
+                                localized_tool_name_for_permission(tool_name)
+                            ),
                             acp::PermissionOptionKind::AllowAlways,
                         ),
                         deny: acp::PermissionOption::new(
                             acp::PermissionOptionId::new(format!("always_deny:{}", tool_name)),
-                            format!("Always for {}", tool_name.replace('_', " ")),
+                            format!(
+                                "{}は常に",
+                                localized_tool_name_for_permission(tool_name)
+                            ),
                             acp::PermissionOptionKind::RejectAlways,
                         ),
                         sub_patterns: vec![],
@@ -1024,12 +1060,12 @@ impl ToolPermissionContext {
                     choices.push(acp_thread::PermissionOptionChoice {
                         allow: acp::PermissionOption::new(
                             acp::PermissionOptionId::new("allow"),
-                            "Only this time",
+                            "今回のみ",
                             acp::PermissionOptionKind::AllowOnce,
                         ),
                         deny: acp::PermissionOption::new(
                             acp::PermissionOptionId::new("deny"),
-                            "Only this time",
+                            "今回のみ",
                             acp::PermissionOptionKind::RejectOnce,
                         ),
                         sub_patterns: vec![],
@@ -1110,7 +1146,7 @@ impl ToolPermissionContext {
 
         if shell_supports_always_allow {
             push_choice(
-                format!("Always for {}", tool_name.replace('_', " ")),
+                format!("{}は常に", localized_tool_name_for_permission(tool_name)),
                 format!("always_allow:{}", tool_name),
                 format!("always_deny:{}", tool_name),
                 acp::PermissionOptionKind::AllowAlways,
@@ -1120,9 +1156,9 @@ impl ToolPermissionContext {
 
             if let (Some(pattern), Some(display)) = (pattern, pattern_display) {
                 let button_text = if tool_name == TerminalTool::NAME {
-                    format!("Always for `{}` commands", display)
+                    format!("`{}` コマンドは常に", display)
                 } else {
-                    format!("Always for `{}`", display)
+                    format!("`{}` は常に", display)
                 };
                 push_choice(
                     button_text,
@@ -1136,7 +1172,7 @@ impl ToolPermissionContext {
         }
 
         push_choice(
-            "Only this time".to_string(),
+            "今回のみ".to_string(),
             "allow".to_string(),
             "deny".to_string(),
             acp::PermissionOptionKind::AllowOnce,

@@ -63,6 +63,12 @@ const BWRAP_UNUSABLE_EXIT_CODE: i32 = 42;
 /// of any stdout noise printed by the login shell's profile scripts.
 const PROBE_RESULT_PREFIX: &str = "zed-wsl-probe:";
 
+/// Prefix of the probe script's *second* result line, carrying the distro
+/// account's `$HOME`. A line of its own because a home directory may contain
+/// spaces, which the space-separated [`PROBE_RESULT_PREFIX`] line can't express
+/// alongside another field.
+const PROBE_HOME_PREFIX: &str = "zed-wsl-home:";
+
 /// Prefix of the helper-provisioning script's single result line (the absolute
 /// in-WSL path of the Linux `zed` to run as the sandbox helper), picked out of
 /// login-shell stdout noise just like [`PROBE_RESULT_PREFIX`].
@@ -550,6 +556,24 @@ pub async fn wrap_invocation<S: std::hash::BuildHasher>(
             .into_iter()
             .map(|mapping| (mapping, "protected path", false)),
     );
+    // The distro account's own home is a *second* home a sandboxed command can
+    // reach, and the Windows-side built-in set says nothing about it: with
+    // `allow_fs_write` the whole distro root is bound read-write, and a
+    // persisted write grant can name a distro-native path outright. Its `$HOME`
+    // is only known after the probe, hence appending here rather than parsing
+    // these up front; they are optional, so entries that don't exist are dropped
+    // WSL-side just like the Windows-side ones.
+    mappings.extend(
+        crate::protected_paths::wsl_distro_builtin_protected_paths(&environment.home)
+            .into_iter()
+            .map(|path| {
+                (
+                    PathMapping::Wsl(WslPath { distro: None, path }),
+                    "protected path",
+                    false,
+                )
+            }),
+    );
     let resolved = resolve_paths(&wsl_exe, distro.as_deref(), &mappings).await?;
     let (cwd, writable_paths, protected_paths) =
         split_resolved_paths(has_cwd, writable_path_count, resolved)?;
@@ -710,6 +734,12 @@ struct EnvironmentProbe {
     /// default WSL PATH, so a bare `bwrap` could miss (or differ from) the
     /// binary the probe's login shell found.
     bwrap_path: String,
+    /// The distro account's `$HOME`. The sandbox runs as that account, so this
+    /// is the *second* home directory a Windows command can reach (the first
+    /// being `%USERPROFILE%` through `/mnt/<drive>/…`), and the built-in
+    /// protected set has to be resolved against it too — see
+    /// `protected_paths::wsl_distro_builtin_protected_paths`.
+    home: String,
 }
 
 /// Shell script run by [`probe_environment`]. Resolves `bwrap` to an absolute
@@ -736,7 +766,8 @@ fn probe_script() -> String {
          --unshare-net --unshare-user --unshare-ipc --unshare-uts --unshare-pid \
          --unshare-cgroup-try --die-with-parent -- true >/dev/null \
          || exit {BWRAP_UNUSABLE_EXIT_CODE}; \
-         printf '{PROBE_RESULT_PREFIX} %s %s\\n' \"$interop\" \"$bwrap_path\""
+         printf '{PROBE_RESULT_PREFIX} %s %s\\n' \"$interop\" \"$bwrap_path\"; \
+         printf '{PROBE_HOME_PREFIX} %s\\n' \"$HOME\""
     )
 }
 
@@ -817,10 +848,26 @@ async fn probe_environment(wsl_exe: &Path, distro: Option<&str>) -> Result<Envir
     Ok(probe)
 }
 
-/// Parse [`probe_script`] output: the last [`PROBE_RESULT_PREFIX`]-marked
-/// line wins, so stdout noise from login-shell profile scripts (which runs
-/// before the script body) is ignored.
+/// Parse [`probe_script`] output: the last [`PROBE_RESULT_PREFIX`]- and
+/// [`PROBE_HOME_PREFIX`]-marked lines win, so stdout noise from login-shell
+/// profile scripts (which runs before the script body) is ignored.
+///
+/// A missing or non-absolute `$HOME` fails the probe rather than defaulting:
+/// without it the built-in protected set inside the distro can't be determined,
+/// and a sandbox that silently drops it is a sandbox that hands out the distro
+/// account's ssh keys.
 fn parse_probe_output(stdout: &str) -> Result<EnvironmentProbe> {
+    let home = stdout
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix(PROBE_HOME_PREFIX))
+        .with_context(|| format!("no probe home line in: {stdout:?}"))?
+        .trim_start();
+    ensure!(
+        home.starts_with('/'),
+        "the distro reported {home:?} as its home directory rather than an absolute path, \
+         so the paths that must always be protected inside it cannot be determined"
+    );
     let line = stdout
         .lines()
         .rev()
@@ -843,6 +890,7 @@ fn parse_probe_output(stdout: &str) -> Result<EnvironmentProbe> {
     Ok(EnvironmentProbe {
         mask_interop_dir,
         bwrap_path: bwrap_path.to_string(),
+        home: home.to_string(),
     })
 }
 
@@ -1591,24 +1639,31 @@ mod tests {
     }
 
     #[test]
-    fn probe_output_reports_interop_and_bwrap_path() {
-        let probe = parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\n").unwrap();
+    fn probe_output_reports_interop_bwrap_path_and_home() {
+        let probe =
+            parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\nzed-wsl-home: /home/me\n")
+                .unwrap();
         assert_eq!(
             probe,
             EnvironmentProbe {
                 mask_interop_dir: true,
                 bwrap_path: "/usr/bin/bwrap".to_string(),
+                home: "/home/me".to_string(),
             }
         );
 
-        let probe =
-            parse_probe_output("zed-wsl-probe: no-interop /home/me/.nix-profile/bin/bwrap\n")
-                .unwrap();
+        // A home directory containing a space is why `$HOME` gets a line of its
+        // own rather than a third field on the result line.
+        let probe = parse_probe_output(
+            "zed-wsl-probe: no-interop /home/me/.nix-profile/bin/bwrap\nzed-wsl-home: /home/my user\n",
+        )
+        .unwrap();
         assert_eq!(
             probe,
             EnvironmentProbe {
                 mask_interop_dir: false,
                 bwrap_path: "/home/me/.nix-profile/bin/bwrap".to_string(),
+                home: "/home/my user".to_string(),
             }
         );
     }
@@ -1616,27 +1671,84 @@ mod tests {
     #[test]
     fn probe_output_ignores_profile_noise_even_mentioning_interop() {
         // Login-shell profile scripts run before the probe body and may print
-        // arbitrary text; only the marked result line counts.
+        // arbitrary text; only the marked result lines count.
         let probe = parse_probe_output(
-            "welcome to my shell, interop fans\nzed-wsl-probe: no-interop /usr/bin/bwrap\n",
+            "welcome to my shell, interop fans\nzed-wsl-probe: no-interop /usr/bin/bwrap\n\
+             zed-wsl-home: /home/me\n",
         )
         .unwrap();
         assert!(!probe.mask_interop_dir);
+    }
+
+    /// Without the distro's `$HOME` the built-in protected set inside it can't
+    /// be resolved, so the probe fails rather than sandboxing without it.
+    #[test]
+    fn probe_output_rejects_missing_or_relative_home() {
+        assert!(parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\n").is_err());
+        assert!(
+            parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\nzed-wsl-home: \n").is_err()
+        );
+        assert!(
+            parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\nzed-wsl-home: me\n")
+                .is_err()
+        );
     }
 
     #[test]
     fn probe_output_rejects_missing_or_malformed_result_line() {
         assert!(parse_probe_output("").is_err());
         assert!(parse_probe_output("profile noise only\n").is_err());
-        assert!(parse_probe_output("zed-wsl-probe: interop\n").is_err());
-        assert!(parse_probe_output("zed-wsl-probe: maybe /usr/bin/bwrap\n").is_err());
+        assert!(parse_probe_output("zed-wsl-probe: interop\nzed-wsl-home: /home/me\n").is_err());
+        assert!(
+            parse_probe_output("zed-wsl-probe: maybe /usr/bin/bwrap\nzed-wsl-home: /home/me\n")
+                .is_err()
+        );
     }
 
     #[test]
     fn probe_output_rejects_non_absolute_bwrap_path() {
         // `command -v` reports a bare name for shell functions and aliases,
         // which `wsl --exec` could never run.
-        assert!(parse_probe_output("zed-wsl-probe: interop bwrap\n").is_err());
+        assert!(
+            parse_probe_output("zed-wsl-probe: interop bwrap\nzed-wsl-home: /home/me\n").is_err()
+        );
+    }
+
+    /// The probe reports the distro account's `$HOME`; the built-in protected
+    /// set inside the distro is resolved against it.
+    #[test]
+    fn probe_script_reports_the_distro_home() {
+        let script = probe_script();
+        assert!(script.contains(PROBE_HOME_PREFIX));
+        assert!(script.contains("\"$HOME\""));
+    }
+
+    /// The distro-side built-in set is the *Unix* list resolved against the
+    /// distro account's home (a Windows-side entry would be meaningless there),
+    /// plus the sandbox helper this crate installs inside the distro.
+    #[test]
+    fn distro_protected_paths_resolve_against_the_distro_home() {
+        let paths = crate::protected_paths::wsl_distro_builtin_protected_paths("/home/me");
+        for expected in [
+            "/home/me/.ssh",
+            "/home/me/.bashrc",
+            "/home/me/.config/gh",
+            "/home/me/.local/libexec/zed",
+        ] {
+            assert!(
+                paths.iter().any(|path| path == expected),
+                "{expected} must always be protected inside the distro"
+            );
+        }
+        assert!(
+            paths.iter().all(|path| path.starts_with("/home/me/")),
+            "every entry is resolved against the distro home"
+        );
+        assert_eq!(
+            crate::protected_paths::wsl_distro_builtin_protected_paths("/home/me/"),
+            paths,
+            "a trailing separator must not produce a doubled separator"
+        );
     }
 
     #[test]

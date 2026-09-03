@@ -546,7 +546,7 @@ fn resolve_outcome_from_selection(
         }
     }
 
-    // Use the selected granularity choice ("Always for terminal" or "Only this time").
+    // Use the selected granularity choice ("ターミナルは常に" or "今回のみ").
     let selected_index = selection
         .and_then(|s| s.choice_index())
         .unwrap_or_else(|| choices.len().saturating_sub(1));
@@ -8970,16 +8970,16 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"Always for terminal"),
-                    "Missing 'Always for terminal' option"
+                    labels.contains(&"ターミナルは常に"),
+                    "Missing 'ターミナルは常に' option"
                 );
                 assert!(
-                    labels.contains(&"Always for `cargo build` commands"),
+                    labels.contains(&"`cargo build` コマンドは常に"),
                     "Missing pattern option"
                 );
                 assert!(
-                    labels.contains(&"Only this time"),
-                    "Missing 'Only this time' option"
+                    labels.contains(&"今回のみ"),
+                    "Missing '今回のみ' option"
                 );
             }
         });
@@ -9062,11 +9062,11 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"Always for edit file"),
-                    "Missing 'Always for edit file' option"
+                    labels.contains(&"ファイル編集は常に"),
+                    "Missing 'ファイル編集は常に' option"
                 );
                 assert!(
-                    labels.contains(&"Always for `src/`"),
+                    labels.contains(&"`src/` は常に"),
                     "Missing path pattern option"
                 );
             } else {
@@ -9152,11 +9152,11 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"Always for fetch"),
-                    "Missing 'Always for fetch' option"
+                    labels.contains(&"URL の取得は常に"),
+                    "Missing 'URL の取得は常に' option"
                 );
                 assert!(
-                    labels.contains(&"Always for `docs.rs`"),
+                    labels.contains(&"`docs.rs` は常に"),
                     "Missing domain pattern option"
                 );
             } else {
@@ -9251,12 +9251,12 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"Always for terminal"),
-                    "Missing 'Always for terminal' option"
+                    labels.contains(&"ターミナルは常に"),
+                    "Missing 'ターミナルは常に' option"
                 );
                 assert!(
-                    labels.contains(&"Only this time"),
-                    "Missing 'Only this time' option"
+                    labels.contains(&"今回のみ"),
+                    "Missing '今回のみ' option"
                 );
                 // Should NOT contain a pattern option
                 assert!(
@@ -9468,7 +9468,7 @@ pub(crate) mod tests {
 
         cx.run_until_parked();
 
-        // Verify default granularity is the last option (index 2 = "Only this time")
+        // Verify default granularity is the last option (index 2 = "今回のみ")
         thread_view.read_with(cx, |thread_view, cx| {
             let state = thread_view.active_thread().unwrap();
             let selected = state.read(cx).permission_selections.get(&tool_call_id);
@@ -9478,7 +9478,7 @@ pub(crate) mod tests {
             );
         });
 
-        // Select the first option (index 0 = "Always for terminal")
+        // Select the first option (index 0 = "ターミナルは常に")
         thread_view.update_in(cx, |_, window, cx| {
             window.dispatch_action(
                 crate::SelectPermissionGranularity {
@@ -9569,7 +9569,7 @@ pub(crate) mod tests {
 
         cx.run_until_parked();
 
-        // Select the pattern option (index 1 = "Always for `npm` commands")
+        // Select the pattern option (index 1 = "`npm` コマンドは常に")
         thread_view.update_in(cx, |_, window, cx| {
             window.dispatch_action(
                 crate::SelectPermissionGranularity {
@@ -9645,7 +9645,7 @@ pub(crate) mod tests {
 
         cx.run_until_parked();
 
-        // Use default granularity (last option = "Only this time")
+        // Use default granularity (last option = "今回のみ")
         // Simulate clicking the Deny button
         active_thread(&conversation_view, cx).update_in(cx, |view, window, cx| {
             view.reject_once(&RejectOnce, window, cx)
@@ -9810,7 +9810,7 @@ pub(crate) mod tests {
 
         let outcome = super::resolve_outcome_from_selection(&options, None, true).unwrap();
 
-        // Last choice is "Only this time" → option_id "allow".
+        // Last choice is "今回のみ" → option_id "allow".
         assert_eq!(outcome.option_id.0.as_ref(), "allow");
         assert_eq!(outcome.option_kind, acp::PermissionOptionKind::AllowOnce);
     }
@@ -9825,7 +9825,7 @@ pub(crate) mod tests {
         let outcome =
             super::resolve_outcome_from_selection(&options, Some(&selection), true).unwrap();
 
-        // Choice 0 = "Always for terminal".
+        // Choice 0 = "ターミナルは常に".
         assert!(outcome.option_id.0.contains("always_allow:terminal"));
         assert_eq!(outcome.option_kind, acp::PermissionOptionKind::AllowAlways);
     }
@@ -9840,7 +9840,7 @@ pub(crate) mod tests {
         let outcome =
             super::resolve_outcome_from_selection(&options, Some(&selection), true).unwrap();
 
-        // choices.get(999) is None, falls back to choices.last() → "Only this time".
+        // choices.get(999) is None, falls back to choices.last() → "今回のみ".
         assert_eq!(outcome.option_id.0.as_ref(), "allow");
     }
 

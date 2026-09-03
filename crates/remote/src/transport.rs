@@ -267,18 +267,46 @@ fn find_bundled_server_artifact_in_dirs(
     })
 }
 
-/// Locates a remote server artifact shipped with the application: next to the
-/// running executable, or in its `bin` subdirectory (the same convention as
+/// Directories searched for a remote server artifact shipped with the
+/// application, most preferred first: next to the running executable, then
+/// its `bin` subdirectory (the same convention as
 /// `util::command::resolve_command_next_to_current_exe`).
+///
+/// Debug builds also search the primary workspace's `target/debug`
+/// unconditionally, because `script/build-dev.ps1` always places its
+/// bundled artifact there — even when this executable itself was built to a
+/// different `--target-dir` (e.g. `target/alt`, used to run a second `dev`
+/// instance side by side for testing while `target/debug` holds the main
+/// build). Not compiled into release builds: that alternate-target-dir
+/// workflow is a dev convenience, and a release binary has no business
+/// looking outside its own install directory for a server binary to upload.
+///
+/// Returns `None` only if the running executable's own path could not be
+/// determined; used both to find the artifact and, when nothing was found,
+/// to explain in an error message where this looked.
+pub(crate) fn bundled_server_search_dirs() -> Option<Vec<PathBuf>> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let bin_dir = exe_dir.join("bin");
+    #[allow(unused_mut)]
+    let mut dirs = vec![exe_dir, bin_dir];
+    #[cfg(debug_assertions)]
+    dirs.push(PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../target/debug"
+    )));
+    Some(dirs)
+}
+
+/// Locates a remote server artifact shipped with the application, searching
+/// [`bundled_server_search_dirs`].
 ///
 /// This is what lets SSH remoting work for someone who installed nothing extra:
 /// the server binary travels with the app, so it can be uploaded without a local
 /// cross-compilation toolchain and without reaching the network, which this fork
 /// blocks by default.
 pub(crate) fn find_bundled_server_artifact(platform: RemotePlatform) -> Option<PathBuf> {
-    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let bin_dir = exe_dir.join("bin");
-    find_bundled_server_artifact_in_dirs(platform, &[exe_dir, bin_dir])
+    let dirs = bundled_server_search_dirs()?;
+    find_bundled_server_artifact_in_dirs(platform, &dirs)
 }
 
 /// Locates the bundled `slirp4netns` binary shipped with the application for
@@ -352,6 +380,15 @@ async fn build_remote_server_from_source(
         Ok(())
     }
 
+    // `remote_server` pulls in `aws-lc-sys`, whose build script shells out to
+    // `cmake` regardless of whether this is a same-arch `cargo build` or a
+    // cross-compiled `cargo zigbuild`. A dev environment launched outside a
+    // Visual Studio developer shell (e.g. from Explorer or a task runner)
+    // will not have `cmake` on `$PATH`, and the resulting build-script
+    // failure is easy to mistake for a `zig`/`cargo-zigbuild` problem, so
+    // this is checked up front with a Japanese-language explanation instead.
+    let cargo_path_env = ensure_cmake_available(cx).await?;
+
     let use_musl = !build_remote_server.contains("nomusl");
     let triple = format!(
         "{}-{}",
@@ -388,23 +425,25 @@ async fn build_remote_server_from_source(
     {
         delegate.set_status(Some("リモートサーバーをソースからビルドしています"), cx);
         log::info!("building remote server binary from source");
-        run_cmd(
-            new_command("cargo")
-                .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
-                .args([
-                    "build",
-                    "--package",
-                    "remote_server",
-                    "--features",
-                    "debug-embed",
-                    "--target-dir",
-                    "target/remote_server",
-                    "--target",
-                    &triple,
-                ])
-                .env("RUSTFLAGS", &rust_flags),
-        )
-        .await?;
+        let mut command = new_command("cargo");
+        command
+            .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+            .args([
+                "build",
+                "--package",
+                "remote_server",
+                "--features",
+                "debug-embed",
+                "--target-dir",
+                "target/remote_server",
+                "--target",
+                &triple,
+            ])
+            .env("RUSTFLAGS", &rust_flags);
+        if let Some(cargo_path_env) = &cargo_path_env {
+            command.env("PATH", cargo_path_env);
+        }
+        run_cmd(&mut command).await?;
     } else {
         if which("zig", cx).await?.is_none() {
             anyhow::bail!(if cfg!(not(windows)) {
@@ -440,23 +479,25 @@ async fn build_remote_server_from_source(
             cx,
         );
         log::info!("building remote binary from source for {triple} with Zig");
-        run_cmd(
-            new_command("cargo")
-                .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
-                .args([
-                    "zigbuild",
-                    "--package",
-                    "remote_server",
-                    "--features",
-                    "debug-embed",
-                    "--target-dir",
-                    "target/remote_server",
-                    "--target",
-                    &triple,
-                ])
-                .env("RUSTFLAGS", &rust_flags),
-        )
-        .await?;
+        let mut command = new_command("cargo");
+        command
+            .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+            .args([
+                "zigbuild",
+                "--package",
+                "remote_server",
+                "--features",
+                "debug-embed",
+                "--target-dir",
+                "target/remote_server",
+                "--target",
+                &triple,
+            ])
+            .env("RUSTFLAGS", &rust_flags);
+        if let Some(cargo_path_env) = &cargo_path_env {
+            command.env("PATH", cargo_path_env);
+        }
+        run_cmd(&mut command).await?;
     };
     let bin_path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
         .join("target")
@@ -591,6 +632,101 @@ async fn which(
     }
 }
 
+/// Ensures `cmake` is reachable by the `cargo build`/`cargo zigbuild`
+/// subprocess that is about to compile `remote_server`: its `aws-lc-sys`
+/// dependency shells out to `cmake` from its build script, regardless of
+/// whether the target is the host architecture or a cross-compile.
+///
+/// Returns the `PATH` value to set on that one subprocess, `None` when
+/// `cmake` is already on `$PATH` and nothing needs to change. This process's
+/// own `$PATH` (and any other process's) is never modified — only the
+/// `Command` the caller passes that value to is affected.
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+async fn ensure_cmake_available(cx: &mut AsyncApp) -> Result<Option<std::ffi::OsString>> {
+    if which("cmake", cx).await?.is_some() {
+        return Ok(None);
+    }
+
+    #[cfg(windows)]
+    {
+        let program_files = std::env::var("ProgramFiles").unwrap_or_default();
+        let program_files_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
+        if let Some(cmake_dir) = pick_vs_cmake_dir(&program_files, &program_files_x86, |path| {
+            path.is_file()
+        }) {
+            log::info!(
+                "cmake not found on $PATH, using the copy bundled with Visual Studio: {}",
+                cmake_dir.display()
+            );
+            let existing_path = std::env::var_os("PATH").unwrap_or_default();
+            let mut paths = vec![cmake_dir];
+            paths.extend(std::env::split_paths(&existing_path));
+            let joined = std::env::join_paths(paths)
+                .context("cmake のディレクトリを含む PATH を組み立てられませんでした")?;
+            return Ok(Some(joined));
+        }
+        anyhow::bail!(
+            "cmake が PATH にありません (remote_server のビルドに必要です)。Visual Studio 同梱の \
+             CMake (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) を PATH に \
+             追加するか、script\\build-dev.ps1 でビルドして同梱アーティファクトを用意してください"
+        );
+    }
+    #[cfg(not(windows))]
+    anyhow::bail!(
+        "cmake が PATH にありません (remote_server のビルドに必要です)。cmake をインストールしてください"
+    );
+}
+
+/// Directories where Visual Studio 2022 ships its own copy of CMake, most
+/// preferred first, searched when `cmake` is not already on `$PATH`. Mirrors
+/// `script/build-dev.ps1`'s own CMake search (see BUILD-WINDOWS.md) so a
+/// machine that can run that script can also drive this in-process
+/// cross-compile path without the developer having to launch Zed from a
+/// Visual Studio developer shell.
+///
+/// A pure function of its two roots so it can be unit tested without relying
+/// on `%ProgramFiles%`/`%ProgramFiles(x86)%` actually being set the same way
+/// in the test process.
+#[cfg(all(windows, any(debug_assertions, feature = "build-remote-server-binary")))]
+fn vs_cmake_candidate_dirs(program_files: &str, program_files_x86: &str) -> Vec<PathBuf> {
+    const EDITIONS: [&str; 4] = ["Enterprise", "Professional", "Community", "BuildTools"];
+    [program_files, program_files_x86]
+        .into_iter()
+        .filter(|root| !root.is_empty())
+        .flat_map(|root| {
+            EDITIONS.iter().map(move |edition| {
+                std::path::Path::new(root)
+                    .join("Microsoft Visual Studio")
+                    .join("2022")
+                    .join(edition)
+                    .join("Common7")
+                    .join("IDE")
+                    .join("CommonExtensions")
+                    .join("Microsoft")
+                    .join("CMake")
+                    .join("CMake")
+                    .join("bin")
+            })
+        })
+        .collect()
+}
+
+/// Picks the first [`vs_cmake_candidate_dirs`] entry that holds `cmake.exe`,
+/// judged by the injected `cmake_exe_exists` rather than the real filesystem.
+/// Keeping the existence check as a parameter is what lets this whole
+/// selection be unit tested without depending on the environment cmake is
+/// actually missing from in the failure case this exists to handle.
+#[cfg(all(windows, any(debug_assertions, feature = "build-remote-server-binary")))]
+fn pick_vs_cmake_dir(
+    program_files: &str,
+    program_files_x86: &str,
+    cmake_exe_exists: impl Fn(&std::path::Path) -> bool,
+) -> Option<PathBuf> {
+    vs_cmake_candidate_dirs(program_files, program_files_x86)
+        .into_iter()
+        .find(|dir| cmake_exe_exists(&dir.join("cmake.exe")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -600,6 +736,53 @@ mod tests {
             os: RemoteOs::Linux,
             arch: RemoteArch::X86_64,
         }
+    }
+
+    #[cfg(all(windows, any(debug_assertions, feature = "build-remote-server-binary")))]
+    #[test]
+    fn test_vs_cmake_candidate_dirs() {
+        let dirs = vs_cmake_candidate_dirs(r"C:\Program Files", r"C:\Program Files (x86)");
+        assert_eq!(dirs.len(), 8);
+        assert!(dirs.contains(&PathBuf::from(
+            r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+        )));
+        assert!(dirs.contains(&PathBuf::from(
+            r"C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+        )));
+        assert!(dirs.contains(&PathBuf::from(
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+        )));
+
+        // Empty roots (an unset env var) contribute no candidates instead of
+        // producing paths rooted at "".
+        assert_eq!(vs_cmake_candidate_dirs("", "").len(), 0);
+        assert_eq!(vs_cmake_candidate_dirs(r"C:\Program Files", "").len(), 4);
+    }
+
+    #[cfg(all(windows, any(debug_assertions, feature = "build-remote-server-binary")))]
+    #[test]
+    fn test_pick_vs_cmake_dir() {
+        // No VS installed at all (or none of the candidate editions match):
+        // nothing found. The injected existence check means this never
+        // touches the real filesystem, so the test works the same whether
+        // or not cmake is actually on this machine's $PATH.
+        assert_eq!(pick_vs_cmake_dir(r"C:\Program Files", "", |_| false), None);
+
+        // Only the Community edition's cmake.exe "exists": that one is
+        // picked, and its parent directory is what gets returned (the `bin`
+        // directory to add to $PATH, not the exe itself).
+        let community_bin = PathBuf::from(
+            r"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin",
+        );
+        let community_exe = community_bin.join("cmake.exe");
+        assert_eq!(
+            pick_vs_cmake_dir(r"C:\Program Files", "", |path| path == community_exe),
+            Some(community_bin)
+        );
+
+        // Neither root set: nothing to pick, regardless of the existence
+        // check.
+        assert_eq!(pick_vs_cmake_dir("", "", |_| true), None);
     }
 
     #[test]
