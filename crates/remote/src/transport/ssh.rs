@@ -2121,6 +2121,22 @@ impl SshConnectionOptions {
     pub fn additional_args(&self) -> Vec<String> {
         let mut args = self.additional_args_for_scp();
 
+        // After the machine resumes from sleep the TCP connection is dead but
+        // `ssh` never notices, so the master, proxy and terminal processes hang
+        // forever instead of exiting and letting the client reconnect. Skip it
+        // when the user configured their own keepalive, so their value wins.
+        let has_server_alive_option = args
+            .iter()
+            .any(|arg| arg.to_ascii_lowercase().contains("serveralive"));
+        if !has_server_alive_option {
+            args.extend([
+                "-o".to_string(),
+                "ServerAliveInterval=15".to_string(),
+                "-o".to_string(),
+                "ServerAliveCountMax=3".to_string(),
+            ]);
+        }
+
         if let Some(timeout) = self.connection_timeout {
             args.extend(["-o".to_string(), format!("ConnectTimeout={}", timeout)]);
         }
@@ -2884,6 +2900,51 @@ mod tests {
             ),
             "put \"C:\\\\Users\\\\Smit\\\\Zed Repro\\\\remote_server\" \".zed_server/remote_server\"\n"
         );
+    }
+
+    #[test]
+    fn additional_args_add_keepalive_options() {
+        let options = SshConnectionOptions {
+            host: "example.com".into(),
+            ..Default::default()
+        };
+
+        let args = options.additional_args();
+        assert_eq!(
+            args,
+            vec![
+                "-o".to_string(),
+                "ServerAliveInterval=15".to_string(),
+                "-o".to_string(),
+                "ServerAliveCountMax=3".to_string(),
+            ]
+        );
+
+        assert!(
+            options.additional_args_for_scp().is_empty(),
+            "scp args should not gain keepalive options"
+        );
+    }
+
+    #[test]
+    fn additional_args_preserve_user_keepalive_options() {
+        for user_arg in [
+            "ServerAliveInterval=60".to_string(),
+            "-oserveraliveinterval=60".to_string(),
+        ] {
+            let options = SshConnectionOptions {
+                host: "example.com".into(),
+                args: Some(vec![user_arg.clone()]),
+                ..Default::default()
+            };
+
+            let args = options.additional_args();
+            assert_eq!(
+                args,
+                vec![user_arg.clone()],
+                "expected the user's own keepalive option to win: {args:?}"
+            );
+        }
     }
 
     #[test]

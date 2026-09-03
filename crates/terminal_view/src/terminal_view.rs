@@ -18,6 +18,7 @@ use gpui::{
 use menu;
 use persistence::TerminalDb;
 use project::{Project, ProjectEntryId, search::SearchQuery};
+use remote::ConnectionState;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use settings::{
@@ -107,6 +108,8 @@ actions!(
         OpenSessionLog,
         /// 実行中のマクロを中止します。
         CancelMacro,
+        /// 終了したシェルを同じ作業ディレクトリで起動し直します。
+        RestartTerminal,
     ]
 );
 
@@ -169,6 +172,13 @@ pub struct TerminalView {
     rename_editor_subscription: Option<Subscription>,
     macro_run: Option<MacroRun>,
     macro_status: Option<MacroStatus>,
+    /// Whether the project's remote connection was up the last time it was
+    /// observed, so that one reconnection restarts a dead shell exactly once
+    /// (observers run on every notify, not only on state changes).
+    remote_connection_was_connected: bool,
+    /// Kept so a restart in flight is cancelled with the view, and so a second
+    /// request cannot spawn a second shell.
+    restart_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
     _terminal_subscriptions: Vec<Subscription>,
 }
@@ -296,12 +306,29 @@ impl TerminalView {
             )
         });
 
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             focus_in,
             focus_out,
             cx.observe(&blink_manager, |_, _, cx| cx.notify()),
             cx.observe_global::<SettingsStore>(Self::settings_changed),
         ];
+
+        let remote_client = project
+            .upgrade()
+            .and_then(|project| project.read(cx).remote_client());
+        let remote_connection_was_connected = remote_client.as_ref().is_some_and(|remote_client| {
+            remote_client.read(cx).connection_state() == ConnectionState::Connected
+        });
+        if let Some(remote_client) = remote_client {
+            subscriptions.push(cx.observe_in(
+                &remote_client,
+                window,
+                |terminal_view, remote_client, window, cx| {
+                    let connection_state = remote_client.read(cx).connection_state();
+                    terminal_view.remote_connection_state_changed(connection_state, window, cx);
+                },
+            ));
+        }
 
         let mut this = Self {
             terminal,
@@ -330,6 +357,8 @@ impl TerminalView {
             rename_editor_subscription: None,
             macro_run: None,
             macro_status: None,
+            remote_connection_was_connected,
+            restart_task: None,
             _subscriptions: subscriptions,
             _terminal_subscriptions: terminal_subscriptions,
         };
@@ -705,6 +734,143 @@ impl TerminalView {
             ));
             cx.notify();
         }
+    }
+
+    /// Restarts a shell that is no longer running, keeping this view — and so
+    /// the tab, its title and its position — in place. The scrollback of the
+    /// dead shell is lost.
+    fn restart_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.restart_task.is_some() {
+            return;
+        }
+        let terminal = self.terminal.read(cx);
+        // A task terminal reruns through `terminal::RerunTask`, and a live shell
+        // has nothing to restart.
+        if terminal.task().is_some() || !(terminal.remote_connection_lost() || terminal.exited()) {
+            return;
+        }
+
+        // A remote shell reports no working directory (its cwd lives on the
+        // host, and the local `ssh` process is not in it), so fall back to the
+        // directory a new terminal would open in, which is the one this
+        // terminal was created with.
+        let working_directory = terminal.working_directory().or_else(|| {
+            let workspace = self.workspace.upgrade()?;
+            let workspace = workspace.read(cx);
+            default_working_directory(workspace, cx)
+        });
+        let is_remote_terminal = terminal.is_remote_terminal();
+        let Some(project) = self.project.upgrade() else {
+            return;
+        };
+        // Recording continues into the same file, so the restart shows up as a
+        // gap in the session log rather than splitting it in two.
+        let session_log_path = self.session_log_path(cx);
+        let new_terminal = project.update(cx, |project, cx| {
+            // A remote project can also hold local shells; those must not come
+            // back as remote ones.
+            if project.is_via_remote_server() && !is_remote_terminal {
+                project.create_local_terminal(cx)
+            } else {
+                project.create_terminal_shell(working_directory, cx)
+            }
+        });
+
+        self.restart_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let new_terminal = new_terminal.await;
+            this.update_in(cx, |this, window, cx| {
+                this.restart_task = None;
+                match new_terminal {
+                    Ok(new_terminal) => {
+                        this.set_terminal(new_terminal, window, cx);
+                        this.has_bell = false;
+                        this.needs_serialize = true;
+                        if let Some(path) = session_log_path {
+                            let options = TerminalSettings::get_global(cx).session_log.options();
+                            let started = this.terminal.update(cx, |terminal, cx| {
+                                terminal.start_session_log(path, options, cx)
+                            });
+                            if let Err(error) = started {
+                                this.report_error(
+                                    format!("ログを再開できませんでした: {error}"),
+                                    cx,
+                                );
+                            }
+                        }
+                        cx.emit(ItemEvent::UpdateTab);
+                        cx.notify();
+                    }
+                    Err(error) => this
+                        .report_error(format!("ターミナルを再起動できませんでした: {error}"), cx),
+                }
+            })
+            .ok();
+        }));
+    }
+
+    fn restart_terminal_action(
+        &mut self,
+        _: &RestartTerminal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.restart_terminal(window, cx);
+    }
+
+    fn remote_connection_state_changed(
+        &mut self,
+        connection_state: ConnectionState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let connected = connection_state == ConnectionState::Connected;
+        let reconnected = connected && !self.remote_connection_was_connected;
+        self.remote_connection_was_connected = connected;
+        if reconnected && self.terminal.read(cx).remote_connection_lost() {
+            self.restart_terminal(window, cx);
+        }
+    }
+
+    /// The strip above the terminal shown while a remote shell is waiting for
+    /// its connection to come back.
+    fn render_connection_lost_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.terminal.read(cx).remote_connection_lost() {
+            return None;
+        }
+
+        let colors = cx.theme().colors();
+        Some(
+            h_flex()
+                .w_full()
+                .flex_none()
+                .gap_2()
+                .px_2()
+                .py_0p5()
+                .bg(colors.title_bar_background)
+                .border_b_1()
+                .border_color(colors.border_variant)
+                .child(
+                    Icon::new(IconName::Disconnected)
+                        .size(IconSize::XSmall)
+                        .color(Color::Error),
+                )
+                .child(Label::new("リモート接続が切れました").size(LabelSize::Small))
+                .child(
+                    Button::new("terminal-restart", "再起動")
+                        .label_size(LabelSize::Small)
+                        .tooltip(move |_window, cx| {
+                            Tooltip::for_action(
+                                "同じ作業ディレクトリでシェルを起動し直します",
+                                &RestartTerminal,
+                                cx,
+                            )
+                        })
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.restart_terminal(window, cx);
+                        })),
+                )
+                .into_any_element(),
+        )
     }
 
     fn report_error(&mut self, message: String, cx: &mut Context<Self>) {
@@ -1533,6 +1699,10 @@ fn subscribe_for_terminal_events(
                 },
                 Event::BreadcrumbsChanged => cx.emit(ItemEvent::UpdateBreadcrumbs),
                 Event::SessionLogChanged => cx.notify(),
+                Event::RemoteConnectionLost => {
+                    cx.notify();
+                    cx.emit(ItemEvent::UpdateTab);
+                }
                 Event::CloseTerminal => cx.emit(ItemEvent::CloseItem),
                 Event::SelectionsChanged => {
                     window.invalidate_character_coordinates();
@@ -1679,6 +1849,7 @@ impl Render for TerminalView {
             .on_action(cx.listener(TerminalView::stop_session_log))
             .on_action(cx.listener(TerminalView::open_session_log))
             .on_action(cx.listener(TerminalView::cancel_macro))
+            .on_action(cx.listener(TerminalView::restart_terminal_action))
             .on_key_down(cx.listener(Self::key_down))
             .on_mouse_down(
                 MouseButton::Right,
@@ -1706,6 +1877,7 @@ impl Render for TerminalView {
             .child(
                 v_flex()
                     .size_full()
+                    .children(self.render_connection_lost_banner(cx))
                     .children(self.render_session_status_bar(cx))
                     .child(
                         // TODO: Oddly this wrapper div is needed for TerminalElement to not steal events from the context menu

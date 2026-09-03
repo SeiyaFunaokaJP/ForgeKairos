@@ -2252,6 +2252,7 @@ impl AgentPanel {
                 | TerminalEvent::SelectionsChanged
                 | TerminalEvent::NewNavigationTarget(_)
                 | TerminalEvent::SessionLogChanged
+                | TerminalEvent::RemoteConnectionLost
                 | TerminalEvent::Open(_) => {}
             },
         );

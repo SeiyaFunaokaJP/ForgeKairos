@@ -752,6 +752,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("terminal::Paste", "ターミナル: 貼り付け"),
     ("terminal::SelectAll", "ターミナル: すべて選択"),
     ("terminal::RenameTerminal", "ターミナル: 名前の変更"),
+    ("terminal::RestartTerminal", "ターミナル: 再起動"),
     ("terminal::RerunTask", "ターミナル: タスクを再実行"),
     ("terminal::StartSessionLog", "ターミナル: ログの記録を開始…"),
     ("terminal::StopSessionLog", "ターミナル: ログの記録を停止"),

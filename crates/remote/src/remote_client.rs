@@ -26,7 +26,7 @@ use futures::{
 };
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, BorrowAppContext, Context, Entity,
-    EventEmitter, FutureExt, Global, Task, TaskExt, WeakEntity,
+    EventEmitter, FutureExt, Global, Subscription, Task, TaskExt, WeakEntity,
 };
 use parking_lot::Mutex;
 
@@ -164,7 +164,27 @@ const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
 const INITIAL_CONNECTION_TIMEOUT: Duration =
     Duration::from_secs(if cfg!(debug_assertions) { 5 } else { 60 });
 
-pub const MAX_RECONNECT_ATTEMPTS: usize = 3;
+pub const MAX_RECONNECT_ATTEMPTS: usize = 15;
+
+const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(15);
+
+/// How long to wait before starting reconnect attempt `attempt` (1-based).
+///
+/// Resuming from sleep leaves Wi-Fi/VPN down for 5-30 seconds, so retrying
+/// back-to-back burns every attempt before the network can possibly be back.
+/// The schedule (0, 1, 2, 4, 8, then 15s) spread over
+/// [`MAX_RECONNECT_ATTEMPTS`] covers roughly two and a half minutes of
+/// outage while still reconnecting immediately for a transient blip.
+fn reconnect_delay(attempt: usize) -> Duration {
+    match attempt {
+        0 | 1 => Duration::ZERO,
+        2 => Duration::from_secs(1),
+        3 => Duration::from_secs(2),
+        4 => Duration::from_secs(4),
+        5 => Duration::from_secs(8),
+        _ => MAX_RECONNECT_DELAY,
+    }
+}
 
 enum State {
     Connecting,
@@ -335,6 +355,8 @@ pub struct RemoteClient {
     platform: RemotePlatform,
     os_version: Option<String>,
     state: Option<State>,
+    _system_wake_subscription: Option<Subscription>,
+    system_wake_probe_task: Option<Task<()>>,
 }
 
 #[derive(Debug)]
@@ -444,6 +466,8 @@ impl RemoteClient {
                     platform,
                     os_version: os_version.clone(),
                     state: Some(State::Connecting),
+                    _system_wake_subscription: None,
+                    system_wake_probe_task: None,
                 });
 
                 let io_task = remote_connection.start_proxy(
@@ -532,13 +556,19 @@ impl RemoteClient {
                     })
                     .log_err();
 
-                this.update(cx, |this, _| {
+                this.update(cx, |this, cx| {
                     this.state = Some(State::Connected {
                         remote_connection,
                         delegate,
                         multiplex_task,
                         heartbeat_task,
                     });
+                    this._system_wake_subscription = Some(cx.on_system_wake({
+                        let this = cx.entity().downgrade();
+                        move |cx| {
+                            this.update(cx, |this, cx| this.handle_system_wake(cx)).ok();
+                        }
+                    }));
                 });
 
                 // Use the same `remote_*` property schema as the forwarded
@@ -677,14 +707,23 @@ impl RemoteClient {
 
         self.set_state(State::Reconnecting, cx);
 
+        let delay = reconnect_delay(attempts);
         log::info!(
-            "Trying to reconnect to remote server... Attempt {}",
-            attempts
+            "Trying to reconnect to remote server... Attempt {} (after waiting {:?})",
+            attempts,
+            delay
         );
 
         let unique_identifier = self.unique_identifier.clone();
         let client = self.client.clone();
         let reconnect_task = cx.spawn(async move |this, cx| {
+            // Waiting here rather than before `set_state` keeps the connection
+            // in `Reconnecting` for the whole backoff, so the UI reports that a
+            // retry is pending instead of looking disconnected.
+            if !delay.is_zero() {
+                cx.background_executor().timer(delay).await;
+            }
+
             macro_rules! failed {
                 ($error:expr, $attempts:expr, $remote_connection:expr, $delegate:expr) => {
                     delegate.set_status(Some(&format!("{error:#}", error = $error)), cx);
@@ -897,6 +936,44 @@ impl RemoteClient {
         } else {
             ControlFlow::Continue(())
         }
+    }
+
+    /// Probes the connection right after the machine resumes from sleep.
+    ///
+    /// A suspend silently kills the underlying TCP connection, and the
+    /// heartbeat only notices after [`MAX_MISSED_HEARTBEATS`] misses (~50s).
+    /// Pinging on resume collapses that wait; the reconnect backoff then
+    /// covers the seconds it takes Wi-Fi/VPN to come back.
+    fn handle_system_wake(&mut self, cx: &mut Context<Self>) {
+        if !self.state_is(|state| {
+            matches!(
+                state,
+                State::Connected { .. } | State::HeartbeatMissed { .. }
+            )
+        }) {
+            log::debug!("system wake: connection is not in a state that needs probing, ignoring");
+            return;
+        }
+
+        let client = self.client.clone();
+        // Replacing the handle cancels any probe still in flight from an
+        // earlier resume, so at most one probe can race the heartbeat task.
+        self.system_wake_probe_task = Some(cx.spawn(async move |this, cx| {
+            let ping_result = client.ping(HEARTBEAT_TIMEOUT).await;
+            this.update(cx, |this, cx| {
+                let Err(error) = ping_result else {
+                    log::debug!("system wake: remote server still responding");
+                    return;
+                };
+                log::info!("system wake: remote server did not respond ({error:#}), reconnecting");
+                if let Err(error) = this.reconnect(cx) {
+                    // The heartbeat task or the io monitor may have started
+                    // reconnecting in the meantime, which is not a failure.
+                    log::debug!("system wake: {error:#}");
+                }
+            })
+            .ok();
+        }));
     }
 
     fn monitor(
@@ -1409,6 +1486,21 @@ mod tests {
     use super::*;
     use gpui::TestAppContext;
     use rpc::{ErrorCodeExt, proto::ErrorCode};
+
+    #[test]
+    fn test_reconnect_backoff_covers_a_sleep_resume() {
+        assert_eq!(reconnect_delay(1), Duration::ZERO);
+        assert_eq!(reconnect_delay(2), Duration::from_secs(1));
+        assert_eq!(reconnect_delay(5), Duration::from_secs(8));
+        assert_eq!(reconnect_delay(6), MAX_RECONNECT_DELAY);
+        assert_eq!(reconnect_delay(MAX_RECONNECT_ATTEMPTS), MAX_RECONNECT_DELAY);
+
+        let total: Duration = (1..=MAX_RECONNECT_ATTEMPTS).map(reconnect_delay).sum();
+        assert!(
+            total >= Duration::from_secs(150),
+            "reconnect attempts must span a Wi-Fi/VPN recovery after resume, got {total:?}"
+        );
+    }
 
     #[test]
     fn test_ssh_display_name_prefers_nickname() {

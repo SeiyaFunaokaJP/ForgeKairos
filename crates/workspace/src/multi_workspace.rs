@@ -1440,15 +1440,68 @@ impl MultiWorkspace {
         });
 
         if let Some(workspace_id) = workspace.read(cx).database_id() {
-            let db = crate::persistence::WorkspaceDb::global(cx);
-            self.pending_removal_tasks.retain(|task| !task.is_ready());
-            self.pending_removal_tasks
-                .push(cx.background_spawn(async move {
-                    db.set_session_binding(workspace_id, None, None)
-                        .await
-                        .log_err();
-                }));
+            // Reopening a project reuses the `WorkspaceId` of the row it
+            // restores from, so a replacement workspace can already be held
+            // under the same id. Unbinding then would clear the live
+            // workspace's session entry and drop it from the next restore.
+            let id_still_held = self
+                .held
+                .iter()
+                .any(|held| held.workspace.read(cx).database_id() == Some(workspace_id));
+            if !id_still_held {
+                let db = crate::persistence::WorkspaceDb::global(cx);
+                self.pending_removal_tasks.retain(|task| !task.is_ready());
+                self.pending_removal_tasks
+                    .push(cx.background_spawn(async move {
+                        db.set_session_binding(workspace_id, None, None)
+                            .await
+                            .log_err();
+                    }));
+            }
         }
+    }
+
+    /// Detaches every other retained workspace that shares `keep`'s project
+    /// group and whose remote connection is dead.
+    ///
+    /// Reconnecting from the disconnected overlay opens the same project into
+    /// a brand new workspace, but [`Self::activate`] pins the outgoing one
+    /// when multi-workspace is enabled, which would leave the corpse in the
+    /// group next to its replacement.
+    pub fn detach_disconnected_duplicates(
+        &mut self,
+        keep: &Entity<Workspace>,
+        cx: &mut Context<Self>,
+    ) {
+        let group_key = keep.read(cx).project_group_key(cx);
+        let displayed = self.displayed_index();
+        let stale = self
+            .held
+            .iter()
+            .enumerate()
+            .filter(|(index, held)| {
+                *index != displayed
+                    && &held.workspace != keep
+                    && held.workspace.read(cx).project_group_key(cx) == group_key
+                    && held
+                        .workspace
+                        .read(cx)
+                        .project()
+                        .read(cx)
+                        .is_disconnected(cx)
+            })
+            .map(|(_, held)| held.workspace.clone())
+            .collect::<Vec<_>>();
+
+        if stale.is_empty() {
+            return;
+        }
+
+        for workspace in stale {
+            self.detach_workspace(&workspace, cx);
+        }
+        self.serialize(cx);
+        cx.notify();
     }
 
     fn sync_sidebar_to_workspace(&self, workspace: &Entity<Workspace>, cx: &mut Context<Self>) {

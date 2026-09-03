@@ -682,6 +682,9 @@ pub enum Event {
     /// A session log was started or stopped; views showing the recording
     /// indicator need to re-render.
     SessionLogChanged,
+    /// The `ssh` process backing a remote shell died because the connection
+    /// broke. The tab stays open so it can be restarted in place.
+    RemoteConnectionLost,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1021,6 +1024,7 @@ impl TerminalBuilder {
                 window_id,
             },
             child_exited: None,
+            remote_connection_lost: false,
             keyboard_input_sent: false,
             init_command_startup_marker: None,
             init_command_startup_tx: None,
@@ -1308,6 +1312,7 @@ impl TerminalBuilder {
                     window_id,
                 },
                 child_exited: None,
+                remote_connection_lost: false,
                 keyboard_input_sent: false,
                 init_command_startup_marker: None,
                 init_command_startup_tx: None,
@@ -1495,6 +1500,7 @@ pub struct Terminal {
     template: CopyTemplate,
     activation_script: Vec<String>,
     child_exited: Option<ExitStatus>,
+    remote_connection_lost: bool,
     keyboard_input_sent: bool,
     init_command_startup_marker: Option<String>,
     init_command_startup_tx: Option<Sender<()>>,
@@ -3052,6 +3058,52 @@ impl Terminal {
         Task::ready(None)
     }
 
+    /// Whether the shell died because the remote connection broke rather than
+    /// because the user quit it. Such a terminal keeps its tab so it can be
+    /// restarted in place once the host is reachable again.
+    pub fn remote_connection_lost(&self) -> bool {
+        self.remote_connection_lost
+    }
+
+    /// Whether the process behind this terminal has exited, leaving the tab
+    /// showing only whatever it printed before it did.
+    pub fn exited(&self) -> bool {
+        self.child_exited.is_some()
+    }
+
+    /// Whether this terminal runs its shell on the remote host rather than on
+    /// this machine. False for the local shells a remote project can also open.
+    pub fn is_remote_terminal(&self) -> bool {
+        self.is_remote_terminal
+    }
+
+    /// Recognizes the exit of a remote shell whose `ssh` process was killed by a
+    /// broken connection (for instance after the machine slept). Returns whether
+    /// the exit was handled as such, in which case the terminal must not close.
+    fn register_remote_connection_lost(&mut self, cx: &mut Context<Terminal>) -> bool {
+        // A remote shell is a local `ssh` process, and ssh reports its own
+        // failures as 255. A remote command exiting with 255 itself is
+        // indistinguishable, but an interactive shell does not do that.
+        const SSH_CONNECTION_FAILURE_EXIT_CODE: i32 = 255;
+
+        if !self.is_remote_terminal
+            || self.remote_connection_lost
+            || self.child_exited.and_then(|status| status.code())
+                != Some(SSH_CONNECTION_FAILURE_EXIT_CODE)
+        {
+            return false;
+        }
+
+        self.remote_connection_lost = true;
+        // SAFETY: the child has exited, so the PTY reader produces no further
+        // output that this write could interleave with, and the notice is
+        // appended once because `remote_connection_lost` gates re-entry.
+        unsafe { append_text_to_term(&mut self.term.lock(), &[REMOTE_CONNECTION_LOST_NOTICE]) };
+        cx.emit(Event::RemoteConnectionLost);
+        cx.emit(Event::Wakeup);
+        true
+    }
+
     fn register_task_finished(
         &mut self,
         exit_status: Option<ExitStatus>,
@@ -3067,6 +3119,9 @@ impl Terminal {
         let task = match &mut self.task {
             Some(task) => task,
             None => {
+                if self.register_remote_connection_lost(cx) {
+                    return;
+                }
                 // For interactive shells (no task), we need to differentiate:
                 // 1. User-initiated exits (typed "exit", Ctrl+D, etc.) - always close,
                 //    even if the shell exits with a non-zero code (e.g. after `false`).
@@ -3151,6 +3206,11 @@ impl Terminal {
         )
     }
 }
+
+/// Written into the grid of a remote terminal whose `ssh` process died with the
+/// connection, so the surviving tab explains why its shell stopped responding.
+pub const REMOTE_CONNECTION_LOST_NOTICE: &str =
+    "[リモート接続が切れました。再接続後に再起動します]";
 
 const TASK_DELIMITER: &str = "⏵ ";
 fn task_summary(task: &TaskState, exit_status: Option<ExitStatus>) -> (bool, String, String) {
@@ -4317,6 +4377,154 @@ mod tests {
                 .any(|event| event == &Event::CloseTerminal),
             "Wrong shell command should update the title but not should not close the terminal to show the error message, but got events: {all_events:?}",
         );
+    }
+
+    fn exit_status_with_code(code: u32) -> ExitStatus {
+        #[cfg(unix)]
+        {
+            <ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw((code as i32) << 8)
+        }
+        #[cfg(windows)]
+        {
+            <ExitStatus as std::os::windows::process::ExitStatusExt>::from_raw(code)
+        }
+    }
+
+    #[gpui::test]
+    async fn test_remote_terminal_stays_open_when_connection_drops(cx: &mut TestAppContext) {
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                SettingsCursorShape::default(),
+                AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+
+        let all_events: Arc<Mutex<Vec<Event>>> = Arc::new(Mutex::new(Vec::new()));
+        cx.update({
+            let all_events = all_events.clone();
+            |cx| {
+                cx.subscribe(&terminal, move |_, event, _| {
+                    all_events.lock().push(event.clone());
+                })
+            }
+        })
+        .detach();
+
+        terminal.update(cx, |terminal, cx| {
+            terminal.is_remote_terminal = true;
+            terminal.input(b"ls\r".to_vec());
+            terminal.register_task_finished(Some(exit_status_with_code(255)), cx);
+        });
+        cx.run_until_parked();
+
+        assert!(
+            !all_events.lock().contains(&Event::CloseTerminal),
+            "a dropped remote connection should keep the tab, but got events: {:?}",
+            all_events.lock()
+        );
+        assert!(
+            all_events.lock().contains(&Event::RemoteConnectionLost),
+            "a dropped remote connection should be reported, but got events: {:?}",
+            all_events.lock()
+        );
+        terminal.update(cx, |terminal, _| {
+            assert!(terminal.remote_connection_lost());
+            assert!(
+                terminal
+                    .get_content()
+                    .contains(REMOTE_CONNECTION_LOST_NOTICE),
+                "the notice should be appended to the grid, got: {:?}",
+                terminal.get_content()
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_remote_terminal_closes_on_user_exit(cx: &mut TestAppContext) {
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                SettingsCursorShape::default(),
+                AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+
+        let all_events: Arc<Mutex<Vec<Event>>> = Arc::new(Mutex::new(Vec::new()));
+        cx.update({
+            let all_events = all_events.clone();
+            |cx| {
+                cx.subscribe(&terminal, move |_, event, _| {
+                    all_events.lock().push(event.clone());
+                })
+            }
+        })
+        .detach();
+
+        terminal.update(cx, |terminal, cx| {
+            terminal.is_remote_terminal = true;
+            terminal.input(b"exit\r".to_vec());
+            terminal.register_task_finished(Some(exit_status_with_code(0)), cx);
+        });
+        cx.run_until_parked();
+
+        assert!(
+            all_events.lock().contains(&Event::CloseTerminal),
+            "quitting a remote shell should still close the tab, but got events: {:?}",
+            all_events.lock()
+        );
+        terminal.update(cx, |terminal, _| {
+            assert!(!terminal.remote_connection_lost());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_local_terminal_closes_on_exit_code_255(cx: &mut TestAppContext) {
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                SettingsCursorShape::default(),
+                AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+
+        let all_events: Arc<Mutex<Vec<Event>>> = Arc::new(Mutex::new(Vec::new()));
+        cx.update({
+            let all_events = all_events.clone();
+            |cx| {
+                cx.subscribe(&terminal, move |_, event, _| {
+                    all_events.lock().push(event.clone());
+                })
+            }
+        })
+        .detach();
+
+        terminal.update(cx, |terminal, cx| {
+            terminal.input(b"ssh nowhere\r".to_vec());
+            terminal.register_task_finished(Some(exit_status_with_code(255)), cx);
+        });
+        cx.run_until_parked();
+
+        assert!(
+            all_events.lock().contains(&Event::CloseTerminal),
+            "a local shell exiting with 255 should close as before, but got events: {:?}",
+            all_events.lock()
+        );
+        terminal.update(cx, |terminal, _| {
+            assert!(!terminal.remote_connection_lost());
+        });
     }
 
     #[test]

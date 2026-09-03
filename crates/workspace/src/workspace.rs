@@ -10885,6 +10885,7 @@ async fn open_remote_project_inner(
         } else {
             multi_workspace.activate(new_workspace.clone(), source_workspace, window, cx);
         }
+        multi_workspace.detach_disconnected_duplicates(&new_workspace, cx);
         new_workspace
     })?;
 

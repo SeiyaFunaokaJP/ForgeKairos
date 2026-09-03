@@ -425,25 +425,55 @@ fn start_server(
     .detach();
 
     cx.spawn(async move |cx| {
-        loop {
-            let streams = futures::future::join3(
-                listeners.stdin.accept(),
-                listeners.stdout.accept(),
-                listeners.stderr.accept(),
-            );
+        // A proxy whose ssh session died without sshd noticing (the client machine suspended and
+        // its IP or NAT mapping changed; `ClientAliveInterval` is usually 0 and TCP keepalive
+        // defaults to hours) keeps its unix streams open, so they never reach EOF. Serve the
+        // newest connection instead of waiting for the current one to end, otherwise a
+        // reconnecting client sits unanswered in the listen backlog until the stale ssh session
+        // eventually dies. The accept future is kept alive across iterations and only recreated
+        // once it has resolved, so that a connection arriving while we are busy is never missed.
+        let mut next_stdin_accept = Box::pin(listeners.stdin.accept()).fuse();
+        let mut preempting_stdin_stream: Option<UnixStream> = None;
 
-            log::info!("accepting new connections");
-            let result = select! {
-                streams = streams.fuse() => {
-                    let (Ok((stdin_stream, _)), Ok((stdout_stream, _)), Ok((stderr_stream, _))) = streams else {
-                        log::error!("failed to accept new connections");
-                        break;
+        loop {
+            let mut stdin_stream = match preempting_stdin_stream.take() {
+                Some(stdin_stream) => stdin_stream,
+                None => {
+                    log::info!("accepting new connections");
+                    let accepted = select! {
+                        accepted = next_stdin_accept => accepted,
+                        _ = futures::FutureExt::fuse(cx.background_executor().timer(IDLE_TIMEOUT)) => {
+                            log::warn!("timed out waiting for new connections after {:?}. exiting.", IDLE_TIMEOUT);
+                            cx.update(|cx| {
+                                // TODO: This is a hack, because in a headless project, shutdown isn't executed
+                                // when calling quit, but it should be.
+                                cx.shutdown();
+                                cx.quit();
+                            });
+                            break;
+                        }
+                        _ = app_quit_rx.next().fuse() => {
+                            log::info!("app quit requested");
+                            break;
+                        }
                     };
-                    log::info!("accepted new connections");
-                    anyhow::Ok((stdin_stream, stdout_stream, stderr_stream))
+                    next_stdin_accept = Box::pin(listeners.stdin.accept()).fuse();
+                    match accepted {
+                        Ok((stdin_stream, _)) => stdin_stream,
+                        Err(error) => {
+                            log::error!("failed to accept a new connection: {error:?}");
+                            break;
+                        }
+                    }
                 }
+            };
+
+            let streams =
+                futures::future::join(listeners.stdout.accept(), listeners.stderr.accept());
+            let streams = select! {
+                streams = streams.fuse() => streams,
                 _ = futures::FutureExt::fuse(cx.background_executor().timer(IDLE_TIMEOUT)) => {
-                    log::warn!("timed out waiting for new connections after {:?}. exiting.", IDLE_TIMEOUT);
+                    log::warn!("timed out waiting for the remaining connections after {:?}. exiting.", IDLE_TIMEOUT);
                     cx.update(|cx| {
                         // TODO: This is a hack, because in a headless project, shutdown isn't executed
                         // when calling quit, but it should be.
@@ -457,16 +487,20 @@ fn start_server(
                     break;
                 }
             };
-
-            let Ok((mut stdin_stream, mut stdout_stream, mut stderr_stream)) = result else {
+            let (Ok((mut stdout_stream, _)), Ok((mut stderr_stream, _))) = streams else {
+                log::error!("failed to accept new connections");
                 break;
             };
+            log::info!("accepted new connections");
 
             let mut input_buffer = Vec::new();
             let mut output_buffer = Vec::new();
 
             let (mut stdin_msg_tx, mut stdin_msg_rx) = mpsc::unbounded::<Envelope>();
-            cx.background_spawn(async move {
+            // Held instead of detached so that dropping it cancels the reader as soon as this
+            // connection ends or is replaced, rather than leaving it on a socket that may never
+            // report an error.
+            let _stdin_reader_task = cx.background_spawn(async move {
                 loop {
                     match read_message(&mut stdin_stream, &mut input_buffer).await {
                         Ok(msg) => {
@@ -481,19 +515,22 @@ fn start_server(
                         }
                     }
                 }
-            }).detach();
+            });
 
-            loop {
-
+            let preemption = loop {
                 select_biased! {
                     _ = app_quit_rx.next().fuse() => {
                         return anyhow::Ok(());
                     }
 
+                    accepted = next_stdin_accept => {
+                        break Some(accepted);
+                    }
+
                     stdin_message = stdin_msg_rx.next().fuse() => {
                         let Some(message) = stdin_message else {
                             log::warn!("error reading message on stdin, dropping connection.");
-                            break;
+                            break None;
                         };
                         if let Err(error) = incoming_tx.unbounded_send(message) {
                             log::error!("failed to send message to application: {error:?}. exiting.");
@@ -504,18 +541,18 @@ fn start_server(
                     outgoing_message  = outgoing_rx.next().fuse() => {
                         let Some(message) = outgoing_message else {
                             log::error!("stdout handler, no message");
-                            break;
+                            break None;
                         };
 
                         if let Err(error) =
                             write_message(&mut stdout_stream, &mut output_buffer, message).await
                         {
                             log::error!("failed to write stdout message: {:?}", error);
-                            break;
+                            break None;
                         }
                         if let Err(error) = stdout_stream.flush().await {
                             log::error!("failed to flush stdout message: {:?}", error);
-                            break;
+                            break None;
                         }
                     }
 
@@ -523,14 +560,31 @@ fn start_server(
                         if let Ok(log_message) = log_message {
                             if let Err(error) = stderr_stream.write_all(&log_message).await {
                                 log::error!("failed to write log message to stderr: {:?}", error);
-                                break;
+                                break None;
                             }
                             if let Err(error) = stderr_stream.flush().await {
                                 log::error!("failed to flush stderr stream: {:?}", error);
-                                break;
+                                break None;
                             }
                         }
                     }
+                }
+            };
+
+            // Without a preemption the accept future is still pending and must be kept as is, so
+            // that a connection arriving in the meantime is not lost.
+            let Some(accepted) = preemption else {
+                continue;
+            };
+            next_stdin_accept = Box::pin(listeners.stdin.accept()).fuse();
+            match accepted {
+                Ok((stdin_stream, _)) => {
+                    log::info!("replacing stale connection with a newly accepted one");
+                    preempting_stdin_stream = Some(stdin_stream);
+                }
+                Err(error) => {
+                    log::error!("failed to accept a new connection: {error:?}");
+                    break;
                 }
             }
         }
