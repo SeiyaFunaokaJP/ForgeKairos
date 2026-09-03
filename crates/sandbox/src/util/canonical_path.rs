@@ -74,17 +74,12 @@ impl CanonicalPathBuf {
         }
         #[cfg(target_os = "linux")]
         {
-            use std::os::unix::fs::OpenOptionsExt as _;
             // `O_PATH` opens a handle that refers to the inode without granting
             // read/write on its contents, which is exactly what a bind source
             // needs. Symlinks are followed (no `O_NOFOLLOW`) so the fd pins the
             // real target; its canonical path is then read back from
             // `/proc/self/fd`.
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(libc::O_PATH | libc::O_CLOEXEC)
-                .open(path)?;
-            let fd = OwnedFd::from(file);
+            let fd = open_o_path(path, FollowSymlinks::Yes)?;
             let path = std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd()))?;
             Ok(Self {
                 path,
@@ -130,16 +125,11 @@ impl CanonicalPathBuf {
         }
         #[cfg(target_os = "linux")]
         {
-            use std::os::unix::fs::OpenOptionsExt as _;
             // `O_NOFOLLOW` makes a symlink *leaf* open the symlink itself
             // (harmless with `O_PATH`) rather than its target, so we can detect
             // and reject it below; intermediate components are still traversed
             // and caught by the canonical-path comparison.
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW)
-                .open(&path)?;
-            let fd = OwnedFd::from(file);
+            let fd = open_o_path(&path, FollowSymlinks::No)?;
 
             // Reject a symlink leaf outright: a grant must name a real directory,
             // and `readlink` of an `O_PATH|O_NOFOLLOW` fd on a symlink returns
@@ -206,6 +196,62 @@ impl CanonicalPathBuf {
     #[cfg(target_os = "linux")]
     pub(crate) fn dup_fd(&self) -> io::Result<OwnedFd> {
         self.fd.as_fd().try_clone_to_owned()
+    }
+}
+
+/// Whether [`open_o_path`] traverses a symlink *leaf* or pins the link itself.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FollowSymlinks {
+    /// Pin the symlink's target (used when discovering the real object).
+    Yes,
+    /// Add `O_NOFOLLOW`, so a symlink leaf pins the link itself and can be
+    /// detected and rejected.
+    No,
+}
+
+/// Open an `O_PATH | O_CLOEXEC` handle pinning the inode `path` names, adding
+/// `O_NOFOLLOW` when the leaf must not be traversed.
+///
+/// Built from a raw `libc::open` **on purpose**. Rust's
+/// `OpenOptions::custom_flags` masks the caller's flags with `!O_ACCMODE`, and
+/// musl defines `O_ACCMODE` as `0o10000003` — which *includes* `O_PATH`
+/// (`0o10000000`). On the musl-static remote server binary the flag was
+/// therefore silently dropped and every "pin" became an ordinary read-open:
+/// it needed read permission (a `chmod 0300` directory could not be pinned at
+/// all), it blocked forever on a FIFO with no writer, and with `O_NOFOLLOW` it
+/// failed on a symlink leaf with `ELOOP` instead of pinning the link for the
+/// explicit `S_IFLNK` rejection below. glibc's `O_ACCMODE` is `0o3`, so no gnu
+/// build — and therefore no unit test — ever saw any of it. Never route this
+/// open back through `OpenOptions`.
+#[cfg(target_os = "linux")]
+pub(crate) fn open_o_path(path: &Path, follow: FollowSymlinks) -> io::Result<OwnedFd> {
+    use std::os::fd::FromRawFd as _;
+    use std::os::unix::ffi::OsStrExt as _;
+
+    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("path {} contains a NUL byte", path.display()),
+        )
+    })?;
+    let mut flags = libc::O_PATH | libc::O_CLOEXEC;
+    if follow == FollowSymlinks::No {
+        flags |= libc::O_NOFOLLOW;
+    }
+    loop {
+        // SAFETY: `c_path` is a valid NUL-terminated string that outlives the
+        // call, and `O_PATH` opens take no `mode` argument.
+        let raw = unsafe { libc::open(c_path.as_ptr(), flags) };
+        if raw >= 0 {
+            // SAFETY: freshly opened by us and not stored anywhere else, so this
+            // is its sole owner.
+            return Ok(unsafe { OwnedFd::from_raw_fd(raw) });
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
     }
 }
 
@@ -319,6 +365,122 @@ mod tests {
         match CanonicalPathBuf::from_canonical(PathBuf::from("relative/dir")) {
             Ok(_) => panic!("from_canonical must reject a relative path"),
             Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput),
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_tests {
+    use super::{CanonicalPathBuf, FollowSymlinks, open_o_path};
+    use std::os::fd::AsRawFd as _;
+
+    /// `O_PATH` as the kernel reports it in `/proc/self/fdinfo/<fd>` (octal
+    /// `flags:`), i.e. `0o10000000` == `0x200000`.
+    const O_PATH_FLAG: u64 = 0o10000000;
+
+    /// Read the open flags the *kernel* recorded for `fd`, which is the only
+    /// way to catch a libc that quietly dropped one on the way in.
+    fn kernel_open_flags(fd: std::os::fd::RawFd) -> u64 {
+        let info = std::fs::read_to_string(format!("/proc/self/fdinfo/{fd}"))
+            .expect("reading /proc/self/fdinfo");
+        let flags = info
+            .lines()
+            .find_map(|line| line.strip_prefix("flags:"))
+            .expect("fdinfo has a flags: line");
+        u64::from_str_radix(flags.trim(), 8).expect("fdinfo flags are octal")
+    }
+
+    /// Regression (musl-only in practice, but asserted on every libc): musl's
+    /// `O_ACCMODE` includes `O_PATH`, so building these handles through
+    /// `OpenOptions::custom_flags` — which std masks with `!O_ACCMODE` — turned
+    /// the inode pin into a real read-open on the shipped musl binary. Assert
+    /// the flag reached the kernel rather than trusting the request.
+    #[test]
+    fn pinned_handles_really_carry_o_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let resolved = CanonicalPathBuf::resolve(dir.path()).expect("resolve");
+        assert_ne!(
+            kernel_open_flags(resolved.fd().as_raw_fd()) & O_PATH_FLAG,
+            0,
+            "resolve() must pin with O_PATH"
+        );
+
+        let reopened = CanonicalPathBuf::from_canonical(resolved.path().to_path_buf())
+            .expect("from_canonical");
+        let flags = kernel_open_flags(reopened.fd().as_raw_fd());
+        assert_ne!(
+            flags & O_PATH_FLAG,
+            0,
+            "from_canonical() must pin with O_PATH"
+        );
+        assert_ne!(
+            flags & libc::O_NOFOLLOW as u64,
+            0,
+            "from_canonical() relies on O_NOFOLLOW to detect a symlink leaf"
+        );
+    }
+
+    /// `O_PATH` needs no read permission, so a directory the owner cannot read
+    /// still pins. Without it a `chmod 0300 .git` could not be pinned at all,
+    /// and the caller that dropped the failure then handed out a recursive
+    /// write grant over the whole worktree.
+    #[test]
+    fn an_unreadable_directory_still_pins() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let parent = tempfile::tempdir().expect("tempdir");
+        let dir = parent.path().join("locked");
+        std::fs::create_dir(&dir).expect("create dir");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o300)).expect("chmod 0300");
+        let pinned = CanonicalPathBuf::resolve(&dir);
+        // Restore the mode before asserting, so the temp dir can clean itself
+        // up (its recursive delete has to read this directory) either way.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+            .expect("restore mode");
+        pinned.expect("an unreadable directory must still pin");
+    }
+
+    /// A FIFO with no writer blocks an ordinary `open` forever. `O_PATH` never
+    /// waits for a partner — the helper enumerates a worktree root's children,
+    /// so one FIFO used to hang the whole sandbox setup with no error and no
+    /// exit.
+    #[test]
+    fn pinning_a_fifo_without_a_writer_returns_promptly() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let fifo = dir.path().join("pipe");
+        nix::unistd::mkfifo(&fifo, nix::sys::stat::Mode::from_bits_truncate(0o600))
+            .expect("mkfifo");
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn({
+            let fifo = fifo.clone();
+            move || {
+                let pinned = CanonicalPathBuf::resolve(&fifo).is_ok()
+                    && open_o_path(&fifo, FollowSymlinks::No).is_ok();
+                let _ = tx.send(pinned);
+            }
+        });
+        let pinned = rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("pinning a FIFO must not block on a writer");
+        assert!(pinned, "a FIFO must pin like any other inode");
+    }
+
+    /// The symlink-leaf rejection in `from_canonical` depends on `O_PATH`
+    /// *and* `O_NOFOLLOW` both surviving: without `O_PATH`, `O_NOFOLLOW` alone
+    /// makes the open fail with `ELOOP`, which reports the wrong error kind
+    /// (and, for a non-symlink swap, the wrong outcome entirely).
+    #[test]
+    fn from_canonical_rejects_a_symlink_leaf() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("real");
+        std::fs::create_dir(&target).expect("create dir");
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+
+        match CanonicalPathBuf::from_canonical(link) {
+            Ok(_) => panic!("a symlink leaf must not be accepted as a grant"),
+            Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied),
         }
     }
 }

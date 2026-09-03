@@ -961,6 +961,23 @@ impl SshRemoteConnection {
                     "remote server binary source: locally built {}",
                     remote_server_path.display()
                 );
+                // The cargo build above is incremental, so on the overwhelming
+                // majority of connections it rebuilds nothing and hands back the
+                // very binary the remote is already running. Uploading it again
+                // (~90MB), unpacking it and sweeping the directory is then pure
+                // waste, and it is what every single connection used to pay.
+                if binary_exists_on_server
+                    && self
+                        .locally_built_binary_is_already_installed(
+                            &remote_server_path,
+                            &dst_path,
+                            delegate,
+                            cx,
+                        )
+                        .await
+                {
+                    return Ok(dst_path.into());
+                }
                 self.remove_stale_server_files(&binary_name_prefix, &binary_name)
                     .await;
                 self.upload_and_install_server_binary(&remote_server_path, &dst_path, delegate, cx)
@@ -1076,6 +1093,150 @@ impl SshRemoteConnection {
             .await
             .context("extracting server binary")?;
         Ok(dst_path.into())
+    }
+
+    /// Whether the binary just built locally is byte-for-byte the one already
+    /// installed at `dst_path`, in which case the upload, the unpack and the
+    /// stale-file sweep can all be skipped.
+    ///
+    /// Only ever consulted when `<dst_path> version` already ran successfully on
+    /// the remote: "the bytes match" alone would also be true of a binary that
+    /// is present but *not runnable* there (lost its execute bit, sits on a
+    /// `noexec` mount), and skipping the install in that case would turn a
+    /// recoverable state into a failed connection. The bundled-artifact path
+    /// below is not deduplicated for exactly that reason — it is only ever
+    /// reached when the remote's copy did *not* run.
+    ///
+    /// Best effort in both directions: anything that goes wrong here (no hashing
+    /// tool on the remote, an unreadable local artifact, output in a shape this
+    /// does not recognize) falls back to uploading, which is what always used to
+    /// happen.
+    #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+    async fn locally_built_binary_is_already_installed(
+        &self,
+        src_path: &Path,
+        dst_path: &RelPath,
+        delegate: &Arc<dyn RemoteClientDelegate>,
+        cx: &mut AsyncApp,
+    ) -> bool {
+        // What sits at `dst_path` is the *unpacked* binary, so a compressed
+        // local artifact would have to be decompressed to be comparable. That
+        // only arises when `ZED_BUILD_REMOTE_SERVER` asks for compression (the
+        // default is `nocompress`), and compressing costs more per connection
+        // than the upload this would save, so the compressed case just uploads.
+        if let Some(extension) = src_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            && matches!(extension, "gz" | "zip")
+        {
+            log::info!(
+                "not comparing the locally built server binary with the remote's copy: \
+                 {} is compressed, and the remote holds the unpacked binary",
+                src_path.display()
+            );
+            return false;
+        }
+
+        // Without this the "building" status would stay up for the hashing too,
+        // which for an incremental no-op build is the longer of the two steps.
+        delegate.set_status(Some("リモート開発サーバーを照合しています"), cx);
+
+        let local_digest = {
+            let src_path = src_path.to_path_buf();
+            // Hashing ~90MB is enough CPU work to be worth keeping off the
+            // thread that draws the connection dialog.
+            match cx
+                .background_spawn(async move { super::sha256_of_file(&src_path).await })
+                .await
+            {
+                Ok(digest) => digest,
+                Err(error) => {
+                    log::warn!("could not hash the locally built server binary: {error:#}");
+                    return false;
+                }
+            }
+        };
+
+        let Some(remote_digest) = self.remote_file_sha256(dst_path).await else {
+            return false;
+        };
+
+        if local_digest != remote_digest {
+            log::info!(
+                "the server binary on the remote differs from the one just built \
+                 (remote sha256 {remote_digest}, local sha256 {local_digest})"
+            );
+            return false;
+        }
+
+        log::info!(
+            "remote server binary source: locally built, identical to the copy already on \
+             the remote (sha256 {local_digest}) — skipping upload"
+        );
+        true
+    }
+
+    /// The SHA-256 of a file on the remote, as lowercase hex, or `None` if the
+    /// remote has no hashing tool this recognizes (or the file is not there).
+    ///
+    /// Deliberately tolerant: the caller uses this only to skip work it would
+    /// otherwise do, so every failure mode is a `debug!` and a `None`.
+    #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+    async fn remote_file_sha256(&self, path: &RelPath) -> Option<String> {
+        let path = path.display(self.path_style()).into_owned();
+
+        if self.ssh_platform.os.is_windows() {
+            let output = self
+                .socket
+                .run_command(
+                    self.ssh_shell_kind,
+                    "certutil",
+                    &["-hashfile", path.as_str(), "SHA256"],
+                    true,
+                )
+                .await;
+            return match output {
+                Ok(output) => {
+                    let digest = super::parse_certutil_hash_output(&output);
+                    if digest.is_none() {
+                        log::debug!("no SHA-256 in certutil's output for {path}: {output:?}");
+                    }
+                    digest
+                }
+                Err(error) => {
+                    log::debug!("failed to hash {path} on the remote with certutil: {error:#}");
+                    None
+                }
+            };
+        }
+
+        // `sha256sum` is coreutils, so present on Linux; macOS ships `shasum`
+        // instead. Both print `<hex>  <path>`.
+        let candidates = [
+            ("sha256sum", vec![path.clone()]),
+            (
+                "shasum",
+                vec!["-a".to_string(), "256".to_string(), path.clone()],
+            ),
+        ];
+        for (program, args) in candidates {
+            match self
+                .socket
+                .run_command(self.ssh_shell_kind, program, &args, true)
+                .await
+            {
+                Ok(output) => match super::parse_sha256sum_output(&output) {
+                    Some(digest) => return Some(digest),
+                    None => {
+                        log::debug!("no SHA-256 in {program}'s output for {path}: {output:?}")
+                    }
+                },
+                Err(error) => {
+                    log::debug!("failed to hash {path} on the remote with {program}: {error:#}")
+                }
+            }
+        }
+        None
     }
 
     /// Deletes the previous generations of this channel's server binary — and

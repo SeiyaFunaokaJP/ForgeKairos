@@ -503,6 +503,75 @@ async fn build_remote_server_from_source(
     Ok(Some(path))
 }
 
+/// Streams `path` through SHA-256 and returns the digest as lowercase hex.
+///
+/// Streamed rather than read whole because the caller hashes a ~90MB server
+/// binary, and this runs while a connection is being established.
+///
+/// Used to answer "does the remote already have exactly this binary?" without
+/// uploading it: see `SshRemoteConnection::locally_built_binary_is_already_installed`.
+#[cfg(any(test, debug_assertions, feature = "build-remote-server-binary"))]
+pub(crate) async fn sha256_of_file(path: &std::path::Path) -> Result<String> {
+    use sha2::Digest as _;
+
+    let mut file = smol::fs::File::open(path)
+        .await
+        .with_context(|| format!("opening {} to hash it", path.display()))?;
+    let mut hasher = sha2::Sha256::new();
+    let mut buffer = vec![0u8; 128 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .await
+            .with_context(|| format!("reading {} to hash it", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// Reads the digest out of the output of `sha256sum <path>` (coreutils, so
+/// Linux) or `shasum -a 256 <path>` (what macOS ships instead). Both print
+/// `<64 hex chars><two spaces><path>`.
+///
+/// Lines are scanned from the back, for the same reason [`parse_platform`] takes
+/// the last line: a login shell's initialization can print to stdout ahead of
+/// the command's own output.
+#[cfg(any(test, debug_assertions, feature = "build-remote-server-binary"))]
+pub(crate) fn parse_sha256sum_output(output: &str) -> Option<String> {
+    output.lines().rev().find_map(|line| {
+        let token = line.split_whitespace().next()?;
+        is_sha256_hex(token).then(|| token.to_ascii_lowercase())
+    })
+}
+
+/// Reads the digest out of the output of `certutil -hashfile <path> SHA256`,
+/// which is the only hashing tool a stock Windows remote is guaranteed to have.
+/// Its output is three lines:
+///
+/// ```text
+/// SHA256 hash of C:\Users\me\.zed_server\zed-remote-server-dev-build.exe:
+/// 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+/// CertUtil: -hashfile command completed successfully.
+/// ```
+///
+/// Whitespace is stripped before the shape is checked because older Windows
+/// builds print the digest as space-separated byte pairs.
+#[cfg(any(test, debug_assertions, feature = "build-remote-server-binary"))]
+pub(crate) fn parse_certutil_hash_output(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let digest: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+        is_sha256_hex(&digest).then(|| digest.to_ascii_lowercase())
+    })
+}
+
+#[cfg(any(test, debug_assertions, feature = "build-remote-server-binary"))]
+fn is_sha256_hex(token: &str) -> bool {
+    token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 async fn which(
     binary_name: impl AsRef<str>,
@@ -718,6 +787,122 @@ mod tests {
             Some("10.0.22631".to_string())
         );
         assert_eq!(parse_os_version(RemoteOs::Windows, "no version here"), None);
+    }
+
+    #[test]
+    fn test_sha256_of_file() {
+        use sha2::Digest as _;
+
+        let dir = tempfile::tempdir().unwrap();
+
+        let empty = dir.path().join("empty");
+        std::fs::write(&empty, b"").unwrap();
+        assert_eq!(
+            smol::block_on(sha256_of_file(&empty)).unwrap(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+
+        let hello = dir.path().join("hello");
+        std::fs::write(&hello, b"hello world").unwrap();
+        assert_eq!(
+            smol::block_on(sha256_of_file(&hello)).unwrap(),
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+
+        // Larger than the read buffer, so the streaming loop is what is being
+        // checked rather than a single read.
+        let large_contents: Vec<u8> = (0..400 * 1024).map(|byte| byte as u8).collect();
+        let large = dir.path().join("large");
+        std::fs::write(&large, &large_contents).unwrap();
+        assert_eq!(
+            smol::block_on(sha256_of_file(&large)).unwrap(),
+            hex::encode(sha2::Sha256::digest(&large_contents))
+        );
+
+        assert!(smol::block_on(sha256_of_file(&dir.path().join("absent"))).is_err());
+    }
+
+    #[test]
+    fn test_parse_sha256sum_output() {
+        let digest = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+
+        // `sha256sum` and `shasum -a 256` both print `<hex>  <path>`.
+        assert_eq!(
+            parse_sha256sum_output(&format!(
+                "{digest}  /home/user/.zed_server/zed-remote-server-dev-build\n"
+            ))
+            .as_deref(),
+            Some(digest)
+        );
+        // No trailing newline, and a path containing spaces.
+        assert_eq!(
+            parse_sha256sum_output(&format!("{digest}  /home/us er/zed remote server")).as_deref(),
+            Some(digest)
+        );
+        // Shell initialization output ahead of the command's own, as
+        // `parse_platform` and `parse_shell` also have to cope with.
+        assert_eq!(
+            parse_sha256sum_output(&format!("some shell init output\n{digest}  /path\n"))
+                .as_deref(),
+            Some(digest)
+        );
+        assert_eq!(
+            parse_sha256sum_output(&format!("{}  /path\n", digest.to_ascii_uppercase())).as_deref(),
+            Some(digest)
+        );
+
+        assert_eq!(parse_sha256sum_output(""), None);
+        assert_eq!(
+            parse_sha256sum_output("sha256sum: /path: No such file or directory\n"),
+            None
+        );
+        // Not 64 characters, and not hex.
+        assert_eq!(
+            parse_sha256sum_output(&format!("{}  /path\n", &digest[1..])),
+            None
+        );
+        assert_eq!(
+            parse_sha256sum_output(&format!("z{}  /path\n", &digest[1..])),
+            None
+        );
+    }
+
+    #[test]
+    fn test_parse_certutil_hash_output() {
+        let digest = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+
+        assert_eq!(
+            parse_certutil_hash_output(&format!(
+                "SHA256 hash of C:\\Users\\me\\.zed_server\\zed-remote-server-dev-build.exe:\r\n\
+                 {digest}\r\n\
+                 CertUtil: -hashfile command completed successfully.\r\n"
+            ))
+            .as_deref(),
+            Some(digest)
+        );
+
+        // Older Windows builds print the digest as space-separated byte pairs.
+        let spaced = digest
+            .as_bytes()
+            .chunks(2)
+            .map(|pair| String::from_utf8_lossy(pair).into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            parse_certutil_hash_output(&format!(
+                "SHA256 hash of C:\\path:\r\n{spaced}\r\nCertUtil: -hashfile command completed successfully.\r\n"
+            ))
+            .as_deref(),
+            Some(digest)
+        );
+
+        assert_eq!(
+            parse_certutil_hash_output(
+                "CertUtil: -hashfile command FAILED: 0x80070002 (WIN32: 2 ERROR_FILE_NOT_FOUND)\r\n"
+            ),
+            None
+        );
+        assert_eq!(parse_certutil_hash_output(""), None);
     }
 
     #[test]

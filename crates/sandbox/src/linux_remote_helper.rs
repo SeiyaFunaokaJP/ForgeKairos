@@ -6,12 +6,19 @@
 //! `mount`), so this backend builds the isolation by hand out of primitives that
 //! *do* work there, verified on real 24.04 and 18.04 hosts:
 //!
-//! - **Network**: a `CLONE_NEWUSER|CLONE_NEWNET` "holder" whose only outbound
-//!   path is `slirp4netns --outbound-addr=127.0.0.1` (external NAT dies with
-//!   "Network is unreachable"; only the built-in host-loopback forwarding
-//!   `guest -> 10.0.2.2 -> host 127.0.0.1` survives). A host-loopback egress
-//!   proxy (`http_proxy`) on `127.0.0.1:<port>` enforces the per-command host
-//!   allowlist; the command's env points `HTTP(S)_PROXY` at `10.0.2.2:<port>`.
+//! - **Network**: a `CLONE_NEWUSER|CLONE_NEWNET` "holder" that, by the time the
+//!   command runs, has **nothing but its own loopback**. `slirp4netns` is used
+//!   only to configure the namespace (an unprivileged user namespace confined by
+//!   24.04's AppArmor cannot even bring its own `lo` up); it is started with
+//!   `--outbound-addr=127.0.0.1 --disable-host-loopback` and then **killed**
+//!   before the command is released, because its NAT can otherwise still reach
+//!   any address the host itself owns. The one way out is a TCP listener the
+//!   holder creates *inside* the namespace and hands to the parent over
+//!   `SCM_RIGHTS`; the parent — which is outside the namespace — accepts on it
+//!   and splices each connection to the host-loopback egress proxy
+//!   (`http_proxy`) enforcing the per-command host allowlist. The command's
+//!   `HTTP(S)_PROXY` points at that in-namespace listener, so the proxy's
+//!   allowlist decision is the only reachable endpoint anywhere.
 //! - **Filesystem**: **Landlock** where the kernel supports it (>= 5.13, so
 //!   24.04) — writes confined to the worktree, everything else read-only; or an
 //!   in-namespace **mount-jail** (`pivot_root` + read-only `/` + a read-write
@@ -56,10 +63,6 @@ use crate::util::CanonicalPathBuf;
 /// backend). The client keys its Japanese fail-closed error off this.
 const SANDBOX_SETUP_FAILED_EXIT_CODE: i32 = 126;
 
-/// slirp4netns fixed addressing (its `--configure` defaults). The gateway
-/// `10.0.2.2` is libslirp's host-loopback alias, which is the only reachable
-/// destination once `--outbound-addr=127.0.0.1` has killed external NAT.
-const SLIRP_GATEWAY: &str = "10.0.2.2";
 /// Basename of the bundled slirp4netns binary installed next to the remote
 /// server binary in `~/.zed_server`.
 const SLIRP_BINARY_NAME: &str = "slirp4netns";
@@ -183,6 +186,10 @@ fn network_requested(network: &RemoteSandboxNetwork) -> bool {
               waiting on the holder and slirp children with blocking APIs is correct here"
 )]
 fn run_helper(invocation: Stage1Invocation) -> ! {
+    // Reclaim scratch directories from earlier runs that died before their own
+    // cleanup. Cheap, and these hosts have small disks.
+    sweep_stale_temp_dirs();
+
     // --- Capability gate (fail-closed before running anything) -------------
     let fs_backend = match select_fs_backend() {
         Ok(backend) => backend,
@@ -213,8 +220,16 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
         Ok(pipe) => pipe,
         Err(error) => fail_closed("pipe-failed", &error.to_string()),
     };
+    // Channel for the holder to hand back the listening socket it creates inside
+    // the network namespace (an fd can only travel over `SCM_RIGHTS`, so this is
+    // a socketpair rather than a pipe).
+    let relay = match SocketPair::new() {
+        Ok(pair) => pair,
+        Err(error) => fail_closed("pipe-failed", &error.to_string()),
+    };
     let ready_write_fd = ready.write.as_raw_fd();
     let go_read_fd = go.read.as_raw_fd();
+    let relay_holder_fd = relay.holder.as_raw_fd();
 
     // SAFETY: a single `fork` from a single-threaded process. The holder becomes
     // its own process; it and the parent coordinate only through the pipes.
@@ -225,7 +240,13 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
     if child_pid == 0 {
         // Holder. Never returns. (`invocation` and `fs_backend` are moved in only
         // on this diverging path, so the parent below still owns them.)
-        run_holder(invocation, fs_backend, ready_write_fd, go_read_fd);
+        run_holder(
+            invocation,
+            fs_backend,
+            ready_write_fd,
+            go_read_fd,
+            relay_holder_fd,
+        );
     }
 
     // --- Parent -----------------------------------------------------------
@@ -233,28 +254,27 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
     // remaining ones (EOF semantics if it dies).
     drop(ready.write);
     drop(go.read);
+    drop(relay.holder);
     let ready_read = ready.read;
     let go_write = go.write;
+    let relay_parent = relay.parent;
 
     // Wait for the holder to report it created the namespaces (a non-OK byte or
     // EOF means it couldn't).
     match read_one_byte(ready_read.as_raw_fd()) {
         Ok(HOLDER_OK) => {}
-        _ => {
-            let _ = wait_pid(child_pid);
-            fail_closed(
-                "userns-failed",
-                "the remote host refused to create a user+network namespace \
-                 (unprivileged user namespaces may be disabled)",
-            );
-        }
+        _ => abort_holder(
+            child_pid,
+            "userns-failed",
+            "the remote host refused to create a user+network namespace \
+             (unprivileged user namespaces may be disabled)",
+        ),
     }
 
     // Map the holder's uid/gid to our real ids so worktree files (owned by us)
     // stay writable and the command doesn't run as `nobody`.
     if let Err(error) = write_id_maps(child_pid) {
-        let _ = wait_pid(child_pid);
-        fail_closed("uidmap-failed", &format!("{error:#}"));
+        abort_holder(child_pid, "uidmap-failed", &format!("{error:#}"));
     }
 
     // Stand up the egress proxy (host loopback) now — after the fork, so its
@@ -263,10 +283,7 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
     let proxy = if network_on {
         match start_egress_proxy(&invocation.network) {
             Ok(proxy) => Some(proxy),
-            Err(error) => {
-                let _ = wait_pid(child_pid);
-                fail_closed("proxy-failed", &format!("{error:#}"));
-            }
+            Err(error) => abort_holder(child_pid, "proxy-failed", &format!("{error:#}")),
         }
     } else {
         None
@@ -280,10 +297,7 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
             .transpose()
         {
             Ok(child) => child,
-            Err(error) => {
-                let _ = wait_pid(child_pid);
-                fail_closed("slirp-failed", &format!("{error:#}"));
-            }
+            Err(error) => abort_holder(child_pid, "slirp-failed", &format!("{error:#}")),
         }
     } else {
         None
@@ -291,10 +305,52 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
 
     // Release the holder, handing it the proxy port (0 = no proxy).
     if let Err(error) = write_all_bytes(go_write.as_raw_fd(), &proxy_port.to_le_bytes()) {
-        let _ = wait_pid(child_pid);
-        fail_closed("handshake-failed", &error.to_string());
+        abort_holder(child_pid, "handshake-failed", &error.to_string());
+    }
+
+    // Take over the listening socket the holder created inside the network
+    // namespace, start splicing it to the proxy, and only then let the command
+    // run.
+    if network_on {
+        match receive_relay_listener(relay_parent.as_raw_fd()) {
+            Ok(listener) => {
+                if let Err(error) = spawn_egress_relay(listener, proxy_port) {
+                    abort_holder(
+                        child_pid,
+                        "relay-failed",
+                        &format!("starting the egress relay: {error}"),
+                    );
+                }
+                // slirp has now done its one remaining job: configuring the
+                // namespace (bringing its loopback up) so the listener above
+                // could be bound. Stop it before the command starts. Even with
+                // `--disable-host-loopback` its NAT can still reach any address
+                // the *host itself* owns — a socket bound to `127.0.0.1` is
+                // free to connect to the host's own LAN address, which is how
+                // `192.168.x.x:22` answered from inside the sandbox. With slirp
+                // gone the namespace keeps nothing but its own loopback, so the
+                // relayed proxy is the only endpoint that exists.
+                if let Some(slirp) = slirp_child.as_mut() {
+                    let _ = slirp.kill();
+                    let _ = slirp.wait();
+                }
+                slirp_child = None;
+                // Release the holder only now, so the command can never observe
+                // an outbound path that is about to be taken away.
+                if let Err(error) = write_all_bytes(go_write.as_raw_fd(), &[HOLDER_OK]) {
+                    abort_holder(child_pid, "handshake-failed", &error.to_string());
+                }
+            }
+            // The holder reaches this point unless it failed closed on its own,
+            // in which case it has already printed its reason and will exit
+            // 126: surface that rather than inventing a second one.
+            Err(error) => {
+                log::warn!("[remote-sandbox] the holder sent no egress listener: {error:#}")
+            }
+        }
     }
     drop(go_write);
+    drop(relay_parent);
 
     let status = wait_pid(child_pid);
 
@@ -304,11 +360,29 @@ fn run_helper(invocation: Stage1Invocation) -> ! {
         let _ = slirp.wait();
     }
     drop(proxy);
+    // The holder created its scratch directories under its own pid and then
+    // `exec`ed the command, so we are the one left to remove them — on every
+    // path, including the failing ones below.
+    remove_command_temp_dirs(child_pid);
 
     match status {
         Ok(code) => std::process::exit(code),
         Err(_) => fail_closed("wait-failed", "failed to wait for the sandboxed command"),
     }
+}
+
+/// Reap the holder, remove anything it left under `/tmp`, and fail closed.
+/// Every post-`fork` parent failure goes through here so no path can leak the
+/// per-command scratch directories. Never returns.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the remote sandbox helper is a standalone process, not the GPUI app; \
+              blocking on the holder is correct here"
+)]
+fn abort_holder(child_pid: libc::pid_t, code: &str, detail: &str) -> ! {
+    let _ = wait_pid(child_pid);
+    remove_command_temp_dirs(child_pid);
+    fail_closed(code, detail)
 }
 
 const HOLDER_OK: u8 = 1;
@@ -322,8 +396,15 @@ fn run_holder(
     fs_backend: FsBackend,
     ready_write_fd: RawFd,
     go_read_fd: RawFd,
+    relay_socket_fd: RawFd,
 ) -> ! {
-    match run_holder_inner(invocation, fs_backend, ready_write_fd, go_read_fd) {
+    match run_holder_inner(
+        invocation,
+        fs_backend,
+        ready_write_fd,
+        go_read_fd,
+        relay_socket_fd,
+    ) {
         Ok(never) => match never {},
         Err((code, error)) => fail_closed(code, &format!("{error:#}")),
     }
@@ -339,6 +420,7 @@ fn run_holder_inner(
     fs_backend: FsBackend,
     ready_write_fd: RawFd,
     go_read_fd: RawFd,
+    relay_socket_fd: RawFd,
 ) -> std::result::Result<std::convert::Infallible, (&'static str, anyhow::Error)> {
     // Create the user + network namespaces (unprivileged NEWNET is only allowed
     // together with NEWUSER). As the creator we hold every capability inside the
@@ -369,6 +451,34 @@ fn run_holder_inner(
     })?;
     let proxy_port = u16::from_le_bytes(port_bytes);
 
+    // Publish the proxy *inside* the namespace. slirp has no host-loopback
+    // forwarding and no working NAT, so nothing here can reach the host on its
+    // own; the parent (which is outside) accepts on this socket and splices to
+    // the proxy. Created before the FS jail and the seccomp filter, both of
+    // which the command must not be able to work around.
+    let relay_port = if proxy_port != 0 {
+        let port = publish_relay_listener(relay_socket_fd).map_err(|e| ("relay-failed", e))?;
+        // Then wait for the parent to finish taking the namespace's network
+        // apart again (see the `slirp_child.kill()` there): until that byte
+        // arrives, slirp is still running and its NAT can still reach addresses
+        // the host owns.
+        let mut released = [0u8; 1];
+        read_exact_bytes(go_read_fd, &mut released).map_err(|error| {
+            (
+                "handshake-failed",
+                anyhow!("parent aborted before the network was final: {error}"),
+            )
+        })?;
+        Some(port)
+    } else {
+        None
+    };
+
+    // Pin every protected inode up front, for both backends, failing closed if
+    // one exists but cannot be pinned (see `pin_protected_paths`).
+    let protected_pins = pin_protected_paths(&invocation.protected_paths)
+        .map_err(|e| ("protected-pin-failed", e))?;
+
     // Apply the filesystem backend. Both pin inodes by fd and fail closed. Each
     // yields the directory the command's `TMPDIR` should point at: a private
     // per-command dir under Landlock (no mount to isolate `/tmp`), or the
@@ -379,7 +489,7 @@ fn run_holder_inner(
             apply_landlock(
                 abi,
                 &invocation.writable_paths,
-                &invocation.protected_paths,
+                &protected_pins,
                 invocation.allow_fs_write,
                 &private_tmp,
             )
@@ -389,7 +499,7 @@ fn run_holder_inner(
         FsBackend::MountJail => {
             apply_mount_jail(
                 &invocation.writable_paths,
-                &invocation.protected_paths,
+                &protected_pins,
                 invocation.allow_fs_write,
             )
             .map_err(|e| ("mount-failed", e))?;
@@ -403,9 +513,10 @@ fn run_holder_inner(
     for key in ["TMPDIR", "TMP", "TEMP"] {
         unsafe { std::env::set_var(key, &tmpdir) };
     }
-    // Point the command's proxy env at slirp's host-loopback gateway.
-    if proxy_port != 0 {
-        let url = format!("http://{SLIRP_GATEWAY}:{proxy_port}");
+    // Point the command's proxy env at the in-namespace relay listener (the
+    // sandbox's own loopback, not the host's).
+    if let Some(relay_port) = relay_port {
+        let url = format!("http://127.0.0.1:{relay_port}");
         for key in [
             "HTTP_PROXY",
             "http_proxy",
@@ -486,6 +597,180 @@ impl Pipe {
             })
         }
     }
+}
+
+/// A `socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC)`, the only kind of
+/// channel an fd can travel over. CLOEXEC for the same reason as [`Pipe`]: both
+/// ends are used before the holder `exec`s the untrusted command.
+struct SocketPair {
+    parent: OwnedFd,
+    holder: OwnedFd,
+}
+
+impl SocketPair {
+    fn new() -> std::io::Result<Self> {
+        let mut fds = [0 as RawFd; 2];
+        // SAFETY: `fds` is a valid 2-element array.
+        let ret = unsafe {
+            libc::socketpair(
+                libc::AF_UNIX,
+                libc::SOCK_STREAM | libc::SOCK_CLOEXEC,
+                0,
+                fds.as_mut_ptr(),
+            )
+        };
+        if ret != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: both fds are freshly created and owned by us.
+        unsafe {
+            Ok(Self {
+                parent: OwnedFd::from_raw_fd(fds[0]),
+                holder: OwnedFd::from_raw_fd(fds[1]),
+            })
+        }
+    }
+}
+
+/// Bind the sandbox's egress entry point on the namespace's own loopback and
+/// hand the listening socket to the parent, which is the only participant that
+/// can still reach the host. Returns the port the command's `HTTP(S)_PROXY`
+/// must name.
+///
+/// Binding here — inside the namespace, before any restriction is applied — is
+/// what makes the tighter slirp configuration possible: the parent cannot
+/// create a socket in a namespace it is not in, and joining one would mean
+/// entering the holder's user namespace and losing the ability to come back
+/// out.
+fn publish_relay_listener(socket_fd: RawFd) -> Result<u16> {
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .context("binding the in-sandbox egress listener")?;
+    let port = listener
+        .local_addr()
+        .context("reading the in-sandbox egress listener address")?
+        .port();
+    send_relay_listener(socket_fd, listener.as_raw_fd(), port)?;
+    // The parent's copy is what serves the sandbox from now on; ours would only
+    // be one more descriptor to keep away from the command.
+    drop(listener);
+    Ok(port)
+}
+
+/// Send the listening socket (plus its port as the payload) over `SCM_RIGHTS`.
+fn send_relay_listener(socket_fd: RawFd, listener_fd: RawFd, port: u16) -> Result<()> {
+    use nix::sys::socket::{ControlMessage, MsgFlags, sendmsg};
+    let payload = port.to_le_bytes();
+    let iov = [std::io::IoSlice::new(&payload)];
+    let fds = [listener_fd];
+    let control = [ControlMessage::ScmRights(&fds)];
+    sendmsg::<()>(socket_fd, &iov, &control, MsgFlags::MSG_NOSIGNAL, None)
+        .map_err(std::io::Error::from)
+        .context("handing the in-sandbox egress listener to the helper parent")?;
+    Ok(())
+}
+
+/// Receive the listening socket the holder created inside the namespace. It
+/// arrives with `O_CLOEXEC` (`MSG_CMSG_CLOEXEC`) so it cannot leak into any
+/// process we spawn later.
+fn receive_relay_listener(socket_fd: RawFd) -> Result<OwnedFd> {
+    use nix::sys::socket::{ControlMessageOwned, MsgFlags, recvmsg};
+    let mut payload = [0u8; 2];
+    let mut iov = [std::io::IoSliceMut::new(&mut payload)];
+    let mut control = nix::cmsg_space!([RawFd; 1]);
+    let message = recvmsg::<()>(
+        socket_fd,
+        &mut iov,
+        Some(&mut control),
+        MsgFlags::MSG_CMSG_CLOEXEC,
+    )
+    .map_err(std::io::Error::from)
+    .context("receiving the in-sandbox egress listener")?;
+    if message.flags.contains(MsgFlags::MSG_CTRUNC) {
+        bail!("the in-sandbox egress listener was truncated in transit");
+    }
+
+    let mut received = Vec::new();
+    for control_message in message.cmsgs().map_err(std::io::Error::from)? {
+        if let ControlMessageOwned::ScmRights(raw_fds) = control_message {
+            for raw in raw_fds {
+                // SAFETY: the kernel installed each `SCM_RIGHTS` descriptor as a
+                // fresh, open fd in our table for this message, so it is valid
+                // and aliases nothing we already hold; `nix` does not take
+                // ownership, so wrapping each exactly once makes us its owner.
+                received.push(unsafe { OwnedFd::from_raw_fd(raw) });
+            }
+        }
+    }
+    // Extra descriptors (only a broken holder would send any) are closed by
+    // dropping the rest of the vector.
+    let listener = received.into_iter().next();
+    listener.context("the holder sent no in-sandbox egress listener")
+}
+
+/// Accept on the sandbox-side listener and splice each connection to the egress
+/// proxy on the host's loopback. This is the whole of the sandbox's outbound
+/// path: it can reach the proxy's allowlist decision and nothing else.
+fn spawn_egress_relay(listener: OwnedFd, proxy_port: u16) -> std::io::Result<()> {
+    let listener = std::net::TcpListener::from(listener);
+    std::thread::Builder::new()
+        .name("zed-remote-sandbox-egress".into())
+        .spawn(move || {
+            loop {
+                let inbound = match listener.accept() {
+                    Ok((inbound, _peer)) => inbound,
+                    Err(error) => {
+                        log::warn!("[remote-sandbox] egress relay stopped accepting: {error}");
+                        break;
+                    }
+                };
+                if let Err(error) = std::thread::Builder::new()
+                    .name("zed-remote-sandbox-egress-conn".into())
+                    .spawn(move || relay_connection(inbound, proxy_port))
+                {
+                    log::warn!("[remote-sandbox] could not relay a connection: {error}");
+                }
+            }
+        })?;
+    Ok(())
+}
+
+/// Pump one accepted sandbox connection to and from the proxy until both
+/// directions end.
+fn relay_connection(inbound: std::net::TcpStream, proxy_port: u16) {
+    use std::net::{Ipv4Addr, Shutdown, TcpStream};
+
+    let outbound = match TcpStream::connect((Ipv4Addr::LOCALHOST, proxy_port)) {
+        Ok(outbound) => outbound,
+        Err(error) => {
+            log::warn!("[remote-sandbox] egress relay could not reach the proxy: {error}");
+            return;
+        }
+    };
+    let (mut inbound_reader, mut outbound_writer) =
+        match (inbound.try_clone(), outbound.try_clone()) {
+            (Ok(inbound_reader), Ok(outbound_writer)) => (inbound_reader, outbound_writer),
+            _ => {
+                log::warn!("[remote-sandbox] egress relay could not duplicate a relayed socket");
+                return;
+            }
+        };
+
+    let to_proxy = std::thread::spawn(move || {
+        // A relayed connection normally ends with a reset or a half-close from
+        // one side, so a copy error here is expected traffic, not a fault.
+        if let Err(error) = std::io::copy(&mut inbound_reader, &mut outbound_writer) {
+            log::debug!("[remote-sandbox] egress relay request stream ended: {error}");
+        }
+        let _ = outbound_writer.shutdown(Shutdown::Write);
+    });
+
+    let mut outbound_reader = outbound;
+    let mut inbound_writer = inbound;
+    if let Err(error) = std::io::copy(&mut outbound_reader, &mut inbound_writer) {
+        log::debug!("[remote-sandbox] egress relay response stream ended: {error}");
+    }
+    let _ = inbound_writer.shutdown(Shutdown::Write);
+    let _ = to_proxy.join();
 }
 
 fn read_one_byte(fd: RawFd) -> std::io::Result<u8> {
@@ -593,9 +878,15 @@ fn start_slirp(slirp_path: &Path, holder_pid: libc::pid_t) -> Result<std::proces
         // so slirp's own resolver is unnecessary and left off.
         .arg("--disable-dns")
         // Bind slirp's outbound socket to loopback: external NAT then fails
-        // ("Network is unreachable"), leaving only the host-loopback forwarding
-        // to the proxy reachable.
+        // ("Network is unreachable").
         .arg("--outbound-addr=127.0.0.1")
+        // ...and take away the one destination that survived that: libslirp's
+        // built-in `10.0.2.2` alias forwards to the *host's* `127.0.0.1`, which
+        // reaches every local service (sshd, a local model server, a database)
+        // and — because a socket bound to 127.0.0.1 may still reach any address
+        // the host itself owns — the host's own LAN address too. Egress now
+        // exists only through the relayed listener in `publish_relay_listener`.
+        .arg("--disable-host-loopback")
         .arg("--ready-fd=3")
         .arg(holder_pid.to_string())
         .arg("tap0")
@@ -836,10 +1127,47 @@ fn pin_path(path: &Path) -> Result<CanonicalPathBuf> {
     CanonicalPathBuf::resolve(path).with_context(|| format!("pinning {}", path.display()))
 }
 
+/// Pin every protected path, **failing closed** when one exists but cannot be
+/// pinned.
+///
+/// A protected path that isn't there at all is skipped: there is no inode to
+/// protect, so nothing is weakened by its absence. Every other failure aborts
+/// the command, because a dropped protected pin is not a missing restriction —
+/// it is a *granted* one. Under Landlock the protected pins are what tells
+/// `grant_writable_subtree` to carve the worktree root up child by child;
+/// with the pin silently discarded the root looked free of protected
+/// descendants and received one recursive write grant, which made
+/// `.git/PWNED` creatable (a `chmod 0300 .git` was enough to trigger it before
+/// `O_PATH` was restored). Under the mount jail a dropped pin simply skips the
+/// read-only re-bind.
+fn pin_protected_paths(paths: &[PathBuf]) -> Result<Vec<CanonicalPathBuf>> {
+    let mut pins = Vec::with_capacity(paths.len());
+    for path in paths {
+        match pin_path(path) {
+            Ok(pin) => pins.push(pin),
+            Err(error) => {
+                // Only a genuine "it isn't there" is a skip. Anything else —
+                // notably an unsearchable parent, which reports
+                // `PermissionDenied` here too — means we cannot tell what is at
+                // that path, so it must not be treated as absent.
+                let missing = std::fs::symlink_metadata(path)
+                    .err()
+                    .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+                if missing {
+                    continue;
+                }
+                let reason = error.root_cause().to_string();
+                bail!("{}: {reason}", path.display());
+            }
+        }
+    }
+    Ok(pins)
+}
+
 fn apply_landlock(
     abi: i32,
     writable_paths: &[PathBuf],
-    protected_paths: &[PathBuf],
+    protected_pins: &[CanonicalPathBuf],
     allow_fs_write: bool,
     private_tmp: &Path,
 ) -> Result<()> {
@@ -871,12 +1199,6 @@ fn apply_landlock(
     // SAFETY: freshly returned by the kernel, owned solely by us.
     let ruleset = unsafe { OwnedFd::from_raw_fd(ruleset_fd) };
 
-    // Pin protected inodes so writable subtrees can be carved around them.
-    let protected_pins: Vec<CanonicalPathBuf> = protected_paths
-        .iter()
-        .filter_map(|path| pin_path(path).ok())
-        .collect();
-
     if allow_fs_write {
         // Unrestricted writes: allow the whole root. Landlock is additive-allow,
         // so protected paths under `/` cannot be re-restricted here (mount-jail
@@ -885,7 +1207,7 @@ fn apply_landlock(
             .context("allowing write on / for allow_fs_write")?;
     } else {
         for writable in writable_paths {
-            grant_writable_subtree(ruleset.as_raw_fd(), writable, &protected_pins, handled, abi)?;
+            grant_writable_subtree(ruleset.as_raw_fd(), writable, protected_pins, handled, abi)?;
         }
     }
 
@@ -1001,13 +1323,12 @@ fn grant_writable_subtree(
 /// rule with `EINVAL`. `handled` is the ruleset's handled mask and `abi` the
 /// detected Landlock ABI (both bound the accesses that can be requested).
 fn add_path_rule(ruleset_fd: RawFd, path: &Path, handled: u64, abi: i32) -> Result<()> {
-    use std::os::unix::fs::OpenOptionsExt as _;
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_PATH | libc::O_CLOEXEC)
-        .open(path)
+    // `open_o_path` rather than `OpenOptions::custom_flags`: std masks custom
+    // flags with `!O_ACCMODE`, and musl's `O_ACCMODE` contains `O_PATH` — see
+    // the note on `open_o_path`. Without it this became a real read-open, which
+    // blocks forever on a FIFO sitting in the worktree root this enumerates.
+    let fd = crate::util::open_o_path(path, crate::util::FollowSymlinks::Yes)
         .with_context(|| format!("opening {}", path.display()))?;
-    let fd = OwnedFd::from(file);
     let is_dir = fd_is_dir(fd.as_raw_fd())
         .with_context(|| format!("determining inode type of {}", path.display()))?;
     let access = landlock_entry_write_access(is_dir, abi, handled);
@@ -1036,13 +1357,90 @@ fn add_path_rule(ruleset_fd: RawFd, path: &Path, handled: u64, abi: i32) -> Resu
     Ok(())
 }
 
+/// Basename prefixes of the two per-command scratch directories the backends
+/// create under `/tmp`, each suffixed with the holder's pid: the Landlock
+/// backend's private `TMPDIR`, and the mount jail's `pivot_root` target (which
+/// survives as an empty directory on the host once the holder's mount namespace
+/// is gone).
+const TEMP_DIR_PREFIXES: [&str; 2] = ["zed-remote-sandbox-", ".zed-remote-jail-"];
+
+/// The scratch directories a holder with `pid` may have created.
+fn command_temp_dirs(pid: libc::pid_t) -> [PathBuf; 2] {
+    TEMP_DIR_PREFIXES.map(|prefix| PathBuf::from(format!("/tmp/{prefix}{pid}")))
+}
+
+/// Remove one scratch directory, but only when it really is a directory we own.
+///
+/// `/tmp` is world-writable (sticky), so another local user can plant a symlink
+/// or a directory at a predictable name; checking with `symlink_metadata`
+/// (which does not follow) before removing keeps this from ever deleting
+/// something else. `remove_dir_all` itself refuses to traverse a symlink.
+fn remove_owned_temp_dir(dir: &Path) {
+    use std::os::unix::fs::MetadataExt as _;
+    let Ok(metadata) = std::fs::symlink_metadata(dir) else {
+        return;
+    };
+    // SAFETY: `geteuid` takes no arguments and cannot fail.
+    if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() } {
+        return;
+    }
+    if let Err(error) = std::fs::remove_dir_all(dir) {
+        log::warn!(
+            "[remote-sandbox] could not remove scratch dir {}: {error}",
+            dir.display()
+        );
+    }
+}
+
+/// Remove the scratch directories belonging to a finished holder. Called by the
+/// parent, which is the only participant still alive and unrestricted once the
+/// command has exited (the holder `exec`s the command and, under Landlock,
+/// could not delete them afterwards anyway).
+fn remove_command_temp_dirs(pid: libc::pid_t) {
+    for dir in command_temp_dirs(pid) {
+        remove_owned_temp_dir(&dir);
+    }
+}
+
+/// Sweep scratch directories left by earlier helper runs whose process is gone
+/// — one `read_dir` of `/tmp` at startup. Without this, a killed helper (or any
+/// crash between `create_private_tmpdir` and the parent's cleanup) leaks a
+/// directory per command, which matters on the small disks these remotes have.
+/// Best-effort by design: nothing here may fail the command.
+fn sweep_stale_temp_dirs() {
+    let Ok(entries) = std::fs::read_dir("/tmp") else {
+        return;
+    };
+    let self_pid = std::process::id();
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(suffix) = TEMP_DIR_PREFIXES
+            .iter()
+            .find_map(|prefix| name.strip_prefix(prefix))
+        else {
+            continue;
+        };
+        let Ok(pid) = suffix.parse::<u32>() else {
+            continue;
+        };
+        // Leave anything a live process might still be using, including our own
+        // (a second helper can share our pid only after we are gone).
+        if pid == self_pid || Path::new(&format!("/proc/{pid}")).exists() {
+            continue;
+        }
+        remove_owned_temp_dir(&entry.path());
+    }
+}
+
 /// Create a private, owner-only per-command temp directory (for the Landlock
 /// backend's `TMPDIR`; mount-jail uses its own private tmpfs at `/tmp` instead).
 fn create_private_tmpdir() -> Result<PathBuf> {
     use std::os::unix::fs::DirBuilderExt as _;
     let dir = PathBuf::from(format!("/tmp/zed-remote-sandbox-{}", std::process::id()));
     // Clear a stale dir left by a recycled pid; only succeeds for one we own.
-    let _ = std::fs::remove_dir_all(&dir);
+    remove_owned_temp_dir(&dir);
     std::fs::DirBuilder::new()
         .mode(0o700)
         .create(&dir)
@@ -1072,7 +1470,7 @@ fn set_no_new_privs() -> Result<()> {
 /// are inside our own user namespace.
 fn apply_mount_jail(
     writable_paths: &[PathBuf],
-    protected_paths: &[PathBuf],
+    protected_pins: &[CanonicalPathBuf],
     allow_fs_write: bool,
 ) -> Result<()> {
     // Pin the writable inodes before mounting so we can verify the bind wasn't
@@ -1100,7 +1498,7 @@ fn apply_mount_jail(
     .context("making / private")?;
 
     let new_root = PathBuf::from(format!("/tmp/.zed-remote-jail-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&new_root);
+    remove_owned_temp_dir(&new_root);
     std::fs::create_dir_all(&new_root)
         .with_context(|| format!("creating {}", new_root.display()))?;
 
@@ -1157,10 +1555,7 @@ fn apply_mount_jail(
     }
 
     // Re-bind protected paths read-only over the (now writable) worktree.
-    for protected in protected_paths {
-        let Ok(protected_pin) = pin_path(protected) else {
-            continue;
-        };
+    for protected_pin in protected_pins {
         let target = join_absolute(&new_root, protected_pin.path());
         if !target.exists() {
             continue;
@@ -1391,6 +1786,136 @@ mod tests {
             program: program.unwrap(),
             args: trailing,
         }
+    }
+
+    /// Create a Landlock ruleset for a test. Creating one only allocates an fd;
+    /// nothing is enforced until `landlock_restrict_self`, which no test calls
+    /// (it is irreversible and would restrict the whole test process).
+    fn create_test_ruleset(abi: i32) -> OwnedFd {
+        let attr = LandlockRulesetAttr {
+            handled_access_fs: landlock_handled_write_access(abi),
+        };
+        // SAFETY: `attr` is a valid, correctly-sized ruleset attr; flags 0.
+        let fd = unsafe {
+            libc::syscall(
+                libc::SYS_landlock_create_ruleset,
+                &attr as *const LandlockRulesetAttr,
+                std::mem::size_of::<LandlockRulesetAttr>(),
+                0u32,
+            )
+        };
+        assert!(fd >= 0, "landlock_create_ruleset failed in a test");
+        // SAFETY: freshly returned by the kernel and owned solely by us.
+        unsafe { OwnedFd::from_raw_fd(fd as RawFd) }
+    }
+
+    /// Pin every direct child of `root` the way the enumeration does, for
+    /// kernels with no Landlock to build a ruleset on.
+    fn pin_every_child(root: &Path) -> Result<()> {
+        for entry in std::fs::read_dir(root)? {
+            pin_path(&entry?.path())?;
+        }
+        Ok(())
+    }
+
+    /// Regression: the writable-root enumeration opens every direct child, and
+    /// an ordinary `open` of a FIFO with no writer blocks forever — so a single
+    /// named pipe in a worktree root wedged the whole sandbox setup with no
+    /// error, no exit and no timeout (it isn't even fail-closed; nothing ever
+    /// happens). `O_PATH` never waits for a partner.
+    #[test]
+    fn writable_root_enumeration_does_not_block_on_a_fifo() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let git = root.path().join(".git");
+        std::fs::create_dir(&git).expect("create .git");
+        std::fs::write(root.path().join("file.txt"), "x").expect("write file.txt");
+        std::fs::create_dir(root.path().join("sub")).expect("create sub");
+        nix::unistd::mkfifo(
+            &root.path().join("pipe"),
+            nix::sys::stat::Mode::from_bits_truncate(0o600),
+        )
+        .expect("mkfifo");
+
+        let protected = pin_protected_paths(&[git]).expect("pinning .git");
+        let root_path = root.path().to_path_buf();
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let abi = landlock_abi();
+            let outcome = if abi >= 1 {
+                let ruleset = create_test_ruleset(abi);
+                grant_writable_subtree(
+                    ruleset.as_raw_fd(),
+                    &root_path,
+                    &protected,
+                    landlock_handled_write_access(abi),
+                    abi,
+                )
+            } else {
+                pin_every_child(&root_path)
+            };
+            let _ = tx.send(outcome.is_ok());
+        });
+        let granted = rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("granting a writable root containing a FIFO must not block");
+        assert!(granted, "a FIFO in the root must not fail the grant either");
+    }
+
+    /// A protected path that cannot be pinned must abort the command, never be
+    /// dropped: under Landlock a missing protected pin makes the worktree root
+    /// look free of protected descendants, and it is then granted write
+    /// *recursively* — which is how `.git/PWNED` became creatable.
+    #[test]
+    fn an_unpinnable_protected_path_fails_closed() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let root = tempfile::tempdir().expect("tempdir");
+
+        // Absent: nothing to protect, so nothing is weakened by skipping it.
+        let absent = root.path().join("nowhere/.git");
+        assert!(
+            pin_protected_paths(&[absent])
+                .expect("an absent protected path is skipped")
+                .is_empty()
+        );
+
+        // Present but unreachable (its parent cannot be searched): we cannot
+        // tell what is there, so the command must not run.
+        let closed = root.path().join("closed");
+        std::fs::create_dir(&closed).expect("create closed");
+        std::fs::create_dir(closed.join(".git")).expect("create .git");
+        std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o000))
+            .expect("chmod 0000");
+        let result = pin_protected_paths(&[closed.join(".git")]);
+        // Restore the mode first so the tempdir can always clean itself up.
+        std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o700))
+            .expect("restore mode");
+        assert!(
+            result.is_err(),
+            "an unpinnable protected path must fail closed"
+        );
+    }
+
+    /// `O_PATH` needs no read permission, so the common case behind the
+    /// fail-open above — a `.git` at mode 0300 — now pins normally and is
+    /// protected the usual way rather than aborting the command.
+    #[test]
+    fn an_unreadable_protected_directory_still_pins() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let root = tempfile::tempdir().expect("tempdir");
+        let git = root.path().join(".git");
+        std::fs::create_dir(&git).expect("create .git");
+        std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o300)).expect("chmod 0300");
+
+        let pins = pin_protected_paths(std::slice::from_ref(&git));
+        // Restore the mode before asserting, so the temp dir can clean itself up
+        // (its recursive delete has to read this directory) either way.
+        std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o700)).expect("restore");
+        assert_eq!(
+            pins.expect("a 0300 directory must still pin").len(),
+            1,
+            "the protected path must be pinned, not skipped"
+        );
     }
 
     #[test]

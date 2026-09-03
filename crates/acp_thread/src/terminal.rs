@@ -508,7 +508,12 @@ fn remote_sandbox_failure_message_for_code(code: &str) -> String {
         "userns-failed" => "ユーザー名前空間を作成できません (無効化されている可能性があります)。",
         "no-fs-backend" => "ファイル隔離の方式 (Landlock / mount) がどちらも使えません。",
         "landlock-failed" | "mount-failed" => "ファイル書込制限を適用できませんでした。",
-        "proxy-failed" | "slirp-failed" => "ネットワーク統制を確立できませんでした。",
+        "protected-pin-failed" => {
+            "保護対象のパス (`.git` / `~/.ssh` など) を確認できませんでした (権限などを確認してください)。"
+        }
+        "proxy-failed" | "slirp-failed" | "relay-failed" => {
+            "ネットワーク統制を確立できませんでした。"
+        }
         "seccomp-failed" => "システムコール制限を適用できませんでした。",
         "exec-failed" | "chdir-failed" => "サンドボックス内でコマンドを起動できませんでした。",
         "bad-args" => "サンドボックスの起動引数が不正です (内部エラー)。",
@@ -840,8 +845,10 @@ mod remote_sandbox_failure_tests {
         "no-fs-backend",
         "landlock-failed",
         "mount-failed",
+        "protected-pin-failed",
         "proxy-failed",
         "slirp-failed",
+        "relay-failed",
         "seccomp-failed",
         "exec-failed",
         "chdir-failed",
@@ -886,6 +893,21 @@ mod remote_sandbox_failure_tests {
                 "zed-remote-sandbox: landlock-failed: x"
             ),
             remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: mount-failed: x"),
+        );
+        // A protected path the helper could not pin is its own reason: the
+        // command never ran *because* `.git`/`~/.ssh` could not be verified,
+        // which is not the same as the write restriction failing to apply.
+        assert_eq!(
+            remote_sandbox_setup_failure_message(
+                Some(126),
+                "zed-remote-sandbox: protected-pin-failed: /home/u/p/.git: Permission denied (os error 13)"
+            ),
+            Some(
+                "リモートホストでサンドボックスを作成できませんでした: \
+                 保護対象のパス (`.git` / `~/.ssh` など) を確認できませんでした \
+                 (権限などを確認してください)。"
+                    .to_string()
+            )
         );
     }
 

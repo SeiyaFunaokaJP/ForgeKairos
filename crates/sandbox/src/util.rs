@@ -12,7 +12,7 @@ mod host_filesystem_location;
 
 pub(crate) use canonical_path::CanonicalPathBuf;
 #[cfg(target_os = "linux")]
-pub(crate) use canonical_path::linux_fd_identity;
+pub(crate) use canonical_path::{FollowSymlinks, linux_fd_identity, open_o_path};
 pub use host_filesystem_location::{
     HostFilesystemLocation, HostFilesystemLocationDisplay, normalize_host_filesystem_locations,
 };
