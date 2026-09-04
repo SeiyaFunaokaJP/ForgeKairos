@@ -182,28 +182,18 @@ pub struct CommandPaletteDelegate {
 
 struct Command {
     name: String,
-    /// Fuzzy-match haystack. For actions that have a Japanese label this is the label followed by
-    /// the English `humanize_action_name` output, so that both spellings find the command
-    /// (DESIGN.md §3). It always starts with `name`, which is what keeps the highlight byte
-    /// offsets produced against it usable for the displayed label.
+    /// Fuzzy-match haystack, see [`localized_action_name_and_search_text`].
     search_text: String,
     action: Box<dyn Action>,
 }
 
 impl Command {
     fn for_action(action: Box<dyn Action>) -> Self {
-        let humanized = humanize_action_name(action.name());
-        match ja_labels::label_for_action(action.name()) {
-            Some(label) => Self {
-                search_text: format!("{label} {humanized}"),
-                name: label.to_string(),
-                action,
-            },
-            None => Self {
-                search_text: humanized.clone(),
-                name: humanized,
-                action,
-            },
+        let (name, search_text) = localized_action_name_and_search_text(action.name());
+        Self {
+            name,
+            search_text,
+            action,
         }
     }
 
@@ -751,12 +741,26 @@ impl PickerDelegate for CommandPaletteDelegate {
 ///
 /// DESIGN.md §3 方式 2: アクション名から表示名を組み立てる箇所は
 /// `humanize_action_name` を直接呼ばずにこちらを使うと日本語ラベルが効く。
-/// **表示専用**。検索候補として使う場合はコマンドパレット自身
-/// ([`Command::for_action`]) のように英語の humanize 名も併記すること。
+/// **表示専用**。fuzzy 検索の候補文字列も要る場合は
+/// [`localized_action_name_and_search_text`] を使うこと。
 pub fn localized_action_name(action_name: &str) -> String {
     match ja_labels::label_for_action(action_name) {
         Some(label) => label.to_string(),
         None => humanize_action_name(action_name),
+    }
+}
+
+/// 表示ラベルと fuzzy 検索用の haystack の組。
+///
+/// haystack は日本語ラベルがあるときだけ「ラベル + 空白 + 英語 `humanize_action_name` 名」に
+/// なり、日英どちらの綴りでもアクションが見つかる (DESIGN.md §3)。必ずラベルで始まるので、
+/// haystack に対して得たマッチ位置のうちラベルの byte 長未満のものだけを残せば、そのまま表示
+/// ラベルのハイライトに使える (英語エイリアス部分に当たったマッチはハイライトされない)。
+pub fn localized_action_name_and_search_text(action_name: &str) -> (String, String) {
+    let humanized = humanize_action_name(action_name);
+    match ja_labels::label_for_action(action_name) {
+        Some(label) => (label.to_string(), format!("{label} {humanized}")),
+        None => (humanized.clone(), humanized),
     }
 }
 

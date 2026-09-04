@@ -8977,10 +8977,7 @@ pub(crate) mod tests {
                     labels.contains(&"`cargo build` コマンドは常に"),
                     "Missing pattern option"
                 );
-                assert!(
-                    labels.contains(&"今回のみ"),
-                    "Missing '今回のみ' option"
-                );
+                assert!(labels.contains(&"今回のみ"), "Missing '今回のみ' option");
             }
         });
     }
@@ -9254,10 +9251,7 @@ pub(crate) mod tests {
                     labels.contains(&"ターミナルは常に"),
                     "Missing 'ターミナルは常に' option"
                 );
-                assert!(
-                    labels.contains(&"今回のみ"),
-                    "Missing '今回のみ' option"
-                );
+                assert!(labels.contains(&"今回のみ"), "Missing '今回のみ' option");
                 // Should NOT contain a pattern option
                 assert!(
                     !labels.iter().any(|l| l.contains("commands")),

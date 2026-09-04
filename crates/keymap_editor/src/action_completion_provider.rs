@@ -8,17 +8,25 @@ use project::{self, CompletionDisplayOptions};
 
 pub struct ActionCompletionProvider {
     action_names: Vec<&'static str>,
-    humanized_names: HashMap<&'static str, SharedString>,
+    /// アクション名 → 補完候補のラベル。日本語ラベルがあるアクションでは
+    /// 「日本語ラベル + 英語 humanize 名」になっており、editor の補完メニューが
+    /// このラベルに対して再フィルターするので日英どちらの綴りでも候補が残る。
+    completion_labels: HashMap<&'static str, SharedString>,
+}
+
+/// クエリとして扱う文字。`is_alphanumeric` なので日本語ラベルの検索にも使える。
+fn is_action_query_char(character: char) -> bool {
+    character.is_alphanumeric() || character == '_' || character == ':'
 }
 
 impl ActionCompletionProvider {
     pub fn new(
         action_names: Vec<&'static str>,
-        humanized_names: HashMap<&'static str, SharedString>,
+        completion_labels: HashMap<&'static str, SharedString>,
     ) -> Self {
         Self {
             action_names,
-            humanized_names,
+            completion_labels,
         }
     }
 }
@@ -36,7 +44,7 @@ impl CompletionProvider for ActionCompletionProvider {
         let mut count_back = 0;
 
         for char in buffer.reversed_chars_at(buffer_position) {
-            if char.is_ascii_alphanumeric() || char == '_' || char == ':' {
+            if is_action_query_char(char) {
                 count_back += 1;
             } else {
                 break;
@@ -59,19 +67,19 @@ impl CompletionProvider for ActionCompletionProvider {
             .iter()
             .enumerate()
             .map(|(ix, &name)| {
-                let humanized = self
-                    .humanized_names
+                let label = self
+                    .completion_labels
                     .get(name)
                     .cloned()
                     .unwrap_or_else(|| name.into());
-                StringMatchCandidate::new(ix, &humanized)
+                StringMatchCandidate::new(ix, &label)
             })
             .collect();
 
         let executor = cx.background_executor().clone();
         let executor_for_fuzzy = executor.clone();
         let action_names = self.action_names.clone();
-        let humanized_names = self.humanized_names.clone();
+        let completion_labels = self.completion_labels.clone();
 
         executor.spawn(async move {
             let matches = fuzzy::match_strings(
@@ -90,14 +98,14 @@ impl CompletionProvider for ActionCompletionProvider {
                 .take(50)
                 .map(|m| {
                     let action_name = action_names[m.candidate_id];
-                    let humanized = humanized_names
+                    let label = completion_labels
                         .get(action_name)
                         .cloned()
                         .unwrap_or_else(|| action_name.into());
 
                     project::Completion {
                         replace_range: replace_range.clone(),
-                        label: language::CodeLabel::plain(humanized.to_string(), None),
+                        label: language::CodeLabel::plain(label.to_string(), None),
                         new_text: action_name.to_string(),
                         documentation: None,
                         source: project::CompletionSource::Custom,
@@ -130,8 +138,6 @@ impl CompletionProvider for ActionCompletionProvider {
         _trigger_in_words: bool,
         _cx: &mut Context<Editor>,
     ) -> bool {
-        text.chars().last().is_some_and(|last_char| {
-            last_char.is_ascii_alphanumeric() || last_char == '_' || last_char == ':'
-        })
+        text.chars().last().is_some_and(is_action_query_char)
     }
 }

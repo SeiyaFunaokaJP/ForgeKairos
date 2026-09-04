@@ -452,13 +452,13 @@ mod linux_tests {
             .expect("mkfifo");
 
         let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn({
-            let fifo = fifo.clone();
-            move || {
-                let pinned = CanonicalPathBuf::resolve(&fifo).is_ok()
-                    && open_o_path(&fifo, FollowSymlinks::No).is_ok();
-                let _ = tx.send(pinned);
-            }
+        std::thread::spawn(move || {
+            let pinned = CanonicalPathBuf::resolve(&fifo).is_ok()
+                && open_o_path(&fifo, FollowSymlinks::No).is_ok();
+            // If this races a `recv_timeout` timeout, `rx` is already dropped and
+            // the test body has already failed via its own `expect` below.
+            tx.send(pinned)
+                .expect("receiver dropped before the FIFO probe finished");
         });
         let pinned = rx
             .recv_timeout(std::time::Duration::from_secs(20))

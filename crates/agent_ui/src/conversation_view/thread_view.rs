@@ -22,6 +22,10 @@ use cloud_api_types::{SubmitAgentThreadFeedbackBody, SubmitAgentThreadFeedbackCo
 use editor::actions::OpenExcerpts;
 use sandbox::{SandboxFsPolicy, SandboxNetPolicy, SandboxPolicy};
 
+use crate::agent_registry_ui::{
+    InstallConsentAction, InstallConsentBanner, PendingInstallConsent, add_consented_hosts,
+    allowlist_write_error, missing_hosts, registry_install_requirement,
+};
 use crate::completion_provider::{AvailableSkill, PromptLocalCommand};
 use crate::message_editor::SharedSessionCapabilities;
 use crate::ui::{
@@ -610,6 +614,13 @@ pub struct ThreadView {
     pub discarded_partial_edits: HashSet<acp::ToolCallId>,
     pub is_loading_contents: bool,
     pub new_server_version_available: Option<SharedString>,
+    /// Set while the "update to v{x}" button is waiting for the user to agree
+    /// to the hosts that update's download needs (F2-5). The allowlist is
+    /// user-editable and the registry can move an agent's distribution host
+    /// between releases, so an update is re-checked rather than riding on the
+    /// consent the original install obtained.
+    update_consent: Option<PendingInstallConsent>,
+    _update_consent_task: Option<Task<()>>,
     pub resumed_without_history: bool,
     pub(crate) permission_selections: HashMap<acp::ToolCallId, PermissionSelection>,
     elicitation_form_states: HashMap<ElicitationEntryId, ElicitationFormState>,
@@ -1025,6 +1036,8 @@ impl ThreadView {
             discarded_partial_edits: HashSet::default(),
             is_loading_contents: false,
             new_server_version_available: None,
+            update_consent: None,
+            _update_consent_task: None,
             permission_selections: HashMap::default(),
             elicitation_form_states: HashMap::default(),
             _cancel_task: None,
@@ -11786,7 +11799,6 @@ impl ThreadView {
     }
 
     fn render_new_version_callout(&self, version: &SharedString, cx: &mut Context<Self>) -> Div {
-        let server_view = self.server_view.clone();
         let has_version = !version.is_empty();
         let title = if has_version {
             "新しいバージョンがあります"
@@ -11798,38 +11810,148 @@ impl ThreadView {
         } else {
             "再接続".to_string()
         };
+        let consent = self.update_consent.as_ref();
 
-        v_flex().w_full().justify_end().child(
-            h_flex()
-                .p_2()
-                .pr_3()
-                .w_full()
-                .gap_1p5()
-                .border_b_1()
-                .border_color(cx.theme().colors().border)
-                .bg(cx.theme().colors().element_background)
-                .child(
-                    h_flex()
-                        .flex_1()
-                        .gap_1p5()
-                        .child(
-                            Icon::new(IconName::Download)
-                                .color(Color::Accent)
-                                .size(IconSize::Small),
-                        )
-                        .child(Label::new(title).size(LabelSize::Small)),
+        v_flex()
+            .w_full()
+            .justify_end()
+            .child(
+                h_flex()
+                    .p_2()
+                    .pr_3()
+                    .w_full()
+                    .gap_1p5()
+                    .when(consent.is_none(), |this| {
+                        this.border_b_1().border_color(cx.theme().colors().border)
+                    })
+                    .bg(cx.theme().colors().element_background)
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .gap_1p5()
+                            .child(
+                                Icon::new(IconName::Download)
+                                    .color(Color::Accent)
+                                    .size(IconSize::Small),
+                            )
+                            .child(Label::new(title).size(LabelSize::Small)),
+                    )
+                    .child(
+                        Button::new("update-button", button_label)
+                            .label_size(LabelSize::Small)
+                            .style(ButtonStyle::Tinted(TintColor::Accent))
+                            // The consent banner right below already owns this
+                            // decision; a second click would only rebuild it.
+                            .disabled(consent.is_some())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.begin_agent_update(window, cx);
+                            })),
+                    ),
+            )
+            .when_some(consent, |this, consent| {
+                this.child(
+                    div()
+                        .p_2()
+                        .w_full()
+                        .border_b_1()
+                        .border_color(cx.theme().colors().border)
+                        .bg(cx.theme().colors().element_background)
+                        .child(InstallConsentBanner::new(
+                            "agent-update",
+                            consent,
+                            InstallConsentAction::Update,
+                            cx.listener(|this, _, window, cx| {
+                                this.confirm_agent_update(window, cx);
+                            }),
+                            // An allowlist write already in flight is left to
+                            // finish rather than being torn out mid
+                            // read-modify-write; dropping the consent is
+                            // enough to keep it from reconnecting.
+                            cx.listener(|this, _, _, cx| {
+                                this.update_consent = None;
+                                cx.notify();
+                            }),
+                        )),
                 )
-                .child(
-                    Button::new("update-button", button_label)
-                        .label_size(LabelSize::Small)
-                        .style(ButtonStyle::Tinted(TintColor::Accent))
-                        .on_click(move |_, window, cx| {
-                            server_view
-                                .update(cx, |view, cx| view.reset(window, cx))
-                                .ok();
-                        }),
-                ),
-        )
+            })
+    }
+
+    /// Handles the update button on the "new version" callout. The registry
+    /// can move an agent's distribution host between releases, and the user
+    /// can edit `network_allowlist.json` at any time, so the hosts this
+    /// download needs are re-derived from the manifest and re-checked against
+    /// the running policy instead of riding on the install's consent (F2-5).
+    ///
+    /// The prompt expands inline rather than sending the user to the registry
+    /// tab: the decision belongs to the thread they are already looking at,
+    /// and the registry page has no update affordance to land on.
+    fn begin_agent_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let requirement = registry_install_requirement(&self.agent_id, cx);
+        let missing = requirement.as_ref().map_or_else(Vec::new, |requirement| {
+            missing_hosts(&requirement.hosts, cx)
+        });
+
+        match requirement {
+            Some(requirement) if !missing.is_empty() => {
+                self.update_consent = Some(PendingInstallConsent::new(requirement));
+                // A write left over from a confirm the user then cancelled
+                // would reconnect the moment it lands, jumping over the
+                // consent that is being asked for again here. The write it
+                // cancels is an `atomic_write`, so the file is never left
+                // half-rewritten.
+                self._update_consent_task = None;
+                cx.notify();
+            }
+            // Every host is already allowed, or the registry cannot say -
+            // it has not been fetched, or this agent never came from it.
+            // Either way the download still goes through the egress gate, so
+            // a host that is not allowed surfaces as the existing
+            // `EgressDenied` failure rather than being let through here.
+            _ => self.reset_agent_server(window, cx),
+        }
+    }
+
+    /// Adds the hosts the pending update consent still needs, then reconnects
+    /// so the new version is downloaded. A failed allowlist write leaves the
+    /// banner up with the error instead of reconnecting anyway.
+    fn confirm_agent_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(consent) = self.update_consent.as_ref() else {
+            return;
+        };
+        let hosts: Vec<String> = consent.hosts.iter().map(SharedString::to_string).collect();
+        if hosts.is_empty() {
+            self.reset_agent_server(window, cx);
+            return;
+        }
+
+        let write_hosts = add_consented_hosts(hosts, cx);
+        self._update_consent_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = write_hosts.await;
+            this.update_in(cx, |this, window, cx| {
+                // The banner may have been cancelled while the write was in
+                // flight; only reconnect if the consent is still pending.
+                if this.update_consent.is_none() {
+                    return;
+                }
+                match result {
+                    Ok(()) => this.reset_agent_server(window, cx),
+                    Err(error) => {
+                        if let Some(consent) = this.update_consent.as_mut() {
+                            consent.error = Some(allowlist_write_error(&error));
+                        }
+                        cx.notify();
+                    }
+                }
+            })
+            .log_err();
+        }));
+    }
+
+    fn reset_agent_server(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.update_consent = None;
+        self.server_view
+            .update(cx, |view, cx| view.reset(window, cx))
+            .log_err();
     }
 
     fn render_token_limit_callout(&self, cx: &mut Context<Self>) -> Option<Callout> {

@@ -196,7 +196,6 @@ pub const LEGACY_DEFAULT_THREAD_TITLE: &str = "New Agent Thread";
 pub fn is_default_thread_title(title: &str) -> bool {
     title == DEFAULT_THREAD_TITLE || title == LEGACY_DEFAULT_THREAD_TITLE
 }
-const PARALLEL_AGENT_LAYOUT_BACKFILL_KEY: &str = "parallel_agent_layout_backfilled";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AgentThreadSource {
@@ -596,7 +595,10 @@ pub fn init(
     fs: Arc<dyn Fs>,
     prompt_builder: Arc<PromptBuilder>,
     language_registry: Arc<LanguageRegistry>,
-    is_new_install: bool,
+    // Kept for API stability with callers (`main.rs` computes it from the
+    // installation id); the only consumer, the one-time editor-layout
+    // backfill, was removed once F5-1 made the default layout match it.
+    _is_new_install: bool,
     is_eval: bool,
     cx: &mut App,
 ) {
@@ -726,8 +728,6 @@ pub fn init(
     {
         rules_to_skills_migration::migrate_rules_to_skills_if_needed(fs.clone(), cx);
     }
-
-    maybe_backfill_editor_layout(fs, is_new_install, cx);
 }
 
 fn rerun_rules_to_skills_migration(
@@ -775,28 +775,6 @@ fn show_rules_to_skills_migration_toast(
                 .autohide(),
                 cx,
             );
-        });
-    }
-}
-
-fn maybe_backfill_editor_layout(fs: Arc<dyn Fs>, is_new_install: bool, cx: &mut App) {
-    let kvp = db::kvp::KeyValueStore::global(cx);
-    let already_backfilled =
-        util::ResultExt::log_err(kvp.read_kvp(PARALLEL_AGENT_LAYOUT_BACKFILL_KEY))
-            .flatten()
-            .is_some();
-
-    if !already_backfilled {
-        if !is_new_install {
-            AgentSettings::backfill_editor_layout(fs, cx);
-        }
-
-        db::write_and_log(cx, move || async move {
-            kvp.write_kvp(
-                PARALLEL_AGENT_LAYOUT_BACKFILL_KEY.to_string(),
-                "1".to_string(),
-            )
-            .await
         });
     }
 }
@@ -973,7 +951,6 @@ mod tests {
     use super::*;
     use agent_settings::{AgentProfileId, AgentSettings};
     use command_palette_hooks::CommandPaletteFilter;
-    use db::kvp::KeyValueStore;
     use editor::actions::AcceptEditPrediction;
     use gpui::{BorrowAppContext, TestAppContext, px};
     use project::DisableAiSettings;
@@ -1151,101 +1128,6 @@ mod tests {
                 "EditPrediction should be hidden when provider is None"
             );
         });
-    }
-
-    async fn setup_backfill_test(cx: &mut TestAppContext) -> Arc<dyn Fs> {
-        let fs = fs::FakeFs::new(cx.background_executor.clone());
-        fs.save(
-            paths::settings_file().as_path(),
-            &"{}".into(),
-            Default::default(),
-        )
-        .await
-        .unwrap();
-
-        cx.update(|cx| {
-            cx.set_global(db::AppDatabase::test_new());
-            let store = SettingsStore::test(cx);
-            cx.set_global(store);
-            AgentSettings::register(cx);
-            DisableAiSettings::register(cx);
-            cx.set_staff(true);
-        });
-
-        fs
-    }
-
-    #[gpui::test]
-    async fn test_backfill_sets_kvp_flag(cx: &mut TestAppContext) {
-        let fs = setup_backfill_test(cx).await;
-
-        cx.update(|cx| {
-            let kvp = KeyValueStore::global(cx);
-            assert!(
-                kvp.read_kvp(PARALLEL_AGENT_LAYOUT_BACKFILL_KEY)
-                    .unwrap()
-                    .is_none()
-            );
-
-            maybe_backfill_editor_layout(fs.clone(), false, cx);
-        });
-
-        cx.run_until_parked();
-
-        let kvp = cx.update(|cx| KeyValueStore::global(cx));
-        assert!(
-            kvp.read_kvp(PARALLEL_AGENT_LAYOUT_BACKFILL_KEY)
-                .unwrap()
-                .is_some(),
-            "flag should be set after backfill"
-        );
-    }
-
-    #[gpui::test]
-    async fn test_backfill_new_install_sets_flag_without_writing_settings(cx: &mut TestAppContext) {
-        let fs = setup_backfill_test(cx).await;
-
-        cx.update(|cx| {
-            maybe_backfill_editor_layout(fs.clone(), true, cx);
-        });
-
-        cx.run_until_parked();
-
-        let kvp = cx.update(|cx| KeyValueStore::global(cx));
-        assert!(
-            kvp.read_kvp(PARALLEL_AGENT_LAYOUT_BACKFILL_KEY)
-                .unwrap()
-                .is_some(),
-            "flag should be set even for new installs"
-        );
-
-        let written = fs.load(paths::settings_file().as_path()).await.unwrap();
-        assert_eq!(written.trim(), "{}", "settings file should be unchanged");
-    }
-
-    #[gpui::test]
-    async fn test_backfill_is_idempotent(cx: &mut TestAppContext) {
-        let fs = setup_backfill_test(cx).await;
-
-        cx.update(|cx| {
-            maybe_backfill_editor_layout(fs.clone(), false, cx);
-        });
-
-        cx.run_until_parked();
-
-        let after_first = fs.load(paths::settings_file().as_path()).await.unwrap();
-
-        cx.update(|cx| {
-            maybe_backfill_editor_layout(fs.clone(), false, cx);
-        });
-
-        cx.run_until_parked();
-
-        let after_second = fs.load(paths::settings_file().as_path()).await.unwrap();
-        assert_eq!(
-            after_first, after_second,
-            "second call should not change settings"
-        );
     }
 
     #[test]

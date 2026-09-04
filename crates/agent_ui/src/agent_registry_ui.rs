@@ -5,14 +5,14 @@ use collections::HashMap;
 use editor::{Editor, EditorElement, EditorStyle};
 use fs::Fs;
 use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, Focusable, KeyContext, ParentElement, Render,
-    RenderOnce, SharedString, Styled, TextStyle, UniformListScrollHandle, Window, point,
-    uniform_list,
+    AnyElement, App, ClickEvent, Context, Entity, EventEmitter, Focusable, KeyContext,
+    ParentElement, Render, RenderOnce, SharedString, Styled, Task, TextStyle,
+    UniformListScrollHandle, Window, point, uniform_list,
 };
 use http_client::{RequestHost, hosts_required_to_download};
 use project::agent_registry_store::current_platform_key;
 use project::agent_server_store::{AllAgentServersSettings, CustomAgentServerSettings};
-use project::{AgentRegistryStore, RegistryAgent};
+use project::{AgentId, AgentRegistryStore, RegistryAgent};
 use settings::{Settings, SettingsStore, update_settings_file};
 use theme_settings::ThemeSettings;
 use ui::{
@@ -31,20 +31,23 @@ use workspace::{
 /// archive download touches — which for a GitHub release asset is more than
 /// one, the URL's own host plus every host it is known to redirect to, hence
 /// [`http_client::hosts_required_to_download`] rather than `Url::host_str`;
-/// for an `Npx` agent the package fetch itself runs inside npm's own child
-/// process and is never covered by the allowlist (ADR-F03's known gap,
-/// DESIGN.md §4.9), so this only lists `nodejs.org` — needed once to fetch
-/// Zed's bundled Node — and flags the gap so the UI can warn about it.
-struct InstallRequirement {
+/// for an `Npx` agent it is `nodejs.org` (fetched once for Zed's bundled Node)
+/// plus `registry.npmjs.org`: since ADR-F14 (DESIGN.md §4.14) the registry
+/// install's npm runs through the child-process egress proxy, which judges by
+/// the user's allowlist alone, so without the registry host the install is
+/// refused with 511. What npm's own install scripts may fetch beyond the
+/// registry cannot be enumerated from the manifest, which is what the npx
+/// warning in the UI is about.
+pub(crate) struct InstallRequirement {
     /// Hosts this install needs in `network_allowlist.json`, derived from the
     /// registry manifest. Empty when nothing beyond what is already open is
     /// required (or, for `Npx`, when Node has already been fetched — see
-    /// `render_pending_consent`, which still shows the npx warning either way).
-    hosts: Vec<SharedString>,
-    is_npx: bool,
+    /// [`InstallConsentBanner`], which still shows the npx warning either way).
+    pub(crate) hosts: Vec<SharedString>,
+    pub(crate) is_npx: bool,
 }
 
-fn install_requirement(agent: &RegistryAgent) -> InstallRequirement {
+pub(crate) fn install_requirement(agent: &RegistryAgent) -> InstallRequirement {
     match agent {
         RegistryAgent::Binary(binary) => {
             let hosts = current_platform_key()
@@ -57,7 +60,10 @@ fn install_requirement(agent: &RegistryAgent) -> InstallRequirement {
             }
         }
         RegistryAgent::Npx(_) => InstallRequirement {
-            hosts: vec![SharedString::from("nodejs.org")],
+            hosts: vec![
+                SharedString::from("nodejs.org"),
+                SharedString::from("registry.npmjs.org"),
+            ],
             is_npx: true,
         },
     }
@@ -94,7 +100,7 @@ fn install_registry_agent(agent_id: &str, window: &mut Window, cx: &mut App) {
 /// `HttpClient` is built, so in practice this only matters for a test that
 /// never calls that), which is the safe direction: showing the consent
 /// banner when it may not strictly be needed, never skipping it.
-fn missing_hosts(hosts: &[SharedString], cx: &App) -> Vec<SharedString> {
+pub(crate) fn missing_hosts(hosts: &[SharedString], cx: &App) -> Vec<SharedString> {
     let allowed = cx.try_global::<egress_policy::EgressAllowlistGlobal>();
     hosts
         .iter()
@@ -106,6 +112,42 @@ fn missing_hosts(hosts: &[SharedString], cx: &App) -> Vec<SharedString> {
         })
         .cloned()
         .collect()
+}
+
+/// What installing (or updating) the agent registered under `agent_id` needs
+/// from the allowlist, read out of the ACP registry manifest that is currently
+/// in memory.
+///
+/// `None` means the manifest cannot answer the question right now — the
+/// registry has not been fetched (offline, or the fetch failed), or the agent
+/// is a custom / built-in one that never came from the registry. Callers must
+/// treat that as "no consent step", not as "nothing is needed": the download
+/// itself still goes through the shared `HttpClient`, so an unallowed host
+/// comes back as the usual 511 `EgressDenied` error with its own recovery
+/// affordance rather than escaping the gate.
+pub(crate) fn registry_install_requirement(
+    agent_id: &AgentId,
+    cx: &App,
+) -> Option<InstallRequirement> {
+    let registry_store = AgentRegistryStore::try_global(cx)?;
+    let agent = registry_store.read(cx).agent(agent_id)?;
+    Some(install_requirement(agent))
+}
+
+/// Adds `hosts` to `network_allowlist.json` off the main thread, using the
+/// comment-preserving rewrite both this page and the settings allowlist page
+/// share (`egress_policy::add_allowed_hosts`).
+pub(crate) fn add_consented_hosts(hosts: Vec<String>, cx: &App) -> Task<anyhow::Result<()>> {
+    let fs = <dyn Fs>::global(cx);
+    let path = paths::network_allowlist_file().clone();
+    cx.background_spawn(async move {
+        egress_policy::add_allowed_hosts(&fs, &path, &hosts).await?;
+        Ok(())
+    })
+}
+
+pub(crate) fn allowlist_write_error(error: &anyhow::Error) -> SharedString {
+    format!("許可リストへの追加に失敗しました: {error:#}").into()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,12 +169,166 @@ enum RegistryInstallStatus {
 /// allowlist, or that is distributed via `npx` (whose package fetch bypasses
 /// the allowlist entirely). Kept per agent id so confirming or cancelling one
 /// card never disturbs another the user may also have open.
-struct PendingInstallConsent {
-    hosts: Vec<SharedString>,
-    is_npx: bool,
+pub(crate) struct PendingInstallConsent {
+    pub(crate) hosts: Vec<SharedString>,
+    pub(crate) is_npx: bool,
     /// Set when the last attempt to add `hosts` to `network_allowlist.json`
     /// failed, so the banner can report it instead of silently retrying.
+    pub(crate) error: Option<SharedString>,
+}
+
+impl PendingInstallConsent {
+    pub(crate) fn new(requirement: InstallRequirement) -> Self {
+        Self {
+            hosts: requirement.hosts,
+            is_npx: requirement.is_npx,
+            error: None,
+        }
+    }
+}
+
+/// Which of the two moments a consent banner is gating. The decision the user
+/// makes is the same one either way — "may this download reach these hosts" —
+/// so only the verb in the confirm button differs; every other line of the
+/// banner is shared so an update never reads as a different kind of prompt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum InstallConsentAction {
+    Install,
+    Update,
+}
+
+impl InstallConsentAction {
+    /// `nothing_to_add` distinguishes the npx-only banner (all hosts already
+    /// allowed, we are only surfacing the warning) from the one that will
+    /// actually write `network_allowlist.json`.
+    fn confirm_label(self, nothing_to_add: bool) -> &'static str {
+        match (self, nothing_to_add) {
+            (Self::Install, false) => "許可リストに追加してインストール",
+            (Self::Install, true) => "了承してインストール",
+            (Self::Update, false) => "許可リストに追加して更新",
+            (Self::Update, true) => "了承して更新",
+        }
+    }
+}
+
+/// The banner shown in place of a settled "Install" / "Update" click while it
+/// needs the user to confirm a network allowlist addition, an npx warning, or
+/// both (F2-5, DESIGN.md §4.12, in the style of ADR-F10's consent banners).
+///
+/// Shared by the registry page and the thread's "new version" callout so a
+/// host that was removed from the allowlist after the install is met with the
+/// same prompt as the install was.
+#[derive(IntoElement)]
+pub(crate) struct InstallConsentBanner {
+    id: SharedString,
+    hosts: Vec<SharedString>,
+    is_npx: bool,
     error: Option<SharedString>,
+    action: InstallConsentAction,
+    on_confirm: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
+    on_cancel: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
+}
+
+impl InstallConsentBanner {
+    pub(crate) fn new(
+        id: impl Into<SharedString>,
+        consent: &PendingInstallConsent,
+        action: InstallConsentAction,
+        on_confirm: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            hosts: consent.hosts.clone(),
+            is_npx: consent.is_npx,
+            error: consent.error.clone(),
+            action,
+            on_confirm: Box::new(on_confirm),
+            on_cancel: Box::new(on_cancel),
+        }
+    }
+}
+
+impl RenderOnce for InstallConsentBanner {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let all_allowed = missing_hosts(&self.hosts, cx).is_empty();
+        let hosts_label = self
+            .hosts
+            .iter()
+            .map(SharedString::to_string)
+            .collect::<Vec<_>>()
+            .join("、");
+        let confirm_label = self.action.confirm_label(self.is_npx && all_allowed);
+        let id = self.id;
+        let on_confirm = self.on_confirm;
+        let on_cancel = self.on_cancel;
+
+        Banner::new()
+            .severity(Severity::Warning)
+            .child(
+                v_flex()
+                    .gap_2()
+                    .when(self.is_npx, |this| {
+                        this.child(
+                            v_flex()
+                                .gap_0p5()
+                                .child(Label::new(
+                                    "このエージェントは npx (npm) 経由でインストールされます",
+                                ))
+                                .child(
+                                    Label::new(
+                                        "npm によるパッケージの取得と、インストール後の実行時通信は子プロセスプロキシ経由で許可リストの対象になります。ただし、パッケージのインストールスクリプトが追加で必要とするホストは事前に列挙できず、許可リストに無いと遮断されて失敗します。可能であれば Binary 型のエージェントを優先してください。",
+                                    )
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                                ),
+                        )
+                    })
+                    .when(!self.hosts.is_empty(), |this| {
+                        this.child(
+                            h_flex()
+                                .flex_wrap()
+                                .gap_1p5()
+                                .child(
+                                    Label::new("許可が必要なホスト:")
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(Label::new(hosts_label).size(LabelSize::Small).buffer_font(cx))
+                                .child(
+                                    Label::new(if all_allowed { "(登録済み)" } else { "(未登録)" })
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                    })
+                    .when_some(self.error, |this, error| {
+                        this.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
+                    })
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!("install-consent-confirm-{id}")),
+                                    confirm_label,
+                                )
+                                .style(ButtonStyle::Tinted(ui::TintColor::Accent))
+                                .label_size(LabelSize::Small)
+                                .on_click(on_confirm),
+                            )
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!("install-consent-cancel-{id}")),
+                                    "追加せず中止",
+                                )
+                                .style(ButtonStyle::Outlined)
+                                .label_size(LabelSize::Small)
+                                .on_click(on_cancel),
+                            ),
+                    ),
+            )
+    }
 }
 
 #[derive(IntoElement)]
@@ -602,106 +798,28 @@ impl AgentRegistryPage {
         }
     }
 
-    /// The banner shown in place of a settled "Install" click while it needs
-    /// the user to confirm a network allowlist addition, an npx warning, or
-    /// both (F2-5, DESIGN.md §4 in the style of ADR-F10's consent banners).
     fn render_pending_consent(
         &self,
         agent_id: &str,
         consent: &PendingInstallConsent,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let missing = missing_hosts(&consent.hosts, cx);
-        let all_allowed = missing.is_empty();
-        let hosts_label = consent
-            .hosts
-            .iter()
-            .map(SharedString::to_string)
-            .collect::<Vec<_>>()
-            .join("、");
-        let proceed_label = if consent.is_npx && all_allowed {
-            "了承してインストール"
-        } else {
-            "許可リストに追加してインストール"
-        };
         let agent_id_for_confirm = agent_id.to_string();
         let agent_id_for_cancel = agent_id.to_string();
 
-        Banner::new()
-            .severity(Severity::Warning)
-            .child(
-                v_flex()
-                    .gap_2()
-                    .when(consent.is_npx, |this| {
-                        this.child(
-                            v_flex()
-                                .gap_0p5()
-                                .child(Label::new(
-                                    "このエージェントは npx (npm) 経由でインストールされます",
-                                ))
-                                .child(
-                                    Label::new(
-                                        "npm によるパッケージの取得と、インストール後の実行時通信は、ネットワーク統制 (許可リスト) の対象外です。可能であれば Binary 型のエージェントを優先してください。",
-                                    )
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                                ),
-                        )
-                    })
-                    .when(!consent.hosts.is_empty(), |this| {
-                        this.child(
-                            h_flex()
-                                .flex_wrap()
-                                .gap_1p5()
-                                .child(
-                                    Label::new("許可が必要なホスト:")
-                                        .size(LabelSize::Small)
-                                        .color(Color::Muted),
-                                )
-                                .child(Label::new(hosts_label).size(LabelSize::Small).buffer_font(cx))
-                                .child(
-                                    Label::new(if all_allowed { "(登録済み)" } else { "(未登録)" })
-                                        .size(LabelSize::Small)
-                                        .color(Color::Muted),
-                                ),
-                        )
-                    })
-                    .when_some(consent.error.clone(), |this, error| {
-                        this.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
-                    })
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new(
-                                    SharedString::from(format!(
-                                        "install-consent-confirm-{agent_id}"
-                                    )),
-                                    proceed_label,
-                                )
-                                .style(ButtonStyle::Tinted(ui::TintColor::Accent))
-                                .label_size(LabelSize::Small)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.confirm_install(&agent_id_for_confirm, window, cx);
-                                })),
-                            )
-                            .child(
-                                Button::new(
-                                    SharedString::from(format!(
-                                        "install-consent-cancel-{agent_id}"
-                                    )),
-                                    "追加せず中止",
-                                )
-                                .style(ButtonStyle::Outlined)
-                                .label_size(LabelSize::Small)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.pending_install_consent.remove(&agent_id_for_cancel);
-                                    cx.notify();
-                                })),
-                            ),
-                    ),
-            )
-            .into_any_element()
+        InstallConsentBanner::new(
+            agent_id.to_string(),
+            consent,
+            InstallConsentAction::Install,
+            cx.listener(move |this, _, window, cx| {
+                this.confirm_install(&agent_id_for_confirm, window, cx);
+            }),
+            cx.listener(move |this, _, _, cx| {
+                this.pending_install_consent.remove(&agent_id_for_cancel);
+                cx.notify();
+            }),
+        )
+        .into_any_element()
     }
 
     /// Handles an "Install" click: proceeds immediately when nothing new is
@@ -725,11 +843,7 @@ impl AgentRegistryPage {
 
         self.pending_install_consent.insert(
             agent_id.to_string(),
-            PendingInstallConsent {
-                hosts: requirement.hosts,
-                is_npx: requirement.is_npx,
-                error: None,
-            },
+            PendingInstallConsent::new(requirement),
         );
         cx.notify();
     }
@@ -750,10 +864,9 @@ impl AgentRegistryPage {
         }
 
         let agent_id = agent_id.to_string();
-        let fs = <dyn Fs>::global(cx);
-        let path = paths::network_allowlist_file().clone();
+        let write_hosts = add_consented_hosts(hosts, cx);
         cx.spawn_in(window, async move |this, cx| {
-            let result = egress_policy::add_allowed_hosts(&fs, &path, &hosts).await;
+            let result = write_hosts.await;
             this.update_in(cx, |this, window, cx| {
                 // The banner may have been cancelled (or the card re-rendered
                 // away) while the write was in flight; only act on it if the
@@ -762,14 +875,13 @@ impl AgentRegistryPage {
                     return;
                 }
                 match result {
-                    Ok(_) => {
+                    Ok(()) => {
                         this.pending_install_consent.remove(&agent_id);
                         install_registry_agent(&agent_id, window, cx);
                     }
                     Err(error) => {
                         if let Some(consent) = this.pending_install_consent.get_mut(&agent_id) {
-                            consent.error =
-                                Some(format!("許可リストへの追加に失敗しました: {error:#}").into());
+                            consent.error = Some(allowlist_write_error(&error));
                         }
                     }
                 }
@@ -1066,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    fn npx_agent_flags_the_egress_gap_and_lists_only_the_node_download() {
+    fn npx_agent_lists_the_node_download_and_the_npm_registry() {
         let agent = RegistryAgent::Npx(RegistryNpxAgent {
             metadata: metadata("claude-acp"),
             package: SharedString::from("@agentclientprotocol/claude-agent-acp"),
@@ -1076,6 +1188,68 @@ mod tests {
 
         let requirement = install_requirement(&agent);
         assert!(requirement.is_npx);
-        assert_eq!(requirement.hosts, vec![SharedString::from("nodejs.org")]);
+        assert_eq!(
+            requirement.hosts,
+            vec![
+                SharedString::from("nodejs.org"),
+                SharedString::from("registry.npmjs.org"),
+            ]
+        );
+    }
+
+    /// The update flow reuses the install flow's banner, so an update must not
+    /// read as a different kind of prompt - only the verb changes.
+    #[test]
+    fn consent_confirm_labels_differ_only_in_the_verb() {
+        assert_eq!(
+            InstallConsentAction::Install.confirm_label(false),
+            "許可リストに追加してインストール"
+        );
+        assert_eq!(
+            InstallConsentAction::Install.confirm_label(true),
+            "了承してインストール"
+        );
+        assert_eq!(
+            InstallConsentAction::Update.confirm_label(false),
+            "許可リストに追加して更新"
+        );
+        assert_eq!(
+            InstallConsentAction::Update.confirm_label(true),
+            "了承して更新"
+        );
+    }
+
+    /// The thread's update callout re-derives the hosts from the registry
+    /// rather than assuming the install's consent still covers them, so the
+    /// lookup has to answer for an agent the registry lists and stay silent
+    /// for one it cannot describe.
+    #[gpui::test]
+    fn update_consent_reads_its_hosts_from_the_registry(cx: &mut gpui::TestAppContext) {
+        let platform =
+            current_platform_key().expect("the test host should be a supported platform");
+        let agent = RegistryAgent::Binary(RegistryBinaryAgent {
+            metadata: metadata("agy"),
+            targets: HashMap::from_iter([(
+                platform.to_string(),
+                target("https://dl.google.com/agy/agy_acp_server.exe"),
+            )]),
+            supports_current_platform: true,
+        });
+
+        cx.update(|cx| {
+            AgentRegistryStore::init_test_global(cx, vec![agent]);
+
+            let requirement = registry_install_requirement(&AgentId::new("agy"), cx)
+                .expect("the registry should describe an agent it lists");
+            assert_eq!(requirement.hosts, vec![SharedString::from("dl.google.com")]);
+
+            // No egress policy has been published in this test, so every host
+            // reads as missing - the deliberate fail-safe direction.
+            assert_eq!(missing_hosts(&requirement.hosts, cx), requirement.hosts);
+
+            // A custom or built-in agent, or a registry that never loaded:
+            // no consent step, the download stays gated either way.
+            assert!(registry_install_requirement(&AgentId::new("not-in-registry"), cx).is_none());
+        });
     }
 }

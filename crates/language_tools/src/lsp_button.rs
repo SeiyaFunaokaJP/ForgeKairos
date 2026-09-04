@@ -248,9 +248,11 @@ impl LanguageServerState {
                                 ),
                         )
                         .child(
-                            Label::new("このプロジェクトを信頼するまで、言語サーバーは実行できません。")
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
+                            Label::new(
+                                "このプロジェクトを信頼するまで、言語サーバーは実行できません。",
+                            )
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
                         )
                         .into_any_element()
                 },
@@ -1366,27 +1368,24 @@ impl Render for LspButton {
         }
 
         let (indicator, description) = if is_restricted {
-            (
-                Some(Indicator::dot().color(Color::Warning)),
-                "制限モード",
-            )
+            (Some(Indicator::dot().color(Color::Warning)), "制限モード")
         } else if has_errors {
             (
                 Some(Indicator::dot().color(Color::Error)),
-                "Server with errors",
+                "エラーのあるサーバーがあります",
             )
         } else if has_warnings {
             (
                 Some(Indicator::dot().color(Color::Warning)),
-                "Server with warnings",
+                "警告のあるサーバーがあります",
             )
         } else if has_other_notifications {
             (
                 Some(Indicator::dot().color(Color::Modified)),
-                "Server with notifications",
+                "通知のあるサーバーがあります",
             )
         } else {
-            (None, "All Servers Operational")
+            (None, "すべてのサーバーは正常です")
         };
 
         let lsp_button = cx.weak_entity();

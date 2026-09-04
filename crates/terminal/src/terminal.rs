@@ -2,6 +2,7 @@ mod mappings;
 
 mod alacritty;
 mod pty_info;
+pub mod remote_cwd;
 pub mod session_log;
 pub mod terminal_macro;
 pub mod terminal_settings;
@@ -77,6 +78,7 @@ use crate::alacritty::{
 };
 use crate::mappings::colors::to_vte_rgb;
 use crate::mappings::keys::to_esc_str;
+use crate::remote_cwd::RemoteCwdTracker;
 use crate::session_log::{SessionLog, SessionLogOptions, SessionLogTap};
 
 /// Process-wide flag set by headless hosts (e.g. the eval CLI) that have no
@@ -1035,6 +1037,7 @@ impl TerminalBuilder {
             path_style,
             cwd_history: Vec::new(),
             pending_cwd_boundary: None,
+            remote_cwd: None,
             #[cfg(any(test, feature = "test-support"))]
             input_log: Vec::new(),
             #[cfg(test)]
@@ -1173,6 +1176,7 @@ impl TerminalBuilder {
             // Installed into the PTY reader up front so session logging can be
             // switched on later without rebuilding the terminal.
             let session_log_tap = SessionLogTap::default();
+            let remote_cwd = is_remote_terminal.then(|| RemoteCwdTracker::new(path_style));
             //Set up the terminal...
             let term = new_term(
                 &config,
@@ -1257,6 +1261,7 @@ impl TerminalBuilder {
                     pty,
                     pty_options.drain_on_exit,
                     session_log_tap.clone(),
+                    remote_cwd.clone(),
                 )?;
 
                 (
@@ -1335,6 +1340,7 @@ impl TerminalBuilder {
                         .unwrap_or_default()
                 },
                 pending_cwd_boundary: None,
+                remote_cwd,
                 #[cfg(any(test, feature = "test-support"))]
                 input_log: Vec::new(),
                 #[cfg(test)]
@@ -1511,6 +1517,11 @@ pub struct Terminal {
     path_style: PathStyle,
     cwd_history: Vec<CwdHistoryEntry>,
     pending_cwd_boundary: Option<i32>,
+    /// Present only for remote shells, which have no local child process to
+    /// read a directory from. Kept out of `cwd_history` because that history is
+    /// rebuilt from scratch whenever the grid is resized or cleared, and the
+    /// directory a restart needs has to outlive both.
+    remote_cwd: Option<RemoteCwdTracker>,
     #[cfg(any(test, feature = "test-support"))]
     input_log: Vec<Vec<u8>>,
     #[cfg(test)]
@@ -2872,6 +2883,20 @@ impl Terminal {
         } else {
             self.client_side_working_directory()
         }
+    }
+
+    /// The directory a remote shell last reported with OSC 7, as a path on the
+    /// remote host. Kept apart from [`Self::working_directory`], which callers
+    /// treat as a client-side path they may display, persist or open files
+    /// against; this one is only good for starting another shell on the same
+    /// host.
+    pub fn remote_working_directory(&self) -> Option<PathBuf> {
+        if !self.is_remote_terminal {
+            return None;
+        }
+        self.remote_cwd
+            .as_ref()
+            .and_then(|remote_cwd| remote_cwd.current())
     }
 
     /// Normalizes the command name of the foreground process, if one is known.
@@ -6099,6 +6124,51 @@ mod tests {
         assert_eq!(terminal.pending_cwd_boundary, None);
         assert!(terminal.cwd_history.is_empty());
         assert_eq!(terminal.cwd_at_line(0, 0), None);
+    }
+
+    #[test]
+    fn test_remote_working_directory_follows_osc7_reports() {
+        let mut terminal = make_display_only_terminal();
+        let remote_cwd = RemoteCwdTracker::new(PathStyle::Unix);
+        terminal.is_remote_terminal = true;
+        terminal.remote_cwd = Some(remote_cwd.clone());
+
+        assert_eq!(terminal.remote_working_directory(), None);
+
+        remote_cwd.record(b"\x1b]7;file://host/home/user/project\x07");
+        assert_eq!(
+            terminal.remote_working_directory(),
+            Some(PathBuf::from("/home/user/project"))
+        );
+        // The client-side directory a remote shell exposes stays empty: it is
+        // displayed and persisted as if it were a local path.
+        assert_eq!(terminal.working_directory(), None);
+    }
+
+    #[test]
+    fn test_remote_working_directory_survives_a_reset_of_the_cwd_history() {
+        let mut terminal = make_display_only_terminal();
+        let remote_cwd = RemoteCwdTracker::new(PathStyle::Unix);
+        terminal.is_remote_terminal = true;
+        terminal.remote_cwd = Some(remote_cwd.clone());
+        remote_cwd.record(b"\x1b]7;file://host/srv\x07");
+
+        terminal.reset_cwd_history();
+
+        assert_eq!(
+            terminal.remote_working_directory(),
+            Some(PathBuf::from("/srv"))
+        );
+    }
+
+    #[test]
+    fn test_local_terminal_ignores_remote_working_directory() {
+        let mut terminal = make_display_only_terminal();
+        let remote_cwd = RemoteCwdTracker::new(PathStyle::Unix);
+        terminal.remote_cwd = Some(remote_cwd.clone());
+        remote_cwd.record(b"\x1b]7;file://host/srv\x07");
+
+        assert_eq!(terminal.remote_working_directory(), None);
     }
 
     #[test]

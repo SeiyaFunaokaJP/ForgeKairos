@@ -42,6 +42,7 @@ mod windows_wsl;
 /// asked for. Shared by [`Sandbox::new`] (the local backends) and the SSH-remote
 /// helper.
 mod protected_paths;
+pub use protected_paths::APP_DIRECTORY_NAME;
 
 mod util;
 
@@ -488,18 +489,19 @@ mod builtin_protected_paths_tests {
     fn existing_entries_are_protected_and_absent_ones_are_skipped() {
         let (_home, ssh, bashrc, missing) = fake_home();
 
-        let merged = merge_protected_paths(
-            Vec::new(),
-            &[],
-            vec![ssh.clone(), bashrc.clone(), missing],
-        )
-        .expect("an absent built-in entry must be skipped, not fatal");
+        let merged =
+            merge_protected_paths(Vec::new(), &[], vec![ssh.clone(), bashrc.clone(), missing])
+                .expect("an absent built-in entry must be skipped, not fatal");
 
         assert!(merged.contains(&capture(&ssh)), "a directory entry");
         assert!(merged.contains(&capture(&bashrc)), "a plain-file entry");
         assert_eq!(
             merged.len(),
-            if PROTECTS_NOT_YET_EXISTING_PATHS { 3 } else { 2 }
+            if PROTECTS_NOT_YET_EXISTING_PATHS {
+                3
+            } else {
+                2
+            }
         );
     }
 
@@ -523,12 +525,9 @@ mod builtin_protected_paths_tests {
         std::fs::create_dir(&inside).expect("create .ssh/keys");
 
         for writable_path in [ssh.clone(), inside] {
-            let error = merge_protected_paths(
-                Vec::new(),
-                &[capture(&writable_path)],
-                vec![ssh.clone()],
-            )
-            .expect_err("a grant to a built-in protected path must be refused");
+            let error =
+                merge_protected_paths(Vec::new(), &[capture(&writable_path)], vec![ssh.clone()])
+                    .expect_err("a grant to a built-in protected path must be refused");
             assert!(matches!(error, SandboxError::InvalidRequest(_)));
         }
     }
@@ -843,7 +842,8 @@ impl Sandbox {
                     &writable_paths,
                     &protected_paths,
                 )?;
-                let protected_paths = add_builtin_protected_paths(protected_paths, &writable_paths)?;
+                let protected_paths =
+                    add_builtin_protected_paths(protected_paths, &writable_paths)?;
                 FsSetup {
                     allow_fs_write: false,
                     writable_paths,

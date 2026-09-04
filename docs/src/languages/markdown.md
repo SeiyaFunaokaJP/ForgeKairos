@@ -74,6 +74,33 @@ To disable this behavior, configure in Settings ({#kb zed::OpenSettings}) under 
   },
 ```
 
+### Enter で行末スペース補完 (このフォーク独自)
+
+このフォークが upstream に追加した設定です。CommonMark の hard break (行末に半角スペースを
+2 つ置く書き方) を、手でタイプしなくても済むようにします。
+
+`hard_break_on_newline` が有効な言語では、Enter で改行するときに、直前の行が空行・見出し・
+テーブルの行・リスト項目の先頭・すでに行末が半角スペース 2 つまたは `\` である場合を除き、
+行末へ半角スペース 2 つを自動的に補います。コードブロックやインラインコードの中では補いません。
+Markdown での既定値は `true` です (他の言語は既定 `false`)。
+
+設定 ({#kb zed::OpenSettings}) の Languages > Markdown、または settings ファイルで変更できます:
+
+```json [settings]
+  "languages": {
+    "Markdown": {
+      "hard_break_on_newline": false
+    }
+  },
+```
+
+{#kb markdown::NewlineInvertHardBreak} (既定は `shift-enter`) を押すと、その 1 回だけ
+`hard_break_on_newline` と逆の動きで改行します。無効なファイルで一時的に hard break を
+入れたいとき、または有効なファイルで hard break を入れずに改行したいときに使います。
+
+Markdown ファイルを編集しているときはタブバーの下に表示される整形バー (Markdown 整形バー)
+の右端にも、この設定を切り替えるスイッチ「Enter改行」があります。
+
 ### Trailing Whitespace
 
 By default Zed will remove trailing whitespace on save. If you rely on invisible trailing whitespace being converted to `<br />` in Markdown files you can disable this behavior.

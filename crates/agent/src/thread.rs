@@ -917,8 +917,7 @@ pub enum ToolPermissionScope {
 /// servers and can't be mapped statically) falls back to the internal name with
 /// underscores replaced by spaces.
 fn localized_tool_name_for_permission(tool_name: &str) -> String {
-    let localized = if tool_name == TerminalTool::NAME || tool_name == SandboxedTerminalTool::NAME
-    {
+    let localized = if tool_name == TerminalTool::NAME || tool_name == SandboxedTerminalTool::NAME {
         "ターミナル"
     } else if tool_name == CopyPathTool::NAME {
         "コピー"
@@ -1041,18 +1040,12 @@ impl ToolPermissionContext {
                     choices.push(acp_thread::PermissionOptionChoice {
                         allow: acp::PermissionOption::new(
                             acp::PermissionOptionId::new(format!("always_allow:{}", tool_name)),
-                            format!(
-                                "{}は常に",
-                                localized_tool_name_for_permission(tool_name)
-                            ),
+                            format!("{}は常に", localized_tool_name_for_permission(tool_name)),
                             acp::PermissionOptionKind::AllowAlways,
                         ),
                         deny: acp::PermissionOption::new(
                             acp::PermissionOptionId::new(format!("always_deny:{}", tool_name)),
-                            format!(
-                                "{}は常に",
-                                localized_tool_name_for_permission(tool_name)
-                            ),
+                            format!("{}は常に", localized_tool_name_for_permission(tool_name)),
                             acp::PermissionOptionKind::RejectAlways,
                         ),
                         sub_patterns: vec![],

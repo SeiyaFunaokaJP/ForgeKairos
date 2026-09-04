@@ -750,15 +750,19 @@ impl TerminalView {
             return;
         }
 
-        // A remote shell reports no working directory (its cwd lives on the
-        // host, and the local `ssh` process is not in it), so fall back to the
-        // directory a new terminal would open in, which is the one this
+        // A remote shell has no client-side working directory (its cwd lives on
+        // the host, and the local `ssh` process is not in it). It is tracked
+        // separately when the shell reports it with OSC 7; otherwise fall back
+        // to the directory a new terminal would open in, which is the one this
         // terminal was created with.
-        let working_directory = terminal.working_directory().or_else(|| {
-            let workspace = self.workspace.upgrade()?;
-            let workspace = workspace.read(cx);
-            default_working_directory(workspace, cx)
-        });
+        let working_directory = terminal
+            .working_directory()
+            .or_else(|| terminal.remote_working_directory())
+            .or_else(|| {
+                let workspace = self.workspace.upgrade()?;
+                let workspace = workspace.read(cx);
+                default_working_directory(workspace, cx)
+            });
         let is_remote_terminal = terminal.is_remote_terminal();
         let Some(project) = self.project.upgrade() else {
             return;

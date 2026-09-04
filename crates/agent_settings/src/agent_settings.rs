@@ -19,7 +19,7 @@ use settings::{
     DockPosition, DockSide, IntoGpui, LanguageModelParameters, LanguageModelSelection,
     NotifyWhenAgentWaiting, PlaySoundWhenAgentDone, RegisterSetting, Settings, SettingsContent,
     SettingsStore, SidebarDockPosition, SidebarSide, ThinkingBlockDisplay, ToolPermissionMode,
-    update_settings_file, update_settings_file_with_completion,
+    update_settings_file_with_completion,
 };
 use util::ResultExt as _;
 
@@ -98,25 +98,6 @@ impl PanelLayout {
                 self.collaboration_panel_dock;
         }
         if self.git_panel_dock != current_merged.git_panel_dock {
-            settings.git_panel.get_or_insert_default().dock = self.git_panel_dock;
-        }
-    }
-
-    fn backfill_to(&self, user_layout: &PanelLayout, settings: &mut SettingsContent) {
-        if user_layout.agent_dock.is_none() {
-            settings.agent.get_or_insert_default().dock = self.agent_dock;
-        }
-        if user_layout.project_panel_dock.is_none() {
-            settings.project_panel.get_or_insert_default().dock = self.project_panel_dock;
-        }
-        if user_layout.outline_panel_dock.is_none() {
-            settings.outline_panel.get_or_insert_default().dock = self.outline_panel_dock;
-        }
-        if user_layout.collaboration_panel_dock.is_none() {
-            settings.collaboration_panel.get_or_insert_default().dock =
-                self.collaboration_panel_dock;
-        }
-        if user_layout.git_panel_dock.is_none() {
             settings.git_panel.get_or_insert_default().dock = self.git_panel_dock;
         }
     }
@@ -346,18 +327,6 @@ impl AgentSettings {
         }
 
         WindowLayout::Custom(user_layout)
-    }
-
-    pub fn backfill_editor_layout(fs: Arc<dyn Fs>, cx: &App) {
-        let user_layout = cx
-            .global::<SettingsStore>()
-            .raw_user_settings()
-            .map(|u| PanelLayout::read_from(u.content.as_ref()))
-            .unwrap_or_default();
-
-        update_settings_file(fs, cx, move |settings, _cx| {
-            PanelLayout::EDITOR.backfill_to(&user_layout, settings);
-        });
     }
 
     pub fn set_layout(
@@ -1892,88 +1861,6 @@ mod tests {
             // And the merged result should now match agent.
             let layout = AgentSettings::get_layout(cx);
             assert!(matches!(layout, WindowLayout::Agent(_)));
-        });
-    }
-
-    #[gpui::test]
-    async fn test_backfill_editor_layout(cx: &mut TestAppContext) {
-        let fs = fs::FakeFs::new(cx.background_executor.clone());
-        // User has only customized project_panel to "right".
-        fs.save(
-            paths::settings_file().as_path(),
-            &serde_json::json!({
-                "project_panel": { "dock": "right" }
-            })
-            .to_string()
-            .into(),
-            Default::default(),
-        )
-        .await
-        .unwrap();
-
-        cx.update(|cx| {
-            let store = SettingsStore::test(cx);
-            cx.set_global(store);
-            project::DisableAiSettings::register(cx);
-            AgentSettings::register(cx);
-
-            // Simulate pre-migration state: editor defaults (the old world).
-            SettingsStore::update_global(cx, |store, cx| {
-                store.update_default_settings(cx, |defaults| {
-                    PanelLayout::EDITOR.write_to(defaults);
-                });
-            });
-
-            // User has only customized project_panel to "right".
-            SettingsStore::update_global(cx, |store, cx| {
-                store
-                    .set_user_settings(r#"{ "project_panel": { "dock": "right" } }"#, cx)
-                    .unwrap();
-            });
-
-            // Run the one-time backfill while still on old defaults.
-            AgentSettings::backfill_editor_layout(fs.clone(), cx);
-        });
-
-        cx.run_until_parked();
-
-        // Read back the file and apply it.
-        let written = fs.load(paths::settings_file().as_path()).await.unwrap();
-        cx.update(|cx| {
-            SettingsStore::update_global(cx, |store, cx| {
-                store.set_user_settings(&written, cx).unwrap();
-            });
-
-            // The user's project_panel=right should be preserved (they set it).
-            // All other fields should now have the editor preset values
-            // written into user settings.
-            let store = cx.global::<SettingsStore>();
-            let user_layout = store
-                .raw_user_settings()
-                .map(|u| PanelLayout::read_from(u.content.as_ref()))
-                .unwrap_or_default();
-
-            assert_eq!(user_layout.agent_dock, Some(DockPosition::Right));
-            assert_eq!(user_layout.project_panel_dock, Some(DockSide::Right));
-            assert_eq!(user_layout.outline_panel_dock, Some(DockSide::Left));
-            assert_eq!(
-                user_layout.collaboration_panel_dock,
-                Some(DockPosition::Left)
-            );
-            assert_eq!(user_layout.git_panel_dock, Some(DockPosition::Left));
-
-            // Even though defaults are now agent, the backfilled user settings
-            // keep everything in the editor layout. The user's experience
-            // hasn't changed.
-            let layout = AgentSettings::get_layout(cx);
-            let WindowLayout::Custom(user_layout) = layout else {
-                panic!(
-                    "expected Custom (editor values override agent defaults), got {:?}",
-                    layout
-                );
-            };
-            assert_eq!(user_layout.agent_dock, Some(DockPosition::Right));
-            assert_eq!(user_layout.project_panel_dock, Some(DockSide::Right));
         });
     }
 }

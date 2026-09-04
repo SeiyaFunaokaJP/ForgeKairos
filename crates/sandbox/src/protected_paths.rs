@@ -165,7 +165,10 @@ const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[];
 /// running editor actually keeps `settings.json`, the thread database and the
 /// logs. Duplicated rather than depended upon so this crate — which is also the
 /// static musl remote-server helper — keeps its very small dependency surface.
-const APP_DIRECTORY_NAME: &str = if cfg!(target_os = "linux") {
+/// `pub` (re-exported as [`crate::APP_DIRECTORY_NAME`]) so a drift-detection
+/// test can compare it against `paths::APP_NAME`; that test lives in the
+/// `agent` crate, which already depends on both `paths` and `sandbox`.
+pub const APP_DIRECTORY_NAME: &str = if cfg!(target_os = "linux") {
     "zed-jp-enhance"
 } else {
     "Zed-JP-Enhance"
@@ -471,7 +474,10 @@ mod tests {
             &[moved.clone(), home.join(default_relative), moved.clone()],
         );
 
-        assert!(paths.contains(&moved), "a moved directory must be protected");
+        assert!(
+            paths.contains(&moved),
+            "a moved directory must be protected"
+        );
         assert_eq!(
             paths.iter().filter(|path| *path == &moved).count(),
             1,

@@ -16,7 +16,7 @@ use std::{
 use task::{Shell, ShellBuilder, ShellKind, SpawnInTerminal};
 use terminal::{
     TaskState, TaskStatus, Terminal, TerminalBuilder, insert_zed_terminal_env,
-    terminal_settings::TerminalSettings,
+    remote_cwd::osc7_prompt_command_env, terminal_settings::TerminalSettings,
 };
 use util::{
     command::new_std_command, get_default_system_shell, get_system_shell, maybe, rel_path::RelPath,
@@ -468,6 +468,14 @@ impl Project {
         if terminal.read(cx).task().is_some() {
             return self.create_terminal_shell(cwd, cx);
         }
+        // A remote terminal's cwd is baked into its ssh command line, so the
+        // builder clone below cannot move it; when the shell has reported where
+        // it went (OSC 7), build a fresh command around that directory instead.
+        if self.is_via_remote_server() {
+            if let Some(remote_cwd) = terminal.read(cx).remote_working_directory() {
+                return self.create_terminal_shell(Some(remote_cwd), cx);
+            }
+        }
         let local_path = if self.is_via_remote_server() {
             None
         } else {
@@ -623,7 +631,17 @@ fn create_remote_shell(
 
     let (program, args) = match spawn_command {
         Some((program, args)) => (Some(program.clone()), args),
-        None => (None, &Vec::new()),
+        None => {
+            // Only an interactive shell has a prompt to hang the report off, and
+            // only an interactive shell is ever restarted after a dropped
+            // connection.
+            if let Some(remote_shell) = remote_client.read(cx).shell()
+                && let Some((name, value)) = osc7_prompt_command_env(&remote_shell)
+            {
+                env.entry(name).or_insert(value);
+            }
+            (None, &Vec::new())
+        }
     };
 
     let command = remote_client.read(cx).build_command(

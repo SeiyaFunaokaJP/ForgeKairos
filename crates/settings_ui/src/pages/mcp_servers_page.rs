@@ -725,18 +725,21 @@ fn render_status_details(
                     )
                     .when(should_show_logout, |this| {
                         this.child(
-                            Button::new("error-logout", "ログアウト")
-                                .style(ButtonStyle::Outlined)
-                                .label_size(LabelSize::Small)
-                                .on_click({
-                                    let store = store.clone();
-                                    let context_server_id = context_server_id.clone();
-                                    move |_event, _window, cx| {
-                                        store.update(cx, |s, cx| {
-                                            s.logout_server(&context_server_id, cx).log_err();
-                                        });
-                                    }
-                                }),
+                            Button::new(
+                                SharedString::from(format!("error-logout-{}", context_server_id.0)),
+                                "ログアウト",
+                            )
+                            .style(ButtonStyle::Outlined)
+                            .label_size(LabelSize::Small)
+                            .on_click({
+                                let store = store.clone();
+                                let context_server_id = context_server_id.clone();
+                                move |_event, _window, cx| {
+                                    store.update(cx, |s, cx| {
+                                        s.logout_server(&context_server_id, cx).log_err();
+                                    });
+                                }
+                            }),
                         )
                     })
                     .into_any_element(),
@@ -764,16 +767,22 @@ fn render_status_details(
                             ),
                     )
                     .child(
-                        Button::new("authenticate-server", "認証")
-                            .style(ButtonStyle::Outlined)
-                            .label_size(LabelSize::Small)
-                            .on_click({
-                                move |_event, _window, cx| {
-                                    store.update(cx, |s, cx| {
-                                        s.authenticate_server(&context_server_id, cx).log_err();
-                                    });
-                                }
-                            }),
+                        Button::new(
+                            SharedString::from(format!(
+                                "authenticate-server-{}",
+                                context_server_id.0
+                            )),
+                            "認証",
+                        )
+                        .style(ButtonStyle::Outlined)
+                        .label_size(LabelSize::Small)
+                        .on_click({
+                            move |_event, _window, cx| {
+                                store.update(cx, |s, cx| {
+                                    s.authenticate_server(&context_server_id, cx).log_err();
+                                });
+                            }
+                        }),
                     )
                     .into_any_element(),
             )
@@ -807,14 +816,17 @@ fn render_status_details(
                     .w_full()
                     .justify_end()
                     .child(
-                        Button::new("running-logout", "ログアウト")
-                            .style(ButtonStyle::Outlined)
-                            .label_size(LabelSize::Small)
-                            .on_click(move |_event, _window, cx| {
-                                store.update(cx, |s, cx| {
-                                    s.logout_server(&context_server_id, cx).log_err();
-                                });
-                            }),
+                        Button::new(
+                            SharedString::from(format!("running-logout-{}", context_server_id.0)),
+                            "ログアウト",
+                        )
+                        .style(ButtonStyle::Outlined)
+                        .label_size(LabelSize::Small)
+                        .on_click(move |_event, _window, cx| {
+                            store.update(cx, |s, cx| {
+                                s.logout_server(&context_server_id, cx).log_err();
+                            });
+                        }),
                     )
                     .into_any_element(),
             )

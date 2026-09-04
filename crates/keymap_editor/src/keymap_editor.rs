@@ -54,7 +54,7 @@ use crate::{
     },
 };
 
-const NO_ACTION_ARGUMENTS_TEXT: SharedString = SharedString::new_static("<no arguments>");
+const NO_ACTION_ARGUMENTS_TEXT: SharedString = SharedString::new_static("<引数なし>");
 const COLS: usize = 6;
 
 actions!(
@@ -449,7 +449,7 @@ struct KeymapEditor {
     selected_index: Option<usize>,
     context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     previous_edit: Option<PreviousEdit>,
-    humanized_action_names: HumanizedActionNameCache,
+    localized_action_names: LocalizedActionNameCache,
     current_widths: Entity<RedistributableColumnsState>,
     show_hover_menus: bool,
     actions_with_schemas: HashSet<&'static str>,
@@ -618,7 +618,7 @@ impl KeymapEditor {
             context_menu: None,
             previous_edit: None,
             search_query_debounce: None,
-            humanized_action_names: HumanizedActionNameCache::new(cx),
+            localized_action_names: LocalizedActionNameCache::new(cx),
             show_hover_menus: true,
             actions_with_schemas: HashSet::default(),
             action_args_temp_dir: None,
@@ -816,7 +816,7 @@ impl KeymapEditor {
     fn process_bindings(
         json_language: Arc<Language>,
         zed_keybind_context_language: Arc<Language>,
-        humanized_action_names: &HumanizedActionNameCache,
+        localized_action_names: &LocalizedActionNameCache,
         cx: &mut App,
     ) -> (
         Vec<ProcessedBinding>,
@@ -875,12 +875,12 @@ impl KeymapEditor {
                 action_arguments,
                 &actions_with_schemas,
                 action_documentation,
-                humanized_action_names,
+                localized_action_names,
             );
 
             let index = processed_bindings.len();
             let string_match_candidate =
-                StringMatchCandidate::new(index, &action_information.humanized_name);
+                StringMatchCandidate::new(index, &action_information.localized_name.search_text);
             processed_bindings.push(ProcessedBinding::new_mapped(
                 keystroke_text,
                 binding,
@@ -900,10 +900,10 @@ impl KeymapEditor {
                 None,
                 &actions_with_schemas,
                 action_documentation,
-                humanized_action_names,
+                localized_action_names,
             );
             let string_match_candidate =
-                StringMatchCandidate::new(index, &action_information.humanized_name);
+                StringMatchCandidate::new(index, &action_information.localized_name.search_text);
 
             processed_bindings.push(ProcessedBinding::Unmapped(action_information));
             string_match_candidates.push(string_match_candidate);
@@ -927,7 +927,7 @@ impl KeymapEditor {
                     Self::process_bindings(
                         json_language,
                         zed_keybind_context_language,
-                        &this.humanized_action_names,
+                        &this.localized_action_names,
                         cx,
                     );
 
@@ -1393,7 +1393,7 @@ impl KeymapEditor {
             None,
             &HashSet::default(),
             cx.action_documentation(),
-            &self.humanized_action_names,
+            &self.localized_action_names,
         );
 
         let dummy_binding = ProcessedBinding::Unmapped(action_information);
@@ -1725,25 +1725,43 @@ impl KeymapEditor {
     }
 }
 
-struct HumanizedActionNameCache {
-    cache: HashMap<&'static str, SharedString>,
+/// アクション名の表示ラベルと、それを日英どちらの綴りでも探せる fuzzy 検索用の文字列。
+#[derive(Clone)]
+struct LocalizedActionName {
+    display: SharedString,
+    /// `display` で始まり、日本語ラベルがある場合はそのうしろに英語の humanize 名が続く
+    /// (`command_palette::localized_action_name_and_search_text`)。この一覧はマッチ位置を
+    /// ハイライトに使っていないので、英語部分に当たったマッチを切り捨てる処理は要らない。
+    search_text: SharedString,
 }
 
-impl HumanizedActionNameCache {
+struct LocalizedActionNameCache {
+    cache: HashMap<&'static str, LocalizedActionName>,
+}
+
+impl LocalizedActionNameCache {
     fn new(cx: &App) -> Self {
         let cache = HashMap::from_iter(cx.all_action_names().iter().map(|&action_name| {
+            let (display, search_text) =
+                command_palette::localized_action_name_and_search_text(action_name);
             (
                 action_name,
-                command_palette::humanize_action_name(action_name).into(),
+                LocalizedActionName {
+                    display: display.into(),
+                    search_text: search_text.into(),
+                },
             )
         }));
         Self { cache }
     }
 
-    fn get(&self, action_name: &'static str) -> SharedString {
+    fn get(&self, action_name: &'static str) -> LocalizedActionName {
         match self.cache.get(action_name) {
             Some(name) => name.clone(),
-            None => action_name.into(),
+            None => LocalizedActionName {
+                display: action_name.into(),
+                search_text: action_name.into(),
+            },
         }
     }
 }
@@ -1785,7 +1803,7 @@ impl KeybindInformation {
 #[derive(Clone)]
 struct ActionInformation {
     name: &'static str,
-    humanized_name: SharedString,
+    localized_name: LocalizedActionName,
     arguments: Option<SyntaxHighlightedText>,
     documentation: Option<&'static str>,
     has_schema: bool,
@@ -1797,15 +1815,19 @@ impl ActionInformation {
         action_arguments: Option<SyntaxHighlightedText>,
         actions_with_schemas: &HashSet<&'static str>,
         action_documentation: &HashMap<&'static str, &'static str>,
-        action_name_cache: &HumanizedActionNameCache,
+        action_name_cache: &LocalizedActionNameCache,
     ) -> Self {
         Self {
-            humanized_name: action_name_cache.get(action_name),
+            localized_name: action_name_cache.get(action_name),
             has_schema: actions_with_schemas.contains(action_name),
             arguments: action_arguments,
             documentation: action_documentation.get(action_name).copied(),
             name: action_name,
         }
+    }
+
+    fn display_name(&self) -> &SharedString {
+        &self.localized_name.display
     }
 }
 
@@ -1896,14 +1918,14 @@ impl ProcessedBinding {
         match (self, other) {
             (Self::Mapped(keybind1, action1), Self::Mapped(keybind2, action2)) => {
                 match keybind1.source.cmp(&keybind2.source) {
-                    cmp::Ordering::Equal => action1.humanized_name.cmp(&action2.humanized_name),
+                    cmp::Ordering::Equal => action1.display_name().cmp(action2.display_name()),
                     ordering => ordering,
                 }
             }
             (Self::Mapped(_, _), Self::Unmapped(_)) => cmp::Ordering::Less,
             (Self::Unmapped(_), Self::Mapped(_, _)) => cmp::Ordering::Greater,
             (Self::Unmapped(action1), Self::Unmapped(action2)) => {
-                action1.humanized_name.cmp(&action2.humanized_name)
+                action1.display_name().cmp(action2.display_name())
             }
         }
     }
@@ -1916,7 +1938,7 @@ enum KeybindContextString {
 }
 
 impl KeybindContextString {
-    const GLOBAL: SharedString = SharedString::new_static("<global>");
+    const GLOBAL: SharedString = SharedString::new_static("<グローバル>");
 
     pub fn local(&self) -> Option<&SharedString> {
         match self {
@@ -2163,7 +2185,7 @@ impl Render for KeymapEditor {
                                             if action_name != gpui::NoAction.name() {
                                                 binding
                                                     .action()
-                                                    .humanized_name
+                                                    .display_name()
                                                     .clone()
                                                     .into_any_element()
                                             } else {
@@ -2335,7 +2357,7 @@ impl Render for KeymapEditor {
                                                             log::error!("Unexpected override from the {} keymap", conflict.override_source.name());
                                                             None
                                                         }
-                                                    }.map(|source| format!("このキーバインドは{1}の '{0}' によって上書きされています。", binding.action().humanized_name, source))
+                                                    }.map(|source| format!("このキーバインドは{1}の '{0}' によって上書きされています。", binding.action().display_name(), source))
                                                 }).unwrap_or_else(|| "このキーバインドは上書きされています。".to_string());
 
                                                 row.tooltip(Tooltip::text(context))
@@ -2555,9 +2577,15 @@ impl KeybindingEditorModal {
         let (action_editor, action_name_to_static) = if has_action_editor {
             let actions: Vec<&'static str> = cx.all_action_names().to_vec();
 
-            let humanized_names: HashMap<&'static str, SharedString> = actions
+            // 補完メニューは editor 側で `CodeLabel` のフィルター範囲に対して再フィルターされるため、
+            // 英語綴りでも候補が残るようにラベル自体を「日本語ラベル + 英語 humanize 名」にする。
+            let completion_labels: HashMap<&'static str, SharedString> = actions
                 .iter()
-                .map(|&name| (name, command_palette::humanize_action_name(name).into()))
+                .map(|&name| {
+                    let (_, search_text) =
+                        command_palette::localized_action_name_and_search_text(name);
+                    (name, search_text.into())
+                })
                 .collect();
 
             let action_name_to_static: HashMap<String, &'static str> = actions
@@ -2577,7 +2605,7 @@ impl KeybindingEditorModal {
                     .unwrap();
                 editor_entity.update(cx, |editor, _cx| {
                     editor.set_completion_provider(Some(std::rc::Rc::new(
-                        ActionCompletionProvider::new(actions, humanized_names),
+                        ActionCompletionProvider::new(actions, completion_labels),
                     )));
                 });
 
@@ -2865,15 +2893,15 @@ impl KeybindingEditorModal {
             .get_selected_action_name(cx)
             .map_err(InputError::error)?;
 
-        let humanized_action_name: SharedString =
-            command_palette::humanize_action_name(action_name).into();
+        let localized_action_name: SharedString =
+            command_palette::localized_action_name(action_name).into();
 
         let action_information = ActionInformation::new(
             action_name,
             None,
             &HashSet::default(),
             cx.action_documentation(),
-            &self.keymap_editor.read(cx).humanized_action_names,
+            &self.keymap_editor.read(cx).localized_action_names,
         );
 
         let keybind_for_save = if create {
@@ -2905,7 +2933,7 @@ impl KeybindingEditorModal {
                             let status_toast = StatusToast::new(
                                 format!(
                                     "{} アクションの変更を保存しました。",
-                                    humanized_action_name
+                                    localized_action_name
                                 ),
                                 cx,
                                 move |this, _cx| {
@@ -3102,7 +3130,7 @@ impl Render for KeybindingEditorModal {
                                 .border_color(theme.border_variant)
                                 .when(!self.creating, |this| {
                                     this.child(Label::new(
-                                        self.editing_keybind.action().humanized_name.clone(),
+                                        self.editing_keybind.action().display_name().clone(),
                                     ))
                                     .when_some(
                                         self.editing_keybind.action().documentation,
@@ -4105,6 +4133,55 @@ mod tests {
             })
             .map(|(index, _)| index)
             .collect()
+    }
+
+    #[gpui::test]
+    async fn test_action_query_matches_japanese_label_and_english_alias(cx: &mut TestAppContext) {
+        let keymap_content = r#"[
+    {
+        "bindings": {
+            "alt-cmd-shift-c": "zed::OpenKeymap"
+        }
+    }
+]"#;
+        let (_fs, keymap_editor, mut cx) = setup_keymap_editor(cx, keymap_content).await;
+        let cx = &mut cx;
+
+        let japanese_label = command_palette::localized_action_name("zed::OpenKeymap");
+        assert_ne!(
+            japanese_label,
+            command_palette::humanize_action_name("zed::OpenKeymap"),
+            "this test needs an action that ja_labels translates"
+        );
+        keymap_editor.read_with(cx, |editor, _| {
+            let row = *visible_rows_for_action(editor, "zed::OpenKeymap")
+                .first()
+                .expect("expected the binding to be listed");
+            let candidate_id = editor.matches[row].candidate_id;
+            assert_eq!(
+                editor.keybindings[candidate_id].action().display_name(),
+                &SharedString::from(japanese_label.clone()),
+                "the action column should show the Japanese label"
+            );
+        });
+
+        for query in ["キーマップ", "open keymap"] {
+            keymap_editor.update_in(cx, |editor, window, cx| {
+                editor.filter_editor.update(cx, |filter_editor, cx| {
+                    filter_editor.set_text(query, window, cx);
+                });
+            });
+            cx.run_until_parked();
+
+            let rows = keymap_editor.read_with(cx, |editor, _| {
+                visible_rows_for_action(editor, "zed::OpenKeymap")
+            });
+            assert_eq!(
+                rows.len(),
+                1,
+                "query {query:?} should match the binding by either spelling"
+            );
+        }
     }
 
     #[gpui::test]

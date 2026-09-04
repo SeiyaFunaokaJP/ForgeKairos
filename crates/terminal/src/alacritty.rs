@@ -42,6 +42,7 @@ use crate::{
     Selection, SelectionRange, SelectionSide, SelectionType, TerminalBackendEvent, TerminalBounds,
     ViMotion,
     pty_info::ProcessIdGetter,
+    remote_cwd::RemoteCwdTracker,
     session_log::SessionLogTap,
     terminal_settings::{AlternateScroll, CursorShape as SettingsCursorShape},
 };
@@ -203,7 +204,7 @@ pub(super) fn new_term(
 }
 
 /// Wraps a PTY so every byte read from it is also handed to a
-/// [`SessionLogTap`].
+/// [`SessionLogTap`], and — for remote shells — to a [`RemoteCwdTracker`].
 ///
 /// `EventedReadWrite::reader` hands back `&mut Self::Reader`, so a wrapper
 /// cannot own a reader that borrows the inner PTY. Making the wrapper itself
@@ -213,11 +214,16 @@ pub(super) fn new_term(
 pub(super) struct TeePty<P> {
     inner: P,
     tap: SessionLogTap,
+    remote_cwd: Option<RemoteCwdTracker>,
 }
 
 impl<P> TeePty<P> {
-    fn new(inner: P, tap: SessionLogTap) -> Self {
-        Self { inner, tap }
+    fn new(inner: P, tap: SessionLogTap, remote_cwd: Option<RemoteCwdTracker>) -> Self {
+        Self {
+            inner,
+            tap,
+            remote_cwd,
+        }
     }
 }
 
@@ -226,6 +232,9 @@ impl<P: tty::EventedReadWrite> io::Read for TeePty<P> {
         let read = self.inner.reader().read(buf)?;
         if read > 0 {
             self.tap.record(&buf[..read]);
+            if let Some(remote_cwd) = &self.remote_cwd {
+                remote_cwd.record(&buf[..read]);
+            }
         }
         Ok(read)
     }
@@ -284,8 +293,9 @@ pub(super) fn spawn_event_loop(
     pty: AlacrittyPty,
     drain_on_exit: bool,
     session_log_tap: SessionLogTap,
+    remote_cwd: Option<RemoteCwdTracker>,
 ) -> Result<PtySender> {
-    let pty = TeePty::new(pty, session_log_tap);
+    let pty = TeePty::new(pty, session_log_tap, remote_cwd);
     let event_loop = EventLoop::new(term, ZedListener(events_tx), pty, drain_on_exit, false)
         .context("failed to create event loop")?;
     let pty_tx = event_loop.channel();
@@ -1236,6 +1246,7 @@ mod tests {
                 writer: Vec::new(),
             },
             tap.clone(),
+            None,
         );
 
         let mut buffer = [0u8; 10];
@@ -1256,6 +1267,25 @@ mod tests {
             receiver.try_recv().is_err(),
             "untapped read was not recorded"
         );
+    }
+
+    #[test]
+    fn tee_pty_reports_osc7_to_the_remote_cwd_tracker() {
+        let remote_cwd = RemoteCwdTracker::new(PathStyle::Unix);
+        let mut pty = TeePty::new(
+            FakePty {
+                reader: io::Cursor::new(b"\x1b]7;file://host/srv\x07$ ".to_vec()),
+                writer: Vec::new(),
+            },
+            SessionLogTap::default(),
+            Some(remote_cwd.clone()),
+        );
+
+        let mut buffer = [0u8; 64];
+        let read = pty.reader().read(&mut buffer).expect("read succeeds");
+
+        assert_eq!(read, b"\x1b]7;file://host/srv\x07$ ".len());
+        assert_eq!(remote_cwd.current(), Some(PathBuf::from("/srv")));
     }
 
     #[test]
