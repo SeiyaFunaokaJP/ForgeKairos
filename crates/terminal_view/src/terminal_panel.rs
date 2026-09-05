@@ -74,6 +74,26 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
+const LAUNCH_CLAUDE_CODE_LABEL: &str = "Claude Code を起動";
+
+/// Starts the official `claude` CLI in a new terminal tab (ADR-F20).
+///
+/// The click dispatches rather than calling the handler directly, because
+/// `Window::dispatch_action` defers to the end of the effect cycle: the handler
+/// leases the workspace, which must not happen while this pane is still leased
+/// by its own click listener.
+fn launch_claude_code_button() -> IconButton {
+    IconButton::new("terminal-launch-claude-code", IconName::AiClaude)
+        .icon_size(IconSize::Small)
+        .tooltip(Tooltip::text("Claude Code を起動 (新しいターミナル)"))
+        .on_click(|_, window, cx| {
+            window.dispatch_action(
+                Box::new(zed_actions::terminal::LaunchClaudeCode { effort: None }),
+                cx,
+            );
+        })
+}
+
 pub struct TerminalPanel {
     pub(crate) active_pane: Entity<Pane>,
     pub(crate) center: PaneGroup,
@@ -131,15 +151,28 @@ impl TerminalPanel {
                     .active_item()
                     .and_then(|item| item.downcast::<TerminalView>())
                     .is_some_and(|view| view.read(cx).rename_editor_is_focused(window, cx));
+                // 起動ボタンだけはペインにフォーカスが無くても出す: Claude Code を
+                // 始めたい人はまだターミナルを触っていないので、フォーカスしてから
+                // でないと現れないボタンでは導線にならない。
+                let launch_claude_code = launch_claude_code_button();
                 if !pane.has_focus(window, cx)
                     && !pane.context_menu_focused(window, cx)
                     && !has_focused_rename_editor
                 {
-                    return (None, None);
+                    return (
+                        None,
+                        Some(
+                            h_flex()
+                                .gap(DynamicSpacing::Base02.rems(cx))
+                                .child(launch_claude_code)
+                                .into_any_element(),
+                        ),
+                    );
                 }
                 let focus_handle = pane.focus_handle(cx);
                 let right_children = h_flex()
                     .gap(DynamicSpacing::Base02.rems(cx))
+                    .child(launch_claude_code)
                     .child(
                         PopoverMenu::new("terminal-tab-bar-popover-menu")
                             .trigger_with_tooltip(
@@ -162,6 +195,13 @@ impl TerminalPanel {
                                         .action(
                                             "タスクを実行",
                                             zed_actions::Spawn::modal().boxed_clone(),
+                                        )
+                                        .action(
+                                            LAUNCH_CLAUDE_CODE_LABEL,
+                                            zed_actions::terminal::LaunchClaudeCode {
+                                                effort: None,
+                                            }
+                                            .boxed_clone(),
                                         )
                                         .separator()
                                         .action(

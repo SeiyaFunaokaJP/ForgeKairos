@@ -67,6 +67,39 @@ const WINDOWS_FORWARDED_ENV: &[&str] = &[
 /// the wire.
 const WINDOWS_FORWARDED_ENV_MAX_BYTES: usize = 1024;
 
+/// Separates the answers inside [`PosixProbe`]'s single command. Echoed on a
+/// line of its own; nothing any of the probed commands prints contains it.
+const PROBE_SECTION_SEPARATOR: &str = "--zed-probe--";
+
+/// Everything the connection setup needs to know about a POSIX remote,
+/// answered in a single `ssh` invocation.
+///
+/// Each of these used to be a separate `ssh`. On Windows that is expensive:
+/// Win32-OpenSSH has no `ControlMaster`, so every invocation pays a fresh TCP
+/// connect, key exchange and authentication — 250ms each against a LAN host on
+/// 2026-09-04, and there were six of them before the proxy could even start.
+/// The `ssh` that carries this probe is one of those six.
+///
+/// Diagnostics are unaffected: this is best effort in one piece, and anything
+/// that does not parse (a Windows remote above all, whose shell cannot run the
+/// script at all) falls back to the individual commands, which report their own
+/// failures exactly as they did before.
+struct PosixProbe {
+    shell: String,
+    platform: RemotePlatform,
+    os_version: Option<String>,
+    /// The server binary this probe asked about, so a caller that computes a
+    /// different path for it knows not to use the two answers below.
+    server_binary_path: String,
+    /// Whether `<server_binary_path> version` ran. Deliberately *runs* the
+    /// binary rather than testing for its presence: a copy that lost its execute
+    /// bit, or sits on a `noexec` mount, has to be reinstalled and not reused.
+    server_binary_runs: bool,
+    /// `(size, mtime in seconds since the epoch)` of the server binary.
+    server_binary_stat: Option<(u64, i64)>,
+    slirp4netns_runs: bool,
+}
+
 pub(crate) struct SshRemoteConnection {
     socket: SshSocket,
     master_process: Mutex<Option<MasterProcess>>,
@@ -668,6 +701,7 @@ impl SshRemoteConnection {
     ) -> Result<Self> {
         use askpass::AskPassResult;
 
+        let connect_started = Instant::now();
         let destination = connection_options.ssh_destination();
 
         let temp_dir = tempfile::Builder::new()
@@ -792,7 +826,16 @@ impl SshRemoteConnection {
                 return Err(e.context("Failed to connect to host"));
             }
 
-            if master_process.as_mut().try_status()?.is_some() {
+            // Without ControlMaster the master process only exists to drive
+            // askpass; once the MAGIC line arrived it may already have exited
+            // *successfully* (no pty was allocated, so `exec $0` hits EOF right
+            // away). Only a non-zero exit is a connection failure — treating a
+            // clean exit as one made connections fail at random, with ssh's
+            // harmless "Pseudo-terminal will not be allocated" note as the
+            // reported reason.
+            if let Some(status) = master_process.as_mut().try_status()?
+                && !status.success()
+            {
                 let mut output = Vec::new();
                 let mut stderr = master_process.as_mut().stderr.take().unwrap();
                 stderr.read_to_end(&mut output).await?;
@@ -818,19 +861,83 @@ impl SshRemoteConnection {
             (socket, Some(master_process))
         };
 
-        let is_windows = socket.probe_is_windows().await;
-        log::info!("Remote is windows: {}", is_windows);
+        log::info!(
+            "remote connect timing: ssh transport ready in {:?}",
+            connect_started.elapsed()
+        );
 
-        let ssh_shell = socket.shell(is_windows).await;
+        let (release_channel, version) =
+            cx.update(|cx| (ReleaseChannel::global(cx), AppVersion::global(cx)));
+
+        delegate.set_status(Some("リモート環境を確認しています"), cx);
+        let probe_started = Instant::now();
+        // Tried before anything else because on a POSIX remote it answers, in
+        // one round trip, what the sequence below needs four for — plus the two
+        // that `ensure_server_binary` and `ensure_slirp4netns_binary` would each
+        // spend on their own. A Windows remote cannot run it and falls through
+        // to that sequence, paying one wasted round trip.
+        let posix_probe = {
+            let (_, binary_name) = server_binary_names(release_channel, &version, false);
+            let server_binary_path = remote_server_dir_relative()
+                .join(
+                    RelPath::from_unix_str(&binary_name)
+                        .context("building the remote server binary path")?,
+                )
+                .display(PathStyle::Unix)
+                .into_owned();
+            let slirp4netns_path = remote_server_dir_relative()
+                .join(
+                    RelPath::from_unix_str("slirp4netns")
+                        .context("building the remote slirp4netns path")?,
+                )
+                .display(PathStyle::Unix)
+                .into_owned();
+            socket
+                .probe_posix(&server_binary_path, &slirp4netns_path)
+                .await
+        };
+
+        let (is_windows, ssh_shell, ssh_platform, ssh_os_version) = match &posix_probe {
+            Some(probe) => (
+                false,
+                probe.shell.clone(),
+                probe.platform,
+                probe.os_version.clone(),
+            ),
+            None => {
+                let is_windows = socket.probe_is_windows().await;
+                let ssh_shell = socket.shell(is_windows).await;
+                let ssh_shell_kind = ShellKind::new(&ssh_shell, is_windows);
+                let ssh_platform = socket.platform(ssh_shell_kind, is_windows).await?;
+                let ssh_os_version = socket.os_version(ssh_platform.os, ssh_shell_kind).await;
+                (is_windows, ssh_shell, ssh_platform, ssh_os_version)
+            }
+        };
+        log::info!("Remote is windows: {}", is_windows);
         log::info!("Remote shell discovered: {}", ssh_shell);
+        log::info!("Remote platform discovered: {:?}", ssh_platform);
+        log::info!("Remote OS version discovered: {:?}", ssh_os_version);
+        log::info!(
+            "remote connect timing: remote environment probed in {:?} ({}){}",
+            probe_started.elapsed(),
+            if posix_probe.is_some() {
+                "1 ssh round trip"
+            } else {
+                "4 ssh round trips, the batched probe did not apply"
+            },
+            match posix_probe
+                .as_ref()
+                .and_then(|probe| probe.server_binary_stat)
+            {
+                Some((size, _)) => format!(
+                    "; the remote already holds a {} server binary",
+                    format_transfer_size(size)
+                ),
+                None => String::new(),
+            }
+        );
 
         let ssh_shell_kind = ShellKind::new(&ssh_shell, is_windows);
-        let ssh_platform = socket.platform(ssh_shell_kind, is_windows).await?;
-        log::info!("Remote platform discovered: {:?}", ssh_platform);
-
-        let ssh_os_version = socket.os_version(ssh_platform.os, ssh_shell_kind).await;
-        log::info!("Remote OS version discovered: {:?}", ssh_os_version);
-
         let (ssh_path_style, ssh_default_system_shell) = match ssh_platform.os {
             RemoteOs::Windows => (PathStyle::Windows, ssh_shell.clone()),
             _ => (PathStyle::Unix, String::from("/bin/sh")),
@@ -850,11 +957,20 @@ impl SshRemoteConnection {
             ssh_default_system_shell,
         };
 
-        let (release_channel, version) =
-            cx.update(|cx| (ReleaseChannel::global(cx), AppVersion::global(cx)));
+        let server_binary_started = Instant::now();
         this.remote_binary_path = Some(
-            this.ensure_server_binary(&delegate, release_channel, version, cx)
-                .await?,
+            this.ensure_server_binary(
+                posix_probe.as_ref(),
+                &delegate,
+                release_channel,
+                version,
+                cx,
+            )
+            .await?,
+        );
+        log::info!(
+            "remote connect timing: remote server binary ensured in {:?}",
+            server_binary_started.elapsed()
         );
 
         // ADR-F18: install the bundled `slirp4netns` next to the remote server
@@ -862,10 +978,17 @@ impl SshRemoteConnection {
         // missing slirp only disables remote agent sandboxing (the helper fails
         // closed at run time); it must not block the connection or human
         // terminals.
-        if let Err(error) = this.ensure_slirp4netns_binary(&delegate, cx).await {
+        if let Err(error) = this
+            .ensure_slirp4netns_binary(posix_probe.as_ref(), &delegate, cx)
+            .await
+        {
             log::warn!("could not install slirp4netns for the remote sandbox: {error:#}");
         }
 
+        log::info!(
+            "remote connect timing: ssh connection established in {:?}",
+            connect_started.elapsed()
+        );
         Ok(this)
     }
 
@@ -875,6 +998,7 @@ impl SshRemoteConnection {
     /// remotes.
     async fn ensure_slirp4netns_binary(
         &self,
+        probe: Option<&PosixProbe>,
         delegate: &Arc<dyn RemoteClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
@@ -883,16 +1007,19 @@ impl SshRemoteConnection {
         }
         let dst_path = paths::remote_server_dir_relative()
             .join(RelPath::from_unix_str("slirp4netns").context("building slirp4netns dst path")?);
-        let already_present = self
-            .socket
-            .run_command(
-                self.ssh_shell_kind,
-                &dst_path.display(self.path_style()),
-                &["--version"],
-                true,
-            )
-            .await
-            .is_ok();
+        let already_present = match probe {
+            Some(probe) => probe.slirp4netns_runs,
+            None => self
+                .socket
+                .run_command(
+                    self.ssh_shell_kind,
+                    &dst_path.display(self.path_style()),
+                    &["--version"],
+                    true,
+                )
+                .await
+                .is_ok(),
+        };
         if already_present {
             return Ok(());
         }
@@ -910,42 +1037,31 @@ impl SshRemoteConnection {
 
     async fn ensure_server_binary(
         &self,
+        probe: Option<&PosixProbe>,
         delegate: &Arc<dyn RemoteClientDelegate>,
         release_channel: ReleaseChannel,
         version: Version,
         cx: &mut AsyncApp,
     ) -> Result<Arc<RelPath>> {
-        let version_str = match release_channel {
-            ReleaseChannel::Dev => "build".to_string(),
-            _ => version.to_string(),
-        };
-        // Kept as its own binding because the cleanup pass below globs on it:
-        // it is the part of the name that is stable across the versions of this
+        // The prefix is kept because the cleanup pass below globs on it: it is
+        // the part of the name that is stable across the versions of this
         // channel that have piled up on the remote.
-        let binary_name_prefix = format!("zed-remote-server-{}-", release_channel.dev_name());
-        let binary_name = format!(
-            "{}{}{}",
-            binary_name_prefix,
-            version_str,
-            if self.ssh_platform.os.is_windows() {
-                ".exe"
-            } else {
-                ""
-            }
+        let (binary_name_prefix, binary_name) =
+            server_binary_names(release_channel, &version, self.ssh_platform.os.is_windows());
+        let dst_path = paths::remote_server_dir_relative().join(
+            RelPath::from_unix_str(&binary_name)
+                .context("building the remote server binary path")?,
         );
-        let dst_path =
-            paths::remote_server_dir_relative().join(RelPath::from_unix_str(&binary_name).unwrap());
+        let dst_path_display = dst_path.display(self.path_style()).into_owned();
 
-        let binary_exists_on_server = self
-            .socket
-            .run_command(
-                self.ssh_shell_kind,
-                &dst_path.display(self.path_style()),
-                &["version"],
-                true,
-            )
-            .await
-            .is_ok();
+        let binary_exists_on_server = match probe {
+            Some(probe) if probe.server_binary_path == dst_path_display => probe.server_binary_runs,
+            _ => self
+                .socket
+                .run_command(self.ssh_shell_kind, &dst_path_display, &["version"], true)
+                .await
+                .is_ok(),
+        };
 
         // Recorded regardless of outcome (built, skipped, or failed) so that,
         // if every other fallback below also comes up empty, the final error
@@ -975,6 +1091,11 @@ impl SshRemoteConnection {
                         .locally_built_binary_is_already_installed(
                             &remote_server_path,
                             &dst_path,
+                            probe.and_then(|probe| {
+                                (probe.server_binary_path == dst_path_display)
+                                    .then_some(probe.server_binary_stat)
+                                    .flatten()
+                            }),
                             delegate,
                             cx,
                         )
@@ -1151,11 +1272,19 @@ impl SshRemoteConnection {
     /// tool on the remote, an unreadable local artifact, output in a shape this
     /// does not recognize) falls back to uploading, which is what always used to
     /// happen.
+    ///
+    /// The two digests are only computed when the answer cannot be recalled: a
+    /// verdict is remembered per remote and binary name, keyed on the size and
+    /// modification time of *both* copies, so a connection where neither has
+    /// been touched since the last one costs nothing at all. Reading ~600MB
+    /// twice was measured at 10 of the ~15 seconds of a warm connection on
+    /// 2026-09-04.
     #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
     async fn locally_built_binary_is_already_installed(
         &self,
         src_path: &Path,
         dst_path: &RelPath,
+        remote_stat: Option<(u64, i64)>,
         delegate: &Arc<dyn RemoteClientDelegate>,
         cx: &mut AsyncApp,
     ) -> bool {
@@ -1177,14 +1306,40 @@ impl SshRemoteConnection {
             return false;
         }
 
+        // `connection_string` rather than `ssh_destination` because it carries
+        // the port: two remotes reachable under the same name differ only there.
+        let install_key = format!(
+            "{}|{}",
+            self.socket.connection_options.connection_string(),
+            dst_path.display(self.path_style())
+        );
+        let local_stat = super::local_file_stat(src_path).await;
+
+        if let Some((local_size, local_mtime_nanos)) = local_stat
+            && let Some((remote_size, remote_mtime_secs)) = remote_stat
+            && let Some(recorded) = super::read_remote_server_install(&install_key).await
+            && recorded.local_size == local_size
+            && recorded.local_mtime_nanos == local_mtime_nanos
+            && recorded.remote_size == remote_size
+            && recorded.remote_mtime_secs == remote_mtime_secs
+        {
+            log::info!(
+                "remote server binary source: locally built, identical to the copy already on \
+                 the remote (sha256 {}) — skipping upload, and skipping the comparison itself \
+                 because neither copy has changed since the last connection",
+                recorded.sha256
+            );
+            return true;
+        }
+
         // Without this the "building" status would stay up for the hashing too,
         // which for an incremental no-op build is the longer of the two steps.
         delegate.set_status(Some("リモート開発サーバーを照合しています"), cx);
 
         let local_digest = {
             let src_path = src_path.to_path_buf();
-            // Hashing ~90MB is enough CPU work to be worth keeping off the
-            // thread that draws the connection dialog.
+            // Hashing ~600MB is enough CPU and disk work to be worth keeping off
+            // the thread that draws the connection dialog.
             match cx
                 .background_spawn(async move { super::sha256_of_file(&src_path).await })
                 .await
@@ -1213,6 +1368,26 @@ impl SshRemoteConnection {
             "remote server binary source: locally built, identical to the copy already on \
              the remote (sha256 {local_digest}) — skipping upload"
         );
+
+        // Recorded only once both copies could be pinned down, so that a remote
+        // whose `stat` this does not understand keeps comparing digests rather
+        // than trusting a half-specified entry.
+        if let Some((local_size, local_mtime_nanos)) = local_stat
+            && let Some((remote_size, remote_mtime_secs)) = remote_stat
+        {
+            super::record_remote_server_install(
+                &install_key,
+                super::RemoteServerInstall {
+                    local_size,
+                    local_mtime_nanos,
+                    remote_size,
+                    remote_mtime_secs,
+                    sha256: local_digest,
+                    recorded_at: super::now_in_seconds(),
+                },
+            )
+            .await;
+        }
         true
     }
 
@@ -2042,6 +2217,36 @@ impl SshSocket {
         })
     }
 
+    /// Asks a POSIX remote everything in [`PosixProbe`] at once, or returns
+    /// `None` when the answers do not come back in the expected shape — which is
+    /// what a Windows remote does, since neither `cmd.exe` nor PowerShell can run
+    /// this script. The caller then falls back to the one-command-at-a-time
+    /// sequence, so `None` costs a round trip and changes nothing else.
+    ///
+    /// Acceptance hangs on `uname` parsing rather than on the exit status: a
+    /// Windows remote that happens to have a POSIX `sh` on `$PATH` (Git for
+    /// Windows) would run the script and answer `MINGW64_NT-…`, which
+    /// [`parse_platform`] rejects.
+    async fn probe_posix(
+        &self,
+        server_binary_path: &str,
+        slirp4netns_path: &str,
+    ) -> Option<PosixProbe> {
+        let shell_kind = ShellKind::Posix;
+        let script = posix_probe_script(shell_kind, server_binary_path, slirp4netns_path)?;
+        let output = self
+            .run_command(
+                shell_kind,
+                "sh",
+                &shell_kind.args_for_shell(false, script),
+                false,
+            )
+            .await
+            .map_err(|error| log::debug!("the batched POSIX probe did not run: {error:#}"))
+            .ok()?;
+        parse_posix_probe(&output, server_binary_path)
+    }
+
     /// Probes whether the remote host is running Windows.
     ///
     /// This is done by attempting to run a simple Windows-specific command.
@@ -2404,6 +2609,84 @@ impl SshConnectionOptions {
 /// them, so the quoting has to be unconditional.
 fn powershell_single_quoted(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+/// The one-line script behind [`PosixProbe`], or `None` if a path in it cannot
+/// be quoted for the remote shell.
+///
+/// One line because `SshSocket::ssh_command` sends the command as a single
+/// argument and not every remote login shell keeps embedded newlines intact.
+fn posix_probe_script(
+    shell_kind: ShellKind,
+    server_binary_path: &str,
+    slirp4netns_path: &str,
+) -> Option<String> {
+    let binary = shell_kind.try_quote(server_binary_path)?;
+    let slirp = shell_kind.try_quote(slirp4netns_path)?;
+    let separator = PROBE_SECTION_SEPARATOR;
+    // Both `stat` spellings are tried because GNU coreutils and BSD (so macOS)
+    // disagree on the flags, and both `os-release` and `sw_vers` are asked for
+    // the same reason: only the one that exists prints anything. On GNU, `-c`
+    // fails only when the file is absent, in which case `-f` fails too, so the
+    // filesystem report that `-f` means there never reaches the parser.
+    Some(format!(
+        "echo \"$SHELL\"; echo {separator}; \
+         uname -sm; echo {separator}; \
+         cat /etc/os-release 2>/dev/null; sw_vers -productVersion 2>/dev/null; echo {separator}; \
+         if {binary} version >/dev/null 2>&1; then echo yes; fi; echo {separator}; \
+         stat -c \"%s %Y\" {binary} 2>/dev/null || stat -f \"%z %m\" {binary} 2>/dev/null; \
+         echo {separator}; \
+         if {slirp} --version >/dev/null 2>&1; then echo yes; fi"
+    ))
+}
+
+/// Splits the output of [`posix_probe_script`] into a [`PosixProbe`], or `None`
+/// if it is not the output of that script at all.
+fn parse_posix_probe(output: &str, server_binary_path: &str) -> Option<PosixProbe> {
+    let mut sections = output.split(PROBE_SECTION_SEPARATOR);
+    let shell = sections.next()?;
+    let uname = sections.next()?;
+    let os_version = sections.next()?;
+    let server_binary = sections.next()?;
+    let server_binary_stat = sections.next()?;
+    let slirp4netns = sections.next()?;
+
+    let platform = super::parse_platform(uname)
+        .map_err(|error| {
+            log::debug!("the batched POSIX probe returned no usable platform: {error:#}")
+        })
+        .ok()?;
+
+    Some(PosixProbe {
+        shell: parse_shell(shell, "sh"),
+        platform,
+        os_version: super::parse_os_version(platform.os, os_version),
+        server_binary_path: server_binary_path.to_owned(),
+        server_binary_runs: server_binary.trim() == "yes",
+        server_binary_stat: super::parse_remote_stat_output(server_binary_stat),
+        slirp4netns_runs: slirp4netns.trim() == "yes",
+    })
+}
+
+/// The `(prefix, file name)` the server binary is installed under in the
+/// remote's `~/.zed_server`. The prefix is the part that stays the same across
+/// every version of this channel that has ever been installed there, which is
+/// what [`SshRemoteConnection::remove_stale_server_files`] globs on.
+fn server_binary_names(
+    release_channel: ReleaseChannel,
+    version: &Version,
+    is_windows: bool,
+) -> (String, String) {
+    let version_str = match release_channel {
+        ReleaseChannel::Dev => "build".to_string(),
+        _ => version.to_string(),
+    };
+    let prefix = format!("zed-remote-server-{}-", release_channel.dev_name());
+    let name = format!(
+        "{prefix}{version_str}{}",
+        if is_windows { ".exe" } else { "" }
+    );
+    (prefix, name)
 }
 
 /// Renders a byte count for the connection dialog. Binary units, because that is
@@ -2966,6 +3249,92 @@ mod tests {
         assert_eq!(
             windows_forwarded_env_assignments(&input_env).as_deref(),
             Some("$env:HTTP_PROXY='http://127.0.0.1:1' ; $env:http_proxy='it''s' ; ")
+        );
+    }
+
+    /// Verbatim output of [`posix_probe_script`] captured from the Ubuntu 24.04
+    /// test host on 2026-09-05, with the leading blank line each section carries
+    /// because the separator is echoed on a line of its own.
+    const PROBE_OUTPUT_UBUNTU: &str = "/bin/bash\n--zed-probe--\nLinux x86_64\n--zed-probe--\n\
+        PRETTY_NAME=\"Ubuntu 24.04.3 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nID=ubuntu\n\
+        --zed-probe--\nyes\n--zed-probe--\n586446160 1788531474\n--zed-probe--\nyes\n";
+
+    #[test]
+    fn test_posix_probe_script_is_a_single_line() {
+        let script = posix_probe_script(
+            ShellKind::Posix,
+            ".zed_server/zed-remote-server-dev-build",
+            ".zed_server/slirp4netns",
+        )
+        .expect("both paths are quotable");
+        // `SshSocket::ssh_command` asserts on this: not every remote login shell
+        // keeps an embedded newline intact.
+        assert!(!script.contains('\n'));
+        assert_eq!(
+            script.matches(PROBE_SECTION_SEPARATOR).count(),
+            5,
+            "the six sections `parse_posix_probe` expects need five separators"
+        );
+    }
+
+    #[test]
+    fn test_parse_posix_probe() {
+        let probe = parse_posix_probe(
+            PROBE_OUTPUT_UBUNTU,
+            ".zed_server/zed-remote-server-dev-build",
+        )
+        .expect("the captured output is what the script prints");
+        assert_eq!(probe.shell, "/bin/bash");
+        assert_eq!(probe.platform.os, RemoteOs::Linux);
+        assert_eq!(probe.platform.arch, RemoteArch::X86_64);
+        assert_eq!(probe.os_version.as_deref(), Some("ubuntu 24.04"));
+        assert!(probe.server_binary_runs);
+        assert_eq!(probe.server_binary_stat, Some((586446160, 1788531474)));
+        assert!(probe.slirp4netns_runs);
+    }
+
+    #[test]
+    fn test_parse_posix_probe_with_nothing_installed_on_the_remote() {
+        let output = "/bin/sh\n--zed-probe--\nDarwin arm64\n--zed-probe--\n15.6.1\n\
+                      --zed-probe--\n--zed-probe--\n--zed-probe--\n";
+        let probe =
+            parse_posix_probe(output, ".zed_server/zed-remote-server-dev-build").expect("parses");
+        assert_eq!(probe.platform.os, RemoteOs::MacOs);
+        assert_eq!(probe.os_version.as_deref(), Some("15.6.1"));
+        assert!(!probe.server_binary_runs);
+        assert_eq!(probe.server_binary_stat, None);
+        assert!(!probe.slirp4netns_runs);
+    }
+
+    #[test]
+    fn test_parse_posix_probe_rejects_output_that_is_not_the_script() {
+        // What a Windows remote's shell answers: no separators at all.
+        assert!(
+            parse_posix_probe("'sh' is not recognized as an internal command\n", "x").is_none()
+        );
+        // A POSIX `sh` on a Windows remote (Git for Windows) does run the
+        // script, and `uname` is what gives it away.
+        let mingw = PROBE_OUTPUT_UBUNTU.replace("Linux x86_64", "MINGW64_NT-10.0-19045 x86_64");
+        assert!(parse_posix_probe(&mingw, "x").is_none());
+        // Truncated output (a connection that died mid-probe).
+        assert!(parse_posix_probe("/bin/bash\n--zed-probe--\nLinux x86_64\n", "x").is_none());
+    }
+
+    #[test]
+    fn test_server_binary_names() {
+        assert_eq!(
+            server_binary_names(ReleaseChannel::Dev, &Version::new(1, 17, 2), false),
+            (
+                "zed-remote-server-dev-".to_string(),
+                "zed-remote-server-dev-build".to_string()
+            )
+        );
+        assert_eq!(
+            server_binary_names(ReleaseChannel::Stable, &Version::new(1, 17, 2), true),
+            (
+                "zed-remote-server-stable-".to_string(),
+                "zed-remote-server-stable-1.17.2.exe".to_string()
+            )
         );
     }
 

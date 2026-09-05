@@ -234,6 +234,7 @@ impl TerminalToolTest {
                 sandboxing: false,
                 is_linux: cfg!(target_os = "linux"),
                 is_windows: cfg!(target_os = "windows"),
+                restricted_workspace: false,
             };
             template.render(&Templates::new())?
         };

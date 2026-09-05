@@ -1135,6 +1135,33 @@ mod tests {
         assert_eq!(permissions.default, ToolPermissionMode::Confirm);
     }
 
+    // The agent panel's "auto approve" switch writes exactly this: the global
+    // default becomes `allow`, with no per-tool rules of its own. Anything the
+    // user configured per tool has to survive the switch.
+    #[test]
+    fn test_tool_permissions_auto_approve_default() {
+        let content: ToolPermissionsContent =
+            serde_json::from_value(json!({ "default": "allow" })).unwrap();
+        let permissions = compile_tool_permissions(Some(content));
+        assert_eq!(permissions.default, ToolPermissionMode::Allow);
+        assert!(permissions.tools.is_empty());
+
+        let content: ToolPermissionsContent = serde_json::from_value(json!({
+            "default": "allow",
+            "tools": {
+                "terminal": {
+                    "always_confirm": [{ "pattern": "^sudo\\s" }]
+                }
+            }
+        }))
+        .unwrap();
+        let permissions = compile_tool_permissions(Some(content));
+        assert_eq!(permissions.default, ToolPermissionMode::Allow);
+        let terminal_rules = permissions.tools.get("terminal").unwrap();
+        assert_eq!(terminal_rules.default, None);
+        assert_eq!(terminal_rules.always_confirm.len(), 1);
+    }
+
     #[test]
     fn test_sandbox_permissions_empty() {
         let permissions = compile_sandbox_permissions(None);

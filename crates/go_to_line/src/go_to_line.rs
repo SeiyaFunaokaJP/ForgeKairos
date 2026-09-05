@@ -1,3 +1,4 @@
+pub mod character_count;
 pub mod cursor_position;
 
 use cursor_position::UserCaretPosition;

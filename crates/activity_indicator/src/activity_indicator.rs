@@ -4,12 +4,14 @@ use extension_host::{ExtensionOperation, ExtensionStore};
 use futures::StreamExt;
 use gpui::{
     App, Context, Entity, EventEmitter, InteractiveElement as _, ParentElement as _, Render,
-    SharedString, Styled, Task, Window, actions,
+    SharedString, Styled, Task, WeakEntity, Window, actions,
 };
+use http_client::RequestHost;
 use language::{
     BinaryStatus, LanguageRegistry, LanguageServerId, LanguageServerName,
     LanguageServerStatusUpdate, ServerHealth,
 };
+use lsp::LanguageServerSelector;
 use project::{
     LanguageServerProgress, LspStoreEvent, ProgressToken, Project, ProjectEnvironmentEvent,
     git_store::{GitStoreEvent, Repository},
@@ -17,17 +19,28 @@ use project::{
 use smallvec::SmallVec;
 use std::{
     cmp::Reverse,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::Write,
     sync::Arc,
     time::{Duration, Instant},
 };
 use ui::{ContextMenu, PopoverMenu, PopoverMenuHandle, Tooltip, prelude::*};
-use util::truncate_and_trailoff;
-use workspace::{StatusItemView, Workspace, item::ItemHandle};
+use util::{ResultExt as _, truncate_and_trailoff};
+use workspace::{
+    StatusItemView, Workspace,
+    item::ItemHandle,
+    notifications::{NotificationId, simple_message_notification::MessageNotification},
+};
 
 const GIT_OPERATION_DELAY: Duration = Duration::from_millis(0);
 pub const DEFERRED_SCAN_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long the ADR-F22 consent flow waits for the allowlist file watch to
+/// report the hosts it just wrote before retrying the download. Same shape as
+/// the ADR-F16 update flow: the write is committed either way, so a slow watch
+/// costs a retry, not correctness.
+const ALLOWLIST_RELOAD_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const ALLOWLIST_RELOAD_ATTEMPTS: usize = 50;
 
 actions!(
     activity_indicator,
@@ -47,9 +60,17 @@ pub enum Event {
 pub struct ActivityIndicator {
     statuses: Vec<ServerStatus>,
     project: Entity<Project>,
+    workspace: WeakEntity<Workspace>,
     context_menu_handle: PopoverMenuHandle<ContextMenu>,
     fs_jobs: Vec<fs::JobInfo>,
     deferred_scan_message: DeferredScanMessage,
+    /// Hosts the ADR-F22 consent prompt has already offered, per language
+    /// server. Keyed by host rather than being a plain "already asked" flag so
+    /// that a download refused at a *further* hop than the one already
+    /// consented to can still ask — the set of hosts is finite, so this cannot
+    /// loop, and a repeat of the same denial stays silent.
+    egress_consent_offered: HashMap<LanguageServerName, HashSet<String>>,
+    egress_consent_task: Option<Task<()>>,
 }
 
 #[derive(Default)]
@@ -88,6 +109,81 @@ struct Content {
     tooltip_message: Option<String>,
 }
 
+/// Names the ADR-F22 consent notification, one per language server.
+struct LspEgressConsent;
+
+/// Of `hosts`, the ones the running allowlist still refuses, in the order the
+/// denial reported them and without repeats.
+///
+/// A process with no policy installed at all (a test harness) is treated as
+/// refusing everything, which is what the decorator does there too.
+fn hosts_still_denied(hosts: &[String], cx: &App) -> Vec<String> {
+    let policy = cx
+        .try_global::<egress_policy::EgressAllowlistGlobal>()
+        .map(|global| global.0.snapshot());
+    let mut seen = HashSet::new();
+    hosts
+        .iter()
+        .filter(|host| {
+            policy.as_ref().is_none_or(|policy| {
+                RequestHost::parse(host).is_none_or(|host| !policy.allows(&host))
+            })
+        })
+        .filter(|host| seen.insert(host.to_ascii_lowercase()))
+        .cloned()
+        .collect()
+}
+
+/// Whether the ADR-F22 consent prompt should be raised for `hosts`, recording
+/// them against `server_name` when it should.
+///
+/// `false` for an empty set (nothing left to ask for) and for a set whose every
+/// host has already been offered for this server, which is what keeps a server
+/// that retries on every buffer from producing a stream of notifications. A set
+/// containing even one host not yet offered goes through: that is a *different*
+/// denial — typically a redirect hop past the one already consented to — and
+/// leaving it silent would strand the user with no way forward.
+fn take_hosts_to_offer(
+    offered: &mut HashMap<LanguageServerName, HashSet<String>>,
+    server_name: &LanguageServerName,
+    hosts: &[String],
+) -> bool {
+    if hosts.is_empty() {
+        return false;
+    }
+    let already_offered = offered.entry(server_name.clone()).or_default();
+    let anything_new = hosts.iter().any(|host| !already_offered.contains(host));
+    already_offered.extend(hosts.iter().cloned());
+    anything_new
+}
+
+/// The one-line "you can sidestep the download entirely" hint that goes under
+/// the consent prompt (ADR-F22).
+///
+/// A server already on `PATH` is used as-is (`check_if_user_installed` runs
+/// before any download), so installing it with the system package manager is a
+/// complete answer to the denial. Only the servers whose command is
+/// unambiguous get a concrete one; the rest get the general shape, because a
+/// wrong command is worse than none.
+fn manual_install_hint(server_name: &LanguageServerName) -> String {
+    let command = match server_name.as_ref() {
+        "clangd" => Some("sudo apt install clangd"),
+        "gopls" => Some("go install golang.org/x/tools/gopls@latest"),
+        "rust-analyzer" => Some("rustup component add rust-analyzer"),
+        _ => None,
+    };
+    match command {
+        Some(command) => format!(
+            "許可しない場合は、{server_name} をこのマシン (リモート接続中はリモートホスト) に\
+             インストールして PATH に通しても解決します (例: {command})。"
+        ),
+        None => format!(
+            "許可しない場合は、{server_name} をこのマシン (リモート接続中はリモートホスト) に\
+             インストールして PATH に通しても解決します。"
+        ),
+    }
+}
+
 impl ActivityIndicator {
     pub fn new(
         workspace: &mut Workspace,
@@ -96,17 +192,17 @@ impl ActivityIndicator {
         cx: &mut Context<Workspace>,
     ) -> Entity<ActivityIndicator> {
         let project = workspace.project().clone();
+        let workspace_handle = cx.entity().downgrade();
         let this = cx.new(|cx| {
             let mut status_events = languages.language_server_binary_statuses();
             cx.spawn(async move |this, cx| {
                 while let Some((name, binary_status)) = status_events.next().await {
                     this.update(cx, |this: &mut ActivityIndicator, cx| {
-                        this.statuses.retain(|s| s.name != name);
-                        this.statuses.push(ServerStatus {
+                        this.record_status(
                             name,
-                            status: LanguageServerStatusUpdate::Binary(binary_status),
-                        });
-                        cx.notify();
+                            LanguageServerStatusUpdate::Binary(binary_status),
+                            cx,
+                        );
                     })?;
                 }
                 anyhow::Ok(())
@@ -171,7 +267,20 @@ impl ActivityIndicator {
                                                 else {
                                                     return;
                                                 };
-                                                BinaryStatus::Failed { error }
+                                                // ADR-F22: a remote host's
+                                                // download refused by the
+                                                // allowlist arrives as FAILED
+                                                // with the hosts beside it.
+                                                if status_update.egress_blocked_hosts.is_empty() {
+                                                    BinaryStatus::Failed { error }
+                                                } else {
+                                                    BinaryStatus::EgressDenied {
+                                                        error,
+                                                        hosts: status_update
+                                                            .egress_blocked_hosts
+                                                            .clone(),
+                                                    }
+                                                }
                                             }
                                         };
                                         LanguageServerStatusUpdate::Binary(binary_status)
@@ -199,10 +308,7 @@ impl ActivityIndicator {
                                 None => return,
                             };
 
-                            activity_indicator.statuses.retain(|s| s.name != name);
-                            activity_indicator
-                                .statuses
-                                .push(ServerStatus { name, status });
+                            activity_indicator.record_status(name, status, cx);
                         }
                         cx.notify()
                     }
@@ -244,9 +350,12 @@ impl ActivityIndicator {
             let mut this = Self {
                 statuses: Vec::new(),
                 project: project.clone(),
+                workspace: workspace_handle,
                 context_menu_handle: PopoverMenuHandle::default(),
                 fs_jobs: Vec::new(),
                 deferred_scan_message: DeferredScanMessage::default(),
+                egress_consent_offered: HashMap::default(),
+                egress_consent_task: None,
             };
             this.update_deferred_scan_status(cx);
             this
@@ -294,6 +403,193 @@ impl ActivityIndicator {
         this
     }
 
+    /// Records the latest status for a server, whichever ingest path it came
+    /// in on (the local registry stream, or a remote host's over proto), and
+    /// raises the ADR-F22 consent prompt when the reason is an egress denial.
+    fn record_status(
+        &mut self,
+        name: LanguageServerName,
+        status: LanguageServerStatusUpdate,
+        cx: &mut Context<Self>,
+    ) {
+        if let LanguageServerStatusUpdate::Binary(BinaryStatus::EgressDenied { hosts, .. }) =
+            &status
+        {
+            let hosts = hosts.clone();
+            self.prompt_egress_consent(name.clone(), hosts, cx);
+        }
+        self.statuses.retain(|s| s.name != name);
+        self.statuses.push(ServerStatus { name, status });
+        cx.notify();
+    }
+
+    /// Offers to add the hosts a language server download needs to the network
+    /// allowlist, once per server per session (ADR-F22).
+    ///
+    /// Silent when the hosts are already allowed — the denial is then stale,
+    /// and the retry the user would be offered has already happened — and
+    /// silent for a repeat of a denial already offered, so a server that
+    /// retries on every buffer cannot produce a stream of notifications.
+    fn prompt_egress_consent(
+        &mut self,
+        server_name: LanguageServerName,
+        hosts: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let hosts = hosts_still_denied(&hosts, cx);
+        if !take_hosts_to_offer(&mut self.egress_consent_offered, &server_name, &hosts) {
+            return;
+        }
+
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let indicator = cx.entity().downgrade();
+        let display_name = server_name.0.clone();
+        let headline = SharedString::from(format!(
+            "{display_name} のダウンロードには次のホストへの通信が必要ですが、\
+             ネットワーク許可リストで拒否されました。"
+        ));
+        let host_labels = hosts
+            .iter()
+            .map(|host| SharedString::from(host.clone()))
+            .collect::<Vec<_>>();
+        let manual_hint = manual_install_hint(&server_name);
+        let hosts_for_click = hosts.clone();
+
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_notification(
+                NotificationId::composite::<LspEgressConsent>(display_name.clone()),
+                cx,
+                move |cx| {
+                    let headline = headline.clone();
+                    let host_labels = host_labels.clone();
+                    let indicator = indicator.clone();
+                    let server_name = server_name.clone();
+                    let hosts = hosts_for_click.clone();
+                    cx.new(move |cx| {
+                        MessageNotification::new_from_builder(cx, move |_, _| {
+                            v_flex()
+                                .gap_1()
+                                .child(Label::new(headline.clone()))
+                                .children(host_labels.iter().map(|host| {
+                                    Label::new(format!("・{host}"))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted)
+                                }))
+                                .into_any_element()
+                        })
+                        .with_title(format!(
+                            "言語サーバー {display_name} を取得できませんでした"
+                        ))
+                        .content_icon(IconName::Warning, Color::Warning)
+                        .secondary_content(manual_hint)
+                        .primary_message("許可リストに追加して再試行")
+                        .primary_icon(IconName::Check)
+                        .primary_on_click(move |_, cx| {
+                            indicator
+                                .update(cx, |indicator, cx| {
+                                    indicator.allow_hosts_and_retry(
+                                        server_name.clone(),
+                                        hosts.clone(),
+                                        cx,
+                                    );
+                                })
+                                .log_err();
+                        })
+                        .secondary_message("今回は許可しない")
+                        .secondary_on_click(|_, _| {})
+                    })
+                },
+            );
+        });
+    }
+
+    /// Writes `hosts` into `network_allowlist.json`, waits for the watch to
+    /// pick them up, and restarts `server_name` so the download runs again
+    /// (ADR-F22).
+    ///
+    /// Owned by the indicator rather than the notification because the
+    /// notification dismisses itself the moment the button is pressed, which
+    /// would cancel a task it owned.
+    fn allow_hosts_and_retry(
+        &mut self,
+        server_name: LanguageServerName,
+        hosts: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let fs = self.project.read(cx).fs().clone();
+        let path = paths::network_allowlist_file().clone();
+        let policy = cx
+            .try_global::<egress_policy::EgressAllowlistGlobal>()
+            .map(|global| global.0.clone());
+        let project = self.project.clone();
+        let workspace = self.workspace.clone();
+        self.egress_consent_task = Some(cx.spawn(async move |_, cx| {
+            if let Err(error) = egress_policy::add_allowed_hosts(&fs, &path, &hosts).await {
+                log::error!(
+                    "failed to add language server download hosts to the allowlist: {error:#}"
+                );
+                workspace
+                    .update(cx, |workspace, cx| {
+                        struct LspEgressConsentFailed;
+                        workspace.show_notification(
+                            NotificationId::unique::<LspEgressConsentFailed>(),
+                            cx,
+                            |cx| {
+                                cx.new(|cx| {
+                                    MessageNotification::new(
+                                        format!("許可リストへの追加に失敗しました: {error:#}"),
+                                        cx,
+                                    )
+                                    .content_icon(IconName::Warning, Color::Error)
+                                })
+                            },
+                        );
+                    })
+                    .log_err();
+                return;
+            }
+
+            // The retry has to be judged against the new list, and the only
+            // thing that installs it is the file watch. Waiting on the live
+            // handle is what ADR-F16's update consent does for the same
+            // reason.
+            if let Some(policy) = policy {
+                for _ in 0..ALLOWLIST_RELOAD_ATTEMPTS {
+                    let snapshot = policy.snapshot();
+                    if hosts.iter().all(|host| {
+                        RequestHost::parse(host).is_some_and(|host| snapshot.allows(&host))
+                    }) {
+                        break;
+                    }
+                    cx.background_executor()
+                        .timer(ALLOWLIST_RELOAD_POLL_INTERVAL)
+                        .await;
+                }
+            }
+
+            project.update(cx, |project, cx| {
+                // A remote host was handed the allowlist once, at connect
+                // time (ADR-F11). Push the new one before asking it to
+                // restart the server: messages on that channel are
+                // ordered, so this is what makes the retry see it. The
+                // watch-driven push in `RemoteClient` covers every other
+                // window on the same host.
+                if let Some(remote_client) = project.remote_client() {
+                    remote_client.read(cx).push_egress_allowlist(cx);
+                }
+                let buffers = project.opened_buffers(cx);
+                project.restart_language_servers_for_buffers(
+                    buffers,
+                    HashSet::from_iter([LanguageServerSelector::Name(server_name)]),
+                    true,
+                    cx,
+                );
+            });
+        }));
+    }
+
     fn show_error_message(&mut self, _: &ShowErrorMessage, _: &mut Window, cx: &mut Context<Self>) {
         let mut status_message_shown = false;
         self.statuses.retain(|status| match &status.status {
@@ -303,6 +599,27 @@ impl ActivityIndicator {
                 cx.emit(Event::ShowStatus {
                     server_name: status.name.clone(),
                     status: SharedString::from(error),
+                });
+                status_message_shown = true;
+                false
+            }
+            LanguageServerStatusUpdate::Binary(BinaryStatus::EgressDenied { error, hosts })
+                if !status_message_shown =>
+            {
+                // The raw error is English and says "not on the network
+                // allowlist" without saying what to do about it, so it gets a
+                // Japanese preamble naming the hosts (ADR-F22).
+                cx.emit(Event::ShowStatus {
+                    server_name: status.name.clone(),
+                    status: SharedString::from(format!(
+                        "ダウンロードに必要な次のホストが、ネットワーク許可リストで拒否されました:\n{}\n\n{}\n\n{error}",
+                        hosts
+                            .iter()
+                            .map(|host| format!("・{host}"))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        manual_install_hint(&status.name),
+                    )),
                 });
                 status_message_shown = true;
                 false
@@ -500,6 +817,7 @@ impl ActivityIndicator {
         let mut downloading = SmallVec::<[_; 3]>::new();
         let mut checking_for_update = SmallVec::<[_; 3]>::new();
         let mut failed = SmallVec::<[_; 3]>::new();
+        let mut egress_denied = SmallVec::<[_; 3]>::new();
         let mut health_messages = SmallVec::<[_; 3]>::new();
         let mut servers_to_clear_statuses = HashSet::<LanguageServerName>::default();
         for status in &self.statuses {
@@ -518,6 +836,9 @@ impl ActivityIndicator {
                 }
                 LanguageServerStatusUpdate::Binary(BinaryStatus::Failed { .. }) => {
                     failed.push(status.name.clone());
+                }
+                LanguageServerStatusUpdate::Binary(BinaryStatus::EgressDenied { .. }) => {
+                    egress_denied.push(status.name.clone());
                 }
                 LanguageServerStatusUpdate::Binary(BinaryStatus::None) => {}
                 LanguageServerStatusUpdate::Health(health, server_status) => match server_status {
@@ -584,6 +905,32 @@ impl ActivityIndicator {
                     this.statuses
                         .retain(|status| !checking_for_update.contains(&status.name));
                     this.dismiss_message(&DismissMessage, window, cx)
+                })),
+                tooltip_message: None,
+            });
+        }
+
+        // ADR-F22: named apart from a plain failure, because "why is nothing
+        // happening" has a concrete answer here and the notification offering
+        // to fix it may already have been dismissed.
+        if !egress_denied.is_empty() {
+            return Some(Content {
+                icon: ActivityIcon::Icon(IconName::Warning),
+                message: format!(
+                    "{} のダウンロードが外部通信の統制で拒否されました。クリックすると必要なホストを表示します。",
+                    egress_denied.iter().map(|name| name.as_ref()).fold(
+                        String::new(),
+                        |mut acc, s| {
+                            if !acc.is_empty() {
+                                acc.push_str(", ");
+                            }
+                            acc.push_str(s);
+                            acc
+                        }
+                    ),
+                ),
+                on_click: Some(Arc::new(|this, window, cx| {
+                    this.show_error_message(&ShowErrorMessage, window, cx)
                 })),
                 tooltip_message: None,
             });
@@ -880,5 +1227,77 @@ impl StatusItemView for ActivityIndicator {
     fn hide_setting(&self, _: &App) -> Option<workspace::HideStatusItem> {
         // Activity indicator auto-hides when there's no work to display.
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    fn server(name: &str) -> LanguageServerName {
+        LanguageServerName(SharedString::from(name.to_string()))
+    }
+
+    #[test]
+    fn the_consent_prompt_is_offered_once_per_server_and_host_set() {
+        let mut offered = HashMap::default();
+        let clangd = server("clangd");
+        let github = vec!["github.com".to_string(), "api.github.com".to_string()];
+
+        assert!(take_hosts_to_offer(&mut offered, &clangd, &github));
+        // The same denial repeating — one per open buffer, say — stays silent.
+        assert!(!take_hosts_to_offer(&mut offered, &clangd, &github));
+        assert!(!take_hosts_to_offer(&mut offered, &clangd, &github[..1]));
+        // Another server's denial is its own prompt.
+        assert!(take_hosts_to_offer(&mut offered, &server("gopls"), &github));
+        // A hop past the one already consented to is a new question.
+        assert!(take_hosts_to_offer(
+            &mut offered,
+            &clangd,
+            &["objects.githubusercontent.com".to_string()]
+        ));
+        // Nothing left to ask for is not a prompt.
+        assert!(!take_hosts_to_offer(&mut offered, &server("ruff"), &[]));
+    }
+
+    #[gpui::test]
+    fn hosts_already_on_the_allowlist_are_not_asked_for_again(cx: &mut TestAppContext) {
+        let denied = [
+            "api.github.com".to_string(),
+            "github.com".to_string(),
+            // Repeats in the denial (its own host plus a predicted hop that is
+            // the same name) must not become repeats in the prompt.
+            "GITHUB.com".to_string(),
+        ];
+
+        // With no policy installed at all, everything counts as denied.
+        cx.update(|cx| {
+            assert_eq!(
+                hosts_still_denied(&denied, cx),
+                vec!["api.github.com".to_string(), "github.com".to_string()],
+            );
+        });
+
+        let policy = http_client::EgressPolicyHandle::default();
+        policy.set(http_client::EgressPolicy::from_host_strings(&["github.com".to_string()]).0);
+        cx.update(|cx| {
+            cx.set_global(egress_policy::EgressAllowlistGlobal(policy));
+            assert_eq!(
+                hosts_still_denied(&denied, cx),
+                vec!["api.github.com".to_string()],
+                "a host the user has already allowed is not worth a prompt"
+            );
+            assert!(hosts_still_denied(&["github.com".to_string()], cx).is_empty());
+        });
+    }
+
+    #[test]
+    fn the_manual_install_hint_names_a_command_only_when_it_is_unambiguous() {
+        let clangd = manual_install_hint(&server("clangd"));
+        assert!(clangd.contains("sudo apt install clangd"), "{clangd}");
+        let unknown = manual_install_hint(&server("some-unknown-ls"));
+        assert!(unknown.contains("some-unknown-ls"), "{unknown}");
+        assert!(!unknown.contains("例:"), "{unknown}");
     }
 }

@@ -317,6 +317,11 @@ actions!(
         ToggleThinkingEffortMenu,
         /// Toggles fast mode for models that support it.
         ToggleFastMode,
+        /// Switches `agent.tool_permissions.default` between "confirm" and
+        /// "allow", so every tool action can be auto-approved without a prompt.
+        ToggleAutoApproveToolActions,
+        /// Toggles the tool permission mode selector menu open or closed.
+        ToggleToolPermissionSelector,
         /// Scroll the output by one page up.
         ScrollOutputPageUp,
         /// Scroll the output by one page down.

@@ -13,10 +13,13 @@
 //! Tracking it lets a remote terminal whose connection dropped restart in the
 //! directory the user was actually in instead of at the worktree root.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use parking_lot::Mutex;
-use util::paths::PathStyle;
+use util::{paths::PathStyle, shell::ShellKind};
 
 const ESC: u8 = 0x1b;
 const BEL: u8 = 0x07;
@@ -74,9 +77,63 @@ impl RemoteCwdTracker {
         }
     }
 
+    /// Records the directory the shell was asked to start in. A shell that
+    /// never reports one — because it is not configured to, or because the
+    /// connection dropped again before its first prompt — then still restarts
+    /// where it began instead of at the worktree root. A report that already
+    /// arrived is never overwritten.
+    pub(crate) fn record_start_directory(&self, working_directory: PathBuf) {
+        let mut state = self.state.lock();
+        state.current.get_or_insert(working_directory);
+    }
+
     pub(crate) fn current(&self) -> Option<PathBuf> {
         self.state.lock().current.clone()
     }
+}
+
+/// Written to the PTY by [`shell_command_with_cwd_fallback`] when the directory
+/// it was asked to start in is gone. Bracketed like
+/// [`crate::REMOTE_CONNECTION_LOST_NOTICE`] so it reads as Zed's own line rather
+/// than as output of the shell.
+fn missing_directory_notice(working_directory: &str) -> String {
+    format!("[{working_directory} が見つからないため、ホームディレクトリで起動しました]")
+}
+
+/// The command that starts a remote login shell in `working_directory`, or in
+/// the user's home — with a line saying so — when that directory no longer
+/// exists on the host. `None` when the directory or the shell cannot be quoted.
+///
+/// Without it the directory is entered by the command line `ssh` hands to the
+/// login shell (`cd <dir> && exec …`), so a directory that was renamed or
+/// deleted since it was recorded takes the whole shell down with it: the tab
+/// dies with a status that the reconnect handling does not recognize, and the
+/// user loses the tab as well as the directory.
+///
+/// The wrapper is `sh` rather than the login shell because the fallback has to
+/// be written in one dialect: fish emits OSC 7 unprompted, and so is the shell
+/// most likely to be restarted into a tracked directory, but it has no
+/// `{ …; }` command group.
+pub fn shell_command_with_cwd_fallback(
+    working_directory: &Path,
+    remote_shell: &str,
+) -> Option<(String, Vec<String>)> {
+    let shell_kind = ShellKind::Posix;
+    let working_directory = working_directory.to_str()?;
+    let quoted_directory = shell_kind.try_quote(working_directory)?;
+    let quoted_shell = shell_kind.try_quote(remote_shell)?;
+    let notice = missing_directory_notice(working_directory);
+    let quoted_notice = shell_kind.try_quote(&notice)?;
+    Some((
+        "sh".to_string(),
+        vec![
+            "-c".to_string(),
+            format!(
+                "cd {quoted_directory} 2>/dev/null || {{ printf '%s\\r\\n' {quoted_notice}; cd; }}; \
+                 exec {quoted_shell} -l"
+            ),
+        ],
+    ))
 }
 
 /// Percent-encodes `%` before ` ` so that the escapes the first substitution
@@ -384,6 +441,59 @@ mod tests {
         // A shell that names no host is still the one we started.
         tracker.record(b"\x1b]7;file:///srv\x07");
         assert_eq!(tracker.current(), Some(PathBuf::from("/srv")));
+    }
+
+    #[test]
+    fn test_tracker_start_directory_is_a_fallback_not_an_override() {
+        let tracker = RemoteCwdTracker::new(PathStyle::Unix);
+        tracker.record_start_directory(PathBuf::from("/srv/app"));
+        assert_eq!(tracker.current(), Some(PathBuf::from("/srv/app")));
+
+        tracker.record(b"\x1b]7;file://host/home/user\x07");
+        assert_eq!(tracker.current(), Some(PathBuf::from("/home/user")));
+
+        // A restart seeds the tracker of the *new* terminal, so a report that
+        // already arrived must win over a later seeding attempt as well.
+        tracker.record_start_directory(PathBuf::from("/srv/app"));
+        assert_eq!(tracker.current(), Some(PathBuf::from("/home/user")));
+    }
+
+    #[test]
+    fn test_shell_command_with_cwd_fallback_quotes_and_falls_back_to_home() {
+        let (program, args) =
+            shell_command_with_cwd_fallback(Path::new("/srv/my app"), "/usr/bin/fish")
+                .expect("a quotable directory and shell");
+        assert_eq!(program, "sh");
+        let [dash_c, script] = args.as_slice() else {
+            panic!("expected `sh -c <script>`, got {args:?}");
+        };
+        assert_eq!(dash_c, "-c");
+        assert_eq!(
+            script,
+            "cd '/srv/my app' 2>/dev/null || { printf '%s\\r\\n' \
+             '[/srv/my app が見つからないため、ホームディレクトリで起動しました]'; cd; }; \
+             exec /usr/bin/fish -l"
+        );
+    }
+
+    #[test]
+    fn test_shell_command_with_cwd_fallback_rejects_non_utf8_directories() {
+        #[cfg(unix)]
+        {
+            use std::{ffi::OsStr, os::unix::ffi::OsStrExt as _};
+
+            assert_eq!(
+                shell_command_with_cwd_fallback(
+                    Path::new(OsStr::from_bytes(b"/srv/\xff")),
+                    "/bin/bash"
+                ),
+                None
+            );
+        }
+        assert_eq!(
+            shell_command_with_cwd_fallback(Path::new("/srv/\0bad"), "/bin/bash"),
+            None
+        );
     }
 
     #[test]

@@ -1300,10 +1300,19 @@ pub struct Thread {
     #[allow(unused)]
     initial_project_snapshot: Shared<Task<Option<Arc<ProjectSnapshot>>>>,
     pub(crate) context_server_registry: Entity<ContextServerRegistry>,
+    /// The profile the user chose. In a restricted workspace this is *not* what
+    /// the thread runs with — see [`Thread::profile`].
     profile_id: AgentProfileId,
-    /// Whether `profile_id` was downgraded to `minimal` at thread start because
-    /// the workspace is restricted. Used purely to surface a warning in the UI.
-    profile_downgraded_for_restricted_workspace: bool,
+    /// Whether `profile_id` is exempt from the restricted-workspace downgrade,
+    /// because the user picked it explicitly (or it was restored from the
+    /// database, which already stores the effective profile).
+    ///
+    /// The downgrade is re-evaluated on every read instead of being applied
+    /// once at thread start: trust can be granted at any point in a thread's
+    /// life, and a user who trusts the folder mid-thread should get the tools
+    /// back right away rather than having to re-pick the profile or start a new
+    /// thread.
+    restricted_downgrade_exempt: bool,
     project_context: Entity<ProjectContext>,
     pub(crate) templates: Arc<Templates>,
     model: ThreadModel,
@@ -1398,8 +1407,7 @@ impl Thread {
         cx: &mut Context<Self>,
     ) -> Self {
         let settings = AgentSettings::get_global(cx);
-        let (profile_id, profile_downgraded_for_restricted_workspace) =
-            Self::profile_for_restricted_workspace(settings.default_profile.clone(), &project, cx);
+        let profile_id = settings.default_profile.clone();
         let enable_thinking = settings
             .default_model
             .as_ref()
@@ -1446,7 +1454,7 @@ impl Thread {
             },
             context_server_registry,
             profile_id,
-            profile_downgraded_for_restricted_workspace,
+            restricted_downgrade_exempt: false,
             project_context,
             templates,
             model,
@@ -1479,8 +1487,7 @@ impl Thread {
         self.thinking_effort = parent.thinking_effort.clone();
         self.summarization_model = parent.summarization_model.clone();
         self.profile_id = parent.profile_id.clone();
-        self.profile_downgraded_for_restricted_workspace =
-            parent.profile_downgraded_for_restricted_workspace;
+        self.restricted_downgrade_exempt = parent.restricted_downgrade_exempt;
     }
 
     fn apply_model_selection(
@@ -1824,7 +1831,11 @@ impl Thread {
             initial_project_snapshot: Task::ready(db_thread.initial_project_snapshot).shared(),
             context_server_registry,
             profile_id,
-            profile_downgraded_for_restricted_workspace: false,
+            // An explicit "use write anyway" is not persisted, so a reloaded
+            // thread is downgraded again while the workspace is still
+            // restricted. Erring towards the downgrade is the safe direction,
+            // and it lifts on its own once the folder is trusted.
+            restricted_downgrade_exempt: false,
             project_context,
             templates,
             model,
@@ -2239,19 +2250,27 @@ impl Thread {
         self.tools.remove(name).is_some()
     }
 
-    pub fn profile(&self) -> &AgentProfileId {
-        &self.profile_id
+    /// The profile the thread currently runs with: the user's choice, or
+    /// `minimal` while the workspace is restricted (see
+    /// [`Self::profile_for_restricted_workspace`]). Recomputed on every read so
+    /// that trusting the folder mid-thread restores the tools immediately.
+    pub fn profile(&self, cx: &App) -> AgentProfileId {
+        if self.restricted_downgrade_exempt {
+            return self.profile_id.clone();
+        }
+        Self::profile_for_restricted_workspace(self.profile_id.clone(), &self.project, cx).0
     }
 
-    /// Whether this thread's profile was downgraded to `minimal` at thread start
-    /// because the workspace is restricted.
-    pub fn profile_was_downgraded(&self) -> bool {
-        self.profile_downgraded_for_restricted_workspace
+    /// Whether the restricted workspace is currently forcing this thread down to
+    /// `minimal`, i.e. the model has no tools at all.
+    pub fn profile_was_downgraded(&self, cx: &App) -> bool {
+        !self.restricted_downgrade_exempt
+            && Self::profile_for_restricted_workspace(self.profile_id.clone(), &self.project, cx).1
     }
 
-    /// Computes the profile a thread should start with, given the user's chosen
-    /// profile. In a restricted workspace, the built-in `write`/`ask` profiles
-    /// are downgraded to `minimal` — but only when both the chosen profile and
+    /// Applies the restricted-workspace downgrade to the user's chosen profile.
+    /// In a restricted workspace, the built-in `write`/`ask` profiles are
+    /// downgraded to `minimal` — but only when both the chosen profile and
     /// `minimal` are unmodified, shipped defaults, so we never override a user's
     /// custom or customized profiles.
     ///
@@ -2277,9 +2296,9 @@ impl Thread {
     }
 
     pub fn set_profile(&mut self, profile_id: AgentProfileId, cx: &mut Context<Self>) {
-        // An explicit selection means any earlier automatic downgrade no longer
+        // An explicit selection means the automatic downgrade no longer
         // applies, even if the user re-selects the same profile.
-        self.profile_downgraded_for_restricted_workspace = false;
+        self.restricted_downgrade_exempt = true;
 
         if self.profile_id == profile_id {
             return;
@@ -4156,7 +4175,10 @@ impl Thread {
         let Some(model) = self.model() else {
             return BTreeMap::new();
         };
-        let Some(profile) = AgentSettings::get_global(cx).profiles.get(&self.profile_id) else {
+        let Some(profile) = AgentSettings::get_global(cx)
+            .profiles
+            .get(&self.profile(cx))
+        else {
             return BTreeMap::new();
         };
         // Terminal variants are configured by users under the canonical
@@ -4351,6 +4373,10 @@ impl Thread {
             ),
             is_linux: cfg!(target_os = "linux"),
             is_windows: cfg!(target_os = "windows"),
+            restricted_workspace: TrustedWorktrees::has_restricted_worktrees(
+                &self.project.read(cx).worktree_store(),
+                cx,
+            ),
         }
         .render(&self.templates)
         .context("failed to build system prompt")
@@ -8683,6 +8709,93 @@ mod tests {
         });
     }
 
+    // A workspace with untrusted worktrees downgrades `write` to `minimal`,
+    // which enables no tools at all — the model then has no way to read files
+    // and improvises an explanation. The downgrade has to lift the moment the
+    // folder is trusted, so the user does not have to re-pick the profile or
+    // open a new thread after answering the trust prompt.
+    #[gpui::test]
+    async fn test_restricted_workspace_profile_downgrade_is_reversible(cx: &mut TestAppContext) {
+        use project::trusted_worktrees::{PathTrust, TrustedWorktrees};
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            project::trusted_worktrees::init(Default::default(), cx);
+        });
+
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(
+            util::path!("/project"),
+            json!({ "main.rs": "fn main() {}" }),
+        )
+        .await;
+        let templates = Templates::new();
+        let project = Project::test(fs.clone(), [util::path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project.worktrees(cx).next().unwrap().read(cx).id()
+        });
+
+        let thread = cx.update(|cx| {
+            let project_context = cx.new(|_cx| prompt_store::ProjectContext::default());
+            let context_server_store = project.read(cx).context_server_store();
+            let context_server_registry =
+                cx.new(|cx| ContextServerRegistry::new(context_server_store, cx));
+            cx.new(|cx| {
+                Thread::new(
+                    project.clone(),
+                    project_context,
+                    context_server_registry,
+                    templates,
+                    None,
+                    cx,
+                )
+            })
+        });
+
+        cx.update(|cx| {
+            assert_eq!(
+                AgentSettings::get_global(cx).default_profile.as_str(),
+                builtin_profiles::WRITE,
+                "this test assumes the shipped default profile"
+            );
+
+            let trusted = TrustedWorktrees::try_get_global(cx).unwrap();
+            let worktree_store = project.read(cx).worktree_store();
+
+            assert!(
+                !trusted.update(cx, |trusted, cx| {
+                    trusted.can_trust(&worktree_store, worktree_id, cx)
+                }),
+                "a worktree that was never trusted should start out restricted"
+            );
+
+            assert!(thread.read(cx).profile_was_downgraded(cx));
+            assert_eq!(
+                thread.read(cx).profile(cx).as_str(),
+                builtin_profiles::MINIMAL,
+            );
+
+            trusted.update(cx, |trusted, cx| {
+                trusted.trust(
+                    &worktree_store,
+                    HashSet::from_iter([PathTrust::Worktree(worktree_id)]),
+                    cx,
+                );
+            });
+
+            assert!(!thread.read(cx).profile_was_downgraded(cx));
+            assert_eq!(
+                thread.read(cx).profile(cx).as_str(),
+                builtin_profiles::WRITE,
+                "trusting the folder must restore the user's profile in the running thread"
+            );
+        });
+    }
+
     #[gpui::test]
     async fn test_subagent_inherits_settings_at_creation(cx: &mut TestAppContext) {
         let (parent, _event_stream) = setup_thread_for_test(cx).await;
@@ -8703,7 +8816,7 @@ mod tests {
             assert_eq!(sub.speed(), Some(Speed::Fast));
             assert!(sub.thinking_enabled());
             assert_eq!(sub.thinking_effort().map(|s| s.as_str()), Some("high"));
-            assert_eq!(sub.profile(), &AgentProfileId("custom-profile".into()));
+            assert_eq!(sub.profile(cx), AgentProfileId("custom-profile".into()));
         });
     }
 

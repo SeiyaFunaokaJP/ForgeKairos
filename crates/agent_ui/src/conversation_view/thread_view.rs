@@ -635,6 +635,7 @@ pub struct ThreadView {
     pub add_context_menu_handle: PopoverMenuHandle<ContextMenu>,
     pub thinking_effort_menu_handle: PopoverMenuHandle<ContextMenu>,
     pub fast_mode_menu_handle: PopoverMenuHandle<ContextMenu>,
+    pub tool_permission_menu_handle: PopoverMenuHandle<ContextMenu>,
     pub project: WeakEntity<Project>,
     /// Cache + worktree snapshot for resolving paths in markdown code spans.
     /// Cloned from the parent `ConversationView` so the cache is shared and the
@@ -709,6 +710,37 @@ impl ToolCallLayout {
             ToolCallLayout::Floating => "floating",
         }
     }
+}
+
+/// Whether tool actions are auto-approved for Zed's built-in agent.
+///
+/// This is the same knob the settings UI exposes as the global default
+/// permission, so there is a single source of truth: an "auto approve"
+/// toggle in the panel is just `agent.tool_permissions.default = "allow"`.
+/// It removes the routine confirmation prompt only — the hardcoded security
+/// rules, any `always_deny`/`always_confirm` patterns the user configured,
+/// the sandbox, symlink escapes and the settings/skills write prompts all
+/// still apply.
+pub(crate) fn auto_approve_tool_actions(cx: &App) -> bool {
+    matches!(
+        AgentSettings::get_global(cx).tool_permissions.default,
+        settings::ToolPermissionMode::Allow
+    )
+}
+
+pub(crate) fn set_tool_permission_default(
+    mode: settings::ToolPermissionMode,
+    fs: Arc<dyn Fs>,
+    cx: &mut App,
+) {
+    update_settings_file(fs, cx, move |settings, _| {
+        settings
+            .agent
+            .get_or_insert_default()
+            .tool_permissions
+            .get_or_insert_default()
+            .default = Some(mode);
+    });
 }
 
 fn full_path_for_empty_project_path(file: &dyn language::File, cx: &App) -> Option<String> {
@@ -1050,6 +1082,7 @@ impl ThreadView {
             add_context_menu_handle: PopoverMenuHandle::default(),
             thinking_effort_menu_handle: PopoverMenuHandle::default(),
             fast_mode_menu_handle: PopoverMenuHandle::default(),
+            tool_permission_menu_handle: PopoverMenuHandle::default(),
             project,
             code_span_resolver,
             show_external_source_prompt_warning,
@@ -1222,7 +1255,7 @@ impl ThreadView {
             let thread = thread.read(cx);
             AgentSettings::get_global(cx)
                 .profiles
-                .get(thread.profile())
+                .get(&thread.profile(cx))
                 .is_some_and(|profile| profile.tools.is_empty())
         });
         message_editor.update(cx, |message_editor, cx| message_editor.contents(expand, cx))
@@ -1236,7 +1269,7 @@ impl ThreadView {
 
     pub fn current_mode_id(&self, cx: &App) -> Option<Arc<str>> {
         if let Some(thread) = self.as_native_thread(cx) {
-            Some(thread.read(cx).profile().0.clone())
+            Some(thread.read(cx).profile(cx).0)
         } else {
             let mode_selector = self.mode_selector.as_ref()?;
             Some(mode_selector.read(cx).mode().0)
@@ -3090,6 +3123,50 @@ impl ThreadView {
         )
     }
 
+    /// Notice shown above the message editor while the workspace has untrusted
+    /// worktrees. Zed then strips the file/terminal tools and downgrades the
+    /// built-in `write`/`ask` profiles to `minimal`, which previously showed up
+    /// only as a small warning triangle on the profile selector — the model was
+    /// left to invent an explanation ("I cannot access files on your system").
+    fn render_restricted_workspace_notice(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        if !project::trusted_worktrees::TrustedWorktrees::has_restricted_worktrees(
+            &self.thread.read(cx).project().read(cx).worktree_store(),
+            cx,
+        ) {
+            return None;
+        }
+
+        let downgraded = self
+            .as_native_thread(cx)
+            .is_some_and(|thread| thread.read(cx).profile_was_downgraded(cx));
+
+        Some(
+            Callout::new()
+                .border_position(CalloutBorderPosition::Top)
+                .icon(IconName::Warning)
+                .severity(Severity::Warning)
+                .title(if downgraded {
+                    "このプロジェクトは未信頼のため、ツールをすべて無効にしています"
+                } else {
+                    "このプロジェクトは未信頼のため、一部のツールを無効にしています"
+                })
+                .description(
+                    "ファイルの読み書きやコマンド実行は、フォルダーを信頼するまで使えません。",
+                )
+                .actions_slot(
+                    Button::new("trust-restricted-workspace", "信頼の設定を開く")
+                        .label_size(LabelSize::Small)
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(
+                                workspace::ToggleWorktreeSecurity.boxed_clone(),
+                                cx,
+                            );
+                        }),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn activity_bar_bg(&self, cx: &Context<Self>) -> Hsla {
         let editor_bg_color = cx.theme().colors().editor_background;
         let active_color = cx.theme().colors().element_selected;
@@ -4377,6 +4454,7 @@ impl ThreadView {
                     .flex_grow_0()
                     .justify_between()
                     .gap_2()
+                    .children(self.render_restricted_workspace_notice(cx))
                     .child(
                         v_flex()
                             .relative()
@@ -4441,6 +4519,7 @@ impl ThreadView {
                                     .flex_wrap()
                                     .gap_1()
                                     .children(self.render_token_usage(cx))
+                                    .children(self.render_tool_permission_control(cx))
                                     .children(self.profile_selector.clone())
                                     // 思考の制御はモデルセレクターの直左に置く。
                                     // 左クラスターに埋もれていて見つからないという
@@ -4990,6 +5069,94 @@ impl ThreadView {
                         }),
                 )
                 .child(Divider::vertical())
+                .into_any_element(),
+        )
+    }
+
+    /// One-click switch between "confirm every tool action" and "auto-approve".
+    /// Only Zed's built-in agent honors `agent.tool_permissions`; external ACP
+    /// agents run their own permission model, so the control is hidden there.
+    fn render_tool_permission_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.as_native_thread(cx)?;
+
+        let auto_approve = auto_approve_tool_actions(cx);
+        let focus_handle = self.message_editor.focus_handle(cx);
+        let fs = self.thread.read(cx).project().read(cx).fs().clone();
+
+        let (label, color, icon) = if auto_approve {
+            ("自動承認 中", Color::Warning, IconName::LockOff)
+        } else {
+            ("確認する", Color::Muted, IconName::Lock)
+        };
+
+        let trigger = Button::new("tool-permission-mode", label)
+            .label_size(LabelSize::Small)
+            .color(color)
+            .start_icon(Icon::new(icon).size(IconSize::XSmall).color(color))
+            .end_icon(
+                Icon::new(IconName::ChevronDown)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            );
+
+        Some(
+            PopoverMenu::new("tool-permission-selector")
+                .with_handle(self.tool_permission_menu_handle.clone())
+                .trigger_with_tooltip(trigger, move |_window, cx| {
+                    Tooltip::for_action_in(
+                        "ツールの権限を変更",
+                        &ToggleAutoApproveToolActions,
+                        &focus_handle,
+                        cx,
+                    )
+                })
+                .menu(move |window, cx| {
+                    let confirm_fs = fs.clone();
+                    let allow_fs = fs.clone();
+                    Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
+                        menu.header("ツールの権限")
+                            .toggleable_entry(
+                                "確認する",
+                                !auto_approve,
+                                IconPosition::Start,
+                                None,
+                                move |_window, cx| {
+                                    set_tool_permission_default(
+                                        settings::ToolPermissionMode::Confirm,
+                                        confirm_fs.clone(),
+                                        cx,
+                                    );
+                                },
+                            )
+                            .toggleable_entry(
+                                "自動承認 (すべてのツールを許可)",
+                                auto_approve,
+                                IconPosition::Start,
+                                None,
+                                move |_window, cx| {
+                                    set_tool_permission_default(
+                                        settings::ToolPermissionMode::Allow,
+                                        allow_fs.clone(),
+                                        cx,
+                                    );
+                                },
+                            )
+                            .separator()
+                            .custom_row(|_window, _cx| {
+                                div()
+                                    .max_w_72()
+                                    .child(
+                                        Label::new(
+                                            "自動承認でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。",
+                                        )
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                    )
+                                    .into_any_element()
+                            })
+                    }))
+                })
+                .anchor(gpui::Anchor::BottomRight)
                 .into_any_element(),
         )
     }
@@ -12489,6 +12656,31 @@ impl Render for ThreadView {
             .on_action(cx.listener(|this, _: &ClearMessageQueue, _, cx| {
                 this.clear_queue(cx);
             }))
+            .on_action(
+                cx.listener(|this, _: &ToggleAutoApproveToolActions, _, cx| {
+                    if this.as_native_thread(cx).is_none() {
+                        return;
+                    }
+                    let mode = if auto_approve_tool_actions(cx) {
+                        settings::ToolPermissionMode::Confirm
+                    } else {
+                        settings::ToolPermissionMode::Allow
+                    };
+                    let fs = this.thread.read(cx).project().read(cx).fs().clone();
+                    set_tool_permission_default(mode, fs, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &ToggleToolPermissionSelector, window, cx| {
+                    if this.as_native_thread(cx).is_none() {
+                        return;
+                    }
+                    let menu_handle = this.tool_permission_menu_handle.clone();
+                    window.defer(cx, move |window, cx| {
+                        menu_handle.toggle(window, cx);
+                    });
+                }),
+            )
             .on_action(cx.listener(|this, _: &ToggleProfileSelector, window, cx| {
                 if let Some(config_options_view) = this.config_options_view.clone() {
                     let handled = config_options_view.update(cx, |view, cx| {
@@ -12899,6 +13091,36 @@ mod tests {
         );
         // No matching prefix: returns the trimmed input unchanged.
         assert_eq!(strip_leading_command("hello", "compact"), "hello");
+    }
+
+    // The panel's "auto approve" switch has no setting of its own: it reads and
+    // writes the same global tool-permission default the settings UI exposes,
+    // so the two can never disagree.
+    #[gpui::test]
+    fn test_auto_approve_tool_actions_tracks_global_default(cx: &mut gpui::TestAppContext) {
+        use gpui::UpdateGlobal as _;
+
+        crate::test_support::init_test(cx);
+
+        cx.update(|cx| {
+            assert!(
+                !auto_approve_tool_actions(cx),
+                "確認するのが既定でなければならない"
+            );
+
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .tool_permissions
+                        .get_or_insert_default()
+                        .default = Some(settings::ToolPermissionMode::Allow);
+                });
+            });
+
+            assert!(auto_approve_tool_actions(cx));
+        });
     }
 
     #[gpui::test]

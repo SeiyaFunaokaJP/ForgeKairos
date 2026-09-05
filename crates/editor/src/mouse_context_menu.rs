@@ -1,8 +1,8 @@
 use crate::{
     Copy, CopyAndTrim, CopyPermalinkToLine, Cut, DisplayPoint, DisplaySnapshot, Editor,
     EvaluateSelectedText, FindAllReferences, GoToDeclaration, GoToDefinition, GoToImplementation,
-    GoToTypeDefinition, Paste, Rename, RevealInFileManager, RunToCursor, SelectMode,
-    SelectionEffects, SelectionExt, ToDisplayPoint, ToggleCodeActions,
+    GoToTypeDefinition, Indent, Outdent, Paste, Rename, RevealInFileManager, RunToCursor,
+    SelectMode, SelectionEffects, SelectionExt, ToDisplayPoint, ToggleCodeActions,
     actions::{Format, FormatSelections},
     selections_collection::SelectionsCollection,
 };
@@ -289,6 +289,9 @@ pub fn deploy_context_menu(
                 .action("コピー", Box::new(Copy))
                 .action("余白を削ってコピー", Box::new(CopyAndTrim))
                 .action("貼り付け", Box::new(Paste))
+                .separator()
+                .action("インデント", Box::new(Indent))
+                .action("インデント解除", Box::new(Outdent))
                 .separator()
                 .action_disabled_when(
                     !has_reveal_target,

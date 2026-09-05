@@ -1079,7 +1079,7 @@ fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyEl
                 .child(Label::new("既定の権限"))
                 .child(
                     Label::new(
-                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。",
+                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「自動承認」と同じ設定で、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。",
                     )
                     .size(LabelSize::Small)
                     .color(Color::Muted),

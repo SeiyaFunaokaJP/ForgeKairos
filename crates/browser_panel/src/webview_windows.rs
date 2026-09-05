@@ -1,12 +1,22 @@
-//! WebView2 host for [`crate::BrowserPanel`] (ADR-F19).
+//! WebView2 host for [`crate::BrowserView`] (ADR-F19).
 //!
 //! The controller is created as a child of the GPUI top-level HWND, so every
 //! COM object here lives on the UI thread and is deliberately `!Send`. WebView2
 //! delivers its callbacks on that same thread, but without a GPUI context, so
-//! everything the panel needs to react to is forwarded through an unbounded
-//! channel that the panel drains from a GPUI task.
+//! everything the view needs to react to is forwarded through an unbounded
+//! channel that the view drains from a GPUI task.
+//!
+//! Several browsing surfaces can exist at once (the dock panel plus any number
+//! of editor tabs), and they all share one [`ICoreWebView2Environment`]: a
+//! user data folder can only be opened by one environment, so a second one over
+//! the same folder fails outright.
 
-use std::{cell::RefCell, ffi::c_void, path::Path, rc::Rc};
+use std::{
+    cell::RefCell,
+    ffi::c_void,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use anyhow::{Context as _, Result};
 use futures::channel::mpsc::UnboundedSender;
@@ -95,6 +105,181 @@ pub(crate) fn host_uses_direct_composition(host_hwnd: isize) -> bool {
     (ex_style as u32) & WS_EX_NOREDIRECTIONBITMAP.0 != 0
 }
 
+/// Handed the shared environment once it exists, or the reason it does not.
+/// The error is a message rather than a `windows::core::Error` so that one
+/// failure can be reported to every queued surface.
+type EnvironmentWaiter = Box<dyn FnOnce(Result<ICoreWebView2Environment, String>)>;
+
+enum EnvironmentSlot {
+    /// Nothing has asked for an environment yet, or the last attempt failed.
+    /// A failed attempt resets to this so a retry is possible once the user
+    /// installs the runtime.
+    Idle,
+    Creating(Vec<EnvironmentWaiter>),
+    Ready(ICoreWebView2Environment),
+}
+
+thread_local! {
+    /// WebView2's COM objects are UI-thread affine, so the shared environment
+    /// is thread local rather than a process-wide global.
+    static ENVIRONMENT: RefCell<EnvironmentSlot> = const { RefCell::new(EnvironmentSlot::Idle) };
+    /// What the shared environment was created with. Kept only to warn when a
+    /// later surface asks for something else: WebView2 has no way to change the
+    /// user data folder or the browser arguments after creation.
+    static ENVIRONMENT_OPTIONS: RefCell<Option<(PathBuf, Option<String>)>> =
+        const { RefCell::new(None) };
+}
+
+/// Outcome of queueing a waiter; `Ready` hands the waiter back so it can be
+/// invoked outside the `RefCell` borrow.
+enum EnvironmentRequest {
+    Ready(ICoreWebView2Environment, EnvironmentWaiter),
+    Pending,
+    Start,
+}
+
+fn queue_environment_waiter(waiter: EnvironmentWaiter) -> EnvironmentRequest {
+    ENVIRONMENT.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        match &mut *slot {
+            EnvironmentSlot::Ready(environment) => {
+                EnvironmentRequest::Ready(environment.clone(), waiter)
+            }
+            EnvironmentSlot::Creating(waiters) => {
+                waiters.push(waiter);
+                EnvironmentRequest::Pending
+            }
+            EnvironmentSlot::Idle => {
+                *slot = EnvironmentSlot::Creating(vec![waiter]);
+                EnvironmentRequest::Start
+            }
+        }
+    })
+}
+
+/// Publishes the result of the one in-flight creation to every queued waiter.
+/// On failure the slot goes back to `Idle` so a later surface can try again.
+fn finish_environment(outcome: Result<ICoreWebView2Environment, String>) {
+    let waiters = ENVIRONMENT.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let waiters = match std::mem::replace(&mut *slot, EnvironmentSlot::Idle) {
+            EnvironmentSlot::Creating(waiters) => waiters,
+            other => {
+                *slot = other;
+                Vec::new()
+            }
+        };
+        if let Ok(environment) = &outcome {
+            *slot = EnvironmentSlot::Ready(environment.clone());
+        }
+        waiters
+    });
+    for waiter in waiters {
+        waiter(outcome.clone());
+    }
+}
+
+fn warn_on_environment_option_mismatch(user_data_folder: &Path, proxy_endpoint: Option<&str>) {
+    ENVIRONMENT_OPTIONS.with(|options| {
+        let options = options.borrow();
+        let Some((created_folder, created_proxy)) = options.as_ref() else {
+            return;
+        };
+        if created_folder != user_data_folder {
+            log::warn!(
+                "WebView2: the shared environment already uses {}; ignoring the request for {}",
+                created_folder.display(),
+                user_data_folder.display()
+            );
+        }
+        if created_proxy.as_deref() != proxy_endpoint {
+            log::warn!(
+                "WebView2: the shared environment was created with proxy {:?}; \
+                 restart Zed for browser.use_egress_proxy changes to take effect",
+                created_proxy
+            );
+        }
+    });
+}
+
+/// Hands `waiter` the process-wide WebView2 environment, creating it on first
+/// use. Errors returned here are synchronous rejections of the request; a
+/// failure that arrives later is delivered to the waiter instead.
+fn with_shared_environment(
+    user_data_folder: &Path,
+    proxy_endpoint: Option<&str>,
+    waiter: EnvironmentWaiter,
+) -> Result<()> {
+    match queue_environment_waiter(waiter) {
+        EnvironmentRequest::Ready(environment, waiter) => {
+            warn_on_environment_option_mismatch(user_data_folder, proxy_endpoint);
+            waiter(Ok(environment));
+            Ok(())
+        }
+        EnvironmentRequest::Pending => {
+            warn_on_environment_option_mismatch(user_data_folder, proxy_endpoint);
+            Ok(())
+        }
+        EnvironmentRequest::Start => {
+            ENVIRONMENT_OPTIONS.with(|options| {
+                *options.borrow_mut() = Some((
+                    user_data_folder.to_path_buf(),
+                    proxy_endpoint.map(str::to_string),
+                ));
+            });
+            let result = create_shared_environment(user_data_folder, proxy_endpoint);
+            if let Err(error) = &result {
+                finish_environment(Err(format!("{error:#}")));
+            }
+            result
+        }
+    }
+}
+
+fn create_shared_environment(user_data_folder: &Path, proxy_endpoint: Option<&str>) -> Result<()> {
+    let options = CoreWebView2EnvironmentOptions::default();
+    if let Some(proxy_endpoint) = proxy_endpoint {
+        // Chromium reads `--proxy-server` once at browser-process start, so it
+        // has to be set before the environment exists; there is no runtime
+        // equivalent in the WebView2 API.
+        unsafe {
+            options.set_additional_browser_arguments(format!("--proxy-server={proxy_endpoint}"));
+        }
+    }
+    let options: ICoreWebView2EnvironmentOptions = options.into();
+    log::info!(
+        "WebView2: requesting the shared environment (user data folder {}, proxy {})",
+        user_data_folder.display(),
+        proxy_endpoint.unwrap_or("none"),
+    );
+    let user_data_folder = HSTRING::from(user_data_folder.as_os_str());
+
+    let handler =
+        CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(|result, environment| {
+            match result.and_then(|()| environment.ok_or_else(|| E_POINTER.into())) {
+                Ok(environment) => {
+                    log::info!("WebView2: the shared environment is ready");
+                    finish_environment(Ok(environment));
+                }
+                Err(error) => {
+                    log::error!("WebView2 environment creation failed: {error:?}");
+                    finish_environment(Err(format!("{error}")));
+                }
+            }
+            Ok(())
+        }));
+
+    unsafe {
+        CreateCoreWebView2EnvironmentWithOptions(
+            PCWSTR::null(),
+            PCWSTR(user_data_folder.as_ptr()),
+            &options,
+            &handler,
+        )
+    }
+    .context("failed to request a WebView2 environment")
+}
+
 pub(crate) struct WebView {
     inner: Rc<Inner>,
 }
@@ -126,6 +311,12 @@ struct State {
     /// first time the surface is made visible; it is a workaround, not
     /// something to repeat per frame.
     nudged_child_windows: bool,
+    /// Child HWNDs the host window had before this controller was created, and
+    /// the ones this controller added. Several surfaces share the host window
+    /// now, so the nudge must never touch a sibling that is deliberately
+    /// hidden - showing it again would leave an invisible window eating clicks.
+    children_before_controller: Vec<isize>,
+    owned_children: Vec<isize>,
 }
 
 impl WebView {
@@ -148,50 +339,21 @@ impl WebView {
             }),
         });
 
-        let options = CoreWebView2EnvironmentOptions::default();
-        if let Some(proxy_endpoint) = proxy_endpoint {
-            // Chromium reads `--proxy-server` once at browser-process start, so
-            // it has to be set before the environment exists; there is no
-            // runtime equivalent in the WebView2 API.
-            unsafe {
-                options
-                    .set_additional_browser_arguments(format!("--proxy-server={proxy_endpoint}"));
-            }
-        }
-        let options: ICoreWebView2EnvironmentOptions = options.into();
         log::info!(
-            "WebView2: requesting an environment (host hwnd {host_hwnd:#x}, user data folder {}, proxy {}, direct composition on the host window: {})",
-            user_data_folder.display(),
-            proxy_endpoint.unwrap_or("none"),
+            "WebView2: requesting a surface (host hwnd {host_hwnd:#x}, direct composition on the host window: {})",
             host_uses_direct_composition(host_hwnd),
         );
-        let user_data_folder = HSTRING::from(user_data_folder.as_os_str());
 
-        let handler = {
+        let waiter = {
             let inner = inner.clone();
-            CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(
-                move |result, environment| {
-                    match result.and_then(|()| environment.ok_or_else(|| E_POINTER.into())) {
-                        Ok(environment) => {
-                            log::info!("WebView2: environment created");
-                            inner.create_controller(environment)
-                        }
-                        Err(error) => inner.report_failure(&error),
-                    }
-                    Ok(())
+            Box::new(
+                move |outcome: Result<ICoreWebView2Environment, String>| match outcome {
+                    Ok(environment) => inner.create_controller(environment),
+                    Err(message) => inner.report_failure_message(&message),
                 },
-            ))
+            ) as EnvironmentWaiter
         };
-
-        unsafe {
-            CreateCoreWebView2EnvironmentWithOptions(
-                PCWSTR::null(),
-                PCWSTR(user_data_folder.as_ptr()),
-                &options,
-                &handler,
-            )
-        }
-        .context("failed to request a WebView2 environment")?;
+        with_shared_environment(user_data_folder, proxy_endpoint, waiter)?;
 
         Ok(Self { inner })
     }
@@ -342,6 +504,8 @@ impl Inner {
             "WebView2: creating a controller on host hwnd {:#x}",
             self.host_hwnd.0 as isize
         );
+        let children_before_controller = enumerate_child_windows(self.host_hwnd);
+        self.state.borrow_mut().children_before_controller = children_before_controller;
         if let Err(error) =
             unsafe { environment.CreateCoreWebView2Controller(self.host_hwnd, &handler) }
         {
@@ -367,10 +531,21 @@ impl Inner {
 
         self.register_event_handlers(&controller, &webview);
 
+        let owned_children = {
+            let children_after = enumerate_child_windows(self.host_hwnd);
+            let state = self.state.borrow();
+            children_after
+                .into_iter()
+                .filter(|child| !state.children_before_controller.contains(child))
+                .collect::<Vec<_>>()
+        };
+
         let (pending_url, pending_dark_mode) = {
             let mut state = self.state.borrow_mut();
             state.controller = Some(controller);
             state.webview = Some(webview.clone());
+            state.owned_children = owned_children;
+            state.children_before_controller = Vec::new();
             // Force the first apply: the surface was never configured.
             state.applied_bounds = None;
             state.applied_scale = None;
@@ -390,7 +565,7 @@ impl Inner {
         // Always take the inventory once, even when the surface stays hidden:
         // it is the one log line that separates "WebView2 never attached" from
         // "the child window exists but is never composited".
-        log_child_windows(self.host_hwnd, false);
+        self.log_owned_children();
         if let Some(url) = pending_url {
             log::info!("WebView2: navigating to the queued {url}");
             let url = HSTRING::from(url.as_str());
@@ -601,8 +776,8 @@ impl Inner {
                 Some(reason) => log::info!("WebView2: surface hidden because {reason}"),
                 None => log::info!("WebView2: surface shown"),
             }
-            // The borrow has to be gone before `log_child_windows` talks to
-            // Win32, and holding it across the `if` would deadlock this cell.
+            // The borrow has to be gone before the Win32 calls below, and
+            // holding it across the `if` would deadlock this cell.
             let first_show = {
                 let mut state = self.state.borrow_mut();
                 state.applied_visible = Some(visible);
@@ -611,8 +786,27 @@ impl Inner {
                 first_show
             };
             if first_show {
-                log_child_windows(self.host_hwnd, true);
+                self.log_owned_children();
+                // The Win32 calls can pump messages back into our own handlers,
+                // which borrow `state`, so hand them an owned copy.
+                let owned_children = self.state.borrow().owned_children.clone();
+                nudge_child_windows(&owned_children);
             }
+        }
+    }
+
+    fn log_owned_children(&self) {
+        let children = self.state.borrow().owned_children.clone();
+        if children.is_empty() {
+            log::warn!(
+                "WebView2: the controller added no child window to host hwnd {:#x}; \
+                 the browsing surface was never attached",
+                self.host_hwnd.0 as isize
+            );
+            return;
+        }
+        for child in children {
+            log_child_window(HWND(child as *mut c_void));
         }
     }
 
@@ -631,6 +825,11 @@ impl Inner {
         self.send(WebViewEvent::Failed(format!("{error}")));
     }
 
+    fn report_failure_message(&self, message: &str) {
+        log::error!("WebView2 creation failed: {message}");
+        self.send(WebViewEvent::Failed(message.to_string()));
+    }
+
     fn send(&self, event: WebViewEvent) {
         send_on(&self.events, event);
     }
@@ -643,25 +842,17 @@ fn send_on(events: &UnboundedSender<WebViewEvent>, event: WebViewEvent) {
 }
 
 unsafe extern "system" fn collect_child_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    // The pointer comes straight from `log_child_windows` below, which keeps
-    // the `Vec` alive for the whole call.
-    let children = unsafe { &mut *(lparam.0 as *mut Vec<HWND>) };
-    children.push(hwnd);
+    // The pointer comes straight from `enumerate_child_windows` below, which
+    // keeps the `Vec` alive for the whole call.
+    let children = unsafe { &mut *(lparam.0 as *mut Vec<isize>) };
+    children.push(hwnd.0 as isize);
     true.into()
 }
 
-/// Logs what WebView2 actually parented under the host window, and - when
-/// `nudge` is set - pushes its render widget to the top of the sibling order.
-///
-/// This is diagnostics first: when the surface is configured correctly but the
-/// user still sees nothing, the log tells whether the child HWND exists and
-/// where Windows thinks it is - which separates "WebView2 never attached" from
-/// "the child window is fine but the compositor never shows it" (see
-/// [`host_uses_direct_composition`]). `nudge` is only passed while the surface
-/// is meant to be on screen; forcing a window we deliberately hid back into
-/// view would make it eat mouse input over the panel's content area.
-fn log_child_windows(host_hwnd: HWND, nudge: bool) {
-    let mut children: Vec<HWND> = Vec::new();
+/// Every descendant HWND of the host window, used to work out which ones a
+/// freshly created controller added.
+fn enumerate_child_windows(host_hwnd: HWND) -> Vec<isize> {
+    let mut children: Vec<isize> = Vec::new();
     // The return value only says whether the callback ran to the end, which it
     // always does here; an empty `children` is the real "nothing found" signal.
     let _enumerated = unsafe {
@@ -671,48 +862,54 @@ fn log_child_windows(host_hwnd: HWND, nudge: bool) {
             LPARAM(&mut children as *mut _ as isize),
         )
     };
+    children
+}
 
-    if children.is_empty() {
-        log::warn!(
-            "WebView2: the host window has no child windows; the browsing surface was never attached"
-        );
-        return;
-    }
+/// Diagnostics: when the surface is configured correctly but the user still
+/// sees nothing, this log tells whether the child HWND exists and where Windows
+/// thinks it is - which separates "WebView2 never attached" from "the child
+/// window is fine but the compositor never shows it" (see
+/// [`host_uses_direct_composition`]).
+fn log_child_window(child: HWND) {
+    let mut class = [0u16; 128];
+    let written = unsafe { GetClassNameW(child, &mut class) };
+    let class = String::from_utf16_lossy(&class[..written.max(0) as usize]);
+    let mut rect = RECT::default();
+    unsafe { GetWindowRect(child, &mut rect) }.log_err();
+    log::info!(
+        "WebView2: child window {:#x} class {class} visible {} at ({}, {})-({}, {}) in screen pixels",
+        child.0 as isize,
+        unsafe { IsWindowVisible(child) }.as_bool(),
+        rect.left,
+        rect.top,
+        rect.right,
+        rect.bottom
+    );
+}
 
+/// Belt and braces on the first show: WebView2 shows its own child, but a
+/// window parented while the host was hidden has been seen to stay hidden.
+///
+/// Only this controller's own children may be nudged. Several surfaces share
+/// the host window, and forcing a sibling we deliberately hid back into view
+/// would leave an invisible window eating mouse input over the editor.
+fn nudge_child_windows(children: &[isize]) {
     for child in children {
-        let mut class = [0u16; 128];
-        let written = unsafe { GetClassNameW(child, &mut class) };
-        let class = String::from_utf16_lossy(&class[..written.max(0) as usize]);
-        let mut rect = RECT::default();
-        unsafe { GetWindowRect(child, &mut rect) }.log_err();
-        log::info!(
-            "WebView2: child window {:#x} class {class} visible {} at ({}, {})-({}, {}) in screen pixels",
-            child.0 as isize,
-            unsafe { IsWindowVisible(child) }.as_bool(),
-            rect.left,
-            rect.top,
-            rect.right,
-            rect.bottom
-        );
-
-        if nudge {
-            // Belt and braces: WebView2 shows its own child, but a window that
-            // was parented while the host was hidden has been seen to stay
-            // hidden. The return value is "was it visible before", not an error.
-            let _previously_visible = unsafe { ShowWindow(child, SW_SHOWNA) };
-            unsafe {
-                SetWindowPos(
-                    child,
-                    Some(HWND_TOP),
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                )
-            }
-            .log_err();
+        let child = HWND(*child as *mut c_void);
+        // The return value is "was it visible before", not an error.
+        let _previously_visible = unsafe { ShowWindow(child, SW_SHOWNA) };
+        unsafe {
+            SetWindowPos(
+                child,
+                Some(HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
         }
+        .log_err();
     }
 }
 

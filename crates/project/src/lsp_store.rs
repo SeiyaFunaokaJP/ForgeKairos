@@ -16,6 +16,7 @@ mod document_links;
 mod document_symbols;
 mod dynamic_registration;
 mod folding_ranges;
+pub mod format_failure;
 mod inlay_hints;
 pub mod json_language_server_ext;
 pub mod log_store;
@@ -29,6 +30,7 @@ use self::document_colors::DocumentColorData;
 use self::document_links::DocumentLinksData;
 use self::document_symbols::DocumentSymbolsData;
 use self::dynamic_registration::{DynamicRegistrations, RegistrationSource};
+use self::format_failure::FormatFailure;
 use self::inlay_hints::BufferInlayHints;
 use crate::{
     CodeAction, Completion, CompletionDisplayOptions, CompletionResponse, CompletionSource,
@@ -648,14 +650,20 @@ impl LocalLspStore {
 
                     Err(err) => {
                         let log = stderr_capture.lock().take().unwrap_or_default();
+                        let error = if log.is_empty() {
+                            format!("{err:#}")
+                        } else {
+                            format!("{err:#}\n-- stderr --\n{log}")
+                        };
+                        // A binary the fork's egress allowlist refused to
+                        // download surfaces here as well as at the fetch site,
+                        // because `binary.await?` above folds the fetch error
+                        // into the start failure (ADR-F22).
                         delegate.update_status(
                             adapter.name(),
-                            BinaryStatus::Failed {
-                                error: if log.is_empty() {
-                                    format!("{err:#}")
-                                } else {
-                                    format!("{err:#}\n-- stderr --\n{log}")
-                                },
+                            match http_client::egress_denied_hosts(&err) {
+                                Some(hosts) => BinaryStatus::EgressDenied { error, hosts },
+                                None => BinaryStatus::Failed { error },
                             },
                         );
                         log::error!(
@@ -1758,7 +1766,7 @@ impl LocalLspStore {
             } else {
                 formatter
             };
-            if let Err(err) = Self::apply_formatter(
+            let mut result = Self::apply_formatter(
                 formatter,
                 &lsp_store,
                 buffer,
@@ -1770,8 +1778,57 @@ impl LocalLspStore {
                 logger,
                 cx,
             )
-            .await
+            .await;
+
+            // An external formatter that is not installed is the one failure
+            // a language server can still stand in for, and this fork ships
+            // `clang-format` only next to the desktop binary - a project on a
+            // remote host usually has neither, so the buffer would silently
+            // stay unformatted. Substituting the formatter here rather than
+            // inside `apply_formatter` keeps `Formatter::External` meaning
+            // exactly what it says in the settings.
+            let missing_command = match result.as_ref().err().and_then(FormatFailure::from_error) {
+                Some(FormatFailure::ExternalCommandNotFound { command, .. }) => Some(command),
+                _ => None,
+            };
+            if let Some(missing_command) = missing_command
+                && let Some(fallback_server_name) =
+                    Self::language_server_formatting_fallback(buffer, &adapters_and_servers)
             {
+                let fallback =
+                    Formatter::LanguageServer(settings::LanguageServerFormatterSpecifier::Current);
+                let fallback_result = Self::apply_formatter(
+                    &fallback,
+                    &lsp_store,
+                    buffer,
+                    formatting_transaction_id,
+                    &adapters_and_servers,
+                    &settings,
+                    request_timeout,
+                    trigger,
+                    logger,
+                    cx,
+                )
+                .await;
+                match fallback_result {
+                    Ok(()) => {
+                        Self::report_external_formatter_fallback(
+                            &lsp_store,
+                            &missing_command,
+                            &fallback_server_name,
+                            cx,
+                        )?;
+                        result = Ok(());
+                    }
+                    // The original failure names a tool the user can install,
+                    // which is more actionable than whatever the stand-in hit.
+                    Err(fallback_err) => {
+                        zlog::error!(logger => "Language server fallback also failed: {fallback_err:#}");
+                    }
+                }
+            }
+
+            if let Err(err) = result {
                 zlog::error!(logger => "Formatter failed, skipping: {err:#}");
                 if !is_auto {
                     format_error.get_or_insert(err);
@@ -1942,6 +1999,21 @@ impl LocalLspStore {
                         logger =>
                         "No language server found to format buffer {buffer_path_abs:?}. Skipping",
                     );
+                    // On save this stays silent: a server that is still
+                    // starting up would otherwise warn on every keystroke-
+                    // triggered save. Someone who pressed the format button is
+                    // waiting for an answer, so they get one.
+                    if trigger == FormatTrigger::Manual {
+                        return Err(FormatFailure::NoFormattingLanguageServer {
+                            requested: match specifier {
+                                settings::LanguageServerFormatterSpecifier::Specific { name } => {
+                                    Some(name.clone())
+                                }
+                                settings::LanguageServerFormatterSpecifier::Current => None,
+                            },
+                        }
+                        .into_error());
+                    }
                     return Ok(());
                 };
 
@@ -2471,6 +2543,55 @@ impl LocalLspStore {
             || server_capabilities_support_range_formatting(&capabilities)
     }
 
+    /// The name of the language server that could format `buffer` in place of a
+    /// missing external formatter, or `None` when none could. This has to agree
+    /// with what `Formatter::LanguageServer(Current)` would pick, and to check
+    /// the capability that this particular request needs: a server that only
+    /// offers whole-document formatting cannot stand in for a selection.
+    fn language_server_formatting_fallback(
+        buffer: &FormattableBuffer,
+        adapters_and_servers: &[(Arc<CachedLspAdapter>, Arc<LanguageServer>)],
+    ) -> Option<String> {
+        // LSP formatting addresses the buffer by URI, so a buffer that is not
+        // backed by a file cannot be formatted this way at all.
+        buffer.abs_path.as_ref()?;
+        let (_, server) = adapters_and_servers
+            .iter()
+            .find(|(_, server)| Self::server_supports_formatting(server))?;
+        let capabilities = server.capabilities();
+        let supported = if buffer.ranges.is_some() {
+            server_capabilities_support_range_formatting(&capabilities)
+        } else {
+            matches!(
+                capabilities.document_formatting_provider.as_ref(),
+                Some(provider) if *provider != OneOf::Left(false)
+            )
+        };
+        supported.then(|| server.name().to_string())
+    }
+
+    /// Tells the user, once per session, that the buffer was formatted by
+    /// something other than the formatter they configured. Repeating it on every
+    /// format would be noise: nothing about the situation changes until they
+    /// install the tool or restart.
+    fn report_external_formatter_fallback(
+        lsp_store: &WeakEntity<LspStore>,
+        missing_command: &str,
+        server_name: &str,
+        cx: &mut AsyncApp,
+    ) -> anyhow::Result<()> {
+        lsp_store.update(cx, |lsp_store, cx| {
+            if lsp_store.reported_external_formatter_fallback {
+                return;
+            }
+            lsp_store.reported_external_formatter_fallback = true;
+            cx.emit(LspStoreEvent::Notification(format!(
+                "フォーマッタ `{missing_command}` が見つからないため、\
+                 言語サーバー ({server_name}) でフォーマットしました。"
+            )));
+        })
+    }
+
     async fn format_via_lsp(
         this: &WeakEntity<LspStore>,
         buffer: &Entity<Buffer>,
@@ -2604,24 +2725,32 @@ impl LocalLspStore {
             ));
         }
 
-        let mut child = child
+        let spawn_result = child
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| {
-                // A formatter that is simply not installed is the most common
-                // way for "format" to appear to do nothing, and the bare OS
-                // error ("program not found") does not say where Zed looked.
-                let searched = util::command::command_search_dirs_next_to_current_exe()
-                    .iter()
-                    .map(|dir| dir.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!(
-                    "failed to run external formatter `{command}` (searched {searched}, then PATH)"
-                )
-            })?;
+            .spawn();
+        let mut child = match spawn_result {
+            Ok(child) => child,
+            // A formatter that is simply not installed is the most common way
+            // for "format" to appear to do nothing, and it is the one failure
+            // the caller can recover from, so it is reported as a reason rather
+            // than as prose.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(FormatFailure::ExternalCommandNotFound {
+                    command: command.to_string(),
+                    searched: util::command::command_search_dirs_next_to_current_exe()
+                        .iter()
+                        .map(|dir| dir.display().to_string())
+                        .collect(),
+                }
+                .into_error());
+            }
+            Err(error) => {
+                return Err(anyhow::Error::new(error)
+                    .context(format!("failed to run external formatter `{command}`")));
+            }
+        };
 
         let stdin = child.stdin.as_mut().context("failed to acquire stdin")?;
         let text = buffer
@@ -2633,13 +2762,20 @@ impl LocalLspStore {
         stdin.flush().await?;
 
         let output = child.output().await?;
-        anyhow::ensure!(
-            output.status.success(),
-            "command failed with exit code {:?}:\nstdout: {}\nstderr: {}",
-            output.status.code(),
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr),
-        );
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            log::error!(
+                "external formatter `{command}` failed with exit code {:?}:\nstdout: {}\nstderr: {stderr}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stdout),
+            );
+            return Err(FormatFailure::ExternalCommandFailed {
+                command: command.to_string(),
+                exit_code: output.status.code(),
+                stderr: format_failure::truncate_stderr(&stderr),
+            }
+            .into_error());
+        }
 
         let stdout = String::from_utf8(output.stdout)?;
         if stdout.is_empty() && !text.is_empty() {
@@ -4319,6 +4455,10 @@ impl LspStoreMode {
 pub struct LspStore {
     mode: LspStoreMode,
     last_formatting_failure: Option<String>,
+    /// Whether the user has already been told that a missing external formatter
+    /// was replaced by a language server (see
+    /// `LocalLspStore::report_external_formatter_fallback`).
+    reported_external_formatter_fallback: bool,
     downstream_client: Option<(AnyProtoClient, u64)>,
     nonce: u128,
     buffer_store: Entity<BufferStore>,
@@ -4693,6 +4833,7 @@ impl LspStore {
                     .manifest_file_names(),
             }),
             last_formatting_failure: None,
+            reported_external_formatter_fallback: false,
             downstream_client: None,
             buffer_store,
             worktree_store,
@@ -4756,6 +4897,7 @@ impl LspStore {
             }),
             downstream_client: None,
             last_formatting_failure: None,
+            reported_external_formatter_fallback: false,
             buffer_store,
             worktree_store,
             languages: languages.clone(),
@@ -13064,8 +13206,14 @@ impl LspStore {
             Err(error) => {
                 let error_string = format!("{error:#}");
                 log::error!("Formatting failed: {error_string}");
-                self.last_formatting_failure
-                    .replace(error_string.lines().join(" "));
+                // The status bar renders this verbatim, so a failure that knows
+                // its own reason says it in one line instead of dragging the
+                // structured payload that carried it here into the UI.
+                let message = match FormatFailure::from_error(error) {
+                    Some(failure) => failure.status_message(),
+                    None => error_string.lines().join(" "),
+                };
+                self.last_formatting_failure.replace(message);
             }
         }
     }
@@ -13721,6 +13869,7 @@ fn subscribe_to_binary_statuses(
             if lsp_store
                 .update(cx, |_, cx| {
                     let mut message = None;
+                    let mut egress_blocked_hosts = Vec::new();
                     let binary_status = match binary_status {
                         BinaryStatus::None => proto::ServerBinaryStatus::None,
                         BinaryStatus::CheckingForUpdate => {
@@ -13732,6 +13881,15 @@ fn subscribe_to_binary_statuses(
                         BinaryStatus::Stopped => proto::ServerBinaryStatus::Stopped,
                         BinaryStatus::Failed { error } => {
                             message = Some(error);
+                            proto::ServerBinaryStatus::Failed
+                        }
+                        // ADR-F22: the hosts ride beside the status rather than
+                        // inside the error text, so the client can offer the
+                        // consent prompt for a server it never tried to fetch
+                        // itself (a remote project's servers live on the host).
+                        BinaryStatus::EgressDenied { error, hosts } => {
+                            message = Some(error);
+                            egress_blocked_hosts = hosts;
                             proto::ServerBinaryStatus::Failed
                         }
                     };
@@ -13746,6 +13904,7 @@ fn subscribe_to_binary_statuses(
                                 status: Some(proto::status_update::Status::Binary(
                                     binary_status as i32,
                                 )),
+                                egress_blocked_hosts,
                             },
                         ),
                     });

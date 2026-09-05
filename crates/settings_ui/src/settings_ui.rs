@@ -999,6 +999,9 @@ pub struct SettingsWindow {
     /// "launch in terminal" button on the LLM providers page. Holds the CLI's own
     /// level strings verbatim; `None` means "leave the flag off" (ADR-F20).
     pub(crate) claude_code_effort: Option<SharedString>,
+    /// Whether the official `claude` CLI is on this machine's PATH, looked up
+    /// once when the LLM providers page first renders (ADR-F20).
+    pub(crate) claude_cli: pages::ClaudeCliState,
     skill_creator_page: Option<(Entity<pages::SkillCreatorPage>, Subscription)>,
 }
 
@@ -2033,6 +2036,7 @@ impl SettingsWindow {
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
             claude_code_effort: None,
+            claude_cli: pages::ClaudeCliState::default(),
             skill_creator_page: None,
         };
 
@@ -5495,6 +5499,7 @@ pub mod test {
                 custom_agent_form: None,
                 external_agent_add_focus_handle: cx.focus_handle(),
                 claude_code_effort: None,
+                claude_cli: pages::ClaudeCliState::default(),
                 skill_creator_page: None,
             }
         }
@@ -5637,6 +5642,7 @@ pub mod test {
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
             claude_code_effort: None,
+            claude_cli: pages::ClaudeCliState::default(),
             skill_creator_page: None,
         };
 

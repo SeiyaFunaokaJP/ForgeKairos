@@ -16,7 +16,8 @@ use std::{
 use task::{Shell, ShellBuilder, ShellKind, SpawnInTerminal};
 use terminal::{
     TaskState, TaskStatus, Terminal, TerminalBuilder, insert_zed_terminal_env,
-    remote_cwd::osc7_prompt_command_env, terminal_settings::TerminalSettings,
+    remote_cwd::{osc7_prompt_command_env, shell_command_with_cwd_fallback},
+    terminal_settings::TerminalSettings,
 };
 use util::{
     command::new_std_command, get_default_system_shell, get_system_shell, maybe, rel_path::RelPath,
@@ -336,6 +337,13 @@ impl Project {
         let settings = TerminalSettings::get(settings_location, cx).clone();
         let detect_venv = settings.detect_venv.as_option().is_some();
         let local_path = if is_via_remote { None } else { path.clone() };
+        // The counterpart of `local_path`: a remote shell's directory is a path
+        // on the host, which only the terminal's OSC 7 tracker may hold.
+        let remote_path = if is_via_remote {
+            path.as_deref().map(Path::to_path_buf)
+        } else {
+            None
+        };
 
         // See create_terminal_task: scope the toolchain lookup to the
         // worktree the terminal is opened in, not the active editor's
@@ -430,7 +438,8 @@ impl Project {
                         path_style,
                     ))
                 })??
-                .await?;
+                .await?
+                .with_remote_working_directory(remote_path);
             project.update(cx, move |this, cx| {
                 let terminal_handle = cx.new(|cx| builder.subscribe(cx));
 
@@ -623,24 +632,41 @@ impl Project {
 fn create_remote_shell(
     spawn_command: Option<(&String, &Vec<String>)>,
     mut env: HashMap<String, String>,
-    working_directory: Option<Arc<Path>>,
+    mut working_directory: Option<Arc<Path>>,
     remote_client: Entity<RemoteClient>,
     cx: &mut App,
 ) -> Result<(Shell, HashMap<String, String>)> {
     insert_zed_terminal_env(&mut env, &release_channel::AppVersion::global(cx));
 
     let (program, args) = match spawn_command {
-        Some((program, args)) => (Some(program.clone()), args),
+        Some((program, args)) => (Some(program.clone()), args.clone()),
         None => {
             // Only an interactive shell has a prompt to hang the report off, and
             // only an interactive shell is ever restarted after a dropped
             // connection.
-            if let Some(remote_shell) = remote_client.read(cx).shell()
-                && let Some((name, value)) = osc7_prompt_command_env(&remote_shell)
+            let remote_shell = remote_client.read(cx).shell();
+            if let Some(remote_shell) = &remote_shell
+                && let Some((name, value)) = osc7_prompt_command_env(remote_shell)
             {
                 env.entry(name).or_insert(value);
             }
-            (None, &Vec::new())
+            // A shell restarted in a directory tracked earlier may find it
+            // gone, and entering it must not take the shell down with it. The
+            // wrapper does the `cd` itself, so the command line `ssh` builds
+            // must not do it a second time.
+            let cwd_fallback = remote_shell
+                .filter(|_| !remote_client.read(cx).path_style().is_windows())
+                .zip(working_directory.as_deref())
+                .and_then(|(remote_shell, directory)| {
+                    shell_command_with_cwd_fallback(directory, &remote_shell)
+                });
+            match cwd_fallback {
+                Some((program, args)) => {
+                    working_directory = None;
+                    (Some(program), args)
+                }
+                None => (None, Vec::new()),
+            }
         }
     };
 

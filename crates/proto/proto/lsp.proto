@@ -715,6 +715,12 @@ message StatusUpdate {
     ServerBinaryStatus binary = 2;
     ServerHealth health = 3;
   }
+  // zed-jp-enhance (ADR-F22): set alongside `binary = FAILED` when the reason
+  // the binary is missing is that this fork's egress allowlist refused the
+  // hosts the download needs. Lists the hosts the user would have to allow.
+  // A plain FAILED with this empty keeps its old meaning, so a peer that
+  // predates the field still reports the failure, just without the prompt.
+  repeated string egress_blocked_hosts = 4;
 }
 
 enum ServerHealth {

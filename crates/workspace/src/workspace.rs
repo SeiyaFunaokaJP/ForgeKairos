@@ -267,6 +267,10 @@ actions!(
         ActivatePreviousWindow,
         /// Adds a folder to the current project.
         AddFolderToProject,
+        /// Replaces the project's open folder with a different one, adding the
+        /// new worktree before closing the previous one so a remote connection
+        /// does not need to be re-established.
+        ChangeProjectFolder,
         /// Clears all bookmarks in the project.
         ClearBookmarks,
         /// Clears all notifications.
@@ -781,6 +785,98 @@ pub fn prompt_for_open_path_and_open(
     .detach();
 }
 
+/// Returns the currently active window if it is a `MultiWorkspace` whose
+/// active workspace is a remote (SSH/WSL/dev container) project. Used to
+/// route `workspace::Open` through the in-app remote folder picker instead
+/// of a native local file dialog when the user is already in a remote
+/// workspace.
+fn active_remote_workspace_window(cx: &App) -> Option<WindowHandle<MultiWorkspace>> {
+    let window = cx.active_window()?.downcast::<MultiWorkspace>()?;
+    let is_remote = window
+        .read(cx)
+        .ok()?
+        .workspace()
+        .read(cx)
+        .project()
+        .read(cx)
+        .is_via_remote_server();
+    is_remote.then_some(window)
+}
+
+/// Prompts for a folder using the given remote project's own connection (the
+/// same in-app picker `AddFolderToProject` uses), then opens it over that
+/// same connection — either in the current window as a new workspace, or in
+/// a new window, matching `create_new_window`. This lets `workspace::Open`
+/// work from a remote workspace without dropping back to a local file dialog
+/// or forcing a fresh SSH/WSL connection.
+fn prompt_for_open_path_on_remote_connection(
+    window_handle: WindowHandle<MultiWorkspace>,
+    app_state: Arc<AppState>,
+    create_new_window: bool,
+    cx: &mut App,
+) {
+    window_handle
+        .update(cx, |multi_workspace, window, cx| {
+            let workspace = multi_workspace.workspace().clone();
+            workspace.update(cx, |workspace, cx| {
+                let project = workspace.project().clone();
+                let Some(connection_options) = project.read(cx).remote_connection_options(cx)
+                else {
+                    return;
+                };
+                let paths = workspace.prompt_for_open_path(
+                    PathPromptOptions {
+                        files: true,
+                        directories: true,
+                        multiple: true,
+                        prompt: None,
+                    },
+                    DirectoryLister::Project(project.clone()),
+                    window,
+                    cx,
+                );
+                cx.spawn(async move |_workspace, cx| {
+                    let Some(paths) = paths.await.log_err().flatten() else {
+                        return anyhow::Ok(());
+                    };
+                    let target_window = if create_new_window {
+                        let options = cx.update(|cx| (app_state.build_window_options)(None, cx));
+                        let new_window_project = project.clone();
+                        let new_window_app_state = app_state.clone();
+                        cx.open_window(options, move |window, cx| {
+                            let workspace = cx.new(|cx| {
+                                Workspace::new(
+                                    None,
+                                    new_window_project,
+                                    new_window_app_state,
+                                    window,
+                                    cx,
+                                )
+                            });
+                            cx.new(|cx| MultiWorkspace::new(workspace, window, cx))
+                        })?
+                    } else {
+                        window_handle
+                    };
+                    open_remote_project_with_existing_connection(
+                        connection_options,
+                        project,
+                        paths,
+                        app_state,
+                        target_window,
+                        None,
+                        None,
+                        cx,
+                    )
+                    .await?;
+                    anyhow::Ok(())
+                })
+                .detach_and_log_err(cx);
+            });
+        })
+        .ok();
+}
+
 pub fn init(app_state: Arc<AppState>, cx: &mut App) {
     component::init();
     theme_preview::init(cx);
@@ -791,6 +887,19 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
         .on_action(|_: &Reload, cx| reload(cx))
         .on_action(|action: &Open, cx: &mut App| {
             let app_state = AppState::global(cx);
+            let create_new_window = action.create_new_window.unwrap_or_else(|| {
+                matches!(
+                    WorkspaceSettings::get_global(cx).default_open_behavior,
+                    DefaultOpenBehavior::NewWindow
+                )
+            });
+            // If we're already in a remote (SSH/WSL/dev container) workspace,
+            // opening a folder should stay on that connection via the in-app
+            // picker rather than showing a native dialog for local paths.
+            if let Some(window) = active_remote_workspace_window(cx) {
+                prompt_for_open_path_on_remote_connection(window, app_state, create_new_window, cx);
+                return;
+            }
             prompt_and_open_paths(
                 app_state,
                 PathPromptOptions {
@@ -799,12 +908,7 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
                     multiple: true,
                     prompt: None,
                 },
-                action.create_new_window.unwrap_or_else(|| {
-                    matches!(
-                        WorkspaceSettings::get_global(cx).default_open_behavior,
-                        DefaultOpenBehavior::NewWindow
-                    )
-                }),
+                create_new_window,
                 cx,
             );
         })
@@ -3923,6 +4027,173 @@ impl Workspace {
             anyhow::Ok(())
         })
         .detach_and_log_err(cx);
+    }
+
+    /// Adds a new worktree for the chosen folder, then removes the worktrees
+    /// that were visible before the change (closing any tabs backed by them).
+    /// The add happens before the remove so a failed pick leaves the project
+    /// untouched, and so the same remote connection stays open throughout —
+    /// this is how a remote SSH/WSL project's root folder can be changed
+    /// without reconnecting.
+    pub fn change_project_folder(
+        &mut self,
+        _: &ChangeProjectFolder,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.project.read(cx).is_via_collab() {
+            self.show_error("他のユーザーのプロジェクトのフォルダーは変更できません", cx);
+            return;
+        }
+        let previous_worktree_ids: HashSet<WorktreeId> = self
+            .project
+            .read(cx)
+            .visible_worktrees(cx)
+            .map(|worktree| worktree.read(cx).id())
+            .collect();
+        let paths = self.prompt_for_open_path(
+            PathPromptOptions {
+                files: false,
+                directories: true,
+                multiple: false,
+                prompt: None,
+            },
+            DirectoryLister::Project(self.project.clone()),
+            window,
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(paths) = paths.await.log_err().flatten() else {
+                return anyhow::Ok(());
+            };
+            // A folder inside a current root (the usual "home → project" move) would
+            // simply resolve to that existing worktree, so such roots have to be
+            // removed *before* opening; an unrelated folder keeps the safer
+            // add-then-remove order. A root that is already open is a no-op.
+            let (nested_roots, already_open) = this.update(cx, |this, cx| {
+                let project = this.project.read(cx);
+                let mut nested_roots: Vec<(WorktreeId, PathBuf)> = Vec::new();
+                let mut already_open = false;
+                for path in &paths {
+                    let Some((worktree, relative_path)) = project.find_worktree(path, cx) else {
+                        continue;
+                    };
+                    let worktree = worktree.read(cx);
+                    if !worktree.is_visible() {
+                        continue;
+                    }
+                    if relative_path.is_empty() {
+                        already_open = true;
+                    } else if !nested_roots.iter().any(|(id, _)| *id == worktree.id()) {
+                        nested_roots.push((worktree.id(), worktree.abs_path().to_path_buf()));
+                    }
+                }
+                (nested_roots, already_open)
+            })?;
+            if already_open {
+                return anyhow::Ok(());
+            }
+            let removed_first: HashSet<WorktreeId> =
+                nested_roots.iter().map(|(id, _)| *id).collect();
+            if !removed_first.is_empty() {
+                this.update_in(cx, |this, window, cx| {
+                    this.close_items_for_worktrees(&removed_first, window, cx);
+                    for worktree_id in &removed_first {
+                        this.project
+                            .update(cx, |project, cx| project.remove_worktree(*worktree_id, cx));
+                    }
+                })?;
+            }
+
+            let open_options = || OpenOptions {
+                visible: Some(OpenVisible::All),
+                ..Default::default()
+            };
+            let results = this
+                .update_in(cx, |this, window, cx| {
+                    this.open_paths(paths, open_options(), None, window, cx)
+                })?
+                .await;
+            for result in results.into_iter().flatten() {
+                result.log_err();
+            }
+
+            let added_new_worktree = this.update(cx, |this, cx| {
+                this.project
+                    .read(cx)
+                    .visible_worktrees(cx)
+                    .any(|worktree| !previous_worktree_ids.contains(&worktree.read(cx).id()))
+            })?;
+            if !added_new_worktree {
+                // Put back whatever was removed up front so a failed pick leaves
+                // the project as it was.
+                if !nested_roots.is_empty() {
+                    let restore = this.update_in(cx, |this, window, cx| {
+                        this.open_paths(
+                            nested_roots.into_iter().map(|(_, path)| path).collect(),
+                            open_options(),
+                            None,
+                            window,
+                            cx,
+                        )
+                    })?;
+                    for result in restore.await.into_iter().flatten() {
+                        result.log_err();
+                    }
+                }
+                this.update_in(cx, |this, _, cx| {
+                    this.show_error(
+                        "選択したフォルダーを開けなかったため、フォルダーは変更されませんでした",
+                        cx,
+                    );
+                })?;
+                return anyhow::Ok(());
+            }
+
+            let remaining: HashSet<WorktreeId> = previous_worktree_ids
+                .difference(&removed_first)
+                .copied()
+                .collect();
+            this.update_in(cx, |this, window, cx| {
+                this.close_items_for_worktrees(&remaining, window, cx);
+                for worktree_id in remaining {
+                    this.project
+                        .update(cx, |project, cx| project.remove_worktree(worktree_id, cx));
+                }
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    /// Closes every open item backed by one of the given worktrees, across
+    /// all panes. Removing a worktree does not close its tabs on its own
+    /// (they just dangle), so callers that replace a project's folder must
+    /// close them explicitly.
+    fn close_items_for_worktrees(
+        &mut self,
+        worktree_ids: &HashSet<WorktreeId>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let panes = self.panes().to_vec();
+        for pane in panes {
+            let worktree_ids = worktree_ids.clone();
+            pane.update(cx, |pane, cx| {
+                let matching_item_ids: Vec<_> = pane
+                    .items()
+                    .filter(|item| {
+                        item.project_path(cx)
+                            .is_some_and(|path| worktree_ids.contains(&path.worktree_id))
+                    })
+                    .map(|item| item.item_id())
+                    .collect();
+                pane.close_items(window, cx, SaveIntent::Close, &move |item_id| {
+                    matching_item_ids.contains(&item_id)
+                })
+                .detach_and_log_err(cx);
+            });
+        }
     }
 
     pub fn project_path_for_path(
@@ -7505,6 +7776,7 @@ impl Workspace {
             .on_action(cx.listener(Self::save_all))
             .on_action(cx.listener(Self::send_keystrokes))
             .on_action(cx.listener(Self::add_folder_to_project))
+            .on_action(cx.listener(Self::change_project_folder))
             .on_action(cx.listener(Self::follow_next_collaborator))
             .on_action(cx.listener(Self::activate_pane_at_index))
             .on_action(cx.listener(Self::move_item_to_pane_at_index))
@@ -11805,6 +12077,87 @@ mod tests {
         // Remove a project folder
         project.update(cx, |project, cx| project.remove_worktree(worktree_id, cx));
         assert_eq!(cx.window_title().as_deref(), Some("root2 — one.txt"));
+    }
+
+    #[gpui::test]
+    async fn test_change_project_folder_swaps_worktree_and_closes_tabs(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        // Force the in-app picker path instead of a native OS dialog, same as
+        // `test_open_local_project_reuses_multi_workspace_window` in
+        // recent_projects.
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.workspace.use_system_path_prompts = Some(false);
+                });
+            });
+        });
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root1"), json!({ "one.txt": "" }))
+            .await;
+        fs.insert_tree(path!("/root2"), json!({ "two.txt": "" }))
+            .await;
+
+        let project = Project::test(fs, [path!("/root1").as_ref()], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+
+        let root1_worktree_id = project.update(cx, |project, cx| {
+            project.worktrees(cx).next().unwrap().read(cx).id()
+        });
+
+        let item1 = cx.new(|cx| {
+            TestItem::new(cx).with_project_items(&[TestProjectItem::new_in_worktree(
+                1,
+                "one.txt",
+                root1_worktree_id,
+                cx,
+            )])
+        });
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item_to_active_pane(Box::new(item1), None, true, window, cx)
+        });
+        assert_eq!(cx.window_title().as_deref(), Some("root1 — one.txt"));
+
+        workspace.update(cx, |workspace, _cx| {
+            workspace.set_prompt_for_open_path(Box::new(|_, _, _, _| {
+                let (tx, rx) = oneshot::channel();
+                tx.send(Some(vec![PathBuf::from(path!("/root2"))])).ok();
+                rx
+            }));
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.change_project_folder(&ChangeProjectFolder, window, cx);
+        });
+        cx.run_until_parked();
+
+        workspace.update(cx, |workspace, cx| {
+            let worktree_ids: Vec<_> = workspace
+                .project()
+                .read(cx)
+                .visible_worktrees(cx)
+                .map(|worktree| worktree.read(cx).id())
+                .collect();
+            assert_eq!(
+                worktree_ids.len(),
+                1,
+                "should have exactly one visible worktree after the change"
+            );
+            assert_ne!(
+                worktree_ids[0], root1_worktree_id,
+                "old worktree should have been removed"
+            );
+
+            let open_item_count = workspace.active_pane().read(cx).items().count();
+            assert_eq!(
+                open_item_count, 0,
+                "the tab backed by the old worktree should have been closed"
+            );
+        });
+        assert_eq!(cx.window_title().as_deref(), Some("root2"));
     }
 
     #[gpui::test]

@@ -80,7 +80,7 @@ fn render_inspector(
                 .border_color(colors.border_variant)
                 .child(
                     IconButton::new("pick-mode", IconName::MagnifyingGlass)
-                        .tooltip(Tooltip::text("Start inspector pick mode"))
+                        .tooltip(Tooltip::text("インスペクターのピックモードを開始します"))
                         .selected_icon_color(Color::Selected)
                         .toggle_state(inspector.is_picking())
                         .on_click(cx.listener(|inspector, _, window, _cx| {
@@ -88,7 +88,11 @@ fn render_inspector(
                             window.refresh();
                         })),
                 )
-                .child(h_flex().justify_end().child(Label::new("GPUI Inspector"))),
+                .child(
+                    h_flex()
+                        .justify_end()
+                        .child(Label::new("GPUI インスペクター")),
+                ),
         )
         .child(
             v_flex()
@@ -119,15 +123,13 @@ fn render_inspector_id(inspector_id: &InspectorElementId, cx: &App) -> Div {
         .child(
             h_flex()
                 .justify_between()
-                .child(Label::new("Element ID").size(LabelSize::Large))
+                .child(Label::new("要素 ID").size(LabelSize::Large))
                 .child(
                     div()
                         .id("instance-id")
                         .text_ui(cx)
-                        .tooltip(Tooltip::text(
-                            "Disambiguates elements from the same source location",
-                        ))
-                        .child(format!("Instance {}", inspector_id.instance_id)),
+                        .tooltip(Tooltip::text("同じソース位置の要素を区別します"))
+                        .child(format!("インスタンス {}", inspector_id.instance_id)),
                 ),
         )
         .child(
@@ -139,7 +141,7 @@ fn render_inspector_id(inspector_id: &InspectorElementId, cx: &App) -> Div {
                 .font_buffer(cx)
                 .text_xs()
                 .child(source_location_string)
-                .tooltip(Tooltip::text("Click to open by running Zed CLI"))
+                .tooltip(Tooltip::text("クリックすると Zed CLI 経由で開きます"))
                 .on_click(move |_, _window, cx| {
                     cx.background_spawn(open_zed_source_location(source_location))
                         .detach_and_log_err(cx);
@@ -150,9 +152,7 @@ fn render_inspector_id(inspector_id: &InspectorElementId, cx: &App) -> Div {
                 .id("global-id")
                 .text_ui(cx)
                 .min_h_20()
-                .tooltip(Tooltip::text(
-                    "GlobalElementId of the nearest ancestor with an ID",
-                ))
+                .tooltip(Tooltip::text("ID を持つ最も近い祖先要素の GlobalElementId"))
                 .child(inspector_id.path.global_id.to_string()),
         )
 }

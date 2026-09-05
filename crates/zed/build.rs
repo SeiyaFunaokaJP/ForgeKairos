@@ -104,100 +104,128 @@ fn main() {
             let nupkg_path = out_dir.join("conpty.nupkg.zip");
             let extract_dir = out_dir.join("conpty");
 
-            let download_script = format!(
-                "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{}' -OutFile '{}'",
-                conpty_url,
-                nupkg_path.display()
-            );
+            // Both artifacts are already in place from an earlier build: there is nothing
+            // to download or extract, and every PowerShell invocation below is a chance to
+            // hang (see the note on `download_result`).
+            if conpty_dll_target.is_file() && open_console_target.is_file() {
+                println!(
+                    "Reusing conpty.dll and OpenConsole.exe already present in {}",
+                    target_dir.display()
+                );
+            } else {
+                let download_script = format!(
+                    "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{}' -OutFile '{}' -TimeoutSec 180",
+                    conpty_url,
+                    nupkg_path.display()
+                );
 
-            let download_result = Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-Command",
-                    &download_script,
-                ])
-                .output();
+                // Reuse a nupkg fetched by an earlier run of this script. Without this the
+                // download runs on every re-run (any change under crates/zed), needs network
+                // access, and a stalled Invoke-WebRequest has been seen to hang for hours while
+                // holding cargo's build directory lock (2026-09-05).
+                let download_result = if nupkg_path.is_file() {
+                    println!("Reusing cached conpty nupkg at {}", nupkg_path.display());
+                    Ok(std::process::Output {
+                        status: std::process::ExitStatus::default(),
+                        stdout: Vec::new(),
+                        stderr: Vec::new(),
+                    })
+                } else {
+                    Command::new("powershell")
+                        .args([
+                            "-NoProfile",
+                            "-NonInteractive",
+                            "-Command",
+                            &download_script,
+                        ])
+                        .output()
+                };
 
-            match download_result {
-                Ok(output) if output.status.success() => {
-                    println!("Downloaded conpty nupkg successfully");
+                match download_result {
+                    Ok(output) if output.status.success() => {
+                        println!("Downloaded conpty nupkg successfully");
 
-                    let extract_script = format!(
-                        "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-                        nupkg_path.display(),
-                        extract_dir.display()
-                    );
+                        let extract_script = format!(
+                            "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+                            nupkg_path.display(),
+                            extract_dir.display()
+                        );
 
-                    let extract_result = Command::new("powershell")
-                        .args(["-NoProfile", "-NonInteractive", "-Command", &extract_script])
-                        .output();
+                        let extract_result = Command::new("powershell")
+                            .args(["-NoProfile", "-NonInteractive", "-Command", &extract_script])
+                            .output();
 
-                    match extract_result {
-                        Ok(output) if output.status.success() => {
-                            let (conpty_dll_source, open_console_source) =
-                                if cfg!(target_arch = "x86_64") {
-                                    (
-                                        extract_dir.join("runtimes/win-x64/native/conpty.dll"),
-                                        extract_dir
-                                            .join("build/native/runtimes/x64/OpenConsole.exe"),
-                                    )
-                                } else {
-                                    (
-                                        extract_dir.join("runtimes/win-arm64/native/conpty.dll"),
-                                        extract_dir
-                                            .join("build/native/runtimes/arm64/OpenConsole.exe"),
-                                    )
-                                };
+                        match extract_result {
+                            Ok(output) if output.status.success() => {
+                                let (conpty_dll_source, open_console_source) =
+                                    if cfg!(target_arch = "x86_64") {
+                                        (
+                                            extract_dir.join("runtimes/win-x64/native/conpty.dll"),
+                                            extract_dir
+                                                .join("build/native/runtimes/x64/OpenConsole.exe"),
+                                        )
+                                    } else {
+                                        (
+                                            extract_dir
+                                                .join("runtimes/win-arm64/native/conpty.dll"),
+                                            extract_dir.join(
+                                                "build/native/runtimes/arm64/OpenConsole.exe",
+                                            ),
+                                        )
+                                    };
 
-                            match std::fs::copy(&conpty_dll_source, &conpty_dll_target) {
-                                Ok(_) => {
-                                    println!("Copied conpty.dll to {}", conpty_dll_target.display())
+                                match std::fs::copy(&conpty_dll_source, &conpty_dll_target) {
+                                    Ok(_) => {
+                                        println!(
+                                            "Copied conpty.dll to {}",
+                                            conpty_dll_target.display()
+                                        )
+                                    }
+                                    Err(e) => println!(
+                                        "cargo::warning=Failed to copy conpty.dll from {}: {}",
+                                        conpty_dll_source.display(),
+                                        e
+                                    ),
                                 }
-                                Err(e) => println!(
-                                    "cargo::warning=Failed to copy conpty.dll from {}: {}",
-                                    conpty_dll_source.display(),
-                                    e
-                                ),
-                            }
 
-                            match std::fs::copy(&open_console_source, &open_console_target) {
-                                Ok(_) => println!(
-                                    "Copied OpenConsole.exe to {}",
-                                    open_console_target.display()
-                                ),
-                                Err(e) => println!(
-                                    "cargo::warning=Failed to copy OpenConsole.exe from {}: {}",
-                                    open_console_source.display(),
-                                    e
-                                ),
+                                match std::fs::copy(&open_console_source, &open_console_target) {
+                                    Ok(_) => println!(
+                                        "Copied OpenConsole.exe to {}",
+                                        open_console_target.display()
+                                    ),
+                                    Err(e) => println!(
+                                        "cargo::warning=Failed to copy OpenConsole.exe from {}: {}",
+                                        open_console_source.display(),
+                                        e
+                                    ),
+                                }
                             }
-                        }
-                        Ok(output) => {
-                            println!(
-                                "cargo::warning=Failed to extract conpty nupkg: {}",
-                                String::from_utf8_lossy(&output.stderr)
-                            );
-                        }
-                        Err(e) => {
-                            println!(
-                                "cargo::warning=Failed to run PowerShell for extraction: {}",
-                                e
-                            );
+                            Ok(output) => {
+                                println!(
+                                    "cargo::warning=Failed to extract conpty nupkg: {}",
+                                    String::from_utf8_lossy(&output.stderr)
+                                );
+                            }
+                            Err(e) => {
+                                println!(
+                                    "cargo::warning=Failed to run PowerShell for extraction: {}",
+                                    e
+                                );
+                            }
                         }
                     }
-                }
-                Ok(output) => {
-                    println!(
-                        "cargo::warning=Failed to download conpty nupkg: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    );
-                }
-                Err(e) => {
-                    println!(
-                        "cargo::warning=Failed to run PowerShell for download: {}",
-                        e
-                    );
+                    Ok(output) => {
+                        println!(
+                            "cargo::warning=Failed to download conpty nupkg: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        );
+                    }
+                    Err(e) => {
+                        println!(
+                            "cargo::warning=Failed to run PowerShell for download: {}",
+                            e
+                        );
+                    }
                 }
             }
         }

@@ -355,8 +355,64 @@ pub struct RemoteClient {
     platform: RemotePlatform,
     os_version: Option<String>,
     state: Option<State>,
+    /// Re-pushes the egress allowlist whenever the local policy changes
+    /// (ADR-F22). `None` in a process that never installed a policy, which is
+    /// every test harness.
+    _egress_policy_task: Option<Task<()>>,
     _system_wake_subscription: Option<Subscription>,
     system_wake_probe_task: Option<Task<()>>,
+}
+
+/// Watches the local egress allowlist and re-pushes it to this host on every
+/// change, so that consenting to a host mid-session (the ADR-F22 language
+/// server download prompt, the ADR-F12 agent install prompt, or a hand edit of
+/// `network_allowlist.json`) reaches the `remote_server` without a reconnect.
+///
+/// `None` when this process has no policy installed — nothing can change, so
+/// there is nothing to watch.
+fn watch_egress_allowlist(cx: &mut Context<RemoteClient>) -> Option<Task<()>> {
+    let mut changes = cx
+        .try_global::<egress_policy::EgressAllowlistGlobal>()?
+        .0
+        .subscribe();
+    Some(cx.spawn(async move |this, cx| {
+        while changes.next().await.is_some() {
+            if this
+                .update(cx, |this, cx| this.push_egress_allowlist(cx))
+                .is_err()
+            {
+                break;
+            }
+        }
+    }))
+}
+
+/// Sends the IDE's current egress allowlist — and the `proxy_child_processes`
+/// choice that goes with it (ADR-F14) — to the `remote_server` on the other
+/// end of `client`.
+///
+/// Sent with `send`, not `request`: this fork always builds both binaries
+/// together, but staying fire-and-forget means a peer with no handler for it
+/// (a stale server, or a minimal test double) never leaves the caller hanging.
+fn send_egress_allowlist(client: &Arc<ChannelClient>, cx: &App) {
+    let allowed_hosts = cx
+        .try_global::<egress_policy::EgressAllowlistGlobal>()
+        .map(|global| {
+            global
+                .0
+                .snapshot()
+                .patterns()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    client
+        .send(proto::SetEgressAllowlist {
+            allowed_hosts,
+            proxy_child_processes: Some(egress_policy::proxy_child_processes()),
+        })
+        .log_err();
 }
 
 #[derive(Debug)]
@@ -466,10 +522,12 @@ impl RemoteClient {
                     platform,
                     os_version: os_version.clone(),
                     state: Some(State::Connecting),
+                    _egress_policy_task: None,
                     _system_wake_subscription: None,
                     system_wake_probe_task: None,
                 });
 
+                let proxy_started = Instant::now();
                 let io_task = remote_connection.start_proxy(
                     unique_identifier,
                     false,
@@ -518,11 +576,25 @@ impl RemoteClient {
                         return Err(error);
                     }
                 }
+                log::info!(
+                    "remote connect timing: remote server became ready {:?} after the proxy started",
+                    proxy_started.elapsed()
+                );
+                // Everything from here on happens with the dialog still up, and
+                // opening the project behind it can take seconds on a large
+                // worktree, so the status keeps moving rather than leaving
+                // "プロキシを起動しています" as the last thing the user saw.
+                delegate.set_status(Some("リモートサーバーを初期化しています"), cx);
                 let multiplex_task = Self::monitor(this.downgrade(), io_task, cx);
                 if let Err(error) = client.ping(HEARTBEAT_TIMEOUT).await {
                     log::error!("failed to establish connection: {}", error);
                     return Err(error);
                 }
+                log::info!(
+                    "remote connect timing: first ping answered {:?} after the proxy started",
+                    proxy_started.elapsed()
+                );
+                delegate.set_status(Some("ワークスペースを開いています"), cx);
 
                 let heartbeat_task = Self::heartbeat(this.downgrade(), connection_activity_rx, cx);
 
@@ -535,26 +607,14 @@ impl RemoteClient {
                 //
                 // ADR-F14 carries the `proxy_child_processes` choice along, so
                 // that the same toggle governs the ACP agents, MCP servers and
-                // npm invocations that run on the remote host. Like the
-                // allowlist, it is read again on the next fresh connection
-                // rather than re-sent when it changes mid-session.
-                let allowed_hosts = cx
-                    .try_read_global::<egress_policy::EgressAllowlistGlobal, _>(|global, _| {
-                        global
-                            .0
-                            .snapshot()
-                            .patterns()
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                client
-                    .send(proto::SetEgressAllowlist {
-                        allowed_hosts,
-                        proxy_child_processes: Some(egress_policy::proxy_child_processes()),
-                    })
-                    .log_err();
+                // npm invocations that run on the remote host.
+                //
+                // ADR-F22: both are re-sent whenever the policy file is
+                // reloaded, so that consenting to a host mid-session (the LSP
+                // download prompt, the agent install prompt, a hand edit)
+                // reaches this host without a reconnect. The subscription
+                // below is what does that.
+                cx.update(|cx| send_egress_allowlist(&client, cx));
 
                 this.update(cx, |this, cx| {
                     this.state = Some(State::Connected {
@@ -563,6 +623,7 @@ impl RemoteClient {
                         multiplex_task,
                         heartbeat_task,
                     });
+                    this._egress_policy_task = watch_egress_allowlist(cx);
                     this._system_wake_subscription = Some(cx.on_system_wake({
                         let this = cx.entity().downgrade();
                         move |cx| {
@@ -1109,6 +1170,22 @@ impl RemoteClient {
         self.client.clone().into()
     }
 
+    /// Re-sends the IDE's egress allowlist to this host (ADR-F22).
+    ///
+    /// Called on every reload of `network_allowlist.json`, and directly by a
+    /// consent flow that has just added a host and is about to retry the
+    /// operation the allowlist refused — messages on this channel are ordered,
+    /// so pushing before the retry is what makes the retry see the new list.
+    ///
+    /// A no-op while the connection is not up: the server is handed the
+    /// current list as soon as one is (re-)established, so there is nothing to
+    /// catch up on.
+    pub fn push_egress_allowlist(&self, cx: &App) {
+        if matches!(self.connection_state(), ConnectionState::Connected) {
+            send_egress_allowlist(&self.client, cx);
+        }
+    }
+
     pub fn connection_options(&self) -> RemoteConnectionOptions {
         self.connection_options.clone()
     }
@@ -1486,6 +1563,52 @@ mod tests {
     use super::*;
     use gpui::TestAppContext;
     use rpc::{ErrorCodeExt, proto::ErrorCode};
+
+    /// ADR-F22: the push reads the live allowlist every time, so a second
+    /// push after the policy file has been reloaded carries the new list.
+    /// Without that, consenting to a host mid-session would need a reconnect
+    /// before the remote host learned about it.
+    #[gpui::test]
+    async fn egress_allowlist_push_reflects_the_current_policy(cx: &mut TestAppContext) {
+        let (_incoming_tx, incoming_rx) = mpsc::unbounded::<Envelope>();
+        let (outgoing_tx, mut outgoing_rx) = mpsc::unbounded::<Envelope>();
+
+        let client =
+            cx.update(|cx| ChannelClient::new(incoming_rx, outgoing_tx, cx, "test-client", false));
+        // `ChannelClient::new` announces itself first; that envelope is not
+        // what this test is about.
+        outgoing_rx.next().await.expect("client should announce");
+
+        let policy = http_client::EgressPolicyHandle::default();
+        policy.set(
+            http_client::EgressPolicy::from_host_strings(&["api.anthropic.com".to_string()]).0,
+        );
+        cx.update(|cx| cx.set_global(egress_policy::EgressAllowlistGlobal(policy.clone())));
+
+        cx.update(|cx| send_egress_allowlist(&client, cx));
+        let pushed = proto::SetEgressAllowlist::from_envelope(
+            outgoing_rx.next().await.expect("should have pushed"),
+        )
+        .expect("should be a SetEgressAllowlist");
+        assert_eq!(pushed.allowed_hosts, vec!["api.anthropic.com".to_string()]);
+
+        policy.set(
+            http_client::EgressPolicy::from_host_strings(&[
+                "api.anthropic.com".to_string(),
+                "github.com".to_string(),
+            ])
+            .0,
+        );
+        cx.update(|cx| send_egress_allowlist(&client, cx));
+        let pushed = proto::SetEgressAllowlist::from_envelope(
+            outgoing_rx.next().await.expect("should have pushed again"),
+        )
+        .expect("should be a SetEgressAllowlist");
+        assert_eq!(
+            pushed.allowed_hosts,
+            vec!["api.anthropic.com".to_string(), "github.com".to_string()]
+        );
+    }
 
     #[test]
     fn test_reconnect_backoff_covers_a_sleep_resume() {

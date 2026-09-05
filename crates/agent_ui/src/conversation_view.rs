@@ -97,9 +97,9 @@ use crate::{
     OpenAddContextMenu, OpenAgentDiff, RejectAll, RejectOnce, RemoveFirstQueuedMessage,
     ScrollOutputLineDown, ScrollOutputLineUp, ScrollOutputPageDown, ScrollOutputPageUp,
     ScrollOutputToBottom, ScrollOutputToNextMessage, ScrollOutputToPreviousMessage,
-    ScrollOutputToTop, SendImmediately, SendNextQueuedMessage, ToggleFastMode,
-    ToggleProfileSelector, ToggleSteerFirstQueuedMessage, ToggleThinkingEffortMenu,
-    ToggleThinkingMode, UndoLastReject,
+    ScrollOutputToTop, SendImmediately, SendNextQueuedMessage, ToggleAutoApproveToolActions,
+    ToggleFastMode, ToggleProfileSelector, ToggleSteerFirstQueuedMessage, ToggleThinkingEffortMenu,
+    ToggleThinkingMode, ToggleToolPermissionSelector, UndoLastReject,
 };
 
 const STOPWATCH_THRESHOLD: Duration = Duration::from_secs(30);
@@ -230,7 +230,7 @@ impl From<anyhow::Error> for ThreadError {
 
 impl ProfileProvider for Entity<agent::Thread> {
     fn profile_id(&self, cx: &App) -> AgentProfileId {
-        self.read(cx).profile().clone()
+        self.read(cx).profile(cx)
     }
 
     fn set_profile(&self, profile_id: AgentProfileId, cx: &mut App) {
@@ -258,7 +258,7 @@ impl ProfileProvider for Entity<agent::Thread> {
     }
 
     fn profile_downgraded(&self, cx: &App) -> bool {
-        self.read(cx).profile_was_downgraded()
+        self.read(cx).profile_was_downgraded(cx)
     }
 }
 

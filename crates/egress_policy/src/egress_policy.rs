@@ -623,6 +623,44 @@ mod tests {
         assert!(handle.allows(&openai));
     }
 
+    /// ADR-F22: a reload has to be observable, so that a `remote_server` given
+    /// the allowlist once at connect time can be re-sent it without a
+    /// reconnect. The edge must arrive *after* the new policy is installed —
+    /// a subscriber that re-reads the handle from its wake-up would otherwise
+    /// forward the previous list.
+    #[gpui::test]
+    async fn a_reload_wakes_subscribers_after_the_new_policy_is_installed(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        let path = PathBuf::from(util::path!("/config/network_allowlist.json"));
+        fs.insert_tree(
+            std::path::Path::new(util::path!("/config")),
+            serde_json::json!({
+                "network_allowlist.json": r#"{ "allowed_hosts": [] }"#,
+            }),
+        )
+        .await;
+
+        let handle = cx.update(|cx| watch(fs.clone(), path.clone(), cx));
+        cx.run_until_parked();
+        let mut reloads = handle.subscribe();
+
+        fs.insert_file(
+            &path,
+            br#"{ "allowed_hosts": ["api.anthropic.com"] }"#.to_vec(),
+        )
+        .await;
+        cx.run_until_parked();
+
+        assert!(reloads.next().await.is_some(), "the reload should wake us");
+        let anthropic = RequestHost::parse("api.anthropic.com").expect("host should parse");
+        assert!(
+            handle.allows(&anthropic),
+            "the new policy must already be installed when the wake-up arrives"
+        );
+    }
+
     #[gpui::test]
     async fn watch_publishes_the_same_handle_as_a_global(cx: &mut TestAppContext) {
         cx.executor().allow_parking();

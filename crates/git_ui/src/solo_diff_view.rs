@@ -58,7 +58,7 @@ impl SoloDiffView {
         cx: &mut App,
     ) -> Task<Result<Entity<Self>>> {
         let Some(workspace_entity) = workspace.upgrade() else {
-            return Task::ready(Err(anyhow::anyhow!("workspace was dropped")));
+            return Task::ready(Err(anyhow::anyhow!("ワークスペースがありません。")));
         };
 
         let existing = workspace_entity

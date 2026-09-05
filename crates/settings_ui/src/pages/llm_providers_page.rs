@@ -1,8 +1,8 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 
 use editor::Editor;
 use futures::AsyncReadExt as _;
-use gpui::{AnyView, Entity, Focusable as _, ScrollHandle, Task, prelude::*};
+use gpui::{AnyView, Entity, Focusable as _, FutureExt as _, ScrollHandle, Task, prelude::*};
 use http_client::{AsyncBody, EgressDenied, HttpClient, Request, StatusCode};
 use language_model::{
     ApiKeyConfiguration, CreateProviderSettingsView, IconOrSvg, InlineDescription,
@@ -31,18 +31,25 @@ use crate::pages::external_ai_consent;
 /// a dependency on the vendor crate.
 const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
 
-/// Why a Claude subscription does not appear next to "OpenAI (サブスクリプション)".
+/// The synthesized "Claude (サブスクリプション)" card.
 ///
 /// Anthropic's consumer terms scope a Claude Pro / Max subscription to
 /// Anthropic's own apps and Claude Code, so this fork deliberately does not
-/// implement a subscription sign-in for the native provider (ADR-F20). The
-/// sanctioned route is the *official, unmodified* CLI: the buttons next to this
-/// text only run the vendor's own install command and then start `claude` in the
-/// integrated terminal instead of a separate command prompt. Nothing about the
-/// CLI is bundled, wrapped or re-authenticated here.
-const CLAUDE_SUBSCRIPTION_HINT: &str = "Anthropic (Claude) のサブスクリプションは、公式の Claude Code CLI をこの IDE のターミナルで実行して利用します。";
+/// implement a subscription sign-in for the native provider (ADR-F20): there is
+/// no `LanguageModelProvider` behind this card, it is drawn here so the answer
+/// sits where the question is asked — in the provider list, next to Anthropic,
+/// the way "ChatGPT Subscription" sits next to OpenAI. The sanctioned route is
+/// the *official, unmodified* CLI: the buttons only run the vendor's own install
+/// command and then start `claude` in the integrated terminal instead of a
+/// separate command prompt. Nothing about the CLI is bundled, wrapped or
+/// re-authenticated here.
+const CLAUDE_SUBSCRIPTION_NAME: &str = "Claude (サブスクリプション)";
 
-const CLAUDE_SUBSCRIPTION_NOTE: &str = "Claude Pro / Max のサブスクリプションはここでは使えません (API キーの従量課金のみ)。サブスクリプションで使うには、公式の Claude Code CLI を公式のインストールコマンドで導入し、この IDE のターミナルで実行してください (CLI は同梱していません)。";
+const CLAUDE_SUBSCRIPTION_DESCRIPTION: &str = "公式の Claude Code CLI をこの IDE のターミナルで実行して、Claude Pro / Max のサブスクリプションを利用します。CLI は同梱しておらず、公式のインストールコマンドで導入します。API キーの従量課金は上の Anthropic をご利用ください。";
+
+/// The one line left on the Anthropic card: the same question is asked from
+/// there, but the answer now has a card of its own right below it.
+const CLAUDE_SUBSCRIPTION_NOTE: &str = "Claude Pro / Max のサブスクリプションはここでは使えません (API キーの従量課金のみ)。下の「Claude (サブスクリプション)」をご覧ください。";
 
 const INSTALL_CLAUDE_CODE_LABEL: &str = "Claude Code をインストール (公式コマンド)";
 
@@ -56,6 +63,14 @@ const CLAUDE_CODE_EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", 
 
 const CLAUDE_CODE_DEFAULT_EFFORT_LABEL: &str = "既定";
 
+/// Name of the official CLI, looked up on `PATH` (GLOSSARY §1: not translated).
+const CLAUDE_CODE_PROGRAM: &str = "claude";
+
+/// `claude --version` has to start Node and the CLI itself, so it is not
+/// instant; it is also the kind of thing that can wedge. The card falls back to
+/// "installed, version unknown" rather than waiting forever.
+const CLAUDE_CODE_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+
 pub(crate) fn render_llm_providers_page(
     settings_window: &SettingsWindow,
     scroll_handle: &ScrollHandle,
@@ -64,6 +79,46 @@ pub(crate) fn render_llm_providers_page(
 ) -> AnyElement {
     let providers = LanguageModelRegistry::read_global(cx).visible_providers();
 
+    if settings_window.claude_cli.outcome.is_none() {
+        start_claude_cli_probe(window, cx);
+    }
+
+    let provider_ids = providers
+        .iter()
+        .map(|provider| provider.id().0)
+        .collect::<Vec<_>>();
+    let claude_card_index = claude_subscription_card_index(&provider_ids);
+
+    let mut sections = Vec::with_capacity(providers.len() + 1);
+    for (index, provider) in providers.iter().enumerate() {
+        if index == claude_card_index {
+            let is_first = sections.is_empty();
+            sections.push(render_claude_subscription_card(
+                settings_window,
+                is_first,
+                window,
+                cx,
+            ));
+        }
+        let is_first = sections.is_empty();
+        sections.push(render_provider_section(
+            settings_window,
+            provider,
+            is_first,
+            window,
+            cx,
+        ));
+    }
+    if claude_card_index >= providers.len() {
+        let is_first = sections.is_empty();
+        sections.push(render_claude_subscription_card(
+            settings_window,
+            is_first,
+            window,
+            cx,
+        ));
+    }
+
     v_flex()
         .id("llm-providers-page")
         .size_full()
@@ -71,68 +126,179 @@ pub(crate) fn render_llm_providers_page(
         .pb_16()
         .track_scroll(scroll_handle)
         .overflow_y_scroll()
-        .child(render_claude_subscription_hint(settings_window, window, cx))
-        .children(
-            providers
-                .iter()
-                .enumerate()
-                .map(|(index, provider)| {
-                    render_provider_section(settings_window, provider, index == 0, window, cx)
-                })
-                .collect::<Vec<_>>(),
+        .children(sections)
+        .into_any_element()
+}
+
+/// Where the synthesized Claude card goes: directly after the native Anthropic
+/// provider, which is the position "ChatGPT Subscription" holds relative to
+/// OpenAI (the registry is keyed by provider id, so `openai-subscribed` sorts
+/// right after `openai`). With no Anthropic card in the list — it can be hidden
+/// by an extension — the card goes last rather than disappearing, since it is
+/// the only route to a Claude subscription either way.
+fn claude_subscription_card_index(provider_ids: &[SharedString]) -> usize {
+    provider_ids
+        .iter()
+        .position(|id| id.as_ref() == ANTHROPIC_PROVIDER_ID)
+        .map_or(provider_ids.len(), |index| index + 1)
+}
+
+fn render_claude_subscription_card(
+    settings_window: &SettingsWindow,
+    is_first: bool,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    v_flex()
+        .min_w_0()
+        .map(|this| if is_first { this.pt_4() } else { this.pt_8() })
+        .gap_1p5()
+        .child(render_provider_header(
+            CLAUDE_SUBSCRIPTION_NAME.into(),
+            IconOrSvg::Icon(IconName::AiClaude),
+            cx,
+        ))
+        .child(
+            v_flex()
+                .pt_2p5()
+                .w_full()
+                .min_w_0()
+                .gap_1p5()
+                .child(
+                    Label::new(CLAUDE_SUBSCRIPTION_DESCRIPTION)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+                .child(render_claude_cli_status(&settings_window.claude_cli))
+                .child(render_claude_code_buttons(settings_window, window, cx)),
         )
         .into_any_element()
 }
 
-/// The one-line answer to "where is the Anthropic subscription?", at the top of
-/// the list rather than on the Anthropic card, because the question is prompted
-/// by seeing "OpenAI (サブスクリプション)" in the list.
-fn render_claude_subscription_hint(
-    settings_window: &SettingsWindow,
-    window: &mut Window,
-    cx: &mut Context<SettingsWindow>,
-) -> impl IntoElement {
-    v_flex()
-        .pt_4()
-        .w_full()
-        .min_w_0()
-        .gap_1p5()
-        .child(
-            Label::new(CLAUDE_SUBSCRIPTION_HINT)
-                .size(LabelSize::Small)
-                .color(Color::Muted),
-        )
-        .child(render_claude_code_buttons(
-            "llm-providers",
-            settings_window,
-            window,
-            cx,
-        ))
+/// Whether the official `claude` CLI is on `PATH`, and what it reports as its
+/// version.
+#[derive(Default)]
+pub(crate) struct ClaudeCliState {
+    outcome: Option<ClaudeCliOutcome>,
+    /// Held so the lookup is dropped with the settings window. Never reassigned
+    /// from inside the task it holds, which would cancel that task mid-flight.
+    _probe: Option<Task<()>>,
 }
 
-/// The same answer again on the Anthropic card itself, for the user who goes
-/// looking for the subscription under the vendor's own name.
-fn render_claude_subscription_note(
-    settings_window: &SettingsWindow,
-    window: &mut Window,
-    cx: &mut Context<SettingsWindow>,
-) -> impl IntoElement {
-    v_flex()
-        .pt_2p5()
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum ClaudeCliOutcome {
+    Checking,
+    Missing,
+    Installed { version: Option<SharedString> },
+}
+
+/// Looks for `claude` once per settings window, when the page is first drawn.
+///
+/// Deferred rather than spawned straight from the render, so the "already
+/// started" flag is set before the next frame can ask again.
+fn start_claude_cli_probe(window: &mut Window, cx: &mut Context<SettingsWindow>) {
+    cx.defer_in(window, |settings_window, _window, cx| {
+        if settings_window.claude_cli.outcome.is_some() {
+            return;
+        }
+        settings_window.claude_cli.outcome = Some(ClaudeCliOutcome::Checking);
+        settings_window.claude_cli._probe = Some(cx.spawn(async move |settings_window, cx| {
+            let executor = cx.background_executor().clone();
+            let outcome = cx
+                .background_spawn(async move { detect_claude_cli(&executor).await })
+                .await;
+            settings_window
+                .update(cx, |settings_window, cx| {
+                    settings_window.claude_cli.outcome = Some(outcome);
+                    cx.notify();
+                })
+                .ok();
+        }));
+    });
+}
+
+async fn detect_claude_cli(executor: &gpui::BackgroundExecutor) -> ClaudeCliOutcome {
+    let Ok(path) = which::which(CLAUDE_CODE_PROGRAM) else {
+        return ClaudeCliOutcome::Missing;
+    };
+    ClaudeCliOutcome::Installed {
+        version: claude_cli_version(&path, executor).await,
+    }
+}
+
+async fn claude_cli_version(
+    path: &Path,
+    executor: &gpui::BackgroundExecutor,
+) -> Option<SharedString> {
+    let mut command = claude_cli_version_command(path)?;
+    let output = command
+        .output()
+        .with_timeout(CLAUDE_CODE_VERSION_TIMEOUT, executor)
+        .await
+        .ok()?
+        .log_err()?;
+    if !output.status.success() {
+        return None;
+    }
+    let reported = String::from_utf8_lossy(&output.stdout);
+    let first_line = reported.lines().next()?.trim();
+    (!first_line.is_empty()).then(|| SharedString::from(first_line.to_string()))
+}
+
+/// `claude` is usually an npm global shim, and on Windows that shim is a `.cmd`
+/// batch file, which `CreateProcess` cannot start on its own. Running it through
+/// `cmd /C` from its own directory keeps the argument free of spaces, which
+/// would otherwise run into `cmd`'s quoting rules.
+fn claude_cli_version_command(path: &Path) -> Option<util::command::Command> {
+    let mut command = if cfg!(target_os = "windows")
+        && path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("cmd"))
+    {
+        let mut command = util::command::new_command("cmd");
+        command
+            .current_dir(path.parent()?)
+            .arg("/C")
+            .arg(path.file_name()?);
+        command
+    } else {
+        util::command::new_command(path)
+    };
+    command.arg("--version");
+    Some(command)
+}
+
+/// Says whether the CLI the buttons below drive is actually here. Always framed
+/// as 「この PC」: the lookup is against this machine's `PATH`, while a remote
+/// project's terminal would run whatever is on the remote host.
+fn render_claude_cli_status(state: &ClaudeCliState) -> impl IntoElement {
+    let (icon, color, text): (IconName, Color, SharedString) = match &state.outcome {
+        None | Some(ClaudeCliOutcome::Checking) => (
+            IconName::ArrowCircle,
+            Color::Muted,
+            "この PC の PATH を確認しています…".into(),
+        ),
+        Some(ClaudeCliOutcome::Missing) => (
+            IconName::Info,
+            Color::Muted,
+            "この PC には導入されていません (PATH に claude がありません)。".into(),
+        ),
+        Some(ClaudeCliOutcome::Installed { version }) => (
+            IconName::Check,
+            Color::Success,
+            match version {
+                Some(version) => format!("この PC に導入済みです ({version})").into(),
+                None => "この PC に導入済みです。".into(),
+            },
+        ),
+    };
+
+    h_flex()
         .w_full()
         .min_w_0()
-        .gap_1p5()
-        .child(
-            Label::new(CLAUDE_SUBSCRIPTION_NOTE)
-                .size(LabelSize::Small)
-                .color(Color::Muted),
-        )
-        .child(render_claude_code_buttons(
-            "anthropic",
-            settings_window,
-            window,
-            cx,
-        ))
+        .gap_1()
+        .child(Icon::new(icon).size(IconSize::XSmall).color(color))
+        .child(Label::new(text).size(LabelSize::Small).color(color))
 }
 
 /// The two sanctioned routes to a Claude subscription, plus the CLI's own
@@ -144,7 +310,6 @@ fn render_claude_subscription_note(
 /// Both are disabled without a workspace to run the terminal in, exactly like
 /// the "open network_allowlist.json" button.
 fn render_claude_code_buttons(
-    id_prefix: &'static str,
     settings_window: &SettingsWindow,
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
@@ -158,53 +323,46 @@ fn render_claude_code_buttons(
         .gap_2()
         .flex_wrap()
         .child(
-            Button::new(
-                ElementId::Name(format!("{id_prefix}-install-claude-code").into()),
-                INSTALL_CLAUDE_CODE_LABEL,
-            )
-            .label_size(LabelSize::Small)
-            .style(ButtonStyle::Outlined)
-            .disabled(!has_workspace)
-            .start_icon(
-                Icon::new(IconName::Download)
-                    .size(IconSize::XSmall)
-                    .color(Color::Muted),
-            )
-            .tooltip(Tooltip::text(if has_workspace {
-                "設定ウィンドウを閉じ、統合ターミナルで公式のインストールコマンド \
-                 `npm install -g @anthropic-ai/claude-code` を実行します。\
-                 Node.js (npm) が必要です"
-            } else {
-                no_workspace_tooltip
-            }))
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.install_claude_code(window, cx);
-            })),
+            Button::new("claude-code-install", INSTALL_CLAUDE_CODE_LABEL)
+                .label_size(LabelSize::Small)
+                .style(ButtonStyle::Outlined)
+                .disabled(!has_workspace)
+                .start_icon(
+                    Icon::new(IconName::Download)
+                        .size(IconSize::XSmall)
+                        .color(Color::Muted),
+                )
+                .tooltip(Tooltip::text(if has_workspace {
+                    "設定ウィンドウを閉じ、統合ターミナルで公式のインストールコマンド \
+                     `npm install -g @anthropic-ai/claude-code` を実行します。\
+                     Node.js (npm) が必要です"
+                } else {
+                    no_workspace_tooltip
+                }))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.install_claude_code(window, cx);
+                })),
         )
         .child(
-            Button::new(
-                ElementId::Name(format!("{id_prefix}-launch-claude-code").into()),
-                LAUNCH_CLAUDE_CODE_LABEL,
-            )
-            .label_size(LabelSize::Small)
-            .style(ButtonStyle::Outlined)
-            .disabled(!has_workspace)
-            .start_icon(
-                Icon::new(IconName::Terminal)
-                    .size(IconSize::XSmall)
-                    .color(Color::Muted),
-            )
-            .tooltip(Tooltip::text(if has_workspace {
-                "設定ウィンドウを閉じ、プロジェクトのディレクトリで `claude` を統合ターミナルから起動します"
-            } else {
-                no_workspace_tooltip
-            }))
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.launch_claude_code(window, cx);
-            })),
+            Button::new("claude-code-launch", LAUNCH_CLAUDE_CODE_LABEL)
+                .label_size(LabelSize::Small)
+                .style(ButtonStyle::Outlined)
+                .disabled(!has_workspace)
+                .start_icon(
+                    Icon::new(IconName::Terminal)
+                        .size(IconSize::XSmall)
+                        .color(Color::Muted),
+                )
+                .tooltip(Tooltip::text(if has_workspace {
+                    "設定ウィンドウを閉じ、プロジェクトのディレクトリで `claude` を統合ターミナルから起動します"
+                } else {
+                    no_workspace_tooltip
+                }))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.launch_claude_code(window, cx);
+                })),
         )
         .child(render_claude_code_effort_selector(
-            id_prefix,
             settings_window,
             window,
             cx,
@@ -215,7 +373,6 @@ fn render_claude_code_buttons(
 /// the CLI's own, so they stay untranslated (GLOSSARY §1); only "既定" (= omit
 /// the flag) is ours.
 fn render_claude_code_effort_selector(
-    id_prefix: &'static str,
     settings_window: &SettingsWindow,
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
@@ -254,14 +411,10 @@ fn render_claude_code_effort_selector(
         menu
     });
 
-    DropdownMenu::new(
-        ElementId::Name(format!("{id_prefix}-claude-code-effort").into()),
-        label,
-        menu,
-    )
-    .style(DropdownStyle::Outlined)
-    .trigger_size(ButtonSize::Compact)
-    .aria_label("Claude Code の思考の深さ (--effort)")
+    DropdownMenu::new("claude-code-effort", label, menu)
+        .style(DropdownStyle::Outlined)
+        .trigger_size(ButtonSize::Compact)
+        .aria_label("Claude Code の思考の深さ (--effort)")
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -422,7 +575,13 @@ fn render_provider_section(
         .child(render_provider_header(provider_name, provider.icon(), cx))
         .child(body)
         .when(provider_id.0.as_ref() == ANTHROPIC_PROVIDER_ID, |this| {
-            this.child(render_claude_subscription_note(settings_window, window, cx))
+            this.child(
+                div().pt_2p5().child(
+                    Label::new(CLAUDE_SUBSCRIPTION_NOTE)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                ),
+            )
         })
         .into_any_element()
 }
@@ -2039,6 +2198,34 @@ fn parse_u64_field(value: &str, name: &str) -> Result<u64, SharedString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_claude_subscription_card_sits_where_the_chatgpt_one_does() {
+        // The registry is keyed by provider id, so this is the order the page
+        // renders: `openai-subscribed` right after `openai`.
+        let providers = ["zed.dev", "anthropic", "copilot_chat", "openai"]
+            .into_iter()
+            .map(SharedString::new_static)
+            .collect::<Vec<_>>();
+        let index = claude_subscription_card_index(&providers);
+        assert_eq!(
+            providers.get(index - 1).map(|id| id.to_string()),
+            Some("anthropic".to_string())
+        );
+        assert_eq!(index, 2, "the card belongs directly after Anthropic");
+
+        // Anthropic hidden by an extension: the card is the only route to a
+        // Claude subscription, so it must still be drawn.
+        let without_anthropic = ["zed.dev", "openai"]
+            .into_iter()
+            .map(SharedString::new_static)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            claude_subscription_card_index(&without_anthropic),
+            without_anthropic.len()
+        );
+        assert_eq!(claude_subscription_card_index(&[]), 0);
+    }
 
     #[test]
     fn an_empty_api_key_is_only_accepted_when_the_provider_is_key_less() {

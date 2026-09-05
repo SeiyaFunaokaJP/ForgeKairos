@@ -657,6 +657,8 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
 
         let cursor_position =
             cx.new(|_| go_to_line::cursor_position::CursorPosition::new(workspace));
+        let character_count =
+            cx.new(|_| go_to_line::character_count::CharacterCount::new(workspace));
         let line_ending_indicator =
             cx.new(|_| line_ending_selector::LineEndingIndicator::default());
         let git_blame_status = cx.new(|_| git_ui::GitBlameStatus::default());
@@ -679,6 +681,7 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
             status_bar.add_right_item(line_ending_indicator, window, cx);
             status_bar.add_right_item(vim_mode_indicator, window, cx);
             status_bar.add_right_item(cursor_position, window, cx);
+            status_bar.add_right_item(character_count, window, cx);
             status_bar.add_right_item(image_info, window, cx);
         });
 

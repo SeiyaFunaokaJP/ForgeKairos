@@ -1227,6 +1227,10 @@ impl ProjectPanel {
                                         "プロジェクトにフォルダーを追加…",
                                         Box::new(workspace::AddFolderToProject),
                                     )
+                                    .action(
+                                        "フォルダーを変更…",
+                                        Box::new(workspace::ChangeProjectFolder),
+                                    )
                                     .action("プロジェクトから削除", Box::new(RemoveFromProject))
                             })
                             .when(is_dir && !is_root, |menu| {
@@ -7717,9 +7721,20 @@ impl Panel for ProjectPanel {
 
         let project = &self.project.read(cx);
         project.visible_worktrees(cx).any(|tree| {
-            tree.read(cx)
-                .root_entry()
-                .is_some_and(|entry| entry.is_dir())
+            let tree = tree.read(cx);
+            match tree.root_entry() {
+                Some(entry) => entry.is_dir(),
+                // A remote worktree exists (and is already visible) before its
+                // first `UpdateWorktree` arrives from the host, so `root_entry()`
+                // is `None` purely because the entries haven't landed yet, not
+                // because the worktree isn't a directory. `starts_open` is only
+                // evaluated once, when the panel is added to the dock, so a
+                // `false` here would leave the panel closed forever even after
+                // the entries do arrive. Assume it will turn out to be a
+                // directory, which is true for the overwhelming majority of
+                // worktrees.
+                None => tree.is_remote(),
+            }
         })
     }
 

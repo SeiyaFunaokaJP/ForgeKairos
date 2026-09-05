@@ -52,4 +52,6 @@ which.workspace = true
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
 fs = { workspace = true, features = ["test-support"] }
+# Only the ADR-F22 test needs it, to build the allowlist this crate pushes.
+http_client.workspace = true
 util = { workspace = true, features = ["test-support"] }

@@ -603,6 +603,124 @@ mod tests {
             .unwrap();
     }
 
+    /// `workspace::AddFolderToProject` uses `DirectoryLister::Project`, which
+    /// for a remote project routes through the in-app picker
+    /// (`Workspace::on_prompt_for_open_path`) rather than a native local file
+    /// dialog. This confirms the resulting `open_paths` call adds the new
+    /// folder as a worktree over the *same* mock connection, without
+    /// reconnecting.
+    #[gpui::test]
+    async fn test_add_folder_to_remote_project_with_mock_connection(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        let app_state = init_test(cx);
+        let executor = cx.executor();
+
+        cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+        server_cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+
+        let (opts, server_session, connect_guard) = RemoteClient::fake_server(cx, server_cx);
+
+        let remote_fs = FakeFs::new(server_cx.executor());
+        remote_fs
+            .insert_tree(
+                path!("/project"),
+                json!({
+                    "src": {
+                        "main.rs": "fn main() {}",
+                    },
+                }),
+            )
+            .await;
+        remote_fs
+            .insert_tree(
+                path!("/project2"),
+                json!({
+                    "README.md": "# Second project",
+                }),
+            )
+            .await;
+
+        server_cx.update(HeadlessProject::init);
+        let http_client = Arc::new(BlockedHttpClient);
+        let node_runtime = NodeRuntime::unavailable();
+        let languages = Arc::new(language::LanguageRegistry::new(server_cx.executor()));
+        let proxy = Arc::new(ExtensionHostProxy::new());
+
+        let _headless = server_cx.new(|cx| {
+            HeadlessProject::new(
+                HeadlessAppState {
+                    session: server_session,
+                    fs: remote_fs.clone(),
+                    http_client,
+                    node_runtime,
+                    languages,
+                    extension_host_proxy: proxy,
+                    startup_time: std::time::Instant::now(),
+                },
+                false,
+                cx,
+            )
+        });
+
+        drop(connect_guard);
+
+        let paths = vec![PathBuf::from(path!("/project"))];
+        let mut async_cx = cx.to_async();
+        let window = open_remote_project(
+            opts,
+            paths,
+            app_state,
+            workspace::OpenOptions::default(),
+            &mut async_cx,
+        )
+        .await
+        .expect("open_remote_project should succeed");
+
+        executor.run_until_parked();
+
+        let workspace = window
+            .update(cx, |multi_workspace, _, _| {
+                multi_workspace.workspace().clone()
+            })
+            .unwrap();
+
+        workspace.update(cx, |workspace, _cx| {
+            workspace.set_prompt_for_open_path(Box::new(|_, _, _, _| {
+                let (tx, rx) = futures::channel::oneshot::channel();
+                tx.send(Some(vec![PathBuf::from(path!("/project2"))])).ok();
+                rx
+            }));
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.add_folder_to_project(&workspace::AddFolderToProject, window, cx);
+                });
+            })
+            .unwrap();
+
+        executor.run_until_parked();
+
+        workspace.read_with(cx, |workspace, cx| {
+            let worktree_count = workspace.project().read(cx).visible_worktrees(cx).count();
+            assert_eq!(
+                worktree_count, 2,
+                "AddFolderToProject should add a second worktree over the same remote connection"
+            );
+            assert!(
+                workspace.project().read(cx).is_remote(),
+                "project should still be remote after adding the folder"
+            );
+        });
+    }
+
     #[gpui::test]
     async fn test_reuse_existing_remote_workspace_window(
         cx: &mut TestAppContext,

@@ -1596,6 +1596,7 @@ fn subscribe_for_terminal_events(
 ) -> Vec<Subscription> {
     let terminal_subscription = cx.observe(terminal, |_, _, cx| cx.notify());
     let mut previous_cwd = None;
+    let mut previous_remote_cwd = None;
     let terminal_events_subscription = cx.subscribe_in(
         terminal,
         window,
@@ -1603,6 +1604,14 @@ fn subscribe_for_terminal_events(
             let current_cwd = terminal.read(cx).working_directory();
             if current_cwd != previous_cwd {
                 previous_cwd = current_cwd;
+                terminal_view.needs_serialize = true;
+            }
+            // A remote shell's directory arrives as PTY output (OSC 7) rather
+            // than as an event of its own, so it is polled here beside the
+            // client-side one.
+            let current_remote_cwd = terminal.read(cx).remote_working_directory();
+            if current_remote_cwd != previous_remote_cwd {
+                previous_remote_cwd = current_remote_cwd;
                 terminal_view.needs_serialize = true;
             }
 
@@ -2387,6 +2396,12 @@ impl SerializableItem for TerminalView {
 
         let workspace_id = self.workspace_id?;
         let cwd = terminal.working_directory();
+        // A remote shell has no client-side directory to save; what it has is
+        // the directory it reported on the host, which the restored terminal
+        // rebuilds its `ssh` command around.
+        let remote_cwd = terminal
+            .remote_working_directory()
+            .map(|cwd| cwd.to_string_lossy().into_owned());
         let custom_title = self.custom_title.clone();
         self.needs_serialize = false;
 
@@ -2394,6 +2409,10 @@ impl SerializableItem for TerminalView {
         Some(cx.background_spawn(async move {
             if let Some(cwd) = cwd {
                 db.save_working_directory(item_id, workspace_id, cwd)
+                    .await?;
+            }
+            if let Some(remote_cwd) = remote_cwd {
+                db.save_remote_working_directory(item_id, workspace_id, remote_cwd)
                     .await?;
             }
             db.save_custom_title(item_id, workspace_id, custom_title)
@@ -2418,10 +2437,19 @@ impl SerializableItem for TerminalView {
             let (cwd, custom_title) = cx
                 .update(|_window, cx| {
                     let db = TerminalDb::global(cx);
-                    let from_db = db
-                        .get_working_directory(item_id, workspace_id)
-                        .log_err()
-                        .flatten();
+                    // The two directories are stored apart because they are
+                    // resolved on different machines; which one applies is
+                    // decided by where this workspace's shells now run.
+                    let from_db = if project.read(cx).is_via_remote_server() {
+                        db.get_remote_working_directory(item_id, workspace_id)
+                            .log_err()
+                            .flatten()
+                            .map(PathBuf::from)
+                    } else {
+                        db.get_working_directory(item_id, workspace_id)
+                            .log_err()
+                            .flatten()
+                    };
                     let cwd = if from_db
                         .as_ref()
                         .is_some_and(|from_db| !from_db.as_os_str().is_empty())

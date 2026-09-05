@@ -73,6 +73,13 @@ impl QuickActionBar {
         // Resolved lazily inside the tooltip closure: it hits the filesystem
         // (and walks PATH), while this render runs on every editor notify.
         let external_command = external_formatter_command(language_settings.formatter.as_ref());
+        // A remote project is formatted on the host, so resolving the command
+        // against this machine's filesystem would name a binary that has
+        // nothing to do with the one that will actually run.
+        let remote_host = project
+            .read(cx)
+            .remote_connection_options(cx)
+            .map(|options| options.display_name());
         let selection_tooltip = match &formatter {
             None => NO_FORMATTER_MESSAGE.to_string(),
             // Reported before the "no selection" case: this one holds for the
@@ -108,7 +115,7 @@ impl QuickActionBar {
                     let mut meta = document_tooltip.clone();
                     if let Some(command) = &external_command {
                         meta.push(' ');
-                        meta.push_str(&external_command_location(command));
+                        meta.push_str(&external_command_location(command, remote_host.as_deref()));
                     }
                     Tooltip::with_meta_in(
                         FORMAT_DOCUMENT_LABEL,
@@ -198,7 +205,14 @@ fn external_formatter_command(formatters: &[Formatter]) -> Option<String> {
 /// way `LspStore::format_via_external_command` resolves it. Formatting failures
 /// themselves stay out of the way (ADR-F07), so a binary that was never
 /// installed would otherwise make the button look simply broken.
-fn external_command_location(command: &str) -> String {
+///
+/// `remote_host` names the machine a remote project lives on. Nothing about
+/// this machine's filesystem applies there, so the tooltip says where the
+/// command has to exist instead of pretending to have found it.
+fn external_command_location(command: &str, remote_host: Option<&str>) -> String {
+    if let Some(host) = remote_host {
+        return format!("接続先 ({host}) の `{command}` を使用します。");
+    }
     if let Some(path) = util::command::resolve_command_next_to_current_exe(command) {
         return format!("実行ファイル: {}", path.display());
     }
@@ -292,6 +306,15 @@ mod tests {
             ])
             .as_deref(),
             Some("clang-format"),
+        );
+    }
+
+    #[test]
+    fn test_external_command_location_for_a_remote_project() {
+        let location = external_command_location("clang-format", Some("192.168.100.150"));
+        assert_eq!(
+            location,
+            "接続先 (192.168.100.150) の `clang-format` を使用します。"
         );
     }
 

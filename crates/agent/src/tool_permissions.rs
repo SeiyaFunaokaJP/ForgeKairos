@@ -1189,6 +1189,52 @@ mod tests {
             .is_confirm();
     }
 
+    // The agent panel's "auto approve" switch only flips the global default to
+    // `allow`. Every tool without rules of its own then resolves without a
+    // prompt, including MCP tools.
+    #[test]
+    fn auto_approve_default_allows_tools_without_rules() {
+        for tool in [
+            TerminalTool::NAME,
+            EditFileTool::NAME,
+            DeletePathTool::NAME,
+            FetchTool::NAME,
+            "mcp:srv:anything",
+        ] {
+            assert_eq!(
+                ToolPermissionDecision::from_input(
+                    tool,
+                    &["whatever".to_string()],
+                    &ToolPermissions {
+                        default: ToolPermissionMode::Allow,
+                        tools: collections::HashMap::default(),
+                    },
+                    ShellKind::Posix,
+                ),
+                ToolPermissionDecision::Allow,
+                "expected auto-approve for {tool}"
+            );
+        }
+    }
+
+    // Auto-approve must not disarm the user's own guard rails.
+    #[test]
+    fn auto_approve_default_keeps_per_tool_rules() {
+        t("sudo reboot")
+            .confirm(&["^sudo"])
+            .global_default(ToolPermissionMode::Allow)
+            .is_confirm();
+        t("rm -rf ./build")
+            .deny(&["rm\\s+-rf"])
+            .global_default(ToolPermissionMode::Allow)
+            .is_deny();
+        t(".env")
+            .tool(EditFileTool::NAME)
+            .deny(&["\\.env$"])
+            .global_default(ToolPermissionMode::Allow)
+            .is_deny();
+    }
+
     #[test]
     fn hardcoded_security_denial_overrides_unconditional_allow_all() {
         let decision = no_rules("rm -rf /", ToolPermissionMode::Allow);

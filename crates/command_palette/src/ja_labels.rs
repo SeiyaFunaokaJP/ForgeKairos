@@ -113,6 +113,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "workspace::AddFolderToProject",
         "プロジェクトにフォルダーを追加",
     ),
+    ("workspace::ChangeProjectFolder", "フォルダーを変更"),
     ("workspace::Save", "ファイル: 保存"),
     ("workspace::SaveAs", "ファイル: 名前を付けて保存"),
     ("workspace::SaveAll", "ファイル: すべて保存"),
@@ -764,6 +765,14 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("terminal::EditMacros", "ターミナル: マクロの編集…"),
     ("terminal::CancelMacro", "ターミナル: マクロを中止"),
     ("terminal::QuickConnect", "ターミナル: クイック接続…"),
+    (
+        "terminal::InstallClaudeCode",
+        "ターミナル: Claude Code をインストール (公式コマンド)",
+    ),
+    (
+        "terminal::LaunchClaudeCode",
+        "ターミナル: Claude Code を起動",
+    ),
     ("terminal::ScrollToTop", "ターミナル: 先頭までスクロール"),
     ("terminal::ScrollToBottom", "ターミナル: 末尾までスクロール"),
     (
@@ -1028,6 +1037,14 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "agent::ToggleFastMode",
         "エージェント: 高速モードの切り替え",
+    ),
+    (
+        "agent::ToggleAutoApproveToolActions",
+        "エージェント: ツールの自動承認を切り替え",
+    ),
+    (
+        "agent::ToggleToolPermissionSelector",
+        "エージェント: ツールの権限セレクターを開く",
     ),
     ("agent::ToggleSearch", "エージェント: スレッドを検索"),
     ("agent::Keep", "エージェント: 変更を採用"),
@@ -1643,6 +1660,11 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "browser_panel::ToggleFocus",
         "ブラウザー: パネルのフォーカス切り替え",
+    ),
+    ("browser_panel::NewBrowserTab", "ブラウザー: 新しいタブ"),
+    (
+        "browser_panel::OpenInCenter",
+        "ブラウザー: エディター領域で開く",
     ),
     ("browser_panel::NavigateBack", "ブラウザー: 戻る"),
     ("browser_panel::NavigateForward", "ブラウザー: 進む"),

@@ -58,6 +58,14 @@ pub struct SystemPromptTemplate<'a> {
     pub is_linux: bool,
     /// Whether sandboxed terminal commands run through WSL on Windows.
     pub is_windows: bool,
+    /// Whether the workspace has worktrees the user has not trusted yet. In
+    /// that state Zed strips the file/terminal tools (and downgrades the
+    /// built-in `write`/`ask` profiles to `minimal`), so without this flag the
+    /// model has no way to tell "no tools were configured" apart from "tools
+    /// are temporarily withheld" and invents an explanation — observed with a
+    /// remote SSH project where the model told the user it "cannot access
+    /// files on your system".
+    pub restricted_workspace: bool,
 }
 
 impl Template for SystemPromptTemplate<'_> {
@@ -105,6 +113,7 @@ mod tests {
             sandboxing: false,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -112,6 +121,32 @@ mod tests {
         assert!(rendered.contains("Today's Date: 2026-01-01"));
         assert!(rendered.contains("## Fixing Diagnostics"));
         assert!(rendered.contains("test-model"));
+        assert!(!rendered.contains("## Restricted Project"));
+    }
+
+    // A restricted (untrusted) workspace strips every tool, and without an
+    // explanation the model tells the user it "cannot access files on your
+    // system" instead of pointing at the trust setting.
+    #[test]
+    fn test_system_prompt_explains_restricted_workspace() {
+        let project = prompt_store::ProjectContext::default();
+        let template = SystemPromptTemplate {
+            project: &project,
+            available_tools: Vec::new(),
+            model_name: Some("test-model".to_string()),
+            date: "2026-01-01".to_string(),
+            user_agents_md: None,
+            sandboxing: false,
+            is_linux: false,
+            is_windows: false,
+            restricted_workspace: true,
+        };
+        let templates = Templates::new();
+        let rendered = template.render(&templates).unwrap();
+        assert!(rendered.contains("## Restricted Project"));
+        assert!(rendered.contains("not trusted"));
+        // The tool-use section is still skipped when no tools are available.
+        assert!(!rendered.contains("## Tool Use"));
     }
 
     #[test]
@@ -138,6 +173,7 @@ mod tests {
             sandboxing: false,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -167,6 +203,7 @@ mod tests {
             sandboxing: false,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -200,6 +237,7 @@ mod tests {
             sandboxing: true,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -243,6 +281,7 @@ mod tests {
             sandboxing: true,
             is_linux: true,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -276,6 +315,7 @@ mod tests {
             sandboxing: true,
             is_linux: false,
             is_windows: true,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -306,6 +346,7 @@ mod tests {
             sandboxing: true,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -328,6 +369,7 @@ mod tests {
             sandboxing: true,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -348,6 +390,7 @@ mod tests {
             sandboxing: false,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -366,6 +409,7 @@ mod tests {
             sandboxing: false,
             is_linux: false,
             is_windows: false,
+            restricted_workspace: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();

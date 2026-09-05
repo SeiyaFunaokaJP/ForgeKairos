@@ -4834,6 +4834,41 @@ async fn test_external_paths_for_dragged_selection_skips_remote_worktrees(
 }
 
 #[gpui::test]
+async fn test_starts_open_for_remote_worktree_without_entries(cx: &mut gpui::TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    let project = Project::test(fs.clone(), [], cx).await;
+    // A remote worktree that hasn't received its first `UpdateWorktree` yet:
+    // it's already visible, but `root_entry()` is still `None`.
+    project.update(cx, |project, cx| {
+        project.add_test_remote_worktree("/remote/project", cx)
+    });
+
+    let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace = window
+        .read_with(cx, |mw, _| mw.workspace().clone())
+        .unwrap();
+    let cx = &mut VisualTestContext::from_window(window.into(), cx);
+
+    workspace.update_in(cx, |workspace, window, cx| {
+        let panel = ProjectPanel::new(workspace, window, cx);
+        workspace.add_panel(panel, window, cx);
+    });
+    cx.run_until_parked();
+
+    workspace.update(cx, |workspace, cx| {
+        // `settings::test_settings()` restores upstream's `project_panel.dock = "right"`
+        // (this fork's own default.json puts it on the left).
+        assert!(
+            workspace.right_dock().read(cx).is_open(),
+            "project panel should start open even though the remote worktree's \
+             entries haven't arrived yet"
+        );
+    });
+}
+
+#[gpui::test]
 async fn test_multiple_marked_entries(cx: &mut gpui::TestAppContext) {
     init_test_with_editor(cx);
     let fs = FakeFs::new(cx.executor());

@@ -290,7 +290,7 @@ impl AcpTools {
         self.selected_connection
             .as_ref()
             .map(|agent_id| agent_id.0.clone())
-            .unwrap_or_else(|| SharedString::from("No connection selected"))
+            .unwrap_or_else(|| SharedString::from("接続が選択されていません"))
     }
 
     fn connection_menu(&self, window: &mut Window, cx: &mut Context<Self>) -> Entity<ContextMenu> {
@@ -300,7 +300,7 @@ impl AcpTools {
 
         ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             if entries.is_empty() {
-                return menu.entry("No active connections", None, |_, _| {});
+                return menu.entry("アクティブな接続がありません", None, |_, _| {});
             }
 
             for entry in &entries {
@@ -552,7 +552,7 @@ fn push_stream_message_for_connection(
             } else {
                 (
                     Some(id),
-                    "[unrecognized response]".into(),
+                    "[認識できない応答]".into(),
                     MessageType::Response,
                     result,
                 )
@@ -677,7 +677,10 @@ impl Item for AcpTools {
         format!(
             "ACP: {}",
             self.selected_watched_connection()
-                .map_or("Disconnected", |connection| connection.agent_id.0.as_ref())
+                .map_or("切断されました", |connection| connection
+                    .agent_id
+                    .0
+                    .as_ref())
         )
         .into()
     }
@@ -733,7 +736,7 @@ impl Render for AcpTools {
                             .child(
                                 IconButton::new("restart_connection", IconName::RotateCw)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Restart Connection"))
+                                    .tooltip(Tooltip::text("接続を再起動"))
                                     .disabled(!can_restart)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.restart_selected_connection(cx);
@@ -741,13 +744,13 @@ impl Render for AcpTools {
                             )
                             .child(
                                 CopyButton::new("copy-all-messages", copied_messages)
-                                    .tooltip_label("Copy All Messages")
+                                    .tooltip_label("すべてのメッセージをコピー")
                                     .disabled(!has_messages),
                             )
                             .child(
                                 IconButton::new("clear_messages", IconName::Trash)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Clear Messages"))
+                                    .tooltip(Tooltip::text("メッセージをクリア"))
                                     .disabled(!has_messages)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.clear_messages(cx);
@@ -762,7 +765,7 @@ impl Render for AcpTools {
                             .size_full()
                             .justify_center()
                             .items_center()
-                            .child("No messages recorded yet")
+                            .child("まだメッセージが記録されていません")
                             .into_any()
                     } else {
                         div()
@@ -786,7 +789,7 @@ impl Render for AcpTools {
                         .justify_center()
                         .items_center()
                         .child(format!(
-                            "Reconnecting to {}",
+                            "{} に再接続しています…",
                             self.selected_connection_label()
                         ))
                         .into_any(),
@@ -794,7 +797,7 @@ impl Render for AcpTools {
                         .size_full()
                         .justify_center()
                         .items_center()
-                        .child("No active connection")
+                        .child("アクティブな接続がありません")
                         .into_any(),
                 },
             })

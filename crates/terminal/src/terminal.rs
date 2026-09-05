@@ -1378,6 +1378,20 @@ impl TerminalBuilder {
         cx.background_spawn(fut)
     }
 
+    /// Tells a remote terminal which directory on the host its `ssh` command
+    /// was built around, so [`Terminal::remote_working_directory`] can answer
+    /// before the shell has reported one with OSC 7 — a shell that reports none
+    /// at all, or one whose connection drops again right after a restart, would
+    /// otherwise go back to the worktree root.
+    pub fn with_remote_working_directory(self, working_directory: Option<PathBuf>) -> Self {
+        if let Some(remote_cwd) = &self.terminal.remote_cwd
+            && let Some(working_directory) = working_directory
+        {
+            remote_cwd.record_start_directory(working_directory);
+        }
+        self
+    }
+
     pub fn subscribe(mut self, cx: &Context<Terminal>) -> Terminal {
         //Event loop
         self.terminal.event_loop_task = cx.spawn(async move |terminal, cx| {
@@ -2885,11 +2899,11 @@ impl Terminal {
         }
     }
 
-    /// The directory a remote shell last reported with OSC 7, as a path on the
-    /// remote host. Kept apart from [`Self::working_directory`], which callers
-    /// treat as a client-side path they may display, persist or open files
-    /// against; this one is only good for starting another shell on the same
-    /// host.
+    /// The directory a remote shell last reported with OSC 7 — or, until it
+    /// reports one, the directory it was started in — as a path on the remote
+    /// host. Kept apart from [`Self::working_directory`], which callers treat as
+    /// a client-side path they may display, persist or open files against; this
+    /// one is only good for starting another shell on the same host.
     pub fn remote_working_directory(&self) -> Option<PathBuf> {
         if !self.is_remote_terminal {
             return None;
@@ -6158,6 +6172,29 @@ mod tests {
         assert_eq!(
             terminal.remote_working_directory(),
             Some(PathBuf::from("/srv"))
+        );
+    }
+
+    #[test]
+    fn test_remote_working_directory_falls_back_to_the_start_directory() {
+        let mut terminal = make_display_only_terminal();
+        let remote_cwd = RemoteCwdTracker::new(PathStyle::Unix);
+        terminal.is_remote_terminal = true;
+        terminal.remote_cwd = Some(remote_cwd.clone());
+        remote_cwd.record_start_directory(PathBuf::from("/srv/app"));
+
+        // A shell that never reports — or one whose connection drops again
+        // before its first prompt — restarts where it was started, not at the
+        // worktree root.
+        assert_eq!(
+            terminal.remote_working_directory(),
+            Some(PathBuf::from("/srv/app"))
+        );
+
+        remote_cwd.record(b"\x1b]7;file://host/srv/app/logs\x07");
+        assert_eq!(
+            terminal.remote_working_directory(),
+            Some(PathBuf::from("/srv/app/logs"))
         );
     }
 

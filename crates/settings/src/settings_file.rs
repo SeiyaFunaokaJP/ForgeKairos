@@ -169,6 +169,16 @@ pub fn test_settings() -> &'static str {
             }),
             &mut value,
         );
+        // This fork defaults `show_whitespaces` to "all" (matching the
+        // Japanese editor convention of always showing whitespace as a dot),
+        // while upstream defaults to "selection". Several editor rendering
+        // tests assert on the *absence* of invisibles outside an explicit
+        // `ShowWhitespaceSetting::All` override, so restore upstream's
+        // default here rather than patching every such test.
+        util::merge_non_null_json_value_into(
+            serde_json::json!({ "show_whitespaces": "selection" }),
+            &mut value,
+        );
         #[cfg(not(target_os = "windows"))]
         util::merge_non_null_json_value_into(
             serde_json::json!({

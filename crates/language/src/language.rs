@@ -729,6 +729,25 @@ pub trait LspInstaller {
     ) -> impl Future<Output = Option<LanguageServerBinary>>;
 }
 
+/// Classifies a language server binary failure for the UI: an egress denial
+/// (ADR-F22) becomes [`BinaryStatus::EgressDenied`], carrying the hosts the
+/// user would have to allow, and anything else stays a plain
+/// [`BinaryStatus::Failed`].
+///
+/// Both call sites format the error the same way they did before, so the text
+/// the user can already open from the status bar is unchanged either way; the
+/// only difference is whether a consent prompt is offered alongside it.
+pub fn binary_fetch_failure(error: &anyhow::Error) -> BinaryStatus {
+    let error_text = format!("{error:?}");
+    match http_client::egress_denied_hosts(error) {
+        Some(hosts) => BinaryStatus::EgressDenied {
+            error: error_text,
+            hosts,
+        },
+        None => BinaryStatus::Failed { error: error_text },
+    }
+}
+
 #[async_trait(?Send)]
 pub trait DynLspInstaller {
     async fn try_fetch_server_binary(
@@ -877,12 +896,7 @@ where
                         );
                         binary = Ok(prev_downloaded_binary);
                     } else {
-                        delegate.update_status(
-                            self.name(),
-                            BinaryStatus::Failed {
-                                error: format!("{error:?}"),
-                            },
-                        );
+                        delegate.update_status(self.name(), binary_fetch_failure(error));
                     }
                 }
 
@@ -1656,6 +1670,35 @@ mod tests {
     use super::*;
     use gpui::{TestAppContext, rgba};
     use pretty_assertions::assert_matches;
+
+    /// ADR-F22: a download the fork's allowlist refused has to reach the UI as
+    /// something the consent prompt can act on, not as prose to grep.
+    #[test]
+    fn a_binary_fetch_refused_by_the_allowlist_is_reported_with_its_hosts() {
+        let denied = anyhow::Error::new(http_client::EgressDenied {
+            host: "api.github.com".to_string(),
+            url: "https://api.github.com/repos/clangd/clangd/releases".to_string(),
+        })
+        .context("fetching the latest clangd release");
+        match binary_fetch_failure(&denied) {
+            BinaryStatus::EgressDenied { error, hosts } => {
+                assert!(hosts.contains(&"api.github.com".to_string()), "{hosts:?}");
+                // Consenting has to open the hops the download takes next, or
+                // the retry is refused one redirect later.
+                assert!(hosts.contains(&"github.com".to_string()), "{hosts:?}");
+                assert!(
+                    error.contains("fetching the latest clangd release"),
+                    "{error}"
+                );
+            }
+            other => panic!("expected an egress denial, got {other:?}"),
+        }
+
+        assert!(matches!(
+            binary_fetch_failure(&anyhow::anyhow!("no asset found matching clangd-linux.zip")),
+            BinaryStatus::Failed { .. }
+        ));
+    }
 
     #[test]
     fn test_highlight_map() {

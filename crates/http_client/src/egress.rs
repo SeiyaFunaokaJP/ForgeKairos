@@ -377,14 +377,56 @@ pub fn hosts_required_to_download(url: &str) -> Vec<String> {
     else {
         return Vec::new();
     };
-    let host = host.to_string();
-    if host == "github.com" {
-        let mut hosts = vec![host];
-        hosts.extend(GITHUB_RELEASE_ASSET_HOSTS.iter().map(|it| it.to_string()));
-        hosts
-    } else {
-        vec![host]
+    hosts_required_after(&host.to_string())
+}
+
+/// The hosts a download starting at `host` needs opened, `host` included.
+///
+/// Split out of [`hosts_required_to_download`] so that a consent flow which
+/// only has the *denied* host — not the URL that was going to be fetched —
+/// asks for the same set. `host` must already be canonicalized the way
+/// [`RequestHost`] spells it (lowercased, no trailing dot); both callers here
+/// pass one that is.
+fn hosts_required_after(host: &str) -> Vec<String> {
+    match host {
+        // A release listing is never the last request: the caller reads an
+        // asset URL out of it and fetches that from `github.com`, which
+        // redirects again. Asking for the API host alone buys one more denial.
+        "api.github.com" => {
+            let mut hosts = vec![host.to_string(), "github.com".to_string()];
+            hosts.extend(GITHUB_RELEASE_ASSET_HOSTS.iter().map(|it| it.to_string()));
+            hosts
+        }
+        "github.com" => {
+            let mut hosts = vec![host.to_string()];
+            hosts.extend(GITHUB_RELEASE_ASSET_HOSTS.iter().map(|it| it.to_string()));
+            hosts
+        }
+        _ => vec![host.to_string()],
     }
+}
+
+/// The hosts to ask the user for when `error` — or anything it wraps — is an
+/// [`EgressDenied`]: the host that was refused, plus the hosts that same
+/// operation is known to need next (see [`hosts_required_after`]).
+///
+/// `None` when nothing in the chain was an egress denial, which callers must
+/// keep distinct from "denied, but nothing to ask for": only the former means
+/// the failure had some other cause and no consent prompt applies.
+///
+/// Walks the chain rather than downcasting the outermost error because every
+/// layer between the decorator and the caller adds its own `context`.
+pub fn egress_denied_hosts(error: &anyhow::Error) -> Option<Vec<String>> {
+    let denied = error
+        .chain()
+        .find_map(|error| error.downcast_ref::<EgressDenied>())?;
+    // The host in `EgressDenied` came out of a parsed `Url`, but a policy that
+    // refuses a host it could not parse would still name it, so canonicalize
+    // once more instead of trusting the shape.
+    let host = RequestHost::parse(&denied.host)
+        .map(|host| host.to_string())
+        .unwrap_or_else(|| denied.host.to_ascii_lowercase());
+    Some(hosts_required_after(&host))
 }
 
 /// Destinations allowed regardless of the user's allowlist (2026-08-28 product
@@ -496,28 +538,54 @@ fn builtin_allow_for(host: &RequestHost, path: &str) -> Option<&'static BuiltinA
 /// Shared, live-updatable handle to the current [`EgressPolicy`]. Cloning is
 /// `Arc`-cheap; the allow path takes a read lock and runs the host match.
 #[derive(Clone, Default)]
-pub struct EgressPolicyHandle(Arc<RwLock<EgressPolicy>>);
+pub struct EgressPolicyHandle {
+    policy: Arc<RwLock<EgressPolicy>>,
+    subscribers: Arc<RwLock<Vec<futures::channel::mpsc::UnboundedSender<()>>>>,
+}
 
 impl EgressPolicyHandle {
     pub fn new(policy: EgressPolicy) -> Self {
-        Self(Arc::new(RwLock::new(policy)))
+        Self {
+            policy: Arc::new(RwLock::new(policy)),
+            subscribers: Arc::default(),
+        }
     }
 
     /// Replaces the policy. Takes effect on the next request; requests already
     /// in flight are not retroactively cancelled.
     pub fn set(&self, policy: EgressPolicy) {
-        *self.0.write() = policy;
+        *self.policy.write() = policy;
+        // Woken after the policy is in place, so a subscriber that reads the
+        // handle from its callback can never see the previous one.
+        self.subscribers
+            .write()
+            .retain(|subscriber| subscriber.unbounded_send(()).is_ok());
+    }
+
+    /// A stream that yields once per [`Self::set`], for code holding a copy of
+    /// the allowlist somewhere the handle cannot reach — a `remote_server` on
+    /// the far side of an SSH connection, which was handed the list once at
+    /// connect time (ADR-F11) and has to be re-sent it when the user consents
+    /// to a new host mid-session (ADR-F22).
+    ///
+    /// Unbounded and lossy in the useful direction: a subscriber that falls
+    /// behind sees every edge, and one that has gone away is dropped from the
+    /// list on the next `set`.
+    pub fn subscribe(&self) -> futures::channel::mpsc::UnboundedReceiver<()> {
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+        self.subscribers.write().push(tx);
+        rx
     }
 
     pub fn snapshot(&self) -> EgressPolicy {
-        self.0.read().clone()
+        self.policy.read().clone()
     }
 
     /// Whether the *user's* policy (plus loopback) permits this host. The
     /// built-in defaults are path-scoped, so they cannot be decided from a host
     /// alone and are only consulted by [`Self::check_url`].
     pub fn allows(&self, host: &RequestHost) -> bool {
-        self.0.read().allows(host)
+        self.policy.read().allows(host)
     }
 
     /// Checks one URL against the built-in defaults unioned with the user's
@@ -1185,6 +1253,55 @@ mod tests {
         // Nothing to add for a URL with no host to check.
         assert!(hosts_required_to_download("not a url").is_empty());
         assert!(hosts_required_to_download("file:///tmp/agent.tar.gz").is_empty());
+    }
+
+    #[test]
+    fn a_github_release_listing_asks_for_the_download_hops_too() {
+        // The language server flow starts at the API host and ends up on the
+        // asset CDN, so a consent prompt raised at the first denial has to
+        // cover the whole chain (ADR-F22).
+        assert_eq!(
+            hosts_required_to_download("https://api.github.com/repos/clangd/clangd/releases"),
+            vec![
+                "api.github.com".to_string(),
+                "github.com".to_string(),
+                "release-assets.githubusercontent.com".to_string(),
+                "objects.githubusercontent.com".to_string(),
+            ],
+        );
+    }
+
+    #[test]
+    fn egress_denied_hosts_reads_through_the_context_a_caller_added() {
+        let denied = anyhow::Error::new(EgressDenied {
+            host: "api.github.com".to_string(),
+            url: "https://api.github.com/repos/clangd/clangd/releases".to_string(),
+        })
+        .context("fetching the latest clangd release")
+        .context("starting language server clangd");
+        assert_eq!(
+            egress_denied_hosts(&denied),
+            Some(vec![
+                "api.github.com".to_string(),
+                "github.com".to_string(),
+                "release-assets.githubusercontent.com".to_string(),
+                "objects.githubusercontent.com".to_string(),
+            ]),
+        );
+
+        assert_eq!(
+            egress_denied_hosts(&anyhow::Error::new(EgressDenied {
+                host: "REGISTRY.npmjs.ORG.".to_string(),
+                url: "https://registry.npmjs.org/typescript".to_string(),
+            })),
+            Some(vec!["registry.npmjs.org".to_string()]),
+        );
+
+        // A failure with some other cause must not raise a consent prompt.
+        assert_eq!(
+            egress_denied_hosts(&anyhow::anyhow!("connection reset by peer")),
+            None,
+        );
     }
 
     #[test]

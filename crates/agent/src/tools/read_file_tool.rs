@@ -2042,4 +2042,54 @@ mod test {
             "path outside skills dir should be rejected"
         );
     }
+
+    // A Windows client with a POSIX (SSH) worktree rooted at the remote home
+    // directory. The model may name a file as a bare worktree-relative path,
+    // as `<root name>/<file>`, or as a POSIX absolute path; all three have to
+    // resolve. `Path::is_absolute` is false for `/home/...` on Windows, so
+    // this can only work through `util::paths::is_absolute` + the project's
+    // `PathStyle`.
+    #[gpui::test]
+    async fn test_read_file_posix_worktree_path_forms(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            "/home/ubuntu",
+            json!({
+                "test.c": "int main (int i) {\n    return 0;\n}\n"
+            }),
+        )
+        .await;
+
+        let project = Project::test(fs.clone(), ["/home/ubuntu".as_ref()], cx).await;
+        cx.run_until_parked();
+        let action_log = cx.new(|_| ActionLog::new(project.clone()));
+        let tool = Arc::new(ReadFileTool::new(project, action_log, true));
+
+        for path in ["test.c", "ubuntu/test.c", "/home/ubuntu/test.c"] {
+            let result = cx
+                .update(|cx| {
+                    let input = ReadFileToolInput {
+                        path: path.to_string(),
+                        start_line: None,
+                        end_line: None,
+                    };
+                    tool.clone().run(
+                        ToolInput::resolved(input),
+                        ToolCallEventStream::test().0,
+                        cx,
+                    )
+                })
+                .await;
+            assert_eq!(
+                result.unwrap_or_else(|error| panic!(
+                    "reading {path:?} failed: {}",
+                    error_text(error)
+                )),
+                "     1\tint main (int i) {\n     2\t    return 0;\n     3\t}\n".into(),
+                "unexpected content for {path:?}"
+            );
+        }
+    }
 }

@@ -846,24 +846,24 @@ impl Render for HighlightsTreeView {
                             if self.editor.is_some() {
                                 let has_any = !self.cached_entries.is_empty();
                                 if has_any {
-                                    this.child(Label::new("All highlights are filtered out"))
+                                    this.child(Label::new("すべてのハイライトが絞り込みで除外されています"))
                                         .child(
                                             Label::new(
-                                                "Enable text, syntax, or semantic highlights in the toolbar",
+                                                "ツールバーでテキスト・構文・セマンティックのハイライトを有効にしてください。",
                                             )
                                             .size(LabelSize::Small),
                                         )
                                 } else {
-                                    this.child(Label::new("No highlights found")).child(
+                                    this.child(Label::new("ハイライトが見つかりません")).child(
                                         Label::new(
-                                            "The editor has no text, syntax, or semantic token highlights",
+                                            "このエディターにはテキスト・構文・セマンティックトークンのハイライトがありません。",
                                         )
                                         .size(LabelSize::Small),
                                     )
                                 }
                             } else {
-                                this.child(Label::new("Not attached to an editor")).child(
-                                    Label::new("Focus an editor to show highlights")
+                                this.child(Label::new("エディターにアタッチされていません。")).child(
+                                    Label::new("ハイライトを表示するには、エディターにフォーカスしてください。")
                                         .size(LabelSize::Small),
                                 )
                             }
@@ -893,7 +893,7 @@ impl Item for HighlightsTreeView {
     fn to_item_events(_: &Self::Event, _: &mut dyn FnMut(workspace::item::ItemEvent)) {}
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Highlights".into()
+        "ハイライト".into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -956,9 +956,9 @@ impl HighlightsTreeToolbarItemView {
         let filtered = tree_view.entry_count();
 
         let label = if filtered == total {
-            format!("{} highlights", total)
+            format!("{} 件のハイライト", total)
         } else {
-            format!("{} / {} highlights", filtered, total)
+            format!("{} / {} 件のハイライト", filtered, total)
         };
 
         Some(ButtonLike::new("highlights header").child(Label::new(label)))
@@ -985,7 +985,7 @@ impl HighlightsTreeToolbarItemView {
                 IconButton::new("toggle-highlights-settings-icon", IconName::Filter)
                     .icon_size(IconSize::Small)
                     .toggle_state(self.toggle_settings_handle.is_deployed()),
-                Tooltip::text("Highlights Settings"),
+                Tooltip::text("ハイライトの設定"),
             )
             .anchor(gpui::Anchor::TopRight)
             .with_handle(self.toggle_settings_handle.clone())
@@ -996,7 +996,7 @@ impl HighlightsTreeToolbarItemView {
 
                 let menu = ContextMenu::build(window, cx, move |menu, _, _| {
                     menu.toggleable_entry(
-                        "Text Highlights",
+                        "テキストハイライト",
                         show_text,
                         IconPosition::Start,
                         Some(ToggleTextHighlights.boxed_clone()),
@@ -1020,7 +1020,7 @@ impl HighlightsTreeToolbarItemView {
                         },
                     )
                     .toggleable_entry(
-                        "Syntax Tokens",
+                        "構文トークン",
                         show_syntax,
                         IconPosition::Start,
                         Some(ToggleSyntaxTokens.boxed_clone()),
@@ -1044,7 +1044,7 @@ impl HighlightsTreeToolbarItemView {
                         },
                     )
                     .toggleable_entry(
-                        "Semantic Tokens",
+                        "セマンティックトークン",
                         show_semantic,
                         IconPosition::Start,
                         Some(ToggleSemanticTokens.boxed_clone()),
@@ -1299,20 +1299,20 @@ fn render_style_preview(style: HighlightStyle, selected: bool, cx: &App) -> Div 
         parts.push(format_hsla_as_hex(color));
     }
     if style.font_weight.is_some() {
-        parts.push("bold".to_string());
+        parts.push("太字".to_string());
     }
     if style.font_style.is_some() {
-        parts.push("italic".to_string());
+        parts.push("斜体".to_string());
     }
     if style.strikethrough.is_some() {
-        parts.push("strike".to_string());
+        parts.push("取消線".to_string());
     }
     if style.underline.is_some() {
-        parts.push("underline".to_string());
+        parts.push("下線".to_string());
     }
 
     let label_text = if parts.is_empty() {
-        "none".to_string()
+        "なし".to_string()
     } else {
         parts.join(" ")
     };

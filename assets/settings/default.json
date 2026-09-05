@@ -512,11 +512,13 @@
   // Whether to show tabs and spaces in the editor.
   // This setting can take four values:
   //
-  // 1. Draw tabs and spaces only for the selected text (default):
+  // 1. Draw tabs and spaces only for the selected text:
   //    "selection"
   // 2. Do not draw any tabs or spaces:
   //    "none"
-  // 3. Draw all invisible symbols:
+  // 3. Draw all invisible symbols (default in this fork; upstream default is
+  //    "selection". Matches the convention of Japanese editors like サクラエディタ /
+  //    秀丸 of always showing whitespace as "・"):
   //    "all"
   // 4. Draw whitespaces at boundaries only:
   //    "boundary"
@@ -526,7 +528,7 @@
   // - It is a tab
   // - It is adjacent to an edge (start or end)
   // - It is adjacent to a whitespace (left or right)
-  "show_whitespaces": "selection",
+  "show_whitespaces": "all",
   // Visible characters used to render whitespace when show_whitespaces is enabled.
   "whitespace_map": {
     "space": "•",
@@ -1212,7 +1214,8 @@
     // destination).
     "tool_permissions": {
       // Global default permission when no tool-specific rules match.
-      // "allow" - Auto-approve without prompting
+      // "allow" - Auto-approve without prompting (the agent panel's
+      //           "auto approve" switch writes this value)
       // "deny" - Auto-reject
       // "confirm" - Always prompt (default)
       "default": "confirm",

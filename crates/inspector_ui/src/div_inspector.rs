@@ -120,7 +120,7 @@ impl DivInspector {
                         this.update(cx, |this, _cx| {
                             this.state = State::LoadError {
                                 message: format!(
-                                    "Failed to create buffers for style editing: {err}"
+                                    "スタイル編集用のバッファーの作成に失敗しました: {err}"
                                 )
                                 .into(),
                             };
@@ -297,7 +297,7 @@ impl DivInspector {
         let json_text = match serde_json::to_string_pretty(&self.initial_style) {
             Ok(json_text) => json_text,
             Err(err) => {
-                return Err(anyhow!("Failed to convert style to JSON: {err}"));
+                return Err(anyhow!("スタイルの JSON への変換に失敗しました: {err}"));
             }
         };
 
@@ -445,7 +445,7 @@ impl DivInspector {
                 DiagnosticEntry::new(
                     range,
                     Diagnostic {
-                        message: "unrecognized".to_string(),
+                        message: "認識できません".to_string(),
                         severity: DiagnosticSeverity::WARNING,
                         is_primary: true,
                         group_id: ix,
@@ -517,13 +517,13 @@ impl Render for DivInspector {
             .when_some(self.inspector_state.as_ref(), |this, inspector_state| {
                 this.child(
                     v_flex()
-                        .child(Label::new("Layout").size(LabelSize::Large))
+                        .child(Label::new("レイアウト").size(LabelSize::Large))
                         .child(render_layout_state(inspector_state, cx)),
                 )
             })
             .map(|this| match &self.state {
                 State::Loading | State::BuffersLoaded { .. } => {
-                    this.child(Label::new("Loading..."))
+                    this.child(Label::new("読み込み中…"))
                 }
                 State::LoadError { message } => this.child(
                     div()
@@ -543,10 +543,10 @@ impl Render for DivInspector {
                             .child(
                                 h_flex()
                                     .justify_between()
-                                    .child(Label::new("Rust Style").size(LabelSize::Large))
+                                    .child(Label::new("Rust スタイル").size(LabelSize::Large))
                                     .child(
                                         IconButton::new("reset-style", IconName::Eraser)
-                                            .tooltip(Tooltip::text("Reset style"))
+                                            .tooltip(Tooltip::text("スタイルをリセットします"))
                                             .on_click(cx.listener(|this, _, _window, cx| {
                                                 this.reset_style(cx);
                                             })),
@@ -557,7 +557,7 @@ impl Render for DivInspector {
                     .child(
                         v_flex()
                             .gap_2()
-                            .child(Label::new("JSON Style").size(LabelSize::Large))
+                            .child(Label::new("JSON スタイル").size(LabelSize::Large))
                             .child(div().h_128().child(json_style_editor.clone()))
                             .when_some(self.json_style_error.as_ref(), |this, last_error| {
                                 this.child(
@@ -580,20 +580,20 @@ fn render_layout_state(inspector_state: &DivInspectorState, cx: &App) -> Div {
             div()
                 .text_ui(cx)
                 .child(format!(
-                    "Bounds: ⌜{} - {}⌟",
+                    "範囲: ⌜{} - {}⌟",
                     inspector_state.bounds.origin,
                     inspector_state.bounds.bottom_right()
                 ))
-                .child(format!("Size: {}", inspector_state.bounds.size)),
+                .child(format!("サイズ: {}", inspector_state.bounds.size)),
         )
         .child(
             div()
                 .id("content-size")
                 .text_ui(cx)
-                .tooltip(Tooltip::text("Size of the element's children"))
+                .tooltip(Tooltip::text("子要素のサイズです"))
                 .child(
                     if inspector_state.content_size != inspector_state.bounds.size {
-                        format!("Content size: {}", inspector_state.content_size)
+                        format!("コンテンツサイズ: {}", inspector_state.content_size)
                     } else {
                         "".to_string()
                     },

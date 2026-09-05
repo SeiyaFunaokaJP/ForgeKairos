@@ -160,7 +160,7 @@ use futures::{
 use fuzzy::{StringMatch, StringMatchCandidate};
 use git::blame::GlobalBlameRenderer;
 use gpui::{
-    Action, Animation, AnimationExt, AnyElement, App, AppContext, AsyncWindowContext,
+    Action, Animation, AnimationExt, AnyElement, App, AppContext, AsyncApp, AsyncWindowContext,
     AvailableSpace, Background, Bounds, ClickEvent, ClipboardEntry, ClipboardItem, Context,
     DispatchPhase, Edges, Entity, EntityId, EntityInputHandler, EventEmitter, FocusHandle,
     FocusOutEvent, Focusable, FontId, FontStyle, FontWeight, Global, HighlightStyle, Hsla, IsZero,
@@ -8252,15 +8252,55 @@ impl Editor {
             .unwrap_or_else(|| self.selections.disjoint_anchors_arc());
 
         let mut timeout = cx.background_executor().timer(FORMAT_TIMEOUT).fuse();
+        // Formatting a remote project runs on the host, so a missing formatter
+        // is missing *there*; the message has to name the host to be actionable.
+        let remote_host = project
+            .read(cx)
+            .remote_connection_options(cx)
+            .map(|options| options.display_name());
+        // Format-on-save stays silent (a toast on every save would be noise);
+        // someone who pressed the button or ran the action is waiting for an
+        // answer and otherwise sees nothing happen at all.
+        let report_failure = trigger == FormatTrigger::Manual;
+        let workspace = self.workspace();
         let format = project.update(cx, |project, cx| {
             project.format(buffers, target, true, trigger, cx)
         });
 
         cx.spawn_in(window, async move |editor, cx| {
-            let transaction = futures::select_biased! {
-                transaction = format.log_err().fuse() => transaction,
-                () = timeout => {
+            let format_result = futures::select_biased! {
+                result = format.fuse() => Some(result),
+                () = timeout => None,
+            };
+
+            let transaction = match format_result {
+                Some(Ok(transaction)) => Some(transaction),
+                Some(Err(error)) => {
+                    log::error!("failed to format buffers: {error:#}");
+                    if report_failure {
+                        Self::show_format_failure(
+                            &workspace,
+                            project::lsp_store::format_failure::format_failure_message(
+                                &error,
+                                remote_host.as_deref(),
+                            ),
+                            cx,
+                        );
+                    }
+                    None
+                }
+                None => {
                     log::warn!("timed out waiting for formatting");
+                    if report_failure {
+                        Self::show_format_failure(
+                            &workspace,
+                            format!(
+                                "フォーマットが {} 秒以内に完了しませんでした。",
+                                FORMAT_TIMEOUT.as_secs()
+                            ),
+                            cx,
+                        );
+                    }
                     None
                 }
             };
@@ -8291,6 +8331,26 @@ impl Editor {
 
             Ok(())
         })
+    }
+
+    /// Reports a formatting failure the user asked for. Formatting that changes
+    /// nothing is indistinguishable from formatting that never ran, so a
+    /// failure that only reaches the log reads as the feature being broken.
+    fn show_format_failure(
+        workspace: &Option<Entity<Workspace>>,
+        message: String,
+        cx: &mut AsyncApp,
+    ) {
+        let Some(workspace) = workspace else {
+            return;
+        };
+        struct FormatFailed;
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_toast(
+                Toast::new(NotificationId::unique::<FormatFailed>(), message),
+                cx,
+            );
+        });
     }
 
     fn organize_imports(

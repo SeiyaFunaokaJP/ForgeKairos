@@ -189,17 +189,7 @@ fn spawn_claude_code_command(
             ..SpawnInTerminal::default()
         };
 
-        let Some(spawn) = workspace
-            .update_in(cx, |workspace, window, cx| {
-                workspace.panel::<TerminalPanel>(cx).map(|terminal_panel| {
-                    terminal_panel.update(cx, |terminal_panel, cx| {
-                        terminal_panel.spawn_task(&spawn_task, window, cx)
-                    })
-                })
-            })
-            .ok()
-            .flatten()
-        else {
+        let Some(spawn) = spawn_task_in_terminal_panel(&workspace, &spawn_task, cx) else {
             workspace
                 .update(cx, |workspace, cx| {
                     workspace.show_error("ターミナルパネルが利用できません。".to_string(), cx)
@@ -220,6 +210,30 @@ fn spawn_claude_code_command(
         }
     })
     .detach();
+}
+
+/// Runs `spawn_task` in the workspace's terminal panel.
+///
+/// The panel is looked up in its own short read and only updated once the
+/// workspace lease has been released: [`TerminalPanel::spawn_task`] reads the
+/// workspace itself, so calling it from inside `workspace.update_in` leases the
+/// workspace twice and panics. On Windows that panic surfaces as the window
+/// freezing before it goes down, which is what a click on the Claude Code
+/// buttons (and on 「接続」 in quick connect) used to do.
+fn spawn_task_in_terminal_panel(
+    workspace: &WeakEntity<Workspace>,
+    spawn_task: &SpawnInTerminal,
+    cx: &mut AsyncWindowContext,
+) -> Option<Task<anyhow::Result<WeakEntity<Terminal>>>> {
+    let terminal_panel = workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<TerminalPanel>(cx))
+        .ok()
+        .flatten()?;
+    terminal_panel
+        .update_in(cx, |terminal_panel, window, cx| {
+            terminal_panel.spawn_task(spawn_task, window, cx)
+        })
+        .ok()
 }
 
 fn claude_code_missing_program_message(program: &str) -> String {
@@ -1555,17 +1569,7 @@ pub fn connect_and_run(
                 ..SpawnInTerminal::default()
             };
 
-            let Some(spawn) = workspace
-                .update_in(cx, |workspace, window, cx| {
-                    workspace.panel::<TerminalPanel>(cx).map(|terminal_panel| {
-                        terminal_panel.update(cx, |terminal_panel, cx| {
-                            terminal_panel.spawn_task(&spawn_task, window, cx)
-                        })
-                    })
-                })
-                .ok()
-                .flatten()
-            else {
+            let Some(spawn) = spawn_task_in_terminal_panel(&workspace, &spawn_task, cx) else {
                 workspace
                     .update(cx, |workspace, cx| {
                         workspace.show_error("ターミナルパネルが利用できません。".to_string(), cx)
@@ -2177,6 +2181,56 @@ mod tests {
         assert_eq!(parse_seconds(""), None);
         assert_eq!(parse_seconds("-1"), None);
         assert_eq!(parse_seconds("abc"), None);
+    }
+
+    #[gpui::test]
+    async fn spawning_into_the_terminal_panel_never_leases_the_workspace_twice(
+        cx: &mut TestAppContext,
+    ) {
+        let (_fs, workspace, window) = init_workspace(cx, "{}").await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TerminalPanel::new(workspace, window, cx));
+            workspace.add_panel(panel, window, cx);
+        });
+
+        let spawned = Rc::new(Cell::new(None));
+        workspace.update_in(cx, {
+            let spawned = spawned.clone();
+            |_, window, cx| {
+                cx.spawn_in(window, async move |workspace, cx| {
+                    let task = SpawnInTerminal {
+                        id: TaskId("terminal::launch-claude-code".to_string()),
+                        full_label: "Claude Code".to_string(),
+                        label: "Claude Code".to_string(),
+                        command: Some(CLAUDE_CODE_PROGRAM.to_string()),
+                        command_label: CLAUDE_CODE_PROGRAM.to_string(),
+                        use_new_terminal: true,
+                        allow_concurrent_runs: true,
+                        reveal: RevealStrategy::Always,
+                        reveal_target: RevealTarget::Dock,
+                        ..SpawnInTerminal::default()
+                    };
+                    // `TerminalPanel::spawn_task` reads the workspace, so doing
+                    // this from inside a `workspace.update_in` used to panic on
+                    // a double lease before the terminal was ever created.
+                    // Dropping the returned task cancels the pty work, which is
+                    // not what is under test here.
+                    spawned.set(Some(
+                        spawn_task_in_terminal_panel(&workspace, &task, cx).is_some(),
+                    ));
+                })
+                .detach();
+            }
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            spawned.get(),
+            Some(true),
+            "the spawn should reach the terminal panel"
+        );
     }
 
     #[test]

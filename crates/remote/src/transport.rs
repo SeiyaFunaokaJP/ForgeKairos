@@ -613,6 +613,135 @@ fn is_sha256_hex(token: &str) -> bool {
     token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+/// A remembered "the remote already holds exactly this build" verdict, so that
+/// the next connection to the same remote does not have to prove it again.
+///
+/// Proving it means reading the whole server binary twice — once here, once on
+/// the remote — and that binary is around 600MB in a dev build. Measured on
+/// 2026-09-04 that comparison was 10 of the ~15 seconds a warm connection took.
+/// The answer only changes when one of the two copies changes, so both are
+/// pinned by size and modification time: a rebuilt local artifact, or a remote
+/// binary someone else replaced, invalidates the entry and the digests get
+/// computed again. Nothing here is trusted for correctness beyond that — the
+/// caller still requires that the remote's copy actually *ran*.
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct RemoteServerInstall {
+    pub local_size: u64,
+    pub local_mtime_nanos: u64,
+    pub remote_size: u64,
+    pub remote_mtime_secs: i64,
+    /// Carried so the "skipping upload" log line can still name the build that
+    /// both sides agreed on. The verdict itself rests on the four stats above.
+    pub sha256: String,
+    /// Seconds since the epoch, used only to decide which entries to drop when
+    /// the file has grown past [`MAX_REMOTE_SERVER_INSTALLS`].
+    pub recorded_at: i64,
+}
+
+/// How many `(remote, installed binary name)` pairs the cache keeps. A dev
+/// build's binary name carries the commit it was built from, so entries would
+/// otherwise accumulate one per revision ever connected with.
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+const MAX_REMOTE_SERVER_INSTALLS: usize = 32;
+
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+fn remote_server_install_cache_path() -> PathBuf {
+    paths::data_dir().join("remote_server_installs.json")
+}
+
+/// `(size, modification time in nanoseconds since the epoch)` of a local file,
+/// or `None` if it cannot be stat'ed or predates the epoch.
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+pub(crate) async fn local_file_stat(path: &std::path::Path) -> Option<(u64, u64)> {
+    let metadata = smol::fs::metadata(path).await.ok()?;
+    let modified = metadata.modified().ok()?;
+    let nanos = modified
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    Some((metadata.len(), u64::try_from(nanos).ok()?))
+}
+
+/// Reads `(size, mtime in seconds since the epoch)` out of the output of
+/// `stat -c "%s %Y" <path>` (GNU coreutils) or `stat -f "%z %m" <path>` (BSD,
+/// so macOS). Both print the two numbers separated by a space.
+///
+/// Lines are scanned from the back for the same reason [`parse_platform`] takes
+/// the last line: a login shell's initialization can print ahead of the
+/// command's own output.
+pub(crate) fn parse_remote_stat_output(output: &str) -> Option<(u64, i64)> {
+    output.lines().rev().find_map(|line| {
+        let mut fields = line.split_whitespace();
+        let size = fields.next()?.parse::<u64>().ok()?;
+        let mtime = fields.next()?.parse::<i64>().ok()?;
+        fields.next().is_none().then_some((size, mtime))
+    })
+}
+
+/// The verdict remembered for `key`, if any. Every failure mode (no file yet,
+/// unreadable, written by a future version in a shape this cannot parse) is a
+/// `None`, which only costs the caller the comparison it was going to do anyway.
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+pub(crate) async fn read_remote_server_install(key: &str) -> Option<RemoteServerInstall> {
+    let contents = smol::fs::read(remote_server_install_cache_path())
+        .await
+        .ok()?;
+    let mut installs: std::collections::HashMap<String, RemoteServerInstall> =
+        serde_json::from_slice(&contents).ok()?;
+    installs.remove(key)
+}
+
+/// Records `install` for `key`, replacing any previous verdict for the same
+/// remote and binary. Best effort: this only ever saves work on a later
+/// connection, so a failure to write is logged and otherwise ignored.
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+pub(crate) async fn record_remote_server_install(key: &str, install: RemoteServerInstall) {
+    let path = remote_server_install_cache_path();
+    let mut installs: std::collections::HashMap<String, RemoteServerInstall> =
+        match smol::fs::read(&path).await {
+            Ok(contents) => serde_json::from_slice(&contents).unwrap_or_default(),
+            Err(_) => Default::default(),
+        };
+    installs.insert(key.to_owned(), install);
+
+    if installs.len() > MAX_REMOTE_SERVER_INSTALLS {
+        let mut recorded_at: Vec<i64> = installs
+            .values()
+            .map(|install| install.recorded_at)
+            .collect();
+        recorded_at.sort_unstable();
+        if let Some(&oldest_kept) =
+            recorded_at.get(installs.len().saturating_sub(MAX_REMOTE_SERVER_INSTALLS))
+        {
+            installs.retain(|_, install| install.recorded_at >= oldest_kept);
+        }
+    }
+
+    let write = async {
+        let contents = serde_json::to_vec(&installs)?;
+        if let Some(parent) = path.parent() {
+            smol::fs::create_dir_all(parent).await?;
+        }
+        smol::fs::write(&path, contents).await?;
+        anyhow::Ok(())
+    };
+    if let Err(error) = write.await {
+        log::warn!(
+            "could not record which remote server build {} holds: {error:#}",
+            path.display()
+        );
+    }
+}
+
+/// Seconds since the epoch, or 0 if the clock is set before it.
+#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+pub(crate) fn now_in_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map_or(0, |since_epoch| since_epoch.as_secs() as i64)
+}
+
 #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 async fn which(
     binary_name: impl AsRef<str>,
@@ -651,9 +780,9 @@ async fn ensure_cmake_available(cx: &mut AsyncApp) -> Result<Option<std::ffi::Os
     {
         let program_files = std::env::var("ProgramFiles").unwrap_or_default();
         let program_files_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
-        if let Some(cmake_dir) = pick_vs_cmake_dir(&program_files, &program_files_x86, |path| {
-            path.is_file()
-        }) {
+        if let Some(cmake_dir) =
+            pick_vs_cmake_dir(&program_files, &program_files_x86, |path| path.is_file())
+        {
             log::info!(
                 "cmake not found on $PATH, using the copy bundled with Visual Studio: {}",
                 cmake_dir.display()
@@ -1048,6 +1177,25 @@ mod tests {
             parse_sha256sum_output(&format!("z{}  /path\n", &digest[1..])),
             None
         );
+    }
+
+    #[test]
+    fn test_parse_remote_stat_output() {
+        // GNU `stat -c "%s %Y"` and BSD `stat -f "%z %m"` print the same shape.
+        assert_eq!(
+            parse_remote_stat_output("586446160 1757000890\n"),
+            Some((586446160, 1757000890))
+        );
+        assert_eq!(
+            parse_remote_stat_output("some shell init output\n42 7\n"),
+            Some((42, 7))
+        );
+        // Both `stat` spellings failed, so the command printed nothing.
+        assert_eq!(parse_remote_stat_output(""), None);
+        assert_eq!(parse_remote_stat_output("stat: cannot stat 'x'\n"), None);
+        // A third field means this is not the output we think it is.
+        assert_eq!(parse_remote_stat_output("42 7 9\n"), None);
+        assert_eq!(parse_remote_stat_output("%s %Y\n"), None);
     }
 
     #[test]

@@ -413,6 +413,12 @@ impl Domain for TerminalDb {
         sql! (
             ALTER TABLE terminals ADD COLUMN custom_title TEXT;
         ),
+        // A remote shell's directory is a path on the host, so it cannot share
+        // the `working_directory` column, which the client resolves against its
+        // own filesystem.
+        sql! (
+            ALTER TABLE terminals ADD COLUMN remote_working_directory TEXT;
+        ),
     ];
 }
 
@@ -471,6 +477,37 @@ impl TerminalDb {
         }
     }
 
+    pub async fn save_remote_working_directory(
+        &self,
+        item_id: ItemId,
+        workspace_id: WorkspaceId,
+        remote_working_directory: String,
+    ) -> Result<()> {
+        log::debug!(
+            "Saving remote working directory {remote_working_directory:?} for item {item_id} in workspace {workspace_id:?}"
+        );
+        self.write(move |conn| {
+            let query = "INSERT INTO terminals (item_id, workspace_id, remote_working_directory)
+                VALUES (?1, ?2, ?3)
+                ON CONFLICT (workspace_id, item_id) DO UPDATE SET
+                    remote_working_directory = excluded.remote_working_directory";
+            let mut statement = Statement::prepare(conn, query)?;
+            let mut next_index = statement.bind(&item_id, 1)?;
+            next_index = statement.bind(&workspace_id, next_index)?;
+            statement.bind(&remote_working_directory, next_index)?;
+            statement.exec()
+        })
+        .await
+    }
+
+    query! {
+        pub fn get_remote_working_directory(item_id: ItemId, workspace_id: WorkspaceId) -> Result<Option<String>> {
+            SELECT remote_working_directory
+            FROM terminals
+            WHERE item_id = ? AND workspace_id = ?
+        }
+    }
+
     pub async fn save_custom_title(
         &self,
         item_id: ItemId,
@@ -503,5 +540,55 @@ impl TerminalDb {
             FROM terminals
             WHERE item_id = ? AND workspace_id = ?
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gpui::test]
+    async fn test_remote_working_directory_is_stored_beside_the_other_columns() {
+        // Opening a test database runs the migrations of that domain alone, and
+        // the `terminals` rows reference `workspaces`; the two names match so
+        // that both domains land in the same shared in-memory database, and the
+        // first handle is held so it stays alive.
+        let _workspaces = WorkspaceDb::open_test_db("test_remote_working_directory").await;
+        let db = TerminalDb::open_test_db("test_remote_working_directory").await;
+        let workspace_id = WorkspaceId::from_i64(1);
+        db.write(|connection| {
+            connection.exec("INSERT INTO workspaces (workspace_id) VALUES (1)")?()
+        })
+        .await
+        .expect("the terminals row needs a workspace to reference");
+
+        db.save_custom_title(1, workspace_id, Some("frontend".to_string()))
+            .await
+            .expect("saving a title");
+        db.save_remote_working_directory(1, workspace_id, "/srv/app".to_string())
+            .await
+            .expect("saving a remote directory");
+
+        assert_eq!(
+            db.get_remote_working_directory(1, workspace_id)
+                .expect("reading back the remote directory"),
+            Some("/srv/app".to_string())
+        );
+        // The two writes upsert the same row, so neither may drop what the
+        // other stored.
+        assert_eq!(
+            db.get_custom_title(1, workspace_id)
+                .expect("reading back the title"),
+            Some("frontend".to_string())
+        );
+
+        db.save_remote_working_directory(1, workspace_id, "/srv/app/logs".to_string())
+            .await
+            .expect("saving a later remote directory");
+        assert_eq!(
+            db.get_remote_working_directory(1, workspace_id)
+                .expect("reading back the later remote directory"),
+            Some("/srv/app/logs".to_string())
+        );
     }
 }

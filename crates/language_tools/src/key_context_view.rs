@@ -146,7 +146,7 @@ impl Item for KeyContextView {
     fn to_item_events(_: &Self::Event, _: &mut dyn FnMut(workspace::item::ItemEvent)) {}
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Keyboard Context".into()
+        "キーボードコンテキスト".into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -200,19 +200,19 @@ impl Render for KeyContextView {
                     });
                 }),
             )
-            .child(Label::new("Keyboard Context").size(LabelSize::Large))
-            .child(Label::new("This view lets you determine the current context stack for creating custom key bindings in Zed. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."))
+            .child(Label::new("キーボードコンテキスト").size(LabelSize::Large))
+            .child(Label::new("このビューでは、Zed でキーバインドを自作するときに使う、現在のコンテキストスタックを確認できます。キーボードショートカットが実行されると、そのショートカットが実行され得たすべてのコンテキストと、実際にどれが一致したかも表示します。"))
             .child(
                 h_flex()
                     .mt_4()
                     .gap_4()
                     .child(
-                        Button::new("open_documentation", "Open Documentation")
+                        Button::new("open_documentation", "ドキュメントを開く")
                             .style(ButtonStyle::Filled)
                             .on_click(|_, _, cx| cx.open_url("https://zed.dev/docs/key-bindings")),
                     )
                     .child(
-                        Button::new("view_default_keymap", "View Default Keymap")
+                        Button::new("view_default_keymap", "既定のキーマップを表示")
                             .style(ButtonStyle::Filled)
                             .key_binding(ui::KeyBinding::for_action(
                                 &zed_actions::OpenDefaultKeymap,
@@ -223,7 +223,7 @@ impl Render for KeyContextView {
                             }),
                     )
                     .child(
-                        Button::new("edit_your_keymap", "Edit Keymap File")
+                        Button::new("edit_your_keymap", "キーマップファイルを編集")
                             .style(ButtonStyle::Filled)
                             .key_binding(ui::KeyBinding::for_action(&zed_actions::OpenKeymapFile, cx))
                             .on_click(|_, window, cx| {
@@ -232,7 +232,7 @@ impl Render for KeyContextView {
                     ),
             )
             .child(
-                Label::new("Current Context Stack")
+                Label::new("現在のコンテキストスタック")
                     .size(LabelSize::Large)
                     .mt_8(),
             )
@@ -252,26 +252,26 @@ impl Render for KeyContextView {
                     Label::new(format!("{} {}", primary, secondary)).ml(px(12. * (i + 1) as f32))
                 })
             })
-            .child(Label::new("Last Keystroke").mt_4().size(LabelSize::Large))
+            .child(Label::new("直前のキーストローク").mt_4().size(LabelSize::Large))
             .when_some(self.pending_keystrokes.as_ref(), |el, keystrokes| {
                 el.child(
                     Label::new(format!(
-                        "Waiting for more input: {}",
+                        "続きの入力を待っています: {}",
                         keystrokes.iter().map(|k| k.unparse()).join(" ")
                     ))
                     .ml(px(12.)),
                 )
             })
             .when_some(self.last_keystrokes.as_ref(), |el, keystrokes| {
-                el.child(Label::new(format!("Typed: {}", keystrokes)).ml_4())
+                el.child(Label::new(format!("入力: {}", keystrokes)).ml_4())
                     .children(
                         self.last_possibilities
                             .iter()
                             .map(|(name, predicate, state)| {
                                 let (text, color) = match state {
-                                    Some(true) => ("(match)", ui::Color::Success),
-                                    Some(false) => ("(low precedence)", ui::Color::Hint),
-                                    None => ("(no match)", ui::Color::Error),
+                                    Some(true) => ("(一致)", ui::Color::Success),
+                                    Some(false) => ("(優先度低)", ui::Color::Hint),
+                                    None => ("(不一致)", ui::Color::Error),
                                 };
                                 h_flex()
                                     .gap_2()
@@ -283,8 +283,8 @@ impl Render for KeyContextView {
                     )
             })
             .when_some(key_equivalents, |el, key_equivalents| {
-                el.child(Label::new("Key Equivalents").mt_4().size(LabelSize::Large))
-                    .child(Label::new("Shortcuts defined using some characters have been remapped so that shortcuts can be typed without holding option."))
+                el.child(Label::new("代替キー").mt_4().size(LabelSize::Large))
+                    .child(Label::new("一部の文字で定義されたショートカットは、option キーを押さなくても入力できるよう置き換えられています。"))
                     .children(
                         key_equivalents
                             .iter()

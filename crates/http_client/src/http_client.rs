@@ -11,8 +11,8 @@ use derive_more::Deref;
 pub use egress::{
     AllowlistedHttpClient, BUILTIN_ALLOWLIST, BuiltinAllow, EgressDenied, EgressPolicy,
     EgressPolicyHandle, HostPattern, HostPatternError, RequestHost, UPDATE_REPO,
-    apply_child_process_proxy_env, child_process_proxy, env_overrides_child_process_proxy,
-    hosts_required_to_download, set_child_process_proxy,
+    apply_child_process_proxy_env, child_process_proxy, egress_denied_hosts,
+    env_overrides_child_process_proxy, hosts_required_to_download, set_child_process_proxy,
 };
 pub use http::{self, Method, Request, Response, StatusCode, Uri, request::Builder};
 use http::{HeaderName, HeaderValue};
