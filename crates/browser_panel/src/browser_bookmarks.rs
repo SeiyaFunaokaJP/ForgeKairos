@@ -290,6 +290,24 @@ fn path_after_removal(target: &[usize], removed: &[usize]) -> Option<BookmarkPat
     }
 }
 
+/// ブックマークファイルがまだ無いときに書き込む初期値。
+pub fn default_bookmarks() -> BookmarksFile {
+    BookmarksFile {
+        items: vec![
+            BookmarkNode::bookmark("Microsoft 365 Copilot", "https://m365.cloud.microsoft/chat"),
+            BookmarkNode::bookmark("Claude", "https://claude.ai/new"),
+            BookmarkNode::bookmark("ChatGPT", "https://chatgpt.com/"),
+        ],
+    }
+}
+
+/// 既定のブックマークを書き込んでよいか。**パースした結果ではなくファイルの生の
+/// テキストで判断する**: 利用者がブックマークを全部消した後の `{"items": []}` を
+/// 「まだ無い」と扱うと、消したはずの既定が起動のたびに復活してしまう。
+pub fn should_seed_default_bookmarks(contents: &str) -> bool {
+    contents.trim().is_empty()
+}
+
 /// ブックマークファイルを読む。壊れていても失敗させない (空として扱う):
 /// 手書きの取りこぼしでブックマーク UI ごと消えるのは割に合わない。
 pub fn parse_bookmarks_file(contents: &str) -> BookmarksFile {
@@ -345,22 +363,38 @@ impl BookmarkStore {
     pub fn new(fs: Arc<dyn Fs>, path: PathBuf, cx: &mut Context<Self>) -> Self {
         let (mut contents, watcher) =
             settings::watch_config_file(cx.background_executor(), fs.clone(), path.clone());
-        let watch = cx.spawn(async move |this, cx| {
-            // `watch_config_file` の watch はこのタスクが生きている間だけ有効。
-            let _watcher = watcher;
-            while let Some(contents) = contents.next().await {
-                let file = parse_bookmarks_file(&contents);
-                if this
-                    .update(cx, |this, cx| {
-                        if !this.loaded || this.file != file {
-                            this.loaded = true;
-                            this.file = file;
-                            cx.notify();
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
+        let watch = cx.spawn({
+            let fs = fs.clone();
+            let path = path.clone();
+            async move |this, cx| {
+                // `watch_config_file` の watch はこのタスクが生きている間だけ有効。
+                let _watcher = watcher;
+                // 既定を書き込むのは最初の 1 回だけ。書いた直後に watch がその内容を
+                // 返してくるので、判定を毎回やると書き込みの往復で無限に回りうる。
+                let mut may_seed_defaults = true;
+                while let Some(contents) = contents.next().await {
+                    let file = parse_bookmarks_file(&contents);
+                    // `watch_config_file` は読み込みに失敗しても空文字列を流すので、
+                    // 「空 = まだ無い」と決めつけずにファイルの有無まで確かめる。
+                    // 読めなかっただけのファイルを既定で潰すのは取り返しがつかない。
+                    let seed = std::mem::take(&mut may_seed_defaults)
+                        && should_seed_default_bookmarks(&contents)
+                        && !fs.is_file(&path).await;
+                    if this
+                        .update(cx, |this, cx| {
+                            if !this.loaded || this.file != file {
+                                this.loaded = true;
+                                this.file = file;
+                                cx.notify();
+                            }
+                            if seed {
+                                this.write_default_bookmarks(cx);
+                            }
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
             }
         });
@@ -382,6 +416,17 @@ impl BookmarkStore {
     /// 書いてはいけない。
     pub fn is_loaded(&self) -> bool {
         self.loaded
+    }
+
+    /// 既定のブックマークを書き込む。ファイルがまだ無いと分かったときだけ呼ぶ。
+    fn write_default_bookmarks(&mut self, cx: &mut Context<Self>) {
+        let write = self.write(default_bookmarks(), cx);
+        cx.spawn(async move |_, _| {
+            if let Err(error) = write.await {
+                log::error!("failed to write the default browser bookmarks: {error:#}");
+            }
+        })
+        .detach();
     }
 
     /// 木全体を差し替えて書き戻す。watch の往復を待たずに済むよう、
@@ -620,6 +665,38 @@ mod tests {
                 items: vec![BookmarkNode::bookmark("Google", "https://www.google.com/")],
             }
         );
+    }
+
+    #[test]
+    fn the_defaults_are_written_only_when_the_file_is_absent_or_blank() {
+        // `watch_config_file` はファイルが無いと空文字列を流す。
+        assert!(should_seed_default_bookmarks(""));
+        assert!(should_seed_default_bookmarks("  \n\t"));
+        // 利用者が全部消した後のファイルは「既に存在する」ので触らない。
+        assert!(!should_seed_default_bookmarks(r#"{ "items": [] }"#));
+        assert!(!should_seed_default_bookmarks(
+            &serialize_bookmarks_file(&sample()).expect("シリアライズできること")
+        ));
+    }
+
+    #[test]
+    fn the_default_bookmarks_are_three_chat_services() {
+        let file = default_bookmarks();
+        assert_eq!(
+            file.items
+                .iter()
+                .map(|node| (node.name(), node.url().unwrap_or_default()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("Microsoft 365 Copilot", "https://m365.cloud.microsoft/chat"),
+                ("Claude", "https://claude.ai/new"),
+                ("ChatGPT", "https://chatgpt.com/"),
+            ]
+        );
+        // 書き出した既定をもう一度読んでも同じ木になること (フォルダー無しの平坦な木)。
+        let text = serialize_bookmarks_file(&file).expect("シリアライズできること");
+        assert_eq!(parse_bookmarks_file(&text), file);
+        assert!(file.folders().is_empty());
     }
 
     #[test]

@@ -8416,6 +8416,13 @@ impl ThreadView {
             .is_tool_call_expanded(&tool_call.id);
 
         is_open |= needs_confirmation;
+        // A terminal tool call that failed before its terminal was created has
+        // no terminal card, so it lands here instead of in
+        // `render_terminal_tool_call` — and this layout replaces the header row
+        // (which is what carries the disclosure control) with the command
+        // preview. Left collapsed, the failure reason would be unreachable and
+        // the card would show nothing but the command.
+        is_open |= is_terminal_tool && failed_or_canceled && has_content;
 
         let input_output_header = |label: SharedString| {
             Label::new(label)

@@ -5986,6 +5986,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "file_transfer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "askpass",
+ "chrono",
+ "editor",
+ "fs",
+ "futures 0.3.32",
+ "gpui",
+ "log",
+ "menu",
+ "project",
+ "serde_json",
+ "settings",
+ "terminal",
+ "terminal_view",
+ "theme",
+ "theme_settings",
+ "ui",
+ "util",
+ "workspace",
+ "zed_actions",
+ "zeroize",
+]
+
+[[package]]
 name = "filedescriptor"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9059,12 +9086,15 @@ dependencies = [
  "fs",
  "futures 0.3.32",
  "gpui",
+ "http_client",
  "language",
  "log",
  "lsp",
  "project",
+ "semver",
  "serde",
  "serde_json",
+ "task",
  "tracing",
  "util",
  "ztracing",
@@ -14108,6 +14138,7 @@ dependencies = [
  "askpass",
  "async-trait",
  "base64 0.22.1",
+ "bytes 1.11.1",
  "collections",
  "egress_policy",
  "fs",
@@ -21470,6 +21501,7 @@ dependencies = [
  "feature_flags",
  "feedback",
  "file_finder",
+ "file_transfer",
  "fs",
  "futures 0.3.32",
  "git",

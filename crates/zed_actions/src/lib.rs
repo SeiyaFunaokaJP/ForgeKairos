@@ -447,6 +447,27 @@ pub mod terminal {
         #[serde(default)]
         pub effort: Option<String>,
     }
+
+    /// SFTP / SCP / FTP でリモートホストとファイルをやり取りする 2 ペインの画面を開きます。
+    ///
+    /// ADR-F28。ハンドラーは `file_transfer` クレートにあり、フィールドが空のときは
+    /// アクティブなターミナルの接続元 (クイック接続) から接続先を推定する。
+    /// 引数を持てるようにしてあるのは、`terminal_view` 側 (クイック接続モーダル /
+    /// 右クリックメニュー) が `file_transfer` に依存せずに接続先を渡せるようにするため。
+    #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+    #[action(namespace = terminal)]
+    #[serde(deny_unknown_fields)]
+    pub struct OpenFileTransfer {
+        #[serde(default)]
+        pub host: Option<String>,
+        #[serde(default)]
+        pub port: Option<u16>,
+        #[serde(default)]
+        pub user: Option<String>,
+        /// `sftp` / `scp` / `ftp` / `ftps` のいずれか。未知の値は無視して既定 (SFTP) になる。
+        #[serde(default)]
+        pub protocol: Option<String>,
+    }
 }
 
 pub mod feedback {

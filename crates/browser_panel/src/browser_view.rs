@@ -9,14 +9,15 @@
 //! ページに隠れる。そのためブックマークの管理 UI はオーバーレイではなく、
 //! ビュー内の左サイドペイン (開くとページ側が縮む) として作ってある。
 
-use std::{collections::HashSet, rc::Rc};
+use std::{collections::HashSet, rc::Rc, sync::Arc};
 
 use editor::Editor;
+use fs::Fs;
 use futures::StreamExt as _;
 use gpui::{
-    AnyElement, App, ClipboardItem, Context, DispatchPhase, Entity, EventEmitter, FocusHandle,
-    Focusable, MouseButton, MouseDownEvent, SharedString, Subscription, Task, WeakEntity, Window,
-    canvas, px,
+    AnyElement, App, ClickEvent, ClipboardItem, Context, DispatchPhase, Entity, EventEmitter,
+    FocusHandle, Focusable, MouseButton, MouseDownEvent, SharedString, Subscription, Task,
+    WeakEntity, Window, canvas, px,
 };
 use settings::{Settings as _, SettingsStore};
 use ui::{Tooltip, prelude::*};
@@ -25,15 +26,19 @@ use workspace::Workspace;
 use crate::{
     AddBookmark, BookmarkNode, BookmarkPath, BookmarkRow, BookmarkStore, BookmarksFile,
     BrowserSettings, FocusAddressBar, GoHome, NavigateBack, NavigateForward, OpenInCenter,
-    OpenInExternalBrowser, Reload, SubmitAddress, ToggleBookmarks, normalize_bookmark_url,
-    resolve_address_input,
+    OpenInExternalBrowser, Reload, SetAsHomePage, SubmitAddress, ToggleBookmarks,
+    normalize_bookmark_url, resolve_address_input,
 };
 
 #[cfg(windows)]
-use crate::webview_windows::{Viewport, WebView, WebViewEvent, host_uses_direct_composition};
+use crate::webview_windows::{
+    OverlayRect, Viewport, WebView, WebViewEvent, host_uses_direct_composition,
+};
 
 #[cfg(not(windows))]
-use crate::webview_unsupported::{Viewport, WebView, WebViewEvent, host_uses_direct_composition};
+use crate::webview_unsupported::{
+    OverlayRect, Viewport, WebView, WebViewEvent, host_uses_direct_composition,
+};
 
 const WEBVIEW2_DOWNLOAD_URL: &str = "https://developer.microsoft.com/microsoft-edge/webview2/";
 
@@ -85,10 +90,15 @@ pub enum BrowserHost {
 pub enum BrowserViewEvent {
     /// ページのタイトルまたは URL が変わった。タブのラベルを更新する。
     LocationChanged,
+    /// この URL を新しいタブで開いてほしい (ブックマークの Ctrl+クリック / 中クリック)。
+    /// どこにタブを作るかはホストが決める (パネルならパネルのタブバー、
+    /// エディター領域のタブなら中央ペインにもう 1 枚)。
+    OpenInNewTab(String),
 }
 
 pub struct BrowserView {
     workspace: WeakEntity<Workspace>,
+    fs: Arc<dyn Fs>,
     host: BrowserHost,
     focus_handle: FocusHandle,
     address_editor: Entity<Editor>,
@@ -125,7 +135,8 @@ impl EventEmitter<BrowserViewEvent> for BrowserView {}
 
 impl BrowserView {
     pub fn new(
-        workspace: &Workspace,
+        workspace: WeakEntity<Workspace>,
+        fs: Arc<dyn Fs>,
         host: BrowserHost,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -136,8 +147,7 @@ impl BrowserView {
             editor
         });
 
-        let fs = workspace.app_state().fs.clone();
-        let bookmarks = BookmarkStore::global(fs, cx);
+        let bookmarks = BookmarkStore::global(fs.clone(), cx);
 
         let mut subscriptions = Vec::new();
         subscriptions.push(cx.observe_global::<SettingsStore>(|this, cx| {
@@ -147,7 +157,8 @@ impl BrowserView {
         subscriptions.push(cx.observe(&bookmarks, |_, _, cx| cx.notify()));
 
         Self {
-            workspace: workspace.weak_handle(),
+            workspace,
+            fs,
             host,
             focus_handle: cx.focus_handle(),
             address_editor,
@@ -514,6 +525,40 @@ impl BrowserView {
         cx.open_url(&url);
     }
 
+    /// 今開いているページを `browser.home_url` に書き込む。設定 GUI を開かなくても
+    /// 「起動時に開くページ」を差し替えられるようにするための導線。
+    fn set_as_home_page(&mut self, _: &SetAsHomePage, _: &mut Window, cx: &mut Context<Self>) {
+        let url = self.current_url.trim().to_string();
+        if url.is_empty() {
+            self.set_status_message("先にページを開いてください。", cx);
+            return;
+        }
+        settings::update_settings_file(self.fs.clone(), cx, {
+            let url = url.clone();
+            move |settings, _| {
+                settings.browser.get_or_insert_default().home_url = Some(url);
+            }
+        });
+        self.set_status_message(format!("起動時に開くページを {url} にしました。"), cx);
+    }
+
+    /// ホストに「新しいタブでこの URL を開いてほしい」と伝える。
+    fn open_in_new_tab(&mut self, url: &str, cx: &mut Context<Self>) {
+        if url.trim().is_empty() {
+            return;
+        }
+        cx.emit(BrowserViewEvent::OpenInNewTab(url.to_string()));
+    }
+
+    /// ブックマークのクリック。Ctrl (macOS では Cmd) 併用と中クリックは新しいタブ。
+    fn activate_bookmark_url(&mut self, url: &str, event: &ClickEvent, cx: &mut Context<Self>) {
+        if event.modifiers().secondary() || event.is_middle_click() {
+            self.open_in_new_tab(url, cx);
+        } else {
+            self.navigate_to(url, cx);
+        }
+    }
+
     // -- ブックマーク --------------------------------------------------------
 
     fn bookmarks_file(&self, cx: &App) -> BookmarksFile {
@@ -787,6 +832,24 @@ impl BrowserView {
                     })),
             )
             .child(
+                IconButton::new("browser-set-home", IconName::Pin)
+                    .icon_size(IconSize::Small)
+                    .tooltip({
+                        let focus_handle = focus_handle.clone();
+                        move |_, cx| {
+                            Tooltip::for_action_in(
+                                "このページを起動時に開く",
+                                &SetAsHomePage,
+                                &focus_handle,
+                                cx,
+                            )
+                        }
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.set_as_home_page(&SetAsHomePage, window, cx)
+                    })),
+            )
+            .child(
                 IconButton::new("browser-bookmarks", IconName::Bookmark)
                     .icon_size(IconSize::Small)
                     .toggle_state(self.bookmarks_pane_open)
@@ -862,19 +925,32 @@ impl BrowserView {
                 .children(items.into_iter().enumerate().map(|(index, node)| {
                     let name = SharedString::from(node.name().to_string());
                     match node {
-                        BookmarkNode::Bookmark { url, .. } => {
-                            Button::new(("browser-bookmark", index), name)
-                                .label_size(LabelSize::Small)
-                                .start_icon(
-                                    Icon::new(IconName::Bookmark)
-                                        .size(IconSize::XSmall)
-                                        .color(Color::Muted),
-                                )
-                                .tooltip(Tooltip::text(url.clone()))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.navigate_to(&url, cx);
-                                }))
-                        }
+                        BookmarkNode::Bookmark { url, .. } => div()
+                            .id(("browser-bookmark-bar", index))
+                            // 中クリックは `on_click` に届かない (左ボタン専用) ので、
+                            // 「新しいタブで開く」は補助クリック側でも受ける。
+                            .on_aux_click(cx.listener({
+                                let url = url.clone();
+                                move |this, event: &ClickEvent, _, cx| {
+                                    if event.is_middle_click() {
+                                        this.open_in_new_tab(&url, cx);
+                                    }
+                                }
+                            }))
+                            .child(
+                                Button::new(("browser-bookmark", index), name)
+                                    .label_size(LabelSize::Small)
+                                    .start_icon(
+                                        Icon::new(IconName::Bookmark)
+                                            .size(IconSize::XSmall)
+                                            .color(Color::Muted),
+                                    )
+                                    .tooltip(Tooltip::text(bookmark_tooltip(&url)))
+                                    .on_click(cx.listener(move |this, event, _, cx| {
+                                        this.activate_bookmark_url(&url, event, cx);
+                                    })),
+                            )
+                            .into_any_element(),
                         BookmarkNode::Folder { .. } => {
                             Button::new(("browser-bookmark", index), name)
                                 .label_size(LabelSize::Small)
@@ -888,6 +964,7 @@ impl BrowserView {
                                     this.bookmarks_pane_open = true;
                                     this.set_folder_expanded(&[index], true, cx);
                                 }))
+                                .into_any_element()
                         }
                     }
                 }))
@@ -1031,15 +1108,26 @@ impl BrowserView {
             IconName::Bookmark
         };
         let name = SharedString::from(row.name.clone());
-        let tooltip = row.url.clone().unwrap_or_else(|| row.name.clone());
+        let tooltip = match &row.url {
+            Some(url) => bookmark_tooltip(url),
+            None => row.name.clone().into(),
+        };
 
         let activate = {
             let path = row.path.clone();
             let url = row.url.clone();
             let expanded = row.expanded;
-            cx.listener(move |this, _, _, cx| match &url {
-                Some(url) => this.navigate_to(url, cx),
+            cx.listener(move |this, event: &ClickEvent, _, cx| match &url {
+                Some(url) => this.activate_bookmark_url(url, event, cx),
                 None => this.set_folder_expanded(&path, !expanded, cx),
+            })
+        };
+        let open_in_new_tab = {
+            let url = row.url.clone();
+            cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if let (Some(url), true) = (&url, event.is_middle_click()) {
+                    this.open_in_new_tab(url, cx);
+                }
             })
         };
 
@@ -1061,7 +1149,8 @@ impl BrowserView {
                     .tooltip(Tooltip::text(tooltip))
                     .child(Icon::new(icon).size(IconSize::XSmall).color(Color::Muted))
                     .child(Label::new(name).size(LabelSize::Small).truncate())
-                    .on_click(activate),
+                    .on_click(activate)
+                    .on_aux_click(open_in_new_tab),
             )
             .child(
                 IconButton::new(("browser-bookmark-edit", index), IconName::Pencil)
@@ -1275,6 +1364,7 @@ impl BrowserView {
                                     height: f32::from(bounds.size.height),
                                     scale_factor: window.scale_factor(),
                                     hidden_reason,
+                                    overlays: overlay_rects(window),
                                 });
                                 // Windows はクリックが親のクライアント領域に落ちても
                                 // 子 HWND からフォーカスを外さないので、GPUI 側に
@@ -1400,6 +1490,7 @@ impl Render for BrowserView {
             .on_action(cx.listener(Self::open_in_external_browser))
             .on_action(cx.listener(Self::toggle_bookmarks))
             .on_action(cx.listener(Self::add_bookmark))
+            .on_action(cx.listener(Self::set_as_home_page))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| {
@@ -1445,6 +1536,12 @@ impl Focusable for BrowserView {
     }
 }
 
+/// ブックマークのツールチップ。「Ctrl+クリックで新しいタブ」は見た目からは
+/// 分からないので、URL と一緒に添える。
+fn bookmark_tooltip(url: &str) -> SharedString {
+    format!("{url} — Ctrl+クリック / 中クリックで新しいタブ").into()
+}
+
 /// タブに出す名前。ページタイトルが無ければ URL、それも無ければ既定名。
 /// 長いページタイトルはタブを押し広げるので、ここで切り詰める。
 pub(crate) fn tab_label(page_title: &str, url: &str) -> SharedString {
@@ -1458,6 +1555,22 @@ pub(crate) fn tab_label(page_title: &str, url: &str) -> SharedString {
     }
     let truncated: String = source.chars().take(MAX_TAB_TITLE_CHARS).collect();
     format!("{truncated}…").into()
+}
+
+/// gpui がこのフレームで要素ツリーの上に描くもの (ツールチップ / コンテキスト
+/// メニュー / ポップオーバー) の矩形。子 HWND は gpui の描画より手前に合成される
+/// ので、重なった分は WebView の側で切り抜かないと見えない (ADR-F19)。
+fn overlay_rects(window: &Window) -> Vec<OverlayRect> {
+    window
+        .overlay_bounds()
+        .into_iter()
+        .map(|bounds| OverlayRect {
+            left: f32::from(bounds.origin.x),
+            top: f32::from(bounds.origin.y),
+            right: f32::from(bounds.right()),
+            bottom: f32::from(bounds.bottom()),
+        })
+        .collect()
 }
 
 fn runtime_missing_message() -> SharedString {

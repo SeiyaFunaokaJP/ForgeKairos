@@ -17,6 +17,8 @@ use crate::{AgentTool, ToolCallEventStream, ToolInput};
 ///
 /// After applying a code action, the list is cleared. If you want to apply
 /// another action, call get_code_actions again.
+///
+/// This tool needs a running language server for the file's language, so it cannot work in a language that has none; get_code_actions reports that case, and there is then nothing to apply.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ApplyCodeActionToolInput {
     /// The 1-based index of the code action to apply, from the list
@@ -122,7 +124,13 @@ impl AgentTool for ApplyCodeActionTool {
                 )
             })
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| {
+                format!(
+                    "コードアクション '{title}' は適用されませんでした ({error})。\
+                     ユーザーが許可しなかったので、同じ変更を `edit_file` などで\
+                     代わりに適用しないでください。"
+                )
+            })?;
 
             let apply_task = project.update(cx, |project, cx| {
                 project.apply_code_action(buffer, action, true, cx)

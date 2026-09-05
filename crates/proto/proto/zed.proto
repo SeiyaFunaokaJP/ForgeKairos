@@ -510,7 +510,9 @@ message Envelope {
     BlameBufferAtRevisionResponse blame_buffer_at_revision_response = 479;
     SetEgressAllowlist set_egress_allowlist = 480;
     GitRunCommand git_run_command = 481;
-    GitRunCommandResponse git_run_command_response = 482; // current max
+    GitRunCommandResponse git_run_command_response = 482;
+    ProxyHttpRequest proxy_http_request = 483;
+    ProxyHttpResponse proxy_http_response = 484; // current max
   }
 
   reserved 87 to 88;

@@ -1,5 +1,7 @@
+use std::path::PathBuf;
 use std::sync::{Arc, atomic};
 
+use futures::channel::oneshot;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{AppContext, Entity, TestAppContext, VisualTestContext};
 use picker::{Picker, PickerDelegate};
@@ -554,6 +556,160 @@ async fn test_confirming_the_parent_row_navigates_up(cx: &mut TestAppContext) {
     );
 }
 
+/// Confirming a folder has to browse into it. Handing it back as the chosen
+/// path instead makes the prompt useless for reaching anything below the
+/// directory it opened in: every folder on the way down would close the prompt.
+#[gpui::test]
+async fn test_confirming_a_directory_browses_into_it(cx: &mut TestAppContext) {
+    let app_state = init_test(cx);
+    app_state
+        .fs
+        .as_fake()
+        .insert_tree(
+            path!("/root"),
+            json!({
+                "dir1": {
+                    "dir2": {}
+                }
+            }),
+        )
+        .await;
+
+    let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+    let (picker, mut receiver, cx) =
+        build_open_path_prompt_with_receiver(project, false, false, cx);
+
+    insert_query(path!("/root/"), &picker, cx).await;
+    assert_eq!(
+        collect_match_candidates(&picker, cx)
+            .get(2)
+            .map(String::as_str),
+        Some("dir1"),
+        "the third row is the first real entry, after `./` and `../`"
+    );
+    picker.update_in(cx, |picker, window, cx| {
+        picker.delegate.set_selected_index(2, window, cx);
+        picker.delegate.confirm(false, window, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        picker.read_with(cx, |picker, cx| picker.query(cx)),
+        path!("/root/dir1/"),
+        "confirming a folder lists its contents instead of picking it"
+    );
+    assert!(
+        collect_match_candidates(&picker, cx).contains(&"dir2".to_string()),
+        "the folder's contents are listed after browsing into it"
+    );
+    assert_eq!(
+        receiver.try_recv().ok().flatten(),
+        None,
+        "browsing must not answer the prompt"
+    );
+}
+
+/// `menu::SecondaryConfirm` (`ctrl-enter`) is how the highlighted folder is
+/// chosen, now that plain confirm browses into it.
+#[gpui::test]
+async fn test_secondary_confirm_picks_the_selected_directory(cx: &mut TestAppContext) {
+    let app_state = init_test(cx);
+    app_state
+        .fs
+        .as_fake()
+        .insert_tree(
+            path!("/root"),
+            json!({
+                "dir1": {
+                    "dir2": {}
+                }
+            }),
+        )
+        .await;
+
+    let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+    let (picker, receiver, cx) = build_open_path_prompt_with_receiver(project, false, false, cx);
+
+    insert_query(path!("/root/"), &picker, cx).await;
+    picker.update_in(cx, |picker, window, cx| {
+        picker.delegate.set_selected_index(2, window, cx);
+        picker.delegate.confirm(true, window, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        receiver.await.ok().flatten(),
+        Some(vec![PathBuf::from(path!("/root/dir1"))]),
+        "ctrl-enter picks the highlighted folder"
+    );
+}
+
+/// The `./` row stands for the directory being listed, so it must hand back that
+/// directory itself — not `<dir>/./`, which would become the worktree's path.
+#[gpui::test]
+async fn test_confirming_the_current_dir_row_picks_the_listed_directory(cx: &mut TestAppContext) {
+    let app_state = init_test(cx);
+    app_state
+        .fs
+        .as_fake()
+        .insert_tree(
+            path!("/root"),
+            json!({
+                "dir1": {
+                    "dir2": {}
+                }
+            }),
+        )
+        .await;
+
+    let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+    let (picker, receiver, cx) = build_open_path_prompt_with_receiver(project, false, false, cx);
+
+    insert_query(path!("/root/dir1/"), &picker, cx).await;
+    picker.update_in(cx, |picker, window, cx| {
+        picker.delegate.set_selected_index(0, window, cx);
+        picker.delegate.confirm(false, window, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        receiver.await.ok().flatten(),
+        Some(vec![PathBuf::from(path!("/root/dir1"))]),
+        "confirming `./` picks the directory whose contents are listed"
+    );
+}
+
+/// Files still open on confirm; only folders browse.
+#[gpui::test]
+async fn test_confirming_a_file_still_picks_it(cx: &mut TestAppContext) {
+    let app_state = init_test(cx);
+    app_state
+        .fs
+        .as_fake()
+        .insert_tree(
+            path!("/root"),
+            json!({
+                "a1": "A1",
+            }),
+        )
+        .await;
+
+    let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+    let (picker, receiver, cx) = build_open_path_prompt_with_receiver(project, false, false, cx);
+
+    insert_query(path!("/root/a1"), &picker, cx).await;
+    picker.update_in(cx, |picker, window, cx| {
+        picker.delegate.set_selected_index(0, window, cx);
+        picker.delegate.confirm(false, window, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        receiver.await.ok().flatten(),
+        Some(vec![PathBuf::from(path!("/root/a1"))]),
+    );
+}
+
 #[gpui::test]
 async fn test_dismiss_cancels_in_flight_match(cx: &mut TestAppContext) {
     let app_state = init_test(cx);
@@ -607,7 +763,22 @@ fn build_open_path_prompt(
     show_hidden: bool,
     cx: &mut TestAppContext,
 ) -> (Entity<Picker<OpenPathDelegate>>, &mut VisualTestContext) {
-    let (tx, _) = futures::channel::oneshot::channel();
+    let (picker, _receiver, cx) =
+        build_open_path_prompt_with_receiver(project, creating_path, show_hidden, cx);
+    (picker, cx)
+}
+
+fn build_open_path_prompt_with_receiver(
+    project: Entity<Project>,
+    creating_path: bool,
+    show_hidden: bool,
+    cx: &mut TestAppContext,
+) -> (
+    Entity<Picker<OpenPathDelegate>>,
+    oneshot::Receiver<Option<Vec<PathBuf>>>,
+    &mut VisualTestContext,
+) {
+    let (tx, receiver) = futures::channel::oneshot::channel();
     let lister = project::DirectoryLister::Project(project.clone());
 
     let (multi_workspace, cx) =
@@ -628,6 +799,7 @@ fn build_open_path_prompt(
                 picker
             })
         }),
+        receiver,
         cx,
     )
 }

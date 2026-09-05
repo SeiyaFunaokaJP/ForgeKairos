@@ -321,10 +321,12 @@ pub async fn open_remote_project(
                                 RemoteConnectionOptions::Docker(_) => {
                                     "Dev Container に接続できませんでした"
                                 }
-                                #[cfg(any(test, feature = "test-support"))]
-                                RemoteConnectionOptions::Mock(_) => {
-                                    "モックサーバーに接続できませんでした"
-                                }
+                                // `Mock` grows in whenever `remote/test-support`
+                                // is enabled, which a dependent's dev-dependency
+                                // can do without this crate's own `test-support`
+                                // — so a `#[cfg]`-gated arm for it leaves the
+                                // match non-exhaustive under `--all-targets`.
+                                _ => "リモートホストに接続できませんでした",
                             },
                             Some(&format!("{e:#}")),
                             &["再試行", "キャンセル"],
@@ -382,10 +384,12 @@ pub async fn open_remote_project(
                                 RemoteConnectionOptions::Docker(_) => {
                                     "Dev Container に接続できませんでした"
                                 }
-                                #[cfg(any(test, feature = "test-support"))]
-                                RemoteConnectionOptions::Mock(_) => {
-                                    "モックサーバーに接続できませんでした"
-                                }
+                                // `Mock` grows in whenever `remote/test-support`
+                                // is enabled, which a dependent's dev-dependency
+                                // can do without this crate's own `test-support`
+                                // — so a `#[cfg]`-gated arm for it leaves the
+                                // match non-exhaustive under `--all-targets`.
+                                _ => "リモートホストに接続できませんでした",
                             },
                             Some(&format!("{e:#}")),
                             &["再試行", "キャンセル"],

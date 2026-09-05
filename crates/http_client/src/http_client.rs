@@ -4,16 +4,23 @@ mod egress;
 pub mod github;
 #[cfg(all(not(target_family = "wasm"), feature = "github-download"))]
 pub mod github_download;
+mod proxy_relay;
 
 pub use anyhow::{Result, anyhow};
 pub use async_body::{AsyncBody, Inner, Json};
 use derive_more::Deref;
 pub use egress::{
-    AllowlistedHttpClient, BUILTIN_ALLOWLIST, BuiltinAllow, EgressDenied, EgressPolicy,
-    EgressPolicyHandle, HostPattern, HostPatternError, RequestHost, UPDATE_REPO,
-    apply_child_process_proxy_env, child_process_proxy, egress_denied_hosts,
-    env_overrides_child_process_proxy, hosts_required_to_download, set_child_process_proxy,
+    AllowlistedHttpClient, BUILTIN_ALLOWLIST, BuiltinAllow, EGRESS_DENIED_MARKER, EgressDenied,
+    EgressPolicy, EgressPolicyHandle, HostPattern, HostPatternError, RequestHost, UPDATE_REPO,
+    apply_child_process_proxy_env, child_process_proxy, egress_denied_from_message,
+    egress_denied_hosts, egress_denied_marker_line, env_overrides_child_process_proxy,
+    hosts_required_to_download, set_child_process_proxy,
 };
+pub use proxy_relay::{
+    PROXY_HTTP_CHUNK_SIZE, ProxyHttpFrame, ProxyHttpFrames, ProxyHttpRelayError,
+    ProxyHttpRelayRequest, ProxyHttpTransport, RemoteProxyHttpClient,
+};
+
 pub use http::{self, Method, Request, Response, StatusCode, Uri, request::Builder};
 use http::{HeaderName, HeaderValue};
 

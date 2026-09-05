@@ -1,10 +1,12 @@
 pub mod json_log;
 pub mod protocol;
 pub mod proxy;
+pub mod proxy_http;
 pub mod remote_client;
 pub mod remote_identity;
 mod transport;
 
+pub use proxy_http::ProxyHttpRelay;
 #[cfg(target_os = "windows")]
 pub use remote_client::OpenWslPath;
 pub use remote_client::{
@@ -16,7 +18,9 @@ pub use remote_identity::{
     RemoteConnectionIdentity, remote_connection_identity, same_remote_connection_identity,
 };
 pub use transport::docker::DockerConnectionOptions;
-pub use transport::ssh::{SshConnectionOptions, SshPortForwardOption};
+pub use transport::ssh::{
+    SshConnectionOptions, SshPortForwardOption, take_remote_connection_warnings,
+};
 pub use transport::wsl::WslConnectionOptions;
 #[cfg(target_os = "windows")]
 pub use transport::wsl::wsl_path_to_windows_path;

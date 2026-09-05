@@ -1018,8 +1018,9 @@
     "dock": "right",
     // ブラウザーパネルの既定の幅。
     "default_width": 480,
-    // パネルを開いたときに最初に表示するページ。
-    "home_url": "https://github.com/copilot",
+    // ブラウザーを開いたときに最初に表示するページ (起動時に開くページ)。
+    // 内蔵ブラウザーのツールバーのピンボタンからも書き換えられる。
+    "home_url": "https://m365.cloud.microsoft/chat",
     // アドレスバーの入力が URL でなかったときと、
     // `browser_panel::SearchSelection` (選択テキストを Web で検索) が使う URL。
     // `{query}` がパーセントエンコードした検索語に置き換わる。
@@ -1032,6 +1033,8 @@
     "copilot_url": "https://github.com/copilot",
     // ブックマークは設定ではなく `browser_bookmarks.json` (settings.json と同じ
     // フォルダー) に保存され、ブラウザーパネル内のブックマークペインで編集する。
+    // ファイルがまだ無いときだけ、既定のブックマーク 3 件 (Microsoft 365 Copilot /
+    // Claude / ChatGPT) を書き込む。
     // オンにすると内蔵ブラウザーの通信も外部通信の許可リストで制限される。
     // 既定では人間操作のターミナルと同様に許可リストの対象外 (ADR-F19)。
     "use_egress_proxy": false,
@@ -1463,6 +1466,9 @@
     "show_nav_history_buttons": true,
     // Whether or not to show the tab bar buttons.
     "show_tab_bar_buttons": true,
+    // フォーカスされていないペインのタブバーにも、新規・分割・ズームなどのボタンを表示するか。
+    // false にすると、フォーカス中のペインだけに表示する (upstream の既定)。
+    "show_buttons_on_inactive_panes": true,
     // Whether or not to show pinned tabs in a separate row.
     // When enabled, pinned tabs appear in a top row and unpinned tabs in a bottom row.
     // When disabled, all tabs appear in a single row (default behavior).
@@ -2956,6 +2962,14 @@
   "ssh_connections": [],
   // Whether to read ~/.ssh/config for ssh connection sources.
   "read_ssh_config": true,
+  // リモートホスト (SSH / WSL / dev container) 側の設定 (ADR-F27)。
+  "remote": {
+    // リモートホストの外向き HTTP(S) (言語サーバー・node のダウンロード、拡張機能のアーカイブ、
+    // エージェントのバイナリ) を、リモート自身のネットワークではなくこの PC 経由で行うかどうか。
+    // インターネットに出られないリモートでも言語サーバーを自動取得でき、取得はこの PC の
+    // 許可リスト・同意ダイアログ・プロキシの管理下に入る。切り替えは再接続なしで反映される。
+    "relay_http_through_client": true
+  },
   // Default timeout in seconds for all context server tool calls.
   // Individual servers can override this in their configuration.
   // Examples:

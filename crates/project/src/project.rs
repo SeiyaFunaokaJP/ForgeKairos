@@ -4442,6 +4442,13 @@ impl Project {
         })
     }
 
+    /// See [`LspStore::has_language_server_for_buffer`].
+    pub fn has_language_server_for_buffer(&self, buffer: &Entity<Buffer>, cx: &App) -> bool {
+        self.lsp_store
+            .read(cx)
+            .has_language_server_for_buffer(buffer, cx)
+    }
+
     pub fn references<T: ToPointUtf16>(
         &mut self,
         buffer: &Entity<Buffer>,

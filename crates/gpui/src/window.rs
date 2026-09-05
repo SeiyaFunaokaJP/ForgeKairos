@@ -1146,6 +1146,11 @@ pub struct Window {
     next_hitbox_id: HitboxId,
     pub(crate) next_tooltip_id: TooltipId,
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
+    /// Index into `next_frame.hitboxes` of the first hitbox belonging to an
+    /// overlay - a deferred draw, a prompt, the drag preview or the tooltip -
+    /// rather than to the regular element tree. `usize::MAX` until the current
+    /// frame has reached the point where overlays are prepainted.
+    overlay_hitboxes_start: usize,
     next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
     pub(crate) dirty_views: FxHashSet<EntityId>,
     focus_listeners: SubscriberSet<(), AnyWindowFocusListener>,
@@ -1833,6 +1838,7 @@ impl Window {
             next_hitbox_id: HitboxId(0),
             next_tooltip_id: TooltipId::default(),
             tooltip_bounds: None,
+            overlay_hitboxes_start: usize::MAX,
             dirty_views: FxHashSet::default(),
             focus_listeners: SubscriberSet::new(),
             focus_lost_listeners: SubscriberSet::new(),
@@ -3058,9 +3064,36 @@ impl Window {
         self.refresh();
     }
 
+    /// Bounds, in window coordinates, of the overlays the current frame draws
+    /// on top of the element tree: deferred draws (context menus, popovers,
+    /// dropdowns), a prompt, the drag preview, and the tooltip.
+    ///
+    /// Overlays are prepainted after the element tree but before anything is
+    /// painted, so this is only populated from the paint phase onwards; during
+    /// prepaint of the element tree it is empty.
+    ///
+    /// Exists for the Windows browser panel (ADR-F19): its WebView2 lives in a
+    /// child HWND, which the desktop compositor always puts in front of
+    /// everything gpui draws, so the panel has to cut these rectangles out of
+    /// the child window or they are invisible wherever the two overlap.
+    pub fn overlay_bounds(&self) -> Vec<Bounds<Pixels>> {
+        let mut overlays = Vec::new();
+        if let Some(hitboxes) = self.next_frame.hitboxes.get(self.overlay_hitboxes_start..) {
+            overlays.extend(hitboxes.iter().filter_map(|hitbox| {
+                let visible = hitbox.bounds.intersect(&hitbox.content_mask.bounds);
+                (!visible.is_empty()).then_some(visible)
+            }));
+        }
+        if let Some(tooltip_bounds) = self.tooltip_bounds.as_ref() {
+            overlays.push(tooltip_bounds.bounds);
+        }
+        overlays
+    }
+
     fn draw_roots(&mut self, cx: &mut App) {
         self.invalidator.set_phase(DrawPhase::Prepaint);
         self.tooltip_bounds.take();
+        self.overlay_hitboxes_start = usize::MAX;
 
         self.a11y.sync_active_flag();
         if self.a11y.is_active() {
@@ -3100,6 +3133,9 @@ impl Window {
         #[cfg(any(feature = "inspector", debug_assertions))]
         let inspector_element = self.prepaint_inspector(_inspector_width, cx);
 
+        // Everything prepainted from here on is drawn on top of the element
+        // tree, which is what `overlay_bounds` reports.
+        self.overlay_hitboxes_start = self.next_frame.hitboxes.len();
         self.prepaint_deferred_draws(cx);
 
         let mut prompt_element = None;
@@ -6866,7 +6902,7 @@ mod tests {
         InputEvent as _, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
         MouseMoveEvent, ParentElement, Pixels, Point, Render, RequestFrameOptions,
         StatefulInteractiveElement as _, Styled, TestAppContext, Window, WindowAppearance,
-        WindowOptions, canvas, div, point, px, size,
+        WindowOptions, canvas, deferred, div, point, px, size,
     };
 
     struct EmptyView;
@@ -6875,6 +6911,65 @@ mod tests {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             div()
         }
+    }
+
+    struct ReportsOverlayBounds {
+        captured: Rc<RefCell<Vec<Bounds<Pixels>>>>,
+    }
+
+    impl Render for ReportsOverlayBounds {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let captured = self.captured.clone();
+            div()
+                .relative()
+                .size_full()
+                // An occluding element in the regular tree, which must not be
+                // reported as an overlay.
+                .child(
+                    div()
+                        .occlude()
+                        .absolute()
+                        .left(px(0.))
+                        .top(px(0.))
+                        .w(px(5.))
+                        .h(px(5.)),
+                )
+                .child(deferred(
+                    div()
+                        .occlude()
+                        .absolute()
+                        .left(px(10.))
+                        .top(px(20.))
+                        .w(px(30.))
+                        .h(px(40.)),
+                ))
+                .child(canvas(
+                    |_, _, _| {},
+                    move |_, _, window, _| {
+                        *captured.borrow_mut() = window.overlay_bounds();
+                    },
+                ))
+        }
+    }
+
+    /// Deferred draws are what gpui paints over the element tree, and the
+    /// Windows browser panel has to cut them out of the child window hosting
+    /// WebView2 (ADR-F19). They have to be visible from the paint phase, and
+    /// hitboxes from the regular tree must not be mistaken for them.
+    #[test]
+    fn test_overlay_bounds_reports_deferred_draws_during_paint() {
+        let mut cx = TestAppContext::single();
+
+        let captured: Rc<RefCell<Vec<Bounds<Pixels>>>> = Rc::default();
+        cx.add_window({
+            let captured = captured.clone();
+            move |_, _| ReportsOverlayBounds { captured }
+        });
+
+        assert_eq!(
+            captured.borrow().as_slice(),
+            [Bounds::new(point(px(10.), px(20.)), size(px(30.), px(40.)))]
+        );
     }
 
     struct OpensWindowOnPaint {

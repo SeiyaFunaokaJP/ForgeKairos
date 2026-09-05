@@ -215,6 +215,7 @@ impl VsCodeSettings {
                 _ => None,
             }),
             remote: RemoteSettingsContent::default(),
+            remote_host: None,
             repl: None,
             server_url: None,
             session: None,
@@ -799,6 +800,7 @@ impl VsCodeSettings {
             show_tab_bar_buttons: self
                 .read_str("workbench.editor.editorActionsLocation")
                 .and_then(|str| if str == "hidden" { Some(false) } else { None }),
+            show_buttons_on_inactive_panes: None,
             show_pinned_tabs_in_separate_row: None,
         })
     }

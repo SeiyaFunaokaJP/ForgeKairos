@@ -4487,7 +4487,7 @@ fn window_and_layout_page() -> SettingsPage {
         ]
     }
 
-    fn tab_bar_section() -> [SettingsPageItem; 9] {
+    fn tab_bar_section() -> [SettingsPageItem; 10] {
         [
             SettingsPageItem::SectionHeader("タブバー"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -4608,6 +4608,29 @@ fn window_and_layout_page() -> SettingsPage {
                             .tab_bar
                             .get_or_insert_default()
                             .show_tab_bar_buttons = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "非アクティブなペインにもボタンを表示",
+                description: "フォーカスされていないペインのタブバーにも、新規・ペインの分割・ズームなどのボタンを表示します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("tab_bar.show_buttons_on_inactive_panes"),
+                    pick: |settings_content| {
+                        settings_content
+                            .tab_bar
+                            .as_ref()?
+                            .show_buttons_on_inactive_panes
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .tab_bar
+                            .get_or_insert_default()
+                            .show_buttons_on_inactive_panes = value;
                     },
                 }),
                 metadata: None,
@@ -9231,6 +9254,35 @@ fn network_page() -> SettingsPage {
     /// The egress allowlist is this fork's own (`docs/jp-enhance/DESIGN.md` §4), and
     /// it does not live in settings.json, so it gets a section of its own rather
     /// than sitting next to the proxy and server-URL settings.
+    fn remote_section() -> [SettingsPageItem; 2] {
+        [
+            SettingsPageItem::SectionHeader("リモート"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "リモートの通信をこの PC 経由にする",
+                description: "オンにすると、SSH などのリモートホストが行う外部通信 (言語サーバーや node のダウンロード、拡張機能のアーカイブ、エージェントのバイナリ) をこの PC が代行します。インターネットに出られないリモートでも言語サーバーを自動取得でき、取得はこの PC の許可リスト・同意ダイアログ・プロキシの管理下に入ります。オフにするとリモートが自分で外部に接続します。切り替えは再接続なしで反映されます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("remote.relay_http_through_client"),
+                    pick: |settings_content| {
+                        settings_content
+                            .remote_host
+                            .as_ref()?
+                            .relay_http_through_client
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .remote_host
+                            .get_or_insert_default()
+                            .relay_http_through_client = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
     fn egress_section() -> [SettingsPageItem; 2] {
         [
             SettingsPageItem::SectionHeader("外部通信の統制"),
@@ -9259,7 +9311,7 @@ fn network_page() -> SettingsPage {
 
     SettingsPage {
         title: "ネットワーク",
-        items: concat_sections![network_section(), egress_section()],
+        items: concat_sections![network_section(), egress_section(), remote_section()],
     }
 }
 
@@ -11232,8 +11284,8 @@ fn browser_page() -> SettingsPage {
         [
             SettingsPageItem::SectionHeader("ブラウジング"),
             SettingsPageItem::SettingItem(SettingItem {
-                title: "ホーム URL",
-                description: "ブラウザーパネルを開いたときに最初に表示するページです。",
+                title: "起動時に開くページ",
+                description: "内蔵ブラウザーのパネルやタブを開いたときに最初に表示するページです。ブラウザーのツールバーのピンボタンからも設定できます。",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("browser.home_url"),
@@ -11243,7 +11295,7 @@ fn browser_page() -> SettingsPage {
                     },
                 }),
                 metadata: Some(Box::new(SettingsFieldMetadata {
-                    placeholder: Some("https://github.com/copilot"),
+                    placeholder: Some("https://m365.cloud.microsoft/chat"),
                     display_confirm_button: true,
                     display_clear_button: true,
                     confirm_on_focus_out: true,

@@ -38,13 +38,17 @@ use webview2_com::{
 };
 use windows::{
     Win32::{
-        Foundation::{E_POINTER, HWND, LPARAM, RECT},
+        Foundation::{E_POINTER, HWND, LPARAM, POINT, RECT},
+        Graphics::Gdi::{
+            CombineRgn, CreateRectRgn, DeleteObject, RGN_DIFF, RGN_ERROR, ScreenToClient,
+            SetWindowRgn,
+        },
         UI::{
             Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE},
             WindowsAndMessaging::{
-                EnumChildWindows, GWL_EXSTYLE, GetClassNameW, GetWindowLongPtrW, GetWindowRect,
-                HWND_TOP, IsIconic, IsWindowVisible, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOMOVE,
-                SWP_NOSIZE, SetWindowPos, ShowWindow, WS_EX_NOREDIRECTIONBITMAP,
+                EnumChildWindows, GWL_EXSTYLE, GetClassNameW, GetParent, GetWindowLongPtrW,
+                GetWindowRect, HWND_TOP, IsIconic, IsWindowVisible, SW_SHOWNA, SWP_NOACTIVATE,
+                SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, ShowWindow, WS_EX_NOREDIRECTIONBITMAP,
             },
         },
     },
@@ -88,6 +92,22 @@ pub(crate) struct Viewport {
     /// `None` when the surface should be shown; otherwise why it is hidden.
     /// Only used for logging, so the reason has to be a `'static` label.
     pub(crate) hidden_reason: Option<&'static str>,
+    /// What gpui paints on top of the element tree this frame (tooltips,
+    /// context menus, popovers), in the same logical pixels and origin as the
+    /// viewport itself. The child HWND is composited above everything gpui
+    /// draws, so whatever of this lands on the surface has to be cut out of the
+    /// child window; see [`WebView::sync_viewport`].
+    pub(crate) overlays: Vec<OverlayRect>,
+}
+
+/// A gpui overlay rectangle in logical pixels, relative to the host window's
+/// client origin - the same space [`Viewport`] uses.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct OverlayRect {
+    pub(crate) left: f32,
+    pub(crate) top: f32,
+    pub(crate) right: f32,
+    pub(crate) bottom: f32,
 }
 
 /// Whether the host window was created with `WS_EX_NOREDIRECTIONBITMAP`, which
@@ -300,9 +320,16 @@ struct State {
     pending_url: Option<String>,
     pending_dark_mode: Option<bool>,
     bounds: RECT,
+    /// Parts of `bounds` that gpui paints over this frame, in the same
+    /// coordinates. Cut out of the child windows so the overlay stays visible.
+    holes: Vec<RECT>,
     scale: f64,
     visible: bool,
     applied_bounds: Option<RECT>,
+    /// The `(bounds, holes)` the current window regions were built from. The
+    /// holes are relative to the host window, so a move of the surface
+    /// invalidates them just as much as a change of the overlays does.
+    applied_clip: Option<(RECT, Vec<RECT>)>,
     applied_scale: Option<f64>,
     applied_visible: Option<bool>,
     page_has_focus: bool,
@@ -363,17 +390,14 @@ impl WebView {
     /// parent HWND in physical pixels, so GPUI's logical bounds are multiplied
     /// by the window's scale factor here (and nowhere else: WebView2 is told not
     /// to follow the monitor DPI on its own).
+    ///
+    /// The overlays gpui reported for this frame are turned into holes in the
+    /// child window's region, because the compositor puts the child in front of
+    /// gpui's swap chain and a tooltip drawn over the surface would otherwise be
+    /// invisible (ADR-F19).
     pub(crate) fn sync_viewport(&self, viewport: Viewport) {
         let scale = viewport.scale_factor.max(0.1) as f64;
-        let to_device = |value: f32| (value * viewport.scale_factor).round() as i32;
-        let left = to_device(viewport.origin_x);
-        let top = to_device(viewport.origin_y);
-        let bounds = RECT {
-            left,
-            top,
-            right: left + to_device(viewport.width).max(0),
-            bottom: top + to_device(viewport.height).max(0),
-        };
+        let (bounds, holes) = viewport_geometry(&viewport);
 
         let mut hidden_reason = viewport.hidden_reason;
         if hidden_reason.is_none() && (bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
@@ -386,6 +410,7 @@ impl WebView {
         {
             let mut state = self.inner.state.borrow_mut();
             state.bounds = bounds;
+            state.holes = holes;
             state.scale = scale;
             state.visible = hidden_reason.is_none();
             state.hidden_reason = hidden_reason;
@@ -793,6 +818,51 @@ impl Inner {
                 nudge_child_windows(&owned_children);
             }
         }
+
+        self.apply_clip();
+    }
+
+    /// Cuts the gpui overlays out of the child windows WebView2 renders into.
+    ///
+    /// Only the controller's own top-level children are touched: the region is
+    /// expressed in each window's own coordinates, and clipping the outermost
+    /// one clips everything WebView2 nests inside it.
+    fn apply_clip(&self) {
+        let (bounds, holes, children) = {
+            let state = self.state.borrow();
+            if state.controller.is_none() || !state.visible {
+                return;
+            }
+            let unchanged = match state.applied_clip.as_ref() {
+                None => false,
+                // The child windows carry no region and need none, so moving or
+                // resizing the surface changes nothing to reapply.
+                Some((_, applied)) if applied.is_empty() && state.holes.is_empty() => true,
+                Some((bounds, applied)) => {
+                    *bounds == state.bounds && applied.as_slice() == state.holes.as_slice()
+                }
+            };
+            if unchanged {
+                return;
+            }
+            (
+                state.bounds,
+                state.holes.clone(),
+                state.owned_children.clone(),
+            )
+        };
+
+        for child in children {
+            let child = HWND(child as *mut c_void);
+            // `EnumChildWindows` reports the whole subtree; the windows nested
+            // inside WebView2's own host are clipped along with it.
+            if unsafe { GetParent(child) }.ok() != Some(self.host_hwnd) {
+                continue;
+            }
+            clip_child_window(self.host_hwnd, child, &holes);
+        }
+
+        self.state.borrow_mut().applied_clip = Some((bounds, holes));
     }
 
     fn log_owned_children(&self) {
@@ -913,6 +983,136 @@ fn nudge_child_windows(children: &[isize]) {
     }
 }
 
+/// Where the browsing surface goes and which parts of it gpui draws over, in
+/// physical pixels relative to the host window's client origin.
+///
+/// Kept pure so that the DPI rounding and the intersections can be tested
+/// without a window; [`WebView::sync_viewport`] is the only caller.
+fn viewport_geometry(viewport: &Viewport) -> (RECT, Vec<RECT>) {
+    let to_device = |value: f32| (value * viewport.scale_factor).round() as i32;
+    let left = to_device(viewport.origin_x);
+    let top = to_device(viewport.origin_y);
+    let bounds = RECT {
+        left,
+        top,
+        right: left + to_device(viewport.width).max(0),
+        bottom: top + to_device(viewport.height).max(0),
+    };
+
+    let holes = viewport
+        .overlays
+        .iter()
+        .filter_map(|overlay| {
+            intersect_rects(
+                bounds,
+                RECT {
+                    left: to_device(overlay.left),
+                    top: to_device(overlay.top),
+                    right: to_device(overlay.right),
+                    bottom: to_device(overlay.bottom),
+                },
+            )
+        })
+        .collect();
+
+    (bounds, holes)
+}
+
+/// `None` when the two rectangles do not overlap, so that degenerate
+/// rectangles never reach the region arithmetic.
+fn intersect_rects(one: RECT, other: RECT) -> Option<RECT> {
+    let intersection = RECT {
+        left: one.left.max(other.left),
+        top: one.top.max(other.top),
+        right: one.right.min(other.right),
+        bottom: one.bottom.min(other.bottom),
+    };
+    (intersection.left < intersection.right && intersection.top < intersection.bottom)
+        .then_some(intersection)
+}
+
+/// Gives `child` a window region that is its own rectangle minus `holes`
+/// (host client coordinates, physical pixels), or removes the region when
+/// there is nothing to cut away.
+///
+/// Windows keeps a window region across moves and resizes without adjusting it,
+/// so the region is rebuilt from the child's current rectangle whenever either
+/// the holes or the surface bounds change.
+fn clip_child_window(host_hwnd: HWND, child: HWND, holes: &[RECT]) {
+    if holes.is_empty() {
+        // Passing no region restores the default (the whole window) and
+        // repaints it.
+        if unsafe { SetWindowRgn(child, None, true) } == 0 {
+            log::warn!(
+                "WebView2: could not clear the clipping region of child window {:#x}",
+                child.0 as isize
+            );
+        }
+        return;
+    }
+
+    let mut child_rect = RECT::default();
+    if unsafe { GetWindowRect(child, &mut child_rect) }
+        .log_err()
+        .is_none()
+    {
+        return;
+    }
+    let mut origin = POINT {
+        x: child_rect.left,
+        y: child_rect.top,
+    };
+    if !unsafe { ScreenToClient(host_hwnd, &mut origin) }.as_bool() {
+        log::warn!(
+            "WebView2: could not map child window {:#x} into the host's client area",
+            child.0 as isize
+        );
+        return;
+    }
+
+    let region = unsafe {
+        CreateRectRgn(
+            0,
+            0,
+            child_rect.right - child_rect.left,
+            child_rect.bottom - child_rect.top,
+        )
+    };
+    if region.is_invalid() {
+        log::warn!("WebView2: could not create a clipping region for the browsing surface");
+        return;
+    }
+
+    for hole in holes {
+        let hole = unsafe {
+            CreateRectRgn(
+                hole.left - origin.x,
+                hole.top - origin.y,
+                hole.right - origin.x,
+                hole.bottom - origin.y,
+            )
+        };
+        if hole.is_invalid() {
+            log::warn!("WebView2: could not create a region for a gpui overlay");
+            continue;
+        }
+        if unsafe { CombineRgn(Some(region), Some(region), Some(hole), RGN_DIFF) } == RGN_ERROR {
+            log::warn!("WebView2: could not subtract a gpui overlay from the clipping region");
+        }
+        unsafe { DeleteObject(hole.into()) }.ok().log_err();
+    }
+
+    // On success the window owns the region and must not be deleted here; on
+    // failure it is still ours.
+    if unsafe { SetWindowRgn(child, Some(region), true) } == 0 {
+        log::warn!(
+            "WebView2: could not clip child window {:#x} to the gpui overlays",
+            child.0 as isize
+        );
+        unsafe { DeleteObject(region.into()) }.ok().log_err();
+    }
+}
+
 fn apply_dark_mode(webview: &ICoreWebView2, dark: bool) {
     let scheme: COREWEBVIEW2_PREFERRED_COLOR_SCHEME = if dark {
         COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK
@@ -948,4 +1148,115 @@ fn read_history(webview: &ICoreWebView2) -> (bool, bool) {
     unsafe { webview.CanGoBack(&mut can_go_back) }.log_err();
     unsafe { webview.CanGoForward(&mut can_go_forward) }.log_err();
     (can_go_back.as_bool(), can_go_forward.as_bool())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn viewport(scale_factor: f32, overlays: Vec<OverlayRect>) -> Viewport {
+        Viewport {
+            origin_x: 100.,
+            origin_y: 50.,
+            width: 400.,
+            height: 300.,
+            scale_factor,
+            hidden_reason: None,
+            overlays,
+        }
+    }
+
+    fn overlay(left: f32, top: f32, right: f32, bottom: f32) -> OverlayRect {
+        OverlayRect {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    fn rect(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
+        RECT {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    #[test]
+    fn bounds_and_holes_are_scaled_to_physical_pixels() {
+        let (bounds, holes) =
+            viewport_geometry(&viewport(1.5, vec![overlay(120., 60., 200., 90.)]));
+
+        assert_eq!(bounds, rect(150, 75, 750, 525));
+        assert_eq!(holes, vec![rect(180, 90, 300, 135)]);
+    }
+
+    #[test]
+    fn overlays_beside_the_surface_are_not_holes() {
+        let (_, holes) = viewport_geometry(&viewport(
+            1.,
+            vec![
+                // Entirely above the surface.
+                overlay(120., 0., 200., 40.),
+                // Entirely to its right.
+                overlay(520., 60., 600., 90.),
+                // Sharing the left edge, so still zero area.
+                overlay(20., 60., 100., 90.),
+            ],
+        ));
+
+        assert!(holes.is_empty(), "{holes:?}");
+    }
+
+    #[test]
+    fn an_overlapping_overlay_is_clipped_to_the_surface() {
+        // A tooltip that starts above and to the left of the surface.
+        let (_, holes) = viewport_geometry(&viewport(1., vec![overlay(40., 20., 160., 120.)]));
+
+        assert_eq!(holes, vec![rect(100, 50, 160, 120)]);
+    }
+
+    #[test]
+    fn every_overlapping_overlay_becomes_its_own_hole() {
+        // Two overlays far apart must stay separate: their bounding box would
+        // cover most of the surface.
+        let (_, holes) = viewport_geometry(&viewport(
+            1.,
+            vec![
+                overlay(110., 60., 150., 80.),
+                overlay(2000., 2000., 2100., 2100.),
+                overlay(400., 300., 460., 330.),
+            ],
+        ));
+
+        assert_eq!(
+            holes,
+            vec![rect(110, 60, 150, 80), rect(400, 300, 460, 330)]
+        );
+    }
+
+    #[test]
+    fn an_overlay_covering_the_whole_surface_leaves_nothing() {
+        let (bounds, holes) = viewport_geometry(&viewport(1., vec![overlay(0., 0., 4000., 4000.)]));
+
+        assert_eq!(holes, vec![bounds]);
+    }
+
+    #[test]
+    fn intersecting_rectangles_that_only_touch_have_no_intersection() {
+        assert_eq!(
+            intersect_rects(rect(0, 0, 10, 10), rect(5, 5, 20, 20)),
+            Some(rect(5, 5, 10, 10))
+        );
+        assert_eq!(
+            intersect_rects(rect(0, 0, 10, 10), rect(10, 0, 20, 10)),
+            None
+        );
+        assert_eq!(
+            intersect_rects(rect(0, 0, 10, 10), rect(0, 10, 10, 20)),
+            None
+        );
+    }
 }

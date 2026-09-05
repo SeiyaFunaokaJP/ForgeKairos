@@ -1,7 +1,10 @@
 use std::fmt::Write;
 use std::sync::Arc;
 
-use super::symbol_locator::{LocationDisplay, SymbolLocator};
+use super::symbol_locator::{
+    LocationDisplay, SymbolLocator, has_language_server, mark_card_missing_language_server,
+    no_language_server_message,
+};
 use crate::{AgentTool, ToolCallEventStream, ToolInput};
 use agent_client_protocol::schema::v1 as acp;
 use gpui::{App, Entity, SharedString, Task};
@@ -14,6 +17,8 @@ use serde::{Deserialize, Serialize};
 /// Returns a list of locations where the symbol is referenced, including file paths, line numbers, and code snippets for each reference.
 ///
 /// Before using this tool, use read_file or grep to find the exact symbol name and line number.
+///
+/// This tool needs a running language server for the file's language, so it cannot work in a language that has none. When it reports that, relay that fact to the user instead of guessing at editor configuration, and use `grep` for the search.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FindReferencesToolInput {
     /// The symbol to find references of.
@@ -46,7 +51,7 @@ impl AgentTool for FindReferencesTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("`{}` の参照を検索", input.symbol.symbol_name).into()
+            find_references_title(&input.symbol.symbol_name).into()
         } else {
             "参照を検索".into()
         }
@@ -55,7 +60,7 @@ impl AgentTool for FindReferencesTool {
     fn run(
         self: Arc<Self>,
         input: ToolInput<Self::Input>,
-        _event_stream: ToolCallEventStream,
+        event_stream: ToolCallEventStream,
         cx: &mut App,
     ) -> Task<Result<String, String>> {
         let project = self.project.clone();
@@ -77,6 +82,16 @@ impl AgentTool for FindReferencesTool {
                 .unwrap_or_default();
 
             if references.is_empty() {
+                if !has_language_server(&project, &resolved.buffer, cx) {
+                    mark_card_missing_language_server(
+                        &event_stream,
+                        &find_references_title(&input.symbol.symbol_name),
+                    );
+                    return Ok(no_language_server_message(
+                        "参照の検索",
+                        &input.symbol.file_path,
+                    ));
+                }
                 return Ok(format!(
                     "No references found for '{}'.",
                     input.symbol.symbol_name
@@ -99,4 +114,8 @@ impl AgentTool for FindReferencesTool {
             Ok(output)
         })
     }
+}
+
+fn find_references_title(symbol_name: &str) -> String {
+    format!("`{symbol_name}` の参照を検索")
 }

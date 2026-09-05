@@ -7,16 +7,19 @@
 
 use editor::actions::{Backtab, MoveLeft, MoveRight, Paste, Tab};
 use editor::markdown_actions::{
-    MarkdownTable, MarkdownTableAlignment, MarkdownTableTarget, parse_clipboard_table,
+    MarkdownTable, MarkdownTableAlignment, MarkdownTableTarget, display_width,
+    parse_clipboard_table,
 };
 use editor::{Editor, MultiBufferOffset};
 use gpui::{
-    App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, ScrollHandle,
-    WeakEntity, Window,
+    App, ClickEvent, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    ScrollHandle, TextStyleRefinement, WeakEntity, Window,
 };
+use settings::Settings as _;
+use theme_settings::ThemeSettings;
 use ui::{
-    IconButtonShape, Modal, ModalFooter, ModalHeader, Section, Switch, SwitchLabelPosition,
-    ToggleState, Tooltip, prelude::*,
+    ButtonLike, IconButtonShape, Modal, ModalFooter, ModalHeader, Section, Switch,
+    SwitchLabelPosition, ToggleState, Tooltip, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Workspace};
@@ -303,23 +306,63 @@ impl TableEditor {
         }
     }
 
-    fn add_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Inserts a blank row, returning the index it actually landed at.
+    fn insert_row(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> usize {
+        let index = index.min(self.cells.len());
         let row = (0..self.column_count())
             .map(|_| new_cell_editor("", window, cx))
             .collect();
-        self.cells.push(row);
+        self.cells.insert(index, row);
         cx.notify();
+        index
     }
 
-    fn add_column(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.alignments.push(MarkdownTableAlignment::Unspecified);
+    /// Inserts a blank column, returning the index it actually landed at.
+    fn insert_column(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> usize {
+        let index = index.min(self.column_count());
+        self.alignments
+            .insert(index, MarkdownTableAlignment::Unspecified);
         for row in 0..self.cells.len() {
             let cell = new_cell_editor("", window, cx);
             if let Some(cells) = self.cells.get_mut(row) {
-                cells.push(cell);
+                let index = index.min(cells.len());
+                cells.insert(index, cell);
             }
         }
         cx.notify();
+        index
+    }
+
+    /// Asking a row for a neighbour is the start of typing into that neighbour,
+    /// so the caret follows the new row and keeps the column it was in.
+    fn insert_row_and_focus(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let (_, column) = self.focused_cell(window, cx);
+        let index = self.insert_row(index, window, cx);
+        self.focus_cell(index, column, window, cx);
+    }
+
+    fn insert_column_and_focus(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (row, _) = self.focused_cell(window, cx);
+        let index = self.insert_column(index, window, cx);
+        self.focus_cell(row, index, window, cx);
+    }
+
+    fn add_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.insert_row(self.cells.len(), window, cx);
+    }
+
+    fn add_column(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.insert_column(self.column_count(), window, cx);
     }
 
     fn remove_row(&mut self, row: usize, cx: &mut Context<Self>) {
@@ -372,6 +415,81 @@ impl TableEditor {
         if let Some(alignment) = self.alignments.get_mut(column) {
             *alignment = alignment.next_alignment();
             cx.notify();
+        }
+    }
+
+    /// The sizes the grid is drawn with, which follow the window as well as the
+    /// content: a table in a 4K window gets wide cells and a tall grid instead
+    /// of a dialog stranded in the middle of the screen, while a small window
+    /// keeps the sideways scrolling it had.
+    fn grid_metrics(&self, window: &Window, cx: &App) -> GridMetrics {
+        let settings = ThemeSettings::get_global(cx);
+        let font_size = settings.buffer_font_size(cx);
+        let font_id = window.text_system().resolve_font(&settings.buffer_font);
+        // A column width is only a layout hint, so a font the text system cannot
+        // measure falls back to a rough advance rather than failing the render.
+        let em_width = window
+            .text_system()
+            .em_width(font_id, font_size)
+            .unwrap_or(font_size * 0.6);
+
+        let rem_size = window.rem_size();
+        let viewport = window.viewport_size();
+        let minimum_column_width = MINIMUM_COLUMN_WIDTH.to_pixels(rem_size);
+        let maximum_column_width = MAXIMUM_COLUMN_WIDTH.to_pixels(rem_size);
+        let column_padding = COLUMN_PADDING.to_pixels(rem_size);
+
+        let mut column_widths = (0..self.column_count())
+            .map(|column| {
+                let widest_cell = self
+                    .cells
+                    .iter()
+                    .filter_map(|cells| cells.get(column))
+                    .map(|cell| display_width(&cell.read(cx).text(cx)))
+                    .max()
+                    .unwrap_or(0);
+                (em_width * widest_cell as f32 + column_padding)
+                    .max(minimum_column_width)
+                    .min(maximum_column_width)
+            })
+            .collect::<Vec<_>>();
+
+        let chrome_width = CELL_GAP.to_pixels(rem_size) * column_widths.len() as f32
+            + ROW_CONTROLS_WIDTH.to_pixels(rem_size)
+            + MODAL_HORIZONTAL_PADDING.to_pixels(rem_size);
+        let maximum_modal_width = viewport.width * MAXIMUM_WIDTH_FRACTION;
+        let minimum_modal_width = MINIMUM_MODAL_WIDTH
+            .to_pixels(rem_size)
+            .min(maximum_modal_width);
+        let modal_width = (column_widths.iter().sum::<Pixels>() + chrome_width)
+            .max(minimum_modal_width)
+            .min(maximum_modal_width);
+
+        // Room the content did not ask for goes to the cells rather than to a
+        // margin around them, which is what makes the grid feel bigger on a
+        // large display instead of only wider.
+        let available_for_columns = modal_width - chrome_width;
+        let requested_by_content = column_widths.iter().sum::<Pixels>();
+        if !column_widths.is_empty() && available_for_columns > requested_by_content {
+            let spare = (available_for_columns - requested_by_content) / column_widths.len() as f32;
+            for width in &mut column_widths {
+                *width = (*width + spare).min(maximum_column_width);
+            }
+        }
+
+        let grid_width = column_widths.iter().sum::<Pixels>()
+            + CELL_GAP.to_pixels(rem_size) * column_widths.len() as f32
+            + ROW_CONTROLS_WIDTH.to_pixels(rem_size);
+
+        let height_budget = viewport.height * MAXIMUM_HEIGHT_FRACTION;
+        let maximum_grid_height = (height_budget - MODAL_CHROME_HEIGHT.to_pixels(rem_size))
+            .max(MINIMUM_GRID_HEIGHT.to_pixels(rem_size).min(height_budget));
+
+        GridMetrics {
+            column_widths,
+            grid_width,
+            modal_width,
+            maximum_grid_height,
         }
     }
 
@@ -439,98 +557,159 @@ impl TableEditor {
             .into_any_element()
     }
 
-    fn render_column_controls(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_column_controls(&self, metrics: &GridMetrics, cx: &mut Context<Self>) -> AnyElement {
         let last_column = self.column_count().saturating_sub(1);
-        let mut row = h_flex().gap_1();
-        for column in 0..self.column_count() {
+        let mut row = h_flex().w(metrics.grid_width).flex_none().gap(CELL_GAP);
+        for (column, width) in metrics.column_widths.iter().copied().enumerate() {
             let alignment = self
                 .alignments
                 .get(column)
                 .copied()
                 .unwrap_or(MarkdownTableAlignment::Unspecified);
             row = row.child(
-                h_flex()
-                    .w(COLUMN_WIDTH)
+                v_flex()
+                    .w(width)
+                    .flex_none()
                     .gap_px()
+                    // The two insertion buttons sit against the edges of the
+                    // column they would insert next to, so their arrows point at
+                    // where the new column lands.
                     .child(
-                        Button::new(
-                            SharedString::from(format!("markdown-table-align-{column}")),
-                            alignment.label(),
-                        )
-                        .label_size(LabelSize::Small)
-                        .tooltip(Tooltip::text("列の配置 (クリックで 既定 → 左 → 中央 → 右)"))
-                        .on_click(cx.listener(
-                            move |this, _, _window, cx| {
-                                this.cycle_alignment(column, cx);
-                            },
-                        )),
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .child(insert_button(
+                                SharedString::from(format!(
+                                    "markdown-table-column-insert-left-{column}"
+                                )),
+                                IconName::ArrowLeft,
+                                "この列の左に列を挿入",
+                                false,
+                                cx.listener(move |this, _, window, cx| {
+                                    let index = column_insertion_index(column, InsertSide::Before);
+                                    this.insert_column_and_focus(index, window, cx);
+                                }),
+                            ))
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!("markdown-table-align-{column}")),
+                                    alignment.label(),
+                                )
+                                .label_size(LabelSize::Small)
+                                .tooltip(Tooltip::text(
+                                    "列の配置 (クリックで 既定 → 左 → 中央 → 右)",
+                                ))
+                                .on_click(cx.listener(
+                                    move |this, _, _window, cx| {
+                                        this.cycle_alignment(column, cx);
+                                    },
+                                )),
+                            )
+                            .child(insert_button(
+                                SharedString::from(format!(
+                                    "markdown-table-column-insert-right-{column}"
+                                )),
+                                IconName::ArrowRight,
+                                "この列の右に列を挿入",
+                                false,
+                                cx.listener(move |this, _, window, cx| {
+                                    let index = column_insertion_index(column, InsertSide::After);
+                                    this.insert_column_and_focus(index, window, cx);
+                                }),
+                            )),
                     )
                     .child(
-                        IconButton::new(
-                            SharedString::from(format!("markdown-table-column-left-{column}")),
-                            IconName::ArrowLeft,
-                        )
-                        .shape(IconButtonShape::Square)
-                        .icon_size(IconSize::XSmall)
-                        .disabled(column == 0)
-                        .tooltip(Tooltip::text("列を左へ移動"))
-                        .on_click(cx.listener(
-                            move |this, _, _window, cx| {
-                                this.swap_columns(column, column.saturating_sub(1), cx);
-                            },
-                        )),
-                    )
-                    .child(
-                        IconButton::new(
-                            SharedString::from(format!("markdown-table-column-right-{column}")),
-                            IconName::ArrowRight,
-                        )
-                        .shape(IconButtonShape::Square)
-                        .icon_size(IconSize::XSmall)
-                        .disabled(column == last_column)
-                        .tooltip(Tooltip::text("列を右へ移動"))
-                        .on_click(cx.listener(
-                            move |this, _, _window, cx| {
-                                this.swap_columns(column, column + 1, cx);
-                            },
-                        )),
-                    )
-                    .child(
-                        IconButton::new(
-                            SharedString::from(format!("markdown-table-column-remove-{column}")),
-                            IconName::Trash,
-                        )
-                        .shape(IconButtonShape::Square)
-                        .icon_size(IconSize::XSmall)
-                        .disabled(self.column_count() <= 1)
-                        .tooltip(Tooltip::text("列を削除"))
-                        .on_click(cx.listener(
-                            move |this, _, _window, cx| {
-                                this.remove_column(column, cx);
-                            },
-                        )),
+                        h_flex()
+                            .w_full()
+                            .justify_center()
+                            .gap_px()
+                            .child(
+                                IconButton::new(
+                                    SharedString::from(format!(
+                                        "markdown-table-column-left-{column}"
+                                    )),
+                                    IconName::ArrowLeft,
+                                )
+                                .shape(IconButtonShape::Square)
+                                .icon_size(IconSize::XSmall)
+                                .disabled(column == 0)
+                                .tooltip(Tooltip::text("列を左へ移動"))
+                                .on_click(cx.listener(
+                                    move |this, _, _window, cx| {
+                                        this.swap_columns(column, column.saturating_sub(1), cx);
+                                    },
+                                )),
+                            )
+                            .child(
+                                IconButton::new(
+                                    SharedString::from(format!(
+                                        "markdown-table-column-right-{column}"
+                                    )),
+                                    IconName::ArrowRight,
+                                )
+                                .shape(IconButtonShape::Square)
+                                .icon_size(IconSize::XSmall)
+                                .disabled(column == last_column)
+                                .tooltip(Tooltip::text("列を右へ移動"))
+                                .on_click(cx.listener(
+                                    move |this, _, _window, cx| {
+                                        this.swap_columns(column, column + 1, cx);
+                                    },
+                                )),
+                            )
+                            .child(
+                                IconButton::new(
+                                    SharedString::from(format!(
+                                        "markdown-table-column-remove-{column}"
+                                    )),
+                                    IconName::Trash,
+                                )
+                                .shape(IconButtonShape::Square)
+                                .icon_size(IconSize::XSmall)
+                                .disabled(self.column_count() <= 1)
+                                .tooltip(Tooltip::text("列を削除"))
+                                .on_click(cx.listener(
+                                    move |this, _, _window, cx| {
+                                        this.remove_column(column, cx);
+                                    },
+                                )),
+                            ),
                     ),
             );
         }
-        row.child(div().w(ROW_CONTROLS_WIDTH)).into_any_element()
+        row.child(div().w(ROW_CONTROLS_WIDTH).flex_none())
+            .into_any_element()
     }
 
-    fn render_row(&self, row: usize, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_row(
+        &self,
+        row: usize,
+        metrics: &GridMetrics,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let is_header = self.has_header && row == 0;
         let last_row = self.cells.len().saturating_sub(1);
         let border = cx.theme().colors().border;
         let border_focused = cx.theme().colors().border_focused;
         let header_background = cx.theme().colors().element_background;
+        let insert_above = row_insertion_index(row, InsertSide::Before, self.has_header);
+        let insert_below = row_insertion_index(row, InsertSide::After, self.has_header);
 
-        let mut line = h_flex().gap_1().mb_1();
-        for column in 0..self.column_count() {
+        let mut line = h_flex()
+            .w(metrics.grid_width)
+            .flex_none()
+            .gap(CELL_GAP)
+            .mb_1();
+        for (column, width) in metrics.column_widths.iter().copied().enumerate() {
             let Some(cell) = self.cell(row, column) else {
                 continue;
             };
             let focused = cell.focus_handle(cx).contains_focused(window, cx);
             line = line.child(
                 div()
-                    .w(COLUMN_WIDTH)
+                    .w(width)
+                    .flex_none()
                     .px_1()
                     .py_0p5()
                     .rounded_sm()
@@ -544,7 +723,37 @@ impl TableEditor {
         line.child(
             h_flex()
                 .w(ROW_CONTROLS_WIDTH)
+                .flex_none()
                 .gap_px()
+                .child(insert_button(
+                    SharedString::from(format!("markdown-table-row-insert-above-{row}")),
+                    IconName::ArrowUp,
+                    if insert_above.is_some() {
+                        "この行の上に行を挿入"
+                    } else {
+                        "ヘッダー行の上には行を挿入できません"
+                    },
+                    insert_above.is_none(),
+                    cx.listener(move |this, _, window, cx| {
+                        if let Some(index) = insert_above {
+                            this.insert_row_and_focus(index, window, cx);
+                        }
+                    }),
+                ))
+                .child(insert_button(
+                    SharedString::from(format!("markdown-table-row-insert-below-{row}")),
+                    IconName::ArrowDown,
+                    "この行の下に行を挿入",
+                    insert_below.is_none(),
+                    cx.listener(move |this, _, window, cx| {
+                        if let Some(index) = insert_below {
+                            this.insert_row_and_focus(index, window, cx);
+                        }
+                    }),
+                ))
+                // Keeps the insertion buttons from reading as a fifth arrow in
+                // the run of move buttons.
+                .child(div().w_1())
                 .child(
                     IconButton::new(
                         SharedString::from(format!("markdown-table-row-up-{row}")),
@@ -588,17 +797,22 @@ impl TableEditor {
         .into_any_element()
     }
 
-    fn render_grid(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let column_controls = self.render_column_controls(cx);
+    fn render_grid(
+        &self,
+        metrics: &GridMetrics,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let column_controls = self.render_column_controls(metrics, cx);
         let mut rows = Vec::with_capacity(self.cells.len());
         for row in 0..self.cells.len() {
-            rows.push(self.render_row(row, window, cx));
+            rows.push(self.render_row(row, metrics, window, cx));
         }
 
         v_flex()
             .id("markdown-table-grid")
             .mt_2()
-            .max_h(rems(22.))
+            .max_h(metrics.maximum_grid_height)
             .overflow_scroll()
             .track_scroll(&self.scroll_handle)
             .child(column_controls)
@@ -616,7 +830,7 @@ impl TableEditor {
 
         ModalFooter::new()
             .start_slot::<Button>(
-                Button::new("markdown-table-add-row", "行を追加")
+                Button::new("markdown-table-add-row", "末尾に行を追加")
                     .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
                     .on_click(cx.listener(|this, _, window, cx| this.add_row(window, cx))),
             )
@@ -624,7 +838,7 @@ impl TableEditor {
                 h_flex()
                     .gap_1()
                     .child(
-                        Button::new("markdown-table-add-column", "列を追加")
+                        Button::new("markdown-table-add-column", "末尾に列を追加")
                             .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.add_column(window, cx)),
@@ -647,14 +861,119 @@ impl TableEditor {
 
 /// Wide enough for a handful of Japanese characters without the grid needing to
 /// scroll sideways for an ordinary three column table.
-const COLUMN_WIDTH: Rems = Rems(9.5);
-/// Holds the three per-row buttons.
-const ROW_CONTROLS_WIDTH: Rems = Rems(5.);
+const MINIMUM_COLUMN_WIDTH: Rems = Rems(9.5);
+/// Past this a long cell scrolls inside its own editor, rather than pushing
+/// every other column out of the window.
+const MAXIMUM_COLUMN_WIDTH: Rems = Rems(24.);
+/// Room for the cell's own padding and the caret past its last glyph.
+const COLUMN_PADDING: Rems = Rems(1.5);
+/// The gap between two cells. Held as a constant because the grid's width is
+/// computed from it as well as laid out with it.
+const CELL_GAP: Rems = Rems(0.25);
+/// Holds the two insertion buttons and the three move and delete buttons.
+const ROW_CONTROLS_WIDTH: Rems = Rems(9.);
+/// The width the modal always had, kept as a floor so that a table of short
+/// cells does not open narrower than it used to.
+const MINIMUM_MODAL_WIDTH: Rems = Rems(56.);
+/// The modal's own horizontal padding, which the grid does not get to use.
+const MODAL_HORIZONTAL_PADDING: Rems = Rems(2.5);
+/// The header, toolbar and footer stacked around the scrolling grid.
+const MODAL_CHROME_HEIGHT: Rems = Rems(12.);
+/// Rather than show a single row, a window too short for the chrome lets the
+/// modal run past its height budget.
+const MINIMUM_GRID_HEIGHT: Rems = Rems(12.);
+/// How much of the window the modal may take.
+const MAXIMUM_WIDTH_FRACTION: f32 = 0.8;
+const MAXIMUM_HEIGHT_FRACTION: f32 = 0.7;
+
+/// The sizes [`TableEditor::grid_metrics`] works out for one frame.
+struct GridMetrics {
+    column_widths: Vec<Pixels>,
+    /// One line of the grid: every column, the gaps between them, and the
+    /// per-row controls.
+    grid_width: Pixels,
+    modal_width: Pixels,
+    maximum_grid_height: Pixels,
+}
+
+/// Which side of an existing row or column a new one is inserted on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InsertSide {
+    Before,
+    After,
+}
+
+/// The index a row inserted on `side` of `row` takes, or `None` when the
+/// insertion is not offered.
+///
+/// A header is simply the table's first row, so a row inserted above it would
+/// become the header and demote the one the user wrote. That is refused rather
+/// than quietly turned into an insertion below the header.
+fn row_insertion_index(row: usize, side: InsertSide, has_header: bool) -> Option<usize> {
+    match side {
+        InsertSide::Before if has_header && row == 0 => None,
+        InsertSide::Before => Some(row),
+        InsertSide::After => Some(row + 1),
+    }
+}
+
+/// The index a column inserted on `side` of `column` takes. Columns have no
+/// header of their own, so both sides are always available.
+fn column_insertion_index(column: usize, side: InsertSide) -> usize {
+    match side {
+        InsertSide::Before => column,
+        InsertSide::After => column + 1,
+    }
+}
+
+/// A button whose plus sign and arrow read as "add one here, on this side", so
+/// that it cannot be mistaken for the move buttons beside it, which carry the
+/// same arrow on its own.
+fn insert_button(
+    id: impl Into<ElementId>,
+    direction: IconName,
+    tooltip: &'static str,
+    disabled: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> ButtonLike {
+    let color = if disabled {
+        Color::Disabled
+    } else {
+        Color::Muted
+    };
+    ButtonLike::new(id)
+        .size(ButtonSize::Compact)
+        .disabled(disabled)
+        .tooltip(Tooltip::text(tooltip))
+        .child(
+            h_flex()
+                .gap_px()
+                .child(
+                    Icon::new(IconName::Plus)
+                        .size(IconSize::XSmall)
+                        .color(color),
+                )
+                .child(Icon::new(direction).size(IconSize::XSmall).color(color)),
+        )
+        .on_click(on_click)
+}
 
 fn new_cell_editor(text: &str, window: &mut Window, cx: &mut App) -> Entity<Editor> {
+    let settings = ThemeSettings::get_global(cx);
+    // A single line editor is styled with the UI font at a fixed 0.875rem. Cells
+    // hold buffer text and the user already sized the buffer font to be
+    // readable, so follow that instead of the smaller UI text.
+    let text_style = TextStyleRefinement {
+        font_family: Some(settings.buffer_font.family.clone()),
+        font_features: Some(settings.buffer_font.features.clone()),
+        font_size: Some(settings.buffer_font_size(cx).into()),
+        font_weight: Some(settings.buffer_font.weight),
+        ..Default::default()
+    };
     cx.new(|cx| {
         let mut editor = Editor::single_line(window, cx);
         editor.set_text(text.to_string(), window, cx);
+        editor.set_text_style_refinement(text_style);
         editor
     })
 }
@@ -679,8 +998,9 @@ fn cell_length(editor: &Editor, cx: &App) -> usize {
 
 impl Render for TableEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let metrics = self.grid_metrics(window, cx);
         let toolbar = self.render_toolbar(cx);
-        let grid = self.render_grid(window, cx);
+        let grid = self.render_grid(&metrics, window, cx);
         let footer = self.render_footer(cx);
         let message = self.message.clone();
 
@@ -688,7 +1008,7 @@ impl Render for TableEditor {
             .key_context("MarkdownTableEditor")
             .track_focus(&self.focus_handle)
             .elevation_3(cx)
-            .w(rems(56.))
+            .w(metrics.modal_width)
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::confirm_moves_down))
@@ -735,5 +1055,34 @@ impl ModalView for TableEditor {
     /// against row anchors the buffer has moved on from.
     fn stash_when_dismissed(&self) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_row_insertion_index() {
+        assert_eq!(row_insertion_index(0, InsertSide::Before, false), Some(0));
+        assert_eq!(row_insertion_index(0, InsertSide::After, false), Some(1));
+        assert_eq!(row_insertion_index(2, InsertSide::Before, false), Some(2));
+        assert_eq!(row_insertion_index(2, InsertSide::After, false), Some(3));
+    }
+
+    #[test]
+    fn test_row_insertion_index_keeps_the_header_first() {
+        assert_eq!(row_insertion_index(0, InsertSide::Before, true), None);
+        assert_eq!(row_insertion_index(0, InsertSide::After, true), Some(1));
+        assert_eq!(row_insertion_index(1, InsertSide::Before, true), Some(1));
+        assert_eq!(row_insertion_index(1, InsertSide::After, true), Some(2));
+    }
+
+    #[test]
+    fn test_column_insertion_index() {
+        assert_eq!(column_insertion_index(0, InsertSide::Before), 0);
+        assert_eq!(column_insertion_index(0, InsertSide::After), 1);
+        assert_eq!(column_insertion_index(3, InsertSide::Before), 3);
+        assert_eq!(column_insertion_index(3, InsertSide::After), 4);
     }
 }

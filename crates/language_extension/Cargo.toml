@@ -29,5 +29,14 @@ tracing.workspace = true
 util.workspace = true
 ztracing.workspace = true
 
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+# The ADR-F22 / F27 tests build the denial an extension's download is refused
+# with, and the `LspAdapterDelegate` stub has to name these types.
+http_client.workspace = true
+semver.workspace = true
+task.workspace = true
+util = { workspace = true, features = ["test-support"] }
+
 [package.metadata.cargo-machete]
 ignored = ["tracing"]

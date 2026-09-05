@@ -166,6 +166,8 @@ impl DynLspInstaller for ExtensionLspAdapter {
         _: AsyncApp,
     ) -> LanguageServerBinaryLocations {
         async move {
+            let server_name = self.language_server_id.clone();
+            let status_delegate = delegate.clone();
             let ret = maybe!(async move {
                 let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
                 let command = self
@@ -251,6 +253,15 @@ impl DynLspInstaller for ExtensionLspAdapter {
                 })
             })
             .await;
+            // An extension does all of its fetching inside this call, so unlike
+            // a built-in adapter (whose downloader reports through
+            // `binary_fetch_failure`) nothing here ever told the registry the
+            // server had failed: the status bar stayed empty and an egress
+            // denial could not reach the ADR-F22 consent prompt. Classify the
+            // failure the same way the built-in path does.
+            if let Err(error) = &ret {
+                status_delegate.update_status(server_name, language::binary_fetch_failure(error));
+            }
             (ret, None)
         }
         .boxed_local()
@@ -762,4 +773,350 @@ fn test_build_code_label_with_invalid_ranges() {
         &language::PLAIN_TEXT,
     );
     assert!(label.is_none());
+}
+
+#[cfg(test)]
+mod language_server_failure_tests {
+    use super::*;
+    use extension::{
+        BuildTaskTemplate, CodeLabel as ExtensionCodeLabel, Command as ExtensionCommand,
+        Completion, ContextServerConfiguration, DebugAdapterBinary, DebugRequest, DebugScenario,
+        DebugTaskDefinition, ExtensionManifest, KeyValueStoreDelegate, ProjectDelegate,
+        SlashCommand, SlashCommandArgumentCompletion, SlashCommandOutput,
+        StartDebuggingRequestArgumentsRequest, Symbol,
+    };
+    use gpui::TestAppContext;
+    use language::BinaryStatus;
+    use std::sync::Mutex;
+    use task::{SpawnInTerminal, ZedDebugConfig};
+
+    /// An extension whose language server command always fails, which is the
+    /// only path these tests exercise; everything else is unreachable.
+    struct FailingExtension {
+        error: String,
+    }
+
+    #[async_trait]
+    impl Extension for FailingExtension {
+        fn manifest(&self) -> Arc<ExtensionManifest> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        fn work_dir(&self) -> Arc<Path> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn language_server_command(
+            &self,
+            _: LanguageServerName,
+            _: LanguageName,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<ExtensionCommand> {
+            Err(anyhow::anyhow!(self.error.clone()))
+        }
+
+        async fn language_server_initialization_options(
+            &self,
+            _: LanguageServerName,
+            _: LanguageName,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<Option<String>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn language_server_workspace_configuration(
+            &self,
+            _: LanguageServerName,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<Option<String>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn language_server_initialization_options_schema(
+            &self,
+            _: LanguageServerName,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<Option<String>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn language_server_workspace_configuration_schema(
+            &self,
+            _: LanguageServerName,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<Option<String>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn language_server_additional_initialization_options(
+            &self,
+            _: LanguageServerName,
+            _: LanguageServerName,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<Option<String>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn language_server_additional_workspace_configuration(
+            &self,
+            _: LanguageServerName,
+            _: LanguageServerName,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<Option<String>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn labels_for_completions(
+            &self,
+            _: LanguageServerName,
+            _: Vec<Completion>,
+        ) -> Result<Vec<Option<ExtensionCodeLabel>>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn labels_for_symbols(
+            &self,
+            _: LanguageServerName,
+            _: Vec<Symbol>,
+        ) -> Result<Vec<Option<ExtensionCodeLabel>>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn complete_slash_command_argument(
+            &self,
+            _: SlashCommand,
+            _: Vec<String>,
+        ) -> Result<Vec<SlashCommandArgumentCompletion>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn run_slash_command(
+            &self,
+            _: SlashCommand,
+            _: Vec<String>,
+            _: Option<Arc<dyn WorktreeDelegate>>,
+        ) -> Result<SlashCommandOutput> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn context_server_command(
+            &self,
+            _: Arc<str>,
+            _: Arc<dyn ProjectDelegate>,
+        ) -> Result<ExtensionCommand> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn context_server_configuration(
+            &self,
+            _: Arc<str>,
+            _: Arc<dyn ProjectDelegate>,
+        ) -> Result<Option<ContextServerConfiguration>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn suggest_docs_packages(&self, _: Arc<str>) -> Result<Vec<String>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn index_docs(
+            &self,
+            _: Arc<str>,
+            _: Arc<str>,
+            _: Arc<dyn KeyValueStoreDelegate>,
+        ) -> Result<()> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn get_dap_binary(
+            &self,
+            _: Arc<str>,
+            _: DebugTaskDefinition,
+            _: Option<PathBuf>,
+            _: Arc<dyn WorktreeDelegate>,
+        ) -> Result<DebugAdapterBinary> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn dap_request_kind(
+            &self,
+            _: Arc<str>,
+            _: serde_json::Value,
+        ) -> Result<StartDebuggingRequestArgumentsRequest> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn dap_config_to_scenario(&self, _: ZedDebugConfig) -> Result<DebugScenario> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn dap_locator_create_scenario(
+            &self,
+            _: String,
+            _: BuildTaskTemplate,
+            _: String,
+            _: String,
+        ) -> Result<Option<DebugScenario>> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn run_dap_locator(&self, _: String, _: SpawnInTerminal) -> Result<DebugRequest> {
+            unimplemented!("only the failing path is exercised")
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingDelegate {
+        statuses: Mutex<Vec<(LanguageServerName, BinaryStatus)>>,
+    }
+
+    #[async_trait]
+    impl LspAdapterDelegate for RecordingDelegate {
+        fn show_notification(&self, _: &str, _: &mut gpui::App) {}
+
+        fn http_client(&self) -> Arc<dyn http_client::HttpClient> {
+            unimplemented!("the extension never reaches the network in these tests")
+        }
+
+        fn worktree_id(&self) -> project::WorktreeId {
+            project::WorktreeId::from_usize(0)
+        }
+
+        fn worktree_root_path(&self) -> &Path {
+            Path::new("/")
+        }
+
+        fn resolve_relative_path(&self, path: PathBuf) -> PathBuf {
+            path
+        }
+
+        fn update_status(&self, language: LanguageServerName, status: BinaryStatus) {
+            self.statuses
+                .lock()
+                .expect("no other thread panics while holding this")
+                .push((language, status));
+        }
+
+        fn registered_lsp_adapters(&self) -> Vec<Arc<dyn LspAdapter>> {
+            Vec::new()
+        }
+
+        async fn language_server_download_dir(&self, _: &LanguageServerName) -> Result<Arc<Path>> {
+            unimplemented!("an extension brings its own download directory")
+        }
+
+        async fn npm_package_installed_version(
+            &self,
+            _: &str,
+        ) -> Result<Option<(PathBuf, semver::Version)>> {
+            Ok(None)
+        }
+
+        async fn which(&self, _: &std::ffi::OsStr) -> Option<PathBuf> {
+            None
+        }
+
+        async fn shell_env(&self) -> collections::HashMap<String, String> {
+            collections::HashMap::default()
+        }
+
+        async fn read_text_file(&self, _: &RelPath) -> Result<String> {
+            unimplemented!("only the failing path is exercised")
+        }
+
+        async fn try_exec(&self, _: LanguageServerBinary) -> Result<()> {
+            unimplemented!("only the failing path is exercised")
+        }
+    }
+
+    async fn statuses_after_failure(
+        error: &str,
+        cx: &mut TestAppContext,
+    ) -> Vec<(LanguageServerName, BinaryStatus)> {
+        let server_name = LanguageServerName("some-extension-server".into());
+        let adapter = Arc::new(ExtensionLspAdapter::new(
+            Arc::new(FailingExtension {
+                error: error.to_string(),
+            }),
+            server_name.clone(),
+            LanguageName::new("Some Language"),
+        ));
+        let delegate = Arc::new(RecordingDelegate::default());
+        let cached_binary = Arc::new(futures::lock::Mutex::new(None)).lock_owned().await;
+
+        let (binary, downloader) = adapter
+            .get_language_server_command(
+                delegate.clone() as Arc<dyn LspAdapterDelegate>,
+                None,
+                LanguageServerBinaryOptions {
+                    allow_path_lookup: true,
+                    allow_binary_download: true,
+                    pre_release: false,
+                },
+                cached_binary,
+                cx.to_async(),
+            )
+            .await;
+        assert!(binary.is_err(), "the fake extension always fails");
+        assert!(
+            downloader.is_none(),
+            "an extension has no separate download"
+        );
+
+        let statuses = delegate
+            .statuses
+            .lock()
+            .expect("no other thread panics while holding this")
+            .clone();
+        statuses
+    }
+
+    /// An extension does all of its fetching inside
+    /// `get_language_server_command`, so nothing else ever reported the
+    /// failure: the status bar stayed empty and the ADR-F22 consent prompt
+    /// could not fire.
+    #[gpui::test]
+    async fn an_extension_server_failure_reaches_the_status_registry(cx: &mut TestAppContext) {
+        let statuses = statuses_after_failure("no release matching this platform", cx).await;
+        assert_eq!(statuses.len(), 1, "{statuses:?}");
+        match &statuses[0] {
+            (name, BinaryStatus::Failed { error }) => {
+                assert_eq!(name.0.as_ref(), "some-extension-server");
+                assert!(
+                    error.contains("no release matching this platform"),
+                    "{error}"
+                );
+            }
+            other => panic!("expected a plain failure, got {other:?}"),
+        }
+    }
+
+    /// ADR-F27: the denial happened inside the WASM guest and reached us as a
+    /// string, so only the marker line can put it back on the consent flow.
+    #[gpui::test]
+    async fn an_extension_server_refused_by_the_allowlist_offers_consent(cx: &mut TestAppContext) {
+        let denied = http_client::EgressDenied {
+            host: "github.com".to_string(),
+            url: "https://github.com/some/extension/releases".to_string(),
+        };
+        let statuses = statuses_after_failure(
+            &format!(
+                "failed to install language server: {}\n{denied}",
+                http_client::egress_denied_marker_line(&denied)
+            ),
+            cx,
+        )
+        .await;
+        assert_eq!(statuses.len(), 1, "{statuses:?}");
+        match &statuses[0] {
+            (_, BinaryStatus::EgressDenied { hosts, .. }) => {
+                assert!(hosts.contains(&"github.com".to_string()), "{hosts:?}");
+                assert!(
+                    hosts.contains(&"objects.githubusercontent.com".to_string()),
+                    "{hosts:?}"
+                );
+            }
+            other => panic!("expected an egress denial, got {other:?}"),
+        }
+    }
 }

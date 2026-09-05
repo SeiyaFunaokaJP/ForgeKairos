@@ -20,10 +20,11 @@ use futures::{
     select, select_biased,
 };
 use git::GitHostingProviderRegistry;
-use gpui::{App, AppContext as _, Context, Entity, UpdateGlobal as _};
+use gpui::{App, AppContext as _, Context, Entity, TaskExt as _, UpdateGlobal as _};
 use gpui_tokio::Tokio;
 use http_client::{
-    AllowlistedHttpClient, EgressPolicyHandle, HttpClient, Url, read_proxy_from_env,
+    AllowlistedHttpClient, AsyncBody, EgressPolicyHandle, HttpClient, RemoteProxyHttpClient,
+    Request, Response, Url, read_proxy_from_env,
 };
 use language::LanguageRegistry;
 use net::async_net::{UnixListener, UnixStream};
@@ -33,7 +34,7 @@ use project::{project_settings::ProjectSettings, trusted_worktrees};
 use proto::CrashReport;
 use release_channel::{AppCommitSha, AppVersion, RELEASE_CHANNEL, ReleaseChannel};
 use remote::{
-    RemoteClient,
+    ProxyHttpRelay, RemoteClient,
     json_log::LogRecord,
     protocol::{read_message, write_message},
     proxy::ProxyLaunchError,
@@ -41,7 +42,7 @@ use remote::{
 use reqwest_client::ReqwestClient;
 use rpc::proto::{self, Envelope, REMOTE_SERVER_PROJECT_ID};
 use rpc::{AnyProtoClient, TypedEnvelope};
-use settings::{Settings, SettingsStore, watch_config_file};
+use settings::{RegisterSetting, Settings, SettingsStore, watch_config_file};
 use smol::{
     Timer,
     channel::{Receiver, Sender},
@@ -55,7 +56,10 @@ use std::{
     mem,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::{Arc, LazyLock},
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Instant,
 };
 use thiserror::Error;
@@ -732,6 +736,12 @@ pub fn execute_run(
 
         json_schema_store::init(cx);
 
+        // ADR-F27 (DESIGN.md §4.27). Built before the project because the
+        // response handler has to be registered on the session before this
+        // host's HTTP client can make its first request.
+        let proxy_http_transport = ProxyHttpRelay::new(&session, cx);
+        let relay_http_through_client = watch_relay_http_setting(cx);
+
         let project = cx.new(|cx| {
             let fs = Arc::new(RealFs::new(None, cx.background_executor().clone()));
             let node_settings_rx = initialize_settings(session.clone(), fs.clone(), cx);
@@ -747,19 +757,29 @@ pub fn execute_run(
             // `HeadlessProject::handle_set_egress_allowlist`.
             let http_client: Arc<dyn HttpClient> = {
                 let _guard = Tokio::handle(cx).enter();
-                Arc::new(AllowlistedHttpClient::new(
-                    Arc::new(
-                        ReqwestClient::proxy_and_user_agent(
-                            proxy_url,
-                            &format!(
-                                "Zed-Server/{} ({}; {})",
-                                env!("CARGO_PKG_VERSION"),
-                                std::env::consts::OS,
-                                std::env::consts::ARCH
-                            ),
-                        )
+                let user_agent = format!(
+                    "Zed-Server/{} ({}; {})",
+                    env!("CARGO_PKG_VERSION"),
+                    std::env::consts::OS,
+                    std::env::consts::ARCH
+                );
+                let direct = Arc::new(
+                    ReqwestClient::proxy_and_user_agent(proxy_url, &user_agent)
                         .expect("Could not start HTTP client"),
-                    ),
+                );
+                // ADR-F27: this host may have no route to the internet at all,
+                // in which case its downloads only work by going through the
+                // IDE. The allowlist check stays on the outside either way, so
+                // a request refused here never leaves this machine.
+                Arc::new(AllowlistedHttpClient::new(
+                    Arc::new(RemoteHttpClient {
+                        relay: RemoteProxyHttpClient::new(
+                            proxy_http_transport,
+                            direct.user_agent().cloned(),
+                        ),
+                        direct,
+                        relay_enabled: relay_http_through_client,
+                    }),
                     EgressPolicyHandle::default(),
                 ))
             };
@@ -792,7 +812,7 @@ pub fn execute_run(
             cleanup_old_binaries_wsl();
             cleanup_old_binaries()
         })
-        .detach();
+        .detach_and_log_err(cx);
 
         mem::forget(project);
     };
@@ -1364,6 +1384,82 @@ pub fn handle_settings_file_changes(
         }
     })
     .detach();
+}
+
+/// Whether this host relays its outgoing HTTP through the connected IDE
+/// (ADR-F27, `docs/jp-enhance/DESIGN.md` §4.27).
+///
+/// The setting is written on the client and reaches this process with the rest
+/// of the user settings, so it is not readable when the HTTP client is built —
+/// which is why [`RemoteHttpClient`] consults it per request instead.
+#[derive(Clone, Debug, PartialEq, RegisterSetting)]
+pub struct RemoteHostSettings {
+    pub relay_http_through_client: bool,
+}
+
+impl Settings for RemoteHostSettings {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        let remote_host = content.remote_host.clone().unwrap_or_default();
+        Self {
+            relay_http_through_client: remote_host.relay_http_through_client.unwrap_or(true),
+        }
+    }
+}
+
+/// Sends this host's HTTP either through the IDE (ADR-F27) or straight out of
+/// this machine, deciding per request.
+///
+/// Deciding per request rather than at construction is what makes the setting
+/// take effect without a reconnect: the client pushes its settings after the
+/// connection is up, and pushes them again whenever they change.
+struct RemoteHttpClient {
+    relay: RemoteProxyHttpClient,
+    direct: Arc<dyn HttpClient>,
+    relay_enabled: Arc<AtomicBool>,
+}
+
+impl HttpClient for RemoteHttpClient {
+    fn user_agent(&self) -> Option<&http_client::http::HeaderValue> {
+        self.direct.user_agent()
+    }
+
+    fn proxy(&self) -> Option<&Url> {
+        self.direct.proxy()
+    }
+
+    fn send(
+        &self,
+        request: Request<AsyncBody>,
+    ) -> futures::future::BoxFuture<'static, Result<Response<AsyncBody>>> {
+        if self.relay_enabled.load(Ordering::Relaxed) {
+            self.relay.send(request)
+        } else {
+            self.direct.send(request)
+        }
+    }
+}
+
+/// Tracks `remote.relay_http_through_client` for [`RemoteHttpClient`].
+///
+/// Starts out on, which is both the setting's default and the safe answer for
+/// the window before the client has pushed anything: a host with no internet
+/// access would otherwise spend that window failing downloads it could have
+/// relayed.
+fn watch_relay_http_setting(cx: &mut App) -> Arc<AtomicBool> {
+    let enabled = Arc::new(AtomicBool::new(true));
+    cx.observe_global::<SettingsStore>({
+        let enabled = enabled.clone();
+        move |cx| {
+            let relay = RemoteHostSettings::get_global(cx).relay_http_through_client;
+            if enabled.swap(relay, Ordering::Relaxed) != relay {
+                log::info!(
+                    "relaying this host's HTTP through the connected IDE (ADR-F27): {relay}"
+                );
+            }
+        }
+    })
+    .detach();
+    enabled
 }
 
 fn read_proxy_settings(cx: &mut Context<HeadlessProject>) -> Option<Url> {

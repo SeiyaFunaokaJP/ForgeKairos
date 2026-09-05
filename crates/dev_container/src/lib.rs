@@ -95,6 +95,7 @@ fn get_safe_id(input: &str) -> String {
     result
 }
 
+#[derive(Clone)]
 pub struct DevContainerContext {
     pub project_directory: Arc<Path>,
     pub use_podman: bool,

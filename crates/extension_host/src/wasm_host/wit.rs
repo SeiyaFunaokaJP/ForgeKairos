@@ -1279,3 +1279,47 @@ impl<T> ToWasmtimeResult<T> for Result<T> {
         Ok(self.map_err(|error| format!("{error:?}")))
     }
 }
+
+/// Same as [`ToWasmtimeResult::to_wasmtime_result`], but keeps an egress denial
+/// recognizable after the WIT boundary has flattened the error into a string
+/// (ADR-F22 / ADR-F27).
+///
+/// The guest can only hand a `string` back, and every consumer of that string
+/// used to end up at `BinaryStatus::Failed` — so a download the fork's
+/// allowlist refused was reported as "failed to run" with an English cause and
+/// no way forward, while the identical failure in a built-in language server
+/// raised the consent prompt. Writing
+/// [`http_client::egress_denied_marker_line`] in front of the text is what lets
+/// [`language::binary_fetch_failure`] classify it the same way on the way back.
+fn to_wasmtime_result_preserving_egress_denial<T>(
+    result: Result<T>,
+) -> wasmtime::Result<Result<T, String>> {
+    Ok(result.map_err(|error| {
+        let text = format!("{error:?}");
+        match error
+            .chain()
+            .find_map(|error| error.downcast_ref::<http_client::EgressDenied>())
+        {
+            Some(denied) => {
+                format!("{}\n{text}", http_client::egress_denied_marker_line(denied))
+            }
+            None => text,
+        }
+    }))
+}
+
+/// Classifies the failure string a guest reports through
+/// `set-language-server-installation-status`, so an egress denial that
+/// originated in the guest's own `download-file` call reaches the ADR-F22
+/// consent flow instead of the plain failure path.
+///
+/// The message the user can open is left exactly as the guest wrote it; only
+/// the variant differs.
+fn language_server_installation_failure(error: String) -> language::BinaryStatus {
+    match language::binary_fetch_failure(&anyhow!(error.clone())) {
+        language::BinaryStatus::EgressDenied { hosts, .. } => {
+            language::BinaryStatus::EgressDenied { error, hosts }
+        }
+        _ => language::BinaryStatus::Failed { error },
+    }
+}

@@ -81,6 +81,13 @@ fn viewport_line_for_point(point: Point, display_offset: usize) -> Option<usize>
 
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
+/// Labels for the recording controls, shared by the menus and the tab bar
+/// toggle so both name the same command the same way. The one that opens a save
+/// dialog is the one that ends in `…`.
+pub(crate) const START_SESSION_LOG_LABEL: &str = "ログの記録を開始 (既定の保存先)";
+pub(crate) const CHOOSE_SESSION_LOG_PATH_LABEL: &str = "ログの記録を開始 (保存先を選ぶ)…";
+pub(crate) const STOP_SESSION_LOG_LABEL: &str = "ログの記録を停止";
+
 /// Event to transmit the scroll from the element to the view
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScrollTerminal(pub i32);
@@ -100,6 +107,8 @@ actions!(
     [
         /// Reruns the last executed task in the terminal.
         RerunTask,
+        /// ターミナルの出力の記録を、設定した保存先で開始または停止します。
+        ToggleSessionLog,
         /// ターミナルの出力をファイルに記録し始めます (保存先を選びます)。
         StartSessionLog,
         /// ターミナルの出力の記録を止めます。
@@ -752,6 +761,29 @@ impl TerminalView {
         })
     }
 
+    /// The one-click recording toggle behind `terminal::ToggleSessionLog` and
+    /// the tab bar button: no save dialog, the path comes from
+    /// `terminal.session_log`.
+    pub fn toggle_session_log(&mut self, cx: &mut Context<Self>) {
+        if self.session_log_path(cx).is_some() {
+            self.terminal.update(cx, |terminal, cx| {
+                terminal.stop_session_log(cx);
+            });
+        } else if let Err(error) = self.start_session_log_at_default_path(None, cx) {
+            self.report_error(format!("ログを開始できませんでした: {error}"), cx);
+        }
+        cx.notify();
+    }
+
+    fn toggle_session_log_action(
+        &mut self,
+        _: &ToggleSessionLog,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_session_log(cx);
+    }
+
     fn start_session_log(
         &mut self,
         _: &StartSessionLog,
@@ -1318,14 +1350,22 @@ impl TerminalView {
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.separator()
                         .when(!recording, |menu| {
-                            menu.action("ログの記録を開始…", Box::new(StartSessionLog))
+                            menu.action(START_SESSION_LOG_LABEL, Box::new(ToggleSessionLog))
+                                .action(CHOOSE_SESSION_LOG_PATH_LABEL, Box::new(StartSessionLog))
                         })
                         .when(recording, |menu| {
-                            menu.action("ログの記録を停止", Box::new(StopSessionLog))
+                            menu.action(STOP_SESSION_LOG_LABEL, Box::new(StopSessionLog))
                                 .action("ログをエディターで開く", Box::new(TailSessionLog))
                                 .action("ログファイルの場所を開く", Box::new(OpenSessionLog))
                         })
                         .action("マクロを実行…", Box::new(session_tools::RunMacro))
+                        // ADR-F28. The handler lives in the `file_transfer`
+                        // crate; dispatching the action keeps this crate free
+                        // of a dependency on it.
+                        .action(
+                            "ファイル転送…",
+                            Box::new(zed_actions::terminal::OpenFileTransfer::default()),
+                        )
                 })
                 .when(
                     assistant_enabled && !matches!(self.mode, TerminalMode::Embedded { .. }),
@@ -2019,7 +2059,12 @@ fn subscribe_for_terminal_events(
                     ),
                 },
                 Event::BreadcrumbsChanged => cx.emit(ItemEvent::UpdateBreadcrumbs),
-                Event::SessionLogChanged => cx.notify(),
+                // The tab's recording dot and the tab bar's recording toggle are
+                // drawn by the pane, which only redraws for `UpdateTab`.
+                Event::SessionLogChanged => {
+                    cx.notify();
+                    cx.emit(ItemEvent::UpdateTab);
+                }
                 Event::RemoteConnectionLost => {
                     cx.notify();
                     cx.emit(ItemEvent::UpdateTab);
@@ -2178,6 +2223,7 @@ impl Render for TerminalView {
             .on_action(cx.listener(TerminalView::select_all))
             .on_action(cx.listener(TerminalView::rerun_task))
             .on_action(cx.listener(TerminalView::rename_terminal))
+            .on_action(cx.listener(TerminalView::toggle_session_log_action))
             .on_action(cx.listener(TerminalView::start_session_log))
             .on_action(cx.listener(TerminalView::stop_session_log))
             .on_action(cx.listener(TerminalView::open_session_log))
@@ -2566,11 +2612,15 @@ impl Item for TerminalView {
             actions.push(("名前の変更".into(), Box::new(RenameTerminal)));
         }
         if terminal.session_log_path().is_some() {
-            actions.push(("ログの記録を停止".into(), Box::new(StopSessionLog)));
+            actions.push((STOP_SESSION_LOG_LABEL.into(), Box::new(StopSessionLog)));
             actions.push(("ログをエディターで開く".into(), Box::new(TailSessionLog)));
             actions.push(("ログファイルの場所を開く".into(), Box::new(OpenSessionLog)));
         } else {
-            actions.push(("ログの記録を開始…".into(), Box::new(StartSessionLog)));
+            actions.push((START_SESSION_LOG_LABEL.into(), Box::new(ToggleSessionLog)));
+            actions.push((
+                CHOOSE_SESSION_LOG_PATH_LABEL.into(),
+                Box::new(StartSessionLog),
+            ));
         }
         actions.push(("マクロを実行…".into(), Box::new(session_tools::RunMacro)));
         actions

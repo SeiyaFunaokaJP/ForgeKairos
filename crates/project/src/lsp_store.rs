@@ -177,6 +177,11 @@ const SERVER_LAUNCHING_BEFORE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5
 pub const SERVER_PROGRESS_THROTTLE_TIMEOUT: Duration = Duration::from_millis(100);
 const WORKSPACE_DIAGNOSTICS_TOKEN_START: &str = "id:";
 const SERVER_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10);
+/// A first-time download has no cached binary to fall back to, so it gets far
+/// longer than the background refresh before the user is told to retry: a
+/// 50 MB clangd over a relayed SSH link (ADR-F27) can legitimately take a
+/// couple of minutes.
+const FIRST_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(180);
 static NEXT_PROMPT_REQUEST_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// Refresh messages carry a monotonic id for backwards compatibility only: older peers
@@ -833,11 +838,53 @@ impl LocalLspStore {
                 .await
                 .await;
 
-            delegate.update_status(adapter.name.clone(), BinaryStatus::None);
+            // Clearing unconditionally erased a failure that
+            // `get_language_server_command` had just reported: an extension
+            // does all of its work in that call (a built-in adapter's download
+            // is still pending here), so the status bar showed nothing at all
+            // and the ADR-F22 consent prompt never fired. Only clear when work
+            // either succeeded or is still to come.
+            if existing_binary.is_ok() || maybe_download_binary.is_some() {
+                delegate.update_status(adapter.name.clone(), BinaryStatus::None);
+            }
 
             let mut binary = match (existing_binary, maybe_download_binary) {
                 (binary, None) => binary?,
-                (Err(_), Some(downloader)) => downloader.await?,
+                (Err(_), Some(downloader)) => {
+                    // Without a cached binary there is nothing to fall back to,
+                    // so this used to wait for the download forever — which on
+                    // a host that cannot reach the network at all (ADR-F27)
+                    // left "ダウンロード中..." in the status bar and no
+                    // diagnostics, with no indication that anything was wrong.
+                    // Give up after a generous first-download budget and let
+                    // the download finish in the background, so a retry finds
+                    // it in the cache.
+                    let mut download_timeout = cx
+                        .background_executor()
+                        .timer(FIRST_DOWNLOAD_TIMEOUT)
+                        .fuse();
+                    let mut downloader = downloader.fuse();
+                    futures::select! {
+                        _ = download_timeout => {
+                            cx.spawn(async move |_| {
+                                if let Err(error) = downloader.await {
+                                    log::warn!(
+                                        "background language server download failed: {error:#}"
+                                    );
+                                }
+                            })
+                            .detach();
+                            anyhow::bail!(
+                                "言語サーバー {} のダウンロードが {} 秒以内に完了しませんでした。\
+                                 ダウンロードは継続しているので、しばらく待ってから言語サーバーを\
+                                 再起動してください。",
+                                adapter.name,
+                                FIRST_DOWNLOAD_TIMEOUT.as_secs(),
+                            );
+                        },
+                        downloaded_binary = downloader => downloaded_binary?,
+                    }
+                }
                 (Ok(existing_binary), Some(downloader)) => {
                     let mut download_timeout = cx
                         .background_executor()
@@ -5629,6 +5676,18 @@ impl LspStore {
                     .then_some(*server_id)
             })
             .collect()
+    }
+
+    /// Whether any language server that could answer a request for `buffer` is
+    /// running.
+    ///
+    /// A language request against a buffer with no server comes back exactly
+    /// like one the server answered with nothing, so callers that report the
+    /// empty result to a user (or to a model) need this to tell the two apart.
+    pub fn has_language_server_for_buffer(&self, buffer: &Entity<Buffer>, cx: &App) -> bool {
+        !self
+            .relevant_server_ids_for_capability_check(buffer, cx)
+            .is_empty()
     }
 
     fn check_if_any_relevant_server_matches<F>(
@@ -15061,17 +15120,24 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
             .collect()
     }
 
-    async fn language_server_download_dir(&self, name: &LanguageServerName) -> Option<Arc<Path>> {
-        let dir = self.language_registry.language_server_download_dir(name)?;
+    async fn language_server_download_dir(&self, name: &LanguageServerName) -> Result<Arc<Path>> {
+        let dir = self
+            .language_registry
+            .language_server_download_dir(name)
+            .context("言語サーバーの保存先が設定されていません")?;
 
         if !dir.exists() {
+            // Swallowing this used to turn a full disk (or a read-only home)
+            // into "no language server download dir defined", which named the
+            // one thing that was not wrong. The reason has to reach the user:
+            // nothing else explains why every language server stopped working
+            // at once.
             smol::fs::create_dir_all(&dir)
                 .await
-                .context("failed to create container directory")
-                .log_err()?;
+                .map_err(|error| download_dir_creation_error(&dir, &error))?;
         }
 
-        Some(dir)
+        Ok(dir)
     }
 
     async fn read_text_file(&self, path: &RelPath) -> Result<String> {
@@ -15438,10 +15504,44 @@ fn expand_external_formatter_arguments(
     expanded
 }
 
+/// The user-facing reason a language server's download directory could not be
+/// made. Names the path and the operating system's own reason, because the two
+/// causes that produce it — a full disk and a directory the user cannot write —
+/// need different actions and nothing else in the failure distinguishes them.
+fn download_dir_creation_error(dir: &Path, error: &std::io::Error) -> anyhow::Error {
+    anyhow!(
+        "言語サーバーの保存先を作成できませんでした \
+         (ディスクの空き容量または権限を確認してください): {}: {error}",
+        dir.display()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use text::Point;
+
+    /// The disk filling up used to be swallowed by `.log_err()?` and reported
+    /// as "no language server download dir defined", which named the one thing
+    /// that was not wrong.
+    #[test]
+    fn a_download_directory_that_cannot_be_created_says_why_in_japanese() {
+        let error = download_dir_creation_error(
+            Path::new("/home/ubuntu/.local/share/zed/languages/clangd"),
+            &std::io::Error::new(std::io::ErrorKind::StorageFull, "No space left on device"),
+        );
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("言語サーバーの保存先を作成できませんでした"),
+            "{message}"
+        );
+        assert!(
+            message.contains("ディスクの空き容量または権限"),
+            "{message}"
+        );
+        assert!(message.contains("languages/clangd"), "{message}");
+        assert!(message.contains("No space left on device"), "{message}");
+    }
 
     #[test]
     fn should_log_lsp_request_failure_suppresses_known_noise() {

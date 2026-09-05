@@ -390,6 +390,23 @@ async fn build_remote_server_from_source(
     let cargo_path_env = ensure_cmake_available(cx).await?;
 
     let use_musl = !build_remote_server.contains("nomusl");
+    // Only the log gets the target triple. Shown in the connection dialog, the
+    // triple's `unknown` vendor field ("x86_64-unknown-linux-musl") reads as a
+    // defect rather than as Rust's name for "no vendor", and was reported as
+    // one; the same facts are spelled out for the user instead.
+    let platform_label = {
+        let libc = match (platform.os, use_musl) {
+            (RemoteOs::Linux, true) => "、musl",
+            (RemoteOs::Linux, false) => "、glibc",
+            _ => "",
+        };
+        format!(
+            "{} {}{}",
+            platform.os.display_name(),
+            platform.arch.as_str(),
+            libc
+        )
+    };
     let triple = format!(
         "{}-{}",
         platform.arch,
@@ -423,8 +440,16 @@ async fn build_remote_server_from_source(
     if platform.arch.as_str() == std::env::consts::ARCH
         && platform.os.as_str() == std::env::consts::OS
     {
-        delegate.set_status(Some("リモートサーバーをソースからビルドしています"), cx);
-        log::info!("building remote server binary from source");
+        delegate.set_status(
+            Some(&format!(
+                "開発ビルドのため、リモート開発サーバー ({platform_label} 向け) をソースからビルドしています"
+            )),
+            cx,
+        );
+        log::info!(
+            "building remote server binary from source for {triple} \
+             (dev build: release builds upload the bundled archive instead)"
+        );
         let mut command = new_command("cargo");
         command
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
@@ -460,7 +485,7 @@ async fn build_remote_server_from_source(
             Some("クロスコンパイル用の rustup ターゲットを追加しています"),
             cx,
         );
-        log::info!("adding rustup target");
+        log::info!("adding rustup target {triple}");
         run_cmd(new_command(rustup).args(["target", "add"]).arg(&triple)).await?;
 
         if which("cargo-zigbuild", cx).await?.is_none() {
@@ -474,11 +499,14 @@ async fn build_remote_server_from_source(
 
         delegate.set_status(
             Some(&format!(
-                "{triple} 向けのリモートサーバーを Zig でビルドしています"
+                "開発ビルドのため、リモート開発サーバー ({platform_label} 向け) を Zig でビルドしています"
             )),
             cx,
         );
-        log::info!("building remote binary from source for {triple} with Zig");
+        log::info!(
+            "building remote binary from source for {triple} with Zig \
+             (dev build: release builds upload the bundled archive instead)"
+        );
         let mut command = new_command("cargo");
         command
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
@@ -508,7 +536,7 @@ async fn build_remote_server_from_source(
         .with_extension(if platform.os.is_windows() { "exe" } else { "" });
 
     let path = if !build_remote_server.contains("nocompress") {
-        delegate.set_status(Some("バイナリを圧縮しています"), cx);
+        delegate.set_status(Some("リモート開発サーバーを圧縮しています"), cx);
 
         #[cfg(not(target_os = "windows"))]
         let archive_path = {

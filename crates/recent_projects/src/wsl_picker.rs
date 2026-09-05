@@ -1,6 +1,8 @@
 use std::{path::PathBuf, sync::Arc};
 
-use gpui::{AppContext, DismissEvent, Entity, EventEmitter, Focusable, Subscription, Task};
+use gpui::{
+    AppContext, DismissEvent, Entity, EventEmitter, Focusable, Subscription, Task, TaskExt,
+};
 use picker::Picker;
 use remote::{RemoteConnectionOptions, WslConnectionOptions};
 use ui::{
@@ -264,7 +266,7 @@ impl WslOpenModal {
         cx.spawn_in(window, async move |_, cx| {
             open_remote_project(connection_options, paths, app_state, open_options, cx).await
         })
-        .detach();
+        .detach_and_log_err(cx);
     }
 
     fn cancel(&mut self, _: &menu::Cancel, _: &mut Window, cx: &mut Context<Self>) {

@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt;
 
+use agent_client_protocol::schema::v1 as acp;
 use gpui::{App, AsyncApp, Entity};
 use language::{Buffer, Location};
 use project::{CodeAction, Project};
@@ -8,6 +9,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use text::ToPoint as _;
 use text::{Anchor, Point};
+
+use crate::ToolCallEventStream;
 
 /// Identifies a specific symbol (declaration or usage) in the source code.
 ///
@@ -27,6 +30,55 @@ pub struct SymbolLocator {
 pub struct PendingCodeActions {
     pub actions: Vec<CodeAction>,
     pub buffer: Entity<Buffer>,
+}
+
+/// Model-facing explanation for a language request that produced nothing
+/// because no language server is running for the file.
+///
+/// "The language server found nothing" and "there is no language server" reach
+/// the model as the same empty result, and small local models read the
+/// ambiguity as a broken editor setup — the report that prompted this had the
+/// model telling the user to install a VS Code extension instead of reporting
+/// what actually happened. So state the fact, name the two causes this fork
+/// actually produces (nothing installed, or the download refused by the egress
+/// allowlist — ADR-F22), rule out the wrong fix, and give the next step.
+pub fn no_language_server_message(action: &str, file_path: &str) -> String {
+    format!(
+        "{action}できませんでした: `{file_path}` に対応する言語サーバーが起動していません \
+         (この言語の言語サーバーが未インストールか、外部通信の許可リストでダウンロードが\
+         拒否されました)。これはエディターや LSP の設定を変更しても解決しません。言語\
+         サーバーのインストール、または「ネットワーク許可リスト」設定への追加が必要である\
+         ことを、まずユーザーに伝えてください。そのうえで、シンボルを探すだけなら `grep` \
+         ツールを使ってください。書き換えが必要な場合は `grep` で全出現箇所を確認してから \
+         `edit_file` を使い、意味解析なしの単純な文字列置換であることをユーザーに明示して\
+         ください。"
+    )
+}
+
+/// Retitles a tool call's card to say that it found no language server.
+///
+/// The explanation itself lands in the tool's output, which the card keeps
+/// collapsed, so without this the user sees a search that merely looks like it
+/// found nothing — and this is a state only the user can fix (install the
+/// language server, or allow its download).
+pub fn mark_card_missing_language_server(event_stream: &ToolCallEventStream, title: &str) {
+    event_stream.update_fields(
+        acp::ToolCallUpdateFields::new().title(format!("{title} (言語サーバーなし)")),
+    );
+}
+
+/// Whether any language server that could answer a request for `buffer` is
+/// running. Callers use this only to explain an empty result, never to skip
+/// the request: a server that exists but has not finished attaching to a
+/// freshly opened buffer would otherwise be reported as missing.
+pub fn has_language_server(
+    project: &Entity<Project>,
+    buffer: &Entity<Buffer>,
+    cx: &AsyncApp,
+) -> bool {
+    project.read_with(cx, |project, cx| {
+        project.has_language_server_for_buffer(buffer, cx)
+    })
 }
 
 pub type CodeActionStore = Entity<Option<PendingCodeActions>>;

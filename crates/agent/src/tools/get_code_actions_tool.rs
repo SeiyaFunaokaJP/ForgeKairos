@@ -7,7 +7,10 @@ use project::Project;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::symbol_locator::{CodeActionStore, PendingCodeActions, SymbolLocator};
+use super::symbol_locator::{
+    CodeActionStore, PendingCodeActions, SymbolLocator, has_language_server,
+    mark_card_missing_language_server, no_language_server_message,
+};
 use crate::{AgentTool, ToolCallEventStream, ToolInput};
 
 /// Gets the list of available code actions at a symbol location from the language server.
@@ -17,6 +20,8 @@ use crate::{AgentTool, ToolCallEventStream, ToolInput};
 /// Returns a numbered list of available actions. Use apply_code_action with the corresponding number to apply one.
 ///
 /// Before using this tool, use read_file or grep to find the exact symbol name and line number.
+///
+/// This tool needs a running language server for the file's language, so it cannot work in a language that has none. When it reports that, relay that fact to the user instead of guessing at editor configuration.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetCodeActionsToolInput {
     /// The symbol to get code actions for.
@@ -53,7 +58,7 @@ impl AgentTool for GetCodeActionsTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("`{}` のコードアクションを取得", input.symbol.symbol_name).into()
+            get_code_actions_title(&input.symbol.symbol_name).into()
         } else {
             "コードアクションを取得".into()
         }
@@ -62,7 +67,7 @@ impl AgentTool for GetCodeActionsTool {
     fn run(
         self: Arc<Self>,
         input: ToolInput<Self::Input>,
-        _event_stream: ToolCallEventStream,
+        event_stream: ToolCallEventStream,
         cx: &mut App,
     ) -> Task<Result<String, String>> {
         let project = self.project.clone();
@@ -87,6 +92,16 @@ impl AgentTool for GetCodeActionsTool {
 
             if actions.is_empty() {
                 store.update(cx, |store, _cx| *store = None);
+                if !has_language_server(&project, &resolved.buffer, cx) {
+                    mark_card_missing_language_server(
+                        &event_stream,
+                        &get_code_actions_title(&input.symbol.symbol_name),
+                    );
+                    return Ok(no_language_server_message(
+                        "コードアクションの取得",
+                        &input.symbol.file_path,
+                    ));
+                }
                 return Ok(format!(
                     "No code actions available for '{}' at this location.",
                     input.symbol.symbol_name
@@ -113,4 +128,8 @@ impl AgentTool for GetCodeActionsTool {
             Ok(output)
         })
     }
+}
+
+fn get_code_actions_title(symbol_name: &str) -> String {
+    format!("`{symbol_name}` のコードアクションを取得")
 }

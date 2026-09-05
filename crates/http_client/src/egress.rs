@@ -736,6 +736,52 @@ impl fmt::Display for EgressDenied {
 
 impl std::error::Error for EgressDenied {}
 
+/// Opening token of the line [`egress_denied_marker_line`] writes, and the
+/// needle [`egress_denied_from_message`] looks for.
+///
+/// Deliberately not a word that occurs in prose: the decoder searches for it
+/// anywhere in a message, because the layer that flattened the error may have
+/// wrapped the marked text in its own (`format!("failed to install: {error}")`).
+pub const EGRESS_DENIED_MARKER: &str = "zed:egress-denied";
+
+/// Renders an [`EgressDenied`] as one line that survives a boundary which turns
+/// errors into plain strings — the extension WASM host (`wasm_host/wit.rs`) and
+/// ADR-F27's HTTP relay, both of which lose the error chain and with it every
+/// `downcast_ref` a consent flow depends on.
+///
+/// Written in front of the human-readable text rather than instead of it, so a
+/// reader who only sees the string still sees the original error.
+///
+/// Neither field can contain a space or a newline (a host has none by
+/// construction, and a URL that did would not have parsed), so the line is
+/// unambiguous to split back apart.
+pub fn egress_denied_marker_line(denied: &EgressDenied) -> String {
+    format!("{EGRESS_DENIED_MARKER} {} {}", denied.host, denied.url)
+}
+
+/// Rebuilds the [`EgressDenied`] that [`egress_denied_marker_line`] wrote into
+/// `message`, or `None` when the message carries no marker.
+///
+/// Callers put the result back on an `anyhow` chain (or hand it straight to
+/// [`egress_denied_hosts`]) so a denial that crossed a stringifying boundary is
+/// classified exactly like one that did not.
+pub fn egress_denied_from_message(message: &str) -> Option<EgressDenied> {
+    let start = message.find(EGRESS_DENIED_MARKER)?;
+    let line = message[start + EGRESS_DENIED_MARKER.len()..]
+        .lines()
+        .next()?;
+    let mut fields = line.split_whitespace();
+    let host = fields.next()?;
+    let url = fields.next()?;
+    if host.is_empty() || url.is_empty() {
+        return None;
+    }
+    Some(EgressDenied {
+        host: host.to_string(),
+        url: url.to_string(),
+    })
+}
+
 /// Scheme, host, port and path only. The query string and any userinfo are
 /// dropped because API keys live there and this string reaches the log and the
 /// error surfaced to the user.
@@ -1300,6 +1346,41 @@ mod tests {
         // A failure with some other cause must not raise a consent prompt.
         assert_eq!(
             egress_denied_hosts(&anyhow::anyhow!("connection reset by peer")),
+            None,
+        );
+    }
+
+    #[test]
+    fn a_marked_message_restores_the_denial_a_stringifying_boundary_dropped() {
+        let denied = EgressDenied {
+            host: "github.com".to_string(),
+            url: "https://github.com/clangd/clangd/releases/download/18.1.3/clangd.zip".to_string(),
+        };
+        // What the extension WASM host hands the guest, and what the guest
+        // hands back wrapped in its own text.
+        let flattened = format!(
+            "failed to install language server: {}\n{denied}",
+            egress_denied_marker_line(&denied)
+        );
+
+        assert_eq!(egress_denied_from_message(&flattened), Some(denied));
+        assert_eq!(
+            egress_denied_from_message(&flattened)
+                .and_then(|denied| egress_denied_hosts(&anyhow::Error::new(denied))),
+            Some(vec![
+                "github.com".to_string(),
+                "release-assets.githubusercontent.com".to_string(),
+                "objects.githubusercontent.com".to_string(),
+            ]),
+        );
+
+        assert_eq!(
+            egress_denied_from_message("download failed with status 500"),
+            None,
+        );
+        assert_eq!(egress_denied_from_message(EGRESS_DENIED_MARKER), None);
+        assert_eq!(
+            egress_denied_from_message(&format!("{EGRESS_DENIED_MARKER} github.com")),
             None,
         );
     }

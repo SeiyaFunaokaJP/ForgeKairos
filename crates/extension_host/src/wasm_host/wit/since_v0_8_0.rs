@@ -1050,7 +1050,9 @@ impl ExtensionImports for WasmState {
             LanguageServerInstallationStatus::CheckingForUpdate => BinaryStatus::CheckingForUpdate,
             LanguageServerInstallationStatus::Downloading => BinaryStatus::Downloading,
             LanguageServerInstallationStatus::None => BinaryStatus::None,
-            LanguageServerInstallationStatus::Failed(error) => BinaryStatus::Failed { error },
+            LanguageServerInstallationStatus::Failed(error) => {
+                super::language_server_installation_failure(error)
+            }
         };
 
         self.host
@@ -1066,7 +1068,7 @@ impl ExtensionImports for WasmState {
         path: String,
         file_type: DownloadedFileType,
     ) -> wasmtime::Result<Result<(), String>> {
-        maybe!(async {
+        let result = maybe!(async {
             let parsed_url = Url::parse(&url)?;
             self.capability_granter.grant_download_file(&parsed_url)?;
 
@@ -1131,8 +1133,8 @@ impl ExtensionImports for WasmState {
 
             Ok(())
         })
-        .await
-        .to_wasmtime_result()
+        .await;
+        super::to_wasmtime_result_preserving_egress_denial(result)
     }
 
     async fn make_file_executable(&mut self, path: String) -> wasmtime::Result<Result<(), String>> {

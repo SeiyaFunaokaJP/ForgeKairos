@@ -6359,6 +6359,91 @@ async fn test_lsp_tools_are_exposed_without_a_feature_flag(cx: &mut TestAppConte
     cx.run_until_parked();
 }
 
+/// With no language server for the file, an LSP tool's empty result is
+/// indistinguishable from "the symbol has no references", and small models
+/// read it as a broken editor setup. Both tools must instead say that no
+/// language server is running.
+#[gpui::test]
+async fn test_lsp_tools_report_a_missing_language_server(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/test"),
+        json!({"test.c": "int helper(void) { return 0; }\n"}),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/test").as_ref()], cx).await;
+
+    cx.update(|cx| {
+        let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+        settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
+        agent_settings::AgentSettings::override_global(settings, cx);
+    });
+
+    let symbol = SymbolLocator {
+        file_path: "test/test.c".into(),
+        line: 1,
+        symbol_name: "helper".into(),
+    };
+
+    #[allow(clippy::arc_with_non_send_sync)]
+    let find_references = Arc::new(FindReferencesTool::new(project.clone()));
+    let (event_stream, mut rx) = ToolCallEventStream::test();
+    let output = cx
+        .update(|cx| {
+            find_references.run(
+                ToolInput::resolved(FindReferencesToolInput {
+                    symbol: symbol.clone(),
+                }),
+                event_stream,
+                cx,
+            )
+        })
+        .await
+        .expect("find_references should explain the missing server, not fail");
+    assert!(
+        output.contains("言語サーバーが起動していません") && output.contains("`grep`"),
+        "expected the missing-language-server explanation, got: {output}"
+    );
+    // The explanation itself sits in the card's collapsed output, so the title
+    // has to carry it too.
+    let title = rx.expect_update_fields().await.title;
+    assert!(
+        title
+            .as_deref()
+            .is_some_and(|title| title.contains("言語サーバーなし")),
+        "expected the card title to say the language server is missing, got: {title:?}"
+    );
+
+    // Auto-approve (`tool_permissions.default = "allow"`) must let the rename
+    // through without a prompt, and it must reach the same explanation.
+    #[allow(clippy::arc_with_non_send_sync)]
+    let rename = Arc::new(RenameTool::new(project.clone()));
+    let (event_stream, mut rx) = ToolCallEventStream::test();
+    let output = cx
+        .update(|cx| {
+            rename.run(
+                ToolInput::resolved(RenameToolInput {
+                    symbol,
+                    new_name: "helper2".into(),
+                }),
+                event_stream,
+                cx,
+            )
+        })
+        .await
+        .expect("rename_symbol should explain the missing server, not fail");
+    assert!(
+        output.contains("言語サーバーが起動していません"),
+        "expected the missing-language-server explanation, got: {output}"
+    );
+    assert!(
+        !matches!(rx.try_recv(), Ok(Ok(ThreadEvent::ToolCallAuthorization(_)))),
+        "auto-approve must not prompt before renaming"
+    );
+}
+
 #[gpui::test]
 async fn test_sibling_thread_tools_gated_by_feature_flag(cx: &mut TestAppContext) {
     init_test(cx);

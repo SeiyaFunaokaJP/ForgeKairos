@@ -29,7 +29,7 @@ const COMMAND_OUTPUT_LIMIT: u64 = 16 * 1024;
 ///
 /// The output results will be shown to the user already, only list it again if necessary, avoid being redundant.
 ///
-/// Always set the working directory with the `cd` parameter, never with `cd` inside `command`; otherwise it will error.
+/// Set the working directory with the `cd` parameter, never with `cd` inside `command`; otherwise it will error. `cd` may be omitted, which runs the command in the project's root directory.
 ///
 /// Do not generate terminal commands that use shell substitutions or interpolations such as `$VAR`, `${VAR}`, `$(...)`, backticks, `$((...))`, `<(...)`, or `>(...)`. Resolve those values yourself before calling this tool, or ask the user for the literal value to use.
 ///
@@ -54,6 +54,9 @@ pub struct TerminalToolInput {
     /// REMINDER: read-only git commands (`git log`, `git diff`, `git show`, `git blame`) MUST include `--no-pager` (e.g. `git --no-pager log`). Prefer `git --no-optional-locks status` over `git status` to avoid optional metadata writes. Git commands that may open an editor (`git rebase`, `git commit`, `git merge`, `git tag`) MUST be prefixed with `GIT_EDITOR=true ` (e.g. `GIT_EDITOR=true git rebase origin/main`). Otherwise the terminal will hang.
     pub command: String,
     /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src`, `/home/user/my-project`, or on Windows `my-project\src` or `C:\Users\me\my-project`.
+    ///
+    /// Optional: omit it (or pass `.`) to run in the project's root directory. Only a workspace with more than one root directory requires it.
+    #[serde(default)]
     pub cd: String,
     /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed.
     pub timeout_ms: Option<u64>,
@@ -71,7 +74,7 @@ pub struct TerminalToolInput {
 ///
 /// The output results will be shown to the user already, only list it again if necessary, avoid being redundant.
 ///
-/// Always set the working directory with the `cd` parameter, never with `cd` inside `command`; otherwise it will error.
+/// Set the working directory with the `cd` parameter, never with `cd` inside `command`; otherwise it will error. `cd` may be omitted, which runs the command in the project's root directory.
 ///
 /// Do not generate terminal commands that use shell substitutions or interpolations such as `$VAR`, `${VAR}`, `$(...)`, backticks, `$((...))`, `<(...)`, or `>(...)`. Resolve those values first or ask the user for the literal value to use.
 ///
@@ -96,6 +99,9 @@ pub struct SandboxedTerminalToolInput {
     /// REMINDER: read-only git commands (`git log`, `git diff`, `git show`, `git blame`) MUST include `--no-pager` (e.g. `git --no-pager log`). Prefer `git --no-optional-locks status` over `git status` to avoid optional metadata writes. Git commands that may open an editor (`git rebase`, `git commit`, `git merge`, `git tag`) MUST be prefixed with `GIT_EDITOR=true ` (e.g. `GIT_EDITOR=true git rebase origin/main`). Otherwise the terminal will hang.
     pub command: String,
     /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src`, `/home/user/my-project`, or on Windows `my-project\src` or `C:\Users\me\my-project`.
+    ///
+    /// Optional: omit it (or pass `.`) to run in the project's root directory. Only a workspace with more than one root directory requires it.
+    #[serde(default)]
     pub cd: String,
     /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed.
     pub timeout_ms: Option<u64>,
@@ -382,10 +388,18 @@ impl AgentTool for SandboxedTerminalTool {
 }
 
 fn terminal_initial_title(input: Result<String, serde_json::Value>) -> SharedString {
-    if let Ok(command) = input {
-        command.into()
-    } else {
-        "".into()
+    match input {
+        Ok(command) => command.into(),
+        // The input failed to deserialize (a small model omitting a required
+        // field, say). An empty title renders as a blank card with no hint of
+        // what was attempted, so fall back to whatever command text the raw
+        // JSON does carry, then to a generic label.
+        Err(raw_input) => raw_input
+            .get("command")
+            .and_then(|command| command.as_str())
+            .filter(|command| !command.trim().is_empty())
+            .map(SharedString::new)
+            .unwrap_or_else(|| "ターミナルコマンド".into()),
     }
 }
 
@@ -1351,8 +1365,15 @@ fn process_content(
         // signature (never a plain non-zero exit) and explain the reason in
         // Japanese — plus how to opt out — instead of the generic "failed with
         // exit code 126", which would read as if the command itself failed.
-        if let Some(reason) =
-            acp_thread::remote_sandbox_setup_failure_message(exit_code, &output.output)
+        // `acp_thread` already weaves the same reason and hint into the output
+        // it hands back (`annotate_sandbox_setup_failure`), so only prepend
+        // them when this output came through a path that did not.
+        let already_annotated = output
+            .output
+            .contains(acp_thread::REMOTE_SANDBOX_UNSANDBOX_HINT);
+        if !already_annotated
+            && let Some(reason) =
+                acp_thread::remote_sandbox_setup_failure_message(exit_code, &output.output)
         {
             return format!(
                 "{reason}\n{hint}\n\n{content}",
@@ -1407,7 +1428,9 @@ fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Opti
             Some(worktree) => {
                 anyhow::ensure!(
                     worktrees.next().is_none(),
-                    "'.' is ambiguous in multi-root workspaces. Please specify a root directory explicitly.",
+                    "This workspace has more than one root directory, so the working directory \
+                     cannot be inferred. Set `cd` to one of: {}.",
+                    root_name_list(project, cx),
                 );
                 Ok(Some(worktree.read(cx).abs_path().to_path_buf()))
             }
@@ -1429,7 +1452,32 @@ fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Opti
             return Ok(Some(dir));
         }
 
-        anyhow::bail!("`cd` directory {cd:?} was not in any root directory in the project.");
+        // Small models retry blindly unless the error tells them what to use,
+        // so name the roots that would have worked instead of only rejecting
+        // the one they sent.
+        anyhow::bail!(
+            "`cd` directory {cd:?} was not in any root directory in the project. \
+             Set `cd` to one of: {}, or omit `cd` to run in the project's root directory.",
+            root_name_list(project, cx),
+        );
+    }
+}
+
+/// Comma-separated, backtick-quoted list of the project's root directory names,
+/// for error messages that ask the model to pick one.
+fn root_name_list(project: &Project, cx: &App) -> String {
+    let names = project
+        .worktrees(cx)
+        .filter_map(|worktree| {
+            let worktree = worktree.read(cx);
+            worktree.root_dir()?;
+            Some(format!("`{}`", worktree.root_name_str()))
+        })
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        "(the project has no root directories)".to_string()
+    } else {
+        names.join(", ")
     }
 }
 
@@ -2318,6 +2366,156 @@ mod tests {
         );
     }
 
+    /// Auto-approve (`tool_permissions.default = "allow"`, ADR-F24) skips the
+    /// authorization prompt, so nothing else may stand between the tool call
+    /// and the terminal. A small model that omits the optional `cd` must still
+    /// get its command run in the project's only root directory.
+    #[gpui::test]
+    async fn test_run_without_cd_under_auto_approve(cx: &mut gpui::TestAppContext) {
+        crate::tests::init_test(cx);
+
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/root", serde_json::json!({})).await;
+        let project = project::Project::test(fs, ["/root".as_ref()], cx).await;
+
+        let environment = std::rc::Rc::new(cx.update(|cx| {
+            crate::tests::FakeThreadEnvironment::default().with_terminal(
+                crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
+            )
+        }));
+
+        cx.update(|cx| {
+            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+            settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
+            settings.tool_permissions.tools.remove(TerminalTool::NAME);
+            agent_settings::AgentSettings::override_global(settings, cx);
+        });
+
+        #[allow(clippy::arc_with_non_send_sync)]
+        let tool = std::sync::Arc::new(TerminalTool::new(project, environment.clone()));
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+
+        let task = cx.update(|cx| {
+            tool.run(
+                crate::ToolInput::ready(serde_json::json!({ "command": "ls" })),
+                event_stream,
+                cx,
+            )
+        });
+
+        let update = rx.expect_update_fields().await;
+        assert!(
+            update.content.iter().any(|blocks| {
+                blocks
+                    .iter()
+                    .any(|content| matches!(content, acp::ToolCallContent::Terminal(_)))
+            }),
+            "expected the terminal card update for a command without `cd`"
+        );
+
+        task.await
+            .expect("a command without `cd` should run in the only worktree");
+        assert_eq!(
+            environment.terminal_creation_count(),
+            1,
+            "terminal should be created exactly once"
+        );
+        assert!(
+            !matches!(
+                rx.try_recv(),
+                Ok(Ok(crate::ThreadEvent::ToolCallAuthorization(_)))
+            ),
+            "auto-approve must not request authorization"
+        );
+    }
+
+    /// A worktree-relative `cd` resolves against the project roots, and one
+    /// that resolves nowhere has to name the roots that would have worked —
+    /// otherwise a model that mistyped a long absolute path just retries the
+    /// same mistake.
+    #[gpui::test]
+    async fn test_run_resolves_relative_cd_and_names_roots_when_it_cannot(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        crate::tests::init_test(cx);
+
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/root", serde_json::json!({ "src": {} }))
+            .await;
+        let project = project::Project::test(fs, ["/root".as_ref()], cx).await;
+
+        let environment = std::rc::Rc::new(cx.update(|cx| {
+            crate::tests::FakeThreadEnvironment::default().with_terminal(
+                crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
+            )
+        }));
+
+        cx.update(|cx| {
+            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+            settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
+            settings.tool_permissions.tools.remove(TerminalTool::NAME);
+            agent_settings::AgentSettings::override_global(settings, cx);
+        });
+
+        #[allow(clippy::arc_with_non_send_sync)]
+        let tool = std::sync::Arc::new(TerminalTool::new(project, environment.clone()));
+
+        let (event_stream, _rx) = crate::ToolCallEventStream::test();
+        cx.update(|cx| {
+            tool.clone().run(
+                crate::ToolInput::resolved(TerminalToolInput {
+                    command: "ls".to_string(),
+                    cd: "root/src".to_string(),
+                    ..Default::default()
+                }),
+                event_stream,
+                cx,
+            )
+        })
+        .await
+        .expect("a worktree-relative `cd` should resolve");
+        assert_eq!(environment.terminal_creation_count(), 1);
+
+        let (event_stream, _rx) = crate::ToolCallEventStream::test();
+        let error = cx
+            .update(|cx| {
+                tool.run(
+                    crate::ToolInput::resolved(TerminalToolInput {
+                        command: "ls".to_string(),
+                        cd: "C:\\Users\\me\\not-the-project".to_string(),
+                        ..Default::default()
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await
+            .expect_err("a `cd` outside every root should be rejected");
+        assert!(
+            error.contains("`root`"),
+            "the rejection must name the roots the model could use, got: {error}"
+        );
+        assert_eq!(
+            environment.terminal_creation_count(),
+            1,
+            "a rejected `cd` must not spawn a terminal"
+        );
+    }
+
+    /// A tool call whose input never deserialized still has to say what was
+    /// attempted; an empty title renders as a blank card.
+    #[test]
+    fn test_initial_title_falls_back_to_raw_command() {
+        assert_eq!(
+            terminal_initial_title(Err(serde_json::json!({ "command": "ls -la" }))).as_ref(),
+            "ls -la"
+        );
+        assert_eq!(
+            terminal_initial_title(Err(serde_json::json!({ "cd": "root" }))).as_ref(),
+            "ターミナルコマンド"
+        );
+    }
+
     #[gpui::test]
     async fn test_run_allows_invalid_substitution_in_unconditional_allow_all_mode(
         cx: &mut gpui::TestAppContext,
@@ -2771,6 +2969,23 @@ mod tests {
         assert!(schema_text.contains("Do not pipe output to `head`"));
         assert!(schema_text.contains("Do not pipe output to `tail`"));
         assert!(schema_text.contains("waste tokens or exceed the context window"));
+
+        // `cd` must not be advertised as required: a model that cannot produce
+        // a valid absolute path should omit it and get the project root, not a
+        // deserialization failure it can only read as "the tool is broken".
+        let required = schema_json
+            .get("required")
+            .and_then(|required| required.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            required.iter().any(|field| field == "command"),
+            "`command` should stay required, got: {required:?}"
+        );
+        assert!(
+            !required.iter().any(|field| field == "cd"),
+            "`cd` should be optional, got: {required:?}"
+        );
     }
 
     async fn assert_rejected_before_terminal_creation(

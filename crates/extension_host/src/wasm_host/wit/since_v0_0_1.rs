@@ -145,7 +145,9 @@ impl ExtensionImports for WasmState {
             LanguageServerInstallationStatus::Downloading => BinaryStatus::Downloading,
             LanguageServerInstallationStatus::Cached
             | LanguageServerInstallationStatus::Downloaded => BinaryStatus::None,
-            LanguageServerInstallationStatus::Failed(error) => BinaryStatus::Failed { error },
+            LanguageServerInstallationStatus::Failed(error) => {
+                super::language_server_installation_failure(error)
+            }
         };
 
         self.host

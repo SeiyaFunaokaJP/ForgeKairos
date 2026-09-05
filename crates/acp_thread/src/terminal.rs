@@ -480,6 +480,30 @@ pub fn remote_sandbox_setup_failure_message(
     Some(remote_sandbox_failure_message_for_code(code))
 }
 
+/// Writes [`remote_sandbox_setup_failure_message`] into a finished command's
+/// output, so every reader of that output learns why the command never ran —
+/// not just the callers that run the detection themselves.
+///
+/// The explanation goes *after* the marker line, not in front of it, because
+/// the marker has to stay first for [`remote_sandbox_setup_failure_message`] to
+/// keep recognizing it: a reader that does its own detection must not be
+/// silently downgraded to the generic "failed with exit code 126".
+///
+/// Returns `output` untouched when the failure signature is absent, which is
+/// every ordinary command.
+pub fn annotate_sandbox_setup_failure(output: String, exit_code: Option<u32>) -> String {
+    let Some(reason) = remote_sandbox_setup_failure_message(exit_code, &output) else {
+        return output;
+    };
+    let leading_blanks = output.len() - output.trim_start().len();
+    let (head, rest) = output.split_at(leading_blanks);
+    let (marker_line, rest) = match rest.split_once('\n') {
+        Some((marker_line, rest)) => (marker_line, rest),
+        None => (rest, ""),
+    };
+    format!("{head}{marker_line}\n{reason}\n{REMOTE_SANDBOX_UNSANDBOX_HINT}\n{rest}")
+}
+
 /// Extract `<code>` from a `zed-remote-sandbox: <code>: <detail>` marker at the
 /// start of `output` (leading blank lines tolerated). Returns `None` when the
 /// marker prefix is absent or no `<code>:` follows it, so the detection cannot
@@ -643,6 +667,21 @@ impl Terminal {
                     this.update(cx, |this, cx| {
                         let (content, original_content_len) = this.truncated_output(cx);
                         let content_line_count = this.terminal.read(cx).total_lines();
+
+                        // ADR-F18: the helper failed closed, so the command
+                        // never ran. Explaining that here reaches everyone who
+                        // reads this terminal's output — external ACP agents
+                        // included, which previously got exit 126 and one line
+                        // of English marker and had to guess.
+                        //
+                        // Inserted *after* the marker line rather than in front
+                        // of it, so that a reader which recognizes the marker
+                        // itself (`terminal_tool`) still does.
+                        let content = annotate_sandbox_setup_failure(
+                            content,
+                            exit_status
+                                .map(|status| portable_pty::ExitStatus::from(status).exit_code()),
+                        );
 
                         this.output = Some(TerminalOutput {
                             ended_at: Instant::now(),
@@ -997,6 +1036,48 @@ mod remote_sandbox_failure_tests {
         assert_eq!(
             remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: no-colon-here"),
             None
+        );
+    }
+
+    /// ADR-F18 / ADR-F27: an external ACP agent only ever sees the terminal's
+    /// output, so the fail-closed reason has to be in it — while the marker
+    /// stays first, so a reader that runs the detection itself still does.
+    #[test]
+    fn a_fail_closed_run_carries_its_reason_in_the_output() {
+        let annotated = annotate_sandbox_setup_failure(
+            "zed-remote-sandbox: slirp-missing: exec slirp4netns\n".to_string(),
+            Some(126),
+        );
+        let mut lines = annotated.lines();
+        assert_eq!(
+            lines.next(),
+            Some("zed-remote-sandbox: slirp-missing: exec slirp4netns")
+        );
+        assert_eq!(
+            lines.next(),
+            Some(
+                "リモートホストでサンドボックスを作成できませんでした: \
+                 slirp4netns がリモートに配置されていません (ネットワーク隔離に必要)。"
+            )
+        );
+        assert_eq!(lines.next(), Some(REMOTE_SANDBOX_UNSANDBOX_HINT));
+        assert!(
+            remote_sandbox_setup_failure_message(Some(126), &annotated).is_some(),
+            "the marker has to stay first: {annotated}"
+        );
+
+        // An ordinary command is left exactly as it was, whatever it printed.
+        let ordinary = "make: *** [all] Error 126\n".to_string();
+        assert_eq!(
+            annotate_sandbox_setup_failure(ordinary.clone(), Some(126)),
+            ordinary
+        );
+        assert_eq!(
+            annotate_sandbox_setup_failure(
+                "zed-remote-sandbox: slirp-missing: x\n".to_string(),
+                Some(1)
+            ),
+            "zed-remote-sandbox: slirp-missing: x\n"
         );
     }
 }

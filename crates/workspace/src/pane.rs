@@ -429,6 +429,11 @@ pub struct Pane {
     >,
     render_tab_bar: Rc<dyn Fn(&mut Pane, &mut Window, &mut Context<Pane>) -> AnyElement>,
     show_tab_bar_buttons: bool,
+    /// The width this pane was laid out at during the previous frame, or `None`
+    /// before it has ever been laid out. Tab bar buttons that fold themselves
+    /// into an overflow menu on a narrow pane need a width to decide with, and
+    /// the only width they can know is the one the last layout produced.
+    last_layout_width: Option<Pixels>,
     max_tabs: Option<NonZeroUsize>,
     use_max_tabs: bool,
     _subscriptions: Vec<Subscription>,
@@ -608,6 +613,7 @@ impl Pane {
             render_tab_bar_buttons: Rc::new(default_render_tab_bar_buttons),
             render_tab_bar: Rc::new(Self::render_tab_bar),
             show_tab_bar_buttons: TabBarSettings::get_global(cx).show_tab_bar_buttons,
+            last_layout_width: None,
             display_nav_history_buttons: Some(
                 TabBarSettings::get_global(cx).show_nav_history_buttons,
             ),
@@ -670,6 +676,26 @@ impl Pane {
             || self
                 .active_item()
                 .is_some_and(|item| item.item_focus_handle(cx).contains_focused(window, cx))
+    }
+
+    /// Whether the tab bar's end buttons (新規・分割・ズームなど) belong on this
+    /// pane. Upstream draws them on the focused pane only, so splitting leaves
+    /// every other pane without them; `tab_bar.show_buttons_on_inactive_panes`
+    /// (既定 true) keeps them on every pane, the way VS Code does.
+    pub fn should_render_tab_bar_buttons(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        TabBarSettings::get_global(cx).show_buttons_on_inactive_panes
+            || self.has_focus(window, cx)
+            || self.context_menu_focused(window, cx)
+    }
+
+    /// The width of the last layout of this pane, `None` until it has been laid
+    /// out once. Tab bar buttons use it to decide how many of them fit.
+    pub fn last_layout_width(&self) -> Option<Pixels> {
+        self.last_layout_width
     }
 
     fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4255,7 +4281,7 @@ fn default_render_tab_bar_buttons(
     window: &mut Window,
     cx: &mut Context<Pane>,
 ) -> (Option<AnyElement>, Option<AnyElement>) {
-    if !pane.has_focus(window, cx) && !pane.context_menu_focused(window, cx) {
+    if !pane.should_render_tab_bar_buttons(window, cx) {
         return (None, None);
     }
     let (can_clone, can_split_move) = match pane.active_item() {
@@ -4268,6 +4294,7 @@ fn default_render_tab_bar_buttons(
     let right_children = h_flex()
         // Instead we need to replicate the spacing from the [TabBar]'s `end_slot` here.
         .gap(DynamicSpacing::Base04.rems(cx))
+        .debug_selector(|| "tab_bar_buttons".into())
         .child(
             PopoverMenu::new("pane-tab-bar-popover-menu")
                 .trigger_with_tooltip(
@@ -4384,6 +4411,26 @@ impl Render for Pane {
             .size_full()
             .flex_none()
             .overflow_hidden()
+            // Every child of the pane is laid out at the pane's own width, so
+            // the first one measures it. Recording it here is what lets the tab
+            // bar buttons fold themselves away on a narrow pane; the width can
+            // only be known once the frame has been laid out, so the fold takes
+            // effect on the frame the `notify` below schedules.
+            .on_children_prepainted({
+                let pane = cx.entity();
+                move |children_bounds, _window, cx| {
+                    let Some(width) = children_bounds.first().map(|bounds| bounds.size.width)
+                    else {
+                        return;
+                    };
+                    pane.update(cx, |pane, cx| {
+                        if pane.last_layout_width != Some(width) {
+                            pane.last_layout_width = Some(width);
+                            cx.notify();
+                        }
+                    });
+                }
+            })
             .on_action(cx.listener(|pane, split: &SplitLeft, window, cx| {
                 pane.split(SplitDirection::Left, split.mode, window, cx)
             }))
@@ -8979,6 +9026,90 @@ mod tests {
                     .show_pinned_tabs_in_separate_row = Some(enabled);
             });
         });
+    }
+
+    fn set_buttons_on_inactive_panes(cx: &mut TestAppContext, enabled: bool) {
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings
+                    .tab_bar
+                    .get_or_insert_default()
+                    .show_buttons_on_inactive_panes = Some(enabled);
+            });
+        });
+    }
+
+    #[gpui::test]
+    async fn test_tab_bar_buttons_on_a_pane_without_focus(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+
+        let project = Project::test(fs, None, cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        add_labeled_item(&pane, "A", false, cx);
+
+        cx.update(|window, _| window.blur());
+        cx.run_until_parked();
+        assert!(
+            !pane.update_in(cx, |pane, window, cx| pane.has_focus(window, cx)),
+            "the pane has to be out of focus for this test to say anything"
+        );
+
+        assert!(
+            cx.debug_bounds("tab_bar_buttons").is_some(),
+            "the buttons should stay on a pane without focus by default"
+        );
+
+        set_buttons_on_inactive_panes(cx, false);
+        cx.run_until_parked();
+
+        assert!(
+            cx.debug_bounds("tab_bar_buttons").is_none(),
+            "turning the setting off should bring upstream's focused-pane-only behaviour back"
+        );
+
+        set_buttons_on_inactive_panes(cx, true);
+        cx.run_until_parked();
+
+        assert!(
+            cx.debug_bounds("tab_bar_buttons").is_some(),
+            "turning the setting back on should show them again"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_pane_records_the_width_it_was_laid_out_at(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+
+        let project = Project::test(fs, None, cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        add_labeled_item(&pane, "A", false, cx);
+        cx.run_until_parked();
+
+        let maximized = pane
+            .read_with(cx, |pane, _| pane.last_layout_width())
+            .expect("a pane that has been drawn knows its width");
+
+        cx.simulate_resize(size(px(400.), px(300.)));
+        cx.run_until_parked();
+
+        let narrowed = pane
+            .read_with(cx, |pane, _| pane.last_layout_width())
+            .expect("a pane that has been drawn knows its width");
+        assert!(
+            narrowed < maximized,
+            "shrinking the window should be visible to the tab bar's fold, \
+             got {narrowed:?} where the maximized window gave {maximized:?}"
+        );
+        assert!(
+            narrowed <= px(400.),
+            "the pane cannot be wider than the window that holds it"
+        );
     }
 
     fn add_labeled_item(

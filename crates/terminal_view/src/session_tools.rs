@@ -2331,6 +2331,43 @@ impl QuickConnectModal {
         cx.emit(DismissEvent);
         connect_and_run(workspace, connection, terminal_macro, start_log, window, cx);
     }
+
+    /// Hands the form's host over to the file transfer screen (ADR-F28)
+    /// without connecting a terminal first. The handler lives in the
+    /// `file_transfer` crate, so the values travel in the action.
+    fn open_file_transfer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let connection = match self.form_connection(cx) {
+            Ok(connection) => connection,
+            Err(message) => {
+                self.error = Some(message);
+                cx.notify();
+                return;
+            }
+        };
+        let action = zed_actions::terminal::OpenFileTransfer {
+            host: Some(connection.host.clone()),
+            port: match connection.protocol {
+                ConnectionProtocol::Ssh => Some(connection.port_or_default()),
+                // Telnet's port says nothing about the FTP service that would
+                // carry the files, so the FTP default is left to stand.
+                ConnectionProtocol::Telnet => None,
+            },
+            user: connection.user.clone(),
+            protocol: Some(
+                match connection.protocol {
+                    ConnectionProtocol::Ssh => "sftp",
+                    ConnectionProtocol::Telnet => "ftp",
+                }
+                .to_string(),
+            ),
+        };
+        cx.emit(DismissEvent);
+        // Deferred so this modal has left the modal layer's single slot before
+        // the transfer screen asks for it.
+        window.defer(cx, move |window, cx| {
+            window.dispatch_action(Box::new(action), cx);
+        });
+    }
 }
 
 /// Spawns the connection's command in a new terminal tab, then optionally
@@ -2429,6 +2466,12 @@ fn finish_connection(
 ) {
     workspace
         .update_in(cx, |workspace, _window, cx| {
+            // Remembered so 「ファイル転送…」 can pre-fill this host without the
+            // user retyping it (ADR-F28).
+            terminal.update(cx, |terminal, _| {
+                terminal.set_connection_origin(connection.clone());
+            });
+
             // Normally the spawn has already put the terminal in a view, which
             // is what shows macro progress. If it has not, the log and the
             // macro still run — just without the progress strip.
@@ -2710,11 +2753,24 @@ impl Render for QuickConnectModal {
                     )
                     .footer(
                         ModalFooter::new()
-                            .start_slot(Button::new("save-connection", "保存").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.save_connection(cx);
-                                }),
-                            ))
+                            .start_slot(
+                                h_flex()
+                                    .gap_1()
+                                    .child(Button::new("save-connection", "保存").on_click(
+                                        cx.listener(|this, _, _, cx| {
+                                            this.save_connection(cx);
+                                        }),
+                                    ))
+                                    .child(
+                                        Button::new("open-file-transfer", "ファイル転送を開く")
+                                            .tooltip(Tooltip::text(
+                                                "このホストと SFTP / FTP でファイルをやり取りします",
+                                            ))
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.open_file_transfer(window, cx);
+                                            })),
+                                    ),
+                            )
                             .end_slot(
                                 h_flex()
                                     .gap_1()

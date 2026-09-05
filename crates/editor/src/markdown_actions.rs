@@ -1346,8 +1346,10 @@ fn escape_table_cell(cell: &str) -> String {
 }
 
 /// Terminal columns `text` occupies, so that a table of Japanese text lines up
-/// in a fixed-width editor: East Asian wide characters count as two.
-fn display_width(text: &str) -> usize {
+/// in a fixed-width editor: East Asian wide characters count as two. The table
+/// editor sizes its columns with the same measure, so a column is drawn as wide
+/// as the Markdown it will be written back as.
+pub fn display_width(text: &str) -> usize {
     unicode_width::UnicodeWidthStr::width(text)
 }
 

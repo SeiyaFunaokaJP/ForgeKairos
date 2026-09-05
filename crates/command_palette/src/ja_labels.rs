@@ -755,7 +755,14 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("terminal::RenameTerminal", "ターミナル: 名前の変更"),
     ("terminal::RestartTerminal", "ターミナル: 再起動"),
     ("terminal::RerunTask", "ターミナル: タスクを再実行"),
-    ("terminal::StartSessionLog", "ターミナル: ログの記録を開始…"),
+    (
+        "terminal::ToggleSessionLog",
+        "ターミナル: ログの記録を開始/停止",
+    ),
+    (
+        "terminal::StartSessionLog",
+        "ターミナル: ログの記録を開始 (保存先を選ぶ)…",
+    ),
     ("terminal::StopSessionLog", "ターミナル: ログの記録を停止"),
     (
         "terminal::OpenSessionLog",
@@ -774,6 +781,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("terminal::EditMacros", "ターミナル: マクロの編集…"),
     ("terminal::CancelMacro", "ターミナル: マクロを中止"),
     ("terminal::QuickConnect", "ターミナル: クイック接続…"),
+    ("terminal::OpenFileTransfer", "ターミナル: ファイル転送…"),
     (
         "terminal::InstallClaudeCode",
         "ターミナル: Claude Code をインストール (公式コマンド)",
@@ -1699,7 +1707,19 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("browser_panel::NewBrowserTab", "ブラウザー: 新しいタブ"),
     (
         "browser_panel::OpenInCenter",
-        "ブラウザー: エディター領域で開く",
+        "ブラウザー: エディター領域へ移す",
+    ),
+    (
+        "browser_panel::NewPanelTab",
+        "ブラウザー: パネルに新しいタブ",
+    ),
+    (
+        "browser_panel::ClosePanelTab",
+        "ブラウザー: パネルのタブを閉じる",
+    ),
+    (
+        "browser_panel::SetAsHomePage",
+        "ブラウザー: このページを起動時に開く",
     ),
     ("browser_panel::NavigateBack", "ブラウザー: 戻る"),
     ("browser_panel::NavigateForward", "ブラウザー: 進む"),

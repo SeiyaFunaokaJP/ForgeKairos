@@ -23,10 +23,11 @@ use std::time::Duration;
 
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString, Subscription, Task,
-    Window,
+    WeakEntity, Window,
 };
 use settings::Settings as _;
 use ui::prelude::*;
+use util::ResultExt as _;
 use workspace::{
     Workspace,
     item::{Item, ItemEvent},
@@ -67,6 +68,7 @@ pub(crate) fn visibility_tick(
 }
 
 pub struct BrowserItem {
+    workspace: WeakEntity<Workspace>,
     view: Entity<BrowserView>,
     /// 直近の周期で [`Render::render`] が呼ばれたか。
     painted_since_last_tick: bool,
@@ -96,7 +98,15 @@ impl BrowserItem {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let view = cx.new(|cx| BrowserView::new(workspace, BrowserHost::EditorTab, window, cx));
+        let view = cx.new(|cx| {
+            BrowserView::new(
+                workspace.weak_handle(),
+                workspace.app_state().fs.clone(),
+                BrowserHost::EditorTab,
+                window,
+                cx,
+            )
+        });
 
         let initial_url = url.unwrap_or_else(|| BrowserSettings::get_global(cx).home_url.clone());
         view.update(cx, |view, cx| {
@@ -107,7 +117,7 @@ impl BrowserItem {
             }
         });
 
-        let mut subscriptions = vec![cx.subscribe(&view, Self::on_view_event)];
+        let mut subscriptions = vec![cx.subscribe_in(&view, window, Self::on_view_event)];
         if let Some(workspace_entity) = workspace.weak_handle().upgrade() {
             subscriptions.push(cx.subscribe(
                 &workspace_entity,
@@ -122,6 +132,7 @@ impl BrowserItem {
         }
 
         Self {
+            workspace: workspace.weak_handle(),
             view,
             painted_since_last_tick: false,
             surface_shown: false,
@@ -164,14 +175,25 @@ impl BrowserItem {
 
     fn on_view_event(
         &mut self,
-        _: Entity<BrowserView>,
+        _: &Entity<BrowserView>,
         event: &BrowserViewEvent,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event {
             BrowserViewEvent::LocationChanged => {
                 cx.emit(ItemEvent::UpdateTab);
                 cx.notify();
+            }
+            // エディター領域のタブからの「新しいタブで開く」は、エディター領域に
+            // もう 1 枚。ペインは `add_item_to_active_pane` が決める。
+            BrowserViewEvent::OpenInNewTab(url) => {
+                let url = url.clone();
+                self.workspace
+                    .update(cx, |workspace, cx| {
+                        BrowserItem::open(workspace, Some(url), window, cx)
+                    })
+                    .log_err();
             }
         }
     }

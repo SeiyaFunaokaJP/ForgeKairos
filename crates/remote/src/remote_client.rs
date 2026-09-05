@@ -4,6 +4,7 @@ use crate::{
     SshConnectionOptions,
     protocol::MessageId,
     proxy::ProxyLaunchError,
+    proxy_http,
     transport::{
         docker::{DockerConnectionOptions, DockerExecConnection},
         ssh::SshRemoteConnection,
@@ -526,6 +527,13 @@ impl RemoteClient {
                     _system_wake_subscription: None,
                     system_wake_probe_task: None,
                 });
+
+                // ADR-F27: a remote host with no route to the internet relays
+                // its HTTP through here, so the handler has to be in place
+                // before the server can make its first request — which it can
+                // do as soon as a project opens.
+                AnyProtoClient::from(client.clone())
+                    .add_request_handler(this.downgrade(), proxy_http::handle_proxy_http_request);
 
                 let proxy_started = Instant::now();
                 let io_task = remote_connection.start_proxy(

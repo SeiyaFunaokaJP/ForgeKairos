@@ -74,6 +74,7 @@ pub struct TabBarSettings {
     pub show: bool,
     pub show_nav_history_buttons: bool,
     pub show_tab_bar_buttons: bool,
+    pub show_buttons_on_inactive_panes: bool,
     pub show_pinned_tabs_in_separate_row: bool,
 }
 
@@ -188,6 +189,9 @@ impl Settings for TabBarSettings {
             show: tab_bar.show.unwrap(),
             show_nav_history_buttons: tab_bar.show_nav_history_buttons.unwrap(),
             show_tab_bar_buttons: tab_bar.show_tab_bar_buttons.unwrap(),
+            // `assets/settings/default.json` does not carry this key yet, so it
+            // falls back here instead of unwrapping like its neighbours do.
+            show_buttons_on_inactive_panes: tab_bar.show_buttons_on_inactive_panes.unwrap_or(true),
             show_pinned_tabs_in_separate_row: tab_bar.show_pinned_tabs_in_separate_row.unwrap(),
         }
     }

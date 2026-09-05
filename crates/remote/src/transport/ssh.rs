@@ -39,6 +39,23 @@ use util::{
 /// How long to wait for SSH to connect when no askpass prompt has opened.
 const SSH_CONNECTION_PROMPT_TIMEOUT: Duration = Duration::from_secs(17);
 
+const BYTES_PER_MEGABYTE: u64 = 1024 * 1024;
+
+/// Non-fatal problems noticed while establishing a connection, for the UI to
+/// drain and show once the connection is up (see
+/// [`take_remote_connection_warnings`]).
+///
+/// A process-wide queue rather than something on the connection because the
+/// transport has no route to a workspace: `RemoteClientDelegate` can only set
+/// the progress line of a modal that is about to close.
+static CONNECTION_WARNINGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Takes everything a connection attempt wanted to tell the user but could not
+/// fail over. Draining is deliberate: each warning is shown once.
+pub fn take_remote_connection_warnings() -> Vec<String> {
+    std::mem::take(&mut *CONNECTION_WARNINGS.lock())
+}
+
 /// The environment variables [`build_command_windows`] carries over to a
 /// Windows remote, out of the whole environment it otherwise drops to stay
 /// under Windows OpenSSH's 8K command-line limit.
@@ -483,6 +500,7 @@ impl RemoteConnection for SshRemoteConnection {
             // depending on the implementation of SSH stack, SFTP may disable interactive password prompts in batch mode.
             // This is for example the case on Windows as evidenced by this implementation snippet:
             // https://github.com/PowerShell/openssh-portable/blob/b8c08ef9da9450a94a9c5ef717d96a7bd83f3332/sshconnect2.c#L417
+            let mut sftp_failure = None;
             if Self::is_sftp_available().await {
                 log::debug!("using SFTP for directory upload");
                 let mut child = sftp_command.spawn()?;
@@ -500,6 +518,7 @@ impl RemoteConnection for SshRemoteConnection {
 
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 log::debug!("failed to upload directory via SFTP {src_path_display} -> {dest_path_str}: {stderr}");
+                sftp_failure = Some(stderr.trim().to_string());
             }
 
             log::debug!("using SCP for directory upload");
@@ -512,11 +531,16 @@ impl RemoteConnection for SshRemoteConnection {
             let stderr = String::from_utf8_lossy(&output.stderr);
             log::debug!("failed to upload directory via SCP {src_path_display} -> {dest_path_str}: {stderr}");
 
+            // Both `No space left on device` and `Permission denied` surface
+            // here, so the wording has to be one the user can act on rather
+            // than a transport name and a typo.
             anyhow::bail!(
-                "failed to upload directory via SFTP/SCP {} -> {}: {}",
-                src_path_display,
-                dest_path_str,
-                stderr,
+                "リモートへのディレクトリ転送に失敗しました ({src_path_display} -> {dest_path_str}): \
+                 SCP: {scp}{sftp}",
+                scp = stderr.trim(),
+                sftp = sftp_failure
+                    .map(|reason| format!(" / SFTP: {reason}"))
+                    .unwrap_or_default(),
             );
         })
     }
@@ -535,7 +559,9 @@ impl RemoteConnection for SshRemoteConnection {
         delegate.set_status(Some("プロキシを起動しています"), cx);
 
         let Some(remote_binary_path) = self.remote_binary_path.clone() else {
-            return Task::ready(Err(anyhow!("Remote binary path not set")));
+            return Task::ready(Err(anyhow!(
+                "リモート開発サーバーのパスが未設定です (接続の初期化に失敗しています)"
+            )));
         };
 
         let mut ssh_command = if self.ssh_platform.os.is_windows() {
@@ -750,10 +776,10 @@ impl SshRemoteConnection {
                     match result {
                         AskPassResult::CancelledByUser => {
                             master_process.as_mut().kill().ok();
-                            anyhow::bail!("SSH connection canceled")
+                            anyhow::bail!("SSH 接続がキャンセルされました")
                         }
                         AskPassResult::Timedout => {
-                            anyhow::bail!("connecting to host timed out")
+                            anyhow::bail!("ホストへの接続がタイムアウトしました")
                         }
                     }
                 }
@@ -763,7 +789,7 @@ impl SshRemoteConnection {
             };
 
             if let Err(e) = result {
-                return Err(e.context("Failed to connect to host"));
+                return Err(e.context("ホストに接続できませんでした"));
             }
 
             if master_process.as_mut().try_status()?.is_some() {
@@ -772,7 +798,7 @@ impl SshRemoteConnection {
                 stderr.read_to_end(&mut output).await?;
 
                 let error_message = format!(
-                    "failed to connect: {}",
+                    "接続できませんでした: {}",
                     String::from_utf8_lossy(&output).trim()
                 );
                 anyhow::bail!(error_message);
@@ -810,10 +836,10 @@ impl SshRemoteConnection {
                     match result {
                         AskPassResult::CancelledByUser => {
                             master_process.as_mut().kill().ok();
-                            anyhow::bail!("SSH connection canceled")
+                            anyhow::bail!("SSH 接続がキャンセルされました")
                         }
                         AskPassResult::Timedout => {
-                            anyhow::bail!("connecting to host timed out")
+                            anyhow::bail!("ホストへの接続がタイムアウトしました")
                         }
                     }
                 }
@@ -823,7 +849,7 @@ impl SshRemoteConnection {
             };
 
             if let Err(e) = result {
-                return Err(e.context("Failed to connect to host"));
+                return Err(e.context("ホストに接続できませんでした"));
             }
 
             // Without ControlMaster the master process only exists to drive
@@ -841,7 +867,7 @@ impl SshRemoteConnection {
                 stderr.read_to_end(&mut output).await?;
 
                 let error_message = format!(
-                    "failed to connect: {}",
+                    "接続できませんでした: {}",
                     String::from_utf8_lossy(&output).trim()
                 );
                 anyhow::bail!(error_message);
@@ -983,6 +1009,15 @@ impl SshRemoteConnection {
             .await
         {
             log::warn!("could not install slirp4netns for the remote sandbox: {error:#}");
+            // Silently degrading meant the user only found out when an agent
+            // command refused to run, hours later and in a place that does not
+            // explain why. Say it while the connection is still the thing they
+            // are looking at.
+            CONNECTION_WARNINGS.lock().push(format!(
+                "リモートのサンドボックス用ヘルパー (slirp4netns) を配置できませんでした。\
+                 エージェントのコマンド実行はサンドボックスを作れないため拒否されます \
+                 (設定 `allow_unsandboxed` を有効にすると、外部通信の統制も外れた状態で実行できます): {error:#}"
+            ));
         }
 
         log::info!(
@@ -1517,19 +1552,7 @@ impl SshRemoteConnection {
         cx: &mut AsyncApp,
     ) -> Result<()> {
         if let Some(parent) = tmp_path.parent() {
-            let res = self
-                .socket
-                .run_command(
-                    self.ssh_shell_kind,
-                    "mkdir",
-                    &["-p", parent.display(self.path_style()).as_ref()],
-                    true,
-                )
-                .await;
-            if !self.ssh_platform.os.is_windows() {
-                // mkdir fails on windows if the path already exists ...
-                res?;
-            }
+            self.create_remote_dir(parent).await?;
         }
 
         delegate.set_status(
@@ -1602,7 +1625,9 @@ impl SshRemoteConnection {
                         {
                             return Err(e);
                         } else {
-                            anyhow::bail!("Neither curl nor wget is available");
+                            anyhow::bail!(
+                                "リモートホストに curl も wget もありません \n                                 (リモート開発サーバーをダウンロードできません)"
+                            );
                         }
                     }
                 }
@@ -1625,7 +1650,9 @@ impl SshRemoteConnection {
     ) -> Result<()> {
         let file_name = src_path
             .file_name()
-            .with_context(|| format!("no file name in server binary path {src_path:?}"))?
+            .with_context(|| {
+                format!("リモート開発サーバーのパスにファイル名がありません: {src_path:?}")
+            })?
             .to_string_lossy()
             .into_owned();
         let tmp_path = remote_server_dir_relative().join(
@@ -1646,25 +1673,19 @@ impl SshRemoteConnection {
         cx: &mut AsyncApp,
     ) -> Result<()> {
         if let Some(parent) = tmp_path.parent() {
-            let res = self
-                .socket
-                .run_command(
-                    self.ssh_shell_kind,
-                    "mkdir",
-                    &["-p", parent.display(self.path_style()).as_ref()],
-                    true,
-                )
-                .await;
-            if !self.ssh_platform.os.is_windows() {
-                // mkdir fails on windows if the path already exists ...
-                res?;
-            }
+            self.create_remote_dir(parent).await?;
         }
 
-        let src_stat = fs::metadata(&src_path)
-            .await
-            .with_context(|| format!("failed to get metadata for {:?}", src_path))?;
+        let src_stat = fs::metadata(&src_path).await.with_context(|| {
+            format!("リモート開発サーバーのファイルを読めませんでした: {src_path:?}")
+        })?;
         let size = src_stat.len();
+
+        if let Some(free_space) = self.remote_free_space_bytes().await
+            && let Some(message) = insufficient_free_space_message(size, free_space)
+        {
+            anyhow::bail!(message);
+        }
 
         let t0 = Instant::now();
         // The size is in the status because this is by far the longest step of a
@@ -1684,11 +1705,42 @@ impl SshRemoteConnection {
             tmp_path,
             size / 1024
         );
-        self.upload_file(src_path, tmp_path)
-            .await
-            .context("failed to upload server binary")?;
+        if let Err(error) = self.upload_file(src_path, tmp_path).await {
+            // The same reasoning as a failed extraction: a full remote disk is
+            // the likeliest cause, and it is the one thing the transport's own
+            // message never names.
+            return Err(error
+                .context(self.free_space_hint().await)
+                .context("リモート開発サーバーを転送できませんでした"));
+        }
         log::info!("uploaded remote development server in {:?}", t0.elapsed());
         Ok(())
+    }
+
+    /// `mkdir -p` on the remote, with the failure explained in Japanese.
+    ///
+    /// A `~/.zed_server` that cannot be created (a read-only or full home, a
+    /// quota) is the first thing to go wrong on a connection and used to
+    /// surface as a bare non-zero exit status.
+    async fn create_remote_dir(&self, dir: &RelPath) -> Result<()> {
+        let dir = dir.display(self.path_style());
+        let result = self
+            .socket
+            .run_command(self.ssh_shell_kind, "mkdir", &["-p", dir.as_ref()], true)
+            .await;
+        match result {
+            Ok(_) => Ok(()),
+            // `mkdir` on Windows fails when the directory already exists, which
+            // is the ordinary case here, and it has no `-p` to say otherwise.
+            Err(error) if self.ssh_platform.os.is_windows() => {
+                log::debug!("ignoring mkdir failure on a Windows remote for {dir}: {error:#}");
+                Ok(())
+            }
+            Err(error) => Err(error.context(format!(
+                "リモートにディレクトリを作成できませんでした \
+                 (ディスクの空き容量または権限を確認してください): {dir}"
+            ))),
+        }
     }
 
     async fn extract_server_binary(
@@ -1772,10 +1824,10 @@ impl SshRemoteConnection {
         }
     }
 
-    /// The Japanese hint appended to a failed extraction, naming how much room
-    /// the remote has left. This error reaches the connection-failure dialog,
-    /// which renders the whole `anyhow` chain, so it is user-facing text and is
-    /// written in Japanese (ADR-F07).
+    /// The Japanese hint appended to a failed transfer or extraction, naming
+    /// how much room the remote has left. This error reaches the
+    /// connection-failure dialog, which renders the whole `anyhow` chain, so it
+    /// is user-facing text and is written in Japanese (ADR-F07).
     async fn free_space_hint(&self) -> String {
         match self.remote_free_space().await {
             Some(free_space) => {
@@ -1788,42 +1840,81 @@ impl SshRemoteConnection {
         }
     }
 
-    /// Asks the remote, once, how much room is left where the server binary
-    /// goes. Only ever called after an install has already failed: an ordinary
-    /// connection must not pay for the extra round trip.
+    /// Asks the remote how much room is left where the server binary goes, as
+    /// text for a human.
     async fn remote_free_space(&self) -> Option<String> {
-        let dir = remote_server_dir_relative().display(self.path_style());
-        let is_windows = self.ssh_platform.os.is_windows();
-        let (program, args) = if is_windows {
-            let script = format!(
-                "'{{0:N1}} GB' -f ((Get-Item -LiteralPath {} -ErrorAction Stop).PSDrive.Free / 1GB)",
-                powershell_single_quoted(&dir)
-            );
-            ("powershell", ShellKind::Pwsh.args_for_shell(false, script))
-        } else {
-            // `-P` pins the POSIX one-line-per-filesystem layout `df` otherwise
-            // wraps for a long device name; `-h` is not in POSIX but is present
-            // everywhere a remote server runs.
-            ("df", vec!["-Ph".to_string(), dir.into_owned()])
-        };
+        if self.ssh_platform.os.is_windows() {
+            let free_space = self
+                .windows_free_space("'{0:N1} GB' -f ($free / 1GB)")
+                .await?;
+            return Some(format!("空き {free_space}"));
+        }
+        parse_df_free_space(&self.posix_df("-Ph").await?)
+    }
 
-        let output = match self
+    /// The same measurement in bytes, for the pre-flight check that refuses a
+    /// transfer the remote cannot hold.
+    async fn remote_free_space_bytes(&self) -> Option<u64> {
+        if self.ssh_platform.os.is_windows() {
+            return self.windows_free_space("$free").await?.trim().parse().ok();
+        }
+        // `-k` is POSIX, unlike `-h`, and is what makes the figure parseable.
+        parse_df_available_kilobytes(&self.posix_df("-Pk").await?)
+            .map(|kilobytes| kilobytes.saturating_mul(1024))
+    }
+
+    /// Runs `df` for `~/.zed_server`, falling back to the home directory when
+    /// that path does not exist yet.
+    ///
+    /// The fallback is what makes this usable *before* the first install: `df`
+    /// exits non-zero on a missing path, so the case where free space matters
+    /// most — a first connection that has nothing there yet — used to report
+    /// that it could not be read at all.
+    async fn posix_df(&self, flags: &str) -> Option<String> {
+        for target in free_space_probe_targets(self.path_style()) {
+            match self
+                .socket
+                .run_command(
+                    self.ssh_shell_kind,
+                    "df",
+                    // `-P` pins the POSIX one-line-per-filesystem layout `df`
+                    // otherwise wraps for a long device name.
+                    &[flags.to_string(), target.clone()],
+                    true,
+                )
+                .await
+            {
+                Ok(output) => return Some(output),
+                Err(error) => {
+                    log::warn!(
+                        "failed to read the remote's free disk space at {target}: {error:#}"
+                    );
+                }
+            }
+        }
+        None
+    }
+
+    /// The Windows counterpart of [`Self::posix_df`]: `render` is a PowerShell
+    /// expression over `$free`, the free bytes of the drive holding the server
+    /// directory (or the home directory, when the server directory is not there
+    /// yet).
+    async fn windows_free_space(&self, render: &str) -> Option<String> {
+        let script = windows_free_space_script(self.path_style(), render);
+        let args = ShellKind::Pwsh.args_for_shell(false, script);
+        match self
             .socket
-            .run_command(self.ssh_shell_kind, program, &args, true)
+            .run_command(self.ssh_shell_kind, "powershell", &args, true)
             .await
         {
-            Ok(output) => output,
+            Ok(output) => {
+                let output = output.trim();
+                (!output.is_empty()).then(|| output.to_string())
+            }
             Err(error) => {
                 log::warn!("failed to read the remote's free disk space: {error:#}");
-                return None;
+                None
             }
-        };
-
-        if is_windows {
-            let free_space = output.trim();
-            (!free_space.is_empty()).then(|| format!("空き {free_space}"))
-        } else {
-            parse_df_free_space(&output)
         }
     }
 
@@ -1960,6 +2051,7 @@ impl SshRemoteConnection {
         // depending on the implementation of SSH stack, SFTP may disable interactive password prompts in batch mode.
         // This is for example the case on Windows as evidenced by this implementation snippet:
         // https://github.com/PowerShell/openssh-portable/blob/b8c08ef9da9450a94a9c5ef717d96a7bd83f3332/sshconnect2.c#L417
+        let mut sftp_failure = None;
         if Self::is_sftp_available().await {
             log::debug!("using SFTP for file upload");
             let mut command = self.build_sftp_command();
@@ -1981,6 +2073,11 @@ impl SshRemoteConnection {
             log::debug!(
                 "failed to upload file via SFTP {src_path_display} -> {dest_path_str}: {stderr}"
             );
+            // Kept for the final error: SFTP is the transport that usually
+            // fails first, and its reason (a full disk, a refused permission)
+            // is often the only one that names the real problem — SCP's own
+            // message can be as unhelpful as a broken pipe.
+            sftp_failure = Some(stderr.trim().to_string());
         }
 
         log::debug!("using SCP for file upload");
@@ -1995,11 +2092,15 @@ impl SshRemoteConnection {
         log::debug!(
             "failed to upload file via SCP {src_path_display} -> {dest_path_str}: {stderr}",
         );
+        // `No space left on device` and `Permission denied` both arrive here,
+        // and this text reaches the connection-failure dialog (ADR-F07).
         anyhow::bail!(
-            "failed to upload file via STFP/SCP {} -> {}: {}",
-            src_path_display,
-            dest_path_str,
-            stderr,
+            "リモートへのファイル転送に失敗しました ({src_path_display} -> {dest_path_str}): \
+             SCP: {scp}{sftp}",
+            scp = stderr.trim(),
+            sftp = sftp_failure
+                .map(|reason| format!(" / SFTP: {reason}"))
+                .unwrap_or_default(),
         );
     }
 
@@ -2794,6 +2895,70 @@ fn parse_df_free_space(output: &str) -> Option<String> {
     Some(format!("空き {available}、使用率 {capacity}"))
 }
 
+/// The directories to ask `df` about, in order.
+///
+/// `~/.zed_server` does not exist before the first install and `df` exits
+/// non-zero on a path that is not there, so without the home directory behind
+/// it the free-space figure was unavailable in exactly the situation that needs
+/// it: a first connection with no room to unpack into.
+fn free_space_probe_targets(path_style: PathStyle) -> [String; 2] {
+    [
+        remote_server_dir_relative()
+            .display(path_style)
+            .into_owned(),
+        ".".to_string(),
+    ]
+}
+
+/// The PowerShell counterpart of [`free_space_probe_targets`]: the same
+/// fallback, expressed inside the one command a Windows remote runs. `render`
+/// is an expression over `$free`, the free bytes of the drive that holds the
+/// chosen directory.
+fn windows_free_space_script(path_style: PathStyle, render: &str) -> String {
+    let dir = remote_server_dir_relative().display(path_style);
+    format!(
+        "$target = {}; if (-not (Test-Path -LiteralPath $target)) {{ $target = $HOME }}; \
+         $free = (Get-Item -LiteralPath $target -ErrorAction Stop).PSDrive.Free; {render}",
+        powershell_single_quoted(&dir)
+    )
+}
+
+/// Refuses a transfer the remote cannot hold, in Japanese, or `None` when it
+/// can.
+///
+/// Unpacking needs as much room again as the archive occupies, so a transfer
+/// is only useful with twice the file free. Deciding this *before* spending
+/// minutes on the upload turns a failure that used to arrive at the very end as
+/// `gunzip: write error` into one the user can act on immediately.
+fn insufficient_free_space_message(file_size: u64, free_space: u64) -> Option<String> {
+    let required = file_size.saturating_mul(2);
+    (free_space < required).then(|| {
+        format!(
+            "リモートの空き容量が不足しています (必要 約 {} MB、空き {} MB)。\
+             リモートホストの不要なファイルを削除してから再接続してください。",
+            required.div_ceil(BYTES_PER_MEGABYTE),
+            free_space / BYTES_PER_MEGABYTE,
+        )
+    })
+}
+
+/// The `Available` column of `df -Pk` output, in 1K blocks.
+///
+/// Separate from [`parse_df_free_space`] because that one keeps `df -Ph`'s
+/// human suffixes (`1.5G`), which are what a person should read and exactly
+/// what arithmetic cannot use.
+fn parse_df_available_kilobytes(output: &str) -> Option<u64> {
+    let line = output.lines().rev().find(|line| !line.trim().is_empty())?;
+    let fields = line.split_whitespace().collect::<Vec<_>>();
+    let [_filesystem, _size, _used, available, capacity, ..] = fields.as_slice() else {
+        return None;
+    };
+    if !capacity.ends_with('%') {
+        return None;
+    }
+    available.parse().ok()
+}
+
 /// The environment variables [`build_command_windows`] forwards to the remote
 /// despite Windows OpenSSH's 8K command-line limit, rendered as PowerShell
 /// assignments, or `None` when they would cost more of that budget than
@@ -3418,6 +3583,78 @@ mod tests {
         );
         assert_eq!(parse_df_free_space(""), None);
         assert_eq!(parse_df_free_space("df: '.zed_server': no such file"), None);
+    }
+
+    #[test]
+    fn test_parse_df_available_kilobytes() {
+        assert_eq!(
+            parse_df_available_kilobytes(
+                "Filesystem     1024-blocks     Used Available Capacity Mounted on\n\
+                 /dev/root         32380000 30800000   1580000      96% /\n"
+            ),
+            Some(1_580_000)
+        );
+        // A mount point with a space in it still parses.
+        assert_eq!(
+            parse_df_available_kilobytes(
+                "Filesystem 1024-blocks Used Available Capacity Mounted on\n\
+                 /dev/sdb1 104857600 1048576 103809024 1% /mnt/my disk\n"
+            ),
+            Some(103_809_024)
+        );
+        // A human-readable figure is not a number of blocks and must not be
+        // read as one.
+        assert_eq!(
+            parse_df_available_kilobytes(
+                "Filesystem Size Used Avail Use% Mounted on\n\
+                 /dev/root 31G 30G 512M 99% /\n"
+            ),
+            None
+        );
+        assert_eq!(parse_df_available_kilobytes(""), None);
+        assert_eq!(
+            parse_df_available_kilobytes("df: '.zed_server': no such file"),
+            None
+        );
+    }
+
+    /// Refusing before the transfer is the point: the same shortage found
+    /// afterwards costs the whole upload and reports itself as
+    /// `gunzip: write error`.
+    #[test]
+    fn test_insufficient_free_space_message() {
+        // Unpacking needs the archive's room again, so exactly twice is the
+        // smallest that works.
+        assert_eq!(
+            insufficient_free_space_message(50 * 1024 * 1024, 100 * 1024 * 1024),
+            None
+        );
+        let message = insufficient_free_space_message(50 * 1024 * 1024, 60 * 1024 * 1024)
+            .expect("60 MB cannot hold a 50 MB archive and what it unpacks to");
+        assert!(
+            message.contains("リモートの空き容量が不足しています"),
+            "{message}"
+        );
+        assert!(message.contains("必要 約 100 MB"), "{message}");
+        assert!(message.contains("空き 60 MB"), "{message}");
+        // Nothing readable still refuses rather than dividing to zero.
+        assert!(insufficient_free_space_message(1, 0).is_some());
+    }
+
+    /// A `df` on `~/.zed_server` fails before the first install, which is the
+    /// connection whose free space matters most.
+    #[test]
+    fn test_free_space_probe_falls_back_to_the_home_directory() {
+        let targets = free_space_probe_targets(PathStyle::Unix);
+        assert_eq!(targets[0], ".zed_server");
+        assert_eq!(targets[1], ".");
+
+        let script = windows_free_space_script(PathStyle::Windows, "$free");
+        assert!(
+            script.contains("Test-Path -LiteralPath $target"),
+            "{script}"
+        );
+        assert!(script.contains("$target = $HOME"), "{script}");
     }
 
     #[test]

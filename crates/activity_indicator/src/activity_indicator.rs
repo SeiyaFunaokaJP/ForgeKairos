@@ -71,6 +71,12 @@ pub struct ActivityIndicator {
     /// loop, and a repeat of the same denial stays silent.
     egress_consent_offered: HashMap<LanguageServerName, HashSet<String>>,
     egress_consent_task: Option<Task<()>>,
+    /// Servers whose `Failed` arrived while the binary was being fetched, as
+    /// opposed to one that failed to *run*. `BinaryStatus::Failed` carries no
+    /// such distinction, and the two need different wording: "実行に失敗しました"
+    /// on a download that never produced a binary sends the user looking at the
+    /// wrong thing.
+    fetch_failures: HashSet<LanguageServerName>,
 }
 
 #[derive(Default)]
@@ -174,12 +180,12 @@ fn manual_install_hint(server_name: &LanguageServerName) -> String {
     };
     match command {
         Some(command) => format!(
-            "許可しない場合は、{server_name} をこのマシン (リモート接続中はリモートホスト) に\
-             インストールして PATH に通しても解決します (例: {command})。"
+            "{server_name} をこのマシン (リモート接続中はリモートホスト) にインストールして \
+             PATH に通しても解決します (例: {command})。"
         ),
         None => format!(
-            "許可しない場合は、{server_name} をこのマシン (リモート接続中はリモートホスト) に\
-             インストールして PATH に通しても解決します。"
+            "{server_name} をこのマシン (リモート接続中はリモートホスト) にインストールして \
+             PATH に通しても解決します。"
         ),
     }
 }
@@ -356,6 +362,7 @@ impl ActivityIndicator {
                 deferred_scan_message: DeferredScanMessage::default(),
                 egress_consent_offered: HashMap::default(),
                 egress_consent_task: None,
+                fetch_failures: HashSet::default(),
             };
             this.update_deferred_scan_status(cx);
             this
@@ -418,6 +425,23 @@ impl ActivityIndicator {
             let hosts = hosts.clone();
             self.prompt_egress_consent(name.clone(), hosts, cx);
         }
+        let was_fetching = self.statuses.iter().any(|previous| {
+            previous.name == name
+                && matches!(
+                    previous.status,
+                    LanguageServerStatusUpdate::Binary(
+                        BinaryStatus::CheckingForUpdate | BinaryStatus::Downloading
+                    )
+                )
+        });
+        match &status {
+            LanguageServerStatusUpdate::Binary(BinaryStatus::Failed { .. }) if was_fetching => {
+                self.fetch_failures.insert(name.clone());
+            }
+            _ => {
+                self.fetch_failures.remove(&name);
+            }
+        }
         self.statuses.retain(|s| s.name != name);
         self.statuses.push(ServerStatus { name, status });
         cx.notify();
@@ -436,7 +460,17 @@ impl ActivityIndicator {
         hosts: Vec<String>,
         cx: &mut Context<Self>,
     ) {
-        let hosts = hosts_still_denied(&hosts, cx);
+        // A denial reported by a remote host was judged against *its* allowlist
+        // (ADR-F11 pushes the client's list over, but a stale or partial push
+        // is exactly the case that produces the denial). Filtering it through
+        // the client's own policy would then decide "already allowed" and
+        // swallow the prompt, leaving the user with a download that keeps
+        // failing and no way to act on it.
+        let hosts = if self.project.read(cx).is_via_remote_server() {
+            hosts
+        } else {
+            hosts_still_denied(&hosts, cx)
+        };
         if !take_hosts_to_offer(&mut self.egress_consent_offered, &server_name, &hosts) {
             return;
         }
@@ -454,7 +488,7 @@ impl ActivityIndicator {
             .iter()
             .map(|host| SharedString::from(host.clone()))
             .collect::<Vec<_>>();
-        let manual_hint = manual_install_hint(&server_name);
+        let manual_hint = format!("許可しない場合は、{}", manual_install_hint(&server_name));
         let hosts_for_click = hosts.clone();
 
         workspace.update(cx, |workspace, cx| {
@@ -596,9 +630,16 @@ impl ActivityIndicator {
             LanguageServerStatusUpdate::Binary(BinaryStatus::Failed { error })
                 if !status_message_shown =>
             {
+                // The raw error is English and, on a machine the fork keeps off
+                // the network, usually says nothing the user can act on. The
+                // way out is the same one the consent prompt offers, so say so
+                // here too — this dialog may be all they ever see.
                 cx.emit(Event::ShowStatus {
                     server_name: status.name.clone(),
-                    status: SharedString::from(error),
+                    status: SharedString::from(format!(
+                        "{error}\n\n{}",
+                        manual_install_hint(&status.name)
+                    )),
                 });
                 status_message_shown = true;
                 false
@@ -817,6 +858,7 @@ impl ActivityIndicator {
         let mut downloading = SmallVec::<[_; 3]>::new();
         let mut checking_for_update = SmallVec::<[_; 3]>::new();
         let mut failed = SmallVec::<[_; 3]>::new();
+        let mut failed_to_fetch = SmallVec::<[_; 3]>::new();
         let mut egress_denied = SmallVec::<[_; 3]>::new();
         let mut health_messages = SmallVec::<[_; 3]>::new();
         let mut servers_to_clear_statuses = HashSet::<LanguageServerName>::default();
@@ -835,7 +877,11 @@ impl ActivityIndicator {
                     downloading.push(status.name.clone());
                 }
                 LanguageServerStatusUpdate::Binary(BinaryStatus::Failed { .. }) => {
-                    failed.push(status.name.clone());
+                    if self.fetch_failures.contains(&status.name) {
+                        failed_to_fetch.push(status.name.clone());
+                    } else {
+                        failed.push(status.name.clone());
+                    }
                 }
                 LanguageServerStatusUpdate::Binary(BinaryStatus::EgressDenied { .. }) => {
                     egress_denied.push(status.name.clone());
@@ -919,6 +965,32 @@ impl ActivityIndicator {
                 message: format!(
                     "{} のダウンロードが外部通信の統制で拒否されました。クリックすると必要なホストを表示します。",
                     egress_denied.iter().map(|name| name.as_ref()).fold(
+                        String::new(),
+                        |mut acc, s| {
+                            if !acc.is_empty() {
+                                acc.push_str(", ");
+                            }
+                            acc.push_str(s);
+                            acc
+                        }
+                    ),
+                ),
+                on_click: Some(Arc::new(|this, window, cx| {
+                    this.show_error_message(&ShowErrorMessage, window, cx)
+                })),
+                tooltip_message: None,
+            });
+        }
+
+        // A binary that was never fetched cannot have failed to *run*, and
+        // saying it did sends the user looking at the wrong thing (the server's
+        // own configuration rather than the download).
+        if !failed_to_fetch.is_empty() {
+            return Some(Content {
+                icon: ActivityIcon::Icon(IconName::Warning),
+                message: format!(
+                    "{} を取得できませんでした。クリックするとエラーを表示します。",
+                    failed_to_fetch.iter().map(|name| name.as_ref()).fold(
                         String::new(),
                         |mut acc, s| {
                             if !acc.is_empty() {

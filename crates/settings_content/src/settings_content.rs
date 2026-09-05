@@ -208,6 +208,15 @@ pub struct SettingsContent {
     /// Settings for the built-in loopback IDE server (ADR-F26).
     pub ide_server: Option<IdeServerSettingsContent>,
 
+    /// Settings that apply to the host a remote project runs on (ADR-F27).
+    ///
+    /// Named `remote_host` in Rust only because [`RemoteSettingsContent`]
+    /// above already claims the field name `remote` for the *flattened*
+    /// top-level connection lists; on disk both live in the same file and this
+    /// one is the `"remote"` object.
+    #[serde(rename = "remote")]
+    pub remote_host: Option<RemoteHostSettingsContent>,
+
     /// Configuration of audio in Zed.
     pub audio: Option<AudioSettingsContent>,
 
@@ -737,9 +746,9 @@ pub struct BrowserSettingsContent {
     /// Default: 480
     pub default_width: Option<PixelSetting>,
 
-    /// The page opened when the browser panel first loads.
+    /// The page opened when a built-in browser panel or tab first loads.
     ///
-    /// Default: https://github.com/copilot
+    /// Default: https://m365.cloud.microsoft/chat
     pub home_url: Option<String>,
 
     /// The URL template used when the address bar input is not a URL, and for
@@ -1340,6 +1349,26 @@ pub enum ImageFileSizeUnit {
     Decimal,
 }
 
+/// Settings for the machine a remote project runs on, as opposed to the
+/// connection lists in [`RemoteSettingsContent`]. Written under `"remote"` in
+/// `settings.json`, and carried to the remote host with the rest of the user
+/// settings, which is where they take effect.
+#[with_fallible_options]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct RemoteHostSettingsContent {
+    /// Whether the remote host should make its outgoing HTTP(S) requests —
+    /// language server and node downloads, extension archives, agent binaries
+    /// — through this machine instead of its own network (ADR-F27).
+    ///
+    /// This is what makes a remote host that has no internet access able to
+    /// install language servers at all, and it puts those downloads under this
+    /// machine's network allowlist, consent prompts and proxy. Turn it off to
+    /// have the remote host connect out on its own.
+    ///
+    /// Default: true
+    pub relay_http_through_client: Option<bool>,
+}
+
 #[with_fallible_options]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq)]
 pub struct RemoteSettingsContent {
@@ -1606,5 +1635,39 @@ impl From<u64> for DelayMs {
 impl std::fmt::Display for DelayMs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}ms", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR-F27's setting lives in a `"remote"` object, next to a
+    /// [`RemoteSettingsContent`] that serde *flattens* onto the same level.
+    /// Nothing about that arrangement is obvious from either declaration, so
+    /// pin it: the named field has to win the key without swallowing the
+    /// flattened neighbours' keys.
+    #[test]
+    fn the_remote_object_and_the_flattened_remote_settings_coexist() {
+        let content: SettingsContent = serde_json::from_str(
+            r#"{
+                "remote": { "relay_http_through_client": false },
+                "read_ssh_config": false
+            }"#,
+        )
+        .expect("the settings should parse");
+
+        assert_eq!(
+            content
+                .remote_host
+                .as_ref()
+                .and_then(|remote| remote.relay_http_through_client),
+            Some(false)
+        );
+        assert_eq!(content.remote.read_ssh_config, Some(false));
+
+        let absent: SettingsContent =
+            serde_json::from_str("{}").expect("empty settings should parse");
+        assert_eq!(absent.remote_host, None);
     }
 }

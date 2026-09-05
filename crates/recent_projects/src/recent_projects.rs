@@ -2016,9 +2016,9 @@ pub(crate) fn icon_for_remote_connection(options: Option<&RemoteConnectionOption
         Some(options) => match options {
             RemoteConnectionOptions::Ssh(_) => IconName::Server,
             RemoteConnectionOptions::Wsl(_) => IconName::Linux,
-            RemoteConnectionOptions::Docker(_) => IconName::Box,
-            #[cfg(any(test, feature = "test-support"))]
-            RemoteConnectionOptions::Mock(_) => IconName::Server,
+            // `Mock` grows in with `remote/test-support`, which a dependent's
+            // dev-dependency can enable without this crate's own `test-support`.
+            _ => IconName::Server,
         },
     }
 }

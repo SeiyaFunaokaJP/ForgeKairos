@@ -6242,6 +6242,9 @@ mod tests {
             project_panel::init(cx);
             outline_panel::init(cx);
             terminal_view::init(cx);
+            // ADR-F28: owns `terminal::OpenFileTransfer`, which `terminal_view`
+            // only dispatches.
+            file_transfer::init(cx);
             let credentials_provider = zed_credentials_provider::global(cx);
             copilot_chat::init(
                 app_state.client.http_client(),

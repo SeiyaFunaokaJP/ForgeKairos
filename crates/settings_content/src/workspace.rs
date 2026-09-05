@@ -517,6 +517,12 @@ pub struct TabBarSettingsContent {
     ///
     /// Default: true
     pub show_tab_bar_buttons: Option<bool>,
+    /// Whether or not to keep the tab bar buttons on panes that are not active.
+    /// When disabled, only the focused pane shows them, so a split leaves the
+    /// other panes without a new / split / zoom button.
+    ///
+    /// Default: true
+    pub show_buttons_on_inactive_panes: Option<bool>,
     /// Whether or not to show pinned tabs in a separate row.
     /// When enabled, pinned tabs appear in a top row and unpinned tabs in a bottom row.
     ///

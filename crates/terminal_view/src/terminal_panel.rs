@@ -7,13 +7,13 @@ use crate::{
     },
 };
 use breadcrumbs::Breadcrumbs;
-use collections::HashMap;
+use collections::{HashMap, HashSet};
 use db::kvp::KeyValueStore;
 use futures::{channel::oneshot, future::join_all};
 use gpui::{
-    Action, Anchor, App, AsyncApp, AsyncWindowContext, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, IntoElement, ParentElement, Pixels, Render, Styled, Task, TaskExt, WeakEntity,
-    Window, actions,
+    Action, Anchor, AnyElement, App, AsyncApp, AsyncWindowContext, Context, Entity, EventEmitter,
+    FocusHandle, Focusable, IntoElement, ParentElement, Pixels, Render, SharedString, Styled, Task,
+    TaskExt, WeakEntity, Window, actions,
 };
 use itertools::Itertools;
 use project::{Fs, Project};
@@ -132,8 +132,8 @@ const LAUNCH_CLAUDE_CODE_LABEL: &str = "Claude Code を起動";
 /// `Window::dispatch_action` defers to the end of the effect cycle: the handler
 /// leases the workspace, which must not happen while this pane is still leased
 /// by its own click listener.
-fn launch_claude_code_button() -> IconButton {
-    IconButton::new("terminal-launch-claude-code", IconName::AiClaude)
+fn launch_claude_code_button() -> FoldableTabBarButton {
+    let button = IconButton::new("terminal-launch-claude-code", IconName::AiClaude)
         .icon_size(IconSize::Small)
         .tooltip(Tooltip::text("Claude Code を起動 (新しいターミナル)"))
         .on_click(|_, window, cx| {
@@ -141,6 +141,222 @@ fn launch_claude_code_button() -> IconButton {
                 Box::new(zed_actions::terminal::LaunchClaudeCode { effort: None }),
                 cx,
             );
+        });
+    FoldableTabBarButton {
+        button: button.into_any_element(),
+        menu_label: LAUNCH_CLAUDE_CODE_LABEL.into(),
+        menu_action: Box::new(zed_actions::terminal::LaunchClaudeCode { effort: None }),
+        fold_rank: FOLD_RANK_LAUNCH_CLAUDE_CODE,
+    }
+}
+
+/// The terminal the tab bar's recording toggle acts on, together with the log
+/// it is writing. `None` when the pane is showing something that is not a
+/// terminal.
+///
+/// This is resolved on every render rather than captured with the rest of the
+/// tab bar, so switching to another tab while one of them records moves the red
+/// dot with the active tab.
+fn session_log_toggle_target(
+    pane: &Pane,
+    cx: &App,
+) -> Option<(Entity<TerminalView>, Option<PathBuf>)> {
+    let terminal_view = pane.active_item()?.downcast::<TerminalView>()?;
+    let log_path = terminal_view.read(cx).session_log_path(cx);
+    Some((terminal_view, log_path))
+}
+
+/// The tab bar's one-click recording toggle.
+fn session_log_toggle_button(pane: &Pane, cx: &App) -> Option<FoldableTabBarButton> {
+    let (terminal_view, log_path) = session_log_toggle_target(pane, cx)?;
+    let recording = log_path.is_some();
+    let (label, detail) = match log_path {
+        Some(path) => (crate::STOP_SESSION_LOG_LABEL, path.display().to_string()),
+        None => {
+            let directory = terminal::session_log::resolve_log_directory(
+                TerminalSettings::get_global(cx)
+                    .session_log
+                    .directory
+                    .as_deref(),
+            );
+            (
+                crate::START_SESSION_LOG_LABEL,
+                format!("保存先: {}", directory.display()),
+            )
+        }
+    };
+    let terminal_view = terminal_view.downgrade();
+    let button = IconButton::new("terminal-toggle-session-log", IconName::Circle)
+        .icon_size(IconSize::Small)
+        .toggle_state(recording)
+        .selected_icon_color(Color::Error)
+        .tooltip(move |_window, cx| {
+            Tooltip::with_meta(label, Some(&crate::ToggleSessionLog), detail.clone(), cx)
+        })
+        .on_click(move |_, _window, cx| {
+            terminal_view
+                .update(cx, |terminal_view, cx| terminal_view.toggle_session_log(cx))
+                .log_err();
+        });
+    Some(FoldableTabBarButton {
+        button: button.into_any_element(),
+        menu_label: label.into(),
+        menu_action: Box::new(crate::ToggleSessionLog),
+        fold_rank: FOLD_RANK_SESSION_LOG,
+    })
+}
+
+// The order in which the tab bar gives its buttons up once the pane is too
+// narrow for the whole row: the lowest rank moves into the 「…」 menu first, so
+// what survives longest is what a narrow split still needs at a glance.
+const FOLD_RANK_RUN_MACRO: u8 = 10;
+const FOLD_RANK_FILE_TRANSFER: u8 = 15;
+const FOLD_RANK_QUICK_CONNECT: u8 = 20;
+const FOLD_RANK_INLINE_ASSIST: u8 = 30;
+const FOLD_RANK_BROADCAST_INPUT: u8 = 40;
+const FOLD_RANK_LAUNCH_CLAUDE_CODE: u8 = 50;
+const FOLD_RANK_SESSION_LOG: u8 = 60;
+const FOLD_RANK_ZOOM: u8 = 70;
+
+/// Horizontal room one tab bar icon button takes, its gap included, expressed in
+/// rems: `ButtonSize::Default` is 22px square and the row's gap is
+/// `DynamicSpacing::Base02`, both at a 16px rem.
+const TAB_BAR_BUTTON_REMS: f32 = 24. / 16.;
+
+/// Room the fold leaves to the tabs themselves, so that a full button row never
+/// costs the pane the last readable tab title.
+const TAB_BAR_TABS_REMS: f32 = 128. / 16.;
+
+/// One entry of the terminal tab bar's button row, in the order it is drawn.
+enum TabBarItem {
+    /// A button the 「…」 menu can take over when the row does not fit.
+    Foldable(FoldableTabBarButton),
+    /// A button whose own popover menu would have to nest inside the 「…」 menu,
+    /// so it is always drawn.
+    Fixed(AnyElement),
+}
+
+/// A tab bar button together with the menu entry that stands in for it once it
+/// has been folded away.
+struct FoldableTabBarButton {
+    button: AnyElement,
+    menu_label: SharedString,
+    menu_action: Box<dyn Action>,
+    fold_rank: u8,
+}
+
+/// A tab bar shortcut whose whole behaviour is one action, so its button and its
+/// folded menu entry can be built from the same action.
+///
+/// The click dispatches instead of running the handler directly, because
+/// `Window::dispatch_action` defers to the end of the effect cycle: the handler
+/// leases the workspace or the panel, which must not happen while this pane is
+/// still leased by its own click listener.
+fn action_tab_bar_button(
+    id: &'static str,
+    icon: IconName,
+    label: &'static str,
+    action: Box<dyn Action>,
+    fold_rank: u8,
+) -> FoldableTabBarButton {
+    let button = IconButton::new(id, icon)
+        .icon_size(IconSize::Small)
+        .tooltip(Tooltip::for_action_title(label, action.as_ref()))
+        .on_click({
+            let action = action.boxed_clone();
+            move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx)
+        })
+        .into_any_element();
+    FoldableTabBarButton {
+        button,
+        menu_label: label.into(),
+        menu_action: action,
+        fold_rank,
+    }
+}
+
+/// Splits the button row into what the pane is still wide enough to draw and
+/// what the 「…」 menu takes over, keeping the drawing order on both sides.
+///
+/// `pane_width` is the width of the pane's previous layout; before the pane has
+/// ever been laid out nothing folds, so a tab bar never opens up collapsed and
+/// then expands.
+fn fold_tab_bar_items(
+    items: Vec<TabBarItem>,
+    pane_width: Option<Pixels>,
+    rem_size: Pixels,
+) -> (Vec<TabBarItem>, Vec<(SharedString, Box<dyn Action>)>) {
+    let Some(pane_width) = pane_width else {
+        return (items, Vec::new());
+    };
+    let mut ranked_foldables = items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| match item {
+            TabBarItem::Foldable(button) => Some((button.fold_rank, index)),
+            TabBarItem::Fixed(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let fixed_count = items.len() - ranked_foldables.len();
+
+    let room_for_buttons = (pane_width - rem_size * TAB_BAR_TABS_REMS).max(Pixels::ZERO);
+    let buttons_that_fit = (room_for_buttons / (rem_size * TAB_BAR_BUTTON_REMS)) as usize;
+    let capacity = buttons_that_fit.saturating_sub(fixed_count);
+    if ranked_foldables.len() <= capacity {
+        return (items, Vec::new());
+    }
+
+    // The 「…」 trigger needs a slot of its own.
+    let kept_count = capacity.saturating_sub(1);
+    ranked_foldables.sort_by_key(|(fold_rank, index)| (cmp::Reverse(*fold_rank), *index));
+    let kept = ranked_foldables
+        .into_iter()
+        .take(kept_count)
+        .map(|(_, index)| index)
+        .collect::<HashSet<_>>();
+
+    let mut drawn = Vec::with_capacity(fixed_count + kept_count);
+    let mut folded = Vec::new();
+    for (index, item) in items.into_iter().enumerate() {
+        match item {
+            TabBarItem::Foldable(button) if !kept.contains(&index) => {
+                folded.push((button.menu_label, button.menu_action));
+            }
+            item => drawn.push(item),
+        }
+    }
+    (drawn, folded)
+}
+
+/// The 「…」 popover holding the buttons the tab bar had no room for.
+///
+/// `context` is the focus handle the entries dispatch into, so that
+/// `terminal::ToggleSessionLog` and `workspace::ToggleZoom` reach this pane's
+/// terminal rather than whatever happens to be focused elsewhere.
+fn folded_buttons_menu(
+    folded: Vec<(SharedString, Box<dyn Action>)>,
+    context: FocusHandle,
+) -> impl IntoElement {
+    PopoverMenu::new("terminal-tab-bar-overflow")
+        .trigger_with_tooltip(
+            IconButton::new("terminal-tab-bar-overflow-trigger", IconName::Ellipsis)
+                .icon_size(IconSize::Small),
+            Tooltip::text("その他のボタン"),
+        )
+        .anchor(Anchor::TopRight)
+        .menu(move |window, cx| {
+            let folded = folded
+                .iter()
+                .map(|(label, action)| (label.clone(), action.boxed_clone()))
+                .collect::<Vec<_>>();
+            let context = context.clone();
+            Some(ContextMenu::build(window, cx, |mut menu, _, _| {
+                menu = menu.context(context);
+                for (label, action) in folded {
+                    menu = menu.action(label, action);
+                }
+                menu
+            }))
         })
 }
 
@@ -241,165 +457,219 @@ impl TerminalPanel {
                 // 始めたい人はまだターミナルを触っていないので、フォーカスしてから
                 // でないと現れないボタンでは導線にならない。
                 let launch_claude_code = launch_claude_code_button();
-                if !pane.has_focus(window, cx)
-                    && !pane.context_menu_focused(window, cx)
-                    && !has_focused_rename_editor
-                {
+                // 記録トグルも同じ理由でフォーカス無しでも出す: 記録中かどうかは
+                // ペインを触っていない人こそ知りたい情報で、ワンクリックで止め
+                // られることに意味がある。
+                let session_log_toggle = session_log_toggle_button(pane, cx);
+                if !pane.should_render_tab_bar_buttons(window, cx) && !has_focused_rename_editor {
                     return (
                         None,
                         Some(
                             h_flex()
                                 .gap(DynamicSpacing::Base02.rems(cx))
-                                .child(launch_claude_code)
+                                .debug_selector(|| "terminal_tab_bar_buttons".into())
+                                .child(launch_claude_code.button)
+                                .children(session_log_toggle.map(|toggle| toggle.button))
                                 .into_any_element(),
                         ),
                     );
                 }
                 let focus_handle = pane.focus_handle(cx);
-                let right_children = h_flex()
-                    .gap(DynamicSpacing::Base02.rems(cx))
-                    .child(launch_claude_code)
-                    .child(
-                        PopoverMenu::new("terminal-tab-bar-popover-menu")
-                            .trigger_with_tooltip(
-                                IconButton::new("plus", IconName::Plus).icon_size(IconSize::Small),
-                                Tooltip::text("新規…"),
-                            )
-                            .anchor(Anchor::TopRight)
-                            .with_handle(pane.new_item_context_menu_handle.clone())
-                            .menu(move |window, cx| {
-                                let focus_handle = focus_handle.clone();
-                                let menu = ContextMenu::build(window, cx, |menu, _, _| {
-                                    menu.context(focus_handle.clone())
-                                        .action(
-                                            "新規ターミナル",
-                                            workspace::NewTerminal::default().boxed_clone(),
-                                        )
-                                        // We want the focus to go back to terminal panel once task modal is dismissed,
-                                        // hence we focus that first. Otherwise, we'd end up without a focused element, as
-                                        // context menu will be gone the moment we spawn the modal.
-                                        .action(
-                                            "タスクを実行",
-                                            zed_actions::Spawn::modal().boxed_clone(),
-                                        )
-                                        .action(
-                                            LAUNCH_CLAUDE_CODE_LABEL,
-                                            zed_actions::terminal::LaunchClaudeCode {
-                                                effort: None,
-                                            }
-                                            .boxed_clone(),
-                                        )
-                                        .separator()
-                                        .action(
-                                            "クイック接続…",
-                                            crate::session_tools::QuickConnect.boxed_clone(),
-                                        )
-                                        .action(
-                                            "マクロを実行…",
-                                            crate::session_tools::RunMacro.boxed_clone(),
-                                        )
-                                        .action(
-                                            "マクロの編集…",
-                                            crate::session_tools::EditMacros.boxed_clone(),
-                                        )
-                                });
-
-                                Some(menu)
-                            }),
+                let new_item_menu = PopoverMenu::new("terminal-tab-bar-popover-menu")
+                    .trigger_with_tooltip(
+                        IconButton::new("plus", IconName::Plus).icon_size(IconSize::Small),
+                        Tooltip::text("新規…"),
                     )
-                    .when(assistant_enabled, |this| {
-                        this.when_some(split_context.clone(), |this, focus_handle| {
-                            this.child(InlineAssistTabBarButton { focus_handle })
-                        })
-                    })
-                    .when(can_broadcast_input || broadcast_input, |this| {
-                        this.child(
-                            IconButton::new("terminal-broadcast-input", IconName::Keyboard)
-                                .icon_size(IconSize::Small)
-                                .toggle_state(broadcast_input)
-                                .tooltip(move |_window, cx| {
-                                    Tooltip::for_action(
-                                        if broadcast_input {
-                                            "全ペインへの同時入力をやめる"
-                                        } else {
-                                            "全ペインに同時入力"
-                                        },
-                                        &crate::ToggleBroadcastInput,
-                                        cx,
+                    .anchor(Anchor::TopRight)
+                    .with_handle(pane.new_item_context_menu_handle.clone())
+                    .menu({
+                        let focus_handle = focus_handle.clone();
+                        move |window, cx| {
+                            let focus_handle = focus_handle.clone();
+                            let menu = ContextMenu::build(window, cx, |menu, _, _| {
+                                menu.context(focus_handle.clone())
+                                    .action(
+                                        "新規ターミナル",
+                                        workspace::NewTerminal::default().boxed_clone(),
                                     )
-                                })
-                                // The handler leases the panel, which must not
-                                // happen while this pane is still leased by its
-                                // own click listener; dispatching defers it to
-                                // the end of the effect cycle.
-                                .on_click(|_, window, cx| {
-                                    window
-                                        .dispatch_action(Box::new(crate::ToggleBroadcastInput), cx);
-                                }),
-                        )
+                                    // We want the focus to go back to terminal panel once task modal is dismissed,
+                                    // hence we focus that first. Otherwise, we'd end up without a focused element, as
+                                    // context menu will be gone the moment we spawn the modal.
+                                    .action(
+                                        "タスクを実行",
+                                        zed_actions::Spawn::modal().boxed_clone(),
+                                    )
+                                    .action(
+                                        LAUNCH_CLAUDE_CODE_LABEL,
+                                        zed_actions::terminal::LaunchClaudeCode { effort: None }
+                                            .boxed_clone(),
+                                    )
+                                    .separator()
+                                    .action(
+                                        "クイック接続…",
+                                        crate::session_tools::QuickConnect.boxed_clone(),
+                                    )
+                                    .action(
+                                        "マクロを実行…",
+                                        crate::session_tools::RunMacro.boxed_clone(),
+                                    )
+                                    .action(
+                                        "マクロの編集…",
+                                        crate::session_tools::EditMacros.boxed_clone(),
+                                    )
+                            });
+
+                            Some(menu)
+                        }
                     })
-                    .child(
-                        PopoverMenu::new("terminal-pane-tab-bar-split")
-                            .trigger_with_tooltip(
-                                IconButton::new("terminal-pane-split", IconName::Split)
-                                    .icon_size(IconSize::Small),
-                                Tooltip::text("ペインを分割"),
-                            )
-                            .anchor(Anchor::TopRight)
-                            .with_handle(pane.split_item_context_menu_handle.clone())
-                            .menu({
-                                move |window, cx| {
-                                    ContextMenu::build(window, cx, |menu, _, _| {
-                                        menu.when_some(
-                                            split_context.clone(),
-                                            |menu, split_context| menu.context(split_context),
-                                        )
-                                        .action("右に分割", SplitRight::default().boxed_clone())
-                                        .action("左に分割", SplitLeft::default().boxed_clone())
-                                        .action("上に分割", SplitUp::default().boxed_clone())
-                                        .action("下に分割", SplitDown::default().boxed_clone())
-                                        .separator()
-                                        .action(
-                                            "2×2 に分割",
-                                            SplitGrid {
-                                                columns: 2,
-                                                rows: 2,
-                                            }
-                                            .boxed_clone(),
-                                        )
-                                        .action(
-                                            "横 3 分割",
-                                            SplitGrid {
-                                                columns: 3,
-                                                rows: 1,
-                                            }
-                                            .boxed_clone(),
-                                        )
-                                    })
-                                    .into()
-                                }
-                            }),
+                    .into_any_element();
+                let split_menu = PopoverMenu::new("terminal-pane-tab-bar-split")
+                    .trigger_with_tooltip(
+                        IconButton::new("terminal-pane-split", IconName::Split)
+                            .icon_size(IconSize::Small),
+                        Tooltip::text("ペインを分割"),
                     )
-                    .child({
-                        let zoomed = pane.is_zoomed();
-                        IconButton::new("toggle_zoom", IconName::Maximize)
+                    .anchor(Anchor::TopRight)
+                    .with_handle(pane.split_item_context_menu_handle.clone())
+                    .menu({
+                        let split_context = split_context.clone();
+                        move |window, cx| {
+                            ContextMenu::build(window, cx, |menu, _, _| {
+                                menu.when_some(split_context.clone(), |menu, split_context| {
+                                    menu.context(split_context)
+                                })
+                                .action("右に分割", SplitRight::default().boxed_clone())
+                                .action("左に分割", SplitLeft::default().boxed_clone())
+                                .action("上に分割", SplitUp::default().boxed_clone())
+                                .action("下に分割", SplitDown::default().boxed_clone())
+                                .separator()
+                                .action(
+                                    "2×2 に分割",
+                                    SplitGrid {
+                                        columns: 2,
+                                        rows: 2,
+                                    }
+                                    .boxed_clone(),
+                                )
+                                .action(
+                                    "横 3 分割",
+                                    SplitGrid {
+                                        columns: 3,
+                                        rows: 1,
+                                    }
+                                    .boxed_clone(),
+                                )
+                            })
+                            .into()
+                        }
+                    })
+                    .into_any_element();
+                let zoomed = pane.is_zoomed();
+                let zoom_label = if zoomed {
+                    "ズーム解除"
+                } else {
+                    "ズーム"
+                };
+                let zoom_button = FoldableTabBarButton {
+                    button: IconButton::new("toggle_zoom", IconName::Maximize)
+                        .icon_size(IconSize::Small)
+                        .toggle_state(zoomed)
+                        .selected_icon(IconName::Minimize)
+                        .on_click(cx.listener(|pane, _, window, cx| {
+                            pane.toggle_zoom(&workspace::ToggleZoom, window, cx);
+                        }))
+                        .tooltip(move |_window, cx| {
+                            Tooltip::for_action(zoom_label, &ToggleZoom, cx)
+                        })
+                        .into_any_element(),
+                    menu_label: zoom_label.into(),
+                    menu_action: Box::new(ToggleZoom),
+                    fold_rank: FOLD_RANK_ZOOM,
+                };
+
+                let mut items = vec![
+                    TabBarItem::Foldable(launch_claude_code),
+                    TabBarItem::Foldable(action_tab_bar_button(
+                        "terminal-quick-connect",
+                        IconName::Server,
+                        "クイック接続…",
+                        Box::new(crate::session_tools::QuickConnect),
+                        FOLD_RANK_QUICK_CONNECT,
+                    )),
+                    TabBarItem::Foldable(action_tab_bar_button(
+                        "terminal-run-macro",
+                        IconName::PlayOutlined,
+                        "マクロを実行…",
+                        Box::new(crate::session_tools::RunMacro),
+                        FOLD_RANK_RUN_MACRO,
+                    )),
+                ];
+                items.push(TabBarItem::Foldable(action_tab_bar_button(
+                    "terminal-file-transfer",
+                    IconName::ArrowRightLeft,
+                    "ファイル転送…",
+                    Box::new(zed_actions::terminal::OpenFileTransfer::default()),
+                    FOLD_RANK_FILE_TRANSFER,
+                )));
+                items.extend(session_log_toggle.map(TabBarItem::Foldable));
+                items.push(TabBarItem::Fixed(new_item_menu));
+                if assistant_enabled && let Some(focus_handle) = split_context.clone() {
+                    items.push(TabBarItem::Foldable(FoldableTabBarButton {
+                        button: InlineAssistTabBarButton { focus_handle }.into_any_element(),
+                        menu_label: "インラインアシスト".into(),
+                        menu_action: Box::new(InlineAssist::default()),
+                        fold_rank: FOLD_RANK_INLINE_ASSIST,
+                    }));
+                }
+                if can_broadcast_input || broadcast_input {
+                    let broadcast_label = if broadcast_input {
+                        "全ペインへの同時入力をやめる"
+                    } else {
+                        "全ペインに同時入力"
+                    };
+                    items.push(TabBarItem::Foldable(FoldableTabBarButton {
+                        button: IconButton::new("terminal-broadcast-input", IconName::Keyboard)
                             .icon_size(IconSize::Small)
-                            .toggle_state(zoomed)
-                            .selected_icon(IconName::Minimize)
-                            .on_click(cx.listener(|pane, _, window, cx| {
-                                pane.toggle_zoom(&workspace::ToggleZoom, window, cx);
-                            }))
+                            .toggle_state(broadcast_input)
                             .tooltip(move |_window, cx| {
                                 Tooltip::for_action(
-                                    if zoomed {
-                                        "ズーム解除"
-                                    } else {
-                                        "ズーム"
-                                    },
-                                    &ToggleZoom,
+                                    broadcast_label,
+                                    &crate::ToggleBroadcastInput,
                                     cx,
                                 )
                             })
+                            // The handler leases the panel, which must not
+                            // happen while this pane is still leased by its
+                            // own click listener; dispatching defers it to
+                            // the end of the effect cycle.
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(Box::new(crate::ToggleBroadcastInput), cx);
+                            })
+                            .into_any_element(),
+                        menu_label: broadcast_label.into(),
+                        menu_action: Box::new(crate::ToggleBroadcastInput),
+                        fold_rank: FOLD_RANK_BROADCAST_INPUT,
+                    }));
+                }
+                items.push(TabBarItem::Fixed(split_menu));
+                items.push(TabBarItem::Foldable(zoom_button));
+
+                let (drawn, folded) =
+                    fold_tab_bar_items(items, pane.last_layout_width(), window.rem_size());
+                let menu_context = split_context.unwrap_or(focus_handle);
+                let right_children = h_flex()
+                    .gap(DynamicSpacing::Base02.rems(cx))
+                    .debug_selector(|| "terminal_tab_bar_buttons".into())
+                    .children(drawn.into_iter().map(|item| match item {
+                        TabBarItem::Foldable(button) => button.button,
+                        TabBarItem::Fixed(element) => element,
+                    }))
+                    .when(!folded.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .debug_selector(|| "terminal_tab_bar_overflow".into())
+                                .child(folded_buttons_menu(folded, menu_context)),
+                        )
                     })
                     .into_any_element()
                     .into();
@@ -2055,7 +2325,7 @@ impl RenderOnce for InlineAssistTabBarButton {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZero;
+    use std::{num::NonZero, path::Path};
 
     use super::*;
     use gpui::{Modifiers, TestAppContext, UpdateGlobal as _, VisualTestContext};
@@ -2085,6 +2355,105 @@ mod tests {
             result.command_label, expected_shell,
             "We show the shell launch for empty commands"
         );
+    }
+
+    fn foldable_test_button(fold_rank: u8, label: &'static str) -> TabBarItem {
+        TabBarItem::Foldable(FoldableTabBarButton {
+            button: gpui::Empty.into_any_element(),
+            menu_label: label.into(),
+            menu_action: Box::new(crate::session_tools::RunMacro),
+            fold_rank,
+        })
+    }
+
+    /// The button row the terminal tab bar builds for a split pane with the
+    /// assistant off: six foldable buttons around the 新規 and 分割 popovers.
+    fn tab_bar_row() -> Vec<TabBarItem> {
+        vec![
+            foldable_test_button(FOLD_RANK_LAUNCH_CLAUDE_CODE, "Claude Code を起動"),
+            foldable_test_button(FOLD_RANK_QUICK_CONNECT, "クイック接続…"),
+            foldable_test_button(FOLD_RANK_RUN_MACRO, "マクロを実行…"),
+            foldable_test_button(FOLD_RANK_SESSION_LOG, "記録"),
+            TabBarItem::Fixed(gpui::Empty.into_any_element()),
+            foldable_test_button(FOLD_RANK_BROADCAST_INPUT, "全ペインに同時入力"),
+            TabBarItem::Fixed(gpui::Empty.into_any_element()),
+            foldable_test_button(FOLD_RANK_ZOOM, "ズーム"),
+        ]
+    }
+
+    const FIXED_BUTTON: &str = "（固定）";
+
+    fn drawn_labels(drawn: &[TabBarItem]) -> Vec<String> {
+        drawn
+            .iter()
+            .map(|item| match item {
+                TabBarItem::Foldable(button) => button.menu_label.to_string(),
+                TabBarItem::Fixed(_) => FIXED_BUTTON.to_string(),
+            })
+            .collect()
+    }
+
+    fn folded_labels(folded: &[(SharedString, Box<dyn Action>)]) -> Vec<String> {
+        folded.iter().map(|(label, _)| label.to_string()).collect()
+    }
+
+    #[test]
+    fn the_tab_bar_keeps_every_button_until_it_has_been_laid_out() {
+        let (drawn, folded) = fold_tab_bar_items(tab_bar_row(), None, px(16.));
+
+        assert_eq!(
+            drawn_labels(&drawn),
+            drawn_labels(&tab_bar_row()),
+            "a tab bar that has never been laid out must not open up collapsed"
+        );
+        assert!(folded.is_empty());
+    }
+
+    #[test]
+    fn a_wide_tab_bar_folds_nothing() {
+        let (drawn, folded) = fold_tab_bar_items(tab_bar_row(), Some(px(1000.)), px(16.));
+
+        assert_eq!(drawn.len(), 8);
+        assert!(
+            folded.is_empty(),
+            "1000px is room enough for the whole row and its tabs"
+        );
+    }
+
+    #[test]
+    fn a_narrow_tab_bar_folds_its_least_important_buttons() {
+        // 280px leaves room for six buttons next to the tabs; two of those go to
+        // the 新規 and 分割 popovers and one to the 「…」 trigger.
+        let (drawn, folded) = fold_tab_bar_items(tab_bar_row(), Some(px(280.)), px(16.));
+
+        assert_eq!(
+            drawn_labels(&drawn),
+            vec![
+                "Claude Code を起動",
+                "記録",
+                FIXED_BUTTON,
+                FIXED_BUTTON,
+                "ズーム",
+            ],
+            "the buttons a narrow split still needs at a glance should survive"
+        );
+        assert_eq!(
+            folded_labels(&folded),
+            vec!["クイック接続…", "マクロを実行…", "全ペインに同時入力"],
+            "the folded buttons should keep the order they are drawn in"
+        );
+    }
+
+    #[test]
+    fn a_tab_bar_with_no_room_at_all_folds_everything_foldable() {
+        let (drawn, folded) = fold_tab_bar_items(tab_bar_row(), Some(px(100.)), px(16.));
+
+        assert_eq!(
+            drawn_labels(&drawn),
+            vec![FIXED_BUTTON, FIXED_BUTTON],
+            "the 新規 and 分割 popovers cannot nest inside the 「…」 menu, so they stay"
+        );
+        assert_eq!(folded.len(), 6);
     }
 
     #[gpui::test]
@@ -2387,6 +2756,185 @@ mod tests {
             .unwrap();
 
         assert!(terminal_panel.read_with(cx, |panel, _| !panel.broadcast_input()));
+    }
+
+    /// A directory of its own under the system temp directory for one test's
+    /// session logs. Real files are written, so `FakeFs` cannot stand in here.
+    struct TempLogDirectory {
+        path: PathBuf,
+    }
+
+    impl TempLogDirectory {
+        fn new(name: &str) -> Self {
+            static NEXT_DIRECTORY: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            let unique = NEXT_DIRECTORY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join("zed-session-log-tests")
+                .join(format!("{name}-{}-{unique}", std::process::id()));
+            Self { path }
+        }
+    }
+
+    impl Drop for TempLogDirectory {
+        fn drop(&mut self) {
+            // A log that was just stopped can still be held open by its writer
+            // task, and Windows refuses to delete an open file. A stray temp
+            // directory must not fail the test that has otherwise passed.
+            std::fs::remove_dir_all(&self.path).ok();
+        }
+    }
+
+    fn set_session_log_settings(
+        directory: &Path,
+        file_name_template: &str,
+        cx: &mut TestAppContext,
+    ) {
+        let directory = directory.display().to_string();
+        let file_name_template = file_name_template.to_string();
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let session_log = settings
+                        .terminal
+                        .get_or_insert_default()
+                        .session_log
+                        .get_or_insert_default();
+                    session_log.directory = Some(directory.clone());
+                    session_log.file_name_template = Some(file_name_template.clone());
+                });
+            });
+        });
+    }
+
+    fn active_session_log_path(pane: &Entity<Pane>, cx: &mut TestAppContext) -> Option<PathBuf> {
+        pane.read_with(cx, |pane, cx| {
+            session_log_toggle_target(pane, cx).and_then(|(_, log_path)| log_path)
+        })
+    }
+
+    #[gpui::test]
+    async fn the_recording_toggle_starts_and_stops_at_the_configured_path(cx: &mut TestAppContext) {
+        let directory = TempLogDirectory::new("toggle");
+        let (window_handle, terminal_panel, views) = panel_with_panes(1, cx).await;
+        set_session_log_settings(&directory.path, "toggle.log", cx);
+        let terminal_view = views
+            .first()
+            .expect("the panel starts with one terminal")
+            .clone();
+        let pane = terminal_panel.read_with(cx, |panel, _| panel.active_pane.clone());
+
+        window_handle
+            .update(cx, |_, _, cx| {
+                terminal_view.update(cx, |terminal_view, cx| terminal_view.toggle_session_log(cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        let expected_path = directory.path.join("toggle.log");
+        assert_eq!(
+            active_session_log_path(&pane, cx),
+            Some(expected_path.clone()),
+            "the first press should record to the configured directory and file name"
+        );
+        assert!(
+            expected_path.exists(),
+            "the log file should exist as soon as recording starts"
+        );
+
+        window_handle
+            .update(cx, |_, _, cx| {
+                terminal_view.update(cx, |terminal_view, cx| terminal_view.toggle_session_log(cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            active_session_log_path(&pane, cx),
+            None,
+            "the second press should stop recording"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_recording_toggle_follows_the_active_terminal(cx: &mut TestAppContext) {
+        let directory = TempLogDirectory::new("follows");
+        let (window_handle, terminal_panel, _views) = panel_with_panes(1, cx).await;
+        set_session_log_settings(&directory.path, "follows.log", cx);
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                terminal_panel.update(cx, |panel, cx| {
+                    panel.add_terminal_shell(None, RevealStrategy::Always, window, cx)
+                })
+            })
+            .unwrap()
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        let pane = terminal_panel.read_with(cx, |panel, _| panel.active_pane.clone());
+        let terminal_views = pane.read_with(cx, |pane, _| {
+            pane.items()
+                .filter_map(|item| item.downcast::<TerminalView>())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            terminal_views.len(),
+            2,
+            "the second shell should join the same pane as a new tab"
+        );
+        let second_view = terminal_views
+            .last()
+            .expect("the pane holds two terminals")
+            .clone();
+
+        window_handle
+            .update(cx, |_, _, cx| {
+                second_view.update(cx, |terminal_view, cx| terminal_view.toggle_session_log(cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        let expected_path = directory.path.join("follows.log");
+        assert_eq!(
+            active_session_log_path(&pane, cx),
+            Some(expected_path.clone()),
+            "the toggle should show the log of the terminal that is recording"
+        );
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                pane.update(cx, |pane, cx| pane.activate_item(0, true, true, window, cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            active_session_log_path(&pane, cx),
+            None,
+            "switching to a terminal that is not recording should reset the toggle"
+        );
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                pane.update(cx, |pane, cx| pane.activate_item(1, true, true, window, cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            active_session_log_path(&pane, cx),
+            Some(expected_path),
+            "switching back should show the recording again"
+        );
+
+        window_handle
+            .update(cx, |_, _, cx| {
+                second_view.update(cx, |terminal_view, cx| terminal_view.toggle_session_log(cx));
+            })
+            .unwrap();
+        cx.run_until_parked();
     }
 
     #[cfg(unix)]

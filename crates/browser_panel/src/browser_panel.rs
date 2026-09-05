@@ -9,11 +9,15 @@
 //! 開き方は 2 つある:
 //!
 //! - 右ドックの [`BrowserPanel`] — ワークスペースに 1 つ。エージェントパネルと
-//!   同じドックなので、同時に出せるのはどちらか一方
+//!   同じドックなので、同時に出せるのはどちらか一方。パネルの中は**タブバー**で、
+//!   ここでもページは何枚でも開ける
 //! - エディター領域のタブ [`BrowserItem`] — **いくつでも開ける** (`browser_panel::NewBrowserTab`)
 //!
 //! どちらも中身は [`BrowserView`] で、WebView2 の環境 (`ICoreWebView2Environment`) は
 //! プロセス内で 1 つを共有する (user data フォルダーは 1 つの環境しか開けない)。
+//! **1 タブ = 1 コントローラー**で、履歴もフォーカスもページごとに独立する。
+//! 裏に回ったタブの子 HWND は明示的に隠し (見せるのは描画からの pull)、
+//! タブを閉じたら [`BrowserView`] ごと drop してコントローラーを Close する。
 //!
 //! ブックマークは設定ではなく `browser_bookmarks.json` に置く ([`browser_bookmarks`])。
 
@@ -22,11 +26,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use editor::Editor;
 use gpui::{
-    Action, App, AsyncWindowContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels,
-    Subscription, WeakEntity, Window, actions, px,
+    Action, AnyElement, App, AsyncWindowContext, ClickEvent, Context, Entity, EventEmitter,
+    FocusHandle, Focusable, Pixels, Subscription, WeakEntity, Window, actions, px,
 };
 use settings::{IntoGpui, RegisterSetting, Settings};
-use ui::prelude::*;
+use ui::{Tooltip, prelude::*};
 use workspace::{
     Workspace,
     dock::{DockPosition, Panel, PanelEvent},
@@ -38,8 +42,8 @@ mod browser_item;
 mod browser_view;
 
 pub use browser_bookmarks::{
-    BookmarkNode, BookmarkPath, BookmarkRow, BookmarkStore, BookmarksFile, parse_bookmarks_file,
-    serialize_bookmarks_file,
+    BookmarkNode, BookmarkPath, BookmarkRow, BookmarkStore, BookmarksFile, default_bookmarks,
+    parse_bookmarks_file, serialize_bookmarks_file, should_seed_default_bookmarks,
 };
 pub use browser_item::BrowserItem;
 pub use browser_view::{BrowserHost, BrowserView, BrowserViewEvent};
@@ -49,6 +53,14 @@ mod webview_windows;
 
 const BROWSER_PANEL_KEY: &str = "BrowserPanel";
 const QUERY_PLACEHOLDER: &str = "{query}";
+
+const HIDDEN_TAB_INACTIVE: &str = "the browser tab is not the active tab in the panel";
+const HIDDEN_TAB_CLOSED: &str = "the browser tab was closed";
+const HIDDEN_PANEL_INACTIVE: &str = "the panel is no longer the active dock panel";
+
+/// パネルのタブ 1 枚分の幅。狭いドックでも 2, 3 枚は並ぶ程度に抑える。
+const PANEL_TAB_MIN_WIDTH: f32 = 84.;
+const PANEL_TAB_MAX_WIDTH: f32 = 176.;
 
 /// 検索・質問に渡すテキストの上限。長すぎる選択範囲で URL が壊れるのを防ぐ。
 const MAX_QUERY_CHARS: usize = 400;
@@ -62,7 +74,11 @@ actions!(
         ToggleFocus,
         /// エディター領域に新しいブラウザータブを開きます。
         NewBrowserTab,
-        /// ブラウザーパネルで開いているページをエディター領域のタブで開きます。
+        /// ブラウザーパネルに新しいタブを開きます。
+        NewPanelTab,
+        /// ブラウザーパネルの今のタブを閉じます。
+        ClosePanelTab,
+        /// ブラウザーパネルで開いているページをエディター領域のタブへ移します。
         OpenInCenter,
         /// 前のページに戻ります。
         NavigateBack,
@@ -82,6 +98,8 @@ actions!(
         ToggleBookmarks,
         /// 現在のページをブックマークに追加します。
         AddBookmark,
+        /// 今開いているページを「起動時に開くページ」(browser.home_url) にします。
+        SetAsHomePage,
     ]
 );
 
@@ -104,7 +122,7 @@ pub struct BrowserSettings {
     pub use_egress_proxy: bool,
 }
 
-pub const DEFAULT_HOME_URL: &str = "https://github.com/copilot";
+pub const DEFAULT_HOME_URL: &str = "https://m365.cloud.microsoft/chat";
 pub const DEFAULT_SEARCH_URL: &str = "https://www.google.com/search?q={query}";
 pub const DEFAULT_COPILOT_URL: &str = "https://github.com/copilot";
 
@@ -223,10 +241,50 @@ pub fn template_accepts_query(template: &str) -> bool {
 // パネル
 // ---------------------------------------------------------------------------
 
+/// タブ 1 枚 = ページ 1 つ = WebView2 コントローラー 1 つ。
+struct PanelTab {
+    view: Entity<BrowserView>,
+    _subscription: Subscription,
+}
+
+/// 新しいタブをどう開くか。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NewTabPlacement {
+    /// 表に出してフォーカスも移す (「+」ボタンなど、利用者が明示的に開いたとき)。
+    Foreground,
+    /// 表には出すがフォーカスは動かさない。ドックの復元でパネルが作られたときに
+    /// エディターからフォーカスを奪わないため。
+    ForegroundWithoutFocus,
+    /// 裏で開く (ブックマークの Ctrl+クリック)。WebView2 のコントローラーは
+    /// 表に出るまで作られない。
+    Background,
+}
+
 pub struct BrowserPanel {
     fs: Arc<dyn fs::Fs>,
-    view: Entity<BrowserView>,
-    _subscriptions: Vec<Subscription>,
+    workspace: WeakEntity<Workspace>,
+    /// タブが 1 枚も無いときに使うフォーカス先。タブがあるときはそのタブの
+    /// [`BrowserView`] にフォーカスを渡す。
+    focus_handle: FocusHandle,
+    tabs: Vec<PanelTab>,
+    /// アクティブなタブの位置。`tabs` が空のときは意味を持たない。
+    active_tab: usize,
+}
+
+/// タブを 1 枚閉じた後にアクティブにするタブ。`tab_count` は閉じる**前**の枚数。
+/// アクティブなタブを閉じたときは右隣 (無ければ左隣) を選ぶ。最後の 1 枚を
+/// 閉じたら `None` = タブ無しの空状態。
+fn active_tab_after_close(tab_count: usize, active: usize, closed: usize) -> Option<usize> {
+    if closed >= tab_count {
+        // 閉じるタブが無い = 何も動かない。
+        return tab_count.checked_sub(1).map(|last| active.min(last));
+    }
+    let remaining = tab_count - 1;
+    if remaining == 0 {
+        return None;
+    }
+    let active = if closed < active { active - 1 } else { active };
+    Some(active.min(remaining - 1))
 }
 
 pub fn init(cx: &mut App) {
@@ -244,10 +302,10 @@ pub fn init(cx: &mut App) {
                 BrowserItem::open(workspace, None, window, cx);
             });
             workspace.register_action(|workspace, _: &OpenInCenter, window, cx| {
-                let url = workspace
-                    .panel::<BrowserPanel>(cx)
-                    .map(|panel| panel.read(cx).current_url(cx))
-                    .filter(|url| !url.trim().is_empty());
+                // 「開く」ではなく「移す」。パネル側のタブは畳んで中央ペインへ渡す。
+                let url = workspace.panel::<BrowserPanel>(cx).and_then(|panel| {
+                    panel.update(cx, |panel, cx| panel.take_active_tab_url(window, cx))
+                });
                 BrowserItem::open(workspace, url, window, cx);
             });
             workspace.register_action(|workspace, _: &SearchSelection, window, cx| {
@@ -278,35 +336,172 @@ impl BrowserPanel {
     }
 
     fn new(workspace: &Workspace, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let view = cx.new(|cx| BrowserView::new(workspace, BrowserHost::Panel, window, cx));
-        let subscriptions = vec![cx.subscribe(&view, Self::on_view_event)];
-        Self {
+        let mut panel = Self {
             fs: workspace.app_state().fs.clone(),
-            view,
-            _subscriptions: subscriptions,
-        }
+            workspace: workspace.weak_handle(),
+            focus_handle: cx.focus_handle(),
+            tabs: Vec::new(),
+            active_tab: 0,
+        };
+        panel.open_tab(None, NewTabPlacement::ForegroundWithoutFocus, window, cx);
+        panel
     }
 
-    pub fn view(&self) -> &Entity<BrowserView> {
-        &self.view
+    pub fn active_view(&self) -> Option<&Entity<BrowserView>> {
+        self.tabs.get(self.active_tab).map(|tab| &tab.view)
     }
 
     pub fn current_url(&self, cx: &App) -> String {
-        self.view.read(cx).current_url().to_string()
+        self.active_view()
+            .map(|view| view.read(cx).current_url().to_string())
+            .unwrap_or_default()
     }
 
-    pub fn navigate_to(&mut self, url: &str, cx: &mut Context<Self>) {
-        self.view.update(cx, |view, cx| view.navigate_to(url, cx));
+    pub fn navigate_to(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        match self.active_view() {
+            Some(view) => view.update(cx, |view, cx| view.navigate_to(url, cx)),
+            None => self.open_tab(
+                Some(url.to_string()),
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            ),
+        }
+    }
+
+    // -- タブ ----------------------------------------------------------------
+
+    /// タブを 1 枚足す。`url` が `None` なら `browser.home_url`、それも空なら
+    /// ブックマークを開いた空のタブになる ([`BrowserItem`] と同じ規則)。
+    ///
+    /// [`NewTabPlacement::Background`] のタブは WebView2 のコントローラーを
+    /// **まだ作らない**。生成は [`BrowserView`] の描画から起きるので、そのタブが
+    /// 表に出るまで msedgewebview2.exe は 1 つも増えない。
+    fn open_tab(
+        &mut self,
+        url: Option<String>,
+        placement: NewTabPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let view = cx.new(|cx| {
+            BrowserView::new(
+                self.workspace.clone(),
+                self.fs.clone(),
+                BrowserHost::Panel,
+                window,
+                cx,
+            )
+        });
+        let initial_url = url.unwrap_or_else(|| BrowserSettings::get_global(cx).home_url.clone());
+        view.update(cx, |view, cx| {
+            if initial_url.trim().is_empty() {
+                view.open_bookmarks_pane(cx);
+            } else {
+                view.set_initial_url(initial_url, window, cx);
+            }
+        });
+        let subscription = cx.subscribe_in(&view, window, Self::on_view_event);
+        self.tabs.push(PanelTab {
+            view,
+            _subscription: subscription,
+        });
+        if placement != NewTabPlacement::Background || self.tabs.len() == 1 {
+            let index = self.tabs.len() - 1;
+            let focus = placement == NewTabPlacement::Foreground;
+            self.activate_tab(index, focus, window, cx);
+        }
+        cx.notify();
+    }
+
+    /// `focus` が false でも、既にパネルの中にフォーカスがあるならフォーカスは
+    /// 新しいタブへ移る (タブを閉じたときにフォーカスが宙に浮かないように)。
+    fn activate_tab(
+        &mut self,
+        index: usize,
+        focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self.tabs.get(index) else {
+            return;
+        };
+        let focus_handle = tab.view.read(cx).focus_handle(cx);
+        self.hide_other_surfaces(index, cx);
+        self.active_tab = index;
+        if focus || self.focus_handle.contains_focused(window, cx) {
+            window.focus(&focus_handle, cx);
+        }
+        cx.notify();
+    }
+
+    fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        let next_active = active_tab_after_close(self.tabs.len(), self.active_tab, index);
+        let tab = self.tabs.remove(index);
+        // コントローラーは `WebView` の drop (= `ICoreWebView2Controller::Close`) で
+        // 閉じるが、drop が次の描画まで遅れても透明な子 HWND がクリックを飲まない
+        // よう、外した時点で隠しておく。
+        tab.view
+            .update(cx, |view, _| view.hide_surface_from_host(HIDDEN_TAB_CLOSED));
+        drop(tab);
+        match next_active {
+            Some(next_active) => self.activate_tab(next_active, false, window, cx),
+            None => self.active_tab = 0,
+        }
+        cx.notify();
+    }
+
+    /// アクティブなタブをパネルから外して URL を返す。「エディター領域で開く」は
+    /// コピーではなく**移動**なので、開いた後にパネル側のタブは残さない。
+    fn take_active_tab_url(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<String> {
+        let index = self.active_tab;
+        let url = self
+            .tabs
+            .get(index)?
+            .view
+            .read(cx)
+            .current_url()
+            .trim()
+            .to_string();
+        if url.is_empty() {
+            return None;
+        }
+        self.close_tab(index, window, cx);
+        Some(url)
+    }
+
+    /// 表に出ていないタブの子 HWND を隠す。子 HWND は GPUI の描画に従わないので、
+    /// 「隠すのは push、見せるのは pull」(次の描画で canvas が矩形を流し直す)。
+    fn hide_other_surfaces(&self, active: usize, cx: &mut App) {
+        for (index, tab) in self.tabs.iter().enumerate() {
+            if index != active {
+                tab.view.update(cx, |view, _| {
+                    view.hide_surface_from_host(HIDDEN_TAB_INACTIVE)
+                });
+            }
+        }
     }
 
     fn on_view_event(
         &mut self,
-        _: Entity<BrowserView>,
+        _: &Entity<BrowserView>,
         event: &BrowserViewEvent,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event {
             BrowserViewEvent::LocationChanged => cx.notify(),
+            // ブラウザーと同じく背景タブとして開く (今のページは見えたまま)。
+            BrowserViewEvent::OpenInNewTab(url) => {
+                self.open_tab(Some(url.clone()), NewTabPlacement::Background, window, cx)
+            }
         }
     }
 
@@ -346,31 +541,186 @@ impl BrowserPanel {
         };
         workspace.focus_panel::<BrowserPanel>(window, cx);
         panel.update(cx, |panel, cx| {
-            panel.navigate_to(&url, cx);
+            panel.navigate_to(&url, window, cx);
             if !carries_query {
                 // Copilot のようにクエリパラメーターが公開されていない宛先では、
                 // 貼り付けられる形で渡すのが最も確実。
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(query.clone()));
-                panel.view.update(cx, |view, cx| {
-                    view.set_status_message(
-                        "選択テキストをクリップボードにコピーしました。貼り付けて質問してください。",
-                        cx,
-                    );
-                });
+                if let Some(view) = panel.active_view().cloned() {
+                    view.update(cx, |view, cx| {
+                        view.set_status_message(
+                            "選択テキストをクリップボードにコピーしました。貼り付けて質問してください。",
+                            cx,
+                        );
+                    });
+                }
             }
         });
     }
 }
 
+impl BrowserPanel {
+    /// パネル内のタブバー。子 HWND はこの下の内容領域にしか出ないので、ここは
+    /// 普通に GPUI で描いてよい (ページに覆われない)。
+    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let active_tab = self.active_tab;
+        let focus_handle = self.focus_handle.clone();
+        h_flex()
+            .id("browser-panel-tab-bar")
+            .w_full()
+            .flex_none()
+            .gap_px()
+            .px_1()
+            .pt_1()
+            .overflow_x_scroll()
+            .bg(cx.theme().colors().tab_bar_background)
+            .children(
+                self.tabs
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tab)| self.render_tab(index, tab, index == active_tab, cx)),
+            )
+            .child(
+                IconButton::new("browser-panel-new-tab", IconName::Plus)
+                    .icon_size(IconSize::XSmall)
+                    .tooltip(move |_, cx| {
+                        Tooltip::for_action_in("新しいタブ", &NewPanelTab, &focus_handle, cx)
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_tab(None, NewTabPlacement::Foreground, window, cx)
+                    })),
+            )
+            .into_any_element()
+    }
+
+    fn render_tab(
+        &self,
+        index: usize,
+        tab: &PanelTab,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let view = tab.view.read(cx);
+        let label = view.tab_label();
+        let url = view.current_url().trim().to_string();
+        let background = if selected {
+            cx.theme().colors().tab_active_background
+        } else {
+            cx.theme().colors().tab_inactive_background
+        };
+
+        h_flex()
+            .id(("browser-panel-tab", index))
+            .flex_none()
+            .min_w(px(PANEL_TAB_MIN_WIDTH))
+            .max_w(px(PANEL_TAB_MAX_WIDTH))
+            .gap_1()
+            .pl_1p5()
+            .pr_0p5()
+            .py_0p5()
+            .rounded_t_sm()
+            .overflow_hidden()
+            .bg(background)
+            .cursor_pointer()
+            .when(!url.is_empty(), |this| this.tooltip(Tooltip::text(url)))
+            .child(
+                Icon::new(IconName::ToolWeb)
+                    .size(IconSize::XSmall)
+                    .color(if selected {
+                        Color::Default
+                    } else {
+                        Color::Muted
+                    }),
+            )
+            // 名前は残り幅を全部使ったうえで切り詰める。`min_w_0` が無いと
+            // flex アイテムは最小内容幅より縮まず、長いタイトルでタブが伸びる。
+            .child(
+                div().flex_1().min_w_0().child(
+                    Label::new(label)
+                        .size(LabelSize::Small)
+                        .color(if selected {
+                            Color::Default
+                        } else {
+                            Color::Muted
+                        })
+                        .truncate(),
+                ),
+            )
+            .child(
+                IconButton::new(("browser-panel-tab-close", index), IconName::Close)
+                    .icon_size(IconSize::XSmall)
+                    .tooltip(Tooltip::text("タブを閉じる"))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        // タブ本体の on_click まで届くと、閉じた位置に繰り上がった
+                        // 別のタブをアクティブにしてしまう。
+                        cx.stop_propagation();
+                        this.close_tab(index, window, cx);
+                    })),
+            )
+            .on_click(
+                cx.listener(move |this, _, window, cx| this.activate_tab(index, true, window, cx)),
+            )
+            .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                if event.is_middle_click() {
+                    this.close_tab(index, window, cx);
+                }
+            }))
+            .into_any_element()
+    }
+
+    fn render_empty_state(&self, cx: &mut Context<Self>) -> AnyElement {
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .child(Label::new("開いているページはありません。").color(Color::Muted))
+            .child(
+                Button::new("browser-panel-empty-new-tab", "新しいタブ").on_click(cx.listener(
+                    |this, _, window, cx| {
+                        this.open_tab(None, NewTabPlacement::Foreground, window, cx)
+                    },
+                )),
+            )
+            .into_any_element()
+    }
+}
+
 impl Render for BrowserPanel {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child(self.view.clone())
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let active_view = self.active_view().cloned();
+        v_flex()
+            .key_context(BROWSER_PANEL_KEY)
+            .track_focus(&self.focus_handle)
+            .size_full()
+            .bg(cx.theme().colors().panel_background)
+            .on_action(cx.listener(|this, _: &NewPanelTab, window, cx| {
+                this.open_tab(None, NewTabPlacement::Foreground, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ClosePanelTab, window, cx| {
+                let active_tab = this.active_tab;
+                this.close_tab(active_tab, window, cx)
+            }))
+            .child(self.render_tab_bar(cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .map(|this| match active_view {
+                        Some(view) => this.child(view),
+                        None => this.child(self.render_empty_state(cx)),
+                    }),
+            )
     }
 }
 
 impl Focusable for BrowserPanel {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.view.read(cx).focus_handle(cx)
+        match self.active_view() {
+            Some(view) => view.read(cx).focus_handle(cx),
+            None => self.focus_handle.clone(),
+        }
     }
 }
 
@@ -420,9 +770,11 @@ impl Panel for BrowserPanel {
     fn set_active(&mut self, active: bool, _: &mut Window, cx: &mut Context<Self>) {
         log::info!("browser panel: set_active({active})");
         if !active {
-            self.view.update(cx, |view, _| {
-                view.hide_surface_from_host("the panel is no longer the active dock panel")
-            });
+            for tab in &self.tabs {
+                tab.view.update(cx, |view, _| {
+                    view.hide_surface_from_host(HIDDEN_PANEL_INACTIVE)
+                });
+            }
         }
         cx.notify();
     }
@@ -473,6 +825,15 @@ pub(crate) mod webview_unsupported {
         pub(crate) height: f32,
         pub(crate) scale_factor: f32,
         pub(crate) hidden_reason: Option<&'static str>,
+        pub(crate) overlays: Vec<OverlayRect>,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub(crate) struct OverlayRect {
+        pub(crate) left: f32,
+        pub(crate) top: f32,
+        pub(crate) right: f32,
+        pub(crate) bottom: f32,
     }
 
     pub(crate) fn host_uses_direct_composition(_host_hwnd: isize) -> bool {
@@ -600,6 +961,35 @@ mod tests {
         let url = build_query_url("https://example.com/?q={query}", &query);
         // パーセントエンコード後の長さではなく、元の文字数で切り詰める。
         assert_eq!(url.matches("%E3%81%82").count(), MAX_QUERY_CHARS);
+    }
+
+    #[test]
+    fn closing_an_inactive_tab_keeps_the_active_page() {
+        // 左のタブを閉じたら、アクティブなタブは 1 つ手前にずれる。
+        assert_eq!(active_tab_after_close(3, 2, 0), Some(1));
+        assert_eq!(active_tab_after_close(3, 1, 0), Some(0));
+        // 右のタブを閉じてもアクティブな位置は動かない。
+        assert_eq!(active_tab_after_close(3, 0, 2), Some(0));
+        assert_eq!(active_tab_after_close(3, 0, 1), Some(0));
+    }
+
+    #[test]
+    fn closing_the_active_tab_selects_its_neighbour() {
+        // 右隣を選ぶ (右隣が繰り上がって同じ添字になる)。
+        assert_eq!(active_tab_after_close(3, 1, 1), Some(1));
+        assert_eq!(active_tab_after_close(3, 0, 0), Some(0));
+        // 右端を閉じたときだけ左隣。
+        assert_eq!(active_tab_after_close(3, 2, 2), Some(1));
+        assert_eq!(active_tab_after_close(2, 1, 1), Some(0));
+    }
+
+    #[test]
+    fn closing_the_last_tab_leaves_the_panel_empty() {
+        assert_eq!(active_tab_after_close(1, 0, 0), None);
+        // 空の状態からは何も閉じられない。
+        assert_eq!(active_tab_after_close(0, 0, 0), None);
+        // 範囲外を指しても今のタブは動かない。
+        assert_eq!(active_tab_after_close(2, 1, 5), Some(1));
     }
 
     #[test]

@@ -23,12 +23,16 @@ anyhow.workspace = true
 askpass.workspace = true
 async-trait.workspace = true
 base64.workspace = true
+bytes.workspace = true
 collections.workspace = true
 egress_policy.workspace = true
 fs.workspace = true
 futures.workspace = true
 gpui.workspace = true
 hex.workspace = true
+# ADR-F27: this crate carries both ends of the HTTP relay, so it needs the
+# `HttpClient` trait and the relay types the remote host's client is built on.
+http_client.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 paths.workspace = true
@@ -52,6 +56,4 @@ which.workspace = true
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
 fs = { workspace = true, features = ["test-support"] }
-# Only the ADR-F22 test needs it, to build the allowlist this crate pushes.
-http_client.workspace = true
 util = { workspace = true, features = ["test-support"] }

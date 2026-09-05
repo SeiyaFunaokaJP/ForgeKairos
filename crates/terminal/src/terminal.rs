@@ -1009,6 +1009,7 @@ impl TerminalBuilder {
             hyperlink_regex_searches: RegexSearches::default(),
             vi_mode_enabled: false,
             is_remote_terminal: false,
+            connection_origin: None,
             last_mouse_move_time: Instant::now(),
             last_hyperlink_search_position: None,
             mouse_down_hyperlink: None,
@@ -1300,6 +1301,7 @@ impl TerminalBuilder {
                 ),
                 vi_mode_enabled: false,
                 is_remote_terminal,
+                connection_origin: None,
                 last_mouse_move_time: Instant::now(),
                 last_hyperlink_search_position: None,
                 mouse_down_hyperlink: None,
@@ -1512,6 +1514,10 @@ pub struct Terminal {
     task: Option<TaskState>,
     vi_mode_enabled: bool,
     is_remote_terminal: bool,
+    /// The quick-connect entry this terminal was started from, when it was
+    /// (ADR-F28). Kept so the file-transfer screen can pre-fill host / port /
+    /// user without the user retyping them.
+    connection_origin: Option<crate::terminal_macro::SavedConnection>,
     last_mouse_move_time: Instant,
     last_hyperlink_search_position: Option<GpuiPoint<Pixels>>,
     mouse_down_hyperlink: Option<HyperlinkMatch>,
@@ -3120,6 +3126,18 @@ impl Terminal {
     /// this machine. False for the local shells a remote project can also open.
     pub fn is_remote_terminal(&self) -> bool {
         self.is_remote_terminal
+    }
+
+    /// See [`Terminal::connection_origin`]. Recorded right after the quick
+    /// connect spawn, since the terminal itself cannot tell what its command
+    /// line meant.
+    pub fn set_connection_origin(&mut self, connection: crate::terminal_macro::SavedConnection) {
+        self.connection_origin = Some(connection);
+    }
+
+    /// The quick-connect entry this terminal was started from (ADR-F28).
+    pub fn connection_origin(&self) -> Option<&crate::terminal_macro::SavedConnection> {
+        self.connection_origin.as_ref()
     }
 
     /// Recognizes the exit of a remote shell whose `ssh` process was killed by a

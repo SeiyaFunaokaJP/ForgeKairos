@@ -628,7 +628,7 @@ impl AutoUpdater {
                 .context("auto-update not initialized")
         })?;
 
-        set_status("Fetching remote server release", cx);
+        set_status("リモート開発サーバーのリリース情報を取得しています", cx);
         let release = Self::get_release_asset(
             &this,
             release_channel,
@@ -653,7 +653,7 @@ impl AutoUpdater {
                 "downloading zed-remote-server {os} {arch} version {}",
                 release.version
             );
-            set_status("Downloading remote server", cx);
+            set_status("リモート開発サーバーをダウンロードしています", cx);
             download_remote_server_binary(&version_path, release, client).await?;
         }
 

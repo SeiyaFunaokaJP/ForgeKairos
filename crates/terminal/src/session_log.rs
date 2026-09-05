@@ -854,6 +854,21 @@ mod tests {
     }
 
     #[test]
+    fn the_default_path_follows_the_configured_directory_and_template() {
+        let settings = crate::terminal_settings::SessionLogSettings {
+            auto: false,
+            directory: Some("/var/log/zed".to_string()),
+            file_name_template: "{title}.log".to_string(),
+            strip_control_sequences: true,
+            timestamps: false,
+        };
+        assert_eq!(
+            default_log_path(&settings, "rtx/1200", None),
+            PathBuf::from("/var/log/zed").join("rtx_1200.log")
+        );
+    }
+
+    #[test]
     fn sanitizes_file_name_components() {
         assert_eq!(sanitize_file_name_component("a/b\\c"), "a_b_c");
         assert_eq!(sanitize_file_name_component("trailing. "), "trailing");

@@ -422,9 +422,12 @@ impl ProjectPicker {
                 connection_string: "".into(),
                 nickname: None,
             },
-            #[cfg(any(test, feature = "test-support"))]
-            RemoteConnectionOptions::Mock(options) => ProjectPickerData::Ssh {
-                connection_string: format!("mock-{}", options.id).into(),
+            // `Mock` grows in whenever `remote/test-support` is enabled, which a
+            // dependent's dev-dependency can do without this crate's own
+            // `test-support` — so a `#[cfg]`-gated arm for it leaves the match
+            // non-exhaustive under `--all-targets`.
+            other => ProjectPickerData::Ssh {
+                connection_string: other.display_name().into(),
                 nickname: None,
             },
         };
@@ -1883,7 +1886,7 @@ impl RemoteServerProjects {
                         .ok();
                     Ok(())
                 })
-                .detach();
+                .detach_and_log_err(cx);
             })
         })
     }
@@ -1918,8 +1921,12 @@ impl RemoteServerProjects {
             }
             #[cfg(target_os = "windows")]
             Mode::AddWslDistro(state) => {
-                let delegate = &state.picker.read(cx).delegate;
-                let distro = delegate.selected_distro().unwrap();
+                // Empty while the distribution list is still being enumerated,
+                // and while a filter matches nothing — pressing Enter then is
+                // an ordinary thing for a user to do, not a bug to crash on.
+                let Some(distro) = state.picker.read(cx).delegate.selected_distro() else {
+                    return;
+                };
                 self.connect_wsl_distro(state.picker.clone(), distro, window, cx);
             }
         }
@@ -2016,27 +2023,44 @@ impl RemoteServerProjects {
         };
 
         cx.spawn_in(window, async move |_, cx| {
-            let result = open_remote_project(
-                connection.into(),
-                project.paths.into_iter().map(PathBuf::from).collect(),
-                app_state,
-                OpenOptions {
-                    requesting_window: replace_window,
-                    ..OpenOptions::default()
-                },
-                cx,
-            )
-            .await;
-            if let Err(e) = result {
-                log::error!("Failed to connect: {e:#}");
-                cx.prompt(
-                    gpui::PromptLevel::Critical,
-                    "接続できませんでした",
-                    Some(&e.to_string()),
-                    &["OK"],
+            let connection_options: RemoteConnectionOptions = connection.into();
+            let paths = project
+                .paths
+                .into_iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>();
+            loop {
+                let result = open_remote_project(
+                    connection_options.clone(),
+                    paths.clone(),
+                    app_state.clone(),
+                    OpenOptions {
+                        requesting_window: replace_window,
+                        ..OpenOptions::default()
+                    },
+                    cx,
                 )
-                .await
-                .ok();
+                .await;
+                let Err(error) = result else {
+                    break;
+                };
+                log::error!("Failed to connect: {error:#}");
+                // A single "OK" left the user with the entry gone and nothing
+                // to press: the usual reasons (a laptop that has not woken up,
+                // a VPN that just came back) are fixed in seconds and want the
+                // same attempt again, which is how `remote_connections` already
+                // handles a failed connection.
+                let response = cx
+                    .prompt(
+                        gpui::PromptLevel::Critical,
+                        "接続できませんでした",
+                        Some(&format!("{error:#}")),
+                        &["再試行", "キャンセル"],
+                    )
+                    .await;
+                if response != Ok(0) {
+                    break;
+                }
             }
         })
         .detach();
@@ -2257,25 +2281,34 @@ impl RemoteServerProjects {
         cx.spawn_in(window, async move |entity, cx| {
             let environment = context.environment(cx).await;
 
-            let (dev_container_connection, starting_dir) =
-                match start_dev_container_with_config(context, config, environment).await {
-                    Ok((c, s)) => (c, s),
-                    Err(e) => {
-                        log::error!("Failed to start dev container: {:?}", e);
-                        cx.prompt(
-                            gpui::PromptLevel::Critical,
-                            "Dev Container を起動できませんでした。詳細はログを確認してください",
-                            Some(&format!("{e}")),
-                            &["OK"],
-                        )
-                        .await
-                        .ok();
+            let (dev_container_connection, starting_dir) = loop {
+                match start_dev_container_with_config(
+                    context.clone(),
+                    config.clone(),
+                    environment.clone(),
+                )
+                .await
+                {
+                    Ok(started) => break started,
+                    Err(error) => {
+                        log::error!("Failed to start dev container: {error:?}");
+                        let response = cx
+                            .prompt(
+                                gpui::PromptLevel::Critical,
+                                "Dev Container を起動できませんでした。詳細はログを確認してください",
+                                Some(&format!("{error}")),
+                                &["再試行", "キャンセル"],
+                            )
+                            .await;
+                        if response == Ok(0) {
+                            continue;
+                        }
                         entity
                             .update_in(cx, |remote_server_projects, window, cx| {
                                 remote_server_projects.allow_dismissal = true;
                                 remote_server_projects.mode =
                                     Mode::CreateRemoteDevContainer(CreateRemoteDevContainer::new(
-                                        DevContainerCreationProgress::Error(format!("{e}")),
+                                        DevContainerCreationProgress::Error(format!("{error}")),
                                         cx,
                                     ));
                                 remote_server_projects.focus_handle(cx).focus(window, cx);
@@ -2283,7 +2316,8 @@ impl RemoteServerProjects {
                             .ok();
                         return;
                     }
-                };
+                }
+            };
             cx.update(|_, cx| {
                 ExtensionStore::global(cx).update(cx, |this, cx| {
                     for extension in &dev_container_connection.extension_ids {
@@ -2304,27 +2338,36 @@ impl RemoteServerProjects {
             let Some(app_state) = app_state.upgrade() else {
                 return;
             };
-            let result = open_remote_project(
-                Connection::DevContainer(dev_container_connection).into(),
-                vec![starting_dir].into_iter().map(PathBuf::from).collect(),
-                app_state,
-                OpenOptions {
-                    requesting_window: replace_window,
-                    ..OpenOptions::default()
-                },
-                cx,
-            )
-            .await;
-            if let Err(e) = result {
-                log::error!("Failed to connect: {e:#}");
-                cx.prompt(
-                    gpui::PromptLevel::Critical,
-                    "接続できませんでした",
-                    Some(&e.to_string()),
-                    &["OK"],
+            let connection_options: RemoteConnectionOptions =
+                Connection::DevContainer(dev_container_connection).into();
+            let paths = vec![PathBuf::from(starting_dir)];
+            loop {
+                let result = open_remote_project(
+                    connection_options.clone(),
+                    paths.clone(),
+                    app_state.clone(),
+                    OpenOptions {
+                        requesting_window: replace_window,
+                        ..OpenOptions::default()
+                    },
+                    cx,
                 )
-                .await
-                .ok();
+                .await;
+                let Err(error) = result else {
+                    break;
+                };
+                log::error!("Failed to connect: {error:#}");
+                let response = cx
+                    .prompt(
+                        gpui::PromptLevel::Critical,
+                        "接続できませんでした",
+                        Some(&format!("{error:#}")),
+                        &["再試行", "キャンセル"],
+                    )
+                    .await;
+                if response != Ok(0) {
+                    break;
+                }
             }
         })
         .detach();
@@ -2437,7 +2480,7 @@ impl RemoteServerProjects {
                             .pb_1()
                             .child(
                                 ModalHeader::new().child(
-                                    Headline::new("Dev Containers").size(HeadlineSize::XSmall),
+                                    Headline::new("Dev Container").size(HeadlineSize::XSmall),
                                 ),
                             )
                             .child(ListSeparator)

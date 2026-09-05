@@ -27,6 +27,11 @@ pub struct RemoteConnectionPrompt {
     is_wsl: bool,
     is_devcontainer: bool,
     status_message: Option<SharedString>,
+    /// A failure that ended the attempt. Kept apart from `status_message`
+    /// because the two must not look alike: the status line is a spinner with a
+    /// trailing ellipsis, which on an error read as "still working" and left
+    /// the user waiting for a connection that had already given up.
+    error_message: Option<SharedString>,
     prompt: Option<(Entity<Markdown>, oneshot::Sender<EncryptedPassword>)>,
     prompt_cancellation_task: Option<Task<()>>,
     cancellation: Option<oneshot::Sender<()>>,
@@ -71,6 +76,7 @@ impl RemoteConnectionPrompt {
             is_devcontainer,
             editor,
             status_message: None,
+            error_message: None,
             cancellation: None,
             prompt: None,
             prompt_cancellation_task: None,
@@ -113,6 +119,13 @@ impl RemoteConnectionPrompt {
 
     pub fn set_status(&mut self, status: Option<String>, cx: &mut Context<Self>) {
         self.status_message = status.map(|s| s.into());
+        cx.notify();
+    }
+
+    /// Replaces the progress line with a failure the attempt ended on.
+    pub fn set_error(&mut self, error: String, cx: &mut Context<Self>) {
+        self.status_message.take();
+        self.error_message = Some(error.into());
         cx.notify();
     }
 
@@ -228,6 +241,26 @@ impl Render for RemoteConnectionPrompt {
                                 .size(LabelSize::Small)
                                 .color(Color::Muted)
                                 .truncate()
+                                .flex_1(),
+                        ),
+                )
+            })
+            .when_some(self.error_message.clone(), |this, error_message| {
+                this.child(
+                    h_flex()
+                        .min_w_0()
+                        .w_full()
+                        .mt_1()
+                        .gap_1()
+                        .child(
+                            Icon::new(IconName::Warning)
+                                .size(IconSize::Small)
+                                .color(Color::Error),
+                        )
+                        .child(
+                            Label::new(error_message)
+                                .size(LabelSize::Small)
+                                .color(Color::Error)
                                 .flex_1(),
                         ),
                 )
@@ -503,12 +536,12 @@ impl remote::RemoteClientDelegate for RemoteClientDelegate {
             .await
             .with_context(|| {
                 format!(
-                    "Downloading remote server binary (version: {}, os: {}, arch: {})",
+                    "リモート開発サーバーのバイナリをダウンロードできませんでした (バージョン: {}、{} {})",
                     version
                         .as_ref()
-                        .map(|v| format!("{}", v))
-                        .unwrap_or("unknown".to_string()),
-                    platform.os,
+                        .map(|version| version.to_string())
+                        .unwrap_or_else(|| "不明".to_string()),
+                    platform.os.display_name(),
                     platform.arch,
                 )
             })
@@ -669,12 +702,12 @@ impl remote::RemoteClientDelegate for BackgroundRemoteClientDelegate {
             .await
             .with_context(|| {
                 format!(
-                    "Downloading remote server binary (version: {}, os: {}, arch: {})",
+                    "リモート開発サーバーのバイナリをダウンロードできませんでした (バージョン: {}、{} {})",
                     version
                         .as_ref()
-                        .map(|v| format!("{v}"))
-                        .unwrap_or("unknown".to_string()),
-                    platform.os,
+                        .map(|version| version.to_string())
+                        .unwrap_or_else(|| "不明".to_string()),
+                    platform.os.display_name(),
                     platform.arch,
                 )
             })
@@ -726,18 +759,74 @@ pub fn connect(
     });
 
     cx.spawn(async move |cx| {
+        let ui = ui.downgrade();
+        // The modal is still on screen while the caller decides what to do with
+        // the error, and until it says otherwise the last thing it showed was a
+        // spinner on the step that failed.
+        let report = |error: &anyhow::Error, cx: &mut AsyncApp| {
+            let message = format!("{error:#}");
+            ui.update(cx, |ui, cx| ui.set_error(message, cx)).ok();
+        };
+
         let connection = remote::connect(connection_options, delegate.clone(), cx);
         let connection = select! {
             _ = rx => return Ok(None),
             result = connection.fuse() => result,
-        }?;
+        };
+        let connection = match connection {
+            Ok(connection) => connection,
+            Err(error) => {
+                report(&error, cx);
+                return Err(error);
+            }
+        };
 
-        cx.update(|cx| remote::RemoteClient::new(unique_identifier, connection, rx, delegate, cx))
+        let client = match cx
+            .update(|cx| remote::RemoteClient::new(unique_identifier, connection, rx, delegate, cx))
             .await
+        {
+            Ok(client) => client,
+            Err(error) => {
+                report(&error, cx);
+                return Err(error);
+            }
+        };
+
+        cx.update(show_connection_warnings);
+        Ok(client)
     })
 }
 
 use anyhow::Context as _;
+
+/// Shows what the transport noticed while connecting but could not fail over —
+/// today, ADR-F18's sandbox helper failing to install.
+///
+/// The transport cannot raise these itself: it has no route to a workspace, and
+/// the connection modal it *can* write to closes the moment the connection is
+/// up. Raised here instead, where the connection has just succeeded and the
+/// workspace notification outlives the modal.
+fn show_connection_warnings(cx: &mut App) {
+    for warning in remote::take_remote_connection_warnings() {
+        struct RemoteConnectionWarning;
+        let warning = SharedString::from(warning);
+        workspace::notifications::show_app_notification(
+            workspace::notifications::NotificationId::composite::<RemoteConnectionWarning>(
+                warning.clone(),
+            ),
+            cx,
+            move |cx| {
+                let warning = warning.clone();
+                cx.new(|cx| {
+                    workspace::notifications::simple_message_notification::MessageNotification::new(
+                        warning, cx,
+                    )
+                    .content_icon(ui::IconName::Warning, Color::Warning)
+                })
+            },
+        );
+    }
+}
 
 #[cfg(test)]
 mod tests {

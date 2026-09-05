@@ -19,7 +19,7 @@ use std::{
         atomic::{self, AtomicBool},
     },
 };
-use ui::{Context, LabelLike, ListItem, Window};
+use ui::{Context, Divider, LabelLike, ListItem, Tooltip, Window};
 use ui::{HighlightedLabel, ListItemSpacing, prelude::*};
 use util::{
     ResultExt, maybe,
@@ -184,6 +184,71 @@ impl OpenPathDelegate {
 
     fn is_parent_dir_entry(&self, candidate: &CandidateInfo) -> bool {
         candidate.is_dir && candidate.path.string == self.parent_dir()
+    }
+
+    fn is_current_dir_entry(&self, candidate: &CandidateInfo) -> bool {
+        candidate.is_dir && candidate.path.string == self.current_dir()
+    }
+
+    /// The query that lists `candidate`'s own contents: the directory currently
+    /// being listed, plus the candidate's name, plus a trailing separator.
+    fn child_query(&self, candidate: &CandidateInfo) -> Option<String> {
+        match &self.directory_state {
+            DirectoryState::List { parent_path, .. }
+            | DirectoryState::Create { parent_path, .. } => Some(format!(
+                "{}{}{}",
+                parent_path,
+                candidate.path.string,
+                self.path_style.primary_separator()
+            )),
+            DirectoryState::None { .. } => None,
+        }
+    }
+
+    /// Whether confirming `candidate` should browse into it rather than pick it.
+    ///
+    /// A folder is picked with the `./` row, the footer button or
+    /// `menu::SecondaryConfirm`; plain confirm walks into it, because that is
+    /// what a file browser does and because otherwise a directory that has the
+    /// wanted folder inside it can only be reached by typing its name.
+    ///
+    /// Only the "open an existing path" prompt browses this way. In the "new
+    /// path" prompt confirm belongs to the name being typed, not to the
+    /// highlighted row.
+    fn should_browse_into(&self, candidate: &CandidateInfo) -> bool {
+        matches!(self.directory_state, DirectoryState::List { .. })
+            && candidate.is_dir
+            && !candidate.path.string.is_empty()
+            && !self.is_current_dir_entry(candidate)
+            && !self.is_parent_dir_entry(candidate)
+    }
+
+    /// The directory whose contents are currently listed, as an absolute path.
+    ///
+    /// This is what the `./` row and the footer button hand back. The listed
+    /// path is normalized first: `join`ing `./` onto it the way an ordinary
+    /// candidate is joined would make the chosen worktree's path
+    /// `/home/ubuntu/./`.
+    fn listed_directory_path(&self, cx: &App) -> Option<PathBuf> {
+        let parent_path = match &self.directory_state {
+            DirectoryState::List { parent_path, .. }
+            | DirectoryState::Create { parent_path, .. } => parent_path,
+            DirectoryState::None { .. } => return None,
+        };
+        let resolved = self.lister.resolve_tilde(parent_path, cx);
+        Some(PathBuf::from(self.path_style.normalize(resolved.as_ref())))
+    }
+
+    /// Picks the directory whose contents are listed, closing the prompt. Shared
+    /// by the `./` row and the footer's "このフォルダーを開く" button.
+    fn confirm_listed_directory(&mut self, cx: &mut Context<Picker<Self>>) {
+        let Some(path) = self.listed_directory_path(cx) else {
+            return;
+        };
+        if let Some(tx) = self.tx.take() {
+            tx.send(Some(vec![path])).ok();
+        }
+        cx.emit(gpui::DismissEvent);
     }
 }
 
@@ -638,17 +703,12 @@ impl PickerDelegate for OpenPathDelegate {
         if self.is_parent_dir_entry(&candidate) {
             return self.parent_query();
         }
-        let path_style = self.path_style;
-        match &self.directory_state {
-            DirectoryState::List { parent_path, .. }
-            | DirectoryState::Create { parent_path, .. } => Some(format!(
-                "{}{}{}",
-                parent_path,
-                candidate.path.string,
-                path_style.primary_separator()
-            )),
-            DirectoryState::None { .. } => None,
+        // Stepping into `./` would only re-list the directory already on screen,
+        // and would do it through the query `<dir>/.//`.
+        if self.is_current_dir_entry(&candidate) {
+            return None;
         }
+        self.child_query(&candidate)
     }
 
     fn select_parent(
@@ -703,7 +763,7 @@ impl PickerDelegate for OpenPathDelegate {
         )
     }
 
-    fn confirm(&mut self, _: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
+    fn confirm(&mut self, secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
         let Some(candidate) = self.get_entry(self.selected_index) else {
             return;
         };
@@ -717,6 +777,20 @@ impl PickerDelegate for OpenPathDelegate {
                     picker.set_query(&parent, window, cx);
                 });
             }
+            return;
+        }
+
+        if !secondary && self.should_browse_into(&candidate) {
+            if let Some(child) = self.child_query(&candidate) {
+                cx.defer_in(window, move |picker, window, cx| {
+                    picker.set_query(&child, window, cx);
+                });
+            }
+            return;
+        }
+
+        if self.is_current_dir_entry(&candidate) {
+            self.confirm_listed_directory(cx);
             return;
         }
 
@@ -884,7 +958,7 @@ impl PickerDelegate for OpenPathDelegate {
         match &self.directory_state {
             DirectoryState::List { parent_path, .. } => {
                 let (label, indices) = if is_current_dir_candidate {
-                    ("このディレクトリを開く".to_string(), vec![])
+                    ("このフォルダーを開く".to_string(), vec![])
                 } else if is_parent_dir_candidate {
                     (
                         match self.parent_query() {
@@ -985,7 +1059,63 @@ impl PickerDelegate for OpenPathDelegate {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Option<AnyElement> {
-        (self.render_footer)(window, cx)
+        if let Some(footer) = (self.render_footer)(window, cx) {
+            return Some(footer);
+        }
+
+        // Confirming a folder browses into it, so the way to actually choose one
+        // has to be visible: without this the prompt looks like it can only ever
+        // hand back whatever is highlighted.
+        // An unreadable directory is not one the user can be offered to open.
+        let DirectoryState::List {
+            parent_path,
+            error: None,
+            ..
+        } = &self.directory_state
+        else {
+            return None;
+        };
+        let listed_directory = SharedString::from(parent_path.clone());
+        let selected_is_directory = self
+            .get_entry(self.selected_index)
+            .is_some_and(|candidate| self.should_browse_into(&candidate));
+        let confirm_hint = if selected_is_directory {
+            "Enter: フォルダーの中へ"
+        } else {
+            "Enter: 開く"
+        };
+
+        Some(
+            v_flex()
+                .child(Divider::horizontal())
+                .child(
+                    h_flex()
+                        .p_1()
+                        .gap_2()
+                        .justify_between()
+                        .child(
+                            Label::new(format!(
+                                "{confirm_hint} / Ctrl+Enter: 選択中のフォルダーに決定"
+                            ))
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                        )
+                        .child(
+                            Button::new("open-path-prompt-choose-folder", "このフォルダーを開く")
+                                .label_size(LabelSize::Small)
+                                .tooltip(move |_window, cx| {
+                                    Tooltip::simple(
+                                        format!("{listed_directory} をこのまま開きます"),
+                                        cx,
+                                    )
+                                })
+                                .on_click(cx.listener(|picker, _, _window, cx| {
+                                    picker.delegate.confirm_listed_directory(cx);
+                                })),
+                        ),
+                )
+                .into_any(),
+        )
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {

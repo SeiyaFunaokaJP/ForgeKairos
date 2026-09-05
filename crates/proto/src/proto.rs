@@ -258,6 +258,8 @@ messages!(
     (SetChannelMemberRole, Foreground),
     (SetChannelVisibility, Foreground),
     (SetEgressAllowlist, Background),
+    (ProxyHttpRequest, Background),
+    (ProxyHttpResponse, Background),
     (SetRoomParticipantRole, Foreground),
     (ShareProject, Foreground),
     (ShareProjectResponse, Foreground),
@@ -524,6 +526,8 @@ request_messages!(
     (SetChannelMemberRole, Ack),
     (SetChannelVisibility, Ack),
     (SetEgressAllowlist, Ack),
+    (ProxyHttpRequest, Ack),
+    (ProxyHttpResponse, Ack),
     (ShareProject, ShareProjectResponse),
     (SynchronizeBuffers, SynchronizeBuffersResponse),
     (TaskContextForLocation, TaskContext),
@@ -1119,6 +1123,83 @@ mod tests {
             assert_eq!(decoded.allowed_hosts, message.allowed_hosts);
             assert_eq!(decoded.proxy_child_processes, flag);
         }
+    }
+
+    #[test]
+    fn proxy_http_response_frames_round_trip_and_reassemble() {
+        // ADR-F27: a body larger than one chunk is carried by several
+        // `ProxyHttpResponse` frames sharing a `request_id`; only the first
+        // one carries the status line and the headers.
+        const CHUNK: usize = 4;
+        let body = b"0123456789ab".to_vec();
+        let mut frames = Vec::new();
+        for (index, chunk) in body.chunks(CHUNK).enumerate() {
+            frames.push(ProxyHttpResponse {
+                request_id: 7,
+                status: if index == 0 { 200 } else { 0 },
+                headers: if index == 0 {
+                    vec![ProxyHttpHeader {
+                        name: "content-type".into(),
+                        value: "application/octet-stream".into(),
+                    }]
+                } else {
+                    Vec::new()
+                },
+                chunk: chunk.to_vec(),
+                is_last: false,
+                error: None,
+            });
+        }
+        frames.push(ProxyHttpResponse {
+            request_id: 7,
+            is_last: true,
+            ..Default::default()
+        });
+
+        let decoded = frames
+            .iter()
+            .map(|frame| {
+                ProxyHttpResponse::decode(frame.encode_to_vec().as_slice())
+                    .expect("the frame should round-trip")
+            })
+            .collect::<Vec<_>>();
+
+        assert!(decoded.iter().all(|frame| frame.request_id == 7));
+        assert_eq!(decoded[0].status, 200);
+        assert_eq!(decoded[0].headers[0].name, "content-type");
+        assert_eq!(
+            decoded.iter().filter(|frame| frame.is_last).count(),
+            1,
+            "exactly one frame ends the body"
+        );
+        let reassembled = decoded
+            .iter()
+            .flat_map(|frame| frame.chunk.iter().copied())
+            .collect::<Vec<_>>();
+        assert_eq!(reassembled, body);
+    }
+
+    #[test]
+    fn proxy_http_error_round_trips_the_egress_denial() {
+        // ADR-F27: the denial has to survive as its own variant, because the
+        // remote host rebuilds `http_client::EgressDenied` from it so the
+        // ADR-F22 consent flow can classify the failure.
+        let message = ProxyHttpResponse {
+            request_id: 1,
+            is_last: true,
+            error: Some(ProxyHttpError {
+                kind: Some(proxy_http_error::Kind::EgressDenied(
+                    ProxyHttpEgressDenied {
+                        host: "github.com".into(),
+                        url: "https://github.com/clangd/clangd/releases".into(),
+                    },
+                )),
+            }),
+            ..Default::default()
+        };
+        let decoded = ProxyHttpResponse::decode(message.encode_to_vec().as_slice())
+            .expect("the message should round-trip");
+        assert_eq!(decoded.error, message.error);
     }
 
     #[test]

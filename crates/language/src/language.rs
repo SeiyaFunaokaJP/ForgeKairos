@@ -489,7 +489,11 @@ pub trait LspAdapterDelegate: Send + Sync {
     fn resolve_relative_path(&self, path: PathBuf) -> PathBuf;
     fn update_status(&self, language: LanguageServerName, status: BinaryStatus);
     fn registered_lsp_adapters(&self) -> Vec<Arc<dyn LspAdapter>>;
-    async fn language_server_download_dir(&self, name: &LanguageServerName) -> Option<Arc<Path>>;
+    /// The directory this server's downloaded files go in, created if it does
+    /// not exist yet. `Err` rather than `None` because the reason it could not
+    /// be made (a full disk, a read-only home) is the only thing that explains
+    /// the failure that follows, and the caller surfaces it to the user.
+    async fn language_server_download_dir(&self, name: &LanguageServerName) -> Result<Arc<Path>>;
 
     async fn npm_package_installed_version(
         &self,
@@ -739,7 +743,17 @@ pub trait LspInstaller {
 /// only difference is whether a consent prompt is offered alongside it.
 pub fn binary_fetch_failure(error: &anyhow::Error) -> BinaryStatus {
     let error_text = format!("{error:?}");
-    match http_client::egress_denied_hosts(error) {
+    let hosts = match http_client::egress_denied_hosts(error) {
+        Some(hosts) => Some(hosts),
+        // A denial that crossed a boundary which flattens errors into strings
+        // — the extension WASM host, ADR-F27's HTTP relay — has no chain left
+        // to downcast, only the marker line the far side wrote in front of its
+        // text. Rebuilding the denial from that is what keeps those failures on
+        // the ADR-F22 consent flow instead of the plain "failed" path.
+        None => http_client::egress_denied_from_message(&error_text)
+            .and_then(|denied| http_client::egress_denied_hosts(&anyhow::Error::new(denied))),
+    };
+    match hosts {
         Some(hosts) => BinaryStatus::EgressDenied {
             error: error_text,
             hosts,
@@ -858,12 +872,9 @@ where
                 );
             }
 
-            let Some(container_dir) = delegate.language_server_download_dir(&self.name()).await
-            else {
-                return (
-                    Err(anyhow::anyhow!("no language server download dir defined")),
-                    None,
-                );
+            let container_dir = match delegate.language_server_download_dir(&self.name()).await {
+                Ok(container_dir) => container_dir,
+                Err(error) => return (Err(error), None),
             };
 
             let last_downloaded_binary = self
@@ -1696,6 +1707,44 @@ mod tests {
 
         assert!(matches!(
             binary_fetch_failure(&anyhow::anyhow!("no asset found matching clangd-linux.zip")),
+            BinaryStatus::Failed { .. }
+        ));
+    }
+
+    /// ADR-F27: an extension's language server is fetched inside the WASM
+    /// guest, which only ever sees a string, so the denial arrives as the
+    /// marker line the host wrote in front of the text.
+    #[test]
+    fn a_binary_fetch_refused_behind_a_stringifying_boundary_is_reported_the_same_way() {
+        let denied = http_client::EgressDenied {
+            host: "github.com".to_string(),
+            url: "https://github.com/rust-lang/rust-analyzer/releases".to_string(),
+        };
+        let flattened = anyhow::anyhow!(
+            "failed to install language server: {}\n{denied}",
+            http_client::egress_denied_marker_line(&denied)
+        );
+        match binary_fetch_failure(&flattened) {
+            BinaryStatus::EgressDenied { error, hosts } => {
+                assert!(hosts.contains(&"github.com".to_string()), "{hosts:?}");
+                assert!(
+                    hosts.contains(&"objects.githubusercontent.com".to_string()),
+                    "{hosts:?}"
+                );
+                assert!(
+                    error.contains("failed to install language server"),
+                    "{error}"
+                );
+            }
+            other => panic!("expected an egress denial, got {other:?}"),
+        }
+
+        // The marker is the only thing that promotes a flattened failure; prose
+        // that merely mentions the same host must not.
+        assert!(matches!(
+            binary_fetch_failure(&anyhow::anyhow!(
+                "failed to install language server: github.com timed out"
+            )),
             BinaryStatus::Failed { .. }
         ));
     }

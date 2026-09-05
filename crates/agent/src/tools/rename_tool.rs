@@ -8,7 +8,10 @@ use project::Project;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::symbol_locator::SymbolLocator;
+use super::symbol_locator::{
+    SymbolLocator, has_language_server, mark_card_missing_language_server,
+    no_language_server_message,
+};
 use crate::{AgentTool, ToolCallEventStream, ToolInput};
 
 /// Renames a symbol across the project using the language server.
@@ -16,6 +19,8 @@ use crate::{AgentTool, ToolCallEventStream, ToolInput};
 /// This performs a semantic rename, updating all references to the symbol across all files in the project. The language server determines which occurrences to rename based on the symbol's type and scope.
 ///
 /// Before using this tool, use read_file or grep to find the exact symbol name and line number.
+///
+/// This tool needs a running language server for the file's language, so it cannot work in a language that has none. When it reports that, relay that fact to the user instead of guessing at editor configuration, and use `edit_file` only if the user asks for a plain textual replacement.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RenameToolInput {
     /// The symbol to rename.
@@ -51,11 +56,7 @@ impl AgentTool for RenameTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!(
-                "`{}` の名前を `{}` に変更",
-                input.symbol.symbol_name, input.new_name
-            )
-            .into()
+            rename_title(&input.symbol.symbol_name, &input.new_name).into()
         } else {
             "シンボルの名前変更".into()
         }
@@ -81,10 +82,7 @@ impl AgentTool for RenameTool {
             // place the user can stop it is here.
             cx.update(|cx| {
                 event_stream.authorize(
-                    format!(
-                        "`{}` の名前を `{}` に変更",
-                        input.symbol.symbol_name, input.new_name
-                    ),
+                    rename_title(&input.symbol.symbol_name, &input.new_name),
                     crate::ToolPermissionContext::new(
                         Self::NAME,
                         vec![input.symbol.symbol_name.clone()],
@@ -93,7 +91,13 @@ impl AgentTool for RenameTool {
                 )
             })
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| {
+                format!(
+                    "名前の変更は実行されませんでした ({error})。\
+                     ユーザーが許可しなかったので、同じ変更を `edit_file` などで\
+                     代わりに適用しないでください。"
+                )
+            })?;
 
             let rename_task = project.update(cx, |project, cx| {
                 project.perform_rename(
@@ -104,9 +108,26 @@ impl AgentTool for RenameTool {
                 )
             });
 
-            let transaction = rename_task
-                .await
-                .map_err(|e| format!("Rename failed: {e}"))?;
+            let rename_result = rename_task.await;
+            // A rename with no language server behind it comes back the same
+            // way as one the server declined -- an error, or a transaction
+            // that changed nothing -- so check before reporting either.
+            let changed_nothing = match &rename_result {
+                Ok(transaction) => transaction.0.is_empty(),
+                Err(_) => true,
+            };
+            if changed_nothing && !has_language_server(&project, &resolved.buffer, cx) {
+                mark_card_missing_language_server(
+                    &event_stream,
+                    &rename_title(&input.symbol.symbol_name, &input.new_name),
+                );
+                return Ok(no_language_server_message(
+                    "名前の変更",
+                    &input.symbol.file_path,
+                ));
+            }
+
+            let transaction = rename_result.map_err(|e| format!("Rename failed: {e}"))?;
 
             if transaction.0.is_empty() {
                 return Ok(format!(
@@ -141,4 +162,8 @@ impl AgentTool for RenameTool {
             Ok(output)
         })
     }
+}
+
+fn rename_title(symbol_name: &str, new_name: &str) -> String {
+    format!("`{symbol_name}` の名前を `{new_name}` に変更")
 }
