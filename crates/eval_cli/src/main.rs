@@ -203,8 +203,8 @@ fn main() {
         let app_state = headless::init(cx);
         cx.set_staff(!args.no_staff);
 
-        // Eval hook: enable additional feature-flag-gated tools (e.g. the LSP
-        // navigation tools behind `lsp-tool` / `rename-tool`) so experiments can
+        // Eval hook: enable additional feature-flag-gated tools (e.g. the
+        // sibling-thread tools behind `create-thread-tool`) so experiments can
         // measure the agent with tools that aren't yet GA. Comma-separated flag
         // names; unset in production.
         if let Ok(raw_flags) = std::env::var("ZED_EVAL_ENABLE_FLAGS") {

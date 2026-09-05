@@ -865,6 +865,478 @@ fn surrounding_delimiters(
     ))
 }
 
+/// How a pipe table column is aligned, i.e. which spelling its delimiter cell
+/// is written with.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MarkdownTableAlignment {
+    /// `---`, which leaves the alignment to the renderer.
+    #[default]
+    Unspecified,
+    /// `:---`
+    Left,
+    /// `:---:`
+    Center,
+    /// `---:`
+    Right,
+}
+
+impl MarkdownTableAlignment {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unspecified => "既定",
+            Self::Left => "左",
+            Self::Center => "中央",
+            Self::Right => "右",
+        }
+    }
+
+    /// The next alignment offered by the table editor's cycling button.
+    pub fn next_alignment(self) -> Self {
+        match self {
+            Self::Unspecified => Self::Left,
+            Self::Left => Self::Center,
+            Self::Center => Self::Right,
+            Self::Right => Self::Unspecified,
+        }
+    }
+
+    /// The delimiter cell for a column that is `width` display columns wide.
+    fn delimiter_cell(self, width: usize) -> String {
+        let width = width.max(MINIMUM_COLUMN_WIDTH);
+        match self {
+            Self::Unspecified => "-".repeat(width),
+            Self::Left => format!(":{}", "-".repeat(width - 1)),
+            Self::Right => format!("{}:", "-".repeat(width - 1)),
+            Self::Center => format!(":{}:", "-".repeat(width - 2)),
+        }
+    }
+}
+
+/// A GitHub flavoured Markdown pipe table, in the shape the table editor holds
+/// it: every row has exactly `alignments.len()` cells, and the cell text is
+/// unescaped.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MarkdownTable {
+    pub has_header: bool,
+    pub alignments: Vec<MarkdownTableAlignment>,
+    /// Every row, the header included as the first one when `has_header` is set.
+    pub rows: Vec<Vec<String>>,
+}
+
+/// Three dashes are the shortest delimiter cell that can also carry a colon on
+/// both ends, so every column is padded to at least this width.
+const MINIMUM_COLUMN_WIDTH: usize = 3;
+
+impl MarkdownTable {
+    /// The table `markdown::EditTable` starts from when the cursor is not
+    /// inside one.
+    pub fn empty_with_header() -> Self {
+        let mut table = Self {
+            has_header: true,
+            alignments: vec![MarkdownTableAlignment::Unspecified; 3],
+            rows: vec![vec![String::new(); 3]; 3],
+        };
+        table.normalize();
+        table
+    }
+
+    pub fn column_count(&self) -> usize {
+        self.alignments.len()
+    }
+
+    /// Gives every row the same number of cells, so the grid and the rendered
+    /// table agree even when the source table had ragged rows.
+    pub fn normalize(&mut self) {
+        let widest_row = self.rows.iter().map(Vec::len).max().unwrap_or(0);
+        let columns = self.alignments.len().max(widest_row).max(1);
+        self.alignments
+            .resize(columns, MarkdownTableAlignment::Unspecified);
+        if self.rows.is_empty() {
+            self.rows.push(Vec::new());
+        }
+        for row in &mut self.rows {
+            row.resize(columns, String::new());
+        }
+    }
+
+    /// The table as Markdown, without a trailing newline, with every column
+    /// padded to the display width of its widest cell.
+    pub fn to_markdown(&self) -> String {
+        let columns = self.column_count();
+        let escaped = self
+            .rows
+            .iter()
+            .map(|row| row.iter().map(|cell| escape_table_cell(cell)).collect())
+            .collect::<Vec<Vec<String>>>();
+
+        let widths = (0..columns)
+            .map(|column| {
+                escaped
+                    .iter()
+                    .filter_map(|row| row.get(column))
+                    .map(|cell| display_width(cell))
+                    .max()
+                    .unwrap_or(0)
+                    .max(MINIMUM_COLUMN_WIDTH)
+            })
+            .collect::<Vec<_>>();
+
+        let mut markdown = String::new();
+        let push_row = |cells: &[String], markdown: &mut String| {
+            markdown.push('|');
+            for (column, width) in widths.iter().enumerate() {
+                let cell = cells.get(column).map(String::as_str).unwrap_or("");
+                markdown.push(' ');
+                markdown.push_str(cell);
+                for _ in display_width(cell)..*width {
+                    markdown.push(' ');
+                }
+                markdown.push_str(" |");
+            }
+            markdown.push('\n');
+        };
+
+        let body_start = usize::from(self.has_header);
+        if self.has_header
+            && let Some(header) = escaped.first()
+        {
+            push_row(header, &mut markdown);
+        }
+
+        markdown.push('|');
+        for (column, width) in widths.iter().enumerate() {
+            let alignment = self
+                .alignments
+                .get(column)
+                .copied()
+                .unwrap_or(MarkdownTableAlignment::Unspecified);
+            markdown.push(' ');
+            markdown.push_str(&alignment.delimiter_cell(*width));
+            markdown.push_str(" |");
+        }
+        markdown.push('\n');
+
+        for row in escaped.iter().skip(body_start) {
+            push_row(row, &mut markdown);
+        }
+
+        while markdown.ends_with('\n') {
+            markdown.pop();
+        }
+        markdown
+    }
+}
+
+/// Where `markdown::EditTable` will write, and the table that is already there.
+pub struct MarkdownTableTarget {
+    /// The rows of an existing table, or an empty range at the cursor.
+    range: Range<Anchor>,
+    pub table: MarkdownTable,
+    pub replaces_existing: bool,
+    /// Newlines that keep an inserted table on lines of its own; empty when an
+    /// existing table is being replaced.
+    prefix: String,
+    suffix: String,
+}
+
+impl Editor {
+    /// The pipe table to edit for `markdown::EditTable`, or a blank one to
+    /// insert when the cursor is not inside a table. `None` when this buffer
+    /// cannot take a table at all.
+    pub fn markdown_table_target(&self, cx: &mut App) -> Option<MarkdownTableTarget> {
+        if self.read_only(cx) || !self.is_in_markdown_language(cx) {
+            return None;
+        }
+
+        let cursor = self
+            .selections
+            .newest::<Point>(&self.display_snapshot(cx))
+            .head();
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+
+        if let Some((rows, lines)) = markdown_table_block(&snapshot, cursor.row) {
+            let borrowed = lines.iter().map(String::as_str).collect::<Vec<_>>();
+            if let Some(table) = parse_markdown_table(&borrowed) {
+                let last_row = rows.end.saturating_sub(1);
+                let start = Point::new(rows.start, 0);
+                let end = Point::new(last_row, snapshot.line_len(MultiBufferRow(last_row)));
+                let start = snapshot.point_to_offset(start);
+                let end = snapshot.point_to_offset(end);
+                return Some(MarkdownTableTarget {
+                    range: snapshot.anchor_before(start)..snapshot.anchor_after(end),
+                    table,
+                    replaces_existing: true,
+                    prefix: String::new(),
+                    suffix: String::new(),
+                });
+            }
+        }
+
+        let max_row = snapshot.max_point().row;
+        let line_len = snapshot.line_len(MultiBufferRow(cursor.row));
+
+        let mut prefix = String::new();
+        if cursor.column > 0 {
+            prefix.push_str("\n\n");
+        } else if cursor.row > 0 && !snapshot.is_line_blank(MultiBufferRow(cursor.row - 1)) {
+            prefix.push('\n');
+        }
+
+        let mut suffix = String::new();
+        if cursor.column < line_len {
+            suffix.push_str("\n\n");
+        } else if cursor.row < max_row && !snapshot.is_line_blank(MultiBufferRow(cursor.row + 1)) {
+            suffix.push('\n');
+        }
+
+        let offset = snapshot.point_to_offset(cursor);
+        let anchor = snapshot.anchor_before(offset);
+        Some(MarkdownTableTarget {
+            range: anchor..anchor,
+            table: MarkdownTable::empty_with_header(),
+            replaces_existing: false,
+            prefix,
+            suffix,
+        })
+    }
+
+    /// Writes `table` over the range `target` was resolved against, leaving the
+    /// cursor on the table's first line.
+    pub fn write_markdown_table(
+        &mut self,
+        target: &MarkdownTableTarget,
+        table: &MarkdownTable,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.read_only(cx) {
+            return;
+        }
+
+        let text = format!("{}{}{}", target.prefix, table.to_markdown(), target.suffix);
+        let cursor = target.prefix.len();
+        self.apply_markdown_edits(vec![(target.range.clone(), text)], vec![cursor], window, cx);
+    }
+}
+
+/// The consecutive non-blank pipe-carrying lines around `row`, with the row
+/// range they occupy.
+fn markdown_table_block(
+    snapshot: &MultiBufferSnapshot,
+    row: u32,
+) -> Option<(Range<u32>, Vec<String>)> {
+    if !is_table_line(&line_text(snapshot, row)) {
+        return None;
+    }
+
+    let mut start = row;
+    while start > 0 && is_table_line(&line_text(snapshot, start - 1)) {
+        start -= 1;
+    }
+    let max_row = snapshot.max_point().row;
+    let mut end = row;
+    while end < max_row && is_table_line(&line_text(snapshot, end + 1)) {
+        end += 1;
+    }
+
+    let lines = (start..=end)
+        .map(|row| line_text(snapshot, row))
+        .collect::<Vec<_>>();
+    Some((start..end + 1, lines))
+}
+
+fn line_text(snapshot: &MultiBufferSnapshot, row: u32) -> String {
+    let start = Point::new(row, 0);
+    let end = Point::new(row, snapshot.line_len(MultiBufferRow(row)));
+    snapshot.text_for_range(start..end).collect()
+}
+
+/// Whether `line` could belong to a pipe table. A table never contains a blank
+/// line, which is what bounds the block scanned around the cursor.
+fn is_table_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.is_empty() && trimmed.contains('|')
+}
+
+/// Parses a block of consecutive table lines. `None` when the block carries no
+/// delimiter row, or carries one somewhere other than the first two lines,
+/// since neither is a table GitHub would render.
+pub fn parse_markdown_table(block: &[&str]) -> Option<MarkdownTable> {
+    let delimiter_row = block
+        .iter()
+        .take(2)
+        .position(|line| parse_alignment_row(line).is_some())?;
+    let alignments = parse_alignment_row(block.get(delimiter_row)?)?;
+    let has_header = delimiter_row == 1;
+
+    let mut rows = Vec::new();
+    if has_header {
+        rows.push(split_table_row(block.first()?));
+    }
+    for line in block.get(delimiter_row + 1..)? {
+        rows.push(split_table_row(line));
+    }
+
+    let mut table = MarkdownTable {
+        has_header,
+        alignments,
+        rows,
+    };
+    table.normalize();
+    Some(table)
+}
+
+/// A spreadsheet or CSV payload spread over more than one cell. `None` when the
+/// text is a single cell, which should be pasted as ordinary text instead.
+pub fn parse_clipboard_table(text: &str) -> Option<Vec<Vec<String>>> {
+    let text = text.strip_suffix('\n').unwrap_or(text);
+    let text = text.strip_suffix('\r').unwrap_or(text);
+
+    let separator = if text.contains('\t') {
+        '\t'
+    } else if text.contains('\n') {
+        ','
+    } else {
+        return None;
+    };
+
+    let rows = parse_separated_values(text, separator);
+    if rows.len() <= 1 && rows.first().is_none_or(|row| row.len() <= 1) {
+        return None;
+    }
+    Some(rows)
+}
+
+/// Splits a spreadsheet payload, honouring the RFC 4180 quoting that Excel and
+/// most spreadsheets use for cells containing the separator or a line break.
+fn parse_separated_values(text: &str, separator: char) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    let mut row = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    let mut characters = text.chars().peekable();
+
+    while let Some(character) = characters.next() {
+        if in_quotes {
+            match character {
+                '"' => {
+                    if characters.peek() == Some(&'"') {
+                        field.push('"');
+                        characters.next();
+                    } else {
+                        in_quotes = false;
+                    }
+                }
+                '\r' => {}
+                _ => field.push(character),
+            }
+            continue;
+        }
+
+        match character {
+            '"' if field.is_empty() => in_quotes = true,
+            '\r' => {}
+            '\n' => {
+                row.push(std::mem::take(&mut field));
+                rows.push(std::mem::take(&mut row));
+            }
+            _ if character == separator => row.push(std::mem::take(&mut field)),
+            _ => field.push(character),
+        }
+    }
+
+    if !field.is_empty() || !row.is_empty() {
+        row.push(field);
+        rows.push(row);
+    }
+    rows
+}
+
+/// The alignments a delimiter row declares, or `None` when `line` is an
+/// ordinary table row.
+fn parse_alignment_row(line: &str) -> Option<Vec<MarkdownTableAlignment>> {
+    let cells = split_table_row(line);
+    if cells.is_empty() {
+        return None;
+    }
+    cells.iter().map(|cell| cell_alignment(cell)).collect()
+}
+
+fn cell_alignment(cell: &str) -> Option<MarkdownTableAlignment> {
+    let cell = cell.trim();
+    let leading_colon = cell.starts_with(':');
+    let trailing_colon = cell.len() > 1 && cell.ends_with(':');
+    let dashes = cell.get(usize::from(leading_colon)..cell.len() - usize::from(trailing_colon))?;
+    if dashes.is_empty() || !dashes.chars().all(|character| character == '-') {
+        return None;
+    }
+    Some(match (leading_colon, trailing_colon) {
+        (true, true) => MarkdownTableAlignment::Center,
+        (true, false) => MarkdownTableAlignment::Left,
+        (false, true) => MarkdownTableAlignment::Right,
+        (false, false) => MarkdownTableAlignment::Unspecified,
+    })
+}
+
+/// Splits a table row on its unescaped pipes, dropping the optional outer ones
+/// and turning `\|` back into a literal pipe.
+fn split_table_row(line: &str) -> Vec<String> {
+    let trimmed = line.trim();
+    let mut cells = Vec::new();
+    let mut cell = String::new();
+    let mut ended_on_pipe = false;
+    let mut characters = trimmed.chars().peekable();
+
+    while let Some(character) = characters.next() {
+        match character {
+            '\\' if characters.peek() == Some(&'|') => {
+                cell.push('|');
+                characters.next();
+                ended_on_pipe = false;
+            }
+            '|' => {
+                cells.push(cell.trim().to_string());
+                cell = String::new();
+                ended_on_pipe = true;
+            }
+            _ => {
+                cell.push(character);
+                ended_on_pipe = false;
+            }
+        }
+    }
+    cells.push(cell.trim().to_string());
+
+    if ended_on_pipe {
+        cells.pop();
+    }
+    if trimmed.starts_with('|') && !cells.is_empty() {
+        cells.remove(0);
+    }
+    cells
+}
+
+/// Cell text as it is written inside a pipe table. A cell cannot span lines, so
+/// a line break that came in from a spreadsheet becomes an explicit `<br>`.
+fn escape_table_cell(cell: &str) -> String {
+    let mut escaped = String::with_capacity(cell.len());
+    for character in cell.trim().chars() {
+        match character {
+            '|' => escaped.push_str("\\|"),
+            '\n' => escaped.push_str("<br>"),
+            '\r' => {}
+            _ => escaped.push(character),
+        }
+    }
+    escaped
+}
+
+/// Terminal columns `text` occupies, so that a table of Japanese text lines up
+/// in a fixed-width editor: East Asian wide characters count as two.
+fn display_width(text: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -891,6 +1363,114 @@ mod tests {
         assert_eq!(list_marker("-3"), None);
         assert_eq!(list_marker("1.a"), None);
         assert_eq!(list_marker("text"), None);
+    }
+
+    #[test]
+    fn test_parse_markdown_table() {
+        let table = parse_markdown_table(&[
+            "| 名前 | 説明 |",
+            "|:-----|-----:|",
+            "| a \\| b | c |",
+            "| d |",
+        ])
+        .expect("the block is a table");
+        assert!(table.has_header);
+        assert_eq!(
+            table.alignments,
+            vec![MarkdownTableAlignment::Left, MarkdownTableAlignment::Right]
+        );
+        assert_eq!(
+            table.rows,
+            vec![
+                vec!["名前".to_string(), "説明".to_string()],
+                vec!["a | b".to_string(), "c".to_string()],
+                // The ragged row is padded so the grid stays rectangular.
+                vec!["d".to_string(), String::new()],
+            ]
+        );
+
+        let headerless =
+            parse_markdown_table(&["| --- | :---: |", "| a | b |"]).expect("the block is a table");
+        assert!(!headerless.has_header);
+        assert_eq!(
+            headerless.alignments,
+            vec![
+                MarkdownTableAlignment::Unspecified,
+                MarkdownTableAlignment::Center
+            ]
+        );
+        assert_eq!(
+            headerless.rows,
+            vec![vec!["a".to_string(), "b".to_string()]]
+        );
+
+        assert_eq!(parse_markdown_table(&["| a | b |", "| c | d |"]), None);
+        // A delimiter row below the first body row is not a table GitHub renders.
+        assert_eq!(parse_markdown_table(&["| a |", "| b |", "| --- |"]), None);
+    }
+
+    #[test]
+    fn test_markdown_table_to_markdown() {
+        let table = MarkdownTable {
+            has_header: true,
+            alignments: vec![
+                MarkdownTableAlignment::Left,
+                MarkdownTableAlignment::Center,
+                MarkdownTableAlignment::Right,
+            ],
+            rows: vec![
+                vec!["項目".into(), "説明".into(), "数".into()],
+                vec!["あ".into(), "a|b".into(), "1".into()],
+            ],
+        };
+
+        // Every column is padded to the display width of its widest cell, with
+        // Japanese characters counting as two columns.
+        assert_eq!(
+            table.to_markdown(),
+            "\
+| 項目 | 説明 | 数  |
+| :--- | :--: | --: |
+| あ   | a\\|b | 1   |"
+        );
+
+        let mut ragged = MarkdownTable {
+            has_header: false,
+            alignments: Vec::new(),
+            rows: vec![vec!["a".into(), "b".into()], vec!["c".into()]],
+        };
+        ragged.normalize();
+        assert_eq!(
+            ragged.to_markdown(),
+            "\
+| --- | --- |
+| a   | b   |
+| c   |     |"
+        );
+    }
+
+    #[test]
+    fn test_parse_clipboard_table() {
+        assert_eq!(
+            parse_clipboard_table("a\tb\nc\td\n"),
+            Some(vec![
+                vec!["a".to_string(), "b".to_string()],
+                vec!["c".to_string(), "d".to_string()],
+            ])
+        );
+
+        assert_eq!(
+            parse_clipboard_table("name,note\r\n\"a,b\",\"言った \"\"ね\"\"\"\r\n"),
+            Some(vec![
+                vec!["name".to_string(), "note".to_string()],
+                vec!["a,b".to_string(), "言った \"ね\"".to_string()],
+            ])
+        );
+
+        // A single cell, even one holding a comma, is an ordinary paste.
+        assert_eq!(parse_clipboard_table("a,b"), None);
+        assert_eq!(parse_clipboard_table("a\r\n"), None);
+        assert_eq!(parse_clipboard_table(""), None);
     }
 
     #[test]

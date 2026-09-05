@@ -12,6 +12,7 @@ use crate::{
 use acp_thread::MentionUri;
 use agent::ThreadStore;
 use agent_client_protocol::schema::v1 as acp;
+use agent_settings::AgentSettings;
 use anyhow::{Result, anyhow};
 use base64::Engine as _;
 use editor::{
@@ -32,7 +33,8 @@ use language::{Buffer, language_settings::InlayHintKind};
 use parking_lot::RwLock;
 use project::AgentId;
 use project::{
-    CompletionIntent, InlayHint, InlayHintLabel, InlayId, Project, ProjectPath, Worktree,
+    CompletionIntent, InlayHint, InlayHintLabel, InlayId, Project, ProjectItem as _, ProjectPath,
+    Worktree,
 };
 use rope::Point;
 use settings::Settings;
@@ -853,6 +855,9 @@ impl MessageEditor {
         };
         let agent_id = self.agent_id.clone();
         let build_task = self.build_content_blocks(full_mention_content, cx);
+        let active_file = self.active_file_mention(cx);
+        let supports_embedded_context =
+            self.session_capabilities.read().supports_embedded_context();
 
         cx.spawn(async move |_, _cx| {
             Self::validate_slash_commands(
@@ -861,7 +866,96 @@ impl MessageEditor {
                 &available_skills,
                 &agent_id,
             )?;
-            build_task.await
+            let (mut chunks, mut tracked_buffers) = build_task.await?;
+
+            if let Some((uri, mention_task)) = active_file {
+                // Attaching what the user is looking at must never be the
+                // reason a message fails to send, so a mention that can't be
+                // resolved (unsaved buffer outside the project, a file that
+                // vanished) is logged and dropped.
+                match mention_task.await {
+                    Ok(mention) => chunks.insert(
+                        0,
+                        mention_to_content_block(
+                            &uri,
+                            Some(&mention),
+                            supports_embedded_context,
+                            &mut tracked_buffers,
+                        ),
+                    ),
+                    Err(error) => {
+                        log::warn!("failed to attach the active editor to the message: {error:#}")
+                    }
+                }
+            }
+
+            Ok((chunks, tracked_buffers))
+        })
+    }
+
+    /// Resolves the active editor into a mention to prepend to the message
+    /// being sent, when `agent.attach_active_file` is on (TODO F13 ③). Returns
+    /// `None` when the setting is off, when there is no file-backed editor to
+    /// attach, or when the user already mentioned exactly the same thing by
+    /// hand.
+    fn active_file_mention(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<(MentionUri, Task<Result<Mention>>)> {
+        if !AgentSettings::get_global(cx).attach_active_file {
+            return None;
+        }
+
+        let workspace = self.workspace.upgrade()?;
+        let uri = Self::active_file_mention_uri(&workspace, cx)?;
+        if self.mention_set.read(cx).mentions().contains(&uri) {
+            return None;
+        }
+
+        let supports_images = self.session_capabilities.read().supports_images();
+        let http_client = workspace.read(cx).client().http_client();
+        let task = self.mention_set.update(cx, |mention_set, cx| {
+            mention_set.confirm_mention_for_uri(uri.clone(), supports_images, http_client, cx)
+        });
+        Some((uri, task))
+    }
+
+    fn active_file_mention_uri(workspace: &Entity<Workspace>, cx: &mut App) -> Option<MentionUri> {
+        let editor = workspace.read(cx).active_item(cx)?.act_as::<Editor>(cx)?;
+        let project = workspace.read(cx).project().clone();
+
+        let (buffer, selected_rows) = editor.update(cx, |editor, cx| {
+            // Multi-buffers (diff reviews, search results) aren't "the file the
+            // user is looking at", so only a plain single-file editor counts.
+            let buffer = editor.buffer().read(cx).as_singleton()?;
+            let snapshot = editor.display_snapshot(cx);
+            let selection = editor.selections.newest::<Point>(&snapshot);
+            let selected_rows = if selection.start == selection.end {
+                None
+            } else {
+                // A selection that ends at the start of a line visually covers
+                // only up to the previous line.
+                let end_row =
+                    if selection.end.column == 0 && selection.end.row > selection.start.row {
+                        selection.end.row - 1
+                    } else {
+                        selection.end.row
+                    };
+                Some(selection.start.row..=end_row)
+            };
+            Some((buffer, selected_rows))
+        })?;
+
+        let project_path = buffer.read(cx).project_path(cx)?;
+        let abs_path = project.read(cx).absolute_path(&project_path, cx)?;
+
+        Some(match selected_rows {
+            Some(line_range) => MentionUri::Selection {
+                abs_path: Some(abs_path),
+                line_range,
+                column: None,
+            },
+            None => MentionUri::File { abs_path },
         })
     }
 
@@ -2260,7 +2354,7 @@ mod tests {
     use futures::{FutureExt as _, StreamExt as _};
     use gpui::{
         AppContext, ClipboardEntry, ClipboardItem, Entity, EventEmitter, ExternalPaths,
-        FocusHandle, Focusable, Task, TestAppContext, VisualTestContext,
+        FocusHandle, Focusable, Task, TestAppContext, UpdateGlobal as _, VisualTestContext,
     };
     use language_model::LanguageModelRegistry;
     use lsp::{CompletionContext, CompletionTriggerKind};
@@ -4212,6 +4306,166 @@ mod tests {
                     )
                 ))
             ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_attach_active_file(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let app_state = cx.update(AppState::test);
+        cx.update(|cx| {
+            editor::init(cx);
+            workspace::init(app_state.clone(), cx);
+        });
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(
+                path!("/dir"),
+                json!({ "test.txt": "line1\nline2\nline3\n" }),
+            )
+            .await;
+
+        let project = Project::test(app_state.fs.clone(), [path!("/dir").as_ref()], cx).await;
+        let window =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+        let worktree_id = project.update(cx, |project, cx| {
+            project.worktrees(cx).next().unwrap().read(cx).id()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let thread_store = Some(cx.new(|cx| ThreadStore::new(cx)));
+
+        let message_editor = workspace.update_in(&mut cx, |workspace, window, cx| {
+            let workspace_handle = cx.weak_entity();
+            let message_editor = cx.new(|cx| {
+                MessageEditor::new(
+                    workspace_handle,
+                    project.downgrade(),
+                    thread_store.clone(),
+                    Default::default(),
+                    "Test Agent".into(),
+                    "Test",
+                    EditorMode::AutoHeight {
+                        min_lines: 1,
+                        max_lines: None,
+                    },
+                    window,
+                    cx,
+                )
+            });
+            workspace.active_pane().update(cx, |pane, cx| {
+                pane.add_item(
+                    Box::new(cx.new(|_| MessageEditorItem(message_editor.clone()))),
+                    true,
+                    true,
+                    None,
+                    window,
+                    cx,
+                );
+            });
+            message_editor
+        });
+
+        // Opening the file makes it the workspace's active item, which is what
+        // `attach_active_file` reads.
+        let editor = workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath {
+                        worktree_id,
+                        path: rel_path("test.txt").into(),
+                    },
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap();
+
+        message_editor.update_in(&mut cx, |message_editor, window, cx| {
+            message_editor
+                .editor
+                .update(cx, |editor, cx| editor.set_text("何が問題?", window, cx));
+        });
+
+        let file_uri = if cfg!(windows) {
+            "file:///C:/dir/test.txt"
+        } else {
+            "file:///dir/test.txt"
+        };
+
+        let contents = |cx: &mut VisualTestContext| {
+            message_editor.update(cx, |message_editor, cx| message_editor.contents(false, cx))
+        };
+
+        // Off by default: only what the user typed is sent.
+        let content = contents(&mut cx).await.unwrap().0;
+        pretty_assertions::assert_eq!(content, vec!["何が問題?".into()]);
+
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.agent.get_or_insert_default().attach_active_file = Some(true);
+                });
+            });
+        });
+
+        // With no selection the whole file is attached, ahead of the message.
+        let content = contents(&mut cx).await.unwrap().0;
+        pretty_assertions::assert_eq!(
+            content,
+            vec![
+                acp::ContentBlock::ResourceLink(acp::ResourceLink::new("test.txt", file_uri)),
+                "何が問題?".into(),
+            ]
+        );
+
+        // With a selection, only the selected lines are attached.
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([Point::new(0, 0)..Point::new(1, 5)]);
+            });
+        });
+        let content = contents(&mut cx).await.unwrap().0;
+        let Some(acp::ContentBlock::ResourceLink(link)) = content.first() else {
+            panic!("expected the selection to be attached, got: {content:?}");
+        };
+        assert_eq!(
+            link.uri,
+            format!("{file_uri}#L1:2"),
+            "expected a selection mention covering lines 1-2"
+        );
+
+        // A file the user already mentioned by hand is not attached twice.
+        message_editor.update_in(&mut cx, |message_editor, window, cx| {
+            message_editor.set_message(
+                vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
+                    "test.txt", file_uri,
+                ))],
+                window,
+                cx,
+            );
+        });
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([Point::new(0, 0)..Point::new(0, 0)]);
+            });
+        });
+        cx.run_until_parked();
+        let content = contents(&mut cx).await.unwrap().0;
+        pretty_assertions::assert_eq!(
+            content,
+            vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
+                "test.txt", file_uri
+            ))]
         );
     }
 

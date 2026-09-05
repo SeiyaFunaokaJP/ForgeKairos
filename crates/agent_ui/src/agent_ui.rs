@@ -1005,6 +1005,10 @@ mod tests {
                 enabled: false,
                 threshold: agent_settings::AutoCompactThreshold::DEFAULT,
             },
+            auto_compact_min_context_window:
+                agent_settings::DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW,
+            attach_active_file: false,
+            system_prompt_repo_map_bytes: 0,
             enable_feedback: false,
             expand_edit_card: true,
             expand_terminal_card: true,

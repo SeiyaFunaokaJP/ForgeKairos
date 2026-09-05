@@ -14,8 +14,8 @@ use git::{
         AskPassDelegate, Branch, CommitData, CommitDataReader, CommitDetails, CommitOptions,
         CreateWorktreeTarget, FetchOptions, FileHistoryChangedFileSets, GRAPH_CHUNK_SIZE,
         GitCommandOutput, GitRepository, GitRepositoryCheckpoint, InitialGraphCommitData, LogOrder,
-        LogSource, PushOptions, RefEdit, Remote, RepoPath, ResetMode, SearchCommitArgs, Worktree,
-        commit_hash_search_query,
+        LogSource, PushOptions, RefEdit, Remote, RepoPath, ResetMode, SearchCommitArgs,
+        StatusUntrackedFiles, Worktree, commit_hash_search_query,
     },
     stash::GitStash,
     status::{
@@ -391,7 +391,11 @@ impl GitRepository for FakeGitRepository {
         async move { None }.boxed()
     }
 
-    fn status(&self, path_prefixes: &[RepoPath]) -> Task<Result<GitStatus>> {
+    fn status(
+        &self,
+        path_prefixes: &[RepoPath],
+        untracked_files: StatusUntrackedFiles,
+    ) -> Task<Result<GitStatus>> {
         let workdir_path = self.dot_git_path.parent().unwrap();
 
         // Load gitignores
@@ -493,7 +497,7 @@ impl GitRepository for FakeGitRepository {
                         worktree_status: StatusCode::Deleted,
                     }),
                     (_, None, None, Some((_, is_ignored))) => {
-                        if *is_ignored {
+                        if *is_ignored || untracked_files == StatusUntrackedFiles::No {
                             continue;
                         }
                         FileStatus::Untracked

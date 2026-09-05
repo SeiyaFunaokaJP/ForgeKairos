@@ -578,6 +578,15 @@ pub struct GitSettings {
     ///
     /// Default: true
     pub show_stage_restore_buttons: Option<bool>,
+    /// Which untracked files `git status` reports.
+    ///
+    /// `all` lists every file inside an untracked directory, which is what
+    /// colours individual entries in the project panel. `normal` only lists the
+    /// untracked directory itself, and `no` skips untracked files entirely;
+    /// both make `git status` markedly cheaper on very large trees.
+    ///
+    /// Default: all
+    pub status_untracked_files: Option<StatusUntrackedFilesSetting>,
     /// Directory where git worktrees are created, relative to the repository
     /// working directory.
     ///
@@ -640,6 +649,30 @@ pub enum GitGutterSetting {
     TrackedFiles,
     /// Hide git gutter
     Hide,
+}
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Default,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum StatusUntrackedFilesSetting {
+    /// List every file inside untracked directories.
+    #[default]
+    All,
+    /// List untracked directories, but not the files inside them.
+    Normal,
+    /// Don't list untracked files at all.
+    No,
 }
 
 #[derive(

@@ -375,6 +375,29 @@ For advanced keybinding customization, you can send raw text or keystrokes to th
 }
 ```
 
+### Passing Ctrl+F to terminal programs
+
+In the terminal, `Ctrl+F` opens Zed's buffer search over the terminal output, the
+same as it does in an editor. It is not forwarded to the shell, so programs that
+expect it — `vim` (page forward), `emacs` (forward character), `tmux` with the
+default prefix — never see it.
+
+To send a literal `Ctrl+F` to the running program instead, bind it to
+`terminal::SendKeystroke`:
+
+```json [keymap]
+{
+  "context": "Terminal",
+  "bindings": {
+    "ctrl-f": ["terminal::SendKeystroke", "ctrl-f"]
+  }
+}
+```
+
+Buffer search is still available on `Ctrl+Shift+F`. The same pattern works for
+any other key Zed claims first: bind it to `terminal::SendKeystroke` with the
+keystroke the program should receive.
+
 ## All Terminal Settings
 
 For the complete list of terminal settings, see the [Terminal section in All Settings](./reference/all-settings.md#terminal).

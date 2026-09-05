@@ -7,7 +7,7 @@ use fs::Fs;
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, EventEmitter, Focusable, KeyContext,
     ParentElement, Render, RenderOnce, SharedString, Styled, Task, TextStyle,
-    UniformListScrollHandle, Window, point, uniform_list,
+    UniformListScrollHandle, WeakEntity, Window, point, uniform_list,
 };
 use http_client::{RequestHost, hosts_required_to_download};
 use project::agent_registry_store::current_platform_key;
@@ -24,6 +24,8 @@ use workspace::{
     Workspace,
     item::{Item, ItemEvent},
 };
+
+use crate::{Agent, AgentPanel, agent_connection_store::AgentConnectionStore};
 
 /// A registry agent's install requires network access this fork's
 /// deny-by-default egress policy has to be told about (`docs/jp-enhance/DESIGN.md`
@@ -162,6 +164,40 @@ enum RegistryInstallStatus {
     NotInstalled,
     InstalledRegistry,
     InstalledCustom,
+}
+
+impl RegistryInstallStatus {
+    fn is_installed(self) -> bool {
+        matches!(self, Self::InstalledRegistry | Self::InstalledCustom)
+    }
+}
+
+/// Marks an installed agent whose running connection reported a newer version.
+/// Deliberately not a button: updating an agent underneath a live session
+/// desyncs it, so the only supported update paths stay the thread's update
+/// banner and the vendor's own CLI (F2-5 follow-up).
+fn update_available_badge(agent_id: &str, version: &SharedString) -> impl IntoElement {
+    let label = if version.is_empty() {
+        "更新あり".to_string()
+    } else {
+        format!("更新あり (v{version})")
+    };
+    h_flex()
+        .id(SharedString::from(format!("agent-update-badge-{agent_id}")))
+        .gap_1()
+        .child(
+            Icon::new(IconName::Download)
+                .size(IconSize::XSmall)
+                .color(Color::Accent),
+        )
+        .child(
+            Label::new(label)
+                .size(LabelSize::Small)
+                .color(Color::Accent),
+        )
+        .tooltip(Tooltip::text(
+            "更新は上部のバナーか、ターミナルの公式コマンドから行えます",
+        ))
 }
 
 /// An install the user has to confirm before it proceeds (F2-5): the "Install"
@@ -370,6 +406,10 @@ impl RenderOnce for AgentRegistryCard {
 
 pub struct AgentRegistryPage {
     registry_store: Entity<AgentRegistryStore>,
+    /// Read-only source for the "update available" badge. The update check
+    /// itself belongs to the running agent connection (F2-5); this page only
+    /// reports what that check already found.
+    connection_store: Option<WeakEntity<AgentConnectionStore>>,
     list: UniformListScrollHandle,
     registry_agents: Vec<RegistryAgent>,
     filtered_registry_indices: Vec<usize>,
@@ -382,10 +422,13 @@ pub struct AgentRegistryPage {
 
 impl AgentRegistryPage {
     pub fn new(
-        _workspace: &Workspace,
+        workspace: &Workspace,
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) -> Entity<Self> {
+        let connection_store = workspace
+            .panel::<AgentPanel>(cx)
+            .map(|panel| panel.read(cx).connection_store().downgrade());
         cx.new(|cx| {
             let registry_store = AgentRegistryStore::global(cx);
             let query_editor = cx.new(|cx| {
@@ -403,8 +446,16 @@ impl AgentRegistryPage {
                 this.filter_registry_agents(cx);
             }));
 
+            if let Some(connection_store) = connection_store
+                .as_ref()
+                .and_then(|connection_store| connection_store.upgrade())
+            {
+                subscriptions.push(cx.observe(&connection_store, |_this, _store, cx| cx.notify()));
+            }
+
             let mut this = Self {
                 registry_store,
+                connection_store,
                 list: UniformListScrollHandle::new(),
                 registry_agents: Vec::new(),
                 filtered_registry_indices: Vec::new(),
@@ -461,6 +512,21 @@ impl AgentRegistryPage {
             .get(id)
             .copied()
             .unwrap_or(RegistryInstallStatus::NotInstalled)
+    }
+
+    /// The newer version the running agent reported for `id`, if any. Only
+    /// installed agents that have actually been connected to in this session
+    /// can have one — nothing here starts a check of its own.
+    fn available_update(&self, id: &str, cx: &App) -> Option<SharedString> {
+        if !self.install_status(id).is_installed() {
+            return None;
+        }
+        let connection_store = self.connection_store.as_ref()?.upgrade()?;
+        let agent = Agent::from(AgentId::new(id.to_string()));
+        connection_store
+            .read(cx)
+            .new_version_available(&agent)
+            .cloned()
     }
 
     fn search_query(&self, cx: &mut App) -> Option<String> {
@@ -693,6 +759,7 @@ impl AgentRegistryPage {
         let install_status = self.install_status(agent.id().as_ref());
         let supports_current_platform = agent.supports_current_platform();
         let pending_consent = self.pending_install_consent.get(agent.id().as_ref());
+        let available_update = self.available_update(agent.id().as_ref(), cx);
 
         let icon = match agent.icon_path() {
             Some(icon_path) => Icon::from_external_svg(icon_path.clone()),
@@ -757,6 +824,9 @@ impl AgentRegistryPage {
                             .child(icon)
                             .child(Headline::new(agent.name().clone()).size(HeadlineSize::Small))
                             .child(Label::new(format!("v{}", agent.version())).color(Color::Muted))
+                            .when_some(available_update, |this, version| {
+                                this.child(update_available_badge(agent.id().as_ref(), &version))
+                            })
                             .when(!supports_current_platform, |this| {
                                 this.child(
                                     Label::new("このプラットフォームには対応していません")

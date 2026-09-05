@@ -66,6 +66,11 @@ pub struct SystemPromptTemplate<'a> {
     /// remote SSH project where the model told the user it "cannot access
     /// files on your system".
     pub restricted_workspace: bool,
+    /// A repository map (the same one the `repo_map` tool builds) to prepend
+    /// right after the list of project root directories, when the user asked
+    /// for one with `agent.system_prompt_repo_map_bytes`. `None` — the default
+    /// — leaves the prompt exactly as upstream renders it.
+    pub repo_map: Option<SharedString>,
 }
 
 impl Template for SystemPromptTemplate<'_> {
@@ -114,6 +119,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -122,6 +128,34 @@ mod tests {
         assert!(rendered.contains("## Fixing Diagnostics"));
         assert!(rendered.contains("test-model"));
         assert!(!rendered.contains("## Restricted Project"));
+        assert!(!rendered.contains("<repo_map>"));
+    }
+
+    #[test]
+    fn test_system_prompt_renders_repo_map_after_the_root_directories() {
+        let project = prompt_store::ProjectContext::default();
+        let template = SystemPromptTemplate {
+            project: &project,
+            available_tools: vec!["echo".into()],
+            model_name: Some("test-model".to_string()),
+            date: "2026-01-01".to_string(),
+            user_agents_md: None,
+            sandboxing: false,
+            is_linux: false,
+            is_windows: false,
+            restricted_workspace: false,
+            repo_map: Some("# Repository map\nsrc/main.rs\n  fn main [L1-3]".into()),
+        };
+        let templates = Templates::new();
+        let rendered = template.render(&templates).unwrap();
+
+        assert!(rendered.contains("<repo_map>"));
+        assert!(rendered.contains("fn main [L1-3]"));
+        let roots_idx = rendered
+            .find("The current project contains the following root directories:")
+            .unwrap();
+        let repo_map_idx = rendered.find("<repo_map>").unwrap();
+        assert!(roots_idx < repo_map_idx);
     }
 
     // A restricted (untrusted) workspace strips every tool, and without an
@@ -140,6 +174,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: true,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -174,6 +209,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -204,6 +240,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -238,6 +275,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -282,6 +320,7 @@ mod tests {
             is_linux: true,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -316,6 +355,7 @@ mod tests {
             is_linux: false,
             is_windows: true,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -347,6 +387,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -370,6 +411,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -391,6 +433,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -410,6 +453,7 @@ mod tests {
             is_linux: false,
             is_windows: false,
             restricted_workspace: false,
+            repo_map: None,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();

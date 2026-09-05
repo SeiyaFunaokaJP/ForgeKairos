@@ -936,6 +936,7 @@ enum StepKind {
     WaitFor,
     Sleep,
     Clear,
+    Repeat,
 }
 
 impl StepKind {
@@ -945,6 +946,7 @@ impl StepKind {
             StepKind::WaitFor => "期待文字を待つ",
             StepKind::Sleep => "秒待ち",
             StepKind::Clear => "画面を消去",
+            StepKind::Repeat => "繰り返し",
         }
     }
 
@@ -958,12 +960,50 @@ impl StepKind {
         matches!(self, StepKind::WaitFor | StepKind::Sleep)
     }
 
-    const ALL: [StepKind; 4] = [
+    const ALL: [StepKind; 5] = [
+        StepKind::Send,
+        StepKind::WaitFor,
+        StepKind::Sleep,
+        StepKind::Clear,
+        StepKind::Repeat,
+    ];
+
+    /// Kinds offered inside a 繰り返し. A second level of nesting is only
+    /// reachable by editing `terminal_sessions.json` by hand, so the form does
+    /// not offer to create one.
+    const NESTABLE: [StepKind; 4] = [
         StepKind::Send,
         StepKind::WaitFor,
         StepKind::Sleep,
         StepKind::Clear,
     ];
+}
+
+/// Where a row sits in the form. The form draws one level of nesting: the
+/// steps of a top-level 繰り返し.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StepPath {
+    Top(usize),
+    Child { parent: usize, child: usize },
+}
+
+impl StepPath {
+    fn index(&self) -> usize {
+        match self {
+            StepPath::Top(index) => *index,
+            StepPath::Child { child, .. } => *child,
+        }
+    }
+
+    /// 「3」 for a top-level step, 「3-2」 for the second step of the 繰り返し
+    /// that is the third step of the macro. Matches how a failing run names
+    /// the step it stopped on.
+    fn label(&self) -> String {
+        match self {
+            StepPath::Top(index) => (index + 1).to_string(),
+            StepPath::Child { parent, child } => format!("{}-{}", parent + 1, child + 1),
+        }
+    }
 }
 
 /// One editable row. The editors travel with the row when it is reordered, so
@@ -972,12 +1012,22 @@ struct StepRow {
     kind: StepKind,
     text: Entity<Editor>,
     number: Entity<Editor>,
+    /// Repetitions of a 繰り返し row. Separate from `number`, which is a
+    /// duration in seconds.
+    count: Entity<Editor>,
     regex: bool,
     newline: bool,
+    /// Steps of a 繰り返し row.
+    children: Vec<StepRow>,
+    /// The step this row stands for when the form cannot draw it — a 繰り返し
+    /// nested two deep. Saving writes it back exactly as it was read.
+    preserved: Option<MacroStep>,
 }
 
 impl StepRow {
-    fn new(step: &MacroStep, window: &mut Window, cx: &mut App) -> Self {
+    /// `nested` marks a row that already lives inside a 繰り返し, where a
+    /// further 繰り返し is shown read-only instead of being unfolded.
+    fn new(step: &MacroStep, nested: bool, window: &mut Window, cx: &mut App) -> Self {
         let (kind, text_value, number_value, regex, newline) = match step {
             MacroStep::Send { text, newline } => {
                 (StepKind::Send, text.clone(), String::new(), false, *newline)
@@ -1001,29 +1051,57 @@ impl StepRow {
                 true,
             ),
             MacroStep::Clear => (StepKind::Clear, String::new(), String::new(), false, true),
+            MacroStep::Repeat { .. } => {
+                (StepKind::Repeat, String::new(), String::new(), false, true)
+            }
         };
 
-        let text = cx.new(|cx| {
-            let mut editor = Editor::single_line(window, cx);
-            editor.set_text(text_value, window, cx);
-            editor
-        });
-        let number = cx.new(|cx| {
-            let mut editor = Editor::single_line(window, cx);
-            editor.set_text(number_value, window, cx);
-            editor
-        });
+        let (count_value, children, preserved) = match step {
+            MacroStep::Repeat { count, steps } if !nested => (
+                count.to_string(),
+                steps
+                    .iter()
+                    .map(|step| StepRow::new(step, true, window, cx))
+                    .collect(),
+                None,
+            ),
+            MacroStep::Repeat { count, .. } => (count.to_string(), Vec::new(), Some(step.clone())),
+            _ => ("1".to_string(), Vec::new(), None),
+        };
+
+        let single_line = |value: String, window: &mut Window, cx: &mut App| {
+            cx.new(|cx| {
+                let mut editor = Editor::single_line(window, cx);
+                editor.set_text(value, window, cx);
+                editor
+            })
+        };
+        let text = single_line(text_value, window, cx);
+        let number = single_line(number_value, window, cx);
+        let count = single_line(count_value, window, cx);
 
         Self {
             kind,
             text,
             number,
+            count,
             regex,
             newline,
+            children,
+            preserved,
         }
     }
 
-    fn to_step(&self, index: usize, cx: &App) -> Result<MacroStep, String> {
+    /// The row's identity for element ids: stable while the row lives, and
+    /// carried along when the row is moved.
+    fn element_id(&self) -> gpui::EntityId {
+        self.text.entity_id()
+    }
+
+    fn to_step(&self, label: &str, cx: &App) -> Result<MacroStep, String> {
+        if let Some(preserved) = &self.preserved {
+            return Ok(preserved.clone());
+        }
         let text = self.text.read(cx).text(cx);
         match self.kind {
             StepKind::Send => Ok(MacroStep::Send {
@@ -1032,26 +1110,39 @@ impl StepRow {
             }),
             StepKind::WaitFor => {
                 if text.trim().is_empty() {
-                    return Err(format!(
-                        "ステップ {}: 期待文字を入力してください。",
-                        index + 1
-                    ));
+                    return Err(format!("ステップ {label}: 期待文字を入力してください。"));
                 }
                 if self.regex && regex::Regex::new(&text).is_err() {
-                    return Err(format!("ステップ {}: 正規表現が不正です。", index + 1));
+                    return Err(format!("ステップ {label}: 正規表現が不正です。"));
                 }
                 Ok(MacroStep::WaitFor {
                     pattern: text,
                     regex: self.regex,
                     timeout_ms: parse_seconds(&self.number.read(cx).text(cx))
-                        .ok_or_else(|| format!("ステップ {}: 秒数が不正です。", index + 1))?,
+                        .ok_or_else(|| format!("ステップ {label}: 秒数が不正です。"))?,
                 })
             }
             StepKind::Sleep => Ok(MacroStep::Sleep {
                 ms: parse_seconds(&self.number.read(cx).text(cx))
-                    .ok_or_else(|| format!("ステップ {}: 秒数が不正です。", index + 1))?,
+                    .ok_or_else(|| format!("ステップ {label}: 秒数が不正です。"))?,
             }),
             StepKind::Clear => Ok(MacroStep::Clear),
+            StepKind::Repeat => {
+                let count = self
+                    .count
+                    .read(cx)
+                    .text(cx)
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|_| {
+                        format!("ステップ {label}: 繰り返し回数は 0 以上の整数で入力してください。")
+                    })?;
+                let mut steps = Vec::with_capacity(self.children.len());
+                for (index, child) in self.children.iter().enumerate() {
+                    steps.push(child.to_step(&format!("{label}-{}", index + 1), cx)?);
+                }
+                Ok(MacroStep::Repeat { count, steps })
+            }
         }
     }
 }
@@ -1182,7 +1273,7 @@ impl MacroEditor {
         self.steps = edited
             .steps
             .iter()
-            .map(|step| StepRow::new(step, window, cx))
+            .map(|step| StepRow::new(step, false, window, cx))
             .collect();
         self.error = None;
         self.pending_delete = None;
@@ -1222,8 +1313,8 @@ impl MacroEditor {
         folders
     }
 
-    fn add_step(&mut self, kind: StepKind, window: &mut Window, cx: &mut Context<Self>) {
-        let step = match kind {
+    fn blank_step(kind: StepKind) -> MacroStep {
+        match kind {
             StepKind::Send => MacroStep::Send {
                 text: String::new(),
                 newline: true,
@@ -1235,9 +1326,59 @@ impl MacroEditor {
             },
             StepKind::Sleep => MacroStep::Sleep { ms: 1000 },
             StepKind::Clear => MacroStep::Clear,
-        };
-        self.steps.push(StepRow::new(&step, window, cx));
+            StepKind::Repeat => MacroStep::Repeat {
+                count: 1,
+                steps: Vec::new(),
+            },
+        }
+    }
+
+    fn add_step(&mut self, kind: StepKind, window: &mut Window, cx: &mut Context<Self>) {
+        let step = Self::blank_step(kind);
+        self.steps.push(StepRow::new(&step, false, window, cx));
         cx.notify();
+    }
+
+    /// Appends a step to the 繰り返し at `parent`.
+    fn add_child_step(
+        &mut self,
+        parent: usize,
+        kind: StepKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let step = Self::blank_step(kind);
+        let row = StepRow::new(&step, true, window, cx);
+        let Some(parent_row) = self.steps.get_mut(parent) else {
+            return;
+        };
+        parent_row.children.push(row);
+        cx.notify();
+    }
+
+    fn row(&self, path: StepPath) -> Option<&StepRow> {
+        match path {
+            StepPath::Top(index) => self.steps.get(index),
+            StepPath::Child { parent, child } => self.steps.get(parent)?.children.get(child),
+        }
+    }
+
+    fn row_mut(&mut self, path: StepPath) -> Option<&mut StepRow> {
+        match path {
+            StepPath::Top(index) => self.steps.get_mut(index),
+            StepPath::Child { parent, child } => {
+                self.steps.get_mut(parent)?.children.get_mut(child)
+            }
+        }
+    }
+
+    /// The list `path` is an element of, so that reordering and deleting work
+    /// the same at both levels.
+    fn siblings_mut(&mut self, path: StepPath) -> Option<&mut Vec<StepRow>> {
+        match path {
+            StepPath::Top(_) => Some(&mut self.steps),
+            StepPath::Child { parent, .. } => Some(&mut self.steps.get_mut(parent)?.children),
+        }
     }
 
     fn save(&mut self, cx: &mut Context<Self>) {
@@ -1258,7 +1399,7 @@ impl MacroEditor {
 
         let mut steps = Vec::with_capacity(self.steps.len());
         for (index, row) in self.steps.iter().enumerate() {
-            match row.to_step(index, cx) {
+            match row.to_step(&(index + 1).to_string(), cx) {
                 Ok(step) => steps.push(step),
                 Err(message) => {
                     self.error = Some(message.into());
@@ -1509,19 +1650,38 @@ impl MacroEditor {
 
     fn render_step(
         &self,
-        index: usize,
+        path: StepPath,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let row = &self.steps[index];
+    ) -> AnyElement {
+        let Some(row) = self.row(path) else {
+            return div().into_any_element();
+        };
         let kind = row.kind;
-
-        let step_count = self.steps.len();
+        let element_id = row.element_id();
+        let index = path.index();
+        let sibling_count = match path {
+            StepPath::Top(_) => self.steps.len(),
+            StepPath::Child { parent, .. } => self
+                .steps
+                .get(parent)
+                .map(|parent_row| parent_row.children.len())
+                .unwrap_or(0),
+        };
+        let nested = matches!(path, StepPath::Child { .. });
+        // A 繰り返し two levels deep is only editable in the JSON file, so its
+        // row shows what it is and leaves the value untouched.
+        let read_only = row.preserved.is_some();
 
         let view = cx.weak_entity();
+        let kinds: &'static [StepKind] = if nested {
+            &StepKind::NESTABLE
+        } else {
+            &StepKind::ALL
+        };
         let kind_menu = ContextMenu::build(window, cx, {
             move |mut menu, _, _| {
-                for candidate in StepKind::ALL {
+                for candidate in kinds.iter().copied() {
                     let view = view.clone();
                     menu = menu.toggleable_entry(
                         candidate.label(),
@@ -1530,7 +1690,7 @@ impl MacroEditor {
                         None,
                         move |window, cx| {
                             view.update(cx, |this, cx| {
-                                let Some(row) = this.steps.get_mut(index) else {
+                                let Some(row) = this.row_mut(path) else {
                                     return;
                                 };
                                 row.kind = candidate;
@@ -1560,6 +1720,29 @@ impl MacroEditor {
             }
         });
 
+        let children = (kind == StepKind::Repeat && !read_only).then(|| {
+            let child_rows = (0..row.children.len())
+                .map(|child| {
+                    self.render_step(
+                        StepPath::Child {
+                            parent: index,
+                            child,
+                        },
+                        window,
+                        cx,
+                    )
+                })
+                .collect::<Vec<_>>();
+            v_flex().w_full().gap_1().pl_4().children(child_rows).child(
+                Button::new(("add-child-step", element_id), "子ステップを追加")
+                    .label_size(LabelSize::Small)
+                    .start_icon(Icon::new(IconName::Plus))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.add_child_step(index, StepKind::Send, window, cx);
+                    })),
+            )
+        });
+
         v_flex()
             .w_full()
             .gap_1()
@@ -1576,64 +1759,85 @@ impl MacroEditor {
                         h_flex()
                             .gap_1()
                             .child(
-                                Label::new(format!("{}", index + 1))
+                                Label::new(path.label())
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
-                            .child(
-                                DropdownMenu::new(("step-kind", index), kind.label(), kind_menu)
-                                    .style(DropdownStyle::Outlined),
-                            ),
+                            .child(if read_only {
+                                Label::new("入れ子の繰り返し (JSON で編集してください)")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted)
+                                    .into_any_element()
+                            } else {
+                                DropdownMenu::new(
+                                    ("step-kind", element_id),
+                                    kind.label(),
+                                    kind_menu,
+                                )
+                                .style(DropdownStyle::Outlined)
+                                .into_any_element()
+                            }),
                     )
                     .child(
                         h_flex()
                             .gap_0p5()
                             .child(
-                                IconButton::new(("step-up", index), IconName::ArrowUp)
+                                IconButton::new(("step-up", element_id), IconName::ArrowUp)
                                     .icon_size(IconSize::Small)
                                     .disabled(index == 0)
                                     .tooltip(Tooltip::text("ひとつ上へ移動します"))
                                     .on_click(cx.listener(move |this, _, _, cx| {
-                                        if index > 0 && index < this.steps.len() {
-                                            this.steps.swap(index, index - 1);
+                                        let Some(siblings) = this.siblings_mut(path) else {
+                                            return;
+                                        };
+                                        if index > 0 && index < siblings.len() {
+                                            siblings.swap(index, index - 1);
                                             cx.notify();
                                         }
                                     })),
                             )
                             .child(
-                                IconButton::new(("step-down", index), IconName::ArrowDown)
+                                IconButton::new(("step-down", element_id), IconName::ArrowDown)
                                     .icon_size(IconSize::Small)
-                                    .disabled(index + 1 >= step_count)
+                                    .disabled(index + 1 >= sibling_count)
                                     .tooltip(Tooltip::text("ひとつ下へ移動します"))
                                     .on_click(cx.listener(move |this, _, _, cx| {
-                                        if index + 1 < this.steps.len() {
-                                            this.steps.swap(index, index + 1);
+                                        let Some(siblings) = this.siblings_mut(path) else {
+                                            return;
+                                        };
+                                        if index + 1 < siblings.len() {
+                                            siblings.swap(index, index + 1);
                                             cx.notify();
                                         }
                                     })),
                             )
                             .child(
-                                IconButton::new(("step-delete", index), IconName::Trash)
+                                IconButton::new(("step-delete", element_id), IconName::Trash)
                                     .icon_size(IconSize::Small)
                                     .tooltip(Tooltip::text("このステップを削除します"))
                                     .on_click(cx.listener(move |this, _, _, cx| {
-                                        if index < this.steps.len() {
-                                            this.steps.remove(index);
+                                        let Some(siblings) = this.siblings_mut(path) else {
+                                            return;
+                                        };
+                                        if index < siblings.len() {
+                                            siblings.remove(index);
                                             cx.notify();
                                         }
                                     })),
                             ),
                     ),
             )
-            .when(kind.has_text(), |this| this.child(row.text.clone()))
-            .when(kind == StepKind::Send, |this| {
+            .when(kind.has_text() && !read_only, |this| {
+                this.child(row.text.clone())
+            })
+            .when(kind == StepKind::Send && !read_only, |this| {
                 this.child(
-                    Checkbox::new(("step-newline", index), row.newline.into())
+                    Checkbox::new(("step-newline", element_id), row.newline.into())
                         .label("末尾で Enter を送る")
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(move |this, state: &ToggleState, _, cx| {
                             let checked = *state == ToggleState::Selected;
-                            if let Some(row) = this.steps.get_mut(index)
+                            if let Some(row) = this.row_mut(path)
                                 && row.newline != checked
                             {
                                 row.newline = checked;
@@ -1642,7 +1846,24 @@ impl MacroEditor {
                         })),
                 )
             })
-            .when(kind.has_duration(), |this| {
+            .when(kind == StepKind::Repeat && !read_only, |this| {
+                this.child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Label::new("繰り返し回数")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                        .child(div().w(rems(4.)).child(row.count.clone()))
+                        .child(
+                            Label::new("(0 回は中止まで繰り返します)")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        ),
+                )
+            })
+            .when(kind.has_duration() && !read_only, |this| {
                 this.child(
                     h_flex()
                         .gap_2()
@@ -1658,13 +1879,13 @@ impl MacroEditor {
                         .child(div().w(rems(6.)).child(row.number.clone()))
                         .when(kind == StepKind::WaitFor, |this| {
                             this.child(
-                                Checkbox::new(("step-regex", index), row.regex.into())
+                                Checkbox::new(("step-regex", element_id), row.regex.into())
                                     .label("正規表現")
                                     .label_size(LabelSize::Small)
                                     .on_click(cx.listener(
                                         move |this, state: &ToggleState, _, cx| {
                                             let checked = *state == ToggleState::Selected;
-                                            if let Some(row) = this.steps.get_mut(index)
+                                            if let Some(row) = this.row_mut(path)
                                                 && row.regex != checked
                                             {
                                                 row.regex = checked;
@@ -1676,13 +1897,15 @@ impl MacroEditor {
                         }),
                 )
             })
+            .children(children)
+            .into_any_element()
     }
 }
 
 impl Render for MacroEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let steps = (0..self.steps.len())
-            .map(|index| self.render_step(index, window, cx).into_any_element())
+            .map(|index| self.render_step(StepPath::Top(index), window, cx))
             .collect::<Vec<_>>();
         let saved_macros = self.render_macro_list(cx);
         let form_header = match &self.original_name {
@@ -2932,6 +3155,96 @@ mod tests {
             picker_names(&picker, cx),
             vec!["新しいマクロ".to_string(), "既存".to_string()]
         );
+    }
+
+    #[gpui::test]
+    async fn a_repeat_is_editable_one_level_deep_and_kept_verbatim_below_it(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let twice_nested = MacroStep::Repeat {
+            count: 2,
+            steps: vec![MacroStep::Clear],
+        };
+        let sent = MacroStep::Send {
+            text: "show version".to_string(),
+            newline: true,
+        };
+        let edited = TerminalMacro {
+            name: "入れ子".to_string(),
+            steps: vec![MacroStep::Repeat {
+                count: 3,
+                steps: vec![sent.clone(), twice_nested.clone()],
+            }],
+            ..TerminalMacro::default()
+        };
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(edited), window, cx);
+        });
+
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(editor.steps.len(), 1, "the repeat is one top-level step");
+            let children = &editor.steps[0].children;
+            assert_eq!(children.len(), 2, "its steps become editable rows");
+            assert!(children[0].preserved.is_none());
+            assert_eq!(
+                children[1].preserved.as_ref(),
+                Some(&twice_nested),
+                "a repeat two levels down is kept as it was read"
+            );
+        });
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.add_child_step(0, StepKind::Sleep, window, cx);
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(
+            saved.macros[0].steps,
+            vec![MacroStep::Repeat {
+                count: 3,
+                steps: vec![sent, twice_nested, MacroStep::Sleep { ms: 1_000 }],
+            }]
+        );
+    }
+
+    #[gpui::test]
+    async fn a_repeat_with_a_bad_count_names_the_step(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("繰り返し", window, cx);
+            });
+            editor.add_step(StepKind::Repeat, window, cx);
+            editor.steps[0].count.update(cx, |count, cx| {
+                count.set_text("なし", window, cx);
+            });
+            editor.save(cx);
+        });
+
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("ステップ 1: 繰り返し回数は 0 以上の整数で入力してください。")
+            );
+        });
     }
 
     #[gpui::test]

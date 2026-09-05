@@ -1006,6 +1006,7 @@ pub fn split_repository_update(
     let mut removed_statuses_iter = mem::take(&mut update.removed_statuses).into_iter().fuse();
     let branch_list = mem::take(&mut update.branch_list);
     let branch_list_error = update.branch_list_error.take();
+    let branch_list_unchanged = mem::take(&mut update.branch_list_unchanged);
     std::iter::from_fn({
         let update = update.clone();
         move || {
@@ -1025,6 +1026,7 @@ pub fn split_repository_update(
                 removed_statuses,
                 branch_list: Vec::new(),
                 branch_list_error: None,
+                branch_list_unchanged: false,
                 is_last_update: false,
                 ..update.clone()
             })
@@ -1035,6 +1037,7 @@ pub fn split_repository_update(
         removed_statuses: Vec::new(),
         branch_list,
         branch_list_error,
+        branch_list_unchanged,
         is_last_update: true,
         ..update
     }])
@@ -1150,5 +1153,46 @@ mod tests {
         assert!(!chunks[0].is_last_update);
         assert!(!chunks[1].is_last_update);
         assert!(chunks[2].is_last_update);
+    }
+
+    #[test]
+    fn test_split_repository_update_keeps_branch_list_unchanged_on_final_chunk() {
+        let update = UpdateRepository {
+            updated_statuses: vec![StatusEntry::default(), StatusEntry::default()],
+            branch_list: Vec::new(),
+            branch_list_unchanged: true,
+            ..Default::default()
+        };
+
+        let chunks = split_repository_update(update).collect::<Vec<_>>();
+
+        assert_eq!(chunks.len(), 2);
+        assert!(
+            !chunks[0].branch_list_unchanged,
+            "intermediate chunks never carry the branch list, so they must not claim it is unchanged"
+        );
+        assert!(chunks[1].branch_list_unchanged);
+        assert!(chunks[1].is_last_update);
+    }
+
+    #[test]
+    fn test_update_repository_branch_list_unchanged_round_trips() {
+        for flag in [false, true] {
+            let message = UpdateRepository {
+                branch_list_unchanged: flag,
+                ..Default::default()
+            };
+            let encoded = message.encode_to_vec();
+            let decoded = UpdateRepository::decode(encoded.as_slice())
+                .expect("the message should round-trip");
+            assert_eq!(decoded.branch_list_unchanged, flag);
+        }
+
+        // A message from a peer that never set the field (an older build) must
+        // decode as `false`, i.e. as a full replacement of the branch list.
+        let without_flag = UpdateRepository::default().encode_to_vec();
+        let decoded =
+            UpdateRepository::decode(without_flag.as_slice()).expect("the message should decode");
+        assert!(!decoded.branch_list_unchanged);
     }
 }

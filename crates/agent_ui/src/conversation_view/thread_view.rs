@@ -12133,7 +12133,7 @@ impl ThreadView {
         // limit, so there's no need to warn the user. Models with a context
         // window that's too small can't be auto-compacted, so we fall back to
         // the normal warning.
-        if token_usage.max_tokens >= agent::MIN_COMPACTION_CONTEXT_WINDOW {
+        if token_usage.max_tokens >= agent::min_compaction_context_window(cx) {
             return None;
         }
 

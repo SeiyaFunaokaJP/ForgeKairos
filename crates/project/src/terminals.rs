@@ -1,6 +1,6 @@
 use anyhow::Result;
 use collections::HashMap;
-use gpui::{App, AppContext as _, Context, Entity, Task, WeakEntity};
+use gpui::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
 
 use async_channel::bounded;
 use futures::{FutureExt, future::Shared};
@@ -27,6 +27,49 @@ use crate::{Project, ProjectPath};
 
 pub struct Terminals {
     pub(crate) local_handles: Vec<WeakEntity<terminal::Terminal>>,
+}
+
+/// Zed が起こすターミナルに環境変数を足すためのフック。
+///
+/// `project` は上位のクレート (内蔵 IDE サーバー等) に依存できないので、変数を足したい
+/// 側が起動時に自分を登録する。
+pub type TerminalEnvironmentProvider =
+    Arc<dyn Fn(&Entity<Project>, &App) -> Vec<(String, String)> + Send + Sync>;
+
+#[derive(Default)]
+struct TerminalEnvironmentProviders(Vec<TerminalEnvironmentProvider>);
+
+impl Global for TerminalEnvironmentProviders {}
+
+pub fn register_terminal_environment_provider(
+    provider: impl Fn(&Entity<Project>, &App) -> Vec<(String, String)> + Send + Sync + 'static,
+    cx: &mut App,
+) {
+    cx.default_global::<TerminalEnvironmentProviders>()
+        .0
+        .push(Arc::new(provider));
+}
+
+/// 登録済みのプロバイダーがこのターミナルに足す環境変数。
+///
+/// リモート越しのターミナルには何も足さない: 値が指しているのは Zed が動いている
+/// この PC の loopback であって、リモートホストには存在しないため。
+pub fn provided_terminal_environment(
+    project: &Entity<Project>,
+    is_via_remote: bool,
+    cx: &App,
+) -> Vec<(String, String)> {
+    if is_via_remote {
+        return Vec::new();
+    }
+    let Some(providers) = cx.try_global::<TerminalEnvironmentProviders>() else {
+        return Vec::new();
+    };
+    providers
+        .0
+        .iter()
+        .flat_map(|provider| provider(project, cx))
+        .collect()
 }
 
 impl Project {
@@ -137,8 +180,11 @@ impl Project {
             .map(|p| self.active_toolchain(p, LanguageName::new_static("Python"), cx))
             .collect::<Vec<_>>();
         let lang_registry = self.languages.clone();
+        let provided_environment = provided_terminal_environment(&cx.entity(), is_via_remote, cx);
         cx.spawn(async move |project, cx| {
             let mut env = env_task.await.unwrap_or_default();
+            // 設定の `terminal.env` が明示した値のほうが強い。
+            env.extend(provided_environment);
             env.extend(settings.env);
 
             let activation_script = maybe!(async {
@@ -386,9 +432,11 @@ impl Project {
             self.resolve_directory_environment(&env_shell, path.clone(), remote_client.clone(), cx);
 
         let lang_registry = self.languages.clone();
+        let provided_environment = provided_terminal_environment(&cx.entity(), is_via_remote, cx);
         cx.spawn(async move |project, cx| {
             let shell_kind = ShellKind::new(&shell, path_style.is_windows());
             let mut env = env_task.await.unwrap_or_default();
+            env.extend(provided_environment);
             env.extend(settings.env);
 
             let activation_script = maybe!(async {

@@ -64,7 +64,7 @@ impl AgentTool for RenameTool {
     fn run(
         self: Arc<Self>,
         input: ToolInput<Self::Input>,
-        _event_stream: ToolCallEventStream,
+        event_stream: ToolCallEventStream,
         cx: &mut App,
     ) -> Task<Result<String, String>> {
         let project = self.project.clone();
@@ -75,6 +75,25 @@ impl AgentTool for RenameTool {
                 .map_err(|e| format!("Failed to receive tool input: {e}"))?;
 
             let resolved = input.symbol.resolve(&project, cx).await?;
+
+            // A semantic rename edits and saves every file that references the
+            // symbol without going through the agent's diff review, so the only
+            // place the user can stop it is here.
+            cx.update(|cx| {
+                event_stream.authorize(
+                    format!(
+                        "`{}` の名前を `{}` に変更",
+                        input.symbol.symbol_name, input.new_name
+                    ),
+                    crate::ToolPermissionContext::new(
+                        Self::NAME,
+                        vec![input.symbol.symbol_name.clone()],
+                    ),
+                    cx,
+                )
+            })
+            .await
+            .map_err(|e| e.to_string())?;
 
             let rename_task = project.update(cx, |project, cx| {
                 project.perform_rename(

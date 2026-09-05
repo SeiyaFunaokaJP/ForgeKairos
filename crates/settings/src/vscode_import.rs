@@ -195,6 +195,7 @@ impl VsCodeSettings {
             }),
             helix_mode: None,
             hide_mouse: None,
+            ide_server: None,
             image_viewer: None,
             markdown_preview: None,
             journal: None,

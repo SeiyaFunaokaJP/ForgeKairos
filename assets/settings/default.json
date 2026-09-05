@@ -1036,6 +1036,14 @@
     // 既定では人間操作のターミナルと同様に許可リストの対象外 (ADR-F19)。
     "use_egress_proxy": false,
   },
+  // Zed 自身を loopback の IDE サーバーとして公開する (ADR-F26)。127.0.0.1 の空きポートにだけ
+  // bind し、外向きの通信は行わない (= 外部通信の許可リストの対象外)。有効なあいだ
+  // ~/.claude/ide/<port>.lock を書き、統合ターミナルの Claude Code CLI や .mcp.json から繋ぐ
+  // エージェントが選択範囲・開いているファイル・診断を読み、差分を Zed のタブでレビューできる。
+  "ide_server": {
+    // 既定は無効 (AI 機能は既定オフ)。設定 GUI「AI」ページから有効化する。
+    "enabled": false
+  },
   "collaboration_panel": {
     // Whether to show the collaboration panel button in the status bar.
     "button": true,
@@ -1261,6 +1269,21 @@
       // 0 is not a valid threshold.
       "threshold": "90%",
     },
+    // The smallest model context window (in tokens) for which auto-compaction
+    // still runs. Models below this are left uncompacted and the UI warns about
+    // the token limit instead. Lower this to make auto-compaction work with
+    // local models that have a small context window. Values below 8000 are
+    // clamped to 8000.
+    "auto_compact_min_context_window": 80000,
+    // Whether to automatically attach the active editor to every message that
+    // is sent: the selected lines when there is a selection, otherwise the
+    // whole file. A file that is already mentioned by hand is not attached
+    // twice.
+    "attach_active_file": false,
+    // Byte budget for a repository map prepended to the agent's system prompt,
+    // right after the list of project root directories. 0 disables it; values
+    // above 32768 are clamped to 32768.
+    "system_prompt_repo_map_bytes": 0,
     // When enabled, show voting thumbs for feedback on agent edits.
     "enable_feedback": true,
     "default_profile": "write",
@@ -1781,6 +1804,12 @@
     "enable_status": true,
     // Whether to enable git diff display.
     "enable_diff": true,
+    // git status に追跡されていないファイルをどこまで報告させるか。
+    // "all"    = 追跡されていないフォルダーの中身も 1 件ずつ (プロジェクトパネルの色分けに必要)
+    // "normal" = 追跡されていないフォルダーそのものだけ
+    // "no"     = 追跡されていないファイルを扱わない
+    // 巨大なリポジトリでは "normal" / "no" が git status を大幅に軽くする。リモート SSH でも同じ値がサーバー側で使われる。
+    "status_untracked_files": "all",
     // Control whether the git gutter is shown. May take 2 values:
     // 1. Show the gutter
     //      "git_gutter": "tracked_files"

@@ -75,7 +75,7 @@ impl AgentTool for ApplyCodeActionTool {
     fn run(
         self: Arc<Self>,
         input: ToolInput<Self::Input>,
-        _event_stream: ToolCallEventStream,
+        event_stream: ToolCallEventStream,
         cx: &mut App,
     ) -> Task<Result<String, String>> {
         let project = self.project.clone();
@@ -109,6 +109,20 @@ impl AgentTool for ApplyCodeActionTool {
 
             let title = action.lsp_action.title().to_string();
             let buffer = pending.buffer.clone();
+
+            // The workspace edit this applies is written straight to the
+            // buffers by the language server, without going through the
+            // agent's diff review, so the only place the user can stop it is
+            // here.
+            cx.update(|cx| {
+                event_stream.authorize(
+                    format!("コードアクションを適用: {title}"),
+                    crate::ToolPermissionContext::new(Self::NAME, vec![title.clone()]),
+                    cx,
+                )
+            })
+            .await
+            .map_err(|e| e.to_string())?;
 
             let apply_task = project.update(cx, |project, cx| {
                 project.apply_code_action(buffer, action, true, cx)

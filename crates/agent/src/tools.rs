@@ -31,9 +31,7 @@ mod web_search_tool;
 mod write_file_tool;
 
 use crate::AgentTool;
-use feature_flags::{
-    CreateThreadToolFeatureFlag, FeatureFlagAppExt as _, LspToolFeatureFlag, RenameToolFeatureFlag,
-};
+use feature_flags::{CreateThreadToolFeatureFlag, FeatureFlagAppExt as _};
 use gpui::App;
 use language_model::{LanguageModelRequestTool, LanguageModelToolSchemaFormat};
 use serde::{
@@ -231,13 +229,14 @@ tools! {
 /// uses it to decide what the model receives, and the agent-profile
 /// configuration UI uses it to decide what to offer — so the UI can never list
 /// a tool the agent would silently drop (see #56778).
+///
+/// This fork has no feature-flag delivery, so a flag that is not
+/// `enabled_for_staff` is permanently off here. The LSP navigation tools
+/// (`find_references` / `go_to_definition` / `get_code_actions` /
+/// `apply_code_action` / `rename_symbol`) were therefore dead code and are now
+/// ungated (TODO F13 ③).
 pub fn tool_feature_flag_enabled(tool_name: &str, cx: &App) -> bool {
     match tool_name {
-        RenameTool::NAME => cx.has_flag::<RenameToolFeatureFlag>(),
-        FindReferencesTool::NAME
-        | GetCodeActionsTool::NAME
-        | ApplyCodeActionTool::NAME
-        | GoToDefinitionTool::NAME => cx.has_flag::<LspToolFeatureFlag>(),
         CreateThreadTool::NAME | ListAgentsAndModelsTool::NAME => {
             cx.has_flag::<CreateThreadToolFeatureFlag>()
         }

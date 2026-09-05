@@ -761,6 +761,14 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "terminal::OpenSessionLog",
         "ターミナル: ログファイルの場所を開く",
     ),
+    (
+        "terminal::TailSessionLog",
+        "ターミナル: ログをエディターで開く",
+    ),
+    (
+        "terminal::ToggleBroadcastInput",
+        "ターミナル: 全ペインに同時入力",
+    ),
     ("terminal::SplitGrid", "ターミナル: グリッドに分割"),
     ("terminal::RunMacro", "ターミナル: マクロを実行…"),
     ("terminal::EditMacros", "ターミナル: マクロの編集…"),
@@ -944,7 +952,25 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "markdown::InsertMermaidDiagramPicker",
         "Markdown: Mermaid 図を挿入 (種類を選ぶ)",
     ),
+    ("markdown::EditTable", "Markdown: 表を編集…"),
     ("markdown::ExportToPdf", "Markdown: PDF に書き出す"),
+    // IDE サーバー (ADR-F26)
+    (
+        "ide_server::ToggleIdeServer",
+        "IDE サーバー: 有効・無効を切り替える",
+    ),
+    (
+        "ide_server::CopyMcpConfiguration",
+        "IDE サーバー: MCP 設定をコピー",
+    ),
+    (
+        "ide_server::RevealLockFile",
+        "IDE サーバー: ロックファイルの場所を開く",
+    ),
+    (
+        "ide_server::SendSelectionToClaudeCode",
+        "IDE サーバー: 選択範囲を Claude Code に送る",
+    ),
     // ピッカー・セレクター
     ("command_palette::Toggle", "コマンドパレット"),
     ("file_finder::Toggle", "ファイルへ移動"),

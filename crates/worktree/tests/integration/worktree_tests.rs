@@ -5018,6 +5018,94 @@ async fn test_git_update_in_same_batch_as_rescan_is_not_lost(cx: &mut TestAppCon
 }
 
 #[gpui::test]
+async fn test_disable_git_stops_and_resumes_repository_tracking(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let set_disable_git = |cx: &mut TestAppContext, disabled: bool| {
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .git
+                        .get_or_insert_default()
+                        .enabled
+                        .get_or_insert_default()
+                        .disable_git = Some(disabled);
+                });
+            });
+        });
+    };
+
+    let fs = FakeFs::new(cx.background_executor.clone());
+    fs.insert_tree(
+        path!("/root"),
+        json!({
+            ".git": {},
+            ".gitignore": "ignored.txt\n",
+            "file.txt": "content",
+            "ignored.txt": "content",
+        }),
+    )
+    .await;
+
+    let tree = Worktree::local(
+        path!("/root").as_ref(),
+        true,
+        fs.clone(),
+        Default::default(),
+        true,
+        WorktreeId::from_proto(0),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+    tree.update(cx, |tree, _| tree.as_local().unwrap().scan_complete())
+        .await;
+    cx.run_until_parked();
+
+    let repository_count = |cx: &mut TestAppContext| {
+        tree.read_with(cx, |tree, _| tree.as_local().unwrap().repositories().len())
+    };
+    let ignored_file_is_ignored = |cx: &mut TestAppContext| {
+        tree.read_with(cx, |tree, _| {
+            tree.entry_for_path(rel_path("ignored.txt"))
+                .is_some_and(|entry| entry.is_ignored)
+        })
+    };
+
+    assert_eq!(repository_count(cx), 1);
+    assert!(ignored_file_is_ignored(cx));
+
+    set_disable_git(cx, true);
+    tree.update(cx, |tree, _| tree.as_local().unwrap().scan_complete())
+        .await;
+    cx.run_until_parked();
+
+    assert_eq!(
+        repository_count(cx),
+        0,
+        "`git.disable_git` must stop the worktree from tracking git repositories, \
+         without requiring a restart"
+    );
+    assert!(
+        ignored_file_is_ignored(cx),
+        "disabling git integration must not stop `.gitignore` from being honored, \
+         or every ignored file would start showing up in the project"
+    );
+
+    set_disable_git(cx, false);
+    tree.update(cx, |tree, _| tree.as_local().unwrap().scan_complete())
+        .await;
+    cx.run_until_parked();
+
+    assert_eq!(
+        repository_count(cx),
+        1,
+        "turning `git.disable_git` back off must re-discover the repository"
+    );
+}
+
+#[gpui::test]
 async fn test_linked_worktree_event_in_unregistered_common_git_dir_does_not_panic(
     executor: BackgroundExecutor,
     cx: &mut TestAppContext,

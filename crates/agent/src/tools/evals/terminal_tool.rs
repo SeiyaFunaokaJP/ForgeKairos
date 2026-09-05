@@ -235,6 +235,7 @@ impl TerminalToolTest {
                 is_linux: cfg!(target_os = "linux"),
                 is_windows: cfg!(target_os = "windows"),
                 restricted_workspace: false,
+                repo_map: None,
             };
             template.render(&Templates::new())?
         };

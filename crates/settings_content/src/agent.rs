@@ -305,6 +305,27 @@ pub struct AgentSettingsContent {
     /// earlier messages to free up room in the model's context window once the
     /// context grows too large.
     pub auto_compact: Option<AutoCompactSettingsContent>,
+    /// The smallest model context window (in tokens) for which auto-compaction
+    /// still runs. Models below this are left uncompacted and the UI warns
+    /// about the token limit instead. Lower this to make auto-compaction work
+    /// with local models that have a small context window. Values below 8000
+    /// are clamped to 8000.
+    ///
+    /// Default: 80000
+    pub auto_compact_min_context_window: Option<u64>,
+    /// Whether to automatically attach the active editor to every message that
+    /// is sent: the selected lines when there is a selection, otherwise the
+    /// whole file. A file that is already mentioned by hand is not attached
+    /// twice.
+    ///
+    /// Default: false
+    pub attach_active_file: Option<bool>,
+    /// Byte budget for a repository map prepended to the agent's system prompt,
+    /// right after the list of project root directories. `0` disables it.
+    /// Values above 32768 are clamped to 32768.
+    ///
+    /// Default: 0
+    pub system_prompt_repo_map_bytes: Option<usize>,
     /// Whether to show thumb buttons for feedback in the agent panel.
     ///
     /// Default: true

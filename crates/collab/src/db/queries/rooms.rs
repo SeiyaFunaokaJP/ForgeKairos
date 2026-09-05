@@ -792,6 +792,7 @@ impl Database {
                             branch_summary,
                             head_commit_details,
                             branch_list: Vec::new(),
+                            branch_list_unchanged: false,
                             branch_list_error: None,
                             project_id: project_id.to_proto(),
                             id: db_repository.id as u64,

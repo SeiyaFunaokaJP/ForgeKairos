@@ -325,6 +325,13 @@ impl Render for MarkdownFormatBar {
                 "コードブロック",
                 editor_actions::WrapInCodeBlock.boxed_clone(),
                 &focus_handle,
+            ))
+            .child(icon_format_button(
+                "markdown-table",
+                IconName::Table,
+                "表を編集",
+                markdown_preview::EditTable.boxed_clone(),
+                &focus_handle,
             ));
 
         let separator = || Divider::vertical().inset();

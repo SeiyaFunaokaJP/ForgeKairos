@@ -111,6 +111,14 @@ pub fn init(cx: &mut App) {
                     terminal_panel.split_grid(columns, rows, window, cx);
                 });
             });
+            workspace.register_action(|workspace, _: &crate::ToggleBroadcastInput, _window, cx| {
+                let Some(terminal_panel) = workspace.panel::<TerminalPanel>(cx) else {
+                    return;
+                };
+                terminal_panel.update(cx, |terminal_panel, cx| {
+                    terminal_panel.toggle_broadcast_input(cx);
+                });
+            });
         },
     )
     .detach();
@@ -146,6 +154,9 @@ pub struct TerminalPanel {
     pending_terminals_to_add: usize,
     deferred_tasks: HashMap<TaskId, Task<()>>,
     assistant_enabled: bool,
+    /// TeraTerm-style 全ペイン同時入力: what the focused terminal is typed into
+    /// also goes to every other shell in this panel.
+    broadcast_input: bool,
     active: bool,
 }
 
@@ -164,6 +175,7 @@ impl TerminalPanel {
             pending_terminals_to_add: 0,
             deferred_tasks: HashMap::default(),
             assistant_enabled: false,
+            broadcast_input: false,
             active: false,
         };
         terminal_panel.apply_tab_bar_buttons(&terminal_panel.active_pane, cx);
@@ -177,12 +189,44 @@ impl TerminalPanel {
         }
     }
 
+    /// Whether typing into one of this panel's shells also types into the
+    /// others.
+    pub fn broadcast_input(&self) -> bool {
+        self.broadcast_input
+    }
+
+    /// Flips 全ペイン同時入力. Turning it on with a single pane would have
+    /// nothing to broadcast to, so it is refused rather than silently armed.
+    pub fn toggle_broadcast_input(&mut self, cx: &mut Context<Self>) {
+        self.set_broadcast_input(!self.broadcast_input && self.center.panes().len() > 1, cx);
+    }
+
+    fn set_broadcast_input(&mut self, broadcast_input: bool, cx: &mut Context<Self>) {
+        if self.broadcast_input == broadcast_input {
+            return;
+        }
+        self.broadcast_input = broadcast_input;
+        self.refresh_tab_bar_buttons(cx);
+        cx.notify();
+    }
+
+    /// Rebuilds every pane's tab bar. The buttons capture the panel's state by
+    /// value, so what they show (同時入力 and the pane count it needs) only
+    /// changes when they are built again.
+    fn refresh_tab_bar_buttons(&self, cx: &mut Context<Self>) {
+        for pane in self.center.panes() {
+            self.apply_tab_bar_buttons(pane, cx);
+        }
+    }
+
     pub(crate) fn apply_tab_bar_buttons(
         &self,
         terminal_pane: &Entity<Pane>,
         cx: &mut Context<Self>,
     ) {
         let assistant_enabled = self.assistant_enabled;
+        let broadcast_input = self.broadcast_input;
+        let can_broadcast_input = self.center.panes().len() > 1;
         terminal_pane.update(cx, |pane, cx| {
             pane.set_render_tab_bar_buttons(cx, move |pane, window, cx| {
                 let split_context = pane
@@ -267,6 +311,32 @@ impl TerminalPanel {
                         this.when_some(split_context.clone(), |this, focus_handle| {
                             this.child(InlineAssistTabBarButton { focus_handle })
                         })
+                    })
+                    .when(can_broadcast_input || broadcast_input, |this| {
+                        this.child(
+                            IconButton::new("terminal-broadcast-input", IconName::Keyboard)
+                                .icon_size(IconSize::Small)
+                                .toggle_state(broadcast_input)
+                                .tooltip(move |_window, cx| {
+                                    Tooltip::for_action(
+                                        if broadcast_input {
+                                            "全ペインへの同時入力をやめる"
+                                        } else {
+                                            "全ペインに同時入力"
+                                        },
+                                        &crate::ToggleBroadcastInput,
+                                        cx,
+                                    )
+                                })
+                                // The handler leases the panel, which must not
+                                // happen while this pane is still leased by its
+                                // own click listener; dispatching defers it to
+                                // the end of the effect cycle.
+                                .on_click(|_, window, cx| {
+                                    window
+                                        .dispatch_action(Box::new(crate::ToggleBroadcastInput), cx);
+                                }),
+                        )
                     })
                     .child(
                         PopoverMenu::new("terminal-pane-tab-bar-split")
@@ -471,6 +541,12 @@ impl TerminalPanel {
             pane::Event::Remove { focus_on_pane } => {
                 let pane_count_before_removal = self.center.panes().len();
                 let _removal_result = self.center.remove(pane, cx);
+                // 同時入力 has nothing left to broadcast to once a single pane
+                // remains, and leaving it armed would surprise the next split.
+                if self.center.panes().len() <= 1 {
+                    self.set_broadcast_input(false, cx);
+                }
+                self.refresh_tab_bar_buttons(cx);
                 if pane_count_before_removal == 1 {
                     self.center.first_pane().update(cx, |pane, cx| {
                         pane.set_zoomed(false, cx);
@@ -521,6 +597,7 @@ impl TerminalPanel {
                             panel
                                 .update_in(cx, |panel, window, cx| {
                                     panel.center.split(&pane, &new_pane, direction, cx);
+                                    panel.refresh_tab_bar_buttons(cx);
                                     window.focus(&new_pane.focus_handle(cx), cx);
                                 })
                                 .ok();
@@ -545,6 +622,7 @@ impl TerminalPanel {
                             pane.add_item(item, true, true, None, window, cx);
                         });
                         self.center.split(&pane, &new_pane, direction, cx);
+                        self.refresh_tab_bar_buttons(cx);
                         window.focus(&new_pane.focus_handle(cx), cx);
                     }
                 };
@@ -648,6 +726,7 @@ impl TerminalPanel {
         panel
             .update(cx, |panel, cx| {
                 panel.center.split(old_pane, &new_pane, direction, cx);
+                panel.refresh_tab_bar_buttons(cx);
             })
             .ok()?;
         Some(new_pane)
@@ -1837,6 +1916,11 @@ impl Panel for TerminalPanel {
     fn set_active(&mut self, active: bool, window: &mut Window, cx: &mut Context<Self>) {
         let old_active = self.active;
         self.active = active;
+        if !active {
+            // Closing the panel is the clearest "I am done broadcasting"
+            // signal there is, and an armed toggle nobody can see is a trap.
+            self.set_broadcast_input(false, cx);
+        }
         if !active || old_active == active || !self.has_no_terminals(cx) {
             return;
         }
@@ -2131,6 +2215,178 @@ mod tests {
         terminal_panel.read_with(cx, |panel, _| {
             assert_eq!(panel.center.panes().len(), 1);
         });
+    }
+
+    /// A panel with `panes` side-by-side shells, plus the view in each of them
+    /// in left-to-right order.
+    async fn panel_with_panes(
+        panes: u8,
+        cx: &mut TestAppContext,
+    ) -> (
+        gpui::WindowHandle<MultiWorkspace>,
+        Entity<TerminalPanel>,
+        Vec<Entity<TerminalView>>,
+    ) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+
+        let terminal_panel = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    let terminal_panel = cx.new(|cx| TerminalPanel::new(workspace, window, cx));
+                    // 同時入力 finds its siblings through the workspace's panel
+                    // registry, so the panel has to actually be installed.
+                    workspace.add_panel(terminal_panel.clone(), window, cx);
+                    terminal_panel
+                })
+            })
+            .unwrap();
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                terminal_panel.update(cx, |panel, cx| {
+                    panel.add_terminal_shell(None, RevealStrategy::Always, window, cx)
+                })
+            })
+            .unwrap()
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        if panes > 1 {
+            window_handle
+                .update(cx, |_, window, cx| {
+                    terminal_panel.update(cx, |panel, cx| {
+                        panel.split_grid(panes, 1, window, cx);
+                    })
+                })
+                .unwrap();
+            cx.run_until_parked();
+        }
+
+        let views = terminal_panel.read_with(cx, |panel, cx| {
+            panel
+                .center
+                .panes()
+                .into_iter()
+                .filter_map(|pane| {
+                    pane.read(cx)
+                        .items()
+                        .find_map(|item| item.downcast::<TerminalView>())
+                })
+                .collect::<Vec<_>>()
+        });
+        (window_handle, terminal_panel, views)
+    }
+
+    #[gpui::test]
+    async fn broadcast_input_reaches_the_other_panes(cx: &mut TestAppContext) {
+        let (window_handle, terminal_panel, views) = panel_with_panes(2, cx).await;
+        assert_eq!(views.len(), 2, "the split should have produced two shells");
+
+        for view in &views {
+            assert!(
+                view.read_with(cx, |view, cx| view.broadcast_targets(cx).is_empty()),
+                "nothing is broadcast while the toggle is off"
+            );
+        }
+
+        window_handle
+            .update(cx, |_, _, cx| {
+                terminal_panel.update(cx, |panel, cx| panel.toggle_broadcast_input(cx));
+            })
+            .unwrap();
+        assert!(terminal_panel.read_with(cx, |panel, _| panel.broadcast_input()));
+
+        for (index, view) in views.iter().enumerate() {
+            let targets = view.read_with(cx, |view, cx| view.broadcast_targets(cx));
+            let other = views[1 - index].read_with(cx, |view, _| view.terminal().clone());
+            assert_eq!(
+                targets,
+                vec![other],
+                "each pane should type into the other one"
+            );
+        }
+    }
+
+    #[gpui::test]
+    async fn broadcast_input_skips_terminals_that_are_not_the_panel_s(cx: &mut TestAppContext) {
+        let (window_handle, terminal_panel, views) = panel_with_panes(2, cx).await;
+        window_handle
+            .update(cx, |_, _, cx| {
+                terminal_panel.update(cx, |panel, cx| panel.toggle_broadcast_input(cx));
+            })
+            .unwrap();
+
+        // An agent's terminal is embedded rather than a panel item, and it must
+        // neither receive the broadcast nor start one.
+        views[1].update(cx, |view, cx| {
+            view.set_embedded_mode(None, cx);
+        });
+
+        assert!(
+            views[0].read_with(cx, |view, cx| view.broadcast_targets(cx).is_empty()),
+            "an embedded terminal must not be typed into"
+        );
+        assert!(
+            views[1].read_with(cx, |view, cx| view.broadcast_targets(cx).is_empty()),
+            "an embedded terminal must not drive the panel's shells"
+        );
+    }
+
+    #[gpui::test]
+    async fn broadcast_input_turns_itself_off_when_one_pane_is_left(cx: &mut TestAppContext) {
+        let (window_handle, terminal_panel, _views) = panel_with_panes(2, cx).await;
+        window_handle
+            .update(cx, |_, _, cx| {
+                terminal_panel.update(cx, |panel, cx| panel.toggle_broadcast_input(cx));
+            })
+            .unwrap();
+        assert!(terminal_panel.read_with(cx, |panel, _| panel.broadcast_input()));
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                terminal_panel.update(cx, |panel, cx| {
+                    let Some(pane) = panel.center.panes().last().map(|pane| (*pane).clone()) else {
+                        return;
+                    };
+                    panel.handle_pane_event(
+                        &pane,
+                        &pane::Event::Remove {
+                            focus_on_pane: None,
+                        },
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        terminal_panel.read_with(cx, |panel, _| {
+            assert_eq!(panel.center.panes().len(), 1);
+            assert!(
+                !panel.broadcast_input(),
+                "a single pane has nothing to broadcast to"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn broadcast_input_cannot_be_armed_with_a_single_pane(cx: &mut TestAppContext) {
+        let (window_handle, terminal_panel, _views) = panel_with_panes(1, cx).await;
+        window_handle
+            .update(cx, |_, _, cx| {
+                terminal_panel.update(cx, |panel, cx| panel.toggle_broadcast_input(cx));
+            })
+            .unwrap();
+
+        assert!(terminal_panel.read_with(cx, |panel, _| !panel.broadcast_input()));
     }
 
     #[cfg(unix)]

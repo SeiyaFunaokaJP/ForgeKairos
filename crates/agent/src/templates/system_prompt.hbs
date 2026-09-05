@@ -160,6 +160,14 @@ The current project contains the following root directories:
 {{#each worktrees}}
 - `{{abs_path}}`
 {{/each}}
+{{#if repo_map}}
+
+A map of the project's files and the symbols they declare follows. It is truncated to a byte budget, so treat it as a starting point rather than a complete listing, and use `read_file`, `grep`, or `repo_map` when you need more.
+
+<repo_map>
+{{repo_map}}
+</repo_map>
+{{/if}}
 
 {{#if sandboxing}}
 {{#if (contains available_tools 'terminal')}}

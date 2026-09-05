@@ -156,6 +156,11 @@ pub fn init(languages: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, node: NodeRuntime
             ..Default::default()
         },
         LanguageInfo {
+            name: "mermaid",
+            adapters: vec![],
+            ..Default::default()
+        },
+        LanguageInfo {
             name: "python",
             adapters: vec![
                 basedpyright_lsp_adapter,
@@ -386,4 +391,112 @@ pub fn language(name: &str, grammar: tree_sitter::Language) -> Arc<Language> {
 fn load_config(name: &str) -> LanguageConfig {
     let grammars_loaded = cfg!(any(feature = "load-grammars", test));
     grammars::load_config_for_feature(name, grammars_loaded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{Hsla, TestAppContext};
+    use language::{Buffer, LanguageAwareStyling, LanguageRegistry};
+    use rope::Rope;
+    use std::path::Path;
+    use theme::SyntaxTheme;
+
+    fn mermaid_language() -> Arc<Language> {
+        language("mermaid", tree_sitter_mermaid::LANGUAGE.into())
+    }
+
+    #[gpui::test]
+    async fn test_mermaid_queries_compile(_cx: &mut TestAppContext) {
+        let queries = grammars::load_queries("mermaid");
+        for (name, query) in [
+            ("highlights", &queries.highlights),
+            ("brackets", &queries.brackets),
+            ("indents", &queries.indents),
+            ("injections", &queries.injections),
+            ("outline", &queries.outline),
+            ("textobjects", &queries.text_objects),
+        ] {
+            assert!(query.is_some(), "mermaid is missing its {name} query");
+        }
+
+        let language = Language::new(
+            grammars::load_config("mermaid"),
+            Some(tree_sitter_mermaid::LANGUAGE.into()),
+        )
+        .with_queries(queries);
+        if let Err(error) = language {
+            panic!("mermaid queries failed to compile: {error}");
+        }
+    }
+
+    #[gpui::test]
+    async fn test_mermaid_files_are_recognized(cx: &mut TestAppContext) {
+        let registry = Arc::new(LanguageRegistry::test(cx.executor()));
+        registry.add(mermaid_language());
+
+        for path in ["diagram.mmd", "diagram.mermaid"] {
+            match registry.load_language_for_file_path(Path::new(path)).await {
+                Ok(language) => assert_eq!(language.name().as_ref(), "Mermaid"),
+                Err(error) => panic!("{path} was not recognized as Mermaid: {error}"),
+            }
+        }
+    }
+
+    #[gpui::test]
+    async fn test_mermaid_fence_in_markdown_is_highlighted(cx: &mut TestAppContext) {
+        let registry = Arc::new(LanguageRegistry::test(cx.executor()));
+        let markdown = language("markdown", tree_sitter_md::LANGUAGE.into());
+        let mermaid = mermaid_language();
+        let theme = SyntaxTheme::new_test([("keyword", Hsla::default())]);
+        markdown.set_theme(&theme);
+        mermaid.set_theme(&theme);
+        registry.add(markdown.clone());
+        registry.add(mermaid.clone());
+
+        let text = concat!(
+            "Diagram:\n",
+            "\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "    A[Start] --> B[End]\n",
+            "```\n",
+        );
+        let snapshot = cx.update(|cx| {
+            Buffer::build_snapshot_sync(Rope::from(text), Some(markdown), Some(registry), cx)
+        });
+
+        let Some(keyword_start) = text.find("flowchart") else {
+            panic!("test fixture no longer contains a flowchart keyword");
+        };
+        assert_eq!(
+            snapshot
+                .language_at(keyword_start)
+                .map(|language| language.name()),
+            Some(mermaid.name()),
+            "the fence content should be parsed by the Mermaid grammar"
+        );
+
+        let Some(keyword_highlight) = mermaid
+            .grammar()
+            .and_then(|grammar| grammar.highlight_id_for_name("keyword"))
+        else {
+            panic!("the mermaid grammar has no `keyword` highlight");
+        };
+        let highlighted = snapshot
+            .chunks(
+                keyword_start..keyword_start + "flowchart".len(),
+                LanguageAwareStyling {
+                    tree_sitter: true,
+                    diagnostics: false,
+                },
+            )
+            .next()
+            .and_then(|chunk| chunk.syntax_highlight_id);
+        assert_eq!(
+            highlighted,
+            Some(keyword_highlight),
+            "the diagram keyword inside the fence should be highlighted"
+        );
+    }
 }

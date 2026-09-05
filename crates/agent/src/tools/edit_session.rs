@@ -12,7 +12,10 @@ use collections::HashSet;
 use futures::{FutureExt, channel::oneshot};
 use gpui::{App, AppContext, AsyncApp, Entity, Task, WeakEntity};
 use language::language_settings::{self, FormatOnSave};
-use language::{Buffer, BufferEditSource, BufferEvent, LanguageRegistry};
+use language::{
+    Buffer, BufferEditSource, BufferEvent, DiagnosticSeverity, LanguageRegistry,
+    OffsetRangeExt as _,
+};
 use language_model::LanguageModelToolResultContent;
 use project::lsp_store::{FormatTrigger, LspFormatTarget};
 use project::{AgentLocation, Project, ProjectPath};
@@ -22,13 +25,24 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use streaming_diff::{CharOperation, StreamingDiff};
 use streaming_fuzzy_matcher::{SearchMatch, SearchMatches, StreamingFuzzyMatcher};
 use streaming_parser::{EditEvent, StreamingParser, WriteEvent};
 use text::ToOffset;
 use ui::SharedString;
+use util::paths::PathStyle;
 use util::rel_path::RelPath;
 use util::{Deferred, ResultExt};
+
+/// How long a successful edit waits for the language server to publish
+/// diagnostics for the file it just saved before reporting whatever the buffer
+/// currently holds.
+const DIAGNOSTICS_WAIT_AFTER_SAVE: Duration = Duration::from_secs(2);
+
+/// Upper bound on the diagnostics appended to a successful edit's output, so a
+/// file with hundreds of errors can't crowd out the rest of the conversation.
+const MAX_REPORTED_DIAGNOSTICS: usize = 20;
 
 /// Operating mode used internally by `EditSession`/`Pipeline` to choose between
 /// applying granular edits (the `edit_file` tool) or replacing/creating the
@@ -73,6 +87,12 @@ pub enum EditSessionOutput {
         old_text: Arc<String>,
         #[serde(default)]
         diff: String,
+        /// Errors and warnings the language server reported for the edited
+        /// buffer just after it was saved, already formatted for the model
+        /// (see [`EditSessionContext::diagnostics_after_save`]). Empty when the
+        /// buffer has no language server, or when it came back clean.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        diagnostics: String,
     },
     Error {
         error: String,
@@ -97,12 +117,20 @@ impl std::fmt::Display for EditSessionOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EditSessionOutput::Success {
-                diff, input_path, ..
+                diff,
+                input_path,
+                diagnostics,
+                ..
             } => {
                 if diff.is_empty() {
-                    write!(f, "No edits were made.")
+                    write!(f, "No edits were made.")?;
                 } else {
-                    write!(f, "Edited {} successfully", input_path.display())
+                    write!(f, "Edited {} successfully", input_path.display())?;
+                }
+                if diagnostics.is_empty() {
+                    Ok(())
+                } else {
+                    write!(f, "\n\n{diagnostics}")
                 }
             }
             EditSessionOutput::Error {
@@ -214,6 +242,122 @@ impl EditSessionContext {
         });
     }
 
+    /// Errors and warnings the language server reports for `buffer` right after
+    /// the edit was saved, so the model learns about a mistake in the same tool
+    /// result instead of having to remember to call `diagnostics` (TODO F13 ③).
+    ///
+    /// Push-based servers publish diagnostics asynchronously, so this waits up
+    /// to [`DIAGNOSTICS_WAIT_AFTER_SAVE`] for an update that covers this file
+    /// and then reads whatever the buffer has, fresh or not. Buffers with no
+    /// language server skip the wait entirely — the result would always be
+    /// empty and the delay would be charged to every edit.
+    async fn diagnostics_after_save(&self, buffer: &Entity<Buffer>, cx: &mut AsyncApp) -> String {
+        let Some(project_path) = buffer.read_with(cx, |buffer, cx| {
+            let file = buffer.file()?;
+            Some(ProjectPath {
+                worktree_id: file.worktree_id(cx),
+                path: file.path().clone(),
+            })
+        }) else {
+            return String::new();
+        };
+
+        if !self.buffer_has_language_server(buffer, cx) {
+            return String::new();
+        }
+
+        let (diagnostics_updated_tx, diagnostics_updated_rx) = oneshot::channel();
+        let subscription = {
+            let mut diagnostics_updated_tx = Some(diagnostics_updated_tx);
+            let project_path = project_path.clone();
+            cx.subscribe(&self.project, move |_project, event, _cx| {
+                if let project::Event::DiagnosticsUpdated { paths, .. } = event
+                    && paths.contains(&project_path)
+                    && let Some(sender) = diagnostics_updated_tx.take()
+                {
+                    sender.send(()).ok();
+                }
+            })
+        };
+
+        futures::select_biased! {
+            _ = diagnostics_updated_rx.fuse() => {}
+            _ = cx.background_executor().timer(DIAGNOSTICS_WAIT_AFTER_SAVE).fuse() => {}
+        }
+        drop(subscription);
+
+        let path_display = self
+            .project
+            .read_with(cx, |project, cx| {
+                project.short_full_path_for_project_path(&project_path, cx)
+            })
+            .unwrap_or_else(|| project_path.path.display(PathStyle::local()).into_owned());
+
+        buffer.read_with(cx, |buffer, _cx| {
+            let snapshot = buffer.snapshot();
+            let mut entries = Vec::new();
+            let mut skipped = 0usize;
+            for (_, group) in snapshot.diagnostic_groups(None) {
+                let Some(entry) = group.entries.get(group.primary_ix) else {
+                    continue;
+                };
+                let severity = match entry.diagnostic.severity {
+                    DiagnosticSeverity::ERROR => "error",
+                    DiagnosticSeverity::WARNING => "warning",
+                    _ => continue,
+                };
+                if entries.len() == MAX_REPORTED_DIAGNOSTICS {
+                    skipped += 1;
+                    continue;
+                }
+                let row = entry.range.to_point(&snapshot).start.row + 1;
+                entries.push(format!(
+                    "{severity} {path_display}:{row}: {}",
+                    entry.diagnostic.message
+                ));
+            }
+
+            if entries.is_empty() {
+                return String::new();
+            }
+            let mut output = format!("保存後の診断:\n{}", entries.join("\n"));
+            if skipped > 0 {
+                output.push_str(&format!("\n…ほか {skipped} 件"));
+            }
+            output
+        })
+    }
+
+    fn buffer_has_language_server(&self, buffer: &Entity<Buffer>, cx: &mut AsyncApp) -> bool {
+        let lsp_store = self
+            .project
+            .read_with(cx, |project, _cx| project.lsp_store());
+        let is_local = self
+            .project
+            .read_with(cx, |project, _cx| project.is_local());
+
+        buffer.update(cx, |buffer, cx| {
+            if buffer.language().is_none() {
+                return false;
+            }
+            if !is_local {
+                // Remote projects run their language servers on the host, so
+                // the per-buffer lookup below is always empty here; fall back
+                // to "the project has a server running at all".
+                return lsp_store
+                    .read(cx)
+                    .language_server_statuses()
+                    .next()
+                    .is_some();
+            }
+            lsp_store.update(cx, |lsp_store, cx| {
+                !lsp_store
+                    .language_servers_for_local_buffer(buffer, cx)
+                    .is_empty()
+            })
+        })
+    }
+
     pub(crate) fn initial_title_from_path(
         &self,
         path: &std::path::Path,
@@ -284,11 +428,20 @@ pub(crate) async fn run_session(
                 .ensure_buffer_saved(&session.buffer, cx)
                 .await;
             let (new_text, diff) = session.compute_new_text_and_diff(cx).await;
+            let diagnostics = if diff.is_empty() {
+                String::new()
+            } else {
+                session
+                    .context
+                    .diagnostics_after_save(&session.buffer, cx)
+                    .await
+            };
             Ok(EditSessionOutput::Success {
                 old_text: session.old_text.clone(),
                 new_text,
                 input_path: session.input_path,
                 diff,
+                diagnostics,
             })
         }
         EditSessionResult::Failed {

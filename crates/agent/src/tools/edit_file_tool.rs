@@ -288,6 +288,7 @@ mod tests {
     use super::*;
     use crate::{ContextServerRegistry, Templates, ToolInputSender};
     use fs::Fs as _;
+    use futures::StreamExt as _;
     use gpui::{AppContext as _, TestAppContext, UpdateGlobal};
     use language_model::fake_provider::FakeLanguageModel;
     use project::ProjectPath;
@@ -3072,6 +3073,178 @@ mod tests {
         // When the model uses incorrect field names, the error should
         // tell it what to fix.
         assert_eq!(err.to_string(), "missing field `old_text`");
+    }
+
+    /// Registers a fake Rust language server for `project` and opens
+    /// `abs_path` with it attached, so the buffer looks like it has a language
+    /// server to `EditSessionContext::diagnostics_after_save`.
+    async fn open_buffer_with_fake_language_server(
+        project: &Entity<Project>,
+        abs_path: &str,
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<language::Buffer>,
+        lsp::FakeLanguageServer,
+        project::lsp_store::OpenLspBufferHandle,
+    ) {
+        let rust_language = Arc::new(language::Language::new(
+            language::LanguageConfig {
+                name: "Rust".into(),
+                matcher: (language::LanguageMatcher {
+                    path_suffixes: vec!["rs".to_string()],
+                    ..Default::default()
+                })
+                .into(),
+                ..Default::default()
+            },
+            None,
+        ));
+        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+        language_registry.add(rust_language);
+        let mut fake_language_servers =
+            language_registry.register_fake_lsp("Rust", language::FakeLspAdapter::default());
+
+        let buffer = project
+            .update(cx, |project, cx| project.open_local_buffer(abs_path, cx))
+            .await
+            .unwrap();
+        let handle = project.update(cx, |project, cx| {
+            project.register_buffer_with_language_servers(&buffer, cx)
+        });
+        let fake_language_server = fake_language_servers.next().await.unwrap();
+        cx.run_until_parked();
+        (buffer, fake_language_server, handle)
+    }
+
+    fn publish_diagnostics(
+        fake_language_server: &lsp::FakeLanguageServer,
+        uri: lsp::Uri,
+        count: usize,
+    ) {
+        fake_language_server.notify::<lsp::notification::PublishDiagnostics>(
+            lsp::PublishDiagnosticsParams {
+                uri,
+                diagnostics: (0..count)
+                    .map(|index| lsp::Diagnostic {
+                        range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 1)),
+                        severity: Some(lsp::DiagnosticSeverity::ERROR),
+                        message: format!("problem {index}"),
+                        ..Default::default()
+                    })
+                    .collect(),
+                version: None,
+            },
+        );
+    }
+
+    #[gpui::test]
+    async fn test_successful_edit_reports_diagnostics(cx: &mut TestAppContext) {
+        let (edit_tool, project, _action_log, _fs, _thread) =
+            setup_test(cx, json!({"file.rs": "line 1\nline 2\nline 3\n"})).await;
+        let (_buffer, fake_language_server, _handle) =
+            open_buffer_with_fake_language_server(&project, path!("/root/file.rs"), cx).await;
+        let uri = lsp::Uri::from_file_path(path!("/root/file.rs")).unwrap();
+
+        let task = cx.update(|cx| {
+            edit_tool.clone().run(
+                ToolInput::resolved(EditFileToolInput {
+                    path: "root/file.rs".into(),
+                    edits: vec![Edit {
+                        old_text: "line 2".into(),
+                        new_text: "modified line 2".into(),
+                    }],
+                }),
+                ToolCallEventStream::test().0,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        publish_diagnostics(&fake_language_server, uri, 2);
+        cx.run_until_parked();
+
+        let output = task.await.unwrap();
+        let rendered = output.to_string();
+        assert!(
+            rendered.contains("保存後の診断:"),
+            "expected diagnostics in the tool output, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("error file.rs:1: problem 0"),
+            "expected the first diagnostic in the tool output, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("error file.rs:1: problem 1"),
+            "expected the second diagnostic in the tool output, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("…ほか"),
+            "two diagnostics should not be truncated, got: {rendered}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_successful_edit_truncates_diagnostics(cx: &mut TestAppContext) {
+        let (edit_tool, project, _action_log, _fs, _thread) =
+            setup_test(cx, json!({"file.rs": "line 1\nline 2\nline 3\n"})).await;
+        let (_buffer, fake_language_server, _handle) =
+            open_buffer_with_fake_language_server(&project, path!("/root/file.rs"), cx).await;
+        let uri = lsp::Uri::from_file_path(path!("/root/file.rs")).unwrap();
+
+        let task = cx.update(|cx| {
+            edit_tool.clone().run(
+                ToolInput::resolved(EditFileToolInput {
+                    path: "root/file.rs".into(),
+                    edits: vec![Edit {
+                        old_text: "line 2".into(),
+                        new_text: "modified line 2".into(),
+                    }],
+                }),
+                ToolCallEventStream::test().0,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        publish_diagnostics(&fake_language_server, uri, 23);
+        cx.run_until_parked();
+
+        let rendered = task.await.unwrap().to_string();
+        assert_eq!(
+            rendered.matches("problem ").count(),
+            20,
+            "expected the report to stop at 20 diagnostics, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("…ほか 3 件"),
+            "expected an overflow marker for the remaining 3, got: {rendered}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_successful_edit_without_language_server_reports_nothing(cx: &mut TestAppContext) {
+        let (edit_tool, _project, _action_log, _fs, _thread) =
+            setup_test(cx, json!({"file.txt": "line 1\nline 2\nline 3\n"})).await;
+
+        let rendered = cx
+            .update(|cx| {
+                edit_tool.clone().run(
+                    ToolInput::resolved(EditFileToolInput {
+                        path: "root/file.txt".into(),
+                        edits: vec![Edit {
+                            old_text: "line 2".into(),
+                            new_text: "modified line 2".into(),
+                        }],
+                    }),
+                    ToolCallEventStream::test().0,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .to_string();
+
+        assert_eq!(rendered, "Edited root/file.txt successfully");
     }
 
     async fn setup_test_with_fs(

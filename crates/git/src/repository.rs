@@ -62,6 +62,32 @@ pub const GRAPH_CHUNK_SIZE: usize = 1000;
 /// Default value for the `git.worktree_directory` setting.
 pub const DEFAULT_WORKTREE_DIRECTORY: &str = "../worktrees";
 
+/// Which untracked files `git status` is asked to report.
+///
+/// Mirrors git's own `--untracked-files` values. Reporting every file inside an
+/// untracked directory (`All`) is what Zed needs to colour individual entries in
+/// the project panel, but it is also the most expensive mode on large trees.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StatusUntrackedFiles {
+    /// `--untracked-files=all`: report every file inside untracked directories.
+    #[default]
+    All,
+    /// `--untracked-files=normal`: report untracked directories, but not their contents.
+    Normal,
+    /// `--untracked-files=no`: don't report untracked files at all.
+    No,
+}
+
+impl StatusUntrackedFiles {
+    fn as_git_argument(self) -> &'static str {
+        match self {
+            StatusUntrackedFiles::All => "--untracked-files=all",
+            StatusUntrackedFiles::Normal => "--untracked-files=normal",
+            StatusUntrackedFiles::No => "--untracked-files=no",
+        }
+    }
+}
+
 /// Given the git common directory (from `commondir()`), derive the original
 /// repository's working directory.
 ///
@@ -892,7 +918,11 @@ pub trait GitRepository: Send + Sync {
 
     fn merge_message(&self) -> BoxFuture<'_, Option<String>>;
 
-    fn status(&self, path_prefixes: &[RepoPath]) -> Task<Result<GitStatus>>;
+    fn status(
+        &self,
+        path_prefixes: &[RepoPath],
+        untracked_files: StatusUntrackedFiles,
+    ) -> Task<Result<GitStatus>>;
     fn diff_tree(&self, request: DiffTreeType) -> BoxFuture<'_, Result<TreeDiff>>;
 
     fn stash_entries(&self) -> BoxFuture<'static, Result<GitStash>>;
@@ -1920,9 +1950,13 @@ impl GitRepository for RealGitRepository {
             .boxed()
     }
 
-    fn status(&self, path_prefixes: &[RepoPath]) -> Task<Result<GitStatus>> {
+    fn status(
+        &self,
+        path_prefixes: &[RepoPath],
+        untracked_files: StatusUntrackedFiles,
+    ) -> Task<Result<GitStatus>> {
         let git = self.git_binary_in_worktree();
-        let args = git_status_args(path_prefixes);
+        let args = git_status_args(path_prefixes, untracked_files);
         log::debug!("Checking for git status in {path_prefixes:?}");
         self.executor.spawn(async move {
             let git = git?;
@@ -2017,7 +2051,14 @@ impl GitRepository for RealGitRepository {
                     return Ok(tree_diff);
                 }
 
-                let status_output = git.build_command(&git_status_args(&[])).output().await?;
+                // Untracked files must be listed exhaustively here: the point of
+                // this call is to tell apart deletions from files that were
+                // deleted and recreated, and a recreated file inside an
+                // untracked directory would otherwise go unreported.
+                let status_output = git
+                    .build_command(&git_status_args(&[], StatusUntrackedFiles::All))
+                    .output()
+                    .await?;
                 if !status_output.status.success() {
                     let stderr = String::from_utf8_lossy(&status_output.stderr);
                     anyhow::bail!("git status failed: {stderr}");
@@ -3798,11 +3839,14 @@ fn parse_initial_graph_output<'a>(
         .collect()
 }
 
-fn git_status_args(path_prefixes: &[RepoPath]) -> Vec<OsString> {
+fn git_status_args(
+    path_prefixes: &[RepoPath],
+    untracked_files: StatusUntrackedFiles,
+) -> Vec<OsString> {
     let mut args = vec![
         OsString::from("status"),
         OsString::from("--porcelain=v1"),
-        OsString::from("--untracked-files=all"),
+        OsString::from(untracked_files.as_git_argument()),
         OsString::from("--no-renames"),
         OsString::from("-z"),
         OsString::from("--"),
@@ -4340,6 +4384,60 @@ mod tests {
             std::env::set_var("GIT_CONFIG_GLOBAL", "");
             std::env::set_var("GIT_CONFIG_SYSTEM", "");
         }
+    }
+
+    #[test]
+    fn test_git_status_args_untracked_files_modes() {
+        let untracked_argument = |untracked_files| {
+            git_status_args(&[], untracked_files)
+                .into_iter()
+                .find(|argument| argument.to_string_lossy().starts_with("--untracked-files="))
+                .expect("status args always carry an --untracked-files argument")
+        };
+
+        assert_eq!(
+            untracked_argument(StatusUntrackedFiles::All),
+            OsString::from("--untracked-files=all")
+        );
+        assert_eq!(
+            untracked_argument(StatusUntrackedFiles::Normal),
+            OsString::from("--untracked-files=normal")
+        );
+        assert_eq!(
+            untracked_argument(StatusUntrackedFiles::No),
+            OsString::from("--untracked-files=no")
+        );
+        assert_eq!(
+            untracked_argument(StatusUntrackedFiles::default()),
+            OsString::from("--untracked-files=all"),
+            "the default must stay `all` so that existing projects keep their per-file statuses"
+        );
+    }
+
+    #[test]
+    fn test_git_status_args_path_prefixes() {
+        let repo_path = |path: &str| {
+            RepoPath::from_rel_path(&RelPath::new(path.as_ref(), PathStyle::Unix).unwrap())
+        };
+        let args = git_status_args(
+            &[repo_path("src/main.rs"), repo_path("")],
+            StatusUntrackedFiles::Normal,
+        );
+        let args = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let separator = args
+            .iter()
+            .position(|arg| arg == "--")
+            .expect("status args are always terminated by `--`");
+        assert_eq!(
+            &args[separator + 1..],
+            &[
+                Path::new("src/main.rs").to_string_lossy().into_owned(),
+                ".".to_string()
+            ]
+        );
     }
 
     #[allow(clippy::disallowed_methods)]

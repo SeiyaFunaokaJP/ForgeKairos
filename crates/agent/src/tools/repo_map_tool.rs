@@ -3,7 +3,7 @@ use agent_client_protocol::schema::v1 as acp;
 use anyhow::Result;
 use fs::Fs;
 use gpui::{App, AsyncApp, Entity, SharedString, Task};
-use language::{Buffer, LanguageRegistry, Rope};
+use language::{Buffer, BufferSnapshot, LanguageRegistry, OutlineItem, Point, Rope};
 use project::Project;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -70,6 +70,24 @@ const MAX_FILES_PARSED: usize = 1_000;
 
 const MAX_SYMBOLS_PER_FILE: usize = 200;
 
+/// Longest signature kept before its tail is elided.
+const MAX_SIGNATURE_CHARS: usize = 200;
+
+/// A declaration whose header does not end within this many rows keeps its
+/// outline text: what follows is more likely to be a body than parameters.
+/// Wrapped parameter lists of twenty-odd rows do occur in this codebase.
+const MAX_SIGNATURE_ROWS: u32 = 32;
+
+/// Cap on the source one signature may consume, so that a minified file cannot
+/// make a single scan proportional to its line length.
+const MAX_SIGNATURE_SCAN_CHARS: usize = 4_096;
+
+/// Keywords introducing a callable in the languages whose outline queries this
+/// fork ships. Queries that instead capture the parentheses (Go, JavaScript,
+/// TypeScript, C) are recognized by the empty parameter list they leave in the
+/// outline text.
+const FUNCTION_KEYWORDS: [&str; 4] = ["fn", "def", "func", "function"];
+
 /// Fraction of the budget held back for the path-only listing and the footer.
 const RESERVED_BUDGET_DIVISOR: usize = 5;
 
@@ -88,7 +106,10 @@ struct Candidate {
 }
 
 impl RepoMapTool {
-    async fn build_map(
+    /// Also used to build the optional `<repo_map>` section of the system
+    /// prompt (`agent.system_prompt_repo_map_bytes`, TODO F13 ③), so that the
+    /// prompt and the tool can never drift apart.
+    pub async fn build_map(
         project: Entity<Project>,
         input: RepoMapToolInput,
         cx: &mut AsyncApp,
@@ -302,7 +323,10 @@ async fn file_block(
         for _ in 0..item.depth {
             block.push(' ');
         }
-        block.push_str(&item.text);
+        match signature_for_item(&snapshot, item) {
+            Some(signature) => block.push_str(&signature),
+            None => block.push_str(&item.text),
+        }
         let start_row = item.range.start.row + 1;
         let end_row = item.range.end.row + 1;
         if start_row == end_row {
@@ -320,6 +344,269 @@ async fn file_block(
     }
     block.push('\n');
     Some(block)
+}
+
+/// How a declaration header is separated from the body it introduces.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum BodyDelimiter {
+    /// `{` opens the body; a declaration that has no body ends at `;`.
+    Brace,
+    /// The header ends at the `:` that precedes an indented body.
+    Colon,
+    /// Unknown language: the header ends with the item's first line, or at a
+    /// `{` or `;` on it if one comes first.
+    LineEnd,
+}
+
+fn body_delimiter(language_name: Option<&str>) -> BodyDelimiter {
+    match language_name {
+        Some(
+            "C" | "C#" | "C++" | "Dart" | "Go" | "Java" | "JavaScript" | "Kotlin" | "PHP" | "Rust"
+            | "Scala" | "Swift" | "TSX" | "TypeScript" | "Zig",
+        ) => BodyDelimiter::Brace,
+        Some("Python") => BodyDelimiter::Colon,
+        _ => BodyDelimiter::LineEnd,
+    }
+}
+
+/// The outline text of a callable either carries the language's keyword for
+/// one, or — when the outline query captures the parentheses instead — already
+/// shows the parameter list emptied out, as in `function b( )`.
+fn declares_parameters(outline_text: &str) -> bool {
+    outline_text.ends_with("()")
+        || outline_text.ends_with("( )")
+        || outline_text
+            .split_whitespace()
+            .any(|token| FUNCTION_KEYWORDS.contains(&token))
+}
+
+/// Rebuilds a callable's declaration from the source, so that the map shows its
+/// parameters instead of the bare `fn drop` the outline query produces.
+///
+/// The outline text cannot be used for this: `@context.extra` captures would
+/// also reach the outline panel, and the outline builder truncates a multi-line
+/// capture at its first row.
+fn signature_for_item(snapshot: &BufferSnapshot, item: &OutlineItem<Point>) -> Option<String> {
+    if !declares_parameters(&item.text) {
+        return None;
+    }
+
+    let language_name = snapshot
+        .language_at(item.range.start)
+        .map(|language| language.name());
+    let delimiter = body_delimiter(language_name.as_ref().map(|name| name.0.as_ref()));
+
+    let start = item.range.start;
+    let window_end = item
+        .range
+        .end
+        .min(Point::new(start.row + MAX_SIGNATURE_ROWS, 0))
+        .min(snapshot.max_point());
+    if window_end <= start {
+        return None;
+    }
+
+    collapse_declaration_header(
+        snapshot
+            .text_for_range(start..window_end)
+            .flat_map(|chunk| chunk.chars()),
+        delimiter,
+    )
+}
+
+/// Collects the collapsed signature, keeping the spacing a reader expects
+/// around brackets rather than the source's line breaks and indentation.
+struct SignatureWriter {
+    text: String,
+    pending_separator: bool,
+}
+
+impl SignatureWriter {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+            pending_separator: false,
+        }
+    }
+
+    fn separate(&mut self) {
+        if !self.text.is_empty() {
+            self.pending_separator = true;
+        }
+    }
+
+    fn push(&mut self, character: char) {
+        let after_open_bracket = matches!(self.text.chars().last(), Some('(') | Some('['));
+        let hugs_previous = matches!(character, ')' | ']' | ',' | ';');
+        if self.pending_separator && !after_open_bracket && !hugs_previous {
+            self.text.push(' ');
+        }
+        self.pending_separator = false;
+        // A trailing comma is an artifact of the source being wrapped over
+        // several lines; the collapsed form reads as a single-line declaration.
+        if matches!(character, ')' | ']') && self.text.ends_with(',') {
+            self.text.pop();
+        }
+        self.text.push(character);
+    }
+
+    /// String literals keep their spacing, but not their line breaks: the map
+    /// gives every symbol exactly one line.
+    fn push_verbatim(&mut self, character: char) {
+        self.pending_separator = false;
+        self.text.push(if character.is_control() {
+            ' '
+        } else {
+            character
+        });
+    }
+}
+
+/// Folds the declaration header the characters start with onto one line.
+///
+/// The characters are consumed lazily and only until the header ends, so the
+/// window a caller offers can cover a whole wrapped parameter list without the
+/// scan paying for the body that follows it.
+///
+/// Returns `None` when the header does not end within them, or when it ends
+/// with brackets or a string still open — a half-captured parameter list would
+/// read as a broken signature, so the caller keeps the outline text instead.
+fn collapse_declaration_header(
+    characters: impl Iterator<Item = char>,
+    delimiter: BodyDelimiter,
+) -> Option<String> {
+    let mut characters = characters.take(MAX_SIGNATURE_SCAN_CHARS).peekable();
+    let mut writer = SignatureWriter::new();
+    let mut depth: usize = 0;
+    let mut string_delimiter: Option<char> = None;
+    let mut escaped = false;
+    let mut parameters_closed = false;
+    let mut terminated = false;
+
+    while let Some(character) = characters.next() {
+        if let Some(open) = string_delimiter {
+            writer.push_verbatim(character);
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == open {
+                string_delimiter = None;
+            }
+            continue;
+        }
+
+        let comment_start = match delimiter {
+            BodyDelimiter::Brace => {
+                character == '/' && matches!(characters.peek(), Some('/') | Some('*'))
+            }
+            BodyDelimiter::Colon => character == '#',
+            BodyDelimiter::LineEnd => false,
+        };
+        if comment_start {
+            if characters.peek() == Some(&'*') {
+                characters.next();
+                if !skip_block_comment(&mut characters) {
+                    return None;
+                }
+            } else {
+                while characters.peek().is_some_and(|peeked| *peeked != '\n') {
+                    characters.next();
+                }
+            }
+            writer.separate();
+            continue;
+        }
+
+        match character {
+            '"' | '`' => {
+                writer.push(character);
+                string_delimiter = Some(character);
+            }
+            '\'' if delimiter == BodyDelimiter::Colon => {
+                writer.push(character);
+                string_delimiter = Some(character);
+            }
+            '{' | ';' if depth == 0 && delimiter != BodyDelimiter::Colon => {
+                terminated = true;
+                break;
+            }
+            ':' if depth == 0 && delimiter == BodyDelimiter::Colon => {
+                terminated = true;
+                break;
+            }
+            '(' | '[' | '{' => {
+                depth += 1;
+                writer.push(character);
+            }
+            ')' | ']' | '}' => {
+                depth = depth.saturating_sub(1);
+                writer.push(character);
+                if depth == 0 && character == ')' {
+                    parameters_closed = true;
+                }
+            }
+            '\n' => {
+                let line_ends_header = delimiter == BodyDelimiter::LineEnd
+                    || (delimiter == BodyDelimiter::Brace && depth == 0 && parameters_closed);
+                if line_ends_header {
+                    terminated = true;
+                    break;
+                }
+                writer.separate();
+            }
+            character if character.is_whitespace() => writer.separate(),
+            character => writer.push(character),
+        }
+    }
+
+    if !terminated || depth != 0 || string_delimiter.is_some() {
+        return None;
+    }
+
+    let mut signature = writer.text;
+    if !signature.contains('(') || !angle_brackets_are_balanced(&signature) {
+        return None;
+    }
+    if signature.chars().count() > MAX_SIGNATURE_CHARS {
+        let cut = signature
+            .char_indices()
+            .nth(MAX_SIGNATURE_CHARS - 1)
+            .map(|(offset, _)| offset)?;
+        signature.truncate(cut);
+        signature.push('…');
+    }
+    Some(signature)
+}
+
+/// A generic parameter list left half-open reads as badly as an unclosed
+/// parenthesis, but unlike brackets it cannot be tracked while scanning, since
+/// `->` and `=>` carry a `>` of their own. Counting once the header is folded
+/// is enough to notice one that was cut in half by a line break.
+fn angle_brackets_are_balanced(signature: &str) -> bool {
+    let mut depth: i32 = 0;
+    let mut previous = ' ';
+    for character in signature.chars() {
+        match character {
+            '<' => depth += 1,
+            '>' if previous != '-' && previous != '=' => depth -= 1,
+            _ => {}
+        }
+        previous = character;
+    }
+    depth == 0
+}
+
+/// Consumes the rest of a block comment whose `/*` was just read, reporting
+/// whether its `*/` was reached.
+fn skip_block_comment(characters: &mut std::iter::Peekable<impl Iterator<Item = char>>) -> bool {
+    while let Some(character) = characters.next() {
+        if character == '*' && characters.peek() == Some(&'/') {
+            characters.next();
+            return true;
+        }
+    }
+    false
 }
 
 impl AgentTool for RepoMapTool {
@@ -566,11 +853,218 @@ mod tests {
 
         assert!(output.contains("struct Config"), "{output}");
         assert!(output.contains("impl Config"), "{output}");
-        assert!(output.contains("fn new"), "{output}");
+        assert!(output.contains("pub fn new() -> Self"), "{output}");
         assert!(output.contains("[L"), "{output}");
         assert!(
             output.contains("1 of 1 files expanded with symbols"),
             "{output}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_repo_map_expands_multiline_signatures(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                "lib.rs": concat!(
+                    "pub struct Config {\n",
+                    "    pub name: String,\n",
+                    "}\n",
+                    "\n",
+                    "impl Config {\n",
+                    "    #[inline]\n",
+                    "    pub fn merge(\n",
+                    "        &mut self,\n",
+                    "        other: &Config, // wins on conflict\n",
+                    "        strict: bool,\n",
+                    "    ) -> Result<(), String> {\n",
+                    "        Ok(())\n",
+                    "    }\n",
+                    "}\n",
+                    "\n",
+                    "impl Drop for Config {\n",
+                    "    fn drop(&mut self) {}\n",
+                    "}\n",
+                ),
+            }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.update(|cx| project.read(cx).languages().add(language::rust_lang()));
+        cx.executor().run_until_parked();
+
+        let output = run_tool(
+            project,
+            RepoMapToolInput {
+                path: None,
+                max_bytes: None,
+            },
+            cx,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            output.contains(
+                "pub fn merge(&mut self, other: &Config, strict: bool) -> Result<(), String> [L7-13]"
+            ),
+            "{output}"
+        );
+        assert!(output.contains("fn drop(&mut self) [L17]"), "{output}");
+        // Types and fields keep their outline text: they have no parameters to
+        // spell out, and their bodies are what the map deliberately omits.
+        assert!(output.contains("struct Config [L1-3]"), "{output}");
+        assert!(output.contains("pub name [L2]"), "{output}");
+        assert!(!output.contains("pub struct Config {"), "{output}");
+    }
+
+    #[test]
+    fn only_callables_are_given_a_signature() {
+        assert!(declares_parameters("pub fn new"));
+        assert!(declares_parameters("async def load"));
+        assert!(declares_parameters("func Serve"));
+        // Go, JavaScript, TypeScript and C capture the parentheses instead of a
+        // keyword, so their outline text already shows an emptied-out list.
+        assert!(declares_parameters("function b( )"));
+        assert!(declares_parameters("int parse()"));
+
+        assert!(!declares_parameters("struct Config"));
+        assert!(!declares_parameters("impl Config"));
+        assert!(!declares_parameters("mod tools"));
+        assert!(!declares_parameters("pub name"));
+    }
+
+    #[test]
+    fn a_multiline_rust_signature_is_folded_onto_one_line() {
+        let source = concat!(
+            "pub fn merge(\n",
+            "    &mut self,\n",
+            "    other: &Config, /* wins */\n",
+            "    strict: bool,\n",
+            ") -> Result<(), String> {\n",
+            "    Ok(())\n",
+            "}\n",
+        );
+        assert_eq!(
+            collapse_declaration_header(source.chars(), BodyDelimiter::Brace).as_deref(),
+            Some("pub fn merge(&mut self, other: &Config, strict: bool) -> Result<(), String>")
+        );
+    }
+
+    #[test]
+    fn a_rust_declaration_without_a_body_ends_at_its_semicolon() {
+        assert_eq!(
+            collapse_declaration_header("fn drop(&mut self);\n".chars(), BodyDelimiter::Brace)
+                .as_deref(),
+            Some("fn drop(&mut self)")
+        );
+    }
+
+    #[test]
+    fn a_python_definition_ends_at_its_colon() {
+        let source = concat!(
+            "def load(\n",
+            "    path: Path,\n",
+            "    *,\n",
+            "    encoding: str = 'utf-8',  # ignored for binary files\n",
+            ") -> dict[str, int]:\n",
+            "    return {}\n",
+        );
+        assert_eq!(
+            collapse_declaration_header(source.chars(), BodyDelimiter::Colon).as_deref(),
+            Some("def load(path: Path, *, encoding: str = 'utf-8') -> dict[str, int]")
+        );
+    }
+
+    #[test]
+    fn a_python_default_holding_braces_does_not_end_the_header() {
+        assert_eq!(
+            collapse_declaration_header(
+                "def load(options={'a': 1}):\n".chars(),
+                BodyDelimiter::Colon
+            )
+            .as_deref(),
+            Some("def load(options={'a': 1})")
+        );
+    }
+
+    #[test]
+    fn a_string_default_spanning_lines_stays_on_one_line() {
+        let signature = collapse_declaration_header(
+            "def render(template=\"\"\"\nhello\n\"\"\"):\n".chars(),
+            BodyDelimiter::Colon,
+        )
+        .expect("the header ends at the colon");
+        assert!(!signature.contains('\n'), "{signature}");
+        assert_eq!(signature, "def render(template=\"\"\" hello \"\"\")");
+    }
+
+    #[test]
+    fn an_unknown_language_stops_at_the_end_of_the_line() {
+        assert_eq!(
+            body_delimiter(Some("Ruby")),
+            BodyDelimiter::LineEnd,
+            "the fork ships no Ruby outline query, so it must fall back"
+        );
+        assert_eq!(
+            collapse_declaration_header(
+                "def load(path)\n  File.read(path)\nend\n".chars(),
+                BodyDelimiter::LineEnd
+            )
+            .as_deref(),
+            Some("def load(path)")
+        );
+    }
+
+    #[test]
+    fn a_header_left_unbalanced_falls_back_to_the_outline_text() {
+        // A declaration wrapped over several lines in a language whose body
+        // delimiter is unknown would read as a broken `def load(`.
+        assert_eq!(
+            collapse_declaration_header("def load(\n  path\n)\n".chars(), BodyDelimiter::LineEnd),
+            None
+        );
+        // Nor does a header that never ends within the scanned window.
+        assert_eq!(
+            collapse_declaration_header(
+                "pub fn merge(\n  &mut self,\n".chars(),
+                BodyDelimiter::Brace
+            ),
+            None
+        );
+        // A wrapped generic list closes its parameters on the first line, which
+        // would otherwise end the header at `fn map<F: Fn(&str) -> bool,`.
+        assert_eq!(
+            collapse_declaration_header(
+                "fn map<\n    F: Fn(&str) -> bool,\n>(\n    predicate: F,\n) {\n".chars(),
+                BodyDelimiter::Brace
+            ),
+            None
+        );
+        assert!(angle_brackets_are_balanced(
+            "fn parse(source: &str) -> Result<Vec<Item>, Error>"
+        ));
+        assert!(!angle_brackets_are_balanced("fn map<F: Fn(&str) -> bool,"));
+    }
+
+    #[test]
+    fn a_long_signature_is_elided() {
+        let mut source = String::from("pub fn wide(");
+        for index in 0..40 {
+            source.push_str(&format!("argument_{index}: u32, "));
+        }
+        source.push_str(") {}\n");
+
+        let signature = collapse_declaration_header(source.chars(), BodyDelimiter::Brace)
+            .expect("the header ends at the body brace");
+        assert_eq!(signature.chars().count(), MAX_SIGNATURE_CHARS);
+        assert!(signature.ends_with('…'), "{signature}");
+        assert!(
+            signature.starts_with("pub fn wide(argument_0: u32, argument_1: u32,"),
+            "{signature}"
         );
     }
 

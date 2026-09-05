@@ -22,9 +22,9 @@ use futures::{
 use fuzzy::CharBag;
 use git::{
     BISECT_LOG, COMMIT_MESSAGE, DOT_GIT, FETCH_HEAD, FSMONITOR_DAEMON, GC_PID, GITIGNORE,
-    HOOKS_DIR, INFO_DIR, LFS_DIR, LOGS_DIR, LOGS_REF_STASH, OBJECTS_DIR, ORIG_HEAD,
-    REBASE_APPLY_DIR, REBASE_MERGE_DIR, REFS_DIR, REFTABLE_DIR, REPO_EXCLUDE, SEQUENCER_DIR,
-    status::GitSummary,
+    HEAD_FILE, HOOKS_DIR, INDEX_FILE, INFO_DIR, LFS_DIR, LOGS_DIR, LOGS_REF_STASH, OBJECTS_DIR,
+    ORIG_HEAD, PACKED_REFS_FILE, REBASE_APPLY_DIR, REBASE_MERGE_DIR, REFS_DIR, REFS_STASH,
+    REFTABLE_DIR, REPO_EXCLUDE, SEQUENCER_DIR, status::GitSummary,
 };
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Priority,
@@ -377,6 +377,11 @@ struct LocalRepositoryEntry {
     work_directory: WorkDirectory,
     work_directory_abs_path: Arc<Path>,
     git_dir_scan_id: usize,
+    /// What has changed inside the git directory since the last snapshot was
+    /// sent to the worktree. Accumulated across event batches and cleared by
+    /// `send_status_update`, so that a classification is never lost when a
+    /// batch produces no snapshot.
+    git_dir_change: Option<GitDirChange>,
     /// Absolute path to the original .git entry that caused us to create this repository.
     ///
     /// This is normally a directory, but may be a "gitfile" that points to a directory elsewhere
@@ -1341,13 +1346,23 @@ impl LocalWorktree {
         path_prefixes_to_scan_rx: async_channel::Receiver<PathPrefixScanRequest>,
         cx: &Context<Worktree>,
     ) {
-        let snapshot = self.snapshot();
+        let track_gitignores = self.visible;
+        let track_git_repositories = self.visible && !self.settings.git_disabled;
+        let mut snapshot = self.snapshot();
+        if !track_git_repositories {
+            // The scanner is restarted when `git.disable_git` is turned on, and
+            // it will never re-discover the repositories that are already in the
+            // snapshot. Hand the restarted scanner a snapshot without them,
+            // while leaving the worktree's own snapshot alone, so that the first
+            // update it sends diffs into removals — which is what tells the git
+            // store (and, through it, remote clients) to forget them.
+            snapshot.git_repositories = Default::default();
+        }
         let share_private_files = self.share_private_files;
         let next_entry_id = self.next_entry_id.clone();
         let fs = self.fs.clone();
         let scanning_enabled = self.scanning_enabled;
         let force_defer_watch = self.force_defer_watch;
-        let track_git_repositories = self.visible;
         let settings = self.settings.clone();
         let (scan_states_tx, mut scan_states_rx) = mpsc::unbounded();
         let background_scanner = cx.background_spawn({
@@ -1390,6 +1405,7 @@ impl LocalWorktree {
                     settings,
                     watcher,
                     track_git_repositories,
+                    track_gitignores,
                     is_single_file,
                     defer_watch,
                 };
@@ -1518,6 +1534,7 @@ impl LocalWorktree {
                                     new_repo.repository_dir_abs_path.clone(),
                                 ),
                                 common_dir_abs_path: Some(new_repo.common_dir_abs_path.clone()),
+                                git_dir_change: None,
                             });
                             new_repos.next();
                         }
@@ -1551,6 +1568,15 @@ impl LocalWorktree {
                                         new_repo.repository_dir_abs_path.clone(),
                                     ),
                                     common_dir_abs_path: Some(new_repo.common_dir_abs_path.clone()),
+                                    git_dir_change: if new_repo.work_directory_abs_path
+                                        == old_repo.work_directory_abs_path
+                                    {
+                                        new_repo.git_dir_change
+                                    } else {
+                                        // A renamed working directory invalidates
+                                        // everything we know about the repository.
+                                        None
+                                    },
                                 });
                             }
                             new_repos.next();
@@ -1566,6 +1592,7 @@ impl LocalWorktree {
                                 dot_git_abs_path: None,
                                 repository_dir_abs_path: None,
                                 common_dir_abs_path: None,
+                                git_dir_change: None,
                             });
                             old_repos.next();
                         }
@@ -1579,6 +1606,7 @@ impl LocalWorktree {
                         dot_git_abs_path: Some(repo.dot_git_abs_path.clone()),
                         repository_dir_abs_path: Some(repo.repository_dir_abs_path.clone()),
                         common_dir_abs_path: Some(repo.common_dir_abs_path.clone()),
+                        git_dir_change: None,
                     });
                     new_repos.next();
                 }
@@ -1590,6 +1618,7 @@ impl LocalWorktree {
                         dot_git_abs_path: Some(repo.dot_git_abs_path.clone()),
                         repository_dir_abs_path: Some(repo.repository_dir_abs_path.clone()),
                         common_dir_abs_path: Some(repo.common_dir_abs_path.clone()),
+                        git_dir_change: None,
                     });
                     old_repos.next();
                 }
@@ -3623,12 +3652,18 @@ impl BackgroundScannerState {
             .git_repositories
             .get(&work_directory_id)
             .map_or(0, |existing_repository| existing_repository.git_dir_scan_id);
+        let git_dir_change = self
+            .snapshot
+            .git_repositories
+            .get(&work_directory_id)
+            .and_then(|existing_repository| existing_repository.git_dir_change);
 
         let local_repository = LocalRepositoryEntry {
             work_directory_id,
             work_directory,
             work_directory_abs_path: work_directory_abs_path.as_path().into(),
             git_dir_scan_id,
+            git_dir_change,
             dot_git_abs_path,
             common_dir_abs_path,
             repository_dir_abs_path,
@@ -4012,6 +4047,42 @@ pub enum PathChange {
     Loaded,
 }
 
+/// Which part of a git directory a filesystem event touched.
+///
+/// Used by the git store to decide how much of a repository's state has to be
+/// recomputed; anything that cannot be classified confidently must end up as
+/// [`GitDirChange::Unknown`] so that the full scan is used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GitDirChange {
+    /// `HEAD`, `packed-refs` or something under `refs/` (but not the stash)
+    /// changed. Branches and the head commit may have moved; the index and the
+    /// working tree did not.
+    Refs,
+    /// Only the index changed. Statuses and diffs may have moved; refs did not.
+    Index,
+    /// Something else changed, or the change could not be classified.
+    Unknown,
+}
+
+impl GitDirChange {
+    fn merge(self, other: Self) -> Self {
+        if self == other { self } else { Self::Unknown }
+    }
+
+    fn classify(path_in_git_dir: &Path) -> Self {
+        if path_in_git_dir == Path::new(INDEX_FILE) {
+            Self::Index
+        } else if path_in_git_dir == Path::new(HEAD_FILE)
+            || path_in_git_dir == Path::new(PACKED_REFS_FILE)
+            || (path_in_git_dir.starts_with(REFS_DIR) && !path_in_git_dir.starts_with(REFS_STASH))
+        {
+            Self::Refs
+        } else {
+            Self::Unknown
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UpdatedGitRepository {
     /// ID of the repository's working directory.
@@ -4026,6 +4097,11 @@ pub struct UpdatedGitRepository {
     pub dot_git_abs_path: Option<Arc<Path>>,
     pub repository_dir_abs_path: Option<Arc<Path>>,
     pub common_dir_abs_path: Option<Arc<Path>>,
+    /// What changed inside the git directory since the last update, when the
+    /// update was caused by a git directory event. `None` means the change came
+    /// from somewhere else (a new repository, a renamed working directory) and
+    /// nothing may be assumed about the repository's state.
+    pub git_dir_change: Option<GitDirChange>,
 }
 
 pub type UpdatedEntriesSet = Arc<[(Arc<RelPath>, ProjectEntryId, PathChange)]>;
@@ -4340,7 +4416,14 @@ struct BackgroundScanner {
     watcher: Arc<dyn Watcher>,
     settings: WorktreeSettings,
     share_private_files: bool,
+    /// Whether `.git` directories are discovered, watched, and reported to the
+    /// git store. Off for invisible worktrees and when `git.disable_git` is set.
     track_git_repositories: bool,
+    /// Whether `.gitignore` files are loaded. This stays on when
+    /// `git.disable_git` is set, because turning it off would make every ignored
+    /// file (`node_modules`, build output) show up in the project panel and in
+    /// searches — the opposite of what disabling git integration is asked for.
+    track_gitignores: bool,
     /// Whether this is a single-file worktree (root is a file, not a directory).
     /// Used to determine if we should give up after repeated canonicalization failures.
     is_single_file: bool,
@@ -4367,7 +4450,7 @@ impl BackgroundScanner {
         // If the worktree root does not contain a git repository, then find
         // the git repository in an ancestor directory. Find any gitignore files
         // in ancestor directories.
-        let repo = if scanning_enabled && self.track_git_repositories {
+        let repo = if scanning_enabled && self.track_gitignores {
             let (ignores, exclude, repo) =
                 discover_ancestor_git_repo(self.fs.clone(), &root_abs_path).await;
             let mut state = self.state.lock().await;
@@ -4422,7 +4505,7 @@ impl BackgroundScanner {
         let mut global_gitignore_events = if let Some(global_gitignore_path) =
             &global_gitignore_file
             && scanning_enabled
-            && self.track_git_repositories
+            && self.track_gitignores
         {
             let is_file = self.fs.is_file(&global_gitignore_path).await;
             self.state.lock().await.snapshot.global_gitignore = if is_file {
@@ -4827,8 +4910,22 @@ impl BackgroundScanner {
             SEQUENCER_DIR,
         ];
 
-        let mut dot_git_abs_paths = Vec::new();
+        let mut dot_git_abs_paths: Vec<(PathBuf, GitDirChange)> = Vec::new();
         let mut work_dirs_needing_exclude_update = Vec::new();
+
+        fn record_dot_git_change(
+            dot_git_abs_paths: &mut Vec<(PathBuf, GitDirChange)>,
+            dot_git_abs_path: PathBuf,
+            change: GitDirChange,
+        ) {
+            match dot_git_abs_paths
+                .iter_mut()
+                .find(|(path, _)| *path == dot_git_abs_path)
+            {
+                Some((_, recorded)) => *recorded = recorded.merge(change),
+                None => dot_git_abs_paths.push((dot_git_abs_path, change)),
+            }
+        }
 
         {
             let snapshot = &self.state.lock().await.snapshot;
@@ -4908,12 +5005,11 @@ impl BackgroundScanner {
                         continue;
                     }
 
-                    if !dot_git_abs_paths.contains(&dot_git_abs_path) {
-                        log::debug!(
-                            "detected update within git repo at {dot_git_abs_path:?}: {abs_path:?}"
-                        );
-                        dot_git_abs_paths.push(dot_git_abs_path);
-                    }
+                    let change = GitDirChange::classify(&path_in_git_dir);
+                    log::debug!(
+                        "detected update within git repo at {dot_git_abs_path:?}: {abs_path:?} ({change:?})"
+                    );
+                    record_dot_git_change(&mut dot_git_abs_paths, dot_git_abs_path, change);
 
                     // New directories can appear under the `refs` tree at any time, e.g. when a
                     // remote is added or a branch name contains slashes. On platforms where the
@@ -4950,11 +5046,15 @@ impl BackgroundScanner {
                         .iter()
                         .any(|git_dir_abs_path| git_dir_abs_path.starts_with(abs_path.as_path()));
                         let dot_git_abs_path = repository.dot_git_abs_path.to_path_buf();
-                        if affected_by_rescan && !dot_git_abs_paths.contains(&dot_git_abs_path) {
+                        if affected_by_rescan {
                             log::debug!(
                                 "reloading git repo at {dot_git_abs_path:?} due to rescan of {abs_path:?}"
                             );
-                            dot_git_abs_paths.push(dot_git_abs_path);
+                            record_dot_git_change(
+                                &mut dot_git_abs_paths,
+                                dot_git_abs_path,
+                                GitDirChange::Unknown,
+                            );
                         }
                     }
                 }
@@ -4978,11 +5078,16 @@ impl BackgroundScanner {
                     log::debug!(
                         "not reloading git repo at {dot_git_abs_path:?}: the bare .git event is explained by filtered events in the same batch"
                     );
-                } else if !dot_git_abs_paths.contains(&dot_git_abs_path) {
+                } else if !dot_git_abs_paths
+                    .iter()
+                    .any(|(path, _)| *path == dot_git_abs_path)
+                {
                     log::debug!(
                         "detected update within git repo at {dot_git_abs_path:?}: bare .git directory event"
                     );
-                    dot_git_abs_paths.push(dot_git_abs_path);
+                    // A bare `.git` event says only that *something* inside the
+                    // git directory changed, so nothing may be assumed about it.
+                    dot_git_abs_paths.push((dot_git_abs_path, GitDirChange::Unknown));
                 }
             }
 
@@ -5061,11 +5166,13 @@ impl BackgroundScanner {
                         .iter()
                         .filter(|(_, repo)| repo.directory_contains(&relative_path))
                     {
-                        if !dot_git_abs_paths.iter().any(|dot_git_abs_path| {
-                            dot_git_abs_path == repo.common_dir_abs_path.as_ref()
-                        }) {
-                            dot_git_abs_paths.push(repo.common_dir_abs_path.to_path_buf());
-                        }
+                        // A changed `.gitignore` can add or drop ignored files, so
+                        // the repository's statuses have to be recomputed.
+                        record_dot_git_change(
+                            &mut dot_git_abs_paths,
+                            repo.common_dir_abs_path.to_path_buf(),
+                            GitDirChange::Unknown,
+                        );
                     }
                 }
 
@@ -5320,6 +5427,25 @@ impl BackgroundScanner {
         let merged_event_roots = merge_event_roots(&state.changed_paths, event_roots);
 
         let new_snapshot = state.snapshot.clone();
+        // The classification travels with the snapshot that is about to be sent,
+        // so the scanner's own copy starts accumulating again from scratch. It is
+        // deliberately not cleared when this function returns early above, so
+        // that a batch which produces no snapshot doesn't lose its classification.
+        let work_directory_ids_with_pending_change = state
+            .snapshot
+            .git_repositories
+            .iter()
+            .filter(|(_, repository)| repository.git_dir_change.is_some())
+            .map(|(work_directory_id, _)| *work_directory_id)
+            .collect::<Vec<_>>();
+        for work_directory_id in work_directory_ids_with_pending_change {
+            state
+                .snapshot
+                .git_repositories
+                .update(&work_directory_id, |repository| {
+                    repository.git_dir_change = None;
+                });
+        }
         let old_snapshot = mem::replace(&mut state.prev_snapshot, new_snapshot.snapshot.clone());
         let changes = build_diff(
             self.phase,
@@ -5396,8 +5522,8 @@ impl BackgroundScanner {
             };
             let child_path: Arc<RelPath> = child_path.into();
 
-            if self.track_git_repositories {
-                if child_name == DOT_GIT {
+            if child_name == DOT_GIT {
+                if self.track_git_repositories {
                     let mut state = self.state.lock().await;
                     state
                         .insert_git_repository(
@@ -5406,23 +5532,21 @@ impl BackgroundScanner {
                             self.watcher.as_ref(),
                         )
                         .await;
-                } else if child_name == GITIGNORE {
-                    match build_gitignore(&child_abs_path, self.fs.as_ref()).await {
-                        Ok(ignore) => {
-                            let ignore = Arc::new(ignore);
-                            ignore_stack = ignore_stack.append(
-                                IgnoreKind::Gitignore(job.abs_path.clone()),
-                                ignore.clone(),
-                            );
-                            new_ignore = Some(ignore);
-                        }
-                        Err(error) => {
-                            log::error!(
-                                "error loading .gitignore file {:?} - {:?}",
-                                child_name,
-                                error
-                            );
-                        }
+                }
+            } else if child_name == GITIGNORE && self.track_gitignores {
+                match build_gitignore(&child_abs_path, self.fs.as_ref()).await {
+                    Ok(ignore) => {
+                        let ignore = Arc::new(ignore);
+                        ignore_stack = ignore_stack
+                            .append(IgnoreKind::Gitignore(job.abs_path.clone()), ignore.clone());
+                        new_ignore = Some(ignore);
+                    }
+                    Err(error) => {
+                        log::error!(
+                            "error loading .gitignore file {:?} - {:?}",
+                            child_name,
+                            error
+                        );
                     }
                 }
             }
@@ -5670,8 +5794,14 @@ impl BackgroundScanner {
         .await;
 
         let mut new_ancestor_repo =
-            if self.track_git_repositories && relative_paths.iter().any(|path| path.is_empty()) {
-                Some(discover_ancestor_git_repo(self.fs.clone(), &root_abs_path).await)
+            if self.track_gitignores && relative_paths.iter().any(|path| path.is_empty()) {
+                let (ignores, exclude, repo) =
+                    discover_ancestor_git_repo(self.fs.clone(), &root_abs_path).await;
+                Some((
+                    ignores,
+                    exclude,
+                    repo.filter(|_| self.track_git_repositories),
+                ))
             } else {
                 None
             };
@@ -6086,12 +6216,15 @@ impl BackgroundScanner {
         state.snapshot.entries_by_id.edit(entries_by_id_edits, ());
     }
 
-    async fn update_git_repositories(&self, dot_git_paths: Vec<PathBuf>) -> Vec<Arc<Path>> {
+    async fn update_git_repositories(
+        &self,
+        dot_git_paths: Vec<(PathBuf, GitDirChange)>,
+    ) -> Vec<Arc<Path>> {
         log::trace!("reloading repositories: {dot_git_paths:?}");
         let mut state = self.state.lock().await;
         let scan_id = state.snapshot.scan_id;
         let mut affected_repo_roots = Vec::new();
-        for dot_git_dir in dot_git_paths {
+        for (dot_git_dir, git_dir_change) in dot_git_paths {
             // Several repositories can share a git directory: a linked worktree's
             // commondir is the main checkout's `.git`, so a ref update there must
             // refresh every repository that reads from it.
@@ -6140,6 +6273,10 @@ impl BackgroundScanner {
                         .git_repositories
                         .update(&work_directory_id, |entry| {
                             entry.git_dir_scan_id = scan_id;
+                            entry.git_dir_change = Some(match entry.git_dir_change {
+                                Some(pending) => pending.merge(git_dir_change),
+                                None => git_dir_change,
+                            });
                         });
                 }
             }

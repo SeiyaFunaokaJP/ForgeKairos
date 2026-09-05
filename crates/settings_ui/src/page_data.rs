@@ -7823,14 +7823,14 @@ fn terminal_page() -> SettingsPage {
 }
 
 fn version_control_page() -> SettingsPage {
-    fn git_integration_section() -> [SettingsPageItem; 2] {
+    fn git_integration_section() -> [SettingsPageItem; 3] {
         [
             SettingsPageItem::SectionHeader("Git 連携"),
             SettingsPageItem::DynamicItem(DynamicItem {
                 discriminant: SettingItem {
                     files: USER,
                     title: "Git 連携を無効にする",
-                    description: "Zed の Git 連携機能をすべて無効にします。",
+                    description: "Zed の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。",
                     field: Box::new(SettingField::<bool> {
                         organization_override: None,
                         json_path: Some("git.disable_git"),
@@ -7923,6 +7923,29 @@ fn version_control_page() -> SettingsPage {
                         },
                     ],
                 ],
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                files: USER,
+                title: "追跡されていないファイルの検出範囲",
+                description: "git status に追跡されていないファイルをどこまで報告させるかを設定します。All は追跡されていないフォルダーの中身も 1 件ずつ報告するため、プロジェクトパネルの色分けが正確になりますが、巨大なリポジトリでは最も重くなります。Normal はフォルダーだけ、No は追跡されていないファイルを一切扱いません。リモート SSH でも同じ値がサーバー側で使われます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("git.status_untracked_files"),
+                    pick: |settings_content| {
+                        settings_content
+                            .git
+                            .as_ref()?
+                            .status_untracked_files
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .git
+                            .get_or_insert_default()
+                            .status_untracked_files = value;
+                    },
+                }),
+                metadata: None,
             }),
         ]
     }
@@ -8438,7 +8461,7 @@ fn collaboration_page() -> SettingsPage {
 }
 
 fn ai_page(cx: &App) -> SettingsPage {
-    fn general_section() -> [SettingsPageItem; 10] {
+    fn general_section() -> [SettingsPageItem; 11] {
         [
             SettingsPageItem::SectionHeader("全般"),
             // The only UI writer of `agent.enabled` (ADR-F13, `docs/jp-enhance/DESIGN.md`):
@@ -8629,6 +8652,20 @@ fn ai_page(cx: &App) -> SettingsPage {
                 in_json: false,
                 files: USER,
                 render: render_mcp_servers_page,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "IDE サーバーを有効にする",
+                description: "Zed 自身を 127.0.0.1 の IDE サーバーとして公開し、統合ターミナルの Claude Code CLI や外部のエージェントから、開いているファイル・選択範囲・診断を読めるようにします。差分はエディターのタブで「採用 / 拒否」を選べます。外向きの通信はしません。既定では無効です。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("ide_server.enabled"),
+                    pick: |settings_content| settings_content.ide_server.as_ref()?.enabled.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.ide_server.get_or_insert_default().enabled = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
             }),
         ]
     }
@@ -9027,6 +9064,77 @@ fn ai_page(cx: &App) -> SettingsPage {
                 }),
                 metadata: Some(Box::new(SettingsFieldMetadata {
                     placeholder: Some("90%"),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "自動圧縮を行う最小コンテキストウィンドウ",
+                description: "自動圧縮を実行するモデルのコンテキストウィンドウの下限 (トークン数) です。これを下回るモデルでは圧縮を行わず、トークン上限の警告だけを表示します。ローカル LLM の小さいコンテキストでも自動圧縮を効かせたいときに下げてください。8000 未満を指定しても 8000 として扱われます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.auto_compact_min_context_window"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .auto_compact_min_context_window
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .auto_compact_min_context_window = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("80000"),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "アクティブなファイルを自動で添付",
+                description: "メッセージを送信するときに、アクティブなエディターを自動で添付します。選択範囲があればその行だけを、なければファイル全体を添付します。同じものを手で @ メンションしている場合は二重に添付しません。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.attach_active_file"),
+                    pick: |settings_content| {
+                        settings_content.agent.as_ref()?.attach_active_file.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .attach_active_file = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "システムプロンプトに含めるリポジトリマップのバイト数",
+                description: "システムプロンプトのプロジェクトのルートフォルダー一覧の直後に、リポジトリマップ (ファイルとそこで宣言されているシンボルの一覧) を差し込みます。0 で無効です。上限は 32768 バイトで、それより大きい値は 32768 として扱われます。プロジェクトの内容が変わったときだけ作り直します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.system_prompt_repo_map_bytes"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .system_prompt_repo_map_bytes
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .system_prompt_repo_map_bytes = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("0"),
                     ..Default::default()
                 })),
                 files: USER,

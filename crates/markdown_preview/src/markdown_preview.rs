@@ -5,8 +5,11 @@ pub mod markdown_export;
 pub mod markdown_preview_settings;
 pub mod markdown_preview_view;
 pub mod mermaid_diagram_selector;
+pub mod table_editor;
 
-pub use zed_actions::preview::markdown::{ExportToPdf, OpenPreview, OpenPreviewToTheSide};
+pub use zed_actions::preview::markdown::{
+    EditTable, ExportToPdf, OpenPreview, OpenPreviewToTheSide,
+};
 
 use crate::markdown_preview_view::MarkdownPreviewView;
 
@@ -50,6 +53,7 @@ pub fn init(cx: &mut App) {
         };
         markdown_preview_view::MarkdownPreviewView::register(workspace, window, cx);
         mermaid_diagram_selector::register(workspace);
+        table_editor::register(workspace);
     })
     .detach();
 }

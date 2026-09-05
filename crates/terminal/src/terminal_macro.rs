@@ -11,7 +11,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use fs::Fs;
-use futures::StreamExt as _;
+use futures::{StreamExt as _, future::LocalBoxFuture};
 use futures_lite::future::yield_now;
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, Global, Task};
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,14 @@ pub enum MacroStep {
     Sleep { ms: u64 },
     /// Wipe the screen and the scrollback, the way `terminal::Clear` does.
     Clear,
+    /// Run `steps` `count` times before moving on. `0` repeats until the macro
+    /// is cancelled, the same rule as [`TerminalMacro::repeat`].
+    Repeat {
+        #[serde(default = "default_repeat")]
+        count: u32,
+        #[serde(default)]
+        steps: Vec<MacroStep>,
+    },
 }
 
 impl MacroStep {
@@ -57,6 +65,7 @@ impl MacroStep {
             MacroStep::WaitFor { .. } => "期待文字を待つ",
             MacroStep::Sleep { .. } => "秒待ち",
             MacroStep::Clear => "画面を消去",
+            MacroStep::Repeat { .. } => "繰り返し",
         }
     }
 
@@ -73,6 +82,10 @@ impl MacroStep {
             ),
             MacroStep::Sleep { ms } => format!("待機: {} 秒", *ms as f64 / 1000.0),
             MacroStep::Clear => "画面を消去".to_string(),
+            MacroStep::Repeat { count, steps } => match count {
+                0 => format!("繰り返し: 中止まで ({} ステップ)", steps.len()),
+                count => format!("繰り返し: {count} 回 ({} ステップ)", steps.len()),
+            },
         }
     }
 }
@@ -440,6 +453,22 @@ pub struct MacroProgress {
     pub iteration: usize,
     /// Total repetitions, or `None` while repeating until cancelled.
     pub iteration_count: Option<usize>,
+    /// Where a [`MacroStep::Repeat`] inside the current step stands, if one is
+    /// running. Its steps are deliberately left out of `step_count`: the outer
+    /// position is what says how far the macro as a whole has got.
+    pub nested: Option<NestedProgress>,
+}
+
+/// Position inside a running [`MacroStep::Repeat`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NestedProgress {
+    pub iteration: usize,
+    pub iteration_count: Option<usize>,
+    pub step_index: usize,
+    pub step_count: usize,
+    /// [`MacroStep::kind_label`] of the step being run, so the status strip can
+    /// name it without carrying an owned string through a `Copy` struct.
+    pub kind_label: &'static str,
 }
 
 /// Runs `terminal_macro` against `terminal`, step by step, `repeat` times.
@@ -457,14 +486,22 @@ pub fn run_macro(
     let iteration_count = terminal_macro.iteration_count();
     let interval = Duration::from_millis(terminal_macro.repeat_interval_ms);
     cx.spawn(async move |cx| {
-        // `None` means "no 送信 step has run yet", in which case a wait may
-        // match text that was already on screen (the login banner of a terminal
-        // the macro was launched against). Once a step has sent something, the
-        // waits only look at output that arrived afterwards, so a stale prompt
-        // cannot satisfy them instantly.
-        let mut baseline: Option<Vec<String>> = None;
-        let mut iteration = 0usize;
+        let mut runner = MacroRunner {
+            terminal,
+            on_progress: Box::new(on_progress),
+            cx: cx.clone(),
+            baseline: None,
+            progress: MacroProgress {
+                step_index: 0,
+                step_count,
+                iteration: 1,
+                iteration_count,
+                nested: None,
+            },
+            path: Vec::new(),
+        };
 
+        let mut iteration = 0usize;
         loop {
             iteration += 1;
             if iteration > 1 {
@@ -474,76 +511,12 @@ pub fn run_macro(
                     // starve the UI for as long as it runs.
                     yield_now().await;
                 } else {
-                    cx.background_executor().timer(interval).await;
+                    let timer = runner.cx.background_executor().timer(interval);
+                    timer.await;
                 }
             }
-
-            for (index, step) in terminal_macro.steps.iter().enumerate() {
-                cx.update(|cx| {
-                    on_progress(
-                        MacroProgress {
-                            step_index: index,
-                            step_count,
-                            iteration,
-                            iteration_count,
-                        },
-                        cx,
-                    )
-                });
-
-                match step {
-                    MacroStep::Send { text, newline } => {
-                        baseline = Some(scan_lines(&terminal, cx));
-                        let mut bytes = text.clone().into_bytes();
-                        if *newline {
-                            // TeraTerm sends CR for Enter; LF puts PowerShell into
-                            // its continuation mode.
-                            bytes.push(b'\r');
-                        }
-                        terminal.update(cx, |terminal, _| terminal.write_init_command(bytes));
-                    }
-                    MacroStep::Sleep { ms } => {
-                        cx.background_executor()
-                            .timer(Duration::from_millis(*ms))
-                            .await;
-                    }
-                    MacroStep::Clear => {
-                        // The screen a wait looks at is gone, so the next wait
-                        // has to start from whatever the cleared grid holds.
-                        terminal.update(cx, |terminal, _| terminal.clear());
-                        baseline = None;
-                    }
-                    MacroStep::WaitFor {
-                        pattern,
-                        regex,
-                        timeout_ms,
-                    } => {
-                        let matcher = PatternMatcher::new(pattern, *regex).map_err(|error| {
-                            anyhow!("ステップ {}: 正規表現が不正です ({error})", index + 1)
-                        })?;
-                        match wait_for_pattern(
-                            &terminal,
-                            &matcher,
-                            baseline.as_deref(),
-                            Duration::from_millis(*timeout_ms),
-                            cx,
-                        )
-                        .await
-                        {
-                            Ok(matched) => baseline = Some(matched),
-                            Err(WaitFailure::TimedOut) => bail!(
-                                "ステップ {}: 『{pattern}』が {} 秒以内に現れませんでした",
-                                index + 1,
-                                *timeout_ms as f64 / 1000.0
-                            ),
-                            Err(WaitFailure::TerminalGone) => bail!(
-                                "ステップ {}: 『{pattern}』を待っている間にターミナルが終了しました",
-                                index + 1
-                            ),
-                        }
-                    }
-                }
-            }
+            runner.progress.iteration = iteration;
+            runner.run_steps(&terminal_macro.steps).await?;
 
             match iteration_count {
                 Some(count) if iteration >= count => break,
@@ -556,6 +529,171 @@ pub fn run_macro(
 
         Ok(())
     })
+}
+
+/// One in-flight macro run. Holds the state that every step level shares: the
+/// terminal, the baseline a wait measures new output against, and where the
+/// run currently is.
+struct MacroRunner {
+    terminal: Entity<Terminal>,
+    on_progress: Box<dyn Fn(MacroProgress, &mut App)>,
+    cx: AsyncApp,
+    /// `None` means "no 送信 step has run yet", in which case a wait may match
+    /// text that was already on screen (the login banner of a terminal the
+    /// macro was launched against). Once a step has sent something, the waits
+    /// only look at output that arrived afterwards, so a stale prompt cannot
+    /// satisfy them instantly.
+    baseline: Option<Vec<String>>,
+    progress: MacroProgress,
+    /// Position of the running step, outermost first, so a failure inside a
+    /// nested repeat can name 「ステップ 3-2」.
+    path: Vec<usize>,
+}
+
+impl MacroRunner {
+    fn report(&self) {
+        let progress = self.progress;
+        self.cx.update(|cx| (self.on_progress)(progress, cx));
+    }
+
+    /// 「3」 for a top-level step, 「3-2」 for the second step of the repeat that
+    /// is the third step of the macro.
+    fn step_label(&self) -> String {
+        self.path
+            .iter()
+            .map(|index| (index + 1).to_string())
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+
+    /// Runs the outermost step list, which is the one the progress strip counts.
+    async fn run_steps(&mut self, steps: &[MacroStep]) -> Result<()> {
+        for (index, step) in steps.iter().enumerate() {
+            self.progress.step_index = index;
+            self.progress.nested = None;
+            self.path.push(index);
+            self.report();
+            let result = self.run_step(step).await;
+            self.path.pop();
+            result?;
+        }
+        Ok(())
+    }
+
+    /// Runs a nested [`MacroStep::Repeat`]. Boxed because a repeat may hold
+    /// another one, which would otherwise make this future infinitely sized.
+    fn run_repeat<'a>(
+        &'a mut self,
+        count: u32,
+        steps: &'a [MacroStep],
+    ) -> LocalBoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            let iteration_count = (count > 0).then_some(count as usize);
+            let step_count = steps.len();
+            // A repeat two levels down overwrites the field while it runs, so
+            // the level above has to put its own position back afterwards.
+            let enclosing = self.progress.nested;
+            let mut iteration = 0usize;
+            loop {
+                iteration += 1;
+                if iteration > 1 {
+                    // Nothing separates the repetitions, so a body that never
+                    // awaits would starve the foreground thread.
+                    yield_now().await;
+                }
+
+                for (index, step) in steps.iter().enumerate() {
+                    self.progress.nested = Some(NestedProgress {
+                        iteration,
+                        iteration_count,
+                        step_index: index,
+                        step_count,
+                        kind_label: step.kind_label(),
+                    });
+                    self.path.push(index);
+                    self.report();
+                    let result = self.run_step(step).await;
+                    self.path.pop();
+                    result?;
+                }
+
+                match iteration_count {
+                    Some(count) if iteration >= count => break,
+                    None if step_count == 0 => break,
+                    _ => {}
+                }
+            }
+            self.progress.nested = enclosing;
+            Ok(())
+        })
+    }
+
+    async fn run_step(&mut self, step: &MacroStep) -> Result<()> {
+        match step {
+            MacroStep::Send { text, newline } => {
+                self.baseline = Some(scan_lines(&self.terminal, &mut self.cx));
+                let mut bytes = text.clone().into_bytes();
+                if *newline {
+                    // TeraTerm sends CR for Enter; LF puts PowerShell into its
+                    // continuation mode.
+                    bytes.push(b'\r');
+                }
+                self.terminal.update(&mut self.cx, |terminal, _| {
+                    terminal.write_init_command(bytes)
+                });
+            }
+            MacroStep::Sleep { ms } => {
+                let timer = self
+                    .cx
+                    .background_executor()
+                    .timer(Duration::from_millis(*ms));
+                timer.await;
+            }
+            MacroStep::Clear => {
+                // The screen a wait looks at is gone, so the next wait has to
+                // start from whatever the cleared grid holds.
+                self.terminal
+                    .update(&mut self.cx, |terminal, _| terminal.clear());
+                self.baseline = None;
+            }
+            MacroStep::Repeat { count, steps } => {
+                self.run_repeat(*count, steps).await?;
+            }
+            MacroStep::WaitFor {
+                pattern,
+                regex,
+                timeout_ms,
+            } => {
+                let matcher = PatternMatcher::new(pattern, *regex).map_err(|error| {
+                    anyhow!(
+                        "ステップ {}: 正規表現が不正です ({error})",
+                        self.step_label()
+                    )
+                })?;
+                match wait_for_pattern(
+                    &self.terminal,
+                    &matcher,
+                    self.baseline.as_deref(),
+                    Duration::from_millis(*timeout_ms),
+                    &mut self.cx,
+                )
+                .await
+                {
+                    Ok(matched) => self.baseline = Some(matched),
+                    Err(WaitFailure::TimedOut) => bail!(
+                        "ステップ {}: 『{pattern}』が {} 秒以内に現れませんでした",
+                        self.step_label(),
+                        *timeout_ms as f64 / 1000.0
+                    ),
+                    Err(WaitFailure::TerminalGone) => bail!(
+                        "ステップ {}: 『{pattern}』を待っている間にターミナルが終了しました",
+                        self.step_label()
+                    ),
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 fn scan_lines(terminal: &Entity<Terminal>, cx: &mut AsyncApp) -> Vec<String> {
@@ -802,6 +940,75 @@ mod tests {
         let text = serialize_sessions_file(&file).expect("serializes");
         assert!(text.contains(r#""type": "clear""#), "{text}");
         assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn a_nested_repeat_round_trips() {
+        let file = parse_sessions_file(
+            r#"{
+                "macros": [{
+                    "name": "m",
+                    "steps": [
+                        { "type": "send", "text": "enable" },
+                        {
+                            "type": "repeat",
+                            "count": 3,
+                            "steps": [
+                                { "type": "send", "text": "show version" },
+                                { "type": "sleep", "ms": 500 }
+                            ]
+                        },
+                        { "type": "repeat", "steps": [] }
+                    ]
+                }]
+            }"#,
+        );
+
+        assert_eq!(
+            file.macros[0].steps[1],
+            MacroStep::Repeat {
+                count: 3,
+                steps: vec![
+                    MacroStep::Send {
+                        text: "show version".to_string(),
+                        newline: true,
+                    },
+                    MacroStep::Sleep { ms: 500 },
+                ],
+            }
+        );
+        // A repeat without a count is a single pass, like `TerminalMacro`.
+        assert_eq!(
+            file.macros[0].steps[2],
+            MacroStep::Repeat {
+                count: 1,
+                steps: Vec::new(),
+            }
+        );
+
+        let text = serialize_sessions_file(&file).expect("serializes");
+        assert!(text.contains(r#""type": "repeat""#), "{text}");
+        assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn a_repeat_step_summarizes_its_body() {
+        assert_eq!(
+            MacroStep::Repeat {
+                count: 3,
+                steps: vec![MacroStep::Clear],
+            }
+            .summary(),
+            "繰り返し: 3 回 (1 ステップ)"
+        );
+        assert_eq!(
+            MacroStep::Repeat {
+                count: 0,
+                steps: Vec::new(),
+            }
+            .summary(),
+            "繰り返し: 中止まで (0 ステップ)"
+        );
     }
 
     #[test]
@@ -1082,6 +1289,152 @@ mod tests {
                             iterations
                                 .borrow_mut()
                                 .push((step.iteration, step.iteration_count))
+                        }
+                    },
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            for _ in 0..3 {
+                cx.executor().advance_clock(Duration::from_millis(110));
+                cx.run_until_parked();
+            }
+            // Dropping the task is how 中止 stops a run.
+            drop(run);
+            cx.run_until_parked();
+
+            assert_eq!(
+                *iterations.borrow(),
+                vec![(1, None), (2, None), (3, None), (4, None)]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_nested_repeat_runs_its_body_without_growing_the_outer_step_count(
+            cx: &mut TestAppContext,
+        ) {
+            let terminal = display_only_terminal(cx);
+            let progress = Rc::new(RefCell::new(Vec::new()));
+
+            let send = |text: &str| MacroStep::Send {
+                text: text.to_string(),
+                newline: true,
+            };
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            send("enable"),
+                            MacroStep::Repeat {
+                                count: 2,
+                                steps: vec![send("show version"), MacroStep::Clear],
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    {
+                        let progress = progress.clone();
+                        move |step, _| {
+                            progress.borrow_mut().push((
+                                step.step_index,
+                                step.step_count,
+                                step.nested.map(|nested| {
+                                    (nested.iteration, nested.step_index, nested.kind_label)
+                                }),
+                            ))
+                        }
+                    },
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                *progress.borrow(),
+                vec![
+                    (0, 2, None),
+                    (1, 2, None),
+                    (1, 2, Some((1, 0, "送信"))),
+                    (1, 2, Some((1, 1, "画面を消去"))),
+                    (1, 2, Some((2, 0, "送信"))),
+                    (1, 2, Some((2, 1, "画面を消去"))),
+                ]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_failure_inside_a_nested_repeat_names_the_outer_and_inner_step(
+            cx: &mut TestAppContext,
+        ) {
+            let terminal = display_only_terminal(cx);
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "enable".into(),
+                                newline: true,
+                            },
+                            MacroStep::Repeat {
+                                count: 2,
+                                steps: vec![MacroStep::WaitFor {
+                                    pattern: "Password:".into(),
+                                    regex: false,
+                                    timeout_ms: 5_000,
+                                }],
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_millis(5_100));
+            cx.run_until_parked();
+
+            let error = run.await.expect_err("the nested wait should time out");
+            assert_eq!(
+                error.to_string(),
+                "ステップ 2-1: 『Password:』が 5 秒以内に現れませんでした"
+            );
+        }
+
+        #[gpui::test]
+        async fn an_endless_nested_repeat_keeps_going_until_it_is_dropped(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+            let iterations = Rc::new(RefCell::new(Vec::new()));
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![MacroStep::Repeat {
+                            count: 0,
+                            steps: vec![MacroStep::Sleep { ms: 100 }],
+                        }],
+                        ..TerminalMacro::default()
+                    },
+                    {
+                        let iterations = iterations.clone();
+                        move |step, _| {
+                            if let Some(nested) = step.nested {
+                                iterations
+                                    .borrow_mut()
+                                    .push((nested.iteration, nested.iteration_count));
+                            }
                         }
                     },
                     cx,

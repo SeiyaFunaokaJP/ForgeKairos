@@ -3,9 +3,9 @@ use crate::{
     CreateDirectoryTool, CreateThreadTool, DbLanguageModel, DbThread, DeletePathTool,
     DiagnosticsTool, EditFileTool, FetchTool, FindPathTool, FindReferencesTool, GetCodeActionsTool,
     GoToDefinitionTool, GrepTool, ListAgentsAndModelsTool, ListDirectoryTool, MovePathTool,
-    ProjectSnapshot, ReadFileTool, RenameTool, RepoMapTool, SandboxedTerminalTool, SpawnAgentTool,
-    SystemPromptTemplate, Template, Templates, TerminalTool, ToolPermissionDecision, WebSearchTool,
-    WriteFileTool, decide_permission_from_settings,
+    ProjectSnapshot, ReadFileTool, RenameTool, RepoMapTool, RepoMapToolInput,
+    SandboxedTerminalTool, SpawnAgentTool, SystemPromptTemplate, Template, Templates, TerminalTool,
+    ToolPermissionDecision, WebSearchTool, WriteFileTool, decide_permission_from_settings,
 };
 use acp_thread::{ClientUserMessageId, MentionUri};
 use action_log::ActionLog;
@@ -47,7 +47,7 @@ use language_model::{
     LanguageModelToolUse, LanguageModelToolUseId, MessageContent, Role, SelectedModel, Speed,
     StopReason, TokenUsage, ZED_CLOUD_PROVIDER_ID,
 };
-use project::{Project, trusted_worktrees::TrustedWorktrees};
+use project::{Project, WorktreeId, trusted_worktrees::TrustedWorktrees};
 use prompt_store::ProjectContext;
 use schemars::{JsonSchema, Schema};
 use serde::de::DeserializeOwned;
@@ -117,11 +117,17 @@ pub enum SandboxStatusRefresh {
     Pending(Task<VerifiedSandboxStatus>),
 }
 
-/// Auto-compaction is only available for models whose context window is at least
-/// this large. For smaller models there isn't enough headroom for a compaction
-/// pass to be worthwhile, so we leave the thread uncompacted and let the UI warn
-/// the user instead.
-pub const MIN_COMPACTION_CONTEXT_WINDOW: u64 = 80_000;
+/// The smallest context window for which auto-compaction still runs. Below it
+/// there isn't enough headroom for a compaction pass to be worthwhile, so the
+/// thread is left uncompacted and the UI warns the user instead.
+///
+/// Upstream hardcoded 80,000; this fork reads
+/// `agent.auto_compact_min_context_window` because local models routinely ship a
+/// context window below that and would otherwise never compact at all
+/// (TODO F13 ③).
+pub fn min_compaction_context_window(cx: &App) -> u64 {
+    AgentSettings::get_global(cx).auto_compact_min_context_window
+}
 
 // Using the heuristic that 1 token is about 4 bytes, keep the last 80K bytes of user-message content (~20k tokens).
 const COMPACTION_RETAINED_USER_MESSAGES_BYTE_BUDGET: usize = 80_000;
@@ -933,6 +939,10 @@ fn localized_tool_name_for_permission(tool_name: &str) -> String {
         "ディレクトリ作成"
     } else if tool_name == FetchTool::NAME {
         "URL の取得"
+    } else if tool_name == ApplyCodeActionTool::NAME {
+        "コードアクションの適用"
+    } else if tool_name == RenameTool::NAME {
+        "シンボルの名前変更"
     } else {
         return tool_name.replace('_', " ");
     };
@@ -1338,6 +1348,19 @@ pub struct Thread {
     /// already-granted permissions skip the approval prompt.
     /// Never persisted — lives and dies with this thread.
     sandbox_grants: Rc<RefCell<ThreadSandboxGrants>>,
+    /// The `<repo_map>` section of the system prompt and the inputs it was
+    /// built from (the byte budget plus every worktree's scan id), so it is
+    /// rebuilt only when the project actually changed rather than on every
+    /// turn — `agent.system_prompt_repo_map_bytes` (TODO F13 ③).
+    system_prompt_repo_map: Option<(SystemPromptRepoMapKey, SharedString)>,
+}
+
+/// Identifies the project state a cached system-prompt repository map was built
+/// from: the configured byte budget, and each worktree's id and scan id.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct SystemPromptRepoMapKey {
+    max_bytes: usize,
+    worktree_scan_ids: Vec<(WorktreeId, usize)>,
 }
 
 impl Thread {
@@ -1473,6 +1496,7 @@ impl Thread {
             inherits_parent_model_settings: true,
             sandboxed_terminal_temp_dir: None,
             sandbox_grants: Rc::new(RefCell::new(ThreadSandboxGrants::default())),
+            system_prompt_repo_map: None,
         }
     }
 
@@ -1860,6 +1884,7 @@ impl Thread {
             sandbox_grants: Rc::new(RefCell::new(ThreadSandboxGrants::from_db(
                 &db_thread.sandbox_grants,
             ))),
+            system_prompt_repo_map: None,
         }
     }
 
@@ -2781,12 +2806,72 @@ impl Thread {
         Ok(events_rx)
     }
 
+    /// Rebuilds the system prompt's `<repo_map>` section when
+    /// `agent.system_prompt_repo_map_bytes` is on and the project changed since
+    /// the last build. Failures are logged and leave the previous map (or none)
+    /// in place: a repository map is context, never a precondition for sending.
+    async fn refresh_system_prompt_repo_map(this: &WeakEntity<Self>, cx: &mut AsyncApp) {
+        let Ok(Some((project, key))) = this.update(cx, |this, cx| {
+            let max_bytes = AgentSettings::get_global(cx).system_prompt_repo_map_bytes;
+            if max_bytes == 0 {
+                this.system_prompt_repo_map = None;
+                return None;
+            }
+            let key = SystemPromptRepoMapKey {
+                max_bytes,
+                worktree_scan_ids: this
+                    .project
+                    .read(cx)
+                    .worktrees(cx)
+                    .map(|worktree| {
+                        let worktree = worktree.read(cx);
+                        (worktree.id(), worktree.scan_id())
+                    })
+                    .collect(),
+            };
+            if this
+                .system_prompt_repo_map
+                .as_ref()
+                .is_some_and(|(cached_key, _)| *cached_key == key)
+            {
+                return None;
+            }
+            Some((this.project.clone(), key))
+        }) else {
+            return;
+        };
+
+        let map = RepoMapTool::build_map(
+            project,
+            RepoMapToolInput {
+                path: None,
+                max_bytes: Some(key.max_bytes),
+            },
+            cx,
+        )
+        .await;
+
+        match map {
+            Ok(map) => {
+                this.update(cx, |this, _cx| {
+                    this.system_prompt_repo_map = Some((key, map.into()));
+                })
+                .log_err();
+            }
+            Err(error) => {
+                log::warn!("failed to build the system prompt repository map: {error:#}");
+            }
+        }
+    }
+
     async fn run_turn_internal(
         this: &WeakEntity<Self>,
         event_stream: &ThreadEventStream,
         mut cancellation_rx: watch::Receiver<bool>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
+        Self::refresh_system_prompt_repo_map(this, cx).await;
+
         let mut attempt = 0;
         let mut intent = CompletionIntent::UserPrompt;
         // Set when a refusal fallback occurs so subsequent iterations use the fallback model.
@@ -4377,6 +4462,10 @@ impl Thread {
                 &self.project.read(cx).worktree_store(),
                 cx,
             ),
+            repo_map: self
+                .system_prompt_repo_map
+                .as_ref()
+                .map(|(_key, map)| map.clone()),
         }
         .render(&self.templates)
         .context("failed to build system prompt")
@@ -4458,7 +4547,7 @@ impl Thread {
             max_token_count.saturating_sub(model.max_output_tokens().unwrap_or(0));
         // Models with a small context window don't leave enough headroom for a
         // compaction pass; the UI warns the user about the token limit instead.
-        if max_input_tokens < MIN_COMPACTION_CONTEXT_WINDOW {
+        if max_input_tokens < min_compaction_context_window(cx) {
             return None;
         }
         let (usage_ix, usage) = {
@@ -7326,7 +7415,7 @@ mod tests {
         let (thread, _event_stream) = setup_thread_for_test(cx).await;
         let model = Arc::new(FakeLanguageModel::default());
         // A context window below the minimum disables auto-compaction.
-        model.set_max_token_count(MIN_COMPACTION_CONTEXT_WINDOW - 1);
+        model.set_max_token_count(agent_settings::DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW - 1);
         let user_message_id = ClientUserMessageId::new();
 
         cx.update(|cx| {
@@ -7432,7 +7521,7 @@ mod tests {
         let model = Arc::new(FakeLanguageModel::default());
         // A context window below the minimum and no recorded token usage would
         // both disable *automatic* compaction. Manual compaction forces it anyway.
-        model.set_max_token_count(MIN_COMPACTION_CONTEXT_WINDOW - 1);
+        model.set_max_token_count(agent_settings::DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW - 1);
         let user_message_id = ClientUserMessageId::new();
         let compact_message_id = ClientUserMessageId::new();
 

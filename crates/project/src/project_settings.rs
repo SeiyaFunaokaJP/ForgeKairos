@@ -4,7 +4,7 @@ use context_server::ContextServerCommand;
 use dap::adapters::DebugAdapterName;
 use fs::Fs;
 use futures::StreamExt as _;
-use git::repository::DEFAULT_WORKTREE_DIRECTORY;
+use git::repository::{DEFAULT_WORKTREE_DIRECTORY, StatusUntrackedFiles};
 use gpui::{AsyncApp, BorrowAppContext, Context, Entity, EventEmitter, Subscription, Task};
 use lsp::{DEFAULT_LSP_REQUEST_TIMEOUT_SECS, LanguageServerName};
 use paths::{
@@ -496,6 +496,10 @@ pub struct GitSettings {
     ///
     /// Default: true
     pub show_stage_restore_buttons: bool,
+    /// Which untracked files `git status` reports.
+    ///
+    /// Default: all
+    pub status_untracked_files: StatusUntrackedFiles,
     /// Directory where git worktrees are created, relative to the repository
     /// working directory. When the resolved directory is outside the project
     /// root, the project's directory name is automatically appended so that
@@ -715,6 +719,11 @@ impl Settings for ProjectSettings {
             diff_base: git.diff_base.unwrap_or_default(),
             path_style: git.path_style.unwrap().into(),
             show_stage_restore_buttons: git.show_stage_restore_buttons.unwrap_or(true),
+            status_untracked_files: match git.status_untracked_files.unwrap_or_default() {
+                settings::StatusUntrackedFilesSetting::All => StatusUntrackedFiles::All,
+                settings::StatusUntrackedFilesSetting::Normal => StatusUntrackedFiles::Normal,
+                settings::StatusUntrackedFilesSetting::No => StatusUntrackedFiles::No,
+            },
             worktree_directory: git
                 .worktree_directory
                 .clone()

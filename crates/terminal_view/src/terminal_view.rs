@@ -6,7 +6,7 @@ mod terminal_path_like_target;
 pub mod terminal_scrollbar;
 
 use editor::{
-    Editor, EditorSettings, actions::SelectAll, blink_manager::BlinkManager,
+    Editor, EditorEvent, EditorSettings, actions::SelectAll, blink_manager::BlinkManager,
     ui_scrollbar_settings_from_raw,
 };
 use gpui::{
@@ -106,6 +106,10 @@ actions!(
         StopSessionLog,
         /// 記録中のログファイルをファイルマネージャーで表示します。
         OpenSessionLog,
+        /// 記録中のログファイルをエディターで開き、末尾に追従します。
+        TailSessionLog,
+        /// 同じターミナルパネル内のすべてのペインへ同時に入力するかどうかを切り替えます。
+        ToggleBroadcastInput,
         /// 実行中のマクロを中止します。
         CancelMacro,
         /// 終了したシェルを同じ作業ディレクトリで起動し直します。
@@ -172,6 +176,7 @@ pub struct TerminalView {
     rename_editor_subscription: Option<Subscription>,
     macro_run: Option<MacroRun>,
     macro_status: Option<MacroStatus>,
+    session_log_tail: Option<SessionLogTail>,
     /// Whether the project's remote connection was up the last time it was
     /// observed, so that one reconnection restarts a dead shell exactly once
     /// (observers run on every notify, not only on state changes).
@@ -195,21 +200,60 @@ enum MacroStatus {
     Failed(SharedString),
 }
 
+/// An editor opened on the session log by `terminal::TailSessionLog`, kept
+/// pinned to the end of the file while the log keeps growing.
+struct SessionLogTail {
+    /// Whether the view is still pinned to the end. Every user scroll re-reads
+    /// it from the editor's position, so scrolling up stops the tail and
+    /// scrolling back to the bottom resumes it, the way `tail -f` behaves in a
+    /// pager.
+    following: bool,
+    _subscriptions: Vec<Subscription>,
+}
+
+/// The scroll offset that puts the last line of `editor` at the bottom of the
+/// view. Before the first layout there is no visible line count to subtract, in
+/// which case the caller's clamp is what keeps the position sane.
+fn end_scroll_position(editor: &mut Editor, cx: &mut Context<Editor>) -> GpuiPoint<f64> {
+    let last_row = f64::from(editor.max_point(cx).row().0);
+    let visible_lines = editor.visible_line_count().unwrap_or(0.);
+    let horizontal = editor.scroll_position(cx).x;
+    GpuiPoint::new(horizontal, (last_row + 1. - visible_lines).max(0.))
+}
+
+/// Whether `editor` is showing the end of its buffer. A line of slack keeps a
+/// tail that is one partially scrolled line short of the bottom from counting
+/// as "the user scrolled away".
+fn is_scrolled_to_end(editor: &mut Editor, cx: &mut Context<Editor>) -> bool {
+    let end = end_scroll_position(editor, cx);
+    editor.scroll_position(cx).y + 1. >= end.y
+}
+
 /// The 「実行中」 line of the session strip. A macro that runs once keeps the
 /// short form; the repetition is only named when there is more than one.
+///
+/// A nested 繰り返し step is appended rather than folded into the step count,
+/// so the outer numbers keep meaning "how far the macro as a whole has got".
 fn macro_progress_label(name: &str, progress: MacroProgress) -> String {
     let step = format!("{}/{}", progress.step_index + 1, progress.step_count);
-    match progress.iteration_count {
-        Some(1) => format!("マクロ「{name}」実行中 ({step})"),
-        Some(count) => format!(
-            "マクロ「{name}」実行中 ({}/{count} 回目、ステップ {step})",
-            progress.iteration
-        ),
-        None => format!(
-            "マクロ「{name}」実行中 ({} 回目、ステップ {step})",
-            progress.iteration
-        ),
+    let mut detail = match progress.iteration_count {
+        Some(1) => step,
+        Some(count) => format!("{}/{count} 回目、ステップ {step}", progress.iteration),
+        None => format!("{} 回目、ステップ {step}", progress.iteration),
+    };
+    if let Some(nested) = progress.nested {
+        let inner_iteration = match nested.iteration_count {
+            Some(count) => format!("繰り返し {}/{count} のステップ", nested.iteration),
+            None => format!("繰り返し {} 回目のステップ", nested.iteration),
+        };
+        detail = format!(
+            "{detail} → {inner_iteration} {}/{}「{}」",
+            nested.step_index + 1,
+            nested.step_count,
+            nested.kind_label
+        );
     }
+    format!("マクロ「{name}」実行中 ({detail})")
 }
 
 #[derive(Default, Clone)]
@@ -374,6 +418,7 @@ impl TerminalView {
             rename_editor_subscription: None,
             macro_run: None,
             macro_status: None,
+            session_log_tail: None,
             remote_connection_was_connected,
             restart_task: None,
             _subscriptions: subscriptions,
@@ -488,6 +533,82 @@ impl TerminalView {
             self.terminal.update(cx, |term, _| {
                 term.input(text.to_string().into_bytes());
             });
+            self.broadcast_input(cx, |terminal, cx| {
+                terminal.update(cx, |terminal, _| {
+                    terminal.input(text.to_string().into_bytes());
+                });
+            });
+        }
+    }
+
+    /// Whether this view takes part in 全ペイン同時入力. An agent's embedded
+    /// terminal is not in the panel to begin with, and a task terminal reruns
+    /// its own command rather than taking dictation.
+    pub(crate) fn accepts_broadcast_input(&self, cx: &App) -> bool {
+        matches!(self.mode, TerminalMode::Standalone) && self.terminal.read(cx).task().is_none()
+    }
+
+    /// The other terminals in this view's panel that input should also reach.
+    /// Empty unless 同時入力 is on and this view is itself one of them.
+    pub(crate) fn broadcast_targets(&self, cx: &App) -> Vec<Entity<Terminal>> {
+        if !self.accepts_broadcast_input(cx) {
+            return Vec::new();
+        }
+        let Some(workspace) = self.workspace.upgrade() else {
+            return Vec::new();
+        };
+        let Some(terminal_panel) = workspace.read(cx).panel::<TerminalPanel>(cx) else {
+            return Vec::new();
+        };
+        let terminal_panel = terminal_panel.read(cx);
+        if !terminal_panel.broadcast_input() {
+            return Vec::new();
+        }
+
+        // This runs while `self`'s own entity is leased (from `render`, or from
+        // a key handler), so the walk must recognize this view by its id and
+        // never read it back out of the panel.
+        let own_id = self.self_handle.entity_id();
+        let mut targets = Vec::new();
+        let mut belongs_to_panel = false;
+        for pane in terminal_panel.panes() {
+            for item in pane.read(cx).items() {
+                let Some(terminal_view) = item.downcast::<TerminalView>() else {
+                    continue;
+                };
+                if terminal_view.entity_id() == own_id {
+                    belongs_to_panel = true;
+                    continue;
+                }
+                let terminal_view = terminal_view.read(cx);
+                if terminal_view.accepts_broadcast_input(cx) {
+                    targets.push(terminal_view.terminal.clone());
+                }
+            }
+        }
+
+        // A terminal outside the panel (an agent's, or a center-pane tab) must
+        // not drive the panel's shells.
+        if belongs_to_panel {
+            targets
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Whether this view is currently mirroring its input into the panel's
+    /// other shells, which is what the 「同時入力中」 chip reports.
+    fn is_broadcasting_input(&self, cx: &App) -> bool {
+        !self.broadcast_targets(cx).is_empty()
+    }
+
+    fn broadcast_input(
+        &mut self,
+        cx: &mut Context<Self>,
+        send: impl Fn(&Entity<Terminal>, &mut Context<Self>),
+    ) {
+        for terminal in self.broadcast_targets(cx) {
+            send(&terminal, cx);
         }
     }
 
@@ -688,6 +809,108 @@ impl TerminalView {
         }
     }
 
+    /// Opens the running log in an editor tab and keeps it pinned to the end of
+    /// the file, so a log that is still being written reads like `tail -f`.
+    fn tail_session_log(
+        &mut self,
+        _: &TailSessionLog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(path) = self.session_log_path(cx) else {
+            return;
+        };
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let open = workspace.update(cx, |workspace, cx| {
+            workspace.open_abs_path(
+                path,
+                workspace::OpenOptions {
+                    focus: Some(true),
+                    ..Default::default()
+                },
+                window,
+                cx,
+            )
+        });
+
+        cx.spawn_in(window, async move |this, cx| {
+            let item = match open.await {
+                Ok(item) => item,
+                Err(error) => {
+                    this.update(cx, |this, cx| {
+                        this.report_error(format!("ログを開けませんでした: {error}"), cx);
+                    })
+                    .ok();
+                    return;
+                }
+            };
+            let Some(editor) = item.downcast::<Editor>() else {
+                return;
+            };
+            this.update_in(cx, |this, window, cx| {
+                this.follow_session_log(editor, window, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Starts following `editor` and jumps it to the end of the log.
+    fn follow_session_log(
+        &mut self,
+        editor: Entity<Editor>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let subscriptions = vec![
+            cx.subscribe_in(
+                &editor,
+                window,
+                |this, editor, event: &EditorEvent, window, cx| {
+                    match event {
+                        // A reload from disk reaches the editor as an edit of its
+                        // buffer, which is what makes the log grow under the tail.
+                        EditorEvent::BufferEdited => {
+                            if this
+                                .session_log_tail
+                                .as_ref()
+                                .is_some_and(|tail| tail.following)
+                            {
+                                editor.update(cx, |editor, cx| {
+                                    let position = end_scroll_position(editor, cx);
+                                    editor.set_scroll_position(position, window, cx);
+                                });
+                            }
+                        }
+                        // Every scroll re-derives whether the tail is still on: our
+                        // own jump lands at the end and keeps it, a scroll up stops
+                        // it, and a scroll back to the bottom turns it on again.
+                        EditorEvent::ScrollPositionChanged { local: true, .. } => {
+                            let at_end = editor.update(cx, is_scrolled_to_end);
+                            if let Some(tail) = this.session_log_tail.as_mut() {
+                                tail.following = at_end;
+                            }
+                        }
+                        _ => {}
+                    }
+                },
+            ),
+            cx.observe_release(&editor, |this, _, _| {
+                this.session_log_tail = None;
+            }),
+        ];
+
+        self.session_log_tail = Some(SessionLogTail {
+            following: true,
+            _subscriptions: subscriptions,
+        });
+        editor.update(cx, |editor, cx| {
+            editor.move_to_end(&editor::actions::MoveToEnd, window, cx);
+        });
+    }
+
     /// Whether the running log is stamping line-start times, or `None` when
     /// nothing is being recorded.
     fn session_log_timestamps(&self, cx: &App) -> Option<bool> {
@@ -762,6 +985,7 @@ impl TerminalView {
                 step_count,
                 iteration: 1,
                 iteration_count,
+                nested: None,
             },
             _task: task,
         });
@@ -934,7 +1158,12 @@ impl TerminalView {
     /// progress of a running macro. Absent when neither applies.
     fn render_session_status_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let log_path = self.session_log_path(cx);
-        if log_path.is_none() && self.macro_run.is_none() && self.macro_status.is_none() {
+        let broadcasting = self.is_broadcasting_input(cx);
+        if log_path.is_none()
+            && !broadcasting
+            && self.macro_run.is_none()
+            && self.macro_status.is_none()
+        {
             return None;
         }
 
@@ -948,6 +1177,26 @@ impl TerminalView {
             .bg(colors.title_bar_background)
             .border_b_1()
             .border_color(colors.border_variant);
+
+        if broadcasting {
+            bar = bar.child(
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Icon::new(IconName::Keyboard)
+                            .size(IconSize::XSmall)
+                            .color(Color::Accent),
+                    )
+                    .child(
+                        Label::new("同時入力中")
+                            .size(LabelSize::Small)
+                            .color(Color::Accent),
+                    ),
+            );
+            if log_path.is_some() {
+                bar = bar.child(Divider::vertical());
+            }
+        }
 
         if let Some(path) = log_path {
             let display_path = path.display().to_string();
@@ -965,10 +1214,10 @@ impl TerminalView {
                     Button::new("session-log-path", format!("記録中: {file_name}"))
                         .label_size(LabelSize::Small)
                         .tooltip(Tooltip::text(format!(
-                            "{display_path}\nクリックするとフォルダーを開きます。"
+                            "{display_path}\nクリックするとエディターで開き、末尾に追従します。"
                         )))
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_session_log(&OpenSessionLog, window, cx);
+                            this.tail_session_log(&TailSessionLog, window, cx);
                         })),
                 )
                 .child(
@@ -1073,6 +1322,7 @@ impl TerminalView {
                         })
                         .when(recording, |menu| {
                             menu.action("ログの記録を停止", Box::new(StopSessionLog))
+                                .action("ログをエディターで開く", Box::new(TailSessionLog))
                                 .action("ログファイルの場所を開く", Box::new(OpenSessionLog))
                         })
                         .action("マクロを実行…", Box::new(session_tools::RunMacro))
@@ -1451,6 +1701,9 @@ impl TerminalView {
                 if let Some(text) = clipboard.text() {
                     self.terminal
                         .update(cx, |terminal, _cx| terminal.paste(&text));
+                    self.broadcast_input(cx, |terminal, cx| {
+                        terminal.update(cx, |terminal, _| terminal.paste(&text));
+                    });
                 }
             }
         }
@@ -1477,6 +1730,9 @@ impl TerminalView {
         if let Some(text) = clipboard.text() {
             self.terminal
                 .update(cx, |terminal, _cx| terminal.paste(&text));
+            self.broadcast_input(cx, |terminal, cx| {
+                terminal.update(cx, |terminal, _| terminal.paste(&text));
+            });
         }
     }
 
@@ -1822,6 +2078,18 @@ impl TerminalView {
             cx.notify();
         }
 
+        // A vi-mode key moves this terminal's own cursor and never reaches the
+        // pty, so mirroring it would type into the other shells instead.
+        if handled && !vi_mode_enabled {
+            let option_as_meta = TerminalSettings::get_global(cx).option_as_meta;
+            let keystroke = keystroke.clone();
+            self.broadcast_input(cx, move |terminal, cx| {
+                terminal.update(cx, |terminal, _| {
+                    terminal.try_keystroke(&keystroke, option_as_meta);
+                });
+            });
+        }
+
         handled
     }
 
@@ -1913,6 +2181,7 @@ impl Render for TerminalView {
             .on_action(cx.listener(TerminalView::start_session_log))
             .on_action(cx.listener(TerminalView::stop_session_log))
             .on_action(cx.listener(TerminalView::open_session_log))
+            .on_action(cx.listener(TerminalView::tail_session_log))
             .on_action(cx.listener(TerminalView::cancel_macro))
             .on_action(cx.listener(TerminalView::restart_terminal_action))
             .on_key_down(cx.listener(Self::key_down))
@@ -2298,6 +2567,7 @@ impl Item for TerminalView {
         }
         if terminal.session_log_path().is_some() {
             actions.push(("ログの記録を停止".into(), Box::new(StopSessionLog)));
+            actions.push(("ログをエディターで開く".into(), Box::new(TailSessionLog)));
             actions.push(("ログファイルの場所を開く".into(), Box::new(OpenSessionLog)));
         } else {
             actions.push(("ログの記録を開始…".into(), Box::new(StartSessionLog)));
@@ -2766,6 +3036,52 @@ mod tests {
     use util::rel_path::RelPath;
     use workspace::item::test::{TestItem, TestProjectItem};
     use workspace::{AppState, MultiWorkspace, SelectedEntry};
+
+    #[test]
+    fn the_progress_label_appends_a_nested_repeat() {
+        let progress = MacroProgress {
+            step_index: 1,
+            step_count: 3,
+            iteration: 2,
+            iteration_count: Some(5),
+            nested: None,
+        };
+        assert_eq!(
+            macro_progress_label("再起動", progress),
+            "マクロ「再起動」実行中 (2/5 回目、ステップ 2/3)"
+        );
+
+        let nested = MacroProgress {
+            nested: Some(terminal::terminal_macro::NestedProgress {
+                iteration: 1,
+                iteration_count: Some(4),
+                step_index: 0,
+                step_count: 2,
+                kind_label: "送信",
+            }),
+            ..progress
+        };
+        assert_eq!(
+            macro_progress_label("再起動", nested),
+            "マクロ「再起動」実行中 (2/5 回目、ステップ 2/3 → 繰り返し 1/4 のステップ 1/2「送信」)"
+        );
+
+        let endless_nested = MacroProgress {
+            iteration_count: Some(1),
+            nested: Some(terminal::terminal_macro::NestedProgress {
+                iteration: 7,
+                iteration_count: None,
+                step_index: 1,
+                step_count: 2,
+                kind_label: "画面を消去",
+            }),
+            ..progress
+        };
+        assert_eq!(
+            macro_progress_label("巡回", endless_nested),
+            "マクロ「巡回」実行中 (2/3 → 繰り返し 7 回目のステップ 2/2「画面を消去」)"
+        );
+    }
 
     fn expected_drop_text(paths: &[PathBuf]) -> String {
         let mut text = String::new();

@@ -43760,6 +43760,76 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_markdown_table_target(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // Outside Markdown there is no table to edit
+    cx.set_state("ˇ");
+    assert!(
+        cx.update_editor(|e, _window, cx| e.markdown_table_target(cx))
+            .is_none()
+    );
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // A cursor anywhere in a table picks up the whole table, and writing it
+    // back replaces exactly the rows it came from, re-padded to the new widths
+    cx.set_state(indoc! {"
+        before
+
+        | a | b |
+        |---|--ˇ-|
+        | c | d |
+
+        after
+    "});
+    let target = cx
+        .update_editor(|e, _window, cx| e.markdown_table_target(cx))
+        .expect("the cursor is inside a table");
+    assert!(target.replaces_existing);
+    assert!(target.table.has_header);
+    assert_eq!(
+        target.table.rows,
+        vec![
+            vec!["a".to_string(), "b".to_string()],
+            vec!["c".to_string(), "d".to_string()],
+        ]
+    );
+
+    let mut table = target.table.clone();
+    table.rows[1][1] = "でんき".to_string();
+    cx.update_editor(|e, window, cx| e.write_markdown_table(&target, &table, window, cx));
+    cx.assert_editor_state(indoc! {"
+        before
+
+        ˇ| a   | b      |
+        | --- | ------ |
+        | c   | でんき |
+
+        after
+    "});
+
+    // With the cursor outside a table a blank one is inserted on lines of its
+    // own, keeping the text that was on the cursor's line
+    cx.set_state("textˇ");
+    let target = cx
+        .update_editor(|e, _window, cx| e.markdown_table_target(cx))
+        .expect("Markdown always accepts a new table");
+    assert!(!target.replaces_existing);
+    let table = target.table.clone();
+    cx.update_editor(|e, window, cx| e.write_markdown_table(&target, &table, window, cx));
+    cx.assert_editor_state(indoc! {"
+        text
+
+        ˇ|     |     |     |
+        | --- | --- | --- |
+        |     |     |     |
+        |     |     |     |"});
+}
+
+#[gpui::test]
 fn test_mermaid_diagram_templates_declare_a_renderable_type(_cx: &mut TestAppContext) {
     // `markdown` only draws diagrams whose first token is a type it has styling
     // for, so a template that opened with anything else would be inserted as a

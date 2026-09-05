@@ -938,6 +938,9 @@ pub mod preview {
                 OpenPreviewToTheSide,
                 /// Exports the active Markdown file to a PDF next to it. DESIGN.md §5.3
                 ExportToPdf,
+                /// Opens the table editor on the pipe table under the cursor, or
+                /// on a blank table when the cursor is not inside one.
+                EditTable,
             ]
         );
     }
@@ -1032,4 +1035,50 @@ pub mod git_panel {
             ToggleFocus,
         ]
     );
+}
+
+/// 内蔵 IDE サーバー (ADR-F26) の操作。ハンドラーは `ide_server` クレートが
+/// ワークスペースに登録する。
+///
+/// アクション定義と「CLI が接続しているか」の印がここにあるのは、エディターの
+/// 右クリックメニュー (`editor`) から両方を参照する必要があるのに、`ide_server` が
+/// `editor` に依存している (= 逆向きの依存を張れない) ため。
+pub mod ide_server {
+    use std::collections::HashSet;
+
+    use gpui::{App, EntityId, Global, actions};
+
+    actions!(
+        ide_server,
+        [
+            /// 内蔵 IDE サーバーの有効・無効を切り替えます。
+            ToggleIdeServer,
+            /// 外部エージェント用の MCP 設定断片をクリップボードにコピーします。
+            CopyMcpConfiguration,
+            /// Claude Code CLI が読むロックファイルの場所をファイルマネージャーで開きます。
+            RevealLockFile,
+            /// 選択範囲 (無ければカーソル行) を、接続中の Claude Code CLI に送ります。
+            SendSelectionToClaudeCode,
+        ]
+    );
+
+    /// Claude Code CLI が WebSocket で繋がっているプロジェクトの集合。
+    #[derive(Default)]
+    struct ConnectedProjects(HashSet<EntityId>);
+
+    impl Global for ConnectedProjects {}
+
+    pub fn set_claude_code_connected(project: EntityId, connected: bool, cx: &mut App) {
+        let projects = cx.default_global::<ConnectedProjects>();
+        if connected {
+            projects.0.insert(project);
+        } else {
+            projects.0.remove(&project);
+        }
+    }
+
+    pub fn is_claude_code_connected(project: EntityId, cx: &App) -> bool {
+        cx.try_global::<ConnectedProjects>()
+            .is_some_and(|projects| projects.0.contains(&project))
+    }
 }

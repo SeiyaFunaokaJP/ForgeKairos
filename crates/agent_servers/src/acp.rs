@@ -2725,6 +2725,29 @@ mod tests {
         });
     }
 
+    /// ADR-F26: 内蔵 IDE サーバーが動いていれば ACP セッションの MCP 一覧に載る。
+    #[test]
+    fn injects_the_ide_server_only_while_it_is_running() {
+        let endpoint = ide_server::McpEndpoint {
+            url: "http://127.0.0.1:39254/mcp".to_string(),
+            authorization: "Bearer secret".to_string(),
+        };
+
+        let Some(acp::McpServer::Http(server)) = ide_server_entry(Some(endpoint.clone()), false)
+        else {
+            panic!("a running IDE server should produce an HTTP MCP entry");
+        };
+        assert_eq!(server.name, ide_server::MCP_SERVER_NAME);
+        assert_eq!(server.url, "http://127.0.0.1:39254/mcp");
+        assert_eq!(server.headers.len(), 1);
+        assert_eq!(server.headers[0].name, "Authorization");
+        assert_eq!(server.headers[0].value, "Bearer secret");
+
+        assert_eq!(ide_server_entry(None, false), None);
+        // 同名のユーザー設定があるときは足さない。
+        assert_eq!(ide_server_entry(Some(endpoint), true), None);
+    }
+
     #[gpui::test]
     async fn client_capabilities_include_elicitation_without_acp_beta(
         cx: &mut gpui::TestAppContext,
@@ -4402,13 +4425,43 @@ mod tests {
     }
 }
 
+/// 内蔵 IDE サーバー (ADR-F26) を MCP サーバー一覧に載せる形にする。
+///
+/// サーバーが動いていない (設定が既定の無効のまま、あるいはまだ待ち受けていない) なら
+/// `None`。ユーザーが同じ名前の MCP サーバーを設定していたら、そちらを尊重して足さない。
+fn ide_server_entry(
+    endpoint: Option<ide_server::McpEndpoint>,
+    is_name_taken: bool,
+) -> Option<acp::McpServer> {
+    if is_name_taken {
+        log::warn!(
+            "agent_servers: not injecting the built-in IDE server because a configured MCP server \
+             is already named {}",
+            ide_server::MCP_SERVER_NAME
+        );
+        return None;
+    }
+    let endpoint = endpoint?;
+    Some(acp::McpServer::Http(
+        acp::McpServerHttp::new(ide_server::MCP_SERVER_NAME, endpoint.url).headers(vec![
+            acp::HttpHeader::new("Authorization", endpoint.authorization),
+        ]),
+    ))
+}
+
 fn mcp_servers_for_project(project: &Entity<Project>, cx: &App) -> Vec<acp::McpServer> {
     let context_server_store = project.read(cx).context_server_store().read(cx);
     let is_local = project.read(cx).is_local();
-    context_server_store
-        .configured_server_ids()
-        .iter()
-        .filter_map(|id| {
+    let configured_server_ids = context_server_store.configured_server_ids();
+    let ide_server = ide_server_entry(
+        ide_server::mcp_endpoint(project, cx),
+        configured_server_ids
+            .iter()
+            .any(|id| id.0.as_ref() == ide_server::MCP_SERVER_NAME),
+    );
+    ide_server
+        .into_iter()
+        .chain(configured_server_ids.iter().filter_map(|id| {
             let configuration = context_server_store.configuration_for_server(id)?;
             match &*configuration {
                 project::context_server_store::ContextServerConfiguration::Custom {
@@ -4446,7 +4499,7 @@ fn mcp_servers_for_project(project: &Entity<Project>, cx: &App) -> Vec<acp::McpS
                 )),
                 _ => None,
             }
-        })
+        }))
         .collect()
 }
 

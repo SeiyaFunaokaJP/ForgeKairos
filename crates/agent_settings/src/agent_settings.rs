@@ -31,6 +31,20 @@ pub const SUMMARIZE_THREAD_DETAILED_PROMPT: &str =
     include_str!("prompts/summarize_thread_detailed_prompt.txt");
 pub const COMPACTION_PROMPT: &str = include_str!("prompts/compaction_prompt.txt");
 
+/// Default for [`AgentSettings::auto_compact_min_context_window`], mirroring
+/// `agent.auto_compact_min_context_window` in `assets/settings/default.json`.
+pub const DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW: u64 = 80_000;
+
+/// Floor for [`AgentSettings::auto_compact_min_context_window`]. Below this a
+/// compaction pass has no room to summarize into, so the setting is clamped
+/// rather than honored (TODO F13 ③).
+pub const AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR: u64 = 8_000;
+
+/// Ceiling for [`AgentSettings::system_prompt_repo_map_bytes`], matching the
+/// `repo_map` tool's own default budget: anything larger belongs in a tool call
+/// the model can scope, not in every request's system prompt.
+pub const MAX_SYSTEM_PROMPT_REPO_MAP_BYTES: usize = 32_768;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PanelLayout {
     pub(crate) agent_dock: Option<DockPosition>,
@@ -213,6 +227,15 @@ pub struct AgentSettings {
     pub single_file_review: bool,
     pub model_parameters: Vec<LanguageModelParameters>,
     pub auto_compact: AutoCompactSettings,
+    /// Smallest model context window (in tokens) that still gets
+    /// auto-compaction, already clamped to
+    /// [`AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR`].
+    pub auto_compact_min_context_window: u64,
+    pub attach_active_file: bool,
+    /// Byte budget for the repository map prepended to the system prompt,
+    /// already clamped to `0..=`[`MAX_SYSTEM_PROMPT_REPO_MAP_BYTES`]. `0`
+    /// disables it.
+    pub system_prompt_repo_map_bytes: usize,
     pub enable_feedback: bool,
     pub expand_edit_card: bool,
     pub expand_terminal_card: bool,
@@ -776,6 +799,15 @@ impl Settings for AgentSettings {
                     threshold,
                 }
             },
+            auto_compact_min_context_window: agent
+                .auto_compact_min_context_window
+                .unwrap_or(DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW)
+                .max(AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR),
+            attach_active_file: agent.attach_active_file.unwrap_or(false),
+            system_prompt_repo_map_bytes: agent
+                .system_prompt_repo_map_bytes
+                .unwrap_or(0)
+                .min(MAX_SYSTEM_PROMPT_REPO_MAP_BYTES),
             enable_feedback: agent.enable_feedback.unwrap(),
             expand_edit_card: agent.expand_edit_card.unwrap(),
             expand_terminal_card: agent.expand_terminal_card.unwrap(),

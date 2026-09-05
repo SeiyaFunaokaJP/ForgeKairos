@@ -3,6 +3,7 @@ mod agent;
 mod editor;
 mod extension;
 mod fallible_options;
+mod ide_server;
 mod language;
 mod language_model;
 pub mod merge_from;
@@ -18,6 +19,7 @@ pub use agent::*;
 pub use editor::*;
 pub use extension::*;
 pub use fallible_options::*;
+pub use ide_server::*;
 pub use language::*;
 pub use language_model::*;
 pub use merge_from::MergeFrom as MergeFromTrait;
@@ -202,6 +204,9 @@ pub struct SettingsContent {
 
     pub agent: Option<AgentSettingsContent>,
     pub agent_servers: Option<AllAgentServersSettings>,
+
+    /// Settings for the built-in loopback IDE server (ADR-F26).
+    pub ide_server: Option<IdeServerSettingsContent>,
 
     /// Configuration of audio in Zed.
     pub audio: Option<AudioSettingsContent>,

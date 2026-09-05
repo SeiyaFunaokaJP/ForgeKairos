@@ -1,0 +1,222 @@
+//! ステータスバーの「IDE サーバー」項目と、ワークスペースに登録するアクション。
+//!
+//! 表示するのはサーバーが有効なあいだだけ (ADR-F09「AI 機能は既定オフ」)。有効化は
+//! 設定 GUI の「外部通信と AI」から行い、ここからは無効化と、外部エージェント向けの
+//! 設定断片のコピー・ロックファイルの場所を開く操作を出す。
+
+use std::path::Path;
+
+use editor::Editor;
+use gpui::{Anchor, App, ClipboardItem, Empty, Entity, Subscription, WeakEntity};
+use settings::{Settings as _, update_settings_file};
+use ui::{ContextMenu, PopoverMenu, PopoverMenuHandle, Tooltip, prelude::*};
+use workspace::{
+    StatusItemView, Toast, Workspace, item::ItemHandle, notifications::NotificationId,
+};
+use zed_actions::ide_server::{
+    CopyMcpConfiguration, RevealLockFile, SendSelectionToClaudeCode, ToggleIdeServer,
+};
+
+use crate::{IdeServer, IdeServerSettings, server_for, server_for_workspace_id, tools};
+
+/// トーストはどの操作でも 1 つに畳む。連打しても積み上がらない。
+struct IdeServerNotification;
+
+pub(crate) fn register_workspace_actions(workspace: &mut Workspace) {
+    workspace
+        .register_action(|workspace, _: &ToggleIdeServer, _window, cx| {
+            let enabled = IdeServerSettings::get_global(cx).enabled;
+            let fs = workspace.app_state().fs.clone();
+            update_settings_file(fs, cx, move |settings, _| {
+                settings.ide_server.get_or_insert_default().enabled = Some(!enabled);
+            });
+        })
+        .register_action(|workspace, _: &CopyMcpConfiguration, _window, cx| {
+            copy_mcp_configuration(workspace, cx);
+        })
+        .register_action(|workspace, _: &RevealLockFile, _window, cx| {
+            let path = server_for(&cx.entity(), cx)
+                .and_then(|server| server.read(cx).lock_file_path().map(Path::to_path_buf));
+            match path {
+                Some(path) => cx.reveal_path(&path),
+                None => notify(workspace, "IDE サーバーは動いていません", cx),
+            }
+        })
+        .register_action(|workspace, _: &SendSelectionToClaudeCode, _window, cx| {
+            send_selection_to_claude_code(workspace, cx);
+        });
+}
+
+fn copy_mcp_configuration(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
+    let endpoint = server_for(&cx.entity(), cx).and_then(|server| server.read(cx).mcp_endpoint());
+    let Some(endpoint) = endpoint else {
+        notify(workspace, "IDE サーバーは動いていません", cx);
+        return;
+    };
+    match endpoint.to_configuration_json() {
+        Ok(json) => {
+            cx.write_to_clipboard(ClipboardItem::new_string(json));
+            notify(
+                workspace,
+                "MCP 設定をコピーしました。認証トークンは Zed を起動するたびに変わるので、\
+                 貼り付け先も毎回貼り直してください",
+                cx,
+            );
+        }
+        Err(error) => notify(
+            workspace,
+            format!("MCP 設定を作れませんでした: {error:#}"),
+            cx,
+        ),
+    }
+}
+
+fn send_selection_to_claude_code(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
+    let Some(server) = server_for(&cx.entity(), cx) else {
+        notify(workspace, "IDE サーバーは動いていません", cx);
+        return;
+    };
+    let editor = workspace
+        .active_item(cx)
+        .and_then(|item| item.act_as::<Editor>(cx));
+    let Some(editor) = editor else {
+        notify(workspace, "送る対象のエディターがありません", cx);
+        return;
+    };
+    // 選択が無ければ `at_mention_range` はカーソル行を開始 = 終了として返す。
+    let Some((file_path, start_line, end_line)) = tools::at_mention_range(&editor, cx) else {
+        notify(
+            workspace,
+            "保存されていないバッファーは Claude Code に送れません",
+            cx,
+        );
+        return;
+    };
+    let sent = server.update(cx, |server, cx| {
+        server.send_at_mention(&file_path, start_line, end_line, cx)
+    });
+    if !sent {
+        notify(workspace, "Claude Code が接続していません", cx);
+    }
+}
+
+fn notify(workspace: &mut Workspace, message: impl Into<String>, cx: &mut Context<Workspace>) {
+    workspace.show_toast(
+        Toast::new(
+            NotificationId::unique::<IdeServerNotification>(),
+            message.into(),
+        ),
+        cx,
+    );
+}
+
+pub struct IdeServerStatusItem {
+    server: Option<Entity<IdeServer>>,
+    menu_handle: PopoverMenuHandle<ContextMenu>,
+    subscriptions: Vec<Subscription>,
+}
+
+impl IdeServerStatusItem {
+    pub fn new(workspace: &Workspace, cx: &mut Context<Self>) -> Self {
+        let workspace_id = workspace.weak_handle().entity_id();
+        // `initialize_workspace` は Workspace をリースしたまま走るので、サーバーの
+        // 購読はリースの外に出す。ここで `IdeServer` を読むと二重リースになる。
+        let status_item: WeakEntity<Self> = cx.weak_entity();
+        cx.defer(move |cx| {
+            let Some(status_item) = status_item.upgrade() else {
+                return;
+            };
+            let Some(server) = server_for_workspace_id(workspace_id, cx) else {
+                return;
+            };
+            status_item.update(cx, |this, cx| {
+                this.subscriptions
+                    .push(cx.observe(&server, |_, _, cx| cx.notify()));
+                this.server = Some(server);
+                cx.notify();
+            });
+        });
+        Self {
+            server: None,
+            menu_handle: PopoverMenuHandle::default(),
+            subscriptions: Vec::new(),
+        }
+    }
+}
+
+impl Render for IdeServerStatusItem {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !IdeServerSettings::get_global(cx).enabled {
+            return Empty.into_any_element();
+        }
+        let (port, connected_clients) = match self.server.as_ref() {
+            Some(server) => {
+                let server = server.read(cx);
+                (server.port(), server.connected_client_count())
+            }
+            None => (None, 0),
+        };
+        let label: SharedString = match port {
+            Some(port) if connected_clients > 0 => {
+                format!("IDE サーバー: {port} (接続中 {connected_clients})").into()
+            }
+            Some(port) => format!("IDE サーバー: {port}").into(),
+            None => "IDE サーバー: 起動中…".into(),
+        };
+        let tooltip: SharedString = match port {
+            Some(port) => {
+                format!("127.0.0.1:{port} で待ち受け中。クリックで操作メニューを開きます").into()
+            }
+            None => "待ち受けポートの確保を待っています".into(),
+        };
+        let is_running = port.is_some();
+
+        PopoverMenu::new("ide-server-status")
+            .trigger(
+                Button::new("ide-server-status-trigger", label)
+                    .label_size(LabelSize::Small)
+                    .tab_index(0isize)
+                    .start_icon(Icon::new(IconName::Server).size(IconSize::Small).color(
+                        if connected_clients > 0 {
+                            Color::Accent
+                        } else {
+                            Color::Muted
+                        },
+                    ))
+                    .tooltip(Tooltip::text(tooltip)),
+            )
+            .anchor(Anchor::BottomRight)
+            .with_handle(self.menu_handle.clone())
+            .menu(move |window, cx| {
+                Some(ContextMenu::build(window, cx, |menu, _window, _cx| {
+                    menu.action("無効にする", Box::new(ToggleIdeServer))
+                        .action_disabled_when(
+                            !is_running,
+                            "MCP 設定をコピー",
+                            Box::new(CopyMcpConfiguration),
+                        )
+                        .action_disabled_when(
+                            !is_running,
+                            "ロックファイルの場所を開く",
+                            Box::new(RevealLockFile),
+                        )
+                }))
+            })
+            .into_any_element()
+    }
+}
+
+impl StatusItemView for IdeServerStatusItem {
+    fn set_active_pane_item(
+        &mut self,
+        _active_pane_item: Option<&dyn ItemHandle>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+    }
+
+    /// この項目自体は `ide_server.enabled` に完全に従うので、独立した非表示設定は持たない。
+    fn hide_setting(&self, _cx: &App) -> Option<workspace::HideStatusItem> {
+        None
+    }
+}

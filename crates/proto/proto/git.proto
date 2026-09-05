@@ -137,6 +137,9 @@ message UpdateRepository {
   optional string repository_dir_abs_path = 19;
   optional string common_dir_abs_path = 20;
   optional string branch_list_error = 21;
+  // When set on the last update of a repository, `branch_list` was omitted
+  // because it is identical to the one the receiver already has.
+  bool branch_list_unchanged = 22;
 }
 
 message RemoveRepository {

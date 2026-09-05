@@ -398,6 +398,7 @@ dependencies = [
  "gpui",
  "gpui_tokio",
  "http_client",
+ "ide_server",
  "indoc",
  "language_model",
  "libc",
@@ -418,6 +419,7 @@ dependencies = [
  "util",
  "uuid",
  "watch",
+ "workspace",
  "zed_credentials_provider",
 ]
 
@@ -7411,6 +7413,7 @@ dependencies = [
  "tree-sitter-jsdoc",
  "tree-sitter-json",
  "tree-sitter-md",
+ "tree-sitter-mermaid",
  "tree-sitter-python",
  "tree-sitter-regex",
  "tree-sitter-rust",
@@ -8155,6 +8158,38 @@ name = "id-arena"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25a2bc672d1148e28034f176e01fffebb08b35768468cc954630da77a1449005"
+
+[[package]]
+name = "ide_server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-tungstenite",
+ "collections",
+ "context_server",
+ "editor",
+ "futures 0.3.32",
+ "git_ui_core",
+ "gpui",
+ "httparse",
+ "language",
+ "log",
+ "lsp",
+ "multi_buffer",
+ "project",
+ "serde",
+ "serde_json",
+ "settings",
+ "smol",
+ "text",
+ "theme",
+ "theme_settings",
+ "ui",
+ "util",
+ "uuid",
+ "workspace",
+ "zed_actions",
+]
 
 [[package]]
 name = "ident_case"
@@ -9284,6 +9319,8 @@ dependencies = [
  "tree-sitter-css",
  "tree-sitter-gitcommit",
  "tree-sitter-go",
+ "tree-sitter-md",
+ "tree-sitter-mermaid",
  "tree-sitter-python",
  "tree-sitter-rust",
  "tree-sitter-typescript",
@@ -9860,6 +9897,7 @@ dependencies = [
  "language",
  "log",
  "markdown",
+ "menu",
  "mermaid_render",
  "paths",
  "picker",
@@ -17706,7 +17744,7 @@ dependencies = [
  "regex",
  "serde_json",
  "streaming-iterator",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.8",
  "wasmtime-c-api-impl",
 ]
 
@@ -17717,7 +17755,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e5ec769279cc91b561d3df0d8a5deb26b0ad40d183127f409494d6d8fc53062"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17727,7 +17765,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a3aad8f0129083a59fe8596157552d2bb7148c492d44c21558d68ca1c722707"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17736,7 +17774,7 @@ version = "0.23.4"
 source = "git+https://github.com/tree-sitter/tree-sitter-cpp?rev=5cb9b693cfd7bfacab1d9ff4acac1a4150700609#5cb9b693cfd7bfacab1d9ff4acac1a4150700609"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17746,7 +17784,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ad6489794d41350d12a7fbe520e5199f688618f43aace5443980d1ddcf1b29e"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17756,7 +17794,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfe1e5ca280a65dfe5ba4205c1bcc84edf486464fed315db53dee6da9a335889"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17766,7 +17804,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e45d444647b4fd53d8fd32474c1b8bedc1baa22669ce3a78d083e365fa9a2d3f"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17776,7 +17814,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790063ef14e5b67556abc0b3be0ed863fb41d65ee791cf8c0b20eb42a1fa46af"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17785,7 +17823,7 @@ version = "0.0.1"
 source = "git+https://github.com/zed-industries/tree-sitter-git-commit?rev=88309716a69dd13ab83443721ba6e0b491d37ee9#88309716a69dd13ab83443721ba6e0b491d37ee9"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17795,7 +17833,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8560a4d2f835cc0d4d2c2e03cbd0dde2f6114b43bc491164238d333e28b16ea"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17804,7 +17842,7 @@ version = "1.1.1"
 source = "git+https://github.com/camdencheek/tree-sitter-go-mod?rev=2e886870578eeba1927a2dc4bd2e2b3f598c5f9a#2e886870578eeba1927a2dc4bd2e2b3f598c5f9a"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17813,7 +17851,7 @@ version = "0.0.1"
 source = "git+https://github.com/zed-industries/tree-sitter-go-work?rev=acb0617bf7f4fda02c6217676cc64acb89536dc7#acb0617bf7f4fda02c6217676cc64acb89536dc7"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17822,7 +17860,7 @@ version = "0.0.1"
 source = "git+https://github.com/zed-industries/tree-sitter-heex?rev=1dd45142fbb05562e35b2040c6129c9bca346592#1dd45142fbb05562e35b2040c6129c9bca346592"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17832,7 +17870,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "261b708e5d92061ede329babaaa427b819329a9d427a1d710abb0f67bbef63ee"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17842,7 +17880,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3862dfcb1038fc5e7812d7df14190afdeb7e1415288fd5f51f58395f8cb0faf"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17852,7 +17890,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d727acca406c0020cffc6cf35516764f36c8e3dc4408e5ebe2cb35a947ec471"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
+]
+
+[[package]]
+name = "tree-sitter-language"
+version = "0.1.7"
+dependencies = [
+ "tree-sitter-language 0.1.8",
 ]
 
 [[package]]
@@ -17866,7 +17911,17 @@ version = "0.3.2"
 source = "git+https://github.com/zed-industries/tree-sitter-markdown?rev=b596e737286780d7bfa9fcddceaeeb754574b352#b596e737286780d7bfa9fcddceaeeb754574b352"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
+]
+
+[[package]]
+name = "tree-sitter-mermaid"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34921c596d2732a74eb6489f1148df732163f0c4fd20737547396f40a588b559"
+dependencies = [
+ "cc",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17876,7 +17931,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bf85fd39652e740bf60f46f4cda9492c3a9ad75880575bf14960f775cb74a1c"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17886,7 +17941,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712656f8c262a5a4b7d6026e6246950787d178d613864952554e1516a33ab0c1"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17896,7 +17951,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be0484ea4ef6bb9c575b4fdabde7e31340a8d2dbc7d52b321ac83da703249f95"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17906,7 +17961,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439e577dbe07423ec2582ac62c7531120dbfccfa6e5f92406f93dd271a120e45"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17915,7 +17970,7 @@ version = "0.23.2"
 source = "git+https://github.com/zed-industries/tree-sitter-typescript?rev=e2c53597d6a5d9cf7bbe8dccde576fe1e46c5899#e2c53597d6a5d9cf7bbe8dccde576fe1e46c5899"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -17924,7 +17979,7 @@ version = "0.6.1"
 source = "git+https://github.com/zed-industries/tree-sitter-yaml?rev=baff0b51c64ef6a1fb1f8390f3ad6015b83ec13a#baff0b51c64ef6a1fb1f8390f3ad6015b83ec13a"
 dependencies = [
  "cc",
- "tree-sitter-language",
+ "tree-sitter-language 0.1.7",
 ]
 
 [[package]]
@@ -21426,6 +21481,7 @@ dependencies = [
  "gpui_tokio",
  "hdrhistogram",
  "http_client",
+ "ide_server",
  "image",
  "image_viewer",
  "input_latency_ui",

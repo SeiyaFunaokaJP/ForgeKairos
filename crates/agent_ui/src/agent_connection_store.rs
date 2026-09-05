@@ -69,6 +69,11 @@ pub struct ActiveAcpConnection {
 pub struct AgentConnectionStore {
     project: Entity<Project>,
     entries: HashMap<Agent, Entity<AgentConnectionEntry>>,
+    /// Versions reported by [`AgentConnectionEntryEvent::NewVersionAvailable`],
+    /// kept after the event has been delivered. The event fires once and drops
+    /// the connection entry with it, so without this the agent registry page
+    /// has nothing to render a "update available" badge from (F2-5 follow-up).
+    new_versions: HashMap<Agent, SharedString>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -79,8 +84,15 @@ impl AgentConnectionStore {
         Self {
             project,
             entries: HashMap::default(),
+            new_versions: HashMap::default(),
             _subscriptions: vec![subscription],
         }
+    }
+
+    /// The newer version last reported for `key`, if the running agent told us
+    /// about one during this session.
+    pub fn new_version_available(&self, key: &Agent) -> Option<&SharedString> {
+        self.new_versions.get(key)
     }
 
     pub fn project(&self) -> &Entity<Project> {
@@ -220,11 +232,11 @@ impl AgentConnectionStore {
                             return;
                         }
 
+                        let version = SharedString::from(version);
+                        this.new_versions.insert(key.clone(), version.clone());
                         entry
                             .update(cx, move |_entry, cx| {
-                                cx.emit(AgentConnectionEntryEvent::NewVersionAvailable(
-                                    version.into(),
-                                ));
+                                cx.emit(AgentConnectionEntryEvent::NewVersionAvailable(version));
                             })
                             .ok();
                         this.entries.remove(&key);

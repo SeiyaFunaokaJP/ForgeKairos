@@ -91,7 +91,7 @@ use util::{
     rel_path::RelPath,
 };
 use worktree::{
-    File, PathChange, PathKey, PathProgress, PathSummary, PathTarget, ProjectEntryId,
+    File, GitDirChange, PathChange, PathKey, PathProgress, PathSummary, PathTarget, ProjectEntryId,
     UpdatedGitRepositoriesSet, UpdatedGitRepository, Worktree, WorktreeSettings,
 };
 use zeroize::Zeroize;
@@ -608,6 +608,10 @@ pub struct Repository {
     // For a local repository, holds paths that have had worktree events since the last status scan completed,
     // and that should be examined during the next status scan.
     paths_needing_status_update: Vec<Vec<RepoPath>>,
+    // Scans queued under `GitJobKey::ReloadGitState` coalesce, and it is the
+    // *last* one that survives. Accumulating what every queued scan asked for
+    // here means the surviving job still covers the requests that were dropped.
+    pending_snapshot_scan: SnapshotScan,
     job_sender: mpsc::UnboundedSender<GitJob>,
     _worker_task: Task<()>,
     active_jobs: HashMap<JobId, JobInfo>,
@@ -620,6 +624,53 @@ pub struct Repository {
     initial_graph_data: HashMap<(LogSource, LogOrder), InitialGitGraphData>,
     commit_data_handler: CommitDataHandlerState,
     commit_data: HashMap<Oid, CommitDataState>,
+}
+
+/// Which halves of a repository's state a scheduled scan recomputes.
+///
+/// Splitting the scan lets a `.git` event that only touched refs skip the
+/// expensive `git status` / `git diff --numstat` pass, and an event that only
+/// touched the index skip the ref enumeration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct SnapshotScan {
+    /// Branch list, head commit, linked worktrees and remote URLs.
+    refs: bool,
+    /// File statuses, diff stats, stash entries and merge conflicts.
+    statuses: bool,
+}
+
+impl SnapshotScan {
+    const NONE: Self = Self {
+        refs: false,
+        statuses: false,
+    };
+    const FULL: Self = Self {
+        refs: true,
+        statuses: true,
+    };
+
+    /// Anything that cannot be attributed to a specific part of the git
+    /// directory has to be treated as if everything changed.
+    fn for_git_dir_change(change: Option<GitDirChange>) -> Self {
+        match change {
+            Some(GitDirChange::Refs) => Self {
+                refs: true,
+                statuses: false,
+            },
+            Some(GitDirChange::Index) => Self {
+                refs: false,
+                statuses: true,
+            },
+            Some(GitDirChange::Unknown) | None => Self::FULL,
+        }
+    }
+
+    fn union(self, other: Self) -> Self {
+        Self {
+            refs: self.refs || other.refs,
+            statuses: self.statuses || other.statuses,
+        }
+    }
 }
 
 type RemoteAskPassDelegates = Arc<Mutex<HashMap<u64, RemoteAskPassDelegate>>>;
@@ -2496,9 +2547,10 @@ impl GitStore {
                             existing.schedule_scan(updates_tx.clone(), cx);
                         });
                     } else {
+                        let scan = SnapshotScan::for_git_dir_change(update.git_dir_change);
                         existing.update(cx, |existing, cx| {
                             existing.snapshot.work_directory_abs_path = new_work_directory_abs_path;
-                            existing.schedule_scan(updates_tx.clone(), cx);
+                            existing.schedule_partial_scan(scan, updates_tx.clone(), cx);
                         });
                     }
                 } else {
@@ -5951,6 +6003,7 @@ impl RepositorySnapshot {
         proto::UpdateRepository {
             branch_summary: self.branch.as_ref().map(branch_to_proto),
             branch_list: self.branch_list.iter().map(branch_to_proto).collect(),
+            branch_list_unchanged: false,
             branch_list_error: self
                 .branch_list_error
                 .as_ref()
@@ -6039,13 +6092,28 @@ impl RepositorySnapshot {
             }
         }
 
+        // The branch list is the one part of a repository update that is always
+        // sent in full. Repositories with many branches make that the bulk of
+        // the message, and most updates (a file staged, a status refresh) leave
+        // it untouched, so it is skipped when it did not change.
+        let branch_list_unchanged = *self.branch_list == *old.branch_list
+            && self.branch_list_error == old.branch_list_error;
+
         proto::UpdateRepository {
             branch_summary: self.branch.as_ref().map(branch_to_proto),
-            branch_list: self.branch_list.iter().map(branch_to_proto).collect(),
-            branch_list_error: self
-                .branch_list_error
-                .as_ref()
-                .map(|error| error.to_string()),
+            branch_list: if branch_list_unchanged {
+                Vec::new()
+            } else {
+                self.branch_list.iter().map(branch_to_proto).collect()
+            },
+            branch_list_unchanged,
+            branch_list_error: if branch_list_unchanged {
+                None
+            } else {
+                self.branch_list_error
+                    .as_ref()
+                    .map(|error| error.to_string())
+            },
             head_commit_details: self.head_commit.as_ref().map(commit_details_to_proto),
             updated_statuses,
             removed_statuses,
@@ -6380,6 +6448,7 @@ impl Repository {
             commit_message_buffer: None,
             askpass_delegates: Default::default(),
             paths_needing_status_update: Default::default(),
+            pending_snapshot_scan: SnapshotScan::NONE,
             latest_askpass_id: 0,
             job_sender: mpsc::unbounded().0,
             job_id: 0,
@@ -6426,6 +6495,7 @@ impl Repository {
             git_store,
             pending_ops: Default::default(),
             paths_needing_status_update: Default::default(),
+            pending_snapshot_scan: SnapshotScan::NONE,
             job_sender,
             _worker_task: worker_task,
             repository_state,
@@ -9821,7 +9891,7 @@ impl Repository {
         self.snapshot.branch = new_branch;
         self.snapshot.head_commit = new_head_commit;
 
-        if update.is_last_update {
+        if update.is_last_update && !update.branch_list_unchanged {
             let new_branch_list: Arc<[Branch]> =
                 update.branch_list.iter().map(proto_to_branch).collect();
             let new_branch_list_error = update.branch_list_error.map(SharedString::from);
@@ -9983,24 +10053,48 @@ impl Repository {
         updates_tx: Option<mpsc::UnboundedSender<DownstreamUpdate>>,
         cx: &mut Context<Self>,
     ) {
+        self.schedule_partial_scan(SnapshotScan::FULL, updates_tx, cx)
+    }
+
+    fn schedule_partial_scan(
+        &mut self,
+        scan: SnapshotScan,
+        updates_tx: Option<mpsc::UnboundedSender<DownstreamUpdate>>,
+        cx: &mut Context<Self>,
+    ) {
+        if scan == SnapshotScan::NONE {
+            return;
+        }
+        self.pending_snapshot_scan = self.pending_snapshot_scan.union(scan);
         let this = cx.weak_entity();
         let _ = self.send_keyed_job(
             "schedule_scan",
             Some(GitJobKey::ReloadGitState),
             None,
-            |state, mut cx| async move {
-                log::debug!("run scheduled git status scan");
-
+            move |state, mut cx| async move {
                 let Some(this) = this.upgrade() else {
                     return Ok(());
                 };
+                // Whatever this job was asked for, plus anything requested by
+                // jobs that the queue coalesced away in the meantime.
+                let scan = this
+                    .update(&mut cx, |this, _| {
+                        mem::replace(&mut this.pending_snapshot_scan, SnapshotScan::NONE)
+                    })
+                    .union(scan);
+                log::debug!("run scheduled git scan: {scan:?}");
+
                 let RepositoryState::Local(LocalRepositoryState { backend, .. }) = state else {
                     bail!("not a local repository")
                 };
-                let snapshot = compute_snapshot(this.clone(), backend.clone(), &mut cx).await;
-                this.update(&mut cx, |this, cx| {
-                    this.clear_pending_ops(cx);
-                });
+                let snapshot = compute_snapshot(this.clone(), backend.clone(), scan, &mut cx).await;
+                if scan.statuses {
+                    // Optimistic staging state may only be dropped once real
+                    // statuses have been read back.
+                    this.update(&mut cx, |this, cx| {
+                        this.clear_pending_ops(cx);
+                    });
+                }
                 if let Some(updates_tx) = updates_tx {
                     updates_tx
                         .unbounded_send(DownstreamUpdate::UpdateRepository(snapshot))
@@ -10319,12 +10413,14 @@ impl Repository {
             Some(GitJobKey::RefreshStatuses),
             None,
             |state, mut cx| async move {
-                let (prev_snapshot, changed_paths) = this.update(&mut cx, |this, _| {
-                    (
-                        this.snapshot.clone(),
-                        mem::take(&mut this.paths_needing_status_update),
-                    )
-                })?;
+                let (prev_snapshot, changed_paths, untracked_files) =
+                    this.update(&mut cx, |this, cx| {
+                        (
+                            this.snapshot.clone(),
+                            mem::take(&mut this.paths_needing_status_update),
+                            ProjectSettings::get_global(cx).git.status_untracked_files,
+                        )
+                    })?;
                 let RepositoryState::Local(LocalRepositoryState { backend, .. }) = state else {
                     bail!("not a local repository")
                 };
@@ -10347,7 +10443,7 @@ impl Repository {
                         );
                         let changed_paths_vec = changed_paths.iter().cloned().collect::<Vec<_>>();
 
-                        let status_task = backend.status(&changed_paths_vec);
+                        let status_task = backend.status(&changed_paths_vec, untracked_files);
                         let diff_stat_future = |diff| {
                             if has_head {
                                 backend.diff_stat(diff, &changed_paths_vec)
@@ -11583,7 +11679,7 @@ mod tests {
 
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree(
-            Path::new("/project"),
+            Path::new(util::path!("/project")),
             json!({
                 ".git": {},
                 "committed.txt": "base\n",
@@ -11591,15 +11687,15 @@ mod tests {
         )
         .await;
         fs.set_head_and_index_for_repo(
-            Path::new("/project/.git"),
+            Path::new(util::path!("/project/.git")),
             &[("committed.txt", "head\n".into())],
         );
         fs.set_merge_base_content_for_repo(
-            Path::new("/project/.git"),
+            Path::new(util::path!("/project/.git")),
             &[("committed.txt", "base\n".into())],
         );
 
-        let project = Project::test(fs.clone(), [Path::new("/project")], cx).await;
+        let project = Project::test(fs.clone(), [Path::new(util::path!("/project"))], cx).await;
         project
             .update(cx, |project, cx| project.git_scans_complete(cx))
             .await;
@@ -11668,7 +11764,7 @@ mod tests {
         });
 
         fs.set_merge_base_content_for_repo(
-            Path::new("/project/.git"),
+            Path::new(util::path!("/project/.git")),
             &[("committed.txt", "head\n".into())],
         );
         let repository =
@@ -12120,105 +12216,271 @@ mod tests {
             repo_paths(&["submodule/a.txt", "submodule/nested/b.txt", "top_level.rs"])
         );
     }
+
+    #[test]
+    fn test_snapshot_scan_for_git_dir_change() {
+        assert_eq!(
+            SnapshotScan::for_git_dir_change(Some(GitDirChange::Refs)),
+            SnapshotScan {
+                refs: true,
+                statuses: false
+            }
+        );
+        assert_eq!(
+            SnapshotScan::for_git_dir_change(Some(GitDirChange::Index)),
+            SnapshotScan {
+                refs: false,
+                statuses: true
+            }
+        );
+        assert_eq!(
+            SnapshotScan::for_git_dir_change(Some(GitDirChange::Unknown)),
+            SnapshotScan::FULL
+        );
+        assert_eq!(
+            SnapshotScan::for_git_dir_change(None),
+            SnapshotScan::FULL,
+            "an unclassified change must always fall back to the full scan"
+        );
+        assert_eq!(
+            SnapshotScan::for_git_dir_change(Some(GitDirChange::Refs))
+                .union(SnapshotScan::for_git_dir_change(Some(GitDirChange::Index))),
+            SnapshotScan::FULL
+        );
+    }
+
+    #[gpui::test]
+    async fn test_refs_only_git_dir_event_skips_the_status_pass(cx: &mut TestAppContext) {
+        use util::path;
+
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            Path::new(path!("/project")),
+            json!({
+                ".git": {},
+                "file.txt": "content",
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            Path::new(path!("/project/.git")),
+            &[("file.txt", "content".into())],
+        );
+
+        let project = Project::test(fs.clone(), [Path::new(path!("/project"))], cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+        repository.read_with(cx, |repository, _| {
+            let statuses = repository.snapshot.status().collect::<Vec<_>>();
+            assert_eq!(
+                statuses.len(),
+                0,
+                "unexpected initial statuses: {statuses:?}"
+            );
+        });
+
+        // Stage a change without letting the fake repository announce it, so
+        // that the only thing the worktree sees is the ref update below.
+        fs.with_git_state(Path::new(path!("/project/.git")), false, |state| {
+            state
+                .index_contents
+                .insert(repo_path("file.txt"), b"staged".to_vec());
+            state.branches.insert("feature".into());
+        })
+        .unwrap();
+        fs.emit_fs_event(
+            Path::new(path!("/project/.git/refs/heads/feature")),
+            Some(fs::PathEventKind::Created),
+        );
+        cx.run_until_parked();
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+
+        repository.read_with(cx, |repository, _| {
+            assert_eq!(
+                repository.snapshot.status().count(),
+                0,
+                "a ref-only `.git` event must not run `git status`"
+            );
+            assert!(
+                repository
+                    .snapshot
+                    .branch_list
+                    .iter()
+                    .any(|branch| branch.name() == "feature"),
+                "a ref-only `.git` event must still refresh the branch list"
+            );
+        });
+
+        // An index event, by contrast, has to pick the staged change up.
+        fs.emit_fs_event(
+            Path::new(path!("/project/.git/index")),
+            Some(fs::PathEventKind::Changed),
+        );
+        cx.run_until_parked();
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+
+        repository.read_with(cx, |repository, _| {
+            assert_eq!(
+                repository.snapshot.status().count(),
+                1,
+                "an index `.git` event must run `git status`"
+            );
+        });
+    }
 }
 
 /// This snapshot computes the repository state on the foreground thread while
 /// running the git commands on the background thread. We update branch, head,
 /// remotes, and worktrees first so the UI can react sooner, then compute file
 /// state and emit those events immediately after.
+///
+/// `scan` says which of those two halves to recompute; the other one is carried
+/// over from the previous snapshot. A refs-only scan still escalates to the file
+/// state pass when it turns out the checked-out commit moved, since that changes
+/// what `git status` reports even though no worktree or index event was seen.
 async fn compute_snapshot(
     this: Entity<Repository>,
     backend: Arc<dyn GitRepository>,
+    scan: SnapshotScan,
     cx: &mut AsyncApp,
 ) -> RepositorySnapshot {
-    log::debug!("starting compute snapshot");
+    log::debug!("starting compute snapshot: {scan:?}");
 
-    let (id, work_directory_abs_path, prev_snapshot) = this.update(cx, |this, _| {
-        this.paths_needing_status_update.clear();
-        (
-            this.id,
-            this.work_directory_abs_path.clone(),
-            this.snapshot.clone(),
-        )
-    });
+    let (id, work_directory_abs_path, prev_snapshot, untracked_files) =
+        this.update(cx, |this, cx| {
+            if scan.statuses {
+                this.paths_needing_status_update.clear();
+            }
+            (
+                this.id,
+                this.work_directory_abs_path.clone(),
+                this.snapshot.clone(),
+                ProjectSettings::get_global(cx).git.status_untracked_files,
+            )
+        });
 
-    let branches_future = {
-        let backend = backend.clone();
-        async move { backend.branches().await.log_err().unwrap_or_default() }
-    };
-    let head_commit_future = {
-        let backend = backend.clone();
-        async move { backend.show("HEAD".to_string()).await.ok() }
-    };
-    let worktrees_future = {
-        let backend = backend.clone();
-        async move { backend.worktrees().await.log_err().unwrap_or_default() }
-    };
-    let (branches, head_commit, all_worktrees) =
-        futures::future::join3(branches_future, head_commit_future, worktrees_future).await;
-    log::debug!("fetched branches, head commit, worktrees");
-
-    let BranchesScanResult {
-        branches,
-        error: branch_list_error,
-    } = branches;
-    let branch = branches.iter().find(|branch| branch.is_head).cloned();
-    let branch_list: Arc<[Branch]> = branches.into();
-
-    let linked_worktrees: Arc<[GitWorktree]> = all_worktrees
-        .into_iter()
-        .filter(|wt| wt.path != *work_directory_abs_path)
-        .collect();
-
-    let mut remote_urls = backend.remote_urls().await;
-    let remote_origin_url = remote_urls.remove("origin");
-    let remote_upstream_url = remote_urls.remove("upstream");
-
-    log::debug!("fetched remotes");
-
-    let snapshot = this.update(cx, |this, cx| {
-        let head_changed =
-            branch != this.snapshot.branch || head_commit != this.snapshot.head_commit;
-        let branch_list_changed = *branch_list != *this.snapshot.branch_list;
-        let branch_list_error_changed = branch_list_error != this.snapshot.branch_list_error;
-        let worktrees_changed = *linked_worktrees != *this.snapshot.linked_worktrees;
-
-        this.snapshot = RepositorySnapshot {
-            id,
-            work_directory_abs_path,
-            branch,
-            branch_list: branch_list.clone(),
-            branch_list_error,
-            head_commit,
-            remote_origin_url,
-            remote_upstream_url,
-            linked_worktrees,
-            scan_id: prev_snapshot.scan_id + 1,
-            ..prev_snapshot
+    let mut scan_statuses = scan.statuses;
+    let snapshot = if scan.refs {
+        let branches_future = {
+            let backend = backend.clone();
+            async move { backend.branches().await.log_err().unwrap_or_default() }
         };
+        let head_commit_future = {
+            let backend = backend.clone();
+            async move { backend.show("HEAD".to_string()).await.ok() }
+        };
+        let worktrees_future = {
+            let backend = backend.clone();
+            async move { backend.worktrees().await.log_err().unwrap_or_default() }
+        };
+        let (branches, head_commit, all_worktrees) =
+            futures::future::join3(branches_future, head_commit_future, worktrees_future).await;
+        log::debug!("fetched branches, head commit, worktrees");
 
-        if head_changed {
-            cx.emit(RepositoryEvent::HeadChanged);
+        let BranchesScanResult {
+            branches,
+            error: branch_list_error,
+        } = branches;
+        let branch = branches.iter().find(|branch| branch.is_head).cloned();
+        let branch_list: Arc<[Branch]> = branches.into();
+
+        let linked_worktrees: Arc<[GitWorktree]> = all_worktrees
+            .into_iter()
+            .filter(|wt| wt.path != *work_directory_abs_path)
+            .collect();
+
+        let mut remote_urls = backend.remote_urls().await;
+        let remote_origin_url = remote_urls.remove("origin");
+        let remote_upstream_url = remote_urls.remove("upstream");
+
+        log::debug!("fetched remotes");
+
+        // Only refs were reported as changed, but a ref update that moved the
+        // checked-out commit (`git reset`, an amended commit) changes what
+        // `git status` reports as well, so the status pass can only be skipped
+        // when HEAD stayed put.
+        if head_commit.as_ref().map(|commit| &commit.sha)
+            != prev_snapshot.head_commit.as_ref().map(|commit| &commit.sha)
+            || branch.as_ref().map(|branch| &branch.ref_name)
+                != prev_snapshot.branch.as_ref().map(|branch| &branch.ref_name)
+        {
+            scan_statuses = true;
         }
 
-        if branch_list_changed || branch_list_error_changed {
-            cx.emit(RepositoryEvent::BranchListChanged);
-        }
+        this.update(cx, |this, cx| {
+            let head_changed =
+                branch != this.snapshot.branch || head_commit != this.snapshot.head_commit;
+            let branch_list_changed = *branch_list != *this.snapshot.branch_list;
+            let branch_list_error_changed = branch_list_error != this.snapshot.branch_list_error;
+            let worktrees_changed = *linked_worktrees != *this.snapshot.linked_worktrees;
 
-        if worktrees_changed {
-            cx.emit(RepositoryEvent::GitWorktreeListChanged);
-        }
+            this.snapshot = RepositorySnapshot {
+                id,
+                work_directory_abs_path,
+                branch,
+                branch_list: branch_list.clone(),
+                branch_list_error,
+                head_commit,
+                remote_origin_url,
+                remote_upstream_url,
+                linked_worktrees,
+                scan_id: prev_snapshot.scan_id + 1,
+                ..prev_snapshot
+            };
 
-        this.snapshot.clone()
-    });
+            if head_changed {
+                cx.emit(RepositoryEvent::HeadChanged);
+            }
+
+            if branch_list_changed || branch_list_error_changed {
+                cx.emit(RepositoryEvent::BranchListChanged);
+            }
+
+            if worktrees_changed {
+                cx.emit(RepositoryEvent::GitWorktreeListChanged);
+            }
+
+            this.snapshot.clone()
+        })
+    } else {
+        this.update(cx, |this, _| {
+            this.snapshot = RepositorySnapshot {
+                id,
+                work_directory_abs_path,
+                scan_id: prev_snapshot.scan_id + 1,
+                ..prev_snapshot
+            };
+            this.snapshot.clone()
+        })
+    };
+
+    if !scan_statuses {
+        return snapshot;
+    }
 
     let statuses_future = {
         let backend = backend.clone();
         async move {
             backend
-                .status(&[RepoPath::from_rel_path(
-                    &RelPath::new(".".as_ref(), PathStyle::local()).unwrap(),
-                )])
+                .status(
+                    &[RepoPath::from_rel_path(
+                        &RelPath::new(".".as_ref(), PathStyle::local()).unwrap(),
+                    )],
+                    untracked_files,
+                )
                 .await
                 .log_err()
                 .unwrap_or_default()

@@ -63,6 +63,18 @@ const TOOLS: &[ToolInfo] = &[
         regex_explanation: "パターンは作成対象のディレクトリのパスと照合されます。",
     },
     ToolInfo {
+        id: "apply_code_action",
+        name: "コードアクションを適用",
+        description: "言語サーバーのコードアクションの適用",
+        regex_explanation: "パターンはコードアクションの名前と照合されます。編集内容は差分レビューを通らず直接バッファーに書き込まれます。",
+    },
+    ToolInfo {
+        id: "rename_symbol",
+        name: "シンボルの名前を変更",
+        description: "言語サーバーによるプロジェクト全体のシンボル名変更",
+        regex_explanation: "パターンは変更前のシンボル名と照合されます。変更は差分レビューを通らず、参照するすべてのファイルが保存されます。",
+    },
+    ToolInfo {
         id: "fetch",
         name: "取得",
         description: "URL への HTTP リクエスト",
@@ -308,6 +320,8 @@ fn get_tool_render_fn(
         "fetch" => render_fetch_tool_config,
         "search_web" => render_web_search_tool_config,
         "skill" => render_skill_tool_config,
+        "apply_code_action" => render_apply_code_action_tool_config,
+        "rename_symbol" => render_rename_symbol_tool_config,
         _ => render_terminal_tool_config, // fallback
     }
 }
@@ -1386,6 +1400,8 @@ tool_config_page_fn!(render_create_directory_tool_config, "create_directory");
 tool_config_page_fn!(render_fetch_tool_config, "fetch");
 tool_config_page_fn!(render_web_search_tool_config, "search_web");
 tool_config_page_fn!(render_skill_tool_config, "skill");
+tool_config_page_fn!(render_apply_code_action_tool_config, "apply_code_action");
+tool_config_page_fn!(render_rename_symbol_tool_config, "rename_symbol");
 
 #[cfg(test)]
 mod tests {
@@ -1398,11 +1414,10 @@ mod tests {
         //   1. Add a ToolInfo entry to TOOLS (if the tool has permission checks), or
         //   2. Add it to this list with a comment explaining why it's excluded.
         const EXCLUDED_TOOLS: &[&str] = &[
-            // Read-only / low-risk tools that don't call decide_permission_from_settings
-            "apply_code_action",
             // Interactive prompt: always asks the user via prompt_for_decision,
             // so it has no settings-driven permission rules.
             "ask_user",
+            // Read-only / low-risk tools that don't call decide_permission_from_settings
             "diagnostics",
             "find_path",
             "find_references",
@@ -1413,7 +1428,6 @@ mod tests {
             "list_directory",
             "open",
             "read_file",
-            "rename_symbol",
             "repo_map",
             "thinking",
             // streaming_edit_file uses "edit_file" for permission lookups,

@@ -242,22 +242,20 @@ impl RemoteConnectionModal {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let (connection_string, nickname, is_wsl, is_devcontainer) = match connection_options {
-            RemoteConnectionOptions::Ssh(options) => (
-                options.connection_string(),
-                options.nickname.clone(),
-                false,
-                false,
-            ),
-            RemoteConnectionOptions::Wsl(options) => {
-                (options.distro_name.clone(), None, true, false)
+        // `remote` の `Mock` 変種は `remote/test-support` が入ると生える。その feature は
+        // 依存元 (git_ui_core や ide_server の dev-dependency 経由の `workspace/test-support`
+        // など) の統合でも入るので、このクレート自身の `test-support` で `#[cfg]` した腕では
+        // 覆いきれず E0004 になっていた。Ssh と Docker だけを名指しし、残り (常にある Wsl と、
+        // ある場合の Mock) は `remote` 側の `display_name()` に任せることで、どの feature の
+        // 組み合わせでも網羅的かつ到達可能な match になる。
+        let (connection_string, nickname, is_devcontainer) = match connection_options {
+            RemoteConnectionOptions::Ssh(options) => {
+                (options.connection_string(), options.nickname.clone(), false)
             }
-            RemoteConnectionOptions::Docker(options) => (options.name.clone(), None, false, true),
-            #[cfg(feature = "test-support")]
-            RemoteConnectionOptions::Mock(options) => {
-                (format!("mock-{}", options.id), None, false, false)
-            }
+            RemoteConnectionOptions::Docker(options) => (options.name.clone(), None, true),
+            other => (other.display_name(), None, false),
         };
+        let is_wsl = matches!(connection_options, RemoteConnectionOptions::Wsl(_));
         Self {
             prompt: cx.new(|cx| {
                 RemoteConnectionPrompt::new(

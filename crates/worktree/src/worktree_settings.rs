@@ -22,6 +22,11 @@ pub struct WorktreeSettings {
     pub private_files: PathMatcher,
     pub hidden_files: PathMatcher,
     pub read_only_files: PathMatcher,
+    /// Mirrors `git.disable_git`. It lives here rather than being read from
+    /// `GitSettings` because the background scanner is restarted whenever
+    /// `WorktreeSettings` changes, which is what makes the setting take effect
+    /// without restarting Zed.
+    pub git_disabled: bool,
 }
 
 impl WorktreeSettings {
@@ -100,6 +105,12 @@ impl Settings for WorktreeSettings {
                 .unwrap_or_default(),
             scan_symlinks,
             file_scan_depth: worktree.file_scan_depth.filter(|depth| *depth > 0),
+            git_disabled: content
+                .git
+                .as_ref()
+                .and_then(|git| git.enabled.as_ref())
+                .and_then(|enabled| enabled.disable_git)
+                .unwrap_or(false),
         }
     }
 }

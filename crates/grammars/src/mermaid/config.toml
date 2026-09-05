@@ -1,0 +1,17 @@
+# The grammar comes from the `tree-sitter-mermaid` crate and the `*.scm` files
+# next to this one are copied verbatim from that project's Zed query profile
+# (https://github.com/Latias94/merman, `distribution/tree-sitter-mermaid/queries/zed`).
+# Both are MIT licensed; see `LICENSE` in this directory.
+name = "Mermaid"
+grammar = "mermaid"
+path_suffixes = ["mmd", "mermaid"]
+code_fence_block_name = "mermaid"
+line_comments = ["%% "]
+autoclose_before = ";:.,=}])>"
+brackets = [
+    { start = "{", end = "}", close = true, newline = true },
+    { start = "[", end = "]", close = true, newline = false },
+    { start = "(", end = ")", close = true, newline = false },
+    { start = "\"", end = "\"", close = true, newline = false },
+]
+tab_size = 4
