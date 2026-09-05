@@ -5,8 +5,8 @@ use editor::Editor;
 use futures::channel::mpsc::unbounded;
 use futures::channel::oneshot;
 use futures::{AsyncReadExt as _, AsyncWriteExt as _, StreamExt as _};
-use gpui::{AppContext as _, Entity, TestAppContext};
-use project::{FakeFs, Project};
+use gpui::{AppContext as _, Entity, TestAppContext, UpdateGlobal as _};
+use project::{FakeFs, Fs as _, Project};
 use serde_json::{Value, json};
 use smol::net::{TcpListener, TcpStream};
 use util::path;
@@ -285,6 +285,13 @@ fn init_test(cx: &mut TestAppContext) {
 }
 
 async fn test_workspace(cx: &mut TestAppContext) -> (Entity<Workspace>, Entity<IdeServer>) {
+    let (_fs, workspace, server) = test_workspace_with_fs(cx).await;
+    (workspace, server)
+}
+
+async fn test_workspace_with_fs(
+    cx: &mut TestAppContext,
+) -> (Arc<FakeFs>, Entity<Workspace>, Entity<IdeServer>) {
     init_test(cx);
     let fs = FakeFs::new(cx.executor());
     fs.insert_tree(
@@ -292,13 +299,101 @@ async fn test_workspace(cx: &mut TestAppContext) -> (Entity<Workspace>, Entity<I
         json!({ "main.rs": "fn main() {\n    println!(\"hi\");\n}\n" }),
     )
     .await;
-    let project = Project::test(fs, [path!("/test").as_ref()], cx).await;
+    let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
     let project_id = project.entity_id();
     let (multi_workspace, cx) =
         cx.add_window_view(|window, cx| MultiWorkspace::test_new(project, window, cx));
     let workspace = multi_workspace.read_with(cx, |multi, _| multi.workspace().clone());
     let server = cx.new(|cx| IdeServer::new(workspace.downgrade(), project_id, cx));
-    (workspace, server)
+    (fs, workspace, server)
+}
+
+fn lock_files(directory: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut paths = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "lock")
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths
+}
+
+/// 実機で `~/.claude/ide` にロックが 2 本残った件 (同じ pid・同じフォルダー) の回帰。
+/// 原因は bind が終わるまで `running` が空なので、そのあいだに届いた設定変更が
+/// 2 本目のサーバーを立ち上げ、入れ替えられた 1 本目のロックが誰にも消されずに
+/// 残っていたこと。
+#[gpui::test]
+async fn keeps_one_lock_file_and_removes_it_when_the_workspace_goes_away(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let lock_directory = tempfile::tempdir().expect("a temporary lock directory");
+    init_test(cx);
+    cx.update(|cx| {
+        crate::init(cx);
+        crate::set_lock_directory(lock_directory.path().to_path_buf(), cx);
+    });
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/test"), json!({ "main.rs": "fn main() {}\n" }))
+        .await;
+    let project = Project::test(fs, [path!("/test").as_ref()], cx).await;
+    let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.ide_server.get_or_insert_default().enabled = Some(true);
+            });
+        });
+    });
+    // bind が終わる前に、無関係な設定変更でもう一度 `SettingsStore` を揺らす。ここで
+    // 2 本目が立ち上がると、入れ替えられた 1 本目のロックが残る。
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings
+                    .terminal
+                    .get_or_insert_default()
+                    .session_log
+                    .get_or_insert_default()
+                    .auto = Some(true);
+            });
+        });
+    });
+    cx.run_until_parked();
+
+    let locks = lock_files(lock_directory.path());
+    assert_eq!(
+        locks.len(),
+        1,
+        "expected exactly one lock file, got {locks:?}"
+    );
+    let contents = LockFileContents::from_json(
+        &std::fs::read_to_string(&locks[0]).expect("the lock file is readable"),
+    )
+    .expect("the lock file parses");
+    assert_eq!(contents.pid, std::process::id());
+    assert_eq!(
+        contents.workspace_folders,
+        vec![path!("/test").to_string()],
+        "a local workspace writes its own folders"
+    );
+
+    window
+        .update(cx, |_, window, _| window.remove_window())
+        .expect("the window is still open");
+    cx.run_until_parked();
+
+    assert_eq!(
+        lock_files(lock_directory.path()),
+        Vec::<PathBuf>::new(),
+        "releasing the workspace has to take the lock file with it"
+    );
 }
 
 async fn request(server: &Entity<IdeServer>, message: Value, cx: &mut TestAppContext) -> Value {
@@ -579,5 +674,67 @@ async fn does_not_send_an_at_mention_without_a_connected_cli(cx: &mut TestAppCon
     assert!(
         !sent,
         "with no WebSocket client attached there is nobody to mention the selection to"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// openDiff
+// ---------------------------------------------------------------------------
+
+/// `FILE_SAVED` は「保存した」ではなく「この本文で承認した」という意味で、ディスクへ
+/// 書くのは CLI 側の Edit / Write ツールである。IDE が先に書くと、CLI が書き込み直前に
+/// する `readFileState` の mtime と内容の照合が落ちて
+/// 「File content has changed since it was last read」になる (CLI 2.1.261 の `xeo` /
+/// `aio`)。実機でも「採用」のあと CLI 側にだけエラーが出ていた。
+#[gpui::test]
+async fn accepting_a_diff_reports_the_contents_without_writing_the_file(cx: &mut TestAppContext) {
+    let (fs, _workspace, server) = test_workspace_with_fs(cx).await;
+    let on_disk_before = fs
+        .load(path!("/test/main.rs").as_ref())
+        .await
+        .expect("the file is readable");
+
+    let message = serde_json::to_string(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "openDiff",
+            "arguments": {
+                "old_file_path": path!("/test/main.rs"),
+                "new_file_path": path!("/test/main.rs"),
+                "new_file_contents": "fn main() {}\n",
+                "tab_name": "main.rs",
+            }
+        }
+    }))
+    .expect("the request serializes");
+
+    // `openDiff` はユーザーの決定を待つので、待っているあいだにこちらから採用する。
+    let response = cx.spawn({
+        let server = server.clone();
+        async move |mut cx| IdeServer::handle_message(&server, &message, &mut cx).await
+    });
+    cx.run_until_parked();
+
+    let diff = server
+        .update(cx, |server, _| server.take_diff("main.rs"))
+        .expect("the diff tab is registered while the CLI waits");
+    diff.update(cx, |diff, cx| diff.accept(cx));
+    cx.run_until_parked();
+
+    let response: Value =
+        serde_json::from_str(&response.await.expect("openDiff produced a response"))
+            .expect("the response is valid JSON");
+    let content = &response["result"]["content"];
+    assert_eq!(content[0]["text"], json!("FILE_SAVED"));
+    assert_eq!(content[1]["text"], json!("fn main() {}\n"));
+
+    assert_eq!(
+        fs.load(path!("/test/main.rs").as_ref())
+            .await
+            .expect("the file is still readable"),
+        on_disk_before,
+        "the IDE must leave the write to the CLI"
     );
 }

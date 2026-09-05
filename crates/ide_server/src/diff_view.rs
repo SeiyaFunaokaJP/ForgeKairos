@@ -4,9 +4,17 @@
 //! `BufferDiff` の base text、右が新内容の作業用バッファー)。このタブはその上に
 //! 「受け入れる / 拒否」の 1 行を足し、押されるまで待つ `oneshot` を持つだけ。
 //!
-//! **新内容はユーザーが受け入れるまで実ファイルに書かない**。編集はスクラッチ
-//! バッファーの上で行われ、受け入れたときにその時点の本文を実ファイルのバッファーへ
-//! 移して保存する (途中でユーザーが手直しした内容がそのまま採用される)。
+//! **このタブは実ファイルをいっさい書かない**。編集はスクラッチバッファーの上で
+//! 行われ、「採用」はその時点の本文を `FILE_SAVED` の 2 番目のテキストとして CLI に
+//! 返すだけ (途中でユーザーが手直しした内容がそのまま採用される)。
+//!
+//! 名前に反して `FILE_SAVED` は「保存した」ではなく「この本文で承認した」という意味で、
+//! ディスクに書くのは CLI 側の Edit / Write ツールである。CLI 2.1.261 は `openDiff` の
+//! 結果を「保留中のツール呼び出しの入力を差し替える許可応答」に変換し (`Ho`)、その後
+//! ツール本体が改めてファイルを読み、`readFileState` の mtime と内容を照合してから
+//! 書き込む。IDE が先にディスクへ書くと、この照合が
+//! 「File content has changed since it was last read」で落ちる。公式の VSCode 拡張も
+//! 右側を独自スキームの仮想ドキュメントで開くだけで、実ファイルには触れていない。
 //!
 //! リモートプロジェクトでも動く。対象ファイルはワークツリー配下に解決できたものだけ。
 
@@ -25,7 +33,8 @@ use ui::prelude::*;
 use workspace::item::ItemEvent;
 use workspace::{Item, Workspace};
 
-/// CLI が待っている結果。`FILE_SAVED` のときは保存後の本文も返す。
+/// CLI が待っている結果。`FILE_SAVED` のときは承認された本文も返す (ディスクへ書くのは
+/// CLI 側)。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IdeServerDiffOutcome {
     Accepted { contents: String },
@@ -41,9 +50,7 @@ pub struct IdeServerDiff {
     new_file_path: PathBuf,
     diff_view: Entity<FileDiffView>,
     new_buffer: Entity<Buffer>,
-    project: Entity<Project>,
     outcome: Option<oneshot::Sender<IdeServerDiffOutcome>>,
-    saving: bool,
 }
 
 impl IdeServerDiff {
@@ -92,9 +99,7 @@ impl IdeServerDiff {
                     new_file_path,
                     diff_view,
                     new_buffer,
-                    project,
                     outcome: Some(outcome_tx),
-                    saving: false,
                 });
                 workspace.add_item_to_active_pane(
                     Box::new(diff_tab.clone()),
@@ -125,30 +130,9 @@ impl IdeServerDiff {
         cx.emit(IdeServerDiffEvent::Close);
     }
 
-    fn accept(&mut self, cx: &mut Context<Self>) {
-        if self.saving {
-            return;
-        }
-        self.saving = true;
+    pub(crate) fn accept(&mut self, cx: &mut Context<Self>) {
         let contents = self.new_buffer.read(cx).text();
-        let path = self.new_file_path.clone();
-        let project = self.project.clone();
-        cx.spawn(async move |this, cx| {
-            let target = open_buffer(&project, &path, cx)
-                .await
-                .with_context(|| format!("opening {} to apply the diff", path.display()))?;
-            target.update(cx, |buffer, cx| {
-                buffer.set_text(contents.clone(), cx);
-            });
-            project
-                .update(cx, |project, cx| project.save_buffer(target, cx))
-                .await
-                .with_context(|| format!("saving {}", path.display()))?;
-            this.update(cx, |this, cx| {
-                this.resolve(IdeServerDiffOutcome::Accepted { contents }, cx);
-            })
-        })
-        .detach_and_log_err(cx);
+        self.resolve(IdeServerDiffOutcome::Accepted { contents }, cx);
     }
 
     fn reject(&mut self, cx: &mut Context<Self>) {
@@ -237,7 +221,7 @@ impl Render for IdeServerDiff {
                             .child(
                                 Button::new("ide-server-diff-accept", "採用")
                                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
-                                    .disabled(decided || self.saving)
+                                    .disabled(decided)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.accept(cx);
                                     })),

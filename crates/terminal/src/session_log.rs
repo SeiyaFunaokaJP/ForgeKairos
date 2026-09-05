@@ -352,6 +352,56 @@ impl LineAssembler {
         }
     }
 
+    /// Byte offset of `column` counted in characters from the start of the
+    /// line, or the end of the line when it is shorter than that.
+    ///
+    /// A text log has no cell grid, so a column is taken to be one character
+    /// wide even where the terminal would have drawn it two cells wide.
+    fn byte_offset_of_column(&self, column: usize) -> usize {
+        let mut characters = 0;
+        for (offset, byte) in self.line.iter().enumerate() {
+            if is_utf8_continuation(*byte) {
+                continue;
+            }
+            if characters == column {
+                return offset;
+            }
+            characters += 1;
+        }
+        self.line.len()
+    }
+
+    /// Moves the write position back to `column`, dropping what the line held
+    /// past it so the redraw that follows replaces it rather than appending to
+    /// it. This is what keeps line editors that repaint the whole input on
+    /// every keystroke (PSReadLine, readline in bracketed paste) from leaving
+    /// one fragment per keystroke in the log.
+    ///
+    /// Only the part of the line that is still pending can be taken back;
+    /// bytes handed to the file by a partial flush stay as they are.
+    fn move_to_column(&mut self, column: usize) {
+        self.pending_carriage_return = false;
+        let offset = self.byte_offset_of_column(column).max(self.flushed_len);
+        self.line.truncate(offset);
+    }
+
+    /// Drops the whole pending part of the current line.
+    fn erase_line(&mut self) {
+        self.pending_carriage_return = false;
+        self.line.truncate(self.flushed_len);
+    }
+
+    /// Moves the write position `count` characters to the left.
+    fn move_left(&mut self, count: usize) {
+        self.resolve_carriage_return();
+        for _ in 0..count {
+            if self.line.len() <= self.flushed_len {
+                break;
+            }
+            self.backspace();
+        }
+    }
+
     fn end_line(&mut self) {
         self.pending_carriage_return = false;
         self.write_prefix_if_needed();
@@ -417,6 +467,53 @@ impl vte::Perform for LineAssembler {
             b'\r' => self.pending_carriage_return = true,
             b'\t' => self.push_byte(b'\t'),
             0x08 => self.backspace(),
+            _ => {}
+        }
+    }
+
+    /// Only the sequences that move within the current line or erase it are
+    /// acted on. Everything else (colors, cursor visibility, scroll regions,
+    /// movement between rows) has no meaning in a file of plain text lines and
+    /// is dropped, which is the point of stripping in the first place.
+    fn csi_dispatch(
+        &mut self,
+        params: &vte::Params,
+        intermediates: &[u8],
+        _ignore: bool,
+        action: char,
+    ) {
+        // A non-empty intermediate marks a private sequence such as
+        // `ESC [ ? 25 l`, whose final byte collides with the ones below.
+        if !intermediates.is_empty() {
+            return;
+        }
+        let mut parameters = params.iter();
+        let first = parameters
+            .next()
+            .and_then(|subparams| subparams.first())
+            .copied()
+            .unwrap_or(0);
+        match action {
+            // EL. Erasing to the right of the write position covers nothing,
+            // because the assembler never holds anything past it.
+            'K' => match first {
+                0 => {}
+                _ => self.erase_line(),
+            },
+            // CHA and HPA both take a one-based column.
+            'G' | '`' => self.move_to_column(usize::from(first.max(1)) - 1),
+            // CUP and HVP. The row is ignored: the assembler has no grid to
+            // move around in, so all that can be honoured is the column.
+            'H' | 'f' => {
+                let column = parameters
+                    .next()
+                    .and_then(|subparams| subparams.first())
+                    .copied()
+                    .unwrap_or(1);
+                self.move_to_column(usize::from(column.max(1)) - 1);
+            }
+            // CUB.
+            'D' => self.move_left(usize::from(first.max(1))),
             _ => {}
         }
     }
@@ -593,6 +690,58 @@ mod tests {
     }
 
     #[test]
+    fn line_editor_redraws_leave_only_the_final_line() {
+        // What PSReadLine sends for every keystroke: park the cursor at the
+        // start of the input, repaint prompt and buffer, erase the leftovers.
+        let mut redraws = Vec::new();
+        for typed in ["e", "ec", "ech", "echo", "echo a", "echo ab"] {
+            redraws.extend_from_slice(b"\x1b[1;1H");
+            redraws.extend_from_slice(format!("PS> {typed}").as_bytes());
+            redraws.extend_from_slice(b"\x1b[K");
+        }
+        redraws.extend_from_slice(b"\r\n");
+        assert_eq!(strip(&redraws), "PS> echo ab\n");
+
+        // The same thing written with CHA rather than CUP.
+        assert_eq!(strip(b"echo a\x1b[1G\x1b[Kecho ab\r\n"), "echo ab\n");
+        assert_eq!(strip(b"echo a\x1b[1`echo ab\r\n"), "echo ab\n");
+    }
+
+    #[test]
+    fn erasing_to_the_right_keeps_the_text_before_the_cursor() {
+        assert_eq!(strip(b"prompt$ \x1b[K\r\n"), "prompt$ \n");
+        assert_eq!(strip(b"prompt$ \x1b[0K\r\n"), "prompt$ \n");
+        assert_eq!(strip(b"prompt$ \x1b[2Kdone\r\n"), "done\n");
+    }
+
+    #[test]
+    fn cursor_moves_within_the_line_truncate_it() {
+        assert_eq!(strip(b"abcdef\x1b[4Gxy\r\n"), "abcxy\n");
+        assert_eq!(strip(b"abcd\x1b[2Dxy\r\n"), "abxy\n");
+        // A column past the end of the line leaves it alone.
+        assert_eq!(strip(b"abc\x1b[9Gd\r\n"), "abcd\n");
+        // Private sequences share their final byte and must not be mistaken
+        // for cursor movement.
+        assert_eq!(strip(b"ab\x1b[?25lcd\r\n"), "abcd\n");
+    }
+
+    #[test]
+    fn a_redraw_cannot_take_back_a_flushed_line() {
+        let mut formatter = SessionLogFormatter::new(SessionLogOptions {
+            strip_control_sequences: true,
+            timestamps: TimestampFlag::new(false),
+        });
+        formatter.push(b"echo a");
+        formatter.flush_partial_line();
+        formatter.push(b"\x1b[1G\x1b[Kecho ab\r\n");
+        formatter.finish();
+        assert_eq!(
+            String::from_utf8_lossy(&formatter.take_output()),
+            "echo aecho ab\n"
+        );
+    }
+
+    #[test]
     fn raw_mode_keeps_escape_sequences() {
         let mut formatter = SessionLogFormatter::new(SessionLogOptions {
             strip_control_sequences: false,
@@ -688,6 +837,20 @@ mod tests {
             "{unknown}.log"
         );
         assert_eq!(expand_file_name_template("{date", at, &context), "{date");
+    }
+
+    #[test]
+    fn an_unset_directory_falls_back_to_the_log_folder() {
+        let fallback = paths::logs_dir().join("terminal-sessions");
+        assert_eq!(resolve_log_directory(None), fallback);
+        // The settings default is an empty string rather than null, so that the
+        // settings GUI has a default to offer and renders a text field.
+        assert_eq!(resolve_log_directory(Some("")), fallback);
+        assert_eq!(resolve_log_directory(Some("   ")), fallback);
+        assert_eq!(
+            resolve_log_directory(Some("~/logs")),
+            util::paths::home_dir().join("logs")
+        );
     }
 
     #[test]

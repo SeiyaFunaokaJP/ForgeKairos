@@ -35,10 +35,18 @@ pub(crate) fn register_workspace_actions(workspace: &mut Workspace) {
             copy_mcp_configuration(workspace, cx);
         })
         .register_action(|workspace, _: &RevealLockFile, _window, cx| {
-            let path = server_for(&cx.entity(), cx)
+            let server = server_for(&cx.entity(), cx);
+            let path = server
+                .as_ref()
                 .and_then(|server| server.read(cx).lock_file_path().map(Path::to_path_buf));
             match path {
                 Some(path) => cx.reveal_path(&path),
+                None if server.is_some_and(|server| server.read(cx).port().is_some()) => notify(
+                    workspace,
+                    "リモートのワークスペースではロックファイルを書きません。\
+                     CLI からは「MCP 設定をコピー」で貼れる HTTP のエンドポイントを使ってください",
+                    cx,
+                ),
                 None => notify(workspace, "IDE サーバーは動いていません", cx),
             }
         })
@@ -149,12 +157,16 @@ impl Render for IdeServerStatusItem {
         if !IdeServerSettings::get_global(cx).enabled {
             return Empty.into_any_element();
         }
-        let (port, connected_clients) = match self.server.as_ref() {
+        let (port, connected_clients, has_lock_file) = match self.server.as_ref() {
             Some(server) => {
                 let server = server.read(cx);
-                (server.port(), server.connected_client_count())
+                (
+                    server.port(),
+                    server.connected_client_count(),
+                    server.lock_file_path().is_some(),
+                )
             }
-            None => (None, 0),
+            None => (None, 0, false),
         };
         let label: SharedString = match port {
             Some(port) if connected_clients > 0 => {
@@ -164,6 +176,12 @@ impl Render for IdeServerStatusItem {
             None => "IDE サーバー: 起動中…".into(),
         };
         let tooltip: SharedString = match port {
+            Some(port) if !has_lock_file => format!(
+                "127.0.0.1:{port} で待ち受け中。リモートのワークスペースなので、\
+                 CLI が自動で見つけるためのロックファイルは書いていません \
+                 (「MCP 設定をコピー」で貼れば繋がります)"
+            )
+            .into(),
             Some(port) => {
                 format!("127.0.0.1:{port} で待ち受け中。クリックで操作メニューを開きます").into()
             }
@@ -196,7 +214,7 @@ impl Render for IdeServerStatusItem {
                             Box::new(CopyMcpConfiguration),
                         )
                         .action_disabled_when(
-                            !is_running,
+                            !is_running || !has_lock_file,
                             "ロックファイルの場所を開く",
                             Box::new(RevealLockFile),
                         )

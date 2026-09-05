@@ -667,11 +667,16 @@ pub enum GitGutterSetting {
 #[serde(rename_all = "snake_case")]
 pub enum StatusUntrackedFilesSetting {
     /// List every file inside untracked directories.
+    // The strum labels are what the settings GUI dropdown displays; the JSON
+    // values stay snake_case English via serde.
     #[default]
+    #[strum(serialize = "すべて")]
     All,
     /// List untracked directories, but not the files inside them.
+    #[strum(serialize = "通常")]
     Normal,
     /// Don't list untracked files at all.
+    #[strum(serialize = "報告しない")]
     No,
 }
 

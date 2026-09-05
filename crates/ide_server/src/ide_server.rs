@@ -12,9 +12,14 @@
 //! - 起動ごとのランダムトークンで認証する。WebSocket は CLI が送る
 //!   `X-Claude-Code-Ide-Authorization`、HTTP は `Authorization: Bearer`
 //! - 設定 `ide_server.enabled` は**既定 false** (ADR-F09「AI 機能は既定オフ」)
-//! - 有効なあいだ、ウィンドウごとに `~/.claude/ide/<port>.lock` を書く。CLI 2.1.261 は
-//!   このファイルからポート (= ファイル名) と `workspaceFolders` / `authToken` /
-//!   `transport` を読む
+//! - 有効なあいだ、**ローカル**ワークスペースごとに `~/.claude/ide/<port>.lock` を書く。
+//!   CLI 2.1.261 はこのファイルからポート (= ファイル名) と `workspaceFolders` /
+//!   `authToken` / `transport` を読む
+//! - リモート (SSH / WSL / Dev Container / collab) のワークスペースではロックファイルを
+//!   **書かない**。`workspaceFolders` が相手側の絶対パスになってしまい、手元で走る CLI は
+//!   自分の cwd と照合できないし、リモートのターミナルには `CLAUDE_CODE_SSE_PORT` も
+//!   注げないので、置いても誤検出の種にしかならない。サーバー自体は動かしたままなので、
+//!   `.mcp.json` 断片を貼れば HTTP からは今までどおり使える
 
 mod diff_view;
 mod protocol;
@@ -113,15 +118,40 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-#[derive(Default)]
 struct IdeServerRegistry {
     servers: HashMap<EntityId, Entity<IdeServer>>,
     /// プロジェクトからワークスペースを引くための逆引き。ターミナルの環境変数と ACP の
     /// `mcp_servers` はどちらもプロジェクトしか持っていないところから呼ばれる。
     workspaces_by_project: HashMap<EntityId, EntityId>,
+    /// ロックファイルを置くディレクトリ。テストが本物の `~/.claude/ide` を汚さずに
+    /// 済むよう、グローバルに持たせて差し替えられるようにしてある。
+    lock_directory: std::path::PathBuf,
+}
+
+impl Default for IdeServerRegistry {
+    fn default() -> Self {
+        Self {
+            servers: HashMap::default(),
+            workspaces_by_project: HashMap::default(),
+            lock_directory: protocol::lock_file_directory(),
+        }
+    }
 }
 
 impl Global for IdeServerRegistry {}
+
+fn lock_directory(cx: &App) -> std::path::PathBuf {
+    cx.try_global::<IdeServerRegistry>()
+        .map(|registry| registry.lock_directory.clone())
+        .unwrap_or_else(protocol::lock_file_directory)
+}
+
+#[cfg(test)]
+fn set_lock_directory(directory: std::path::PathBuf, cx: &mut App) {
+    cx.update_global::<IdeServerRegistry, ()>(|registry, _| {
+        registry.lock_directory = directory;
+    });
+}
 
 fn server_for(workspace: &Entity<Workspace>, cx: &App) -> Option<Entity<IdeServer>> {
     server_for_workspace_id(workspace.entity_id(), cx)
@@ -188,19 +218,44 @@ pub fn mcp_endpoint(project: &Entity<Project>, cx: &App) -> Option<McpEndpoint> 
 struct RunningServer {
     port: u16,
     auth_token: Arc<str>,
-    lock_path: std::path::PathBuf,
+    /// リモートのワークスペースではロックファイルを書かないので `None`。
+    lock_path: Option<std::path::PathBuf>,
     connections: Vec<UnboundedSender<String>>,
     _accept_task: Task<()>,
+}
+
+impl Drop for RunningServer {
+    /// ロックファイルの後始末を [`RunningServer`] 自身に持たせてあるのは、これを
+    /// 落とす経路 (`stop`、`IdeServer` の drop、アプリ終了) が増えても取り残しが
+    /// 出ないようにするため。
+    fn drop(&mut self) {
+        let Some(lock_path) = self.lock_path.as_ref() else {
+            return;
+        };
+        if let Err(error) = std::fs::remove_file(lock_path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            log::error!(
+                "ide_server: could not remove {}: {error}",
+                lock_path.display()
+            );
+        }
+    }
 }
 
 pub struct IdeServer {
     workspace: WeakEntity<Workspace>,
     project_id: EntityId,
     running: Option<RunningServer>,
+    /// `start` は bind が終わるまで `running` を埋められない。そのあいだに設定の変更が
+    /// もう一度届くと 2 本目が立ち上がり、あとから入れ替えられたほうのロックファイルが
+    /// 誰にも消されずに残る。この旗が「起動処理が飛んでいる」ことを表す。
+    starting: bool,
     latest_selection: Option<SelectionSnapshot>,
     selection_subscription: Option<Subscription>,
     open_diffs: HashMap<String, Entity<IdeServerDiff>>,
     _settings_subscription: Subscription,
+    _quit_subscription: Subscription,
     _workspace_subscription: Option<Subscription>,
 }
 
@@ -212,6 +267,12 @@ impl IdeServer {
     ) -> Self {
         let settings_subscription = cx.observe_global::<SettingsStore>(|this, cx| {
             this.apply_settings(cx);
+        });
+        // ウィンドウを閉じずに終了したときは Workspace が解放されないままプロセスが
+        // 消えるので、`Drop` に任せているとロックファイルが残る。
+        let quit_subscription = cx.on_app_quit(|this: &mut Self, _cx| {
+            this.stop();
+            async {}
         });
         let workspace_subscription = workspace
             .upgrade()
@@ -229,10 +290,12 @@ impl IdeServer {
             workspace,
             project_id,
             running: None,
+            starting: false,
             latest_selection: None,
             selection_subscription: None,
             open_diffs: HashMap::default(),
             _settings_subscription: settings_subscription,
+            _quit_subscription: quit_subscription,
             _workspace_subscription: workspace_subscription,
         }
     }
@@ -257,9 +320,7 @@ impl IdeServer {
     }
 
     pub fn lock_file_path(&self) -> Option<&Path> {
-        self.running
-            .as_ref()
-            .map(|running| running.lock_path.as_path())
+        self.running.as_ref()?.lock_path.as_deref()
     }
 
     pub(crate) fn workspace(&self) -> &WeakEntity<Workspace> {
@@ -303,6 +364,9 @@ impl IdeServer {
         let Some(running) = self.running.as_ref() else {
             return;
         };
+        let Some(lock_path) = running.lock_path.clone() else {
+            return;
+        };
         let Some(workspace) = self.workspace.upgrade() else {
             return;
         };
@@ -314,19 +378,26 @@ impl IdeServer {
             running_in_windows: cfg!(target_os = "windows"),
             auth_token: running.auth_token.to_string(),
         };
-        let lock_path = running.lock_path.clone();
         let Some(json) = contents.to_json().log_err() else {
             return;
         };
         cx.background_spawn(async move {
-            smol::fs::write(&lock_path, json).await.log_err();
+            std::fs::write(&lock_path, json).log_err();
         })
         .detach();
     }
 
+    /// ロックファイルを置いてよいワークスペースか。リモートでは相手側の絶対パスしか
+    /// 書けず、手元の CLI からは照合できないので置かない。
+    fn writes_lock_file(&self, cx: &App) -> bool {
+        self.workspace
+            .upgrade()
+            .is_some_and(|workspace| workspace.read(cx).project().read(cx).is_local())
+    }
+
     fn apply_settings(&mut self, cx: &mut gpui::Context<Self>) {
         let enabled = IdeServerSettings::get_global(cx).enabled;
-        match (enabled, self.running.is_some()) {
+        match (enabled, self.running.is_some() || self.starting) {
             (true, false) => self.start(cx),
             (false, true) => {
                 self.stop();
@@ -344,6 +415,8 @@ impl IdeServer {
             .upgrade()
             .map(|workspace| tools::workspace_folder_paths(&workspace, cx))
             .unwrap_or_default();
+        let writes_lock_file = self.writes_lock_file(cx);
+        let directory = lock_directory(cx);
         let bind = cx.background_spawn(async move {
             let listener = TcpListener::bind("127.0.0.1:0")
                 .await
@@ -352,33 +425,25 @@ impl IdeServer {
             anyhow::Ok((listener, port))
         });
 
+        self.starting = true;
         cx.spawn(async move |this, cx| {
-            let (listener, port) = bind.await?;
-            let directory = protocol::lock_file_directory();
-            let lock_path = protocol::lock_file_path(&directory, port);
-            let contents = protocol::LockFileContents {
-                pid: std::process::id(),
-                workspace_folders,
-                ide_name: IDE_NAME.to_string(),
-                transport: "ws".to_string(),
-                running_in_windows: cfg!(target_os = "windows"),
-                auth_token: auth_token.to_string(),
-            };
-            let json = contents.to_json()?;
-            let executor = cx.background_executor().clone();
-            cx.background_spawn({
-                let lock_path = lock_path.clone();
-                async move {
-                    smol::fs::create_dir_all(&directory).await?;
-                    remove_stale_lock_files(&directory, &executor).await;
-                    smol::fs::write(&lock_path, json).await?;
-                    anyhow::Ok(())
+            let bound = bind.await;
+            let (listener, port) = match bound {
+                Ok(bound) => bound,
+                Err(error) => {
+                    this.update(cx, |this, _| this.starting = false).ok();
+                    return Err(error);
                 }
-            })
-            .await
-            .context("writing the Claude Code IDE lock file")?;
+            };
 
-            this.update(cx, |this, cx| {
+            // ロックファイルはサーバーを登録したあとに書く。先に書くと、登録前に
+            // 止められたときに消し手が居なくなる。
+            let lock_path = this.update(cx, |this, cx| {
+                this.starting = false;
+                // 起動待ちのあいだに無効化されていたら、そのまま畳む。
+                if !IdeServerSettings::get_global(cx).enabled {
+                    return None;
+                }
                 let accept_task = cx.spawn({
                     let auth_token = auth_token.clone();
                     async move |this, cx| {
@@ -399,29 +464,73 @@ impl IdeServer {
                         }
                     }
                 });
+                let lock_path =
+                    writes_lock_file.then(|| protocol::lock_file_path(&directory, port));
                 this.running = Some(RunningServer {
                     port,
-                    auth_token,
-                    lock_path,
+                    auth_token: auth_token.clone(),
+                    lock_path: lock_path.clone(),
                     connections: Vec::new(),
                     _accept_task: accept_task,
                 });
                 log::info!("ide_server: listening on 127.0.0.1:{port}");
                 this.watch_active_editor(cx);
                 cx.notify();
+                lock_path
+            })?;
+
+            let Some(lock_path) = lock_path else {
+                return Ok(());
+            };
+            let contents = protocol::LockFileContents {
+                pid: std::process::id(),
+                workspace_folders,
+                ide_name: IDE_NAME.to_string(),
+                transport: "ws".to_string(),
+                running_in_windows: cfg!(target_os = "windows"),
+                auth_token: auth_token.to_string(),
+            };
+            let json = contents.to_json()?;
+            let executor = cx.background_executor().clone();
+            cx.background_spawn({
+                let lock_path = lock_path.clone();
+                async move {
+                    std::fs::create_dir_all(&directory)?;
+                    remove_stale_lock_files(&directory, &executor).await;
+                    std::fs::write(&lock_path, json)?;
+                    anyhow::Ok(())
+                }
             })
+            .await
+            .context("writing the Claude Code IDE lock file")?;
+
+            // 書き終わるまでのあいだに止められていたら、`RunningServer` の drop は
+            // まだ存在しないファイルを消しに行っている。ここで拾い直す。
+            let still_ours = this
+                .read_with(cx, |this, _| {
+                    this.running
+                        .as_ref()
+                        .and_then(|running| running.lock_path.as_deref())
+                        == Some(lock_path.as_path())
+                })
+                .unwrap_or(false);
+            if !still_ours {
+                std::fs::remove_file(&lock_path).log_err();
+            }
+            Ok(())
         })
         .detach_and_log_err(cx);
     }
 
     fn stop(&mut self) {
+        self.starting = false;
+        // ロックファイルは `RunningServer` の drop が消す。
         let Some(running) = self.running.take() else {
             return;
         };
         self.selection_subscription = None;
         self.latest_selection = None;
         self.open_diffs.clear();
-        std::fs::remove_file(&running.lock_path).log_err();
         log::info!(
             "ide_server: stopped listening on 127.0.0.1:{}",
             running.port
@@ -640,11 +749,11 @@ impl Drop for IdeServer {
 /// 他の IDE のロックには触らない。生存確認はポートに繋いでみるだけ — CLI 側の
 /// 掃除処理 (`XQr`) と同じ判定で、追加の依存も要らない。
 async fn remove_stale_lock_files(directory: &Path, executor: &BackgroundExecutor) {
-    let Ok(mut entries) = smol::fs::read_dir(directory).await else {
+    let Ok(entries) = std::fs::read_dir(directory) else {
         return;
     };
     let current_pid = std::process::id();
-    while let Some(Ok(entry)) = entries.next().await {
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|extension| extension.to_str()) != Some("lock") {
             continue;
@@ -656,7 +765,7 @@ async fn remove_stale_lock_files(directory: &Path, executor: &BackgroundExecutor
         else {
             continue;
         };
-        let Ok(text) = smol::fs::read_to_string(&path).await else {
+        let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
         let Ok(contents) = protocol::LockFileContents::from_json(&text) else {
@@ -668,7 +777,7 @@ async fn remove_stale_lock_files(directory: &Path, executor: &BackgroundExecutor
         if port_is_listening(port, executor).await {
             continue;
         }
-        smol::fs::remove_file(&path).await.log_err();
+        std::fs::remove_file(&path).log_err();
     }
 }
 

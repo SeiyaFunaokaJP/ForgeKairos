@@ -287,9 +287,19 @@ impl Editor {
 
         let mut edits = Vec::new();
         let mut cursors = Vec::new();
+        let max_row = snapshot.max_point().row;
         for selection in self.selections.all::<Point>(&self.display_snapshot(cx)) {
             let mut text = String::new();
+            // A fence that touches the line above or below it is not a block of
+            // its own to a CommonMark renderer, and reads as one paragraph in
+            // the source either way, so a blank line is kept on both sides.
+            // Inserting on a blank line already contributes one of the two line
+            // breaks the blank line needs, hence the single `\n` there.
             if selection.start.column > 0 {
+                text.push_str("\n\n");
+            } else if selection.start.row > 0
+                && !snapshot.is_line_blank(MultiBufferRow(selection.start.row - 1))
+            {
                 text.push('\n');
             }
             text.push_str("```mermaid\n");
@@ -299,6 +309,10 @@ impl Editor {
             text.push_str(template);
             text.push_str("\n```");
             if selection.end.column < snapshot.line_len(MultiBufferRow(selection.end.row)) {
+                text.push_str("\n\n");
+            } else if selection.end.row < max_row
+                && !snapshot.is_line_blank(MultiBufferRow(selection.end.row + 1))
+            {
                 text.push('\n');
             }
 

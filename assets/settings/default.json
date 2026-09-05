@@ -2138,8 +2138,8 @@
       // true にすると、新しく開いたターミナルが自動でログ記録を始めます。
       "auto": false,
       // ログの保存先ディレクトリ。`~` は展開されます。
-      // null のときは Zed のログディレクトリ配下の `terminal-sessions` を使います。
-      "directory": null,
+      // 空欄のときは Zed のログディレクトリ配下の `terminal-sessions` を使います。
+      "directory": "",
       // ログのファイル名。`{date}` `{time}` `{title}` `{host}` `{pid}` を展開します。
       "file_name_template": "{date}_{time}_{title}.log",
       // ANSI / VT のエスケープシーケンスを取り除いて、素のテキストとして保存します。

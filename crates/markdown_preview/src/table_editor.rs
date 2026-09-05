@@ -15,8 +15,8 @@ use gpui::{
     WeakEntity, Window,
 };
 use ui::{
-    IconButtonShape, Modal, ModalFooter, ModalHeader, Section, Switch, ToggleState, Tooltip,
-    prelude::*,
+    IconButtonShape, Modal, ModalFooter, ModalHeader, Section, Switch, SwitchLabelPosition,
+    ToggleState, Tooltip, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Workspace};
@@ -410,6 +410,9 @@ impl TableEditor {
             .gap_2()
             .child(
                 Button::new("markdown-table-paste-all", "表全体を貼り付け")
+                    .style(ButtonStyle::Outlined)
+                    .size(ButtonSize::Medium)
+                    .start_icon(Icon::new(IconName::Table))
                     .tooltip(Tooltip::text(
                         "クリップボードの Excel / CSV の内容で表全体を置き換えます。",
                     ))
@@ -420,6 +423,8 @@ impl TableEditor {
             .child(
                 Switch::new("markdown-table-has-header", self.has_header.into())
                     .label("ヘッダー行")
+                    // Without a position the label is built but never rendered.
+                    .label_position(SwitchLabelPosition::Start)
                     .on_click(cx.listener(|this, state: &ToggleState, _window, cx| {
                         this.has_header = state.selected();
                         cx.notify();

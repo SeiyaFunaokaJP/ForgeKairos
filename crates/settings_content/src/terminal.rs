@@ -205,9 +205,9 @@ pub struct TerminalSessionLogContent {
     /// Default: false
     pub auto: Option<bool>,
     /// Directory the log files are written to. `~` is expanded.
-    /// When unset, logs go to Zed's log directory under `terminal-sessions`.
+    /// When empty, logs go to Zed's log directory under `terminal-sessions`.
     ///
-    /// Default: null
+    /// Default: ""
     pub directory: Option<String>,
     /// File name for a new log. Supports the placeholders `{date}`, `{time}`,
     /// `{title}`, `{host}` and `{pid}`.

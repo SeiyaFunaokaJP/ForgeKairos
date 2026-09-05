@@ -818,6 +818,9 @@ async fn open_diff(
         server.take_diff(&tab_name);
     });
 
+    // `FILE_SAVED` の 2 番目のテキストが、CLI が「承認された本文」として読む唯一の
+    // 出力。CLI はこれと差分を開く前に自分で読んだ本文から編集を組み直し、保留中の
+    // Edit / Write ツールに書かせる。詳細は [`crate::diff_view`] を参照。
     Ok(match outcome {
         IdeServerDiffOutcome::Accepted { contents } => {
             vec![text_content("FILE_SAVED"), text_content(contents)]

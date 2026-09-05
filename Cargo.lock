@@ -8181,6 +8181,7 @@ dependencies = [
  "serde_json",
  "settings",
  "smol",
+ "tempfile",
  "text",
  "theme",
  "theme_settings",

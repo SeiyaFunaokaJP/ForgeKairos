@@ -43733,18 +43733,20 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
             "テスト" : 20
         ```"#});
 
-    // Mid-line the fence is pushed onto a line of its own, and the text that
-    // followed the cursor keeps a line of its own too
+    // Mid-line the fence is pushed onto a line of its own, with a blank line
+    // between it and the text on either side
     cx.set_state("textˇ tail");
     cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
     cx.assert_editor_state(indoc! {r#"
         text
+
         ```mermaid
         ˇpie title 内訳
             "設計" : 30
             "実装" : 50
             "テスト" : 20
         ```
+
          tail"#});
 
     // A selection is replaced by the diagram
@@ -43757,6 +43759,45 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
             "実装" : 50
             "テスト" : 20
         ```"#});
+
+    // On the blank line under a heading the blank line survives, and the text
+    // that follows keeps one of its own
+    cx.set_state(indoc! {"
+        ## 表
+        ˇ
+        あと"});
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        ## 表
+
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```
+
+        あと"#});
+
+    // Blank lines that are already there are not doubled
+    cx.set_state(indoc! {"
+        ## 表
+
+        ˇ
+
+        あと"});
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        ## 表
+
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```
+
+        あと"#});
 }
 
 #[gpui::test]
