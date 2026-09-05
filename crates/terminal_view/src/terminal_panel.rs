@@ -429,7 +429,7 @@ impl TerminalPanel {
     /// Rebuilds every pane's tab bar. The buttons capture the panel's state by
     /// value, so what they show (同時入力 and the pane count it needs) only
     /// changes when they are built again.
-    fn refresh_tab_bar_buttons(&self, cx: &mut Context<Self>) {
+    pub(crate) fn refresh_tab_bar_buttons(&self, cx: &mut Context<Self>) {
         for pane in self.center.panes() {
             self.apply_tab_bar_buttons(pane, cx);
         }

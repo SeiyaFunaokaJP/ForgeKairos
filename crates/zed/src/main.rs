@@ -776,6 +776,10 @@ fn main() {
         });
         vim::init(cx);
         terminal_view::init(cx);
+        // ADR-F28: `terminal::OpenFileTransfer` のハンドラーはここで登録される。
+        // `terminal_view` はアクションを発行するだけなので、これを忘れると
+        // タブバーのボタンとパレット項目が黙って無反応になる。
+        file_transfer::init(cx);
         journal::init(app_state.clone(), cx);
         encoding_selector::init(cx);
         language_selector::init(cx);

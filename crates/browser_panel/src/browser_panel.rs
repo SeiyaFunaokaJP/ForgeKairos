@@ -61,6 +61,9 @@ const HIDDEN_PANEL_INACTIVE: &str = "the panel is no longer the active dock pane
 /// パネルのタブ 1 枚分の幅。狭いドックでも 2, 3 枚は並ぶ程度に抑える。
 const PANEL_TAB_MIN_WIDTH: f32 = 84.;
 const PANEL_TAB_MAX_WIDTH: f32 = 176.;
+// OAuth のリダイレクト URL は数千文字になり、ツールチップが WebView の上に
+// 画面いっぱいに広がる (2026-09-06 の実機)。タブのツールチップは先頭だけで足りる。
+const MAX_TAB_TOOLTIP_CHARS: usize = 160;
 
 /// 検索・質問に渡すテキストの上限。長すぎる選択範囲で URL が壊れるのを防ぐ。
 const MAX_QUERY_CHARS: usize = 400;
@@ -165,6 +168,15 @@ const NAVIGABLE_SCHEMES: &[&str] = &[
     "edge",
     "view-source",
 ];
+
+/// タブのツールチップ。長い URL は先頭 [`MAX_TAB_TOOLTIP_CHARS`] 文字で切る。
+fn tab_tooltip(url: &str) -> SharedString {
+    if url.chars().count() <= MAX_TAB_TOOLTIP_CHARS {
+        return url.to_string().into();
+    }
+    let truncated: String = url.chars().take(MAX_TAB_TOOLTIP_CHARS).collect();
+    format!("{truncated}…").into()
+}
 
 /// アドレスバーの入力を「そのまま開く URL」か「検索 URL」に解決する。
 pub fn resolve_address_input(input: &str, search_template: &str) -> Option<String> {
@@ -622,7 +634,9 @@ impl BrowserPanel {
             .overflow_hidden()
             .bg(background)
             .cursor_pointer()
-            .when(!url.is_empty(), |this| this.tooltip(Tooltip::text(url)))
+            .when(!url.is_empty(), |this| {
+                this.tooltip(Tooltip::text(tab_tooltip(&url)))
+            })
             .child(
                 Icon::new(IconName::ToolWeb)
                     .size(IconSize::XSmall)
@@ -867,6 +881,16 @@ pub(crate) mod webview_unsupported {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_tooltip_keeps_short_urls_and_truncates_long_ones() {
+        assert_eq!(tab_tooltip("https://example.com/"), "https://example.com/");
+        let long = format!("https://login.example.com/{}", "a".repeat(400));
+        let tooltip = tab_tooltip(&long);
+        assert_eq!(tooltip.chars().count(), MAX_TAB_TOOLTIP_CHARS + 1);
+        assert!(tooltip.ends_with('…'));
+        assert!(tooltip.starts_with("https://login.example.com/"));
+    }
 
     #[test]
     fn explicit_urls_are_opened_verbatim() {

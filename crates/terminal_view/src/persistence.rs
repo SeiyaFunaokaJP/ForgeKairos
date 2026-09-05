@@ -127,10 +127,16 @@ pub(crate) fn deserialize_terminal_panel(
                 )
                 .await;
                 if let Some((center_group, active_pane)) = center_pane {
-                    terminal_panel.update(cx, |terminal_panel, _| {
+                    terminal_panel.update(cx, |terminal_panel, cx| {
                         terminal_panel.center = PaneGroup::with_root(center_group);
                         terminal_panel.active_pane =
                             active_pane.unwrap_or_else(|| terminal_panel.center.first_pane());
+                        // `TerminalPanel::new` only dressed its own first pane; the
+                        // restored panes were built by `new_terminal_pane` and would
+                        // otherwise show the workspace's generic buttons until some
+                        // later event (a split, or the inline assistant toggling)
+                        // happened to refresh them.
+                        terminal_panel.refresh_tab_bar_buttons(cx);
                     });
                 }
             }

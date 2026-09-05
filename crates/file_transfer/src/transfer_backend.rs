@@ -232,11 +232,16 @@ pub fn normalize_remote_dir(path: &str) -> String {
     if trimmed.is_empty() {
         return "/".to_string();
     }
-    let with_root = if trimmed.starts_with('/') {
-        trimmed.to_string()
-    } else {
-        format!("/{trimmed}")
-    };
+    let mut with_root = String::with_capacity(trimmed.len() + 1);
+    if !trimmed.starts_with('/') {
+        with_root.push('/');
+    }
+    for character in trimmed.chars() {
+        if character == '/' && with_root.ends_with('/') {
+            continue;
+        }
+        with_root.push(character);
+    }
     let collapsed = with_root.trim_end_matches('/');
     if collapsed.is_empty() {
         "/".to_string()
@@ -332,6 +337,10 @@ fn parse_unix_long_listing_line(line: &str) -> Option<DirectoryEntry> {
         EntryKind::Symlink => name.split(" -> ").next().unwrap_or(name),
         _ => name,
     };
+    // Win32-OpenSSH's `sftp` prints `ls -l -a "/home"` entries as
+    // `/home/.`, `/home/ubuntu`; OpenBSD's strips the directory. Names cannot
+    // contain `/`, so the last component is the entry either way.
+    let name = name.rsplit('/').next().unwrap_or(name);
     if name.is_empty() {
         return None;
     }
@@ -1302,6 +1311,45 @@ lrwxrwxrwx    1 user     group          11 Sep  6 12:34 latest -> archive.tar.gz
 
         assert_eq!(entries[3].name, "latest");
         assert_eq!(entries[3].kind, EntryKind::Symlink);
+    }
+
+    #[test]
+    fn parses_win32_openssh_listing_with_directory_prefixed_names() {
+        // Windows の OpenSSH (System32\OpenSSH\sftp.exe) の実物: 権限が `******`、
+        // リンク数が `?`、名前に一覧対象ディレクトリが前置される。
+        let listing = "sftp> ls -l -a \"/home\"
+drwx******    ? root     root         4096 Mar  4  2026 /home/.
+drwx******    ? root     root         4096 Mar  4  2026 /home/..
+drwx******    ? ubuntu   ubuntu       4096 Sep  5 19:39 /home/ubuntu
+lrwx******    ? root     root            7 Apr 22  2024 /home/link -> /usr/bin
+-rw-******    ? ubuntu   ubuntu         12 Sep  6 09:00 /home/my notes.txt
+";
+        let entries = parse_sftp_listing(listing);
+        let names = entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["ubuntu", "link", "my notes.txt"]);
+        assert_eq!(entries[0].kind, EntryKind::Directory);
+        assert_eq!(entries[1].kind, EntryKind::Symlink);
+        assert_eq!(entries[2].size, Some(12));
+
+        let root = parse_sftp_listing(
+            "drwx******    ? root     root         4096 Mar  4  2026 /.
+drwx******    ? root     root         4096 Mar  4  2026 /..
+drwx******    ? root     root         4096 Mar  4  2026 /home
+",
+        );
+        assert_eq!(root.len(), 1);
+        assert_eq!(root[0].name, "home");
+    }
+
+    #[test]
+    fn normalize_remote_dir_collapses_repeated_slashes() {
+        assert_eq!(normalize_remote_dir("//home"), "/home");
+        assert_eq!(normalize_remote_dir("//home///ubuntu/"), "/home/ubuntu");
+        assert_eq!(normalize_remote_dir("//"), "/");
+        assert_eq!(remote_join("//home", "ubuntu"), "/home/ubuntu");
     }
 
     #[test]

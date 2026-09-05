@@ -4418,17 +4418,27 @@ impl Render for Pane {
             // effect on the frame the `notify` below schedules.
             .on_children_prepainted({
                 let pane = cx.entity();
-                move |children_bounds, _window, cx| {
+                move |children_bounds, window, cx| {
                     let Some(width) = children_bounds.first().map(|bounds| bounds.size.width)
                     else {
                         return;
                     };
-                    pane.update(cx, |pane, cx| {
-                        if pane.last_layout_width != Some(width) {
-                            pane.last_layout_width = Some(width);
-                            cx.notify();
+                    let changed = pane.update(cx, |pane, _| {
+                        if pane.last_layout_width == Some(width) {
+                            return false;
                         }
+                        pane.last_layout_width = Some(width);
+                        true
                     });
+                    // prepaint 中の `cx.notify()` はウィンドウを dirty にしない
+                    // (`WindowInvalidator::invalidate_view` は draw_phase が None の
+                    // ときだけ再描画を予約する) ので、ここで通知しても次に何か別の
+                    // 理由で描き直されるまで畳み込みが古いままになる。次フレームの
+                    // コールバックで通知すればプラットフォームが起こされて確実に届く。
+                    if changed {
+                        let pane = pane.clone();
+                        window.on_next_frame(move |_, cx| cx.notify(pane.entity_id()));
+                    }
                 }
             })
             .on_action(cx.listener(|pane, split: &SplitLeft, window, cx| {
