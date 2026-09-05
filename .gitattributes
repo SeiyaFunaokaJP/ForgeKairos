@@ -3,3 +3,12 @@
 
 # Ensure the WSL script always has LF line endings, even on Windows
 crates/zed/resources/windows/zed.sh text eol=lf
+
+# Windows で動くエージェントが CRLF で保存してしまうことがある (2026-09-06 に 15 ファイルを正規化)。
+# ソースと文書は常に LF でコミットする。
+*.rs text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.scm text eol=lf
+*.txt text eol=lf
