@@ -43705,6 +43705,95 @@ async fn test_insert_markdown_link(cx: &mut TestAppContext) {
     cx.assert_editor_state("see [ˇ]()docs");
 }
 
+#[gpui::test]
+async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    let insert_pie = InsertMermaidDiagram {
+        diagram: MermaidDiagramKind::Pie,
+    };
+
+    // Outside Markdown nothing is inserted
+    cx.set_state("ˇ");
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state("ˇ");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // At the start of an empty line the fence is inserted as is, with the
+    // cursor on the first line of the diagram body
+    cx.set_state("ˇ");
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```"#});
+
+    // Mid-line the fence is pushed onto a line of its own, and the text that
+    // followed the cursor keeps a line of its own too
+    cx.set_state("textˇ tail");
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        text
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```
+         tail"#});
+
+    // A selection is replaced by the diagram
+    cx.set_state("«oldˇ»");
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```"#});
+}
+
+#[gpui::test]
+fn test_mermaid_diagram_templates_declare_a_renderable_type(_cx: &mut TestAppContext) {
+    // `markdown` only draws diagrams whose first token is a type it has styling
+    // for, so a template that opened with anything else would be inserted as a
+    // code block that never becomes a picture.
+    let expected_first_tokens = [
+        (MermaidDiagramKind::Flowchart, "flowchart"),
+        (MermaidDiagramKind::Sequence, "sequenceDiagram"),
+        (MermaidDiagramKind::Class, "classDiagram"),
+        (MermaidDiagramKind::State, "stateDiagram-v2"),
+        (MermaidDiagramKind::EntityRelationship, "erDiagram"),
+        (MermaidDiagramKind::Gantt, "gantt"),
+        (MermaidDiagramKind::Pie, "pie"),
+        (MermaidDiagramKind::GitGraph, "gitGraph"),
+        (MermaidDiagramKind::Mindmap, "mindmap"),
+        (MermaidDiagramKind::Timeline, "timeline"),
+    ];
+    assert_eq!(expected_first_tokens.len(), MermaidDiagramKind::ALL.len());
+
+    for (kind, first_token) in expected_first_tokens {
+        let template = kind.template();
+        assert_eq!(
+            template.split_whitespace().next(),
+            Some(first_token),
+            "unexpected first token in the {} template",
+            kind.label()
+        );
+        assert!(
+            !template.ends_with('\n'),
+            "the {} template must not end with a newline, the fence adds one",
+            kind.label()
+        );
+    }
+}
+
 #[track_caller]
 fn assert_select_delimiters(around: bool, before: &str, after: &str, cx: &mut EditorTestContext) {
     let _state_context = cx.set_state(before);

@@ -2224,6 +2224,12 @@ impl Terminal {
         self.session_log.as_ref().map(SessionLog::path)
     }
 
+    /// The timestamp flag of the running log, which the recording strip flips
+    /// without restarting the log.
+    pub fn session_log_timestamps(&self) -> Option<&session_log::TimestampFlag> {
+        self.session_log.as_ref().map(SessionLog::timestamps)
+    }
+
     pub fn is_pty(&self) -> bool {
         matches!(self.terminal_type, TerminalType::Pty { .. })
     }

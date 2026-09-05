@@ -397,6 +397,36 @@ actions!(
     ]
 );
 
+/// The Mermaid diagram type that [`InsertMermaidDiagram`] writes a template for.
+///
+/// Every variant maps to a diagram type that `markdown`'s renderer is willing
+/// to draw; a template that is not in that allow list would be inserted as
+/// unrendered code.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MermaidDiagramKind {
+    #[default]
+    Flowchart,
+    Sequence,
+    Class,
+    State,
+    EntityRelationship,
+    Gantt,
+    Pie,
+    GitGraph,
+    Mindmap,
+    Timeline,
+}
+
+/// Inserts a fenced Mermaid diagram template while in Markdown files.
+#[derive(PartialEq, Clone, Debug, Default, Deserialize, JsonSchema, Action)]
+#[action(namespace = markdown)]
+#[serde(deny_unknown_fields)]
+pub struct InsertMermaidDiagram {
+    #[serde(default)]
+    pub diagram: MermaidDiagramKind,
+}
+
 actions!(
     markdown,
     [

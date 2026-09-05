@@ -761,6 +761,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "terminal::OpenSessionLog",
         "ターミナル: ログファイルの場所を開く",
     ),
+    ("terminal::SplitGrid", "ターミナル: グリッドに分割"),
     ("terminal::RunMacro", "ターミナル: マクロを実行…"),
     ("terminal::EditMacros", "ターミナル: マクロの編集…"),
     ("terminal::CancelMacro", "ターミナル: マクロを中止"),
@@ -934,6 +935,14 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "markdown::NewlineInvertHardBreak",
         "Markdown: 改行 (行末スペース補完を反転)",
+    ),
+    (
+        "markdown::InsertMermaidDiagram",
+        "Markdown: Mermaid 図を挿入",
+    ),
+    (
+        "markdown::InsertMermaidDiagramPicker",
+        "Markdown: Mermaid 図を挿入 (種類を選ぶ)",
     ),
     ("markdown::ExportToPdf", "Markdown: PDF に書き出す"),
     // ピッカー・セレクター

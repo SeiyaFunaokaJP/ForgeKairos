@@ -649,6 +649,7 @@ impl EditorElement {
             register_action(editor, window, Editor::toggle_markdown_task_list);
             register_action(editor, window, Editor::insert_markdown_link);
             register_action(editor, window, Editor::insert_markdown_horizontal_rule);
+            register_action(editor, window, Editor::insert_mermaid_diagram);
             register_action(editor, window, Editor::wrap_markdown_in_code_block);
             register_action(editor, window, Editor::newline_invert_hard_break);
             register_action(editor, window, Editor::unwrap_syntax_node);

@@ -272,6 +272,51 @@ impl Editor {
         });
     }
 
+    pub fn insert_mermaid_diagram(
+        &mut self,
+        action: &InsertMermaidDiagram,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.read_only(cx) || !self.is_in_markdown_language(cx) {
+            return;
+        }
+
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let template = action.diagram.template();
+
+        let mut edits = Vec::new();
+        let mut cursors = Vec::new();
+        for selection in self.selections.all::<Point>(&self.display_snapshot(cx)) {
+            let mut text = String::new();
+            if selection.start.column > 0 {
+                text.push('\n');
+            }
+            text.push_str("```mermaid\n");
+            // The cursor lands on the first line of the diagram body, which is
+            // where every template starts with its diagram type keyword.
+            cursors.push(text.len());
+            text.push_str(template);
+            text.push_str("\n```");
+            if selection.end.column < snapshot.line_len(MultiBufferRow(selection.end.row)) {
+                text.push('\n');
+            }
+
+            let start = snapshot.point_to_offset(selection.start);
+            let end = snapshot.point_to_offset(selection.end);
+            edits.push((
+                snapshot.anchor_before(start)..snapshot.anchor_after(end),
+                text,
+            ));
+        }
+
+        if edits.is_empty() {
+            return;
+        }
+
+        self.apply_markdown_edits(edits, cursors, window, cx);
+    }
+
     pub fn insert_markdown_link(
         &mut self,
         _: &InsertLink,
@@ -563,6 +608,139 @@ impl Editor {
         snapshot
             .language_at(head)
             .is_some_and(|language| language.name() == "Markdown")
+    }
+}
+
+impl MermaidDiagramKind {
+    /// Every kind, in the order the pickers and the context menu list them.
+    pub const ALL: [MermaidDiagramKind; 10] = [
+        MermaidDiagramKind::Flowchart,
+        MermaidDiagramKind::Sequence,
+        MermaidDiagramKind::Class,
+        MermaidDiagramKind::State,
+        MermaidDiagramKind::EntityRelationship,
+        MermaidDiagramKind::Gantt,
+        MermaidDiagramKind::Pie,
+        MermaidDiagramKind::GitGraph,
+        MermaidDiagramKind::Mindmap,
+        MermaidDiagramKind::Timeline,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Flowchart => "フローチャート",
+            Self::Sequence => "シーケンス図",
+            Self::Class => "クラス図",
+            Self::State => "状態図",
+            Self::EntityRelationship => "ER 図",
+            Self::Gantt => "ガントチャート",
+            Self::Pie => "円グラフ",
+            Self::GitGraph => "Git グラフ",
+            Self::Mindmap => "マインドマップ",
+            Self::Timeline => "タイムライン",
+        }
+    }
+
+    /// The diagram body, without the surrounding fence and without a trailing
+    /// newline.
+    ///
+    /// The first token of every template is a diagram type that the Markdown
+    /// renderer draws; a template starting with anything else would be inserted
+    /// as a code block that never turns into a picture.
+    pub fn template(self) -> &'static str {
+        match self {
+            Self::Flowchart => {
+                r#"flowchart TD
+    %% [] は処理、{} は分岐。|ラベル| で分岐に注釈を付ける
+    start[開始] --> condition{条件}
+    condition -->|はい| work[処理]
+    condition -->|いいえ| finish[終了]
+    work --> finish"#
+            }
+            Self::Sequence => {
+                r#"sequenceDiagram
+    %% ->> は呼び出し、-->> は応答
+    participant User as 利用者
+    participant App as アプリ
+    User->>App: 要求
+    App-->>User: 応答
+    Note over App: 補足"#
+            }
+            Self::Class => {
+                r#"classDiagram
+    %% <|-- は継承、*-- は合成、o-- は集約
+    class Base {
+        +field: Type
+        +method()
+    }
+    class Derived {
+        +extra()
+    }
+    Base <|-- Derived"#
+            }
+            Self::State => {
+                r#"stateDiagram-v2
+    %% [*] は開始と終了。矢印のあとの : がイベント名
+    [*] --> Idle
+    Idle --> Running: 開始
+    Running --> Idle: 完了
+    Running --> [*]: 中止"#
+            }
+            Self::EntityRelationship => {
+                r#"erDiagram
+    %% ||--o{ は 1 対多、}o--o{ は多対多
+    CUSTOMER ||--o{ ORDER : "発注する"
+    ORDER ||--|{ ORDER_ITEM : "含む"
+    CUSTOMER {
+        int id
+        string name
+    }"#
+            }
+            Self::Gantt => {
+                r#"gantt
+    title 開発スケジュール
+    dateFormat YYYY-MM-DD
+    axisFormat %m/%d
+    section 設計
+    要件定義 :done, req, 2026-01-06, 5d
+    基本設計 :active, design, after req, 7d
+    section 実装
+    実装 :impl, after design, 10d"#
+            }
+            Self::Pie => {
+                r#"pie title 内訳
+    "設計" : 30
+    "実装" : 50
+    "テスト" : 20"#
+            }
+            Self::GitGraph => {
+                r#"gitGraph
+    commit id: "初期化"
+    branch feature
+    checkout feature
+    commit id: "機能を追加"
+    checkout main
+    merge feature"#
+            }
+            Self::Mindmap => {
+                // Mindmap nesting is expressed with indentation, so the two
+                // space steps below are syntax rather than formatting.
+                r#"mindmap
+  root((中心テーマ))
+    分類A
+      項目1
+      項目2
+    分類B
+      項目3"#
+            }
+            Self::Timeline => {
+                r#"timeline
+    title 沿革
+    2024 : 企画
+    2025 : 開発 : 公開
+    2026 : 運用"#
+            }
+        }
     }
 }
 

@@ -3,7 +3,7 @@ use crate::{
     EvaluateSelectedText, FindAllReferences, GoToDeclaration, GoToDefinition, GoToImplementation,
     GoToTypeDefinition, Indent, Outdent, Paste, Rename, RevealInFileManager, RunToCursor,
     SelectMode, SelectionEffects, SelectionExt, ToDisplayPoint, ToggleCodeActions,
-    actions::{Format, FormatSelections},
+    actions::{Format, FormatSelections, InsertMermaidDiagram, MermaidDiagramKind},
     selections_collection::SelectionsCollection,
 };
 use gpui::prelude::FluentBuilder;
@@ -299,10 +299,20 @@ pub fn deploy_context_menu(
                     Box::new(RevealInFileManager),
                 )
                 .when(is_markdown, |builder| {
-                    builder.action(
-                        "Markdown プレビューを横に開く",
-                        Box::new(OpenMarkdownPreviewToTheSide),
-                    )
+                    builder
+                        .action(
+                            "Markdown プレビューを横に開く",
+                            Box::new(OpenMarkdownPreviewToTheSide),
+                        )
+                        .submenu("Mermaid 図を挿入", |mut menu, _window, _cx| {
+                            for diagram in MermaidDiagramKind::ALL {
+                                menu = menu.action(
+                                    diagram.label(),
+                                    Box::new(InsertMermaidDiagram { diagram }),
+                                );
+                            }
+                            menu
+                        })
                 })
                 .when(is_svg, |builder| {
                     builder.action(

@@ -17,6 +17,8 @@ use gpui::{
 };
 use itertools::Itertools;
 use project::{Fs, Project};
+use schemars::JsonSchema;
+use serde::Deserialize;
 
 use settings::{Settings, TerminalDockPosition};
 use task::{RevealStrategy, RevealTarget, Shell, ShellBuilder, SpawnInTerminal, TaskId};
@@ -42,6 +44,10 @@ use zed_actions::assistant::InlineAssist;
 
 const TERMINAL_PANEL_KEY: &str = "TerminalPanel";
 
+/// Upper bound per side of [`SplitGrid`]. 4×4 already leaves each pane a few
+/// columns wide on a docked panel; beyond that the splits are unusable.
+const MAX_GRID_SIDE: u8 = 4;
+
 actions!(
     terminal_panel,
     [
@@ -51,6 +57,33 @@ actions!(
         ToggleFocus
     ]
 );
+
+/// Splits the active terminal pane into a grid of new shells in one go, instead
+/// of repeating 右に分割 / 下に分割 by hand.
+#[derive(Clone, Debug, Deserialize, PartialEq, JsonSchema, Action)]
+#[action(namespace = terminal)]
+#[serde(deny_unknown_fields)]
+pub struct SplitGrid {
+    /// Number of columns, 1 to 4.
+    #[serde(default = "default_grid_side")]
+    pub columns: u8,
+    /// Number of rows, 1 to 4.
+    #[serde(default = "default_grid_side")]
+    pub rows: u8,
+}
+
+fn default_grid_side() -> u8 {
+    2
+}
+
+impl Default for SplitGrid {
+    fn default() -> Self {
+        Self {
+            columns: default_grid_side(),
+            rows: default_grid_side(),
+        }
+    }
+}
 
 pub fn init(cx: &mut App) {
     cx.observe_new(
@@ -68,6 +101,15 @@ pub fn init(cx: &mut App) {
                         workspace.close_panel::<TerminalPanel>(window, cx);
                     }
                 }
+            });
+            workspace.register_action(|workspace, action: &SplitGrid, window, cx| {
+                let Some(terminal_panel) = workspace.panel::<TerminalPanel>(cx) else {
+                    return;
+                };
+                let (columns, rows) = (action.columns, action.rows);
+                terminal_panel.update(cx, |terminal_panel, cx| {
+                    terminal_panel.split_grid(columns, rows, window, cx);
+                });
             });
         },
     )
@@ -246,6 +288,23 @@ impl TerminalPanel {
                                         .action("左に分割", SplitLeft::default().boxed_clone())
                                         .action("上に分割", SplitUp::default().boxed_clone())
                                         .action("下に分割", SplitDown::default().boxed_clone())
+                                        .separator()
+                                        .action(
+                                            "2×2 に分割",
+                                            SplitGrid {
+                                                columns: 2,
+                                                rows: 2,
+                                            }
+                                            .boxed_clone(),
+                                        )
+                                        .action(
+                                            "横 3 分割",
+                                            SplitGrid {
+                                                columns: 3,
+                                                rows: 1,
+                                            }
+                                            .boxed_clone(),
+                                        )
                                     })
                                     .into()
                                 }
@@ -499,6 +558,99 @@ impl TerminalPanel {
 
             _ => {}
         }
+    }
+
+    /// Splits the active pane into a `columns` × `rows` grid of fresh shells that
+    /// start in the active terminal's directory (the same rule as a single split).
+    ///
+    /// Each split has to wait for its shell to be created before the next one
+    /// has something to attach to, so the splits run one after another rather
+    /// than concurrently. Focus goes back to the pane the grid grew out of,
+    /// which is the top-left one.
+    pub fn split_grid(
+        &mut self,
+        columns: u8,
+        rows: u8,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let columns = columns.clamp(1, MAX_GRID_SIDE) as usize;
+        let rows = rows.clamp(1, MAX_GRID_SIDE) as usize;
+        if columns * rows <= 1 {
+            return;
+        }
+        let origin = self.active_pane.clone();
+
+        cx.spawn_in(window, async move |panel, cx| {
+            let completed = Self::lay_out_grid(&panel, &origin, columns, rows, cx).await;
+            if !completed {
+                log::warn!("terminal grid split stopped early: a terminal could not be created");
+            }
+            panel
+                .update_in(cx, |_, window, cx| {
+                    window.focus(&origin.focus_handle(cx), cx);
+                })
+                .ok();
+        })
+        .detach();
+    }
+
+    /// Builds the top row left to right, then grows every column downwards.
+    /// Returns whether every split it wanted to make actually happened.
+    async fn lay_out_grid(
+        panel: &WeakEntity<Self>,
+        origin: &Entity<Pane>,
+        columns: usize,
+        rows: usize,
+        cx: &mut AsyncWindowContext,
+    ) -> bool {
+        let mut column_tops = vec![origin.clone()];
+        for _ in 1..columns {
+            let Some(previous) = column_tops.last().cloned() else {
+                return false;
+            };
+            let Some(new_pane) =
+                Self::split_pane_with_new_terminal(panel, &previous, SplitDirection::Right, cx)
+                    .await
+            else {
+                return false;
+            };
+            column_tops.push(new_pane);
+        }
+
+        for column_top in column_tops {
+            let mut previous = column_top;
+            for _ in 1..rows {
+                let Some(new_pane) =
+                    Self::split_pane_with_new_terminal(panel, &previous, SplitDirection::Down, cx)
+                        .await
+                else {
+                    return false;
+                };
+                previous = new_pane;
+            }
+        }
+        true
+    }
+
+    async fn split_pane_with_new_terminal(
+        panel: &WeakEntity<Self>,
+        old_pane: &Entity<Pane>,
+        direction: SplitDirection,
+        cx: &mut AsyncWindowContext,
+    ) -> Option<Entity<Pane>> {
+        let new_pane = panel
+            .update_in(cx, |panel, window, cx| {
+                panel.new_pane_with_active_terminal(true, window, cx)
+            })
+            .ok()?
+            .await?;
+        panel
+            .update(cx, |panel, cx| {
+                panel.center.split(old_pane, &new_pane, direction, cx);
+            })
+            .ok()?;
+        Some(new_pane)
     }
 
     fn new_pane_with_active_terminal(
@@ -1891,6 +2043,94 @@ mod tests {
             item_count, 5,
             "Terminal panel should bypass max_tabs limit and have all 5 terminals"
         );
+    }
+
+    #[gpui::test]
+    async fn test_split_grid_fills_the_grid_and_keeps_focus(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+
+        let terminal_panel = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    cx.new(|cx| TerminalPanel::new(workspace, window, cx))
+                })
+            })
+            .unwrap();
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                terminal_panel.update(cx, |panel, cx| {
+                    panel.add_terminal_shell(None, RevealStrategy::Always, window, cx)
+                })
+            })
+            .unwrap()
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        let origin = terminal_panel.read_with(cx, |panel, _| panel.active_pane.clone());
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                terminal_panel.update(cx, |panel, cx| {
+                    panel.split_grid(2, 2, window, cx);
+                })
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        terminal_panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.center.panes().len(),
+                4,
+                "a 2×2 grid should end up with four panes"
+            );
+        });
+
+        terminal_panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.active_pane, origin,
+                "focus should come back to the pane the grid grew out of"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_split_grid_of_one_does_nothing(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+
+        let terminal_panel = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    cx.new(|cx| TerminalPanel::new(workspace, window, cx))
+                })
+            })
+            .unwrap();
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                terminal_panel.update(cx, |panel, cx| {
+                    panel.split_grid(1, 1, window, cx);
+                })
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        terminal_panel.read_with(cx, |panel, _| {
+            assert_eq!(panel.center.panes().len(), 1);
+        });
     }
 
     #[cfg(unix)]

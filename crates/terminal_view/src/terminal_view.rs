@@ -47,7 +47,7 @@ use terminal_panel::TerminalPanel;
 use terminal_path_like_target::{hover_path_like_target, open_path_like_target};
 use terminal_scrollbar::TerminalScrollHandle;
 use ui::{
-    ContextMenu, Divider, ScrollAxes, Scrollbars, Tooltip, WithScrollbar,
+    Checkbox, ContextMenu, Divider, ScrollAxes, Scrollbars, ToggleState, Tooltip, WithScrollbar,
     prelude::*,
     scrollbars::{self, ScrollbarVisibility},
 };
@@ -193,6 +193,23 @@ struct MacroRun {
 enum MacroStatus {
     Finished(SharedString),
     Failed(SharedString),
+}
+
+/// The 「実行中」 line of the session strip. A macro that runs once keeps the
+/// short form; the repetition is only named when there is more than one.
+fn macro_progress_label(name: &str, progress: MacroProgress) -> String {
+    let step = format!("{}/{}", progress.step_index + 1, progress.step_count);
+    match progress.iteration_count {
+        Some(1) => format!("マクロ「{name}」実行中 ({step})"),
+        Some(count) => format!(
+            "マクロ「{name}」実行中 ({}/{count} 回目、ステップ {step})",
+            progress.iteration
+        ),
+        None => format!(
+            "マクロ「{name}」実行中 ({} 回目、ステップ {step})",
+            progress.iteration
+        ),
+    }
 }
 
 #[derive(Default, Clone)]
@@ -671,11 +688,33 @@ impl TerminalView {
         }
     }
 
+    /// Whether the running log is stamping line-start times, or `None` when
+    /// nothing is being recorded.
+    fn session_log_timestamps(&self, cx: &App) -> Option<bool> {
+        self.terminal
+            .read(cx)
+            .session_log_timestamps()
+            .map(session_log::TimestampFlag::get)
+    }
+
+    /// Flips timestamps on the log that is already running. The writer reads
+    /// the flag at the start of every line, so this takes effect immediately
+    /// without splitting the file.
+    fn toggle_session_log_timestamps(&mut self, cx: &mut Context<Self>) {
+        let terminal = self.terminal.read(cx);
+        let Some(timestamps) = terminal.session_log_timestamps() else {
+            return;
+        };
+        timestamps.set(!timestamps.get());
+        cx.notify();
+    }
+
     /// Starts `terminal_macro` against this terminal, replacing any run that is
     /// already in flight.
     pub fn run_macro(&mut self, terminal_macro: TerminalMacro, cx: &mut Context<Self>) {
         let name = SharedString::from(terminal_macro.name.clone());
         let step_count = terminal_macro.steps.len();
+        let iteration_count = terminal_macro.iteration_count();
         let view = cx.weak_entity();
         let run = terminal::terminal_macro::run_macro(
             self.terminal.clone(),
@@ -721,6 +760,8 @@ impl TerminalView {
             progress: MacroProgress {
                 step_index: 0,
                 step_count,
+                iteration: 1,
+                iteration_count,
             },
             _task: task,
         });
@@ -931,6 +972,22 @@ impl TerminalView {
                         })),
                 )
                 .child(
+                    Checkbox::new(
+                        "session-log-timestamps",
+                        self.session_log_timestamps(cx).unwrap_or(false).into(),
+                    )
+                    .label("タイムスタンプ")
+                    .label_size(LabelSize::Small)
+                    .tooltip(Tooltip::text(
+                        "記録中のログの行頭に時刻を付けます。次の行から反映されます。",
+                    ))
+                    .on_click(cx.listener(
+                        move |this, _: &ToggleState, _, cx| {
+                            this.toggle_session_log_timestamps(cx);
+                        },
+                    )),
+                )
+                .child(
                     Button::new("session-log-stop", "記録を停止")
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -943,13 +1000,8 @@ impl TerminalView {
             bar = bar
                 .child(Divider::vertical())
                 .child(
-                    Label::new(format!(
-                        "マクロ「{}」実行中 ({}/{})",
-                        run.name,
-                        run.progress.step_index + 1,
-                        run.progress.step_count
-                    ))
-                    .size(LabelSize::Small),
+                    Label::new(macro_progress_label(&run.name, run.progress))
+                        .size(LabelSize::Small),
                 )
                 .child(
                     Button::new("macro-cancel", "中止")

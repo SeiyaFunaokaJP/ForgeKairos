@@ -10,7 +10,10 @@ use std::{
     fs::{File, OpenOptions},
     io::{BufWriter, Write as _},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -31,19 +34,47 @@ const FILE_NAME_RESERVED: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '
 
 const MAX_FILE_NAME_COMPONENT: usize = 64;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Whether logged lines carry a timestamp prefix, shared with the writer task
+/// so the toggle in the recording strip takes effect on the next line rather
+/// than only on the next log.
+#[derive(Clone, Debug, Default)]
+pub struct TimestampFlag(Arc<AtomicBool>);
+
+impl TimestampFlag {
+    pub fn new(enabled: bool) -> Self {
+        Self(Arc::new(AtomicBool::new(enabled)))
+    }
+
+    pub fn get(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    pub fn set(&self, enabled: bool) {
+        self.0.store(enabled, Ordering::Relaxed);
+    }
+}
+
+impl PartialEq for TimestampFlag {
+    fn eq(&self, other: &Self) -> bool {
+        self.get() == other.get()
+    }
+}
+
+impl Eq for TimestampFlag {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionLogOptions {
     /// Filter ANSI/VT escape sequences so the file reads as plain text.
     pub strip_control_sequences: bool,
     /// Prefix every line with `[YYYY-MM-DD HH:MM:SS] `.
-    pub timestamps: bool,
+    pub timestamps: TimestampFlag,
 }
 
 impl Default for SessionLogOptions {
     fn default() -> Self {
         Self {
             strip_control_sequences: true,
-            timestamps: false,
+            timestamps: TimestampFlag::default(),
         }
     }
 }
@@ -101,8 +132,14 @@ impl SessionLog {
         &self.path
     }
 
-    pub fn options(&self) -> SessionLogOptions {
-        self.options
+    pub fn options(&self) -> &SessionLogOptions {
+        &self.options
+    }
+
+    /// The live flag the writer reads, so the recording strip can flip
+    /// timestamps on and off without restarting the log.
+    pub fn timestamps(&self) -> &TimestampFlag {
+        &self.options.timestamps
     }
 }
 
@@ -135,6 +172,7 @@ pub fn start(
     let writer = executor.spawn({
         let executor = executor.clone();
         let path = path.clone();
+        let options = options.clone();
         async move {
             if let Err(error) = run_writer(file, receiver, options, executor).await {
                 log::error!("terminal session log {}: {error:#}", path.display());
@@ -238,7 +276,7 @@ impl SessionLogFormatter {
 /// backspace, and so a timestamp prefix can be stamped with the time the line
 /// *started* rather than the time it ended.
 struct LineAssembler {
-    timestamps: bool,
+    timestamps: TimestampFlag,
     now: Box<dyn Fn() -> DateTime<Local> + Send>,
     /// The line being built. Only the bytes past `flushed_len` still need writing.
     line: Vec<u8>,
@@ -250,11 +288,11 @@ struct LineAssembler {
 }
 
 impl LineAssembler {
-    fn new(timestamps: bool) -> Self {
+    fn new(timestamps: TimestampFlag) -> Self {
         Self::with_clock(timestamps, Box::new(Local::now))
     }
 
-    fn with_clock(timestamps: bool, now: Box<dyn Fn() -> DateTime<Local> + Send>) -> Self {
+    fn with_clock(timestamps: TimestampFlag, now: Box<dyn Fn() -> DateTime<Local> + Send>) -> Self {
         Self {
             timestamps,
             now,
@@ -340,7 +378,7 @@ impl LineAssembler {
     }
 
     fn write_prefix_if_needed(&mut self) {
-        if !self.timestamps || self.flushed_len != 0 {
+        if !self.timestamps.get() || self.flushed_len != 0 {
             return;
         }
         let started_at = self.line_started_at.unwrap_or_else(|| (self.now)());
@@ -521,7 +559,7 @@ mod tests {
     fn strip(input: &[u8]) -> String {
         let mut formatter = SessionLogFormatter::new(SessionLogOptions {
             strip_control_sequences: true,
-            timestamps: false,
+            timestamps: TimestampFlag::new(false),
         });
         formatter.push(input);
         formatter.finish();
@@ -558,7 +596,7 @@ mod tests {
     fn raw_mode_keeps_escape_sequences() {
         let mut formatter = SessionLogFormatter::new(SessionLogOptions {
             strip_control_sequences: false,
-            timestamps: false,
+            timestamps: TimestampFlag::new(false),
         });
         formatter.push(b"\x1b[31mred\x1b[0m\r\n");
         formatter.finish();
@@ -572,7 +610,7 @@ mod tests {
     fn taking_the_output_drains_it() {
         let mut formatter = SessionLogFormatter::new(SessionLogOptions {
             strip_control_sequences: true,
-            timestamps: false,
+            timestamps: TimestampFlag::new(false),
         });
         formatter.push(b"one\r\n");
         assert_eq!(String::from_utf8_lossy(&formatter.take_output()), "one\n");
@@ -584,7 +622,7 @@ mod tests {
 
     #[test]
     fn timestamps_prefix_each_line() {
-        let mut lines = LineAssembler::with_clock(true, fixed_clock());
+        let mut lines = LineAssembler::with_clock(TimestampFlag::new(true), fixed_clock());
         lines.push_raw(b"one\r\ntwo\r\n");
         lines.finish();
         assert_eq!(
@@ -594,8 +632,24 @@ mod tests {
     }
 
     #[test]
+    fn toggling_timestamps_applies_from_the_next_line() {
+        let flag = TimestampFlag::new(false);
+        let mut lines = LineAssembler::with_clock(flag.clone(), fixed_clock());
+        lines.push_raw(b"one\r\n");
+        flag.set(true);
+        lines.push_raw(b"two\r\n");
+        flag.set(false);
+        lines.push_raw(b"three\r\n");
+        lines.finish();
+        assert_eq!(
+            String::from_utf8_lossy(&lines.output),
+            "one\n[2026-09-03 14:05:06] two\nthree\n"
+        );
+    }
+
+    #[test]
     fn partial_flush_does_not_duplicate_the_line() {
-        let mut lines = LineAssembler::with_clock(true, fixed_clock());
+        let mut lines = LineAssembler::with_clock(TimestampFlag::new(true), fixed_clock());
         lines.push_raw(b"Passwo");
         lines.flush_partial_line();
         assert_eq!(

@@ -75,6 +75,9 @@ table { margin: 0 0 0.9em; border-collapse: collapse; max-width: 100%; }
 th, td { padding: 0.4em 0.8em; border: 1px solid #d1d9e0; }
 th { background: #f6f8fa; font-weight: 600; }
 img { max-width: 100%; }
+figure.mermaid { margin: 0 0 0.9em; text-align: center; page-break-inside: avoid; }
+figure.mermaid svg { max-width: 100%; height: auto; }
+p.mermaid-error { margin: 0 0 0.3em; color: #953800; font-size: 0.9em; }
 sup, sub { line-height: 0; }
 .footnotes { margin-top: 2em; padding-top: 0.8em; border-top: 1px solid #d1d9e0; font-size: 0.9em; }
 "#;
@@ -103,6 +106,65 @@ struct TableState {
     column: usize,
 }
 
+/// The theme Mermaid diagrams are drawn with when printing.
+///
+/// It is a fixed light palette matching [`DOCUMENT_CSS`] rather than the user's
+/// editor theme, because the PDF is printed on white paper. The font stack is
+/// deliberately short: `merman` truncates the `style` attribute it writes onto
+/// text elements, and a long stack loses its tail mid-entity, which makes the
+/// SVG fail to parse.
+fn print_mermaid_theme() -> mermaid_render::MermaidTheme {
+    let git_branch_colors = [
+        gpui::rgb(0x0969da).into(),
+        gpui::rgb(0x1a7f37).into(),
+        gpui::rgb(0x8250df).into(),
+        gpui::rgb(0xbc4c00).into(),
+        gpui::rgb(0x0f6cbd).into(),
+        gpui::rgb(0x6e7781).into(),
+        gpui::rgb(0xbf3989).into(),
+        gpui::rgb(0xcf222e).into(),
+    ];
+
+    mermaid_render::MermaidTheme {
+        dark_mode: false,
+        font_family: "\"Yu Gothic UI\", \"Meiryo\", sans-serif".to_owned(),
+        background: gpui::rgb(0xffffff).into(),
+        primary_color: gpui::rgb(0xf6f8fa).into(),
+        primary_text_color: gpui::rgb(0x1f2328).into(),
+        primary_border_color: gpui::rgb(0x8c959f).into(),
+        secondary_color: gpui::rgb(0xeff1f3).into(),
+        tertiary_color: gpui::rgb(0xffffff).into(),
+        line_color: gpui::rgb(0x59636e).into(),
+        text_color: gpui::rgb(0x1f2328).into(),
+        edge_label_background: gpui::rgb(0xffffff).into(),
+        cluster_background: gpui::rgb(0xf6f8fa).into(),
+        cluster_border: gpui::rgb(0xd1d9e0).into(),
+        note_background: gpui::rgb(0xfff8c5).into(),
+        note_border: gpui::rgb(0xd4a72c).into(),
+        actor_background: gpui::rgb(0xf6f8fa).into(),
+        actor_border: gpui::rgb(0x8c959f).into(),
+        activation_background: gpui::rgb(0xeff1f3).into(),
+        activation_border: gpui::rgb(0x8c959f).into(),
+        git_branch_colors,
+        git_branch_label_colors: git_branch_colors.map(mermaid_render::text_color_for_background),
+        er_attr_bg_odd: gpui::rgb(0xf6f8fa).into(),
+        er_attr_bg_even: gpui::rgb(0xeff1f3).into(),
+        error_color: gpui::rgb(0xcf222e).into(),
+        warning_color: gpui::rgb(0x9a6700).into(),
+        accent_colors: Vec::new(),
+    }
+}
+
+/// The SVG for a fenced mermaid block, or the reason it could not be drawn.
+fn render_mermaid_block(contents: &str) -> Result<String, String> {
+    if !markdown::is_supported_diagram_type(contents) {
+        return Err("未対応の図の種類です".to_owned());
+    }
+
+    mermaid_render::render_to_svg(contents, &print_mermaid_theme())
+        .map_err(|error| format!("{error:#}"))
+}
+
 fn render_body(source: &str, base_directory: Option<&Path>, output: &mut String) {
     let events = parse_markdown_events(source);
 
@@ -114,8 +176,18 @@ fn render_body(source: &str, base_directory: Option<&Path>, output: &mut String)
     let mut metadata_depth = 0usize;
     let mut table: Option<TableState> = None;
     let mut in_footnotes = false;
+    // Set while the events of a mermaid block that was replaced by its drawing
+    // are being skipped, so the source is not printed underneath the diagram.
+    let mut in_drawn_mermaid_block = false;
 
     for (range, event) in events {
+        if in_drawn_mermaid_block {
+            if matches!(event, MarkdownEvent::End(MarkdownTagEnd::CodeBlock)) {
+                in_drawn_mermaid_block = false;
+            }
+            continue;
+        }
+
         if metadata_depth > 0 {
             match event {
                 MarkdownEvent::Start(_) => metadata_depth += 1,
@@ -157,7 +229,37 @@ fn render_body(source: &str, base_directory: Option<&Path>, output: &mut String)
                     output.push('>');
                 }
                 MarkdownTag::BlockQuote(_) => output.push_str("<blockquote>\n"),
-                MarkdownTag::CodeBlock { kind, .. } => {
+                MarkdownTag::CodeBlock { kind, metadata } => {
+                    // A mermaid block becomes the diagram it describes; when it
+                    // cannot be drawn the source is printed as usual, preceded
+                    // by the reason so the reader is not left guessing.
+                    let mermaid_contents = match &kind {
+                        CodeBlockKind::FencedLang(info)
+                            if metadata.is_fenced_closed
+                                && markdown::parse_mermaid_info(info).is_some() =>
+                        {
+                            source.get(metadata.content_range.clone())
+                        }
+                        _ => None,
+                    };
+                    if let Some(contents) = mermaid_contents {
+                        match render_mermaid_block(contents.trim_end_matches('\n')) {
+                            Ok(svg) => {
+                                output.push_str("<figure class=\"mermaid\">");
+                                output.push_str(&svg);
+                                output.push_str("</figure>\n");
+                                in_drawn_mermaid_block = true;
+                                continue;
+                            }
+                            Err(reason) => {
+                                output.push_str("<p class=\"mermaid-error\">");
+                                escape_text("Mermaid 図を描画できませんでした: ", output);
+                                escape_text(&reason, output);
+                                output.push_str("</p>\n");
+                            }
+                        }
+                    }
+
                     output.push_str("<pre><code");
                     if let CodeBlockKind::FencedLang(language) = &kind {
                         output.push_str(" class=\"language-");
@@ -712,6 +814,48 @@ mod tests {
             render("```rust\nfn main() { if a < b {} }\n```\n"),
             "<pre><code class=\"language-rust\">fn main() { if a &lt; b {} }\n</code></pre>\n"
         );
+    }
+
+    #[test]
+    fn test_mermaid_block_becomes_an_inline_diagram() {
+        let html = render("```mermaid\nflowchart TD\n    A[開始] --> B[終了]\n```\n");
+        assert!(html.starts_with("<figure class=\"mermaid\"><svg"), "{html}");
+        assert!(html.trim_end().ends_with("</figure>"), "{html}");
+        // The source is replaced by the drawing rather than printed twice.
+        assert!(!html.contains("<pre>"), "{html}");
+        assert!(!html.contains("flowchart TD"), "{html}");
+    }
+
+    #[test]
+    fn test_undrawable_mermaid_block_falls_back_to_code() {
+        let broken = render("```mermaid\nflowchart TD\n    A --> --> B\n```\n");
+        assert!(
+            broken.starts_with("<p class=\"mermaid-error\">Mermaid 図を描画できませんでした: "),
+            "{broken}"
+        );
+        assert!(
+            broken.contains("<pre><code class=\"language-mermaid\">flowchart TD\n"),
+            "{broken}"
+        );
+        assert!(!broken.contains("<svg"), "{broken}");
+
+        let unsupported = render("```mermaid\nsankey-beta\n    a,b,1\n```\n");
+        assert!(
+            unsupported.starts_with(
+                "<p class=\"mermaid-error\">Mermaid 図を描画できませんでした: 未対応の図の種類です</p>\n"
+            ),
+            "{unsupported}"
+        );
+        assert!(
+            unsupported.contains("<pre><code class=\"language-mermaid\">"),
+            "{unsupported}"
+        );
+
+        // An unterminated fence is left alone, since its contents are still
+        // being typed.
+        let unclosed = render("```mermaid\nflowchart TD\n");
+        assert!(!unclosed.contains("<svg"), "{unclosed}");
+        assert!(!unclosed.contains("mermaid-error"), "{unclosed}");
     }
 
     #[test]

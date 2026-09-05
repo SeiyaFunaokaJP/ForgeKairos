@@ -7665,6 +7665,147 @@ fn terminal_page() -> SettingsPage {
         ]
     }
 
+    fn session_log_section() -> [SettingsPageItem; 6] {
+        [
+            SettingsPageItem::SectionHeader("セッションログ"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "自動でログを記録する",
+                description: "新しく開いたターミナルが、出力の記録を自動で始めます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.session_log.auto"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .session_log
+                            .as_ref()?
+                            .auto
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .session_log
+                            .get_or_insert_default()
+                            .auto = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "保存先フォルダー",
+                description: "ログファイルを書き出すフォルダーです (`~` は展開されます)。空欄のときは Zed のログフォルダー配下の `terminal-sessions` に保存します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.session_log.directory"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .session_log
+                            .as_ref()?
+                            .directory
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .session_log
+                            .get_or_insert_default()
+                            .directory = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "ファイル名のテンプレート",
+                description: "新しいログのファイル名です。`{date}` `{time}` `{title}` `{host}` `{pid}` を展開します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.session_log.file_name_template"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .session_log
+                            .as_ref()?
+                            .file_name_template
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .session_log
+                            .get_or_insert_default()
+                            .file_name_template = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "制御シーケンスを除去する",
+                description: "ANSI / VT のエスケープシーケンスを取り除いて、素のテキストとして保存します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.session_log.strip_control_sequences"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .session_log
+                            .as_ref()?
+                            .strip_control_sequences
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .session_log
+                            .get_or_insert_default()
+                            .strip_control_sequences = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "行頭にタイムスタンプを付ける",
+                description: "各行の先頭に `[YYYY-MM-DD HH:MM:SS] ` を付けます。記録中のターミナルでは、記録中のバーからも切り替えられます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.session_log.timestamps"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .session_log
+                            .as_ref()?
+                            .timestamps
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .session_log
+                            .get_or_insert_default()
+                            .timestamps = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
     SettingsPage {
         title: "ターミナル",
         items: concat_sections![
@@ -7674,6 +7815,7 @@ fn terminal_page() -> SettingsPage {
             behavior_settings_section(),
             layout_settings_section(),
             advanced_settings_section(),
+            session_log_section(),
             toolbar_section(),
             scrollbar_section(),
         ],

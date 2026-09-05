@@ -15,6 +15,7 @@ use log::Level;
 use mermaid::{
     MermaidState, ParsedMarkdownMermaidDiagram, extract_mermaid_diagrams, render_mermaid_diagram,
 };
+pub use mermaid::{is_supported_diagram_type, parse_mermaid_info};
 pub use path_range::{LineCol, PathWithRange};
 use settings::Settings as _;
 use smallvec::SmallVec;

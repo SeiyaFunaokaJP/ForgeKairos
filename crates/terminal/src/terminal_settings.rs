@@ -66,10 +66,12 @@ pub struct SessionLogSettings {
 }
 
 impl SessionLogSettings {
+    /// A fresh set of options for one new log. The timestamp flag is per-log so
+    /// that toggling it in the recording strip does not leak into the next one.
     pub fn options(&self) -> crate::session_log::SessionLogOptions {
         crate::session_log::SessionLogOptions {
             strip_control_sequences: self.strip_control_sequences,
-            timestamps: self.timestamps,
+            timestamps: crate::session_log::TimestampFlag::new(self.timestamps),
         }
     }
 }

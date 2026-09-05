@@ -4,9 +4,11 @@
 //! The data these modals read and write lives in `terminal_sessions.json`
 //! (see [`terminal::terminal_macro`]); this module is only the UI over it.
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
-use editor::Editor;
+use collections::HashSet;
+use editor::{Editor, EditorEvent};
+use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     App, AsyncWindowContext, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Render,
     Subscription, Task, WeakEntity, Window, actions,
@@ -19,12 +21,14 @@ use terminal::{
     Terminal,
     terminal_macro::{
         ConnectionProtocol, MacroStep, SavedConnection, TerminalMacro, TerminalSessionStore,
+        normalize_folder, normalize_tags,
     },
     terminal_settings::TerminalSettings,
 };
 use ui::{
-    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, ListItem, ListItemSpacing, Modal,
-    ModalFooter, ModalHeader, Section, SectionHeader, ToggleState, Tooltip, prelude::*,
+    Checkbox, ContextMenu, Disclosure, DropdownMenu, DropdownStyle, HighlightedLabel, ListItem,
+    ListItemSpacing, Modal, ModalFooter, ModalHeader, Section, SectionHeader, ToggleState, Tooltip,
+    prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Panel as _, Workspace};
@@ -323,12 +327,11 @@ impl MacroPicker {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let macros = store.read(cx).macros().to_vec();
         let delegate = MacroPickerDelegate {
             store: store.clone(),
             workspace,
-            matches: (0..macros.len()).collect(),
-            macros,
+            macros: Vec::new(),
+            entries: Vec::new(),
             selected_index: 0,
         };
         let picker = cx.new(|cx| Picker::uniform_list(delegate, window, cx));
@@ -371,18 +374,96 @@ impl Focusable for MacroPicker {
 
 impl ModalView for MacroPicker {}
 
+/// One row of the macro list: either a folder heading or a macro.
+enum MacroPickerEntry {
+    Folder(SharedString),
+    Macro {
+        index: usize,
+        /// Byte offsets of the matched characters within the macro's *name*,
+        /// which is the only part of the search text the row shows.
+        name_highlights: Vec<usize>,
+    },
+}
+
+/// What the picker searches: `フォルダー/名前`, then the description, then the
+/// tags, so typing a folder name narrows to that folder and typing a tag finds
+/// every macro carrying it.
+fn macro_search_text(terminal_macro: &TerminalMacro) -> String {
+    let mut text = terminal_macro.qualified_name();
+    if !terminal_macro.description.is_empty() {
+        text.push(' ');
+        text.push_str(&terminal_macro.description);
+    }
+    for tag in &terminal_macro.tags {
+        text.push(' ');
+        text.push_str(tag);
+    }
+    text
+}
+
+/// Macros are always listed folder first, then by name, whether or not a query
+/// narrowed them, so the same macro is always found in the same place.
+fn sort_macros(macros: &mut [TerminalMacro]) {
+    macros.sort_by(|left, right| {
+        left.folder_display()
+            .cmp(right.folder_display())
+            .then_with(|| left.name.cmp(&right.name))
+    });
+}
+
 pub struct MacroPickerDelegate {
     store: Entity<TerminalSessionStore>,
     workspace: WeakEntity<Workspace>,
+    /// Sorted by folder then name; [`MacroPickerDelegate::entries`] indexes it.
     macros: Vec<TerminalMacro>,
-    matches: Vec<usize>,
+    entries: Vec<MacroPickerEntry>,
     selected_index: usize,
 }
 
 impl MacroPickerDelegate {
     fn selected_macro(&self) -> Option<&TerminalMacro> {
-        let index = *self.matches.get(self.selected_index)?;
-        self.macros.get(index)
+        match self.entries.get(self.selected_index)? {
+            MacroPickerEntry::Macro { index, .. } => self.macros.get(*index),
+            MacroPickerEntry::Folder(_) => None,
+        }
+    }
+
+    fn first_selectable_index(&self) -> usize {
+        self.entries
+            .iter()
+            .position(|entry| matches!(entry, MacroPickerEntry::Macro { .. }))
+            .unwrap_or(0)
+    }
+
+    /// Turns the matches into rows, inserting a heading whenever the folder
+    /// changes. Macros with no folder sort first and get no heading.
+    fn build_entries(
+        macros: &[TerminalMacro],
+        mut matches: Vec<StringMatch>,
+    ) -> Vec<MacroPickerEntry> {
+        // `match_strings` returns best-scoring first; the list is ordered by
+        // folder and name instead, and `candidate_id` is that position.
+        matches.sort_by_key(|string_match| string_match.candidate_id);
+
+        let mut entries = Vec::with_capacity(matches.len());
+        let mut current_folder: Option<&str> = None;
+        for string_match in matches {
+            let Some(terminal_macro) = macros.get(string_match.candidate_id) else {
+                continue;
+            };
+            let folder = terminal_macro.folder_display();
+            if current_folder != Some(folder) {
+                current_folder = Some(folder);
+                if !folder.is_empty() {
+                    entries.push(MacroPickerEntry::Folder(folder.to_string().into()));
+                }
+            }
+            entries.push(MacroPickerEntry::Macro {
+                index: string_match.candidate_id,
+                name_highlights: name_highlights(terminal_macro, &string_match.positions),
+            });
+        }
+        entries
     }
 
     fn open_editor(
@@ -411,17 +492,197 @@ impl MacroPickerDelegate {
                 .log_err();
         });
     }
+
+    /// Swaps in the 「回数を指定して実行」 form. Deferred for the same reason as
+    /// [`MacroPickerDelegate::open_editor`].
+    fn open_run_options(
+        &self,
+        terminal_macro: TerminalMacro,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let workspace = self.workspace.clone();
+        window.defer(cx, move |window, cx| {
+            let handle = workspace.clone();
+            workspace
+                .update(cx, |workspace, cx| {
+                    workspace.toggle_modal(window, cx, |window, cx| {
+                        MacroRunOptions::new(terminal_macro, handle, window, cx)
+                    });
+                })
+                .log_err();
+        });
+    }
 }
 
+// -------------------------------------------------------------------------
+// Run options (繰り返し回数の指定)
+// -------------------------------------------------------------------------
+
+/// Runs one saved macro with its repetition overridden, without touching what
+/// is stored on disk.
+pub struct MacroRunOptions {
+    terminal_macro: TerminalMacro,
+    workspace: WeakEntity<Workspace>,
+    count: Entity<Editor>,
+    interval: Entity<Editor>,
+    error: Option<SharedString>,
+    focus_handle: FocusHandle,
+}
+
+impl MacroRunOptions {
+    pub fn new(
+        terminal_macro: TerminalMacro,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let count = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_text(terminal_macro.repeat.to_string(), window, cx);
+            editor
+        });
+        let interval = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_text(
+                format_seconds(terminal_macro.repeat_interval_ms),
+                window,
+                cx,
+            );
+            editor
+        });
+        let focus_handle = cx.focus_handle();
+        window.focus(&count.focus_handle(cx), cx);
+        Self {
+            terminal_macro,
+            workspace,
+            count,
+            interval,
+            error: None,
+            focus_handle,
+        }
+    }
+
+    fn run(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Ok(repeat) = self.count.read(cx).text(cx).trim().parse::<u32>() else {
+            self.error = Some("繰り返し回数は 0 以上の整数で入力してください。".into());
+            cx.notify();
+            return;
+        };
+        let Some(repeat_interval_ms) = parse_seconds(&self.interval.read(cx).text(cx)) else {
+            self.error = Some("間隔は 0 以上の秒数で入力してください。".into());
+            cx.notify();
+            return;
+        };
+
+        let terminal_macro = TerminalMacro {
+            repeat,
+            repeat_interval_ms,
+            ..self.terminal_macro.clone()
+        };
+        let outcome = self.workspace.update(cx, |workspace, cx| {
+            run_macro_on_active_terminal(workspace, terminal_macro, window, cx)
+        });
+        if let Ok(Err(message)) = outcome {
+            self.error = Some(message.into());
+            cx.notify();
+            return;
+        }
+        cx.emit(DismissEvent);
+    }
+}
+
+impl Render for MacroRunOptions {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let name = self.terminal_macro.name.clone();
+        v_flex()
+            .w(rems(28.))
+            .elevation_3(cx)
+            .key_context("TerminalMacroRunOptions")
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
+            .on_action(cx.listener(|this, _: &menu::Confirm, window, cx| {
+                this.run(window, cx);
+            }))
+            .child(
+                Modal::new("terminal-macro-run-options", None)
+                    .header(
+                        ModalHeader::new()
+                            .headline("回数を指定して実行")
+                            .description(format!("マクロ「{name}」を繰り返し実行します。")),
+                    )
+                    .section(
+                        Section::new().child(
+                            v_flex()
+                                .gap_2()
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .child(
+                                            Label::new("繰り返し回数")
+                                                .size(LabelSize::Small)
+                                                .color(Color::Muted),
+                                        )
+                                        .child(div().w(rems(6.)).child(self.count.clone()))
+                                        .child(
+                                            Label::new("(0 は中止まで繰り返します)")
+                                                .size(LabelSize::Small)
+                                                .color(Color::Muted),
+                                        ),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .child(
+                                            Label::new("間隔 (秒)")
+                                                .size(LabelSize::Small)
+                                                .color(Color::Muted),
+                                        )
+                                        .child(div().w(rems(6.)).child(self.interval.clone())),
+                                )
+                                .when_some(self.error.clone(), |this, error| {
+                                    this.child(Label::new(error).color(Color::Error))
+                                }),
+                        ),
+                    )
+                    .footer(
+                        ModalFooter::new().end_slot(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    Button::new("cancel", "キャンセル")
+                                        .on_click(cx.listener(|_, _, _, cx| cx.emit(DismissEvent))),
+                                )
+                                .child(Button::new("run", "実行").on_click(cx.listener(
+                                    |this, _, window, cx| {
+                                        this.run(window, cx);
+                                    },
+                                ))),
+                        ),
+                    ),
+            )
+    }
+}
+
+impl EventEmitter<DismissEvent> for MacroRunOptions {}
+
+impl Focusable for MacroRunOptions {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl ModalView for MacroRunOptions {}
+
 impl PickerDelegate for MacroPickerDelegate {
-    type ListItem = ListItem;
+    type ListItem = AnyElement;
 
     fn name() -> &'static str {
         "TerminalMacroPicker"
     }
 
     fn match_count(&self) -> usize {
-        self.matches.len()
+        self.entries.len()
     }
 
     fn selected_index(&self) -> usize {
@@ -433,8 +694,24 @@ impl PickerDelegate for MacroPickerDelegate {
         cx.notify();
     }
 
+    fn can_select(&self, ix: usize, _: &mut Window, _: &mut Context<Picker<Self>>) -> bool {
+        matches!(self.entries.get(ix), Some(MacroPickerEntry::Macro { .. }))
+    }
+
+    fn separators_after_indices(&self) -> Vec<usize> {
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                matches!(entry, MacroPickerEntry::Folder(_))
+                    .then(|| index.checked_sub(1))
+                    .flatten()
+            })
+            .collect()
+    }
+
     fn placeholder_text(&self, _: &mut Window, _: &mut App) -> Arc<str> {
-        "マクロ名で絞り込み…".into()
+        "フォルダー / 名前 / タグで絞り込み…".into()
     }
 
     fn no_matches_text(&self, _: &mut Window, cx: &mut App) -> Option<SharedString> {
@@ -448,25 +725,42 @@ impl PickerDelegate for MacroPickerDelegate {
     fn update_matches(
         &mut self,
         query: String,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
-        self.macros = self.store.read(cx).macros().to_vec();
-        let query = query.trim().to_lowercase();
-        self.matches = self
-            .macros
+        let mut macros = self.store.read(cx).macros().to_vec();
+        sort_macros(&mut macros);
+        let candidates = macros
             .iter()
             .enumerate()
-            .filter(|(_, terminal_macro)| {
-                query.is_empty() || terminal_macro.name.to_lowercase().contains(&query)
+            .map(|(index, terminal_macro)| {
+                StringMatchCandidate::new(index, &macro_search_text(terminal_macro))
             })
-            .map(|(index, _)| index)
-            .collect();
-        self.selected_index = self
-            .selected_index
-            .min(self.matches.len().saturating_sub(1));
-        cx.notify();
-        Task::ready(())
+            .collect::<Vec<_>>();
+        let query = query.trim().to_string();
+        let executor = cx.background_executor().clone();
+
+        cx.spawn_in(window, async move |picker, cx| {
+            let matches = fuzzy::match_strings(
+                &candidates,
+                &query,
+                false,
+                true,
+                candidates.len(),
+                &AtomicBool::new(false),
+                executor,
+            )
+            .await;
+            picker
+                .update(cx, |picker, cx| {
+                    let delegate = &mut picker.delegate;
+                    delegate.entries = Self::build_entries(&macros, matches);
+                    delegate.macros = macros;
+                    delegate.selected_index = delegate.first_selectable_index();
+                    cx.notify();
+                })
+                .log_err();
+        })
     }
 
     fn confirm(&mut self, secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
@@ -505,31 +799,70 @@ impl PickerDelegate for MacroPickerDelegate {
         _: &mut Window,
         _: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
-        let terminal_macro = self.macros.get(*self.matches.get(ix)?)?;
-        let description = if terminal_macro.description.is_empty() {
-            format!("{} ステップ", terminal_macro.steps.len())
-        } else {
-            format!(
-                "{} ({} ステップ)",
-                terminal_macro.description,
-                terminal_macro.steps.len()
-            )
-        };
-        Some(
-            ListItem::new(ix)
-                .inset(true)
-                .spacing(ListItemSpacing::Sparse)
-                .toggle_state(selected)
-                .child(
-                    v_flex()
-                        .child(Label::new(terminal_macro.name.clone()))
+        match self.entries.get(ix)? {
+            MacroPickerEntry::Folder(folder) => Some(
+                h_flex()
+                    .w_full()
+                    .px_2()
+                    .pt_1()
+                    .gap_1()
+                    .child(
+                        Icon::new(IconName::Folder)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        Label::new(folder.clone())
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .into_any_element(),
+            ),
+            MacroPickerEntry::Macro {
+                index,
+                name_highlights,
+            } => {
+                let terminal_macro = self.macros.get(*index)?;
+                let mut detail = if terminal_macro.description.is_empty() {
+                    format!("{} ステップ", terminal_macro.steps.len())
+                } else {
+                    format!(
+                        "{} ({} ステップ)",
+                        terminal_macro.description,
+                        terminal_macro.steps.len()
+                    )
+                };
+                if let Some(count) = terminal_macro.iteration_count() {
+                    if count > 1 {
+                        detail.push_str(&format!(" / {count} 回繰り返し"));
+                    }
+                } else {
+                    detail.push_str(" / 中止まで繰り返し");
+                }
+                if !terminal_macro.tags.is_empty() {
+                    detail.push_str(&format!(" / {}", terminal_macro.tags.join(", ")));
+                }
+                Some(
+                    ListItem::new(ix)
+                        .inset(true)
+                        .spacing(ListItemSpacing::Sparse)
+                        .toggle_state(selected)
                         .child(
-                            Label::new(description)
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        ),
-                ),
-        )
+                            v_flex()
+                                .child(HighlightedLabel::new(
+                                    terminal_macro.name.clone(),
+                                    name_highlights.clone(),
+                                ))
+                                .child(
+                                    Label::new(detail)
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                        .into_any_element(),
+                )
+            }
+        }
     }
 
     fn render_footer(&self, _: &mut Window, cx: &mut Context<Picker<Self>>) -> Option<AnyElement> {
@@ -541,6 +874,18 @@ impl PickerDelegate for MacroPickerDelegate {
                 .justify_end()
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
+                .child(
+                    Button::new("run-macro-repeatedly", "回数を指定して実行…")
+                        .tooltip(Tooltip::text(
+                            "繰り返し回数と間隔を指定して、このマクロを実行します。",
+                        ))
+                        .on_click(cx.listener(|picker, _, window, cx| {
+                            let selected = picker.delegate.selected_macro().cloned();
+                            if let Some(terminal_macro) = selected {
+                                picker.delegate.open_run_options(terminal_macro, window, cx);
+                            }
+                        })),
+                )
                 .child(Button::new("edit-macro", "編集").on_click(cx.listener(
                     |picker, _, window, cx| {
                         let edited = picker.delegate.selected_macro().cloned();
@@ -559,6 +904,23 @@ impl PickerDelegate for MacroPickerDelegate {
     }
 }
 
+/// Maps the match positions of the whole search text onto the macro's name,
+/// which is the only part of it the row renders.
+fn name_highlights(terminal_macro: &TerminalMacro, positions: &[usize]) -> Vec<usize> {
+    let start = match &terminal_macro.folder {
+        // `qualified_name` is `folder` + `/` + `name`, and the positions are
+        // byte offsets into it.
+        Some(folder) => folder.len() + 1,
+        None => 0,
+    };
+    let end = start + terminal_macro.name.len();
+    positions
+        .iter()
+        .filter(|position| (start..end).contains(*position))
+        .map(|position| position - start)
+        .collect()
+}
+
 // -------------------------------------------------------------------------
 // Macro editor
 // -------------------------------------------------------------------------
@@ -573,6 +935,7 @@ enum StepKind {
     Send,
     WaitFor,
     Sleep,
+    Clear,
 }
 
 impl StepKind {
@@ -581,10 +944,26 @@ impl StepKind {
             StepKind::Send => "送信",
             StepKind::WaitFor => "期待文字を待つ",
             StepKind::Sleep => "秒待ち",
+            StepKind::Clear => "画面を消去",
         }
     }
 
-    const ALL: [StepKind; 3] = [StepKind::Send, StepKind::WaitFor, StepKind::Sleep];
+    /// Whether the row shows the text field (期待文字 / 送信する文字列).
+    fn has_text(&self) -> bool {
+        matches!(self, StepKind::Send | StepKind::WaitFor)
+    }
+
+    /// Whether the row shows the seconds field.
+    fn has_duration(&self) -> bool {
+        matches!(self, StepKind::WaitFor | StepKind::Sleep)
+    }
+
+    const ALL: [StepKind; 4] = [
+        StepKind::Send,
+        StepKind::WaitFor,
+        StepKind::Sleep,
+        StepKind::Clear,
+    ];
 }
 
 /// One editable row. The editors travel with the row when it is reordered, so
@@ -621,6 +1000,7 @@ impl StepRow {
                 false,
                 true,
             ),
+            MacroStep::Clear => (StepKind::Clear, String::new(), String::new(), false, true),
         };
 
         let text = cx.new(|cx| {
@@ -671,6 +1051,7 @@ impl StepRow {
                 ms: parse_seconds(&self.number.read(cx).text(cx))
                     .ok_or_else(|| format!("ステップ {}: 秒数が不正です。", index + 1))?,
             }),
+            StepKind::Clear => Ok(MacroStep::Clear),
         }
     }
 }
@@ -698,13 +1079,20 @@ pub struct MacroEditor {
     /// the original entry instead of adding a second one.
     original_name: Option<String>,
     name: Entity<Editor>,
+    folder: Entity<Editor>,
+    tags: Entity<Editor>,
     description: Entity<Editor>,
+    repeat: Entity<Editor>,
+    repeat_interval: Entity<Editor>,
+    /// Narrows the saved-macro list only; it has nothing to do with the form.
+    list_filter: Entity<Editor>,
+    collapsed_folders: HashSet<String>,
     steps: Vec<StepRow>,
     error: Option<SharedString>,
     /// Macro whose 削除 has been asked for but not yet confirmed.
     pending_delete: Option<String>,
     focus_handle: FocusHandle,
-    _store_loaded: Subscription,
+    _subscriptions: [Subscription; 2],
 }
 
 impl MacroEditor {
@@ -714,32 +1102,51 @@ impl MacroEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let name = cx.new(|cx| {
-            let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("マクロ名", window, cx);
-            editor
-        });
-        let description = cx.new(|cx| {
-            let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("説明 (省略可)", window, cx);
-            editor
-        });
+        let placeholder_editor = |placeholder: &'static str, window: &mut Window, cx: &mut App| {
+            cx.new(|cx| {
+                let mut editor = Editor::single_line(window, cx);
+                editor.set_placeholder_text(placeholder, window, cx);
+                editor
+            })
+        };
+
+        let name = placeholder_editor("マクロ名", window, cx);
+        let folder = placeholder_editor("フォルダー (例: 拠点/本社。省略可)", window, cx);
+        let tags = placeholder_editor("タグ (カンマ区切り、省略可)", window, cx);
+        let description = placeholder_editor("説明 (省略可)", window, cx);
+        let repeat = cx.new(|cx| Editor::single_line(window, cx));
+        let repeat_interval = cx.new(|cx| Editor::single_line(window, cx));
+        let list_filter = placeholder_editor("フォルダー / 名前 / タグで絞り込み", window, cx);
+
         let focus_handle = cx.focus_handle();
         // `terminal_sessions.json` is read asynchronously, so an editor opened
         // before the first read landed would otherwise show an empty list of
         // saved macros for as long as it stays open.
         let store_loaded = cx.observe(&store, |_, _, cx| cx.notify());
+        // The list is rebuilt during render, so the filter field only changes
+        // it if the editor itself is re-rendered on every keystroke.
+        let filter_edited = cx.subscribe(&list_filter, |_, _, event: &EditorEvent, cx| {
+            if matches!(event, EditorEvent::BufferEdited) {
+                cx.notify();
+            }
+        });
 
         let mut this = Self {
             store,
             original_name: None,
             name,
+            folder,
+            tags,
             description,
+            repeat,
+            repeat_interval,
+            list_filter,
+            collapsed_folders: HashSet::default(),
             steps: Vec::new(),
             error: None,
             pending_delete: None,
             focus_handle,
-            _store_loaded: store_loaded,
+            _subscriptions: [store_loaded, filter_edited],
         };
         this.load_macro(edited, window, cx);
         this
@@ -757,8 +1164,20 @@ impl MacroEditor {
         self.name.update(cx, |editor, cx| {
             editor.set_text(edited.name, window, cx);
         });
+        self.folder.update(cx, |editor, cx| {
+            editor.set_text(edited.folder.clone().unwrap_or_default(), window, cx);
+        });
+        self.tags.update(cx, |editor, cx| {
+            editor.set_text(edited.tags.join(", "), window, cx);
+        });
         self.description.update(cx, |editor, cx| {
             editor.set_text(edited.description, window, cx);
+        });
+        self.repeat.update(cx, |editor, cx| {
+            editor.set_text(edited.repeat.to_string(), window, cx);
+        });
+        self.repeat_interval.update(cx, |editor, cx| {
+            editor.set_text(format_seconds(edited.repeat_interval_ms), window, cx);
         });
         self.steps = edited
             .steps
@@ -771,10 +1190,36 @@ impl MacroEditor {
         cx.notify();
     }
 
-    /// The saved macros the list shows. Read straight from the store so the
-    /// list is whatever is on disk right now, not a copy taken at open time.
+    /// The saved macros the list shows, in folder-then-name order. Read
+    /// straight from the store so the list is whatever is on disk right now,
+    /// not a copy taken at open time.
     fn listed_macros(&self, cx: &App) -> Vec<TerminalMacro> {
-        self.store.read(cx).macros().to_vec()
+        let mut macros = self.store.read(cx).macros().to_vec();
+        sort_macros(&mut macros);
+        let filter = self.list_filter.read(cx).text(cx).trim().to_lowercase();
+        if !filter.is_empty() {
+            macros.retain(|terminal_macro| {
+                macro_search_text(terminal_macro)
+                    .to_lowercase()
+                    .contains(&filter)
+            });
+        }
+        macros
+    }
+
+    /// Folder names already in use, offered as completions for the form's
+    /// folder field.
+    fn known_folders(&self, cx: &App) -> Vec<String> {
+        let mut folders = self
+            .store
+            .read(cx)
+            .macros()
+            .iter()
+            .filter_map(|terminal_macro| terminal_macro.folder.clone())
+            .collect::<Vec<_>>();
+        folders.sort();
+        folders.dedup();
+        folders
     }
 
     fn add_step(&mut self, kind: StepKind, window: &mut Window, cx: &mut Context<Self>) {
@@ -789,6 +1234,7 @@ impl MacroEditor {
                 timeout_ms: terminal::terminal_macro::DEFAULT_WAIT_TIMEOUT_MS,
             },
             StepKind::Sleep => MacroStep::Sleep { ms: 1000 },
+            StepKind::Clear => MacroStep::Clear,
         };
         self.steps.push(StepRow::new(&step, window, cx));
         cx.notify();
@@ -822,9 +1268,25 @@ impl MacroEditor {
             }
         }
 
+        let Ok(repeat) = self.repeat.read(cx).text(cx).trim().parse::<u32>() else {
+            self.error = Some("繰り返し回数は 0 以上の整数で入力してください。".into());
+            cx.notify();
+            return;
+        };
+        let Some(repeat_interval_ms) = parse_seconds(&self.repeat_interval.read(cx).text(cx))
+        else {
+            self.error = Some("繰り返しの間隔は 0 以上の秒数で入力してください。".into());
+            cx.notify();
+            return;
+        };
+
         let terminal_macro = TerminalMacro {
             name: name.clone(),
+            folder: normalize_folder(&self.folder.read(cx).text(cx)),
+            tags: normalize_tags(&self.tags.read(cx).text(cx)),
             description: self.description.read(cx).text(cx).trim().to_string(),
+            repeat,
+            repeat_interval_ms,
             steps,
         };
 
@@ -912,54 +1374,137 @@ impl MacroEditor {
 
         let macros = self.listed_macros(cx);
         if macros.is_empty() {
-            return Label::new("保存済みのマクロがありません")
-                .size(LabelSize::Small)
-                .color(Color::Muted)
-                .into_any_element();
+            let filtered = !self.list_filter.read(cx).text(cx).trim().is_empty();
+            return Label::new(if filtered {
+                "絞り込みに一致するマクロがありません"
+            } else {
+                "保存済みのマクロがありません"
+            })
+            .size(LabelSize::Small)
+            .color(Color::Muted)
+            .into_any_element();
         }
 
         let editing = self.original_name.clone();
-        v_flex()
+        let mut list = v_flex()
             .id("saved-macros")
-            .max_h(rems(10.))
+            .max_h(rems(18.))
             .overflow_y_scroll()
-            .gap_0p5()
-            .children(
-                macros
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, terminal_macro)| {
-                        let name = terminal_macro.name.clone();
-                        let selected = editing.as_deref() == Some(name.as_str());
-                        let detail = format!("{} ステップ", terminal_macro.steps.len());
+            .gap_0p5();
+
+        // The macros arrive folder-then-name ordered, so one pass is enough to
+        // emit a heading whenever the folder changes.
+        let mut current_folder: Option<String> = None;
+        let mut hidden = false;
+        for (index, terminal_macro) in macros.into_iter().enumerate() {
+            let folder = terminal_macro.folder.clone();
+            if current_folder != folder {
+                current_folder = folder.clone();
+                hidden = false;
+                if let Some(folder) = folder {
+                    let collapsed = self.collapsed_folders.contains(&folder);
+                    hidden = collapsed;
+                    list = list.child(
                         h_flex()
                             .w_full()
                             .gap_1()
-                            .justify_between()
                             .child(
-                                Button::new(("saved-macro", index), name.clone())
-                                    .full_width()
-                                    .toggle_state(selected)
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.load_macro(Some(terminal_macro.clone()), window, cx);
-                                    })),
+                                Disclosure::new(("macro-folder", index), !collapsed).on_click(
+                                    cx.listener({
+                                        let folder = folder.clone();
+                                        move |this, _, _, cx| {
+                                            if !this.collapsed_folders.remove(&folder) {
+                                                this.collapsed_folders.insert(folder.clone());
+                                            }
+                                            cx.notify();
+                                        }
+                                    }),
+                                ),
                             )
                             .child(
-                                Label::new(detail)
+                                Label::new(folder)
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
-                            )
-                            .child(
-                                IconButton::new(("delete-saved-macro", index), IconName::Trash)
-                                    .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("このマクロを削除します"))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.request_delete(name.clone(), cx);
-                                    })),
-                            )
-                    }),
-            )
-            .into_any_element()
+                            ),
+                    );
+                }
+            }
+            if hidden {
+                continue;
+            }
+
+            let name = terminal_macro.name.clone();
+            let selected = editing.as_deref() == Some(name.as_str());
+            let detail = format!("{} ステップ", terminal_macro.steps.len());
+            list = list.child(
+                h_flex()
+                    .w_full()
+                    .gap_1()
+                    .justify_between()
+                    .child(
+                        Button::new(("saved-macro", index), name.clone())
+                            .full_width()
+                            .toggle_state(selected)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.load_macro(Some(terminal_macro.clone()), window, cx);
+                            })),
+                    )
+                    .child(
+                        Label::new(detail)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        IconButton::new(("delete-saved-macro", index), IconName::Trash)
+                            .icon_size(IconSize::Small)
+                            .tooltip(Tooltip::text("このマクロを削除します"))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.request_delete(name.clone(), cx);
+                            })),
+                    ),
+            );
+        }
+
+        list.into_any_element()
+    }
+
+    /// Dropdown of the folders already in use, so a macro can be filed under an
+    /// existing folder without retyping (and mistyping) its path.
+    fn render_folder_menu(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let folders = self.known_folders(cx);
+        let view = cx.weak_entity();
+        let menu = ContextMenu::build(window, cx, move |mut menu, _, _| {
+            menu = menu.entry("(フォルダーなし)", None, {
+                let view = view.clone();
+                move |window, cx| {
+                    view.update(cx, |this, cx| {
+                        this.folder.update(cx, |editor, cx| {
+                            editor.set_text("", window, cx);
+                        });
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            });
+            for folder in &folders {
+                let folder = folder.clone();
+                let view = view.clone();
+                menu = menu.entry(folder.clone(), None, move |window, cx| {
+                    let folder = folder.clone();
+                    view.update(cx, |this, cx| {
+                        this.folder.update(cx, |editor, cx| {
+                            editor.set_text(folder, window, cx);
+                        });
+                        cx.notify();
+                    })
+                    .ok();
+                });
+            }
+            menu
+        });
+
+        DropdownMenu::new("macro-folder-choices", "既存のフォルダー", menu)
+            .style(DropdownStyle::Outlined)
     }
 
     fn render_step(
@@ -992,7 +1537,7 @@ impl MacroEditor {
                                 // Switching into a step that needs a duration
                                 // would otherwise leave the field blank and
                                 // fail validation on save.
-                                if candidate != StepKind::Send
+                                if candidate.has_duration()
                                     && row.number.read(cx).text(cx).trim().is_empty()
                                 {
                                     let seconds = match candidate {
@@ -1080,7 +1625,7 @@ impl MacroEditor {
                             ),
                     ),
             )
-            .when(kind != StepKind::Sleep, |this| this.child(row.text.clone()))
+            .when(kind.has_text(), |this| this.child(row.text.clone()))
             .when(kind == StepKind::Send, |this| {
                 this.child(
                     Checkbox::new(("step-newline", index), row.newline.into())
@@ -1097,7 +1642,7 @@ impl MacroEditor {
                         })),
                 )
             })
-            .when(kind != StepKind::Send, |this| {
+            .when(kind.has_duration(), |this| {
                 this.child(
                     h_flex()
                         .gap_2()
@@ -1146,6 +1691,7 @@ impl Render for MacroEditor {
         };
         let editing = self.original_name.clone();
         let pending_delete = self.pending_delete.clone();
+        let folder_menu = self.render_folder_menu(window, cx).into_any_element();
 
         v_flex()
             .w(rems(40.))
@@ -1167,7 +1713,12 @@ impl Render for MacroEditor {
                                         })),
                                 ),
                             )
-                            .child(saved_macros),
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(self.list_filter.clone())
+                                    .child(saved_macros),
+                            ),
                     )
                     .section(
                         Section::new()
@@ -1176,7 +1727,39 @@ impl Render for MacroEditor {
                                 v_flex()
                                     .gap_2()
                                     .child(self.name.clone())
+                                    .child(
+                                        h_flex()
+                                            .gap_1()
+                                            .child(div().flex_1().child(self.folder.clone()))
+                                            .child(folder_menu),
+                                    )
+                                    .child(self.tags.clone())
                                     .child(self.description.clone())
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .child(
+                                                Label::new("繰り返し回数")
+                                                    .size(LabelSize::Small)
+                                                    .color(Color::Muted),
+                                            )
+                                            .child(div().w(rems(4.)).child(self.repeat.clone()))
+                                            .child(
+                                                Label::new("間隔 (秒)")
+                                                    .size(LabelSize::Small)
+                                                    .color(Color::Muted),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w(rems(4.))
+                                                    .child(self.repeat_interval.clone()),
+                                            )
+                                            .child(
+                                                Label::new("(0 回は中止まで繰り返します)")
+                                                    .size(LabelSize::Small)
+                                                    .color(Color::Muted),
+                                            ),
+                                    )
                                     .children(steps)
                                     .child(
                                         h_flex().gap_1().child(
@@ -1309,6 +1892,7 @@ pub struct QuickConnectModal {
     store: Entity<TerminalSessionStore>,
     workspace: WeakEntity<Workspace>,
     name: Entity<Editor>,
+    folder: Entity<Editor>,
     host: Entity<Editor>,
     port: Entity<Editor>,
     user: Entity<Editor>,
@@ -1336,6 +1920,7 @@ impl QuickConnectModal {
         };
 
         let name = single_line("接続名 (保存するとき)", window, cx);
+        let folder = single_line("フォルダー (例: 拠点/本社。省略可)", window, cx);
         let host = single_line("ホスト名 / IP アドレス", window, cx);
         let port = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
@@ -1355,6 +1940,7 @@ impl QuickConnectModal {
             store,
             workspace,
             name,
+            folder,
             host,
             port,
             user,
@@ -1407,6 +1993,7 @@ impl QuickConnectModal {
 
         Ok(SavedConnection {
             name: if name.is_empty() { host.clone() } else { name },
+            folder: normalize_folder(&self.folder.read(cx).text(cx)),
             protocol: self.protocol,
             host,
             port,
@@ -1429,6 +2016,9 @@ impl QuickConnectModal {
             .unwrap_or_else(|| TerminalSettings::get_global(cx).session_log.auto);
         self.name.update(cx, |editor, cx| {
             editor.set_text(connection.name.clone(), window, cx)
+        });
+        self.folder.update(cx, |editor, cx| {
+            editor.set_text(connection.folder.clone().unwrap_or_default(), window, cx)
         });
         self.host.update(cx, |editor, cx| {
             editor.set_text(connection.host.clone(), window, cx)
@@ -1681,54 +2271,70 @@ impl QuickConnectModal {
                 .color(Color::Muted)
                 .into_any_element();
         }
-        let connections = self.store.read(cx).connections().to_vec();
-        v_flex()
-            .gap_0p5()
-            .children(
-                connections
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, connection)| {
-                        let name = connection.name.clone();
-                        let detail = format!(
-                            "{} {}:{}",
-                            connection.protocol.label(),
-                            connection.host,
-                            connection.port_or_default()
-                        );
-                        h_flex()
-                            .w_full()
-                            .gap_1()
-                            .justify_between()
-                            .child(
-                                Button::new(("saved-connection", index), name.clone())
-                                    .full_width()
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.apply_connection(&connection, window, cx);
-                                    })),
-                            )
-                            .child(
-                                Label::new(detail)
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .child(
-                                IconButton::new(("delete-connection", index), IconName::Trash)
-                                    .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("この接続先を削除します"))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.delete_connection(name.clone(), cx);
-                                    })),
-                            )
-                    }),
-            )
-            .into_any_element()
+        let mut connections = self.store.read(cx).connections().to_vec();
+        connections.sort_by(|left, right| {
+            left.folder
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(right.folder.as_deref().unwrap_or_default())
+                .then_with(|| left.name.cmp(&right.name))
+        });
+
+        let mut list = v_flex().id("saved-connections").gap_0p5();
+        let mut current_folder: Option<String> = None;
+        for (index, connection) in connections.into_iter().enumerate() {
+            if current_folder != connection.folder {
+                current_folder = connection.folder.clone();
+                if let Some(folder) = current_folder.clone() {
+                    list = list.child(
+                        Label::new(folder)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    );
+                }
+            }
+            let name = connection.name.clone();
+            let detail = format!(
+                "{} {}:{}",
+                connection.protocol.label(),
+                connection.host,
+                connection.port_or_default()
+            );
+            list = list.child(
+                h_flex()
+                    .w_full()
+                    .gap_1()
+                    .justify_between()
+                    .child(
+                        Button::new(("saved-connection", index), name.clone())
+                            .full_width()
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.apply_connection(&connection, window, cx);
+                            })),
+                    )
+                    .child(
+                        Label::new(detail)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        IconButton::new(("delete-connection", index), IconName::Trash)
+                            .icon_size(IconSize::Small)
+                            .tooltip(Tooltip::text("この接続先を削除します"))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.delete_connection(name.clone(), cx);
+                            })),
+                    ),
+            );
+        }
+        list.into_any_element()
     }
 }
 
 impl Render for QuickConnectModal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let macro_names = self.store.read(cx).macros().to_vec();
+        let mut macros = self.store.read(cx).macros().to_vec();
+        sort_macros(&mut macros);
         let selected_macro_label = self
             .macro_name
             .clone()
@@ -1746,7 +2352,17 @@ impl Render for QuickConnectModal {
                         .ok();
                     }
                 });
-                for terminal_macro in &macro_names {
+                // Same folder-then-name grouping as the macro picker, so a long
+                // list stays navigable here too.
+                let mut current_folder: Option<&str> = None;
+                for terminal_macro in &macros {
+                    let folder = terminal_macro.folder_display();
+                    if current_folder != Some(folder) {
+                        current_folder = Some(folder);
+                        if !folder.is_empty() {
+                            menu = menu.header(folder.to_string());
+                        }
+                    }
                     let name = terminal_macro.name.clone();
                     let view = view.clone();
                     menu = menu.entry(name.clone(), None, move |_, cx| {
@@ -1858,6 +2474,7 @@ impl Render for QuickConnectModal {
                                         )),
                                 )
                                 .child(self.name.clone())
+                                .child(self.folder.clone())
                                 .when_some(self.error.clone(), |this, error| {
                                     this.child(Label::new(error).color(Color::Error))
                                 }),
@@ -1999,16 +2616,49 @@ mod tests {
         })
     }
 
+    /// The macro rows of the picker, folder headings left out.
     fn picker_names(picker: &Entity<MacroPicker>, cx: &mut VisualTestContext) -> Vec<String> {
         picker.update(cx, |picker, cx| {
             let picker = picker.picker.read(cx);
-            (0..picker.delegate.match_count())
-                .filter_map(|index| {
-                    let index = *picker.delegate.matches.get(index)?;
-                    Some(picker.delegate.macros.get(index)?.name.clone())
+            picker
+                .delegate
+                .entries
+                .iter()
+                .filter_map(|entry| match entry {
+                    MacroPickerEntry::Macro { index, .. } => {
+                        Some(picker.delegate.macros.get(*index)?.name.clone())
+                    }
+                    MacroPickerEntry::Folder(_) => None,
                 })
                 .collect()
         })
+    }
+
+    /// Every row of the picker, with folder headings marked by a trailing `/`.
+    fn picker_rows(picker: &Entity<MacroPicker>, cx: &mut VisualTestContext) -> Vec<String> {
+        picker.update(cx, |picker, cx| {
+            let picker = picker.picker.read(cx);
+            picker
+                .delegate
+                .entries
+                .iter()
+                .filter_map(|entry| match entry {
+                    MacroPickerEntry::Folder(folder) => Some(format!("{folder}/")),
+                    MacroPickerEntry::Macro { index, .. } => {
+                        Some(picker.delegate.macros.get(*index)?.name.clone())
+                    }
+                })
+                .collect()
+        })
+    }
+
+    fn set_picker_query(picker: &Entity<MacroPicker>, query: &str, cx: &mut VisualTestContext) {
+        picker.update_in(cx, |picker, window, cx| {
+            picker.picker.update(cx, |picker, cx| {
+                picker.set_query(query, window, cx);
+            });
+        });
+        cx.run_until_parked();
     }
 
     #[gpui::test]
@@ -2054,7 +2704,8 @@ mod tests {
                 .into_iter()
                 .map(|terminal_macro| terminal_macro.name)
                 .collect::<Vec<_>>();
-            assert_eq!(names, vec!["ログイン", "設定保存", "再起動"]);
+            // The list is sorted by folder then name, not by file order.
+            assert_eq!(names, vec!["ログイン", "再起動", "設定保存"]);
         });
         assert!(
             redrawn.get(),
@@ -2074,6 +2725,117 @@ mod tests {
 
         cx.run_until_parked();
         assert_eq!(picker_names(&picker, cx), vec!["ログイン".to_string()]);
+    }
+
+    const FOLDERED_MACROS: &str = r#"{
+        "macros": [
+            { "name": "再起動", "folder": "拠点/大阪", "tags": ["ルーター"], "steps": [] },
+            { "name": "設定保存", "folder": "拠点/本社", "steps": [] },
+            { "name": "ログイン", "folder": "拠点/本社", "tags": ["ルーター", "定期"], "steps": [] },
+            { "name": "メモ", "description": "フォルダーなし", "steps": [] }
+        ]
+    }"#;
+
+    #[gpui::test]
+    async fn the_picker_groups_macros_by_folder(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+
+        // Un-foldered macros come first and get no heading; every folder is
+        // introduced once, and the names inside it are sorted.
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec![
+                "メモ",
+                "拠点/大阪/",
+                "再起動",
+                "拠点/本社/",
+                "ログイン",
+                "設定保存",
+            ]
+        );
+
+        // The headings must not be selectable, and the first selectable row is
+        // the one the picker starts on.
+        picker.update_in(cx, |picker, window, cx| {
+            picker.picker.update(cx, |picker, cx| {
+                assert_eq!(picker.delegate.selected_index(), 0);
+                assert!(!picker.delegate.can_select(1, window, cx));
+                assert!(picker.delegate.can_select(2, window, cx));
+                assert_eq!(picker.delegate.separators_after_indices(), vec![0, 2]);
+            });
+        });
+    }
+
+    #[gpui::test]
+    async fn the_picker_searches_folders_descriptions_and_tags(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+
+        // A folder name on its own narrows to that folder.
+        set_picker_query(&picker, "拠点/本社", cx);
+        assert_eq!(
+            picker_names(&picker, cx),
+            vec!["ログイン".to_string(), "設定保存".to_string()]
+        );
+
+        // Tags are searchable, and the order is still folder then name.
+        set_picker_query(&picker, "ルーター", cx);
+        assert_eq!(
+            picker_names(&picker, cx),
+            vec!["再起動".to_string(), "ログイン".to_string()]
+        );
+
+        // So is the description.
+        set_picker_query(&picker, "フォルダーなし", cx);
+        assert_eq!(picker_names(&picker, cx), vec!["メモ".to_string()]);
+
+        set_picker_query(&picker, "該当なし", cx);
+        assert!(picker_names(&picker, cx).is_empty());
+    }
+
+    #[gpui::test]
+    async fn the_picker_highlights_only_the_name(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "login", "folder": "site", "steps": [] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        // "site/login": the folder's own match positions must not bleed into
+        // the name's highlight, and the name's are rebased onto it.
+        set_picker_query(&picker, "sitelog", cx);
+
+        picker.update(cx, |picker, cx| {
+            let picker = picker.picker.read(cx);
+            let highlights = picker
+                .delegate
+                .entries
+                .iter()
+                .find_map(|entry| match entry {
+                    MacroPickerEntry::Macro {
+                        name_highlights, ..
+                    } => Some(name_highlights.clone()),
+                    MacroPickerEntry::Folder(_) => None,
+                })
+                .expect("the macro should still be listed");
+            assert_eq!(highlights, vec![0, 1, 2]);
+        });
     }
 
     #[gpui::test]
@@ -2168,8 +2930,102 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             picker_names(&picker, cx),
-            vec!["既存".to_string(), "新しいマクロ".to_string()]
+            vec!["新しいマクロ".to_string(), "既存".to_string()]
         );
+    }
+
+    #[gpui::test]
+    async fn saving_normalizes_the_folder_and_tags_and_keeps_the_old_entries(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "既存", "description": "旧形式", "steps": [] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("再起動", window, cx);
+            });
+            editor.folder.update(cx, |folder, cx| {
+                folder.set_text(" 拠点 / 本社 / ", window, cx);
+            });
+            editor.tags.update(cx, |tags, cx| {
+                tags.set_text(" ルーター , 定期 , ルーター ", window, cx);
+            });
+            editor.repeat.update(cx, |repeat, cx| {
+                repeat.set_text("3", window, cx);
+            });
+            editor.repeat_interval.update(cx, |interval, cx| {
+                interval.set_text("1.5", window, cx);
+            });
+            editor.add_step(StepKind::Clear, window, cx);
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(saved.macros.len(), 2, "the old macro must survive the save");
+        let written = &saved.macros[1];
+        assert_eq!(written.folder.as_deref(), Some("拠点/本社"));
+        assert_eq!(
+            written.tags,
+            vec!["ルーター".to_string(), "定期".to_string()]
+        );
+        assert_eq!(written.repeat, 3);
+        assert_eq!(written.repeat_interval_ms, 1_500);
+        assert_eq!(written.steps, vec![MacroStep::Clear]);
+        // The untouched macro keeps its shape, defaults and all.
+        assert_eq!(saved.macros[0].folder, None);
+        assert_eq!(saved.macros[0].repeat, 1);
+    }
+
+    #[gpui::test]
+    async fn the_editor_list_filters_on_folder_and_tags(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let listed = |editor: &Entity<MacroEditor>, cx: &mut VisualTestContext| {
+            editor.update(cx, |editor, cx| {
+                editor
+                    .listed_macros(cx)
+                    .into_iter()
+                    .map(|terminal_macro| terminal_macro.name)
+                    .collect::<Vec<_>>()
+            })
+        };
+
+        // Unfiltered, the list is folder then name.
+        assert_eq!(
+            listed(&editor, cx),
+            vec!["メモ", "再起動", "ログイン", "設定保存"]
+        );
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.list_filter.update(cx, |filter, cx| {
+                filter.set_text("大阪", window, cx);
+            });
+        });
+        assert_eq!(listed(&editor, cx), vec!["再起動"]);
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.list_filter.update(cx, |filter, cx| {
+                filter.set_text("定期", window, cx);
+            });
+        });
+        assert_eq!(listed(&editor, cx), vec!["ログイン"]);
     }
 
     #[test]

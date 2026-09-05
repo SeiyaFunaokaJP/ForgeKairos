@@ -4,12 +4,12 @@ mod registry;
 
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 
 use anyhow::Result;
-use collections::{BTreeMap, BTreeSet, HashMap};
+use collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use format::VsSnippetsFile;
 use fs::Fs;
 use futures::stream::StreamExt;
@@ -60,6 +60,34 @@ pub fn file_to_snippets(
                 )),
             }
         })
+}
+
+/// The snippet files that ship with the editor, keyed by the language name
+/// their file would have under the user's `snippets/` directory.
+const BUILT_IN_SNIPPET_FILES: &[(&str, &str)] = &[(
+    "markdown",
+    include_str!("../../../assets/snippets/markdown.json"),
+)];
+
+/// The built-in snippets, parsed once and shared by every provider.
+fn built_in_snippets() -> &'static HashMap<SnippetKind, Vec<Arc<Snippet>>> {
+    static BUILT_IN_SNIPPETS: OnceLock<HashMap<SnippetKind, Vec<Arc<Snippet>>>> = OnceLock::new();
+    BUILT_IN_SNIPPETS.get_or_init(|| {
+        let mut snippets_by_kind: HashMap<SnippetKind, Vec<Arc<Snippet>>> = HashMap::default();
+        for (name, contents) in BUILT_IN_SNIPPET_FILES {
+            let source = PathBuf::from(format!("assets/snippets/{name}.json"));
+            let Some(file_contents) =
+                serde_json_lenient::from_str::<VsSnippetsFile>(contents).log_err()
+            else {
+                continue;
+            };
+            snippets_by_kind
+                .entry(file_stem_to_key(name))
+                .or_default()
+                .extend(file_to_snippets(file_contents, &source).filter_map(Result::log_err));
+        }
+        snippets_by_kind
+    })
 }
 
 // Snippet with all of the metadata
@@ -263,6 +291,35 @@ impl SnippetProvider {
             // Look up global snippets as well.
             requested_snippets.extend(self.lookup_snippets::<true>(&None, cx));
         }
+
+        // Built-in snippets come last and lose every prefix that a user or
+        // extension snippet already claims, so redefining `mermaid-flowchart`
+        // replaces the shipped one instead of showing two completions for it.
+        let claimed_prefixes: HashSet<&str> = requested_snippets
+            .iter()
+            .flat_map(|snippet| snippet.prefix.iter().map(String::as_str))
+            .collect();
+        let built_in_snippets = built_in_snippets();
+        let unclaimed_built_ins = built_in_snippets
+            .get(&language)
+            .into_iter()
+            .chain(
+                language
+                    .is_some()
+                    .then(|| built_in_snippets.get(&None))
+                    .flatten(),
+            )
+            .flatten()
+            .filter(|snippet| {
+                !snippet
+                    .prefix
+                    .iter()
+                    .any(|prefix| claimed_prefixes.contains(prefix.as_str()))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        requested_snippets.extend(unclaimed_built_ins);
         requested_snippets
     }
 }
@@ -297,6 +354,87 @@ mod tests {
             let provider = SnippetProvider::new(fs.clone(), Default::default(), cx);
             cx.update_entity(&provider, |provider, cx| {
                 assert_eq!(1, provider.snippets_for(Some("ruby".to_owned()), cx).len());
+            });
+        });
+    }
+
+    #[gpui::test]
+    fn test_built_in_snippets_are_offered(cx: &mut TestAppContext) {
+        let fs = FakeFs::new(cx.background_executor.clone());
+        cx.update(|cx| {
+            SnippetRegistry::init_global(cx);
+            let provider = SnippetProvider::new(fs.clone(), Default::default(), cx);
+            cx.update_entity(&provider, |provider, cx| {
+                let snippets = provider.snippets_for(Some("markdown".to_owned()), cx);
+                let prefixes = snippets
+                    .iter()
+                    .flat_map(|snippet| snippet.prefix.iter().map(String::as_str))
+                    .collect::<Vec<_>>();
+                for prefix in [
+                    "mermaid-flowchart",
+                    "mermaid-sequence",
+                    "mermaid-class",
+                    "mermaid-state",
+                    "mermaid-er",
+                    "mermaid-gantt",
+                    "mermaid-pie",
+                    "mermaid-gitgraph",
+                    "mermaid-mindmap",
+                    "mermaid-timeline",
+                ] {
+                    assert!(
+                        prefixes.contains(&prefix),
+                        "built-in snippet {prefix} is missing from {prefixes:?}"
+                    );
+                }
+
+                // Languages without a built-in file are unaffected.
+                assert!(
+                    provider
+                        .snippets_for(Some("ruby".to_owned()), cx)
+                        .is_empty()
+                );
+            });
+        });
+    }
+
+    #[gpui::test]
+    fn test_user_snippet_hides_built_in_with_same_prefix(cx: &mut TestAppContext) {
+        let fs = FakeFs::new(cx.background_executor.clone());
+        cx.update(|cx| {
+            SnippetRegistry::init_global(cx);
+            let provider = SnippetProvider::new(fs.clone(), Default::default(), cx);
+            cx.update_entity(&provider, |provider, cx| {
+                provider.add_snippet_for_test(
+                    Some("markdown".to_owned()),
+                    PathBuf::from("markdown.json"),
+                    vec![Arc::new(Snippet {
+                        prefix: vec!["mermaid-flowchart".to_owned()],
+                        body: "flowchart LR".to_owned(),
+                        description: None,
+                        name: "user flowchart".to_owned(),
+                    })],
+                );
+
+                let snippets = provider.snippets_for(Some("markdown".to_owned()), cx);
+                let flowchart_snippets = snippets
+                    .iter()
+                    .filter(|snippet| {
+                        snippet
+                            .prefix
+                            .iter()
+                            .any(|prefix| prefix == "mermaid-flowchart")
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(1, flowchart_snippets.len());
+                assert_eq!("user flowchart", flowchart_snippets[0].name);
+
+                // The other built-in snippets are still offered.
+                assert!(
+                    snippets
+                        .iter()
+                        .any(|snippet| snippet.name == "Mermaid シーケンス図")
+                );
             });
         });
     }

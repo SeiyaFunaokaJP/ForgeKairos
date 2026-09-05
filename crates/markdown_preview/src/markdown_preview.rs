@@ -4,6 +4,7 @@ use workspace::Workspace;
 pub mod markdown_export;
 pub mod markdown_preview_settings;
 pub mod markdown_preview_view;
+pub mod mermaid_diagram_selector;
 
 pub use zed_actions::preview::markdown::{ExportToPdf, OpenPreview, OpenPreviewToTheSide};
 
@@ -33,7 +34,10 @@ actions!(
         /// Opens a following markdown preview that syncs with the editor.
         OpenFollowingPreview,
         /// Closes the markdown preview and returns focus to the source editor.
-        CloseAndReturnToEditor
+        CloseAndReturnToEditor,
+        /// Picks the Mermaid diagram type to insert at the cursor, since
+        /// `markdown::InsertMermaidDiagram` can only carry one type at a time.
+        InsertMermaidDiagramPicker
     ]
 );
 
@@ -45,6 +49,7 @@ pub fn init(cx: &mut App) {
             return;
         };
         markdown_preview_view::MarkdownPreviewView::register(workspace, window, cx);
+        mermaid_diagram_selector::register(workspace);
     })
     .detach();
 }

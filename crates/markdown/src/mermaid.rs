@@ -405,7 +405,9 @@ fn build_mermaid_theme(cx: &Context<Markdown>) -> mermaid_render::MermaidTheme {
     }
 }
 
-fn parse_mermaid_info(info: &str) -> Option<u32> {
+/// The scale percentage a fenced code block's info string asks for, or `None`
+/// when the block is not a mermaid diagram.
+pub fn parse_mermaid_info(info: &str) -> Option<u32> {
     let mut parts = info.split_whitespace();
     if parts.next()? != "mermaid" {
         return None;
@@ -423,7 +425,7 @@ fn parse_mermaid_info(info: &str) -> Option<u32> {
 /// We deliberately block rendering of some diagram types, even though `merman`
 /// supports them, because we have not yet written custom CSS to ensure text is
 /// readable.
-fn is_supported_diagram_type(source: &str) -> bool {
+pub fn is_supported_diagram_type(source: &str) -> bool {
     /// If updating this list, also update the system prompt!
     const SUPPORTED_PREFIXES: &[&str] = &[
         "flowchart",
@@ -636,9 +638,18 @@ pub(crate) fn render_mermaid_diagram(
                 })
                 .into_any_element()
         }
-        Some(Err(_)) => {
-            // Render failed — show the source code without tabs
+        Some(Err(error)) => {
+            // Render failed — show the source code without tabs, prefixed by
+            // the reason. Without it the block is indistinguishable from a
+            // diagram that is merely still rendering.
             container
+                .child(
+                    div().w_full().pb_1().child(
+                        Label::new(format!("Mermaid 図を描画できませんでした: {error}"))
+                            .size(LabelSize::XSmall)
+                            .color(Color::Error),
+                    ),
+                )
                 .child(render_mermaid_code_view(&parsed.contents.contents))
                 .when(show_interactive, |container| {
                     container.child(render_mermaid_overlay_controls(
