@@ -220,6 +220,15 @@ impl ConnectionProtocol {
             ConnectionProtocol::Telnet => "Telnet",
         }
     }
+
+    /// Scheme used to key remembered passwords. Kept apart from
+    /// [`Self::program`] so renaming the command never moves the credentials.
+    pub fn scheme(&self) -> &'static str {
+        match self {
+            ConnectionProtocol::Ssh => "ssh",
+            ConnectionProtocol::Telnet => "telnet",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -247,6 +256,11 @@ pub struct SavedConnection {
     /// `terminal.session_log.auto` setting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log: Option<bool>,
+    /// Whether a password for this target is kept in the OS credential store
+    /// (ADR-F28). Only the flag lives in `terminal_sessions.json`; the password
+    /// itself never does — see [`crate::quick_connect_credentials`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remember_password: bool,
 }
 
 impl SavedConnection {
@@ -831,6 +845,7 @@ mod tests {
                 user: None,
                 macro_name: Some("ログイン".to_string()),
                 log: Some(true),
+                remember_password: true,
             }],
             macros: vec![TerminalMacro {
                 name: "ログイン".to_string(),
@@ -856,6 +871,46 @@ mod tests {
 
         let text = serialize_sessions_file(&file).expect("serializes");
         assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn remember_password_round_trips_and_stays_out_of_the_file_when_off() {
+        let mut connection = SavedConnection {
+            name: "r1".into(),
+            host: "10.0.0.1".into(),
+            remember_password: true,
+            ..SavedConnection::default()
+        };
+        let file = TerminalSessionsFile {
+            connections: vec![connection.clone()],
+            macros: Vec::new(),
+        };
+        let text = serialize_sessions_file(&file).expect("serializes");
+        assert!(text.contains("remember_password"));
+        // Whatever else the file grows, the password itself is never in it.
+        assert!(!text.contains("password\": \""));
+        assert_eq!(parse_sessions_file(&text), file);
+
+        connection.remember_password = false;
+        let file = TerminalSessionsFile {
+            connections: vec![connection],
+            macros: Vec::new(),
+        };
+        let text = serialize_sessions_file(&file).expect("serializes");
+        assert!(!text.contains("remember_password"));
+        assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn a_file_written_before_remembered_passwords_still_parses() {
+        let file = parse_sessions_file(
+            r#"{
+                "connections": [
+                    { "name": "r1", "host": "10.0.0.1", "user": "admin", "log": true }
+                ]
+            }"#,
+        );
+        assert!(!file.connections[0].remember_password);
     }
 
     #[test]
@@ -1056,6 +1111,7 @@ mod tests {
             user: Some("admin".into()),
             macro_name: None,
             log: None,
+            remember_password: false,
         };
         assert_eq!(
             connection.command(),
@@ -1074,6 +1130,7 @@ mod tests {
             user: Some("admin".into()),
             macro_name: None,
             log: None,
+            remember_password: false,
         };
         assert_eq!(
             connection.command(),

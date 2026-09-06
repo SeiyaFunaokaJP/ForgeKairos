@@ -690,8 +690,6 @@ impl TableEditor {
     ) -> AnyElement {
         let is_header = self.has_header && row == 0;
         let last_row = self.cells.len().saturating_sub(1);
-        let border = cx.theme().colors().border;
-        let border_focused = cx.theme().colors().border_focused;
         let header_background = cx.theme().colors().element_background;
         let insert_above = row_insertion_index(row, InsertSide::Before, self.has_header);
         let insert_below = row_insertion_index(row, InsertSide::After, self.has_header);
@@ -707,14 +705,11 @@ impl TableEditor {
             };
             let focused = cell.focus_handle(cx).contains_focused(window, cx);
             line = line.child(
-                div()
+                ui::input_frame_sized(ui::InputFrameSize::Compact, focused, cx)
                     .w(width)
                     .flex_none()
-                    .px_1()
-                    .py_0p5()
-                    .rounded_sm()
-                    .border_1()
-                    .border_color(if focused { border_focused } else { border })
+                    // The header row keeps its own tint so it stays distinguishable
+                    // from the body cells that share the editor background.
                     .when(is_header, |this| this.bg(header_background))
                     .child(cell.clone()),
             );

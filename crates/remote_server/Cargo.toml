@@ -79,6 +79,7 @@ worktree.workspace = true
 thiserror.workspace = true
 rayon.workspace = true
 uuid = { workspace = true, features = ["v4"] }
+zeroize.workspace = true
 
 [target.'cfg(not(windows))'.dependencies]
 crash-handler.workspace = true

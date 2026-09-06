@@ -23,8 +23,10 @@ doctest = false
 async-channel.workspace = true
 alacritty_terminal.workspace = true
 anyhow.workspace = true
+askpass.workspace = true
 chrono.workspace = true
 collections.workspace = true
+credentials_provider.workspace = true
 fs.workspace = true
 futures.workspace = true
 futures-lite.workspace = true
@@ -54,6 +56,7 @@ urlencoding.workspace = true
 vte.workspace = true
 parking_lot.workspace = true
 percent-encoding.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows.workspace = true

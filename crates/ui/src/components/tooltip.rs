@@ -220,17 +220,19 @@ where
     let app = (*cx).borrow();
     let ui_font = theme::theme_settings(app).ui_font(app).clone();
 
-    // padding to avoid tooltip appearing right below the mouse cursor
-    div().pl_2().pt_2p5().child(
-        v_flex()
-            .elevation_2(app)
-            .font(ui_font)
-            .text_ui(app)
-            .text_color(app.theme().colors().text)
-            .py_1()
-            .px_2()
-            .map(|el| f(el, cx)),
-    )
+    // The offset that keeps the tooltip clear of the mouse cursor is applied by
+    // the window when it places the tooltip. Adding it as transparent padding
+    // here would make `gpui::Window::overlay_bounds` larger than what is
+    // actually drawn, and the Windows browser panel cuts those bounds out of
+    // its WebView2 child window (ADR-F19).
+    v_flex()
+        .elevation_2(app)
+        .font(ui_font)
+        .text_ui(app)
+        .text_color(app.theme().colors().text)
+        .py_1()
+        .px_2()
+        .map(|el| f(el, cx))
 }
 
 pub struct LinkPreview {

@@ -139,7 +139,7 @@ pub struct TerminalSettingsContent {
     pub dock: Option<TerminalDockPosition>,
     /// Whether the terminal panel should open on startup.
     ///
-    /// Default: false
+    /// Default: true
     pub starts_open: Option<bool>,
     /// Whether the terminal panel should use flexible (proportional) sizing.
     ///

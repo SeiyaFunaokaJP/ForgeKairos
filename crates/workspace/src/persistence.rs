@@ -1051,6 +1051,15 @@ impl Domain for WorkspaceDb {
         sql!(
             ALTER TABLE bookmarks ADD COLUMN label TEXT NOT NULL DEFAULT "";
         ),
+        // Panel stacked next to the active one in a dock, and its share of the dock.
+        sql!(
+            ALTER TABLE workspaces ADD COLUMN left_dock_secondary_panel TEXT;
+            ALTER TABLE workspaces ADD COLUMN left_dock_secondary_ratio REAL;
+            ALTER TABLE workspaces ADD COLUMN right_dock_secondary_panel TEXT;
+            ALTER TABLE workspaces ADD COLUMN right_dock_secondary_ratio REAL;
+            ALTER TABLE workspaces ADD COLUMN bottom_dock_secondary_panel TEXT;
+            ALTER TABLE workspaces ADD COLUMN bottom_dock_secondary_ratio REAL;
+        ),
     ];
 
     // Allow recovering from bad migration that was initially shipped to nightly
@@ -1139,12 +1148,18 @@ impl WorkspaceDb {
                     left_dock_visible,
                     left_dock_active_panel,
                     left_dock_zoom,
+                    left_dock_secondary_panel,
+                    left_dock_secondary_ratio,
                     right_dock_visible,
                     right_dock_active_panel,
                     right_dock_zoom,
+                    right_dock_secondary_panel,
+                    right_dock_secondary_ratio,
                     bottom_dock_visible,
                     bottom_dock_active_panel,
                     bottom_dock_zoom,
+                    bottom_dock_secondary_panel,
+                    bottom_dock_secondary_ratio,
                     window_id
                 FROM workspaces
                 WHERE
@@ -1249,12 +1264,18 @@ impl WorkspaceDb {
                     left_dock_visible,
                     left_dock_active_panel,
                     left_dock_zoom,
+                    left_dock_secondary_panel,
+                    left_dock_secondary_ratio,
                     right_dock_visible,
                     right_dock_active_panel,
                     right_dock_zoom,
+                    right_dock_secondary_panel,
+                    right_dock_secondary_ratio,
                     bottom_dock_visible,
                     bottom_dock_active_panel,
                     bottom_dock_zoom,
+                    bottom_dock_secondary_panel,
+                    bottom_dock_secondary_ratio,
                     window_id,
                     remote_connection_id
                 FROM workspaces
@@ -1589,17 +1610,23 @@ impl WorkspaceDb {
                         left_dock_visible,
                         left_dock_active_panel,
                         left_dock_zoom,
+                        left_dock_secondary_panel,
+                        left_dock_secondary_ratio,
                         right_dock_visible,
                         right_dock_active_panel,
                         right_dock_zoom,
+                        right_dock_secondary_panel,
+                        right_dock_secondary_ratio,
                         bottom_dock_visible,
                         bottom_dock_active_panel,
                         bottom_dock_zoom,
+                        bottom_dock_secondary_panel,
+                        bottom_dock_secondary_ratio,
                         session_id,
                         window_id,
                         timestamp
                     )
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, CURRENT_TIMESTAMP)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, CURRENT_TIMESTAMP)
                     ON CONFLICT DO
                     UPDATE SET
                         paths = ?2,
@@ -1610,14 +1637,20 @@ impl WorkspaceDb {
                         left_dock_visible = ?7,
                         left_dock_active_panel = ?8,
                         left_dock_zoom = ?9,
-                        right_dock_visible = ?10,
-                        right_dock_active_panel = ?11,
-                        right_dock_zoom = ?12,
-                        bottom_dock_visible = ?13,
-                        bottom_dock_active_panel = ?14,
-                        bottom_dock_zoom = ?15,
-                        session_id = ?16,
-                        window_id = ?17,
+                        left_dock_secondary_panel = ?10,
+                        left_dock_secondary_ratio = ?11,
+                        right_dock_visible = ?12,
+                        right_dock_active_panel = ?13,
+                        right_dock_zoom = ?14,
+                        right_dock_secondary_panel = ?15,
+                        right_dock_secondary_ratio = ?16,
+                        bottom_dock_visible = ?17,
+                        bottom_dock_active_panel = ?18,
+                        bottom_dock_zoom = ?19,
+                        bottom_dock_secondary_panel = ?20,
+                        bottom_dock_secondary_ratio = ?21,
+                        session_id = ?22,
+                        window_id = ?23,
                         timestamp = CURRENT_TIMESTAMP
                 );
                 let mut prepared_query = conn.exec_bound(query)?;
@@ -2771,7 +2804,7 @@ mod tests {
         multi_workspace::MultiWorkspace,
         persistence::{
             model::{
-                SerializedItem, SerializedPane, SerializedPaneGroup, SerializedWorkspace,
+                DockData, SerializedItem, SerializedPane, SerializedPaneGroup, SerializedWorkspace,
                 SessionWorkspace,
             },
             read_multi_workspace_state,
@@ -3369,6 +3402,63 @@ mod tests {
 
         let round_trip_workspace = db.workspace_for_roots(&["/tmp", "/tmp2"]);
         assert_eq!(workspace, round_trip_workspace.unwrap());
+    }
+
+    #[gpui::test]
+    async fn test_dock_secondary_panel_round_trip() {
+        zlog::init_test();
+
+        let db = WorkspaceDb::open_test_db("test_dock_secondary_panel_round_trip").await;
+
+        let docks = DockStructure {
+            left: DockData {
+                visible: true,
+                active_panel: Some("Project Panel".to_string()),
+                zoom: false,
+                secondary_panel: Some("Outline Panel".to_string()),
+                secondary_ratio: Some(0.25),
+            },
+            right: DockData {
+                visible: true,
+                active_panel: Some("AgentPanel".to_string()),
+                zoom: false,
+                secondary_panel: Some("BrowserPanel".to_string()),
+                secondary_ratio: Some(0.6),
+            },
+            bottom: DockData {
+                visible: false,
+                active_panel: Some("Terminal Panel".to_string()),
+                zoom: false,
+                secondary_panel: None,
+                secondary_ratio: None,
+            },
+        };
+
+        let workspace = SerializedWorkspace {
+            id: WorkspaceId(11),
+            paths: PathList::new(&["/tmp-secondary"]),
+            identity_paths: None,
+            location: SerializedWorkspaceLocation::Local,
+            center_group: Default::default(),
+            window_bounds: Default::default(),
+            bookmarks: Default::default(),
+            breakpoints: Default::default(),
+            display: Default::default(),
+            docks,
+            centered_layout: false,
+            session_id: None,
+            window_id: Some(11),
+            user_toolchains: Default::default(),
+        };
+
+        db.save_workspace(workspace.clone()).await;
+
+        let round_tripped = db.workspace_for_roots(&["/tmp-secondary"]).unwrap();
+        assert_eq!(workspace.docks, round_tripped.docks);
+        assert_eq!(
+            workspace.docks,
+            db.workspace_for_id(WorkspaceId(11)).unwrap().docks
+        );
     }
 
     #[gpui::test]

@@ -19,6 +19,7 @@ use ui::{
 use util::ResultExt as _;
 use workspace::{MultiWorkspace, Workspace, create_and_open_local_file};
 
+use super::mcp_servers_page::input_box;
 use crate::SettingsWindow;
 
 pub(crate) fn render_external_agents_page(
@@ -561,26 +562,6 @@ fn render_custom_agent_form_page(
         .overflow_y_scroll()
         .child(fields)
         .into_any_element()
-}
-
-fn input_box(editor: &Entity<Editor>, cx: &App) -> impl IntoElement {
-    let colors = cx.theme().colors();
-    // All form inputs share tab index 0, so tab order follows render (insertion)
-    // order. Tracking the editor's focus handle makes the field a tab stop and
-    // routes keyboard focus into the editor when tabbed to.
-    let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
-    h_flex()
-        .min_w_64()
-        .py_1()
-        .px_2()
-        .h_8()
-        .rounded_md()
-        .border_1()
-        .border_color(colors.border)
-        .bg(colors.editor_background)
-        .track_focus(&focus_handle)
-        .focus(|style| style.border_color(colors.border_focused))
-        .child(editor.clone())
 }
 
 fn render_env_section(

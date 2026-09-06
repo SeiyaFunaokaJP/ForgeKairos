@@ -1,0 +1,121 @@
+syntax = "proto3";
+package zed.messages;
+
+// ADR-F28 (docs/jp-enhance/DESIGN.md §4.28): the WinSCP-style transfer screen
+// can treat the *remote SSH host* as its "local" side, so a file can be moved
+// between the machine the project lives on and a third host without going
+// through the Windows IDE first.
+//
+// A fresh `ssh` per operation is not an option: Windows clients have no
+// ControlMaster, so every `ls` would re-authenticate. These messages reuse the
+// already multiplexed remote_server channel instead.
+//
+// Transfers are started by the user pressing a button, which ADR-F18 / F19
+// class with typing into a terminal: outside the egress allow list, and
+// deliberately not reachable from an agent tool. The remote host therefore
+// runs these commands unproxied, but only from a fixed allowlist of transfer
+// programs.
+
+// Runs one transfer program on the remote host and waits for it to exit. The
+// program name is checked against an allowlist there (sftp / scp / curl);
+// anything else is refused.
+message RunTransferCommand {
+  uint64 project_id = 1;
+  // Allocated by the client, unique per connection. Names this command in
+  // `CancelTransferCommand` and `TransferAskPassRequest`.
+  uint64 command_id = 2;
+  string program = 3;
+  repeated string args = 4;
+  // Written to the process's stdin and then closed: the `sftp -b -` batch
+  // script, or curl's `--config -` file (which is how the FTP password stays
+  // out of the process list).
+  optional string stdin = 5;
+  // Absolute path on the remote host. Absent leaves the server's own working
+  // directory in place.
+  optional string cwd = 6;
+  // Wires OpenSSH's askpass to `TransferAskPassRequest` below, so passphrase,
+  // password and first host-key questions reach the user's GUI.
+  bool wants_askpass = 7;
+}
+
+message RunTransferCommandResponse {
+  string stdout = 1;
+  string stderr = 2;
+  // Absent when the process was terminated by a signal.
+  optional int32 exit_code = 3;
+  // The process was stopped before it exited — the user dismissed an askpass
+  // prompt, or `CancelTransferCommand` arrived — so the fields above say
+  // nothing useful.
+  bool cancelled = 4;
+}
+
+// Kills a running `RunTransferCommand`. Unknown ids are ignored: the command
+// may already have finished.
+message CancelTransferCommand {
+  uint64 project_id = 1;
+  uint64 command_id = 2;
+}
+
+// remote_server -> client. OpenSSH asked the command named by `command_id`
+// for a secret; the client shows the prompt and answers.
+message TransferAskPassRequest {
+  uint64 project_id = 1;
+  uint64 command_id = 2;
+  string prompt = 3;
+}
+
+message TransferAskPassResponse {
+  // Absent when the user cancelled the prompt.
+  optional string response = 1;
+}
+
+// The remote host's own file system, for the transfer screen's file pane.
+// Deliberately not `ListRemoteDirectory`, which returns names and a directory
+// flag only — a file manager needs sizes and timestamps too.
+message ListTransferDirectory {
+  uint64 project_id = 1;
+  string path = 2;
+}
+
+message ListTransferDirectoryResponse {
+  repeated TransferEntry entries = 1;
+}
+
+message TransferEntry {
+  string name = 1;
+  TransferEntryKind kind = 2;
+  // Absent for directories and for entries whose metadata could not be read.
+  optional uint64 size = 3;
+  optional int64 mtime_epoch_seconds = 4;
+}
+
+enum TransferEntryKind {
+  TRANSFER_ENTRY_FILE = 0;
+  TRANSFER_ENTRY_DIRECTORY = 1;
+  TRANSFER_ENTRY_SYMLINK = 2;
+}
+
+// Create / rename / delete on the remote host's own file system.
+message TransferFileOperation {
+  uint64 project_id = 1;
+  oneof operation {
+    TransferMakeDirectory make_directory = 2;
+    TransferRename rename = 3;
+    TransferRemove remove = 4;
+  }
+}
+
+message TransferMakeDirectory {
+  string path = 1;
+}
+
+message TransferRename {
+  string from = 1;
+  string to = 2;
+}
+
+message TransferRemove {
+  string path = 1;
+  // Whether a directory may be removed with its contents. Files ignore it.
+  bool recursive = 2;
+}

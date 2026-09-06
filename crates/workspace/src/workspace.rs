@@ -1484,6 +1484,10 @@ pub struct Workspace {
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
     right_dock: Entity<Dock>,
+    /// `Panel::starts_open` for the project panel only answers truthfully once the
+    /// first worktree scan has produced entries, which can happen after the docks
+    /// were restored, so the startup pass is retried while a scan is outstanding.
+    starts_open_pending: bool,
     panes: Vec<Entity<Pane>>,
     panes_by_item: HashMap<EntityId, WeakEntity<Pane>>,
     active_pane: Entity<Pane>,
@@ -1665,6 +1669,13 @@ impl Workspace {
                 }
                 project::Event::WorktreeUpdatedEntries(..) => {
                     this.update_window_title(window, cx);
+                    // The project panel only reports `starts_open` once the first
+                    // scan has produced entries, which can land after the docks
+                    // were restored.
+                    if this.starts_open_pending {
+                        this.apply_starts_open_docks(window, cx);
+                        this.starts_open_pending = this.has_unscanned_visible_worktree(cx);
+                    }
                     this.serialize_workspace(window, cx);
                 }
 
@@ -1938,6 +1949,7 @@ impl Workspace {
             zoomed_position: None,
             maximized_pane: None,
             previous_dock_drag_coordinates: None,
+            starts_open_pending: true,
             center,
             panes: vec![center_pane.clone()],
             panes_by_item: Default::default(),
@@ -2228,7 +2240,14 @@ impl Workspace {
             // 1. This is an empty workspace (no paths), AND
             // 2. The serialized workspace either doesn't exist or has no paths
             if is_empty_workspace && !serialized_workspace_has_paths {
-                if let Some(default_docks) = persistence::read_default_dock_state(&kvp) {
+                if let Some(mut default_docks) = persistence::read_default_dock_state(&kvp) {
+                    // Fork default: pair the browser panel with whatever the user
+                    // has active in the right dock instead of hiding it behind a
+                    // panel switch. Never forces the dock open, and an unknown
+                    // panel name is ignored when the state is restored.
+                    default_docks.right.secondary_panel.get_or_insert_with(|| {
+                        crate::dock::DEFAULT_STACKED_SECONDARY_PANEL.to_string()
+                    });
                     window
                         .update(cx, |_, window, cx| {
                             workspace.update(cx, |workspace, cx| {
@@ -2242,6 +2261,9 @@ impl Workspace {
                                         dock.restore_state(window, cx);
                                     });
                                 }
+                                workspace.apply_starts_open_docks(window, cx);
+                                workspace.starts_open_pending =
+                                    workspace.has_unscanned_visible_worktree(cx);
                                 cx.notify();
                             });
                         })
@@ -2322,46 +2344,55 @@ impl Workspace {
     }
 
     pub fn capture_dock_state(&self, _window: &Window, cx: &App) -> DockStructure {
-        let left_dock = self.left_dock.read(cx);
-        let left_visible = left_dock.is_open();
-        let left_active_panel = left_dock
-            .active_panel()
-            .map(|panel| panel.persistent_name().to_string());
         // `zoomed_position` is kept in sync with individual panel zoom state
         // by the dock code in `Dock::new` and `Dock::add_panel`.
-        let left_dock_zoom = self.zoomed_position == Some(DockPosition::Left);
-
-        let right_dock = self.right_dock.read(cx);
-        let right_visible = right_dock.is_open();
-        let right_active_panel = right_dock
-            .active_panel()
-            .map(|panel| panel.persistent_name().to_string());
-        let right_dock_zoom = self.zoomed_position == Some(DockPosition::Right);
-
-        let bottom_dock = self.bottom_dock.read(cx);
-        let bottom_visible = bottom_dock.is_open();
-        let bottom_active_panel = bottom_dock
-            .active_panel()
-            .map(|panel| panel.persistent_name().to_string());
-        let bottom_dock_zoom = self.zoomed_position == Some(DockPosition::Bottom);
+        let capture = |dock: &Entity<Dock>, position: DockPosition| {
+            let dock = dock.read(cx);
+            DockData {
+                visible: dock.is_open(),
+                active_panel: dock
+                    .active_panel()
+                    .map(|panel| panel.persistent_name().to_string()),
+                zoom: self.zoomed_position == Some(position),
+                secondary_panel: dock
+                    .secondary_panel()
+                    .map(|panel| panel.persistent_name().to_string()),
+                secondary_ratio: Some(dock.secondary_ratio()),
+            }
+        };
 
         DockStructure {
-            left: DockData {
-                visible: left_visible,
-                active_panel: left_active_panel,
-                zoom: left_dock_zoom,
-            },
-            right: DockData {
-                visible: right_visible,
-                active_panel: right_active_panel,
-                zoom: right_dock_zoom,
-            },
-            bottom: DockData {
-                visible: bottom_visible,
-                active_panel: bottom_active_panel,
-                zoom: bottom_dock_zoom,
-            },
+            left: capture(&self.left_dock, DockPosition::Left),
+            right: capture(&self.right_dock, DockPosition::Right),
+            bottom: capture(&self.bottom_dock, DockPosition::Bottom),
         }
+    }
+
+    /// Re-opens every dock holding a panel that asked to start open. Serialized
+    /// dock state is applied after the panels have been added and unconditionally
+    /// forces `is_open`, so without this pass a workspace saved with the dock
+    /// closed would keep overriding the user's `starts_open` setting on every
+    /// launch. Returns whether such a panel was found.
+    fn apply_starts_open_docks(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let mut found = false;
+        for dock in [
+            self.left_dock.clone(),
+            self.bottom_dock.clone(),
+            self.right_dock.clone(),
+        ] {
+            found |= dock.update(cx, |dock, cx| dock.ensure_starts_open_panels(window, cx));
+        }
+        found
+    }
+
+    /// Whether some visible worktree has not produced its root entry yet. A
+    /// worktree scan is the only thing that can still change a panel's
+    /// `starts_open` answer, so this decides how long the startup pass is retried.
+    fn has_unscanned_visible_worktree(&self, cx: &App) -> bool {
+        self.project
+            .read(cx)
+            .visible_worktrees(cx)
+            .any(|worktree| worktree.read(cx).root_entry().is_none())
     }
 
     pub fn set_dock_structure(
@@ -4677,9 +4708,18 @@ impl Workspace {
             if let Some(panel_index) = dock.read(cx).panel_index_for_type::<T>() {
                 let mut focus_center = false;
                 let panel = dock.update(cx, |dock, cx| {
-                    dock.activate_panel(panel_index, window, cx);
+                    // A stacked panel is already on screen; activating it would
+                    // demote the panel sharing the dock with it.
+                    let is_stacked = dock.secondary_panel_index() == Some(panel_index);
+                    if !is_stacked {
+                        dock.activate_panel(panel_index, window, cx);
+                    }
 
-                    let panel = dock.active_panel().cloned();
+                    let panel = if is_stacked {
+                        dock.panel_at(panel_index).cloned()
+                    } else {
+                        dock.active_panel().cloned()
+                    };
                     if let Some(panel) = panel.as_ref() {
                         if should_focus(&**panel, window, cx) {
                             dock.set_open(true, window, cx);
@@ -4756,16 +4796,10 @@ impl Workspace {
         self.all_docks()
             .into_iter()
             .find_map(|dock| {
-                let dock = dock.read(cx);
-                if !dock.is_open() {
-                    return None;
-                }
-                let panel = dock.active_panel()?;
-                if panel.is_zoomed(window, cx) {
-                    Some(panel.activation_focus_handle(cx))
-                } else {
-                    None
-                }
+                dock.read(cx)
+                    .visible_panels()
+                    .find(|panel| panel.is_zoomed(window, cx))
+                    .map(|panel| panel.activation_focus_handle(cx))
             })
             .unwrap_or_else(|| self.active_pane.read(cx).focus_handle(cx))
     }
@@ -7651,6 +7685,9 @@ impl Workspace {
                     });
                 }
 
+                workspace.apply_starts_open_docks(window, cx);
+                workspace.starts_open_pending = workspace.has_unscanned_visible_worktree(cx);
+
                 cx.notify();
             })?;
 
@@ -7739,21 +7776,22 @@ impl Workspace {
             }
         }
 
-        if self.left_dock.read(cx).is_open() {
-            if let Some(active_panel) = self.left_dock.read(cx).active_panel() {
-                context.set("left_dock", active_panel.panel_key());
+        for (key, secondary_key, dock) in [
+            ("left_dock", "left_dock_secondary", &self.left_dock),
+            ("right_dock", "right_dock_secondary", &self.right_dock),
+            ("bottom_dock", "bottom_dock_secondary", &self.bottom_dock),
+        ] {
+            let dock = dock.read(cx);
+            if !dock.is_open() {
+                continue;
             }
-        }
-
-        if self.right_dock.read(cx).is_open() {
-            if let Some(active_panel) = self.right_dock.read(cx).active_panel() {
-                context.set("right_dock", active_panel.panel_key());
+            if let Some(active_panel) = dock.active_panel() {
+                context.set(key, active_panel.panel_key());
             }
-        }
-
-        if self.bottom_dock.read(cx).is_open() {
-            if let Some(active_panel) = self.bottom_dock.read(cx).active_panel() {
-                context.set("bottom_dock", active_panel.panel_key());
+            // A stacked panel is on screen too, so keybindings can target it
+            // without it having to be the active one.
+            if let Some(secondary_panel) = dock.secondary_panel() {
+                context.set(secondary_key, secondary_panel.panel_key());
             }
         }
 
@@ -8384,7 +8422,12 @@ impl Workspace {
         let dock = dock.read(cx);
         if let Some(panel) = dock.visible_panel() {
             let size_state = dock.stored_panel_size_state(panel.as_ref());
-            let min_size = panel.min_size(window, cx);
+            // A stacked panel shares the dock's cross-axis extent, so the dock has
+            // to respect the widest minimum of the panels it shows.
+            let min_size = dock
+                .visible_panels()
+                .filter_map(|panel| panel.min_size(window, cx))
+                .max();
             if position.axis() == Axis::Horizontal {
                 let use_flexible = panel.has_flexible_size(window, cx);
                 let flex_grow = if use_flexible {
@@ -16051,6 +16094,249 @@ mod tests {
                     .focus_handle(cx)
                     .contains_focused(window, cx)
             );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_dock_stacks_secondary_panel(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (primary, secondary) = workspace.update_in(cx, |workspace, window, cx| {
+            let primary = cx.new(|cx| TestPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(primary.clone(), window, cx);
+            let secondary = cx.new(|cx| TestPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(secondary.clone(), window, cx);
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            (primary, secondary)
+        });
+
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+        dock.update_in(cx, |dock, window, cx| {
+            assert!(dock.is_open());
+            assert_eq!(dock.visible_panels().count(), 1);
+            dock.set_secondary_panel(Some(1), window, cx);
+        });
+
+        // Both panels are laid out and active at once.
+        dock.read_with(cx, |dock, _| {
+            assert_eq!(dock.visible_panels().count(), 2);
+            assert_eq!(dock.visible_panel().unwrap().panel_id(), primary.panel_id());
+            assert_eq!(
+                dock.secondary_panel().unwrap().panel_id(),
+                secondary.panel_id()
+            );
+        });
+        primary.read_with(cx, |panel, _| assert!(panel.active));
+        secondary.read_with(cx, |panel, _| assert!(panel.active));
+
+        // Activating the stacked panel swaps the slots instead of hiding the other.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(1, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(1));
+            assert_eq!(dock.secondary_panel_index(), Some(0));
+        });
+        primary.read_with(cx, |panel, _| assert!(panel.active));
+        secondary.read_with(cx, |panel, _| assert!(panel.active));
+
+        // Closing the dock deactivates both.
+        dock.update_in(cx, |dock, window, cx| dock.set_open(false, window, cx));
+        primary.read_with(cx, |panel, _| assert!(!panel.active));
+        secondary.read_with(cx, |panel, _| assert!(!panel.active));
+        dock.read_with(cx, |dock, _| assert_eq!(dock.visible_panels().count(), 0));
+
+        // Re-opening reactivates both.
+        dock.update_in(cx, |dock, window, cx| dock.set_open(true, window, cx));
+        primary.read_with(cx, |panel, _| assert!(panel.active));
+        secondary.read_with(cx, |panel, _| assert!(panel.active));
+
+        // A `Close` event from the stacked panel only unstacks it.
+        primary.update(cx, |_, cx| cx.emit(PanelEvent::Close));
+        dock.read_with(cx, |dock, _| {
+            assert!(dock.is_open());
+            assert_eq!(dock.secondary_panel_index(), None);
+            assert_eq!(dock.active_panel_index(), Some(1));
+        });
+        primary.read_with(cx, |panel, _| assert!(!panel.active));
+    }
+
+    #[gpui::test]
+    async fn test_dock_secondary_index_survives_panel_removal(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (first, second, third) = workspace.update_in(cx, |workspace, window, cx| {
+            let first = cx.new(|cx| TestPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(first.clone(), window, cx);
+            let second = cx.new(|cx| TestPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(second.clone(), window, cx);
+            let third = cx.new(|cx| TestPanel::new(DockPosition::Right, 102, cx));
+            workspace.add_panel(third.clone(), window, cx);
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            (first, second, third)
+        });
+
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(1, window, cx);
+            dock.set_secondary_panel(Some(2), window, cx);
+        });
+
+        // Removing a panel before both slots shifts them down.
+        dock.update_in(cx, |dock, window, cx| {
+            assert!(dock.remove_panel(&first, window, cx));
+            assert_eq!(dock.active_panel_index(), Some(0));
+            assert_eq!(dock.secondary_panel_index(), Some(1));
+            assert_eq!(dock.visible_panel().unwrap().panel_id(), second.panel_id());
+            assert_eq!(dock.secondary_panel().unwrap().panel_id(), third.panel_id());
+        });
+
+        // Removing the primary promotes the stacked panel rather than closing the dock.
+        dock.update_in(cx, |dock, window, cx| {
+            assert!(dock.remove_panel(&second, window, cx));
+            assert!(dock.is_open());
+            assert_eq!(dock.secondary_panel_index(), None);
+            assert_eq!(dock.visible_panel().unwrap().panel_id(), third.panel_id());
+        });
+
+        // Removing the last panel closes the dock, as before.
+        dock.update_in(cx, |dock, window, cx| {
+            assert!(dock.remove_panel(&third, window, cx));
+            assert!(!dock.is_open());
+            assert_eq!(dock.active_panel_index(), None);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_dock_restore_state_with_secondary_panel(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let primary = cx.new(|cx| TestPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(primary, window, cx);
+            let secondary = cx.new(|cx| TestPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(secondary, window, cx);
+        });
+
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+
+        // Both test panels share a persistent name, so the first match wins; what
+        // matters is that a stored secondary is applied and the ratio is clamped.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.serialized_dock = Some(DockData {
+                visible: true,
+                active_panel: Some("TestPanel".to_string()),
+                zoom: false,
+                secondary_panel: Some("TestPanel".to_string()),
+                secondary_ratio: Some(9.0),
+            });
+            assert!(dock.restore_state(window, cx));
+            // The stored secondary resolves to the active panel, which can never
+            // occupy both slots.
+            assert_eq!(dock.secondary_panel_index(), None);
+            assert_eq!(dock.secondary_ratio(), 0.85);
+        });
+
+        // A stored state without a secondary clears the current one.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.set_secondary_panel(Some(1), window, cx);
+            assert_eq!(dock.secondary_panel_index(), Some(1));
+            dock.serialized_dock = Some(DockData {
+                visible: true,
+                active_panel: Some("TestPanel".to_string()),
+                zoom: false,
+                secondary_panel: None,
+                secondary_ratio: None,
+            });
+            assert!(dock.restore_state(window, cx));
+            assert_eq!(dock.secondary_panel_index(), None);
+            // A missing ratio keeps whatever the dock already had.
+            assert_eq!(dock.secondary_ratio(), 0.85);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_starts_open_wins_over_restored_closed_dock(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new_starts_open(DockPosition::Bottom, 100, cx));
+            workspace.add_panel(panel.clone(), window, cx);
+            panel
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            assert!(workspace.bottom_dock().read(cx).is_open());
+        });
+
+        // A workspace serialized while the dock was closed would otherwise keep it
+        // closed forever, even though the panel asks to start open.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.set_dock_structure(
+                DockStructure {
+                    bottom: DockData {
+                        visible: false,
+                        active_panel: Some("TestPanel".to_string()),
+                        zoom: false,
+                        secondary_panel: None,
+                        secondary_ratio: None,
+                    },
+                    ..Default::default()
+                },
+                window,
+                cx,
+            );
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+
+            assert!(workspace.apply_starts_open_docks(window, cx));
+            assert!(workspace.bottom_dock().read(cx).is_open());
+        });
+        panel.read_with(cx, |panel, _| assert!(panel.active));
+    }
+
+    #[gpui::test]
+    async fn test_starts_open_does_not_steal_active_panel(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let starts_open = cx.new(|cx| TestPanel::new_starts_open(DockPosition::Left, 100, cx));
+            workspace.add_panel(starts_open, window, cx);
+            let other = cx.new(|cx| TestPanel::new(DockPosition::Left, 101, cx));
+            workspace.add_panel(other, window, cx);
+        });
+
+        let dock = workspace.read_with(cx, |workspace, _| workspace.left_dock().clone());
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(1, window, cx);
+            dock.set_open(true, window, cx);
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(workspace.apply_starts_open_docks(window, cx));
+        });
+
+        // The dock stays open on the panel the user had chosen.
+        dock.read_with(cx, |dock, _| {
+            assert!(dock.is_open());
+            assert_eq!(dock.active_panel_index(), Some(1));
         });
     }
 

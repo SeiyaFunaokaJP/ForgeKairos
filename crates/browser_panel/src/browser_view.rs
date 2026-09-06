@@ -17,7 +17,7 @@ use futures::StreamExt as _;
 use gpui::{
     AnyElement, App, ClickEvent, ClipboardItem, Context, DispatchPhase, Entity, EventEmitter,
     FocusHandle, Focusable, MouseButton, MouseDownEvent, SharedString, Subscription, Task,
-    WeakEntity, Window, canvas, px,
+    WeakEntity, Window, canvas, px, relative,
 };
 use settings::{Settings as _, SettingsStore};
 use ui::{Tooltip, prelude::*};
@@ -94,6 +94,38 @@ pub enum BrowserViewEvent {
     /// どこにタブを作るかはホストが決める (パネルならパネルのタブバー、
     /// エディター領域のタブなら中央ペインにもう 1 枚)。
     OpenInNewTab(String),
+    /// このビューが操作された。子 HWND の中のクリックは GPUI に届かないので、
+    /// 左右に分割したパネルが「どちらのペインを触っているか」を知る唯一の手掛かり。
+    Focused,
+}
+
+/// ブックマークバーの項目をドラッグしている間の持ち物。
+#[derive(Clone)]
+struct DraggedBookmark {
+    path: BookmarkPath,
+    name: SharedString,
+}
+
+impl Render for DraggedBookmark {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .px_1p5()
+            .py_0p5()
+            .rounded_sm()
+            .border_1()
+            .border_color(cx.theme().colors().border)
+            .bg(cx.theme().colors().element_background)
+            .child(Label::new(self.name.clone()).size(LabelSize::Small))
+    }
+}
+
+/// ブックマークバーで、掴んだ項目を落とせる場所。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum BookmarkDropTarget {
+    /// 最上位の `usize` 番目の手前へ挿し込む。
+    Before(usize),
+    /// 最上位の `usize` 番目のフォルダーの中へ入れる。
+    IntoFolder(usize),
 }
 
 pub struct BrowserView {
@@ -395,7 +427,12 @@ impl BrowserView {
                 self.page_has_focus = false;
                 window.focus(&self.focus_handle, cx);
             }
-            WebViewEvent::PageFocusChanged(focused) => self.page_has_focus = focused,
+            WebViewEvent::PageFocusChanged(focused) => {
+                self.page_has_focus = focused;
+                if focused {
+                    cx.emit(BrowserViewEvent::Focused);
+                }
+            }
             WebViewEvent::OpenInPlace(url) => self.navigate_to(&url, cx),
         }
         // 生成完了は非同期に届くので、ここで再描画しないと canvas が走らず、
@@ -754,8 +791,12 @@ impl BrowserView {
             .then_some("a modal is open")
     }
 
-    fn render_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let focus_handle = self.focus_handle.clone();
+        let address_focused = self
+            .address_editor
+            .focus_handle(cx)
+            .contains_focused(window, cx);
         h_flex()
             .w_full()
             .gap_1()
@@ -802,15 +843,8 @@ impl BrowserView {
                     .on_click(cx.listener(|this, _, window, cx| this.reload(&Reload, window, cx))),
             )
             .child(
-                h_flex()
+                ui::input_frame_sized(ui::InputFrameSize::Compact, address_focused, cx)
                     .flex_1()
-                    .min_w_0()
-                    .px_1p5()
-                    .py_0p5()
-                    .rounded_sm()
-                    .border_1()
-                    .border_color(cx.theme().colors().border)
-                    .bg(cx.theme().colors().editor_background)
                     .child(self.address_editor.clone()),
             )
             .child(
@@ -910,11 +944,13 @@ impl BrowserView {
 
     /// ツールバー直下のブックマークバー。最上位の項目だけを並べ、フォルダーは
     /// サイドペインをそのフォルダーで開くボタンにする (メニューはページに隠れるため)。
+    /// 並べ替えはドラッグ＆ドロップ (落とし先はドラッグ中だけ上に敷く)。
     fn render_bookmarks_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let items = self.bookmarks_file(cx).items;
         if items.is_empty() {
             return None;
         }
+        let dragging = cx.has_active_drag();
         Some(
             h_flex()
                 .w_full()
@@ -924,35 +960,25 @@ impl BrowserView {
                 .pb_1()
                 .children(items.into_iter().enumerate().map(|(index, node)| {
                     let name = SharedString::from(node.name().to_string());
-                    match node {
-                        BookmarkNode::Bookmark { url, .. } => div()
-                            .id(("browser-bookmark-bar", index))
-                            // 中クリックは `on_click` に届かない (左ボタン専用) ので、
-                            // 「新しいタブで開く」は補助クリック側でも受ける。
-                            .on_aux_click(cx.listener({
-                                let url = url.clone();
-                                move |this, event: &ClickEvent, _, cx| {
-                                    if event.is_middle_click() {
-                                        this.open_in_new_tab(&url, cx);
-                                    }
-                                }
-                            }))
-                            .child(
-                                Button::new(("browser-bookmark", index), name)
-                                    .label_size(LabelSize::Small)
-                                    .start_icon(
-                                        Icon::new(IconName::Bookmark)
-                                            .size(IconSize::XSmall)
-                                            .color(Color::Muted),
-                                    )
-                                    .tooltip(Tooltip::text(bookmark_tooltip(&url)))
-                                    .on_click(cx.listener(move |this, event, _, cx| {
-                                        this.activate_bookmark_url(&url, event, cx);
-                                    })),
-                            )
-                            .into_any_element(),
+                    let is_folder = node.is_folder();
+                    let bookmark_url = node.url().map(str::to_string);
+                    let chip = match node {
+                        BookmarkNode::Bookmark { url, .. } => {
+                            Button::new(("browser-bookmark", index), name.clone())
+                                .label_size(LabelSize::Small)
+                                .start_icon(
+                                    Icon::new(IconName::Bookmark)
+                                        .size(IconSize::XSmall)
+                                        .color(Color::Muted),
+                                )
+                                .tooltip(Tooltip::text(bookmark_tooltip(&url)))
+                                .on_click(cx.listener(move |this, event, _, cx| {
+                                    this.activate_bookmark_url(&url, event, cx);
+                                }))
+                                .into_any_element()
+                        }
                         BookmarkNode::Folder { .. } => {
-                            Button::new(("browser-bookmark", index), name)
+                            Button::new(("browser-bookmark", index), name.clone())
                                 .label_size(LabelSize::Small)
                                 .start_icon(
                                     Icon::new(IconName::Folder)
@@ -966,13 +992,128 @@ impl BrowserView {
                                 }))
                                 .into_any_element()
                         }
-                    }
+                    };
+                    div()
+                        .id(("browser-bookmark-bar", index))
+                        .relative()
+                        // 中クリックは `on_click` に届かない (左ボタン専用) ので、
+                        // 「新しいタブで開く」は補助クリック側でも受ける。
+                        .on_aux_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                            if let (Some(url), true) = (&bookmark_url, event.is_middle_click()) {
+                                this.open_in_new_tab(url, cx);
+                            }
+                        }))
+                        .on_drag(
+                            DraggedBookmark {
+                                path: vec![index],
+                                name,
+                            },
+                            |bookmark, _, _, cx| cx.new(|_| bookmark.clone()),
+                        )
+                        .child(chip)
+                        .when(dragging, |this| {
+                            this.child(self.render_bookmark_drop_zones(index, is_folder, cx))
+                        })
+                        .into_any_element()
                 }))
                 .into_any_element(),
         )
     }
 
-    fn render_bookmarks_pane(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// ドラッグ中だけチップの上に敷く落とし先。左右の端は「その手前 / 後ろへ」、
+    /// フォルダーの真ん中は「フォルダーの中へ」。ドラッグ中しか出さないので
+    /// 普段のクリックもツールチップも邪魔しない。
+    fn render_bookmark_drop_zones(
+        &self,
+        index: usize,
+        is_folder: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let edge = if is_folder { 0.25 } else { 0.5 };
+        h_flex()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .child(
+                self.render_bookmark_drop_zone(
+                    ("browser-bookmark-drop-before", index),
+                    BookmarkDropTarget::Before(index),
+                    cx,
+                )
+                .w(relative(edge))
+                .drag_over::<DraggedBookmark>(|style, _, _, cx| {
+                    style
+                        .border_l_2()
+                        .border_color(cx.theme().colors().drop_target_border)
+                }),
+            )
+            .when(is_folder, |this| {
+                this.child(
+                    self.render_bookmark_drop_zone(
+                        ("browser-bookmark-drop-into", index),
+                        BookmarkDropTarget::IntoFolder(index),
+                        cx,
+                    )
+                    .flex_1()
+                    .drag_over::<DraggedBookmark>(|style, _, _, cx| {
+                        style.bg(cx.theme().colors().drop_target_background)
+                    }),
+                )
+            })
+            .child(
+                self.render_bookmark_drop_zone(
+                    ("browser-bookmark-drop-after", index),
+                    BookmarkDropTarget::Before(index + 1),
+                    cx,
+                )
+                .w(relative(edge))
+                .drag_over::<DraggedBookmark>(|style, _, _, cx| {
+                    style
+                        .border_r_2()
+                        .border_color(cx.theme().colors().drop_target_border)
+                }),
+            )
+            .into_any_element()
+    }
+
+    fn render_bookmark_drop_zone(
+        &self,
+        id: (&'static str, usize),
+        target: BookmarkDropTarget,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(id)
+            .h_full()
+            .on_drop(cx.listener(move |this, dragged: &DraggedBookmark, _, cx| {
+                this.drop_bookmark(&dragged.path, target, cx)
+            }))
+    }
+
+    /// バーの上で落とされたブックマークを動かす。バーに出ているのは最上位の項目
+    /// だけなので、掴めるのも最上位だけ。
+    fn drop_bookmark(
+        &mut self,
+        path: &BookmarkPath,
+        target: BookmarkDropTarget,
+        cx: &mut Context<Self>,
+    ) {
+        if path.len() != 1 {
+            return;
+        }
+        let path = path.clone();
+        match target {
+            BookmarkDropTarget::Before(to_index) => self.update_bookmarks(cx, move |file| {
+                file.reorder_within_parent(&path, to_index).is_some()
+            }),
+            BookmarkDropTarget::IntoFolder(folder) => self.update_bookmarks(cx, move |file| {
+                file.move_to_folder(&path, &[folder]).is_some()
+            }),
+        }
+    }
+
+    fn render_bookmarks_pane(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let file = self.bookmarks_file(cx);
         let loaded = self.bookmarks.read(cx).is_loaded();
         let rows = file.visible_rows(&|path| !self.collapsed_folders.contains(path));
@@ -1023,7 +1164,7 @@ impl BrowserView {
                             })),
                     ),
             )
-            .children(self.render_bookmark_form(&file, cx))
+            .children(self.render_bookmark_form(&file, window, cx))
             .child(
                 v_flex()
                     .id("browser-bookmark-list")
@@ -1211,6 +1352,7 @@ impl BrowserView {
     fn render_bookmark_form(
         &self,
         file: &BookmarksFile,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let form = self.bookmark_form.as_ref()?;
@@ -1220,15 +1362,11 @@ impl BrowserView {
             (None, true) => "フォルダーを追加",
             (None, false) => "ブックマークを追加",
         };
-        let field = |editor: &Entity<Editor>| {
-            h_flex()
+        let name_focused = form.name.focus_handle(cx).contains_focused(window, cx);
+        let url_focused = form.url.focus_handle(cx).contains_focused(window, cx);
+        let field = |editor: &Entity<Editor>, focused: bool| {
+            ui::input_frame_sized(ui::InputFrameSize::Compact, focused, cx)
                 .w_full()
-                .px_1()
-                .py_0p5()
-                .rounded_sm()
-                .border_1()
-                .border_color(cx.theme().colors().border)
-                .bg(cx.theme().colors().editor_background)
                 .child(editor.clone())
         };
 
@@ -1250,8 +1388,10 @@ impl BrowserView {
                 .border_color(cx.theme().colors().border)
                 .bg(cx.theme().colors().element_background)
                 .child(Label::new(title).size(LabelSize::Small))
-                .child(field(&form.name))
-                .when(!form.is_folder, |this| this.child(field(&form.url)))
+                .child(field(&form.name, name_focused))
+                .when(!form.is_folder, |this| {
+                    this.child(field(&form.url, url_focused))
+                })
                 .child(
                     Label::new("場所")
                         .size(LabelSize::Small)
@@ -1357,15 +1497,19 @@ impl BrowserView {
                                 let Some(webview) = webview else {
                                     return;
                                 };
-                                webview.sync_viewport(Viewport {
-                                    origin_x: f32::from(bounds.origin.x),
-                                    origin_y: f32::from(bounds.origin.y),
-                                    width: f32::from(bounds.size.width),
-                                    height: f32::from(bounds.size.height),
-                                    scale_factor: window.scale_factor(),
-                                    hidden_reason,
-                                    overlays: overlay_rects(window),
-                                });
+                                sync_surface_viewport(
+                                    &webview,
+                                    Viewport {
+                                        origin_x: f32::from(bounds.origin.x),
+                                        origin_y: f32::from(bounds.origin.y),
+                                        width: f32::from(bounds.size.width),
+                                        height: f32::from(bounds.size.height),
+                                        scale_factor: window.scale_factor(),
+                                        hidden_reason,
+                                        overlays: overlay_rects(window),
+                                    },
+                                    window,
+                                );
                                 // Windows はクリックが親のクライアント領域に落ちても
                                 // 子 HWND からフォーカスを外さないので、GPUI 側に
                                 // 届いたマウス押下で明示的に取り戻す。
@@ -1469,11 +1613,12 @@ impl Render for BrowserView {
         self.sync_appearance(cx);
 
         // 1 行を常に確保しておく。出し入れすると内容領域の高さが変わり、
-        // 子 HWND の矩形が毎回動いてちらつくため。
+        // 子 HWND の矩形が毎回動いてちらつくため。ページタイトルはタブに出るので
+        // ここには出さない (行そのものは状態表示のために残す)。
         let status = match (&self.status_message, self.loading) {
             (Some(message), _) => message.clone(),
             (None, true) => "読み込み中…".into(),
-            (None, false) => self.page_title.clone(),
+            (None, false) => SharedString::default(),
         };
         let bookmarks_pane_open = self.bookmarks_pane_open;
         v_flex()
@@ -1493,21 +1638,27 @@ impl Render for BrowserView {
             .on_action(cx.listener(Self::set_as_home_page))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|this, _, _, _| {
+                cx.listener(|this, _, _, cx| {
                     if let Some(webview) = &this.webview {
                         webview.release_keyboard_focus();
                     }
+                    cx.emit(BrowserViewEvent::Focused);
                 }),
             )
-            .child(self.render_toolbar(cx))
+            .child(self.render_toolbar(window, cx))
             .children(self.render_bookmarks_bar(cx))
             .child(
-                h_flex().w_full().px_2().pb_1().child(
-                    Label::new(status)
-                        .size(LabelSize::Small)
-                        .color(Color::Muted)
-                        .truncate(),
-                ),
+                h_flex()
+                    .w_full()
+                    .min_h(window.line_height())
+                    .px_2()
+                    .pb_1()
+                    .child(
+                        Label::new(status)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .truncate(),
+                    ),
             )
             .child(
                 // 内容領域は「残り全部」。子 HWND の矩形はこの canvas の bounds から
@@ -1517,7 +1668,7 @@ impl Render for BrowserView {
                     .min_h_0()
                     .w_full()
                     .when(bookmarks_pane_open, |this| {
-                        this.child(self.render_bookmarks_pane(cx))
+                        this.child(self.render_bookmarks_pane(window, cx))
                     })
                     .child(
                         div()
@@ -1571,6 +1722,26 @@ fn overlay_rects(window: &Window) -> Vec<OverlayRect> {
             bottom: f32::from(bounds.bottom()),
         })
         .collect()
+}
+
+/// 描画面の位置とオーバーレイの切り抜きを WebView に渡す。
+///
+/// 穴を開けるのはこのフレームを Present した後にしたい: gpui のペイント中に
+/// 子 HWND の領域を削ると、ツールチップがまだ画面に出ていないうちにホスト
+/// ウィンドウ (背景ブラシは黒) が覗いて一瞬ちらつく。切り抜きが必要になった
+/// フレームだけ `on_next_frame` に回す — 保留中のコールバックがあると gpui は
+/// フレームレート制限を外すので、変化が無いフレームでは登録しない。
+#[cfg(windows)]
+fn sync_surface_viewport(webview: &Rc<WebView>, viewport: Viewport, window: &mut Window) {
+    if webview.sync_viewport(viewport) {
+        let webview = webview.clone();
+        window.on_next_frame(move |_, _| webview.apply_deferred_clip());
+    }
+}
+
+#[cfg(not(windows))]
+fn sync_surface_viewport(webview: &Rc<WebView>, viewport: Viewport, _: &mut Window) {
+    webview.sync_viewport(viewport);
 }
 
 fn runtime_missing_message() -> SharedString {

@@ -531,6 +531,7 @@ fn render_verification_section(
     };
 
     let color = cx.theme().colors();
+    let border_focused = color.border_focused;
 
     v_flex()
         .mt_3()
@@ -551,15 +552,12 @@ fn render_verification_section(
                         .size(LabelSize::Small),
                 )
                 .child(
-                    h_flex()
+                    // The frame is rendered unfocused and the focused border comes
+                    // from the element's focus style, so no `Window` is needed here.
+                    ui::input_frame(false, cx)
                         .w_full()
-                        .h_8()
-                        .px_2()
-                        .rounded_md()
-                        .border_1()
-                        .border_color(color.border)
-                        .bg(color.editor_background)
                         .track_focus(&focus_handle)
+                        .focus(move |style| style.border_color(border_focused))
                         .child(editor),
                 )
                 .when_some(authoritative_mode, |this, mode| {

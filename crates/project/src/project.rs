@@ -15,6 +15,8 @@ pub mod manifest_tree;
 pub mod prettier_store;
 pub mod project_search;
 pub mod project_settings;
+/// ADR-F28: running the transfer screen's commands on the remote SSH host.
+pub mod remote_exec;
 pub mod search;
 pub mod task_inventory;
 pub mod task_store;
@@ -253,6 +255,9 @@ pub struct Project {
     agent_location: Option<AgentLocation>,
     downloading_files: Arc<Mutex<HashMap<(WorktreeId, String), DownloadingFile>>>,
     last_worktree_paths: WorktreePaths,
+    /// ADR-F28: the transfer commands this project has running on its remote
+    /// host, and the askpass callbacks their prompts are routed back to.
+    remote_exec: remote_exec::RemoteExec,
 }
 
 struct DownloadingFile {
@@ -1399,6 +1404,7 @@ impl Project {
                 agent_location: None,
                 downloading_files: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
+                remote_exec: remote_exec::RemoteExec::default(),
             }
         })
     }
@@ -1641,6 +1647,7 @@ impl Project {
                 agent_location: None,
                 downloading_files: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
+                remote_exec: remote_exec::RemoteExec::default(),
             };
 
             // remote server -> local machine handlers
@@ -1667,6 +1674,9 @@ impl Project {
             remote_proto.add_entity_request_handler(Self::handle_trust_worktrees);
             remote_proto.add_entity_request_handler(Self::handle_restrict_worktrees);
             remote_proto.add_entity_request_handler(Self::handle_find_search_candidates_chunk);
+            // ADR-F28: the host relays OpenSSH's prompts for the transfer
+            // commands it runs on the transfer screen's behalf.
+            remote_proto.add_entity_request_handler(Self::handle_transfer_askpass);
 
             remote_proto.add_entity_message_handler(Self::handle_find_search_candidates_cancel);
             BufferStore::init(&remote_proto);
@@ -1929,6 +1939,7 @@ impl Project {
                 agent_location: None,
                 downloading_files: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
+                remote_exec: remote_exec::RemoteExec::default(),
             };
             project.set_role(role, cx);
             for worktree in worktrees {

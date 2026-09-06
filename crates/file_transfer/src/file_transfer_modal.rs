@@ -5,15 +5,10 @@
 //! second workspace modal: the modal layer only keeps one modal at a time, so
 //! a nested askpass dialog would push this one off the screen mid-transfer.
 
-use std::{
-    collections::HashSet,
-    ops::Range,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::HashSet, ops::Range, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
-use askpass::{AskPassDelegate, EncryptedPassword};
+use askpass::{AskPassDelegate, EncryptedPassword, IKnowWhatIAmDoingAndIHaveReadTheDocs};
 use editor::Editor;
 use fs::Fs;
 use futures::channel::oneshot;
@@ -21,16 +16,21 @@ use gpui::{
     AnyElement, AsyncApp, ClickEvent, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     Modifiers, Render, Subscription, Task, Window, uniform_list,
 };
-use terminal::terminal_macro::TerminalSessionStore;
-use ui::{Divider, Tooltip, prelude::*};
+use project::{Project, remote_exec::TransferAskPass};
+use terminal::{
+    quick_connect_credentials::{QuickConnectCredentials, StoredPassword},
+    terminal_macro::TerminalSessionStore,
+};
+use ui::{Divider, InputFrameSize, Tooltip, input_frame, input_frame_sized, prelude::*};
 use util::ResultExt as _;
 use workspace::{ModalView, Workspace};
 use zeroize::Zeroize as _;
 
 use crate::transfer_backend::{
-    AskPassFactory, DirectoryEntry, EntryKind, RemoteTarget, TransferBackend, TransferProtocol,
-    format_size, list_local_directory, make_local_directory, normalize_remote_dir, remote_join,
-    remote_parent, remove_local, rename_local, validate_entry_name, validate_host, validate_user,
+    AskPassFactory, DirectoryEntry, EntryKind, ExecHost, IdeExecHost, RemoteExecHost, RemoteTarget,
+    StoredPasswordUse, TransferBackend, TransferProtocol, credential_lookups,
+    decide_stored_password_use, format_size, normalize_remote_dir, remote_join,
+    validate_entry_name, validate_host, validate_user,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +46,37 @@ impl PaneSide {
             PaneSide::Remote => "リモート",
         }
     }
+}
+
+/// Which machine the left-hand pane — and the transfer programs — belong to.
+///
+/// Offered only for SSH remote projects, where it defaults to the remote host:
+/// the project's terminals and paths are over there, so a path such as
+/// `/home/ubuntu` has to be looked up on the remote rather than on the Windows
+/// IDE, where it does not exist (ADR-F28).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalSide {
+    IdeHost,
+    RemoteHost,
+}
+
+/// What [`open_file_transfer`] found out about the two candidate hosts, before
+/// the modal turns them into [`ExecHost`]s of its own (which it must do itself,
+/// because they carry callbacks that need a handle to the modal).
+pub struct TransferHostOptions {
+    pub fs: Arc<dyn Fs>,
+    /// Where the pane starts when the IDE's own machine is the local side.
+    pub ide_root: PathBuf,
+    pub remote: Option<RemoteHostOptions>,
+}
+
+pub struct RemoteHostOptions {
+    pub project: Entity<Project>,
+    /// `RemoteConnectionOptions::display_name`, shown in the side selector.
+    pub display_name: String,
+    /// Where the pane starts on the remote host: the active terminal's working
+    /// directory if it reported one, else the project's first worktree.
+    pub root: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,7 +116,7 @@ struct QueuedTransfer {
     name: String,
     is_directory: bool,
     upload: bool,
-    local_directory: PathBuf,
+    local_directory: String,
     remote_directory: String,
 }
 
@@ -102,8 +133,17 @@ enum PromptKind {
     /// An SSH prompt (passphrase, password or the first host-key
     /// confirmation) relayed from the askpass helper.
     AskPass {
-        sender: Option<oneshot::Sender<EncryptedPassword>>,
+        responder: Option<AskPassResponder>,
     },
+}
+
+enum AskPassResponder {
+    /// A prompt from a process this IDE started itself.
+    Encrypted(oneshot::Sender<EncryptedPassword>),
+    /// A prompt relayed from the remote host, which answers over its own RPC
+    /// channel and so wants the plain text (the same trade-off `AskPassRequest`
+    /// already makes for git over SSH).
+    Plain(oneshot::Sender<String>),
 }
 
 struct PendingPrompt {
@@ -152,7 +192,10 @@ impl PaneState {
 }
 
 pub struct FileTransferModal {
-    fs: Arc<dyn Fs>,
+    ide_host: Arc<dyn ExecHost>,
+    /// `None` unless the project is connected to an SSH host.
+    remote_host: Option<Arc<dyn ExecHost>>,
+    local_side: LocalSide,
     store: Entity<TerminalSessionStore>,
     host: Entity<Editor>,
     port: Entity<Editor>,
@@ -161,6 +204,14 @@ pub struct FileTransferModal {
     local_path: Entity<Editor>,
     remote_path: Entity<Editor>,
     protocol: TransferProtocol,
+    /// Reads the quick-connect passwords, so a host the user already saved a
+    /// password for does not ask for it a second time (ADR-F28 追記).
+    credentials: QuickConnectCredentials,
+    /// The password remembered for the target now in the form, if any.
+    stored_password: Option<StoredPassword>,
+    /// One shot per connection attempt: `ssh` asking for the password again
+    /// means the remembered one was refused. Reset by [`Self::connect`].
+    stored_password_answered: bool,
     backend: Option<Arc<TransferBackend>>,
     connecting: bool,
     local: PaneState,
@@ -172,6 +223,9 @@ pub struct FileTransferModal {
     status: Option<SharedString>,
     focus_handle: FocusHandle,
     _store_observed: Subscription,
+    /// Stops the remote host's transfer commands when this screen goes away:
+    /// unlike this process's own children, they do not die with their task.
+    _released: Subscription,
     /// Transfers waiting for the driver in `_queue`, which owns them one at a
     /// time. Kept on the modal rather than moved into the driver so a second
     /// press of アップロード appends to the run in progress instead of
@@ -182,17 +236,45 @@ pub struct FileTransferModal {
     _remote_work: Option<Task<()>>,
     _management: Option<Task<()>>,
     _queue: Option<Task<()>>,
+    /// The credential lookup, which has to finish before a connection can use
+    /// what it found.
+    _connect: Option<Task<()>>,
+    /// The same lookup, run to fill the form in rather than to connect. Its
+    /// own slot so that editing the form mid-connect cannot cancel the
+    /// connection.
+    _credentials_work: Option<Task<()>>,
 }
 
 impl FileTransferModal {
     pub fn new(
         store: Entity<TerminalSessionStore>,
-        fs: Arc<dyn Fs>,
-        local_root: PathBuf,
+        hosts: TransferHostOptions,
         target: Option<RemoteTarget>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let ide_host: Arc<dyn ExecHost> = Arc::new(IdeExecHost::new(
+            hosts.fs,
+            hosts.ide_root.to_string_lossy().into_owned(),
+            Self::askpass_factory(window, cx),
+        ));
+        let remote_host = hosts.remote.map(|remote| {
+            Arc::new(RemoteExecHost::new(
+                remote.project.downgrade(),
+                &remote.display_name,
+                remote.root,
+                Self::transfer_askpass(window, cx),
+            )) as Arc<dyn ExecHost>
+        });
+        // The remote host is the default when there is one: that is where the
+        // project the user is looking at actually lives (ADR-F28).
+        let local_side = if remote_host.is_some() {
+            LocalSide::RemoteHost
+        } else {
+            LocalSide::IdeHost
+        };
+        let local_root = remote_host.as_ref().unwrap_or(&ide_host).root_directory();
+
         let single_line = |placeholder: &'static str, window: &mut Window, cx: &mut App| {
             cx.new(|cx| {
                 let mut editor = Editor::single_line(window, cx);
@@ -216,7 +298,7 @@ impl FileTransferModal {
         });
         let local_path = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_text(local_root.to_string_lossy().to_string(), window, cx);
+            editor.set_text(local_root, window, cx);
             editor
         });
         let remote_path = cx.new(|cx| {
@@ -246,9 +328,16 @@ impl FileTransferModal {
         // The saved-connection row is read on every render and the file lands
         // asynchronously.
         let store_observed = cx.observe(&store, |_, _, cx| cx.notify());
+        let released = cx.on_release(|this, cx| {
+            if let Some(remote_host) = this.remote_host.as_ref() {
+                remote_host.cancel_running(cx);
+            }
+        });
 
         let mut this = Self {
-            fs,
+            ide_host,
+            remote_host,
+            local_side,
             store,
             host,
             port,
@@ -257,6 +346,9 @@ impl FileTransferModal {
             local_path,
             remote_path,
             protocol,
+            credentials: QuickConnectCredentials::new(zed_credentials_provider::global(cx)),
+            stored_password: None,
+            stored_password_answered: false,
             backend: None,
             connecting: false,
             local: PaneState::default(),
@@ -268,15 +360,111 @@ impl FileTransferModal {
             status: None,
             focus_handle: cx.focus_handle(),
             _store_observed: store_observed,
+            _released: released,
             pending_transfers: Vec::new(),
             draining: false,
             _local_work: None,
             _remote_work: None,
             _management: None,
             _queue: None,
+            _connect: None,
+            _credentials_work: None,
         };
         this.refresh_local(cx);
+        this.refresh_stored_password(window, cx);
         this
+    }
+
+    // ---------------------------------------------------------------------
+    // Remembered passwords
+    // ---------------------------------------------------------------------
+
+    /// Looks up the password remembered for the target now in the form. Run
+    /// whenever the target can have changed, so that an FTP password field is
+    /// already filled in by the time the user looks at it (ADR-F28 追記).
+    fn refresh_stored_password(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Ok(target) = self.form_target(cx) else {
+            self.stored_password = None;
+            return;
+        };
+        let credentials = self.credentials.clone();
+        self._credentials_work = Some(cx.spawn_in(window, async move |this, cx| {
+            let stored = lookup_stored_password(&credentials, &target, cx).await;
+            this.update_in(cx, |this, window, cx| {
+                this.apply_stored_password(stored, window, cx);
+            })
+            .log_err();
+        }));
+    }
+
+    fn apply_stored_password(
+        &mut self,
+        stored: Option<StoredPassword>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.stored_password = stored;
+        // Only FTP carries its password in the form; SSH never shows the
+        // secret, because it goes straight to the askpass socket. An edited
+        // field is left alone: the user is correcting a password that failed.
+        if !self.protocol.uses_password() || !self.password.read(cx).text(cx).is_empty() {
+            return;
+        }
+        let Some(stored) = self.stored_password.clone() else {
+            return;
+        };
+        match stored.decrypt(IKnowWhatIAmDoingAndIHaveReadTheDocs) {
+            Ok(mut plain) => {
+                self.password.update(cx, |editor, cx| {
+                    editor.set_text(plain.as_str(), window, cx);
+                });
+                plain.zeroize();
+                cx.notify();
+            }
+            Err(error) => log::warn!("保存されたパスワードを復号できませんでした: {error:#}"),
+        }
+    }
+
+    /// Whether the remembered password may answer `prompt`, consuming the one
+    /// attempt it gets. Prompts arrive one at a time on the foreground, so the
+    /// flag needs no synchronization.
+    fn take_stored_password_use(&mut self, prompt: &str) -> StoredPasswordUse {
+        if self.stored_password.is_none() {
+            return StoredPasswordUse::AskUser;
+        }
+        let decision = decide_stored_password_use(prompt, self.stored_password_answered);
+        if decision == StoredPasswordUse::Answer {
+            self.stored_password_answered = true;
+        }
+        decision
+    }
+
+    /// Hands the remembered password to whoever asked. Gives the responder back
+    /// when the secret cannot be produced, so the caller can prompt instead.
+    fn send_stored_password(&self, responder: AskPassResponder) -> Result<(), AskPassResponder> {
+        let Some(stored) = self.stored_password.clone() else {
+            return Err(responder);
+        };
+        match responder {
+            AskPassResponder::Encrypted(sender) => {
+                sender.send(stored).ok();
+                Ok(())
+            }
+            // The remote host answers over its own RPC channel, which wants
+            // the plain text (see `AskPassResponder`).
+            AskPassResponder::Plain(sender) => {
+                match stored.decrypt(IKnowWhatIAmDoingAndIHaveReadTheDocs) {
+                    Ok(mut plain) => {
+                        sender.send(std::mem::take(&mut plain)).ok();
+                        Ok(())
+                    }
+                    Err(error) => {
+                        log::warn!("保存されたパスワードを復号できませんでした: {error:#}");
+                        Err(AskPassResponder::Plain(sender))
+                    }
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -322,12 +510,14 @@ impl FileTransferModal {
                 editor.set_text(protocol.default_port().to_string(), window, cx);
             });
         }
+        // A different protocol means a different credential key.
+        self.refresh_stored_password(window, cx);
         cx.notify();
     }
 
     /// Answers SSH's prompts inside this modal. See the module comment for why
     /// this is not a nested workspace modal.
-    fn askpass_factory(&self, window: &Window, cx: &Context<Self>) -> AskPassFactory {
+    fn askpass_factory(window: &Window, cx: &Context<Self>) -> AskPassFactory {
         let this = cx.weak_entity();
         let window = window.window_handle();
         Arc::new(move |cx: &mut AsyncApp| {
@@ -339,7 +529,13 @@ impl FileTransferModal {
                     window
                         .update(cx, |_, window, cx| {
                             this.update(cx, |this, cx| {
-                                this.begin_askpass_prompt(prompt, sender, cancellation, window, cx);
+                                this.begin_askpass_prompt(
+                                    prompt,
+                                    AskPassResponder::Encrypted(sender),
+                                    Some(cancellation),
+                                    window,
+                                    cx,
+                                );
                             })
                             .log_err();
                         })
@@ -349,14 +545,59 @@ impl FileTransferModal {
         })
     }
 
+    /// The same prompt, for a process running on the remote host: the host
+    /// relays OpenSSH's question over the project's RPC channel and waits for
+    /// the answer (ADR-F28).
+    fn transfer_askpass(window: &Window, cx: &Context<Self>) -> TransferAskPass {
+        let this = cx.weak_entity();
+        let window = window.window_handle();
+        Arc::new(move |prompt: String, cx: &mut AsyncApp| {
+            let this = this.clone();
+            let (sender, receiver) = oneshot::channel::<String>();
+            window
+                .update(cx, |_, window, cx| {
+                    this.update(cx, |this, cx| {
+                        this.begin_askpass_prompt(
+                            prompt,
+                            AskPassResponder::Plain(sender),
+                            None,
+                            window,
+                            cx,
+                        );
+                    })
+                    .log_err();
+                })
+                .log_err();
+            // A dropped sender — the window is gone, or the user cancelled the
+            // prompt — resolves to `None`, which declines over there.
+            cx.background_spawn(async move { receiver.await.ok() })
+        })
+    }
+
     fn begin_askpass_prompt(
         &mut self,
         prompt: String,
-        sender: oneshot::Sender<EncryptedPassword>,
-        cancellation: oneshot::Receiver<()>,
+        responder: AskPassResponder,
+        cancellation: Option<oneshot::Receiver<()>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A remembered password answers the first password question silently.
+        // Every other question — a host key above all — still goes to the user
+        // (ADR-F28 追記).
+        let responder = match self.take_stored_password_use(&prompt) {
+            StoredPasswordUse::Answer => match self.send_stored_password(responder) {
+                Ok(()) => return,
+                Err(responder) => responder,
+            },
+            StoredPasswordUse::Rejected => {
+                self.status =
+                    Some("保存されたパスワードが拒否されました。入力し直してください。".into());
+                responder
+            }
+            StoredPasswordUse::AskUser => responder,
+        };
+
         // The host-key question and a user-name request are not secrets, and
         // masking them makes them impossible to answer confidently.
         let is_secret = !(prompt.contains("yes/no") || prompt.contains("Username"));
@@ -366,26 +607,28 @@ impl FileTransferModal {
             editor
         });
         window.focus(&editor.focus_handle(cx), cx);
-        let cancellation = cx.spawn(async move |this, cx| {
-            cancellation.await.ok();
-            this.update(cx, |this, cx| {
-                if matches!(
-                    this.prompt.as_ref().map(|prompt| &prompt.kind),
-                    Some(PromptKind::AskPass { .. })
-                ) {
-                    this.prompt = None;
-                    cx.notify();
-                }
+        let cancellation = cancellation.map(|cancellation| {
+            cx.spawn(async move |this, cx| {
+                cancellation.await.ok();
+                this.update(cx, |this, cx| {
+                    if matches!(
+                        this.prompt.as_ref().map(|prompt| &prompt.kind),
+                        Some(PromptKind::AskPass { .. })
+                    ) {
+                        this.prompt = None;
+                        cx.notify();
+                    }
+                })
+                .log_err();
             })
-            .log_err();
         });
         self.prompt = Some(PendingPrompt {
             kind: PromptKind::AskPass {
-                sender: Some(sender),
+                responder: Some(responder),
             },
             title: prompt.into(),
             editor: Some(editor),
-            _cancellation: Some(cancellation),
+            _cancellation: cancellation,
         });
         cx.notify();
     }
@@ -399,24 +642,45 @@ impl FileTransferModal {
                 return;
             }
         };
+        // Every attempt gets one go at the remembered password.
+        self.stored_password_answered = false;
+        self.connecting = true;
+        self.status = Some(format!("{} に接続しています…", target.describe()).into());
+        cx.notify();
+
+        // Looked up here as well as on every form change, so a hand-typed host
+        // is covered and not just one picked out of the saved list.
+        let credentials = self.credentials.clone();
+        let lookup_target = target.clone();
+        self._connect = Some(cx.spawn_in(window, async move |this, cx| {
+            let stored = lookup_stored_password(&credentials, &lookup_target, cx).await;
+            this.update_in(cx, |this, window, cx| {
+                this.apply_stored_password(stored, window, cx);
+                this.start_backend(target, cx);
+            })
+            .log_err();
+        }));
+    }
+
+    fn start_backend(&mut self, target: RemoteTarget, cx: &mut Context<Self>) {
         let password = self
             .protocol
             .uses_password()
             .then(|| self.password.read(cx).text(cx))
             .filter(|password| !password.is_empty());
         self.backend = Some(Arc::new(TransferBackend::new(
-            target.clone(),
-            self.fs.clone(),
-            self.askpass_factory(window, cx),
+            target,
+            self.local_host().clone(),
             password,
         )));
-        self.connecting = true;
-        self.status = Some(format!("{} に接続しています…", target.describe()).into());
         cx.notify();
         self.refresh_remote(cx);
     }
 
     fn disconnect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Dropping the tasks below kills this process's own children, but a
+        // command running on the remote host has to be told (ADR-F28).
+        self.local_host().clone().cancel_running(cx);
         self.backend = None;
         self.connecting = false;
         self._remote_work = None;
@@ -453,6 +717,11 @@ impl FileTransferModal {
         self.user.update(cx, |editor, cx| {
             editor.set_text(target.user.clone().unwrap_or_default(), window, cx)
         });
+        // The saved entry may have a remembered password; a stale one from the
+        // previous target must not be offered for this one.
+        self.password
+            .update(cx, |editor, cx| editor.set_text("", window, cx));
+        self.refresh_stored_password(window, cx);
         self.status = None;
         cx.notify();
     }
@@ -461,21 +730,48 @@ impl FileTransferModal {
     // Listing
     // ---------------------------------------------------------------------
 
-    fn local_directory(&self, cx: &App) -> PathBuf {
-        PathBuf::from(self.local_path.read(cx).text(cx).trim())
+    /// The machine the left-hand pane and the transfer programs belong to.
+    fn local_host(&self) -> &Arc<dyn ExecHost> {
+        match (self.local_side, self.remote_host.as_ref()) {
+            (LocalSide::RemoteHost, Some(remote_host)) => remote_host,
+            _ => &self.ide_host,
+        }
+    }
+
+    fn local_directory(&self, cx: &App) -> String {
+        self.local_path.read(cx).text(cx).trim().to_string()
     }
 
     fn remote_directory(&self, cx: &App) -> String {
         normalize_remote_dir(&self.remote_path.read(cx).text(cx))
     }
 
+    /// Re-roots the left-hand pane on the other machine. The transfer engine
+    /// runs there too, so a live connection is re-established from the new host
+    /// rather than carried over.
+    fn set_local_side(&mut self, side: LocalSide, window: &mut Window, cx: &mut Context<Self>) {
+        if self.local_side == side || self.remote_host.is_none() {
+            return;
+        }
+        self.local_host().clone().cancel_running(cx);
+        self.local_side = side;
+        let root = self.local_host().root_directory();
+        self.local_path
+            .update(cx, |editor, cx| editor.set_text(root, window, cx));
+        self.refresh_local(cx);
+        if self.backend.is_some() {
+            self.connect(window, cx);
+        }
+        cx.notify();
+    }
+
     fn refresh_local(&mut self, cx: &mut Context<Self>) {
         let directory = self.local_directory(cx);
-        let fs = self.fs.clone();
+        let host = self.local_host().clone();
         self.local.loading = true;
         cx.notify();
         self._local_work = Some(cx.spawn(async move |this, cx| {
-            let entries = list_local_directory(&fs, &directory).await;
+            let entries = host.list_directory(directory, cx).await;
             this.update(cx, |this, cx| {
                 match entries {
                     Ok(entries) => this.local.replace(entries),
@@ -571,12 +867,12 @@ impl FileTransferModal {
         match side {
             PaneSide::Local => {
                 let directory = self.local_directory(cx);
-                if let Some(parent) = directory.parent().map(Path::to_path_buf) {
-                    self.navigate(side, parent.to_string_lossy().to_string(), window, cx);
+                if let Some(parent) = self.local_host().parent(&directory) {
+                    self.navigate(side, parent, window, cx);
                 }
             }
             PaneSide::Remote => {
-                let parent = remote_parent(&self.remote_directory(cx));
+                let parent = crate::transfer_backend::remote_parent(&self.remote_directory(cx));
                 self.navigate(side, parent, window, cx);
             }
         }
@@ -599,8 +895,10 @@ impl FileTransferModal {
         }
         match side {
             PaneSide::Local => {
-                let path = self.local_directory(cx).join(&entry.name);
-                self.navigate(side, path.to_string_lossy().to_string(), window, cx);
+                let path = self
+                    .local_host()
+                    .join(&self.local_directory(cx), &entry.name);
+                self.navigate(side, path, window, cx);
             }
             PaneSide::Remote => {
                 let path = remote_join(&self.remote_directory(cx), &entry.name);
@@ -770,17 +1068,24 @@ impl FileTransferModal {
             })
         });
         match prompt.kind {
-            PromptKind::AskPass { mut sender } => {
+            PromptKind::AskPass { mut responder } => {
                 let mut answer = answer.unwrap_or_default();
-                if let Some(sender) = sender.take() {
-                    match EncryptedPassword::try_from(answer.as_ref()) {
-                        Ok(password) => {
-                            sender.send(password).ok();
-                        }
-                        Err(error) => {
-                            self.status = Some(format!("入力を渡せませんでした: {error}").into())
+                match responder.take() {
+                    Some(AskPassResponder::Encrypted(sender)) => {
+                        match EncryptedPassword::try_from(answer.as_ref()) {
+                            Ok(password) => {
+                                sender.send(password).ok();
+                            }
+                            Err(error) => {
+                                self.status =
+                                    Some(format!("入力を渡せませんでした: {error}").into())
+                            }
                         }
                     }
+                    Some(AskPassResponder::Plain(sender)) => {
+                        sender.send(std::mem::take(&mut answer)).ok();
+                    }
+                    None => {}
                 }
                 answer.zeroize();
             }
@@ -822,7 +1127,7 @@ impl FileTransferModal {
             cx.notify();
             return;
         }
-        let fs = self.fs.clone();
+        let host = self.local_host().clone();
         let backend = self.backend.clone();
         let local_directory = self.local_directory(cx);
         let remote_directory = self.remote_directory(cx);
@@ -832,7 +1137,7 @@ impl FileTransferModal {
 
         let work = cx.spawn(async move |this, cx| {
             let result = match side {
-                PaneSide::Local => operation.run_locally(&fs, &local_directory).await,
+                PaneSide::Local => operation.run_on_host(&host, &local_directory, cx).await,
                 PaneSide::Remote => match backend {
                     Some(backend) => {
                         operation
@@ -1000,6 +1305,26 @@ impl FileTransferModal {
     }
 }
 
+/// The quick-connect password remembered for `target`, trying each key
+/// [`credential_lookups`] offers in turn. The user name has to match, so a
+/// password saved for `ubuntu` is never offered when connecting as `root`.
+async fn lookup_stored_password(
+    credentials: &QuickConnectCredentials,
+    target: &RemoteTarget,
+    cx: &AsyncApp,
+) -> Option<StoredPassword> {
+    let user = target.user.as_deref();
+    for (protocol, port) in credential_lookups(target.protocol, target.port) {
+        if let Some(password) = credentials
+            .lookup_target(protocol, &target.host, port, user, cx)
+            .await
+        {
+            return Some(password);
+        }
+    }
+    None
+}
+
 enum ManagementOperation {
     NewFolder { name: String },
     Rename { from: String, to: String },
@@ -1007,17 +1332,23 @@ enum ManagementOperation {
 }
 
 impl ManagementOperation {
-    async fn run_locally(&self, fs: &Arc<dyn Fs>, directory: &Path) -> Result<()> {
+    async fn run_on_host(
+        &self,
+        host: &Arc<dyn ExecHost>,
+        directory: &str,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
         match self {
             ManagementOperation::NewFolder { name } => {
-                make_local_directory(fs, &directory.join(name)).await
+                host.make_directory(host.join(directory, name), cx).await
             }
             ManagementOperation::Rename { from, to } => {
-                rename_local(fs, &directory.join(from), &directory.join(to)).await
+                host.rename(host.join(directory, from), host.join(directory, to), cx)
+                    .await
             }
             ManagementOperation::Delete { victims } => {
                 for (name, kind) in victims {
-                    remove_local(fs, &directory.join(name), *kind).await?;
+                    host.remove(host.join(directory, name), *kind, cx).await?;
                 }
                 Ok(())
             }
@@ -1062,10 +1393,19 @@ impl ManagementOperation {
 // -------------------------------------------------------------------------
 
 impl FileTransferModal {
-    fn render_connection_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_connection_bar(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let connected = self.backend.is_some();
         let protocol = self.protocol;
         let saved = self.render_saved_connections(cx);
+        let focused = |editor: &Entity<Editor>, cx: &App| -> bool {
+            editor.focus_handle(cx).contains_focused(window, cx)
+        };
+        let (host_focused, port_focused, user_focused, password_focused) = (
+            focused(&self.host, cx),
+            focused(&self.port, cx),
+            focused(&self.user, cx),
+            focused(&self.password, cx),
+        );
         v_flex()
             .gap_1()
             .child(
@@ -1080,16 +1420,32 @@ impl FileTransferModal {
                             }))
                     }))
                     .child(Divider::vertical())
-                    .child(div().w(rems(13.)).child(self.host.clone()))
+                    .child(
+                        input_frame_sized(InputFrameSize::Compact, host_focused, cx)
+                            .w(rems(13.))
+                            .child(self.host.clone()),
+                    )
                     .child(
                         Label::new("ポート")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
-                    .child(div().w(rems(4.)).child(self.port.clone()))
-                    .child(div().w(rems(8.)).child(self.user.clone()))
+                    .child(
+                        input_frame_sized(InputFrameSize::Compact, port_focused, cx)
+                            .w(rems(4.))
+                            .child(self.port.clone()),
+                    )
+                    .child(
+                        input_frame_sized(InputFrameSize::Compact, user_focused, cx)
+                            .w(rems(8.))
+                            .child(self.user.clone()),
+                    )
                     .when(protocol.uses_password(), |this| {
-                        this.child(div().w(rems(8.)).child(self.password.clone()))
+                        this.child(
+                            input_frame_sized(InputFrameSize::Compact, password_focused, cx)
+                                .w(rems(8.))
+                                .child(self.password.clone()),
+                        )
                     })
                     .child(
                         Button::new("connect", if connected { "再接続" } else { "接続" }).on_click(
@@ -1140,7 +1496,35 @@ impl FileTransferModal {
         Some(row.into_any_element())
     }
 
-    fn render_pane(&self, side: PaneSide, cx: &mut Context<Self>) -> AnyElement {
+    /// 「ローカル側」 selector, shown only when the project is connected to an
+    /// SSH host and there is therefore a choice to make (ADR-F28). It sits in
+    /// its own row above the panes rather than inside the left pane's header,
+    /// so that the two panes' path fields still line up.
+    fn render_local_side_selector(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let remote_host = self.remote_host.as_ref()?;
+        let choices = [
+            (LocalSide::RemoteHost, remote_host.label()),
+            (LocalSide::IdeHost, self.ide_host.label()),
+        ];
+        let mut row = h_flex().gap_1().flex_wrap().child(
+            Label::new("ローカル側")
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+        );
+        for (side, label) in choices {
+            row = row.child(
+                Button::new(("local-side", side as usize), label)
+                    .label_size(LabelSize::Small)
+                    .toggle_state(self.local_side == side)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.set_local_side(side, window, cx);
+                    })),
+            );
+        }
+        Some(row.into_any_element())
+    }
+
+    fn render_pane(&self, side: PaneSide, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let pane = self.pane(side);
         let is_active = self.active_side == side;
         let (path_editor, list_id) = match side {
@@ -1150,6 +1534,7 @@ impl FileTransferModal {
         let entry_count = pane.entries.len();
         let loading = pane.loading;
         let message = pane.message.clone();
+        let path_focused = path_editor.focus_handle(cx).contains_focused(window, cx);
 
         v_flex()
             .flex_1()
@@ -1167,7 +1552,12 @@ impl FileTransferModal {
                                 Color::Muted
                             }),
                     )
-                    .child(div().flex_1().min_w_0().child(path_editor))
+                    .child(
+                        input_frame_sized(InputFrameSize::Compact, path_focused, cx)
+                            .flex_1()
+                            .min_w_0()
+                            .child(path_editor),
+                    )
                     .child(
                         IconButton::new(("go-up", side as usize), IconName::ArrowUp)
                             .icon_size(IconSize::Small)
@@ -1358,8 +1748,13 @@ impl FileTransferModal {
             .into_any_element()
     }
 
-    fn render_prompt(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn render_prompt(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let prompt = self.prompt.as_ref()?;
+        let editor = prompt.editor.clone().map(|editor| {
+            input_frame(editor.focus_handle(cx).contains_focused(window, cx), cx)
+                .w_full()
+                .child(editor)
+        });
         Some(
             v_flex()
                 .gap_1()
@@ -1368,7 +1763,7 @@ impl FileTransferModal {
                 .rounded_sm()
                 .border_color(cx.theme().colors().border_focused)
                 .child(Label::new(prompt.title.clone()))
-                .children(prompt.editor.clone())
+                .children(editor)
                 .child(
                     h_flex()
                         .gap_1()
@@ -1458,12 +1853,13 @@ impl FileTransferModal {
 }
 
 impl Render for FileTransferModal {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let connection_bar = self.render_connection_bar(cx);
-        let local = self.render_pane(PaneSide::Local, cx);
-        let remote = self.render_pane(PaneSide::Remote, cx);
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let connection_bar = self.render_connection_bar(window, cx);
+        let local_side_selector = self.render_local_side_selector(cx);
+        let local = self.render_pane(PaneSide::Local, window, cx);
+        let remote = self.render_pane(PaneSide::Remote, window, cx);
         let operations = self.render_operations(cx);
-        let prompt = self.render_prompt(cx);
+        let prompt = self.render_prompt(window, cx);
         let jobs = self.render_jobs(cx);
 
         v_flex()
@@ -1503,6 +1899,7 @@ impl Render for FileTransferModal {
                     .child(Headline::new("ファイル転送").size(HeadlineSize::XSmall)),
             )
             .child(connection_bar)
+            .children(local_side_selector)
             .child(
                 h_flex()
                     .w_full()
@@ -1542,6 +1939,12 @@ impl ModalView for FileTransferModal {
 }
 
 /// Opens (or re-opens) the screen on `workspace`, pre-filled with `target`.
+///
+/// For an SSH remote project both machines are offered as the "local" side and
+/// the remote one wins by default, since that is where the project the user is
+/// looking at lives (ADR-F28). The IDE's own root then falls back to the home
+/// directory: the visible worktree is a path on the remote host and means
+/// nothing here.
 pub fn open_file_transfer(
     workspace: &mut Workspace,
     store: Entity<TerminalSessionStore>,
@@ -1550,15 +1953,36 @@ pub fn open_file_transfer(
     cx: &mut Context<Workspace>,
 ) {
     let fs = workspace.app_state().fs.clone();
-    let local_root = workspace
-        .project()
+    let project = workspace.project().clone();
+    let first_worktree_root = project
         .read(cx)
         .visible_worktrees(cx)
         .next()
-        .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
-        .unwrap_or_else(|| util::paths::home_dir().clone());
+        .map(|worktree| worktree.read(cx).abs_path().to_path_buf());
+    let connection_options = project
+        .read(cx)
+        .is_via_remote_server()
+        .then(|| project.read(cx).remote_connection_options(cx))
+        .flatten();
+    let remote = connection_options.map(|options| RemoteHostOptions {
+        project: project.clone(),
+        display_name: options.display_name(),
+        root: crate::active_remote_working_directory(workspace, window, cx)
+            .or_else(|| first_worktree_root.clone())
+            .map(|root| root.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "/".to_string()),
+    });
+    let ide_root = match &remote {
+        Some(_) => util::paths::home_dir().clone(),
+        None => first_worktree_root.unwrap_or_else(|| util::paths::home_dir().clone()),
+    };
+    let hosts = TransferHostOptions {
+        fs,
+        ide_root,
+        remote,
+    };
     workspace.toggle_modal(window, cx, |window, cx| {
-        FileTransferModal::new(store, fs, local_root, target, window, cx)
+        FileTransferModal::new(store, hosts, target, window, cx)
     });
 }
 
@@ -1573,7 +1997,7 @@ impl FileTransferModal {
         )
     }
 
-    pub(crate) fn local_directory_for_test(&self, cx: &App) -> PathBuf {
+    pub(crate) fn local_directory_for_test(&self, cx: &App) -> String {
         self.local_directory(cx)
     }
 }

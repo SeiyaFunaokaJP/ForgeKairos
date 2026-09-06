@@ -26,8 +26,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use editor::Editor;
 use gpui::{
-    Action, AnyElement, App, AsyncWindowContext, ClickEvent, Context, Entity, EventEmitter,
-    FocusHandle, Focusable, Pixels, Subscription, WeakEntity, Window, actions, px,
+    Action, AnyElement, App, AsyncWindowContext, ClickEvent, Context, DragMoveEvent, Empty, Entity,
+    EventEmitter, FocusHandle, Focusable, MouseButton, Pixels, Subscription, WeakEntity, Window,
+    actions, px, relative,
 };
 use settings::{IntoGpui, RegisterSetting, Settings};
 use ui::{Tooltip, prelude::*};
@@ -64,6 +65,13 @@ const PANEL_TAB_MAX_WIDTH: f32 = 176.;
 // OAuth のリダイレクト URL は数千文字になり、ツールチップが WebView の上に
 // 画面いっぱいに広がる (2026-09-06 の実機)。タブのツールチップは先頭だけで足りる。
 const MAX_TAB_TOOLTIP_CHARS: usize = 160;
+
+/// 分割の境界のつまみの幅。境界の線そのものは 1px なので、掴める幅を別に取る。
+const PANE_DIVIDER_HANDLE_WIDTH: f32 = 8.;
+/// 内容領域のうち「ここへ落としたら分割」になる左右の端の割合。
+const SPLIT_EDGE_FRACTION: f32 = 0.25;
+/// 分割したグループ 1 つあたりの取り分の下限。境界を端まで引いても潰れないように。
+const MIN_GROUP_FLEX: f32 = 0.15;
 
 /// 検索・質問に渡すテキストの上限。長すぎる選択範囲で URL が壊れるのを防ぐ。
 const MAX_QUERY_CHARS: usize = 400;
@@ -103,6 +111,10 @@ actions!(
         AddBookmark,
         /// 今開いているページを「起動時に開くページ」(browser.home_url) にします。
         SetAsHomePage,
+        /// 今のタブを右に切り出して、ブラウザーパネルを左右に分割します。
+        SplitPanelRight,
+        /// 分割したブラウザーパネルの次のペインにフォーカスを移します。
+        FocusNextPaneGroup,
     ]
 );
 
@@ -259,6 +271,50 @@ struct PanelTab {
     _subscription: Subscription,
 }
 
+/// 横に並ぶペイン 1 枚。中はタブ列で、表に出るのは `active` の 1 枚だけ。
+/// 入れ子の分割は持たない (ドックの幅で意味があるのは左右 2, 3 枚まで)。
+struct BrowserPaneGroup {
+    tabs: Vec<PanelTab>,
+    /// 表に出ているタブの位置。空になったグループは畳むので常に有効な添字。
+    active: usize,
+    /// 横幅の取り分。全グループの合計が 1.0 になるよう正規化して持つ。
+    flex: f32,
+}
+
+/// パネルのタブをドラッグしている間の持ち物。ワークスペースの `DraggedTab` とは
+/// 別の型にしてある (エディターのペインに落とせてしまわないように)。
+#[derive(Clone)]
+struct DraggedPanelTab {
+    group: usize,
+    index: usize,
+    label: SharedString,
+}
+
+impl Render for DraggedPanelTab {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .px_1p5()
+            .py_0p5()
+            .max_w(px(PANEL_TAB_MAX_WIDTH))
+            .overflow_hidden()
+            .rounded_sm()
+            .border_1()
+            .border_color(cx.theme().colors().border)
+            .bg(cx.theme().colors().tab_active_background)
+            .child(
+                Label::new(self.label.clone())
+                    .size(LabelSize::Small)
+                    .truncate(),
+            )
+    }
+}
+
+/// 分割の境界 (グループ `index` と `index + 1` の間) をつまんでいる。
+#[derive(Clone, Copy)]
+struct DraggedPaneDivider {
+    index: usize,
+}
+
 /// 新しいタブをどう開くか。
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum NewTabPlacement {
@@ -278,14 +334,16 @@ pub struct BrowserPanel {
     /// タブが 1 枚も無いときに使うフォーカス先。タブがあるときはそのタブの
     /// [`BrowserView`] にフォーカスを渡す。
     focus_handle: FocusHandle,
-    tabs: Vec<PanelTab>,
-    /// アクティブなタブの位置。`tabs` が空のときは意味を持たない。
-    active_tab: usize,
+    /// 左から右へ並ぶペイン。空ならタブが 1 枚も無い状態。
+    groups: Vec<BrowserPaneGroup>,
+    /// 操作の対象になるグループ。`groups` が空のときは意味を持たない。
+    active_group: usize,
 }
 
 /// タブを 1 枚閉じた後にアクティブにするタブ。`tab_count` は閉じる**前**の枚数。
 /// アクティブなタブを閉じたときは右隣 (無ければ左隣) を選ぶ。最後の 1 枚を
-/// 閉じたら `None` = タブ無しの空状態。
+/// 閉じたら `None` = タブ無しの空状態。グループを 1 つ畳んだ後の
+/// [`BrowserPanel::active_group`] も同じ規則で繰り上げる。
 fn active_tab_after_close(tab_count: usize, active: usize, closed: usize) -> Option<usize> {
     if closed >= tab_count {
         // 閉じるタブが無い = 何も動かない。
@@ -297,6 +355,100 @@ fn active_tab_after_close(tab_count: usize, active: usize, closed: usize) -> Opt
     }
     let active = if closed < active { active - 1 } else { active };
     Some(active.min(remaining - 1))
+}
+
+/// 同じタブ列の中で `from` のタブを「`to` の手前」へ動かした後の添字。
+/// `to` は取り除く**前**の添字で数えるので、後ろを指したときは 1 つ補正する。
+fn moved_tab_index(from: usize, to: usize) -> usize {
+    if to > from { to - 1 } else { to }
+}
+
+/// 取り分は合計 1.0 で持つ。壊れた値 (NaN や 0 以下) が混じっても均等割りに落とす。
+fn normalized_flexes(flexes: &[f32]) -> Vec<f32> {
+    if flexes.is_empty() {
+        return Vec::new();
+    }
+    let sanitized: Vec<f32> = flexes
+        .iter()
+        .map(|flex| {
+            if flex.is_finite() && *flex > 0. {
+                *flex
+            } else {
+                MIN_GROUP_FLEX
+            }
+        })
+        .collect();
+    let total: f32 = sanitized.iter().sum();
+    if total <= 0. {
+        return vec![1. / sanitized.len() as f32; sanitized.len()];
+    }
+    sanitized.iter().map(|flex| flex / total).collect()
+}
+
+/// 境界 `divider` (グループ `divider` と `divider + 1` の間) を、パネル全体に対する
+/// 割合 `ratio` の位置へ動かす。動くのは両隣の 2 つだけで、合計は変えない。
+fn flexes_after_divider_drag(flexes: &[f32], divider: usize, ratio: f32) -> Vec<f32> {
+    let mut flexes = normalized_flexes(flexes);
+    let (Some(left), Some(right)) = (
+        flexes.get(divider).copied(),
+        flexes.get(divider + 1).copied(),
+    ) else {
+        return flexes;
+    };
+    if !ratio.is_finite() {
+        return flexes;
+    }
+    let pair = left + right;
+    let start: f32 = flexes.iter().take(divider).sum();
+    // ペアの取り分が下限の 2 倍より狭くても `clamp` の前提 (min <= max) を壊さない。
+    let low = MIN_GROUP_FLEX.min(pair / 2.);
+    let high = (pair - MIN_GROUP_FLEX).max(pair / 2.);
+    let new_left = (ratio - start).clamp(low, high);
+    if let Some(flex) = flexes.get_mut(divider) {
+        *flex = new_left;
+    }
+    if let Some(flex) = flexes.get_mut(divider + 1) {
+        *flex = pair - new_left;
+    }
+    flexes
+}
+
+/// グループを 1 つ畳んだ後の取り分。空いた分は右隣、無ければ左隣に渡す。
+fn flexes_after_group_removal(flexes: &[f32], removed: usize) -> Vec<f32> {
+    let mut flexes = flexes.to_vec();
+    if removed >= flexes.len() {
+        return normalized_flexes(&flexes);
+    }
+    let freed = flexes.remove(removed);
+    let neighbour = if removed < flexes.len() {
+        Some(removed)
+    } else {
+        removed.checked_sub(1)
+    };
+    if let Some(neighbour) = neighbour
+        && let Some(flex) = flexes.get_mut(neighbour)
+    {
+        *flex += freed;
+    }
+    normalized_flexes(&flexes)
+}
+
+/// タブを切り出して `at` に新しいグループを作った後の取り分。
+/// 切り出し元の取り分を新旧で半分ずつ分ける。
+fn flexes_after_split(flexes: &[f32], source: usize, at: usize) -> Vec<f32> {
+    let mut flexes = flexes.to_vec();
+    let share = flexes
+        .get(source)
+        .copied()
+        .filter(|flex| flex.is_finite() && *flex > 0.)
+        .unwrap_or(1.)
+        / 2.;
+    if let Some(flex) = flexes.get_mut(source) {
+        *flex = share;
+    }
+    let at = at.min(flexes.len());
+    flexes.insert(at, share);
+    normalized_flexes(&flexes)
 }
 
 pub fn init(cx: &mut App) {
@@ -352,15 +504,20 @@ impl BrowserPanel {
             fs: workspace.app_state().fs.clone(),
             workspace: workspace.weak_handle(),
             focus_handle: cx.focus_handle(),
-            tabs: Vec::new(),
-            active_tab: 0,
+            groups: Vec::new(),
+            active_group: 0,
         };
         panel.open_tab(None, NewTabPlacement::ForegroundWithoutFocus, window, cx);
         panel
     }
 
+    fn current_group(&self) -> Option<&BrowserPaneGroup> {
+        self.groups.get(self.active_group)
+    }
+
     pub fn active_view(&self) -> Option<&Entity<BrowserView>> {
-        self.tabs.get(self.active_tab).map(|tab| &tab.view)
+        let group = self.current_group()?;
+        group.tabs.get(group.active).map(|tab| &tab.view)
     }
 
     pub fn current_url(&self, cx: &App) -> String {
@@ -396,6 +553,18 @@ impl BrowserPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let group = self.active_group;
+        self.open_tab_in_group(group, url, placement, window, cx);
+    }
+
+    fn open_tab_in_group(
+        &mut self,
+        group: usize,
+        url: Option<String>,
+        placement: NewTabPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let view = cx.new(|cx| {
             BrowserView::new(
                 self.workspace.clone(),
@@ -414,14 +583,26 @@ impl BrowserPanel {
             }
         });
         let subscription = cx.subscribe_in(&view, window, Self::on_view_event);
-        self.tabs.push(PanelTab {
+        if self.groups.is_empty() {
+            self.groups.push(BrowserPaneGroup {
+                tabs: Vec::new(),
+                active: 0,
+                flex: 1.,
+            });
+        }
+        let group = group.min(self.groups.len() - 1);
+        let Some(pane) = self.groups.get_mut(group) else {
+            return;
+        };
+        pane.tabs.push(PanelTab {
             view,
             _subscription: subscription,
         });
-        if placement != NewTabPlacement::Background || self.tabs.len() == 1 {
-            let index = self.tabs.len() - 1;
+        let index = pane.tabs.len() - 1;
+        let is_first_tab = pane.tabs.len() == 1;
+        if placement != NewTabPlacement::Background || is_first_tab {
             let focus = placement == NewTabPlacement::Foreground;
-            self.activate_tab(index, focus, window, cx);
+            self.activate_tab(group, index, focus, window, cx);
         }
         cx.notify();
     }
@@ -430,39 +611,271 @@ impl BrowserPanel {
     /// 新しいタブへ移る (タブを閉じたときにフォーカスが宙に浮かないように)。
     fn activate_tab(
         &mut self,
+        group: usize,
         index: usize,
         focus: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(tab) = self.tabs.get(index) else {
+        let Some(focus_handle) = self
+            .groups
+            .get(group)
+            .and_then(|pane| pane.tabs.get(index))
+            .map(|tab| tab.view.read(cx).focus_handle(cx))
+        else {
             return;
         };
-        let focus_handle = tab.view.read(cx).focus_handle(cx);
-        self.hide_other_surfaces(index, cx);
-        self.active_tab = index;
+        if let Some(pane) = self.groups.get_mut(group) {
+            pane.active = index;
+        }
+        self.active_group = group;
+        self.hide_inactive_surfaces(cx);
         if focus || self.focus_handle.contains_focused(window, cx) {
             window.focus(&focus_handle, cx);
         }
         cx.notify();
     }
 
-    fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if index >= self.tabs.len() {
+    fn close_tab(
+        &mut self,
+        group: usize,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pane) = self.groups.get_mut(group) else {
+            return;
+        };
+        if index >= pane.tabs.len() {
             return;
         }
-        let next_active = active_tab_after_close(self.tabs.len(), self.active_tab, index);
-        let tab = self.tabs.remove(index);
+        let next_active = active_tab_after_close(pane.tabs.len(), pane.active, index);
+        let tab = pane.tabs.remove(index);
+        if let Some(next_active) = next_active {
+            pane.active = next_active;
+        }
         // コントローラーは `WebView` の drop (= `ICoreWebView2Controller::Close`) で
         // 閉じるが、drop が次の描画まで遅れても透明な子 HWND がクリックを飲まない
         // よう、外した時点で隠しておく。
         tab.view
             .update(cx, |view, _| view.hide_surface_from_host(HIDDEN_TAB_CLOSED));
         drop(tab);
-        match next_active {
-            Some(next_active) => self.activate_tab(next_active, false, window, cx),
-            None => self.active_tab = 0,
+        if next_active.is_none() {
+            self.remove_group(group);
         }
+        match self.current_group().map(|pane| pane.active) {
+            Some(active) => {
+                let group = self.active_group;
+                self.activate_tab(group, active, false, window, cx);
+            }
+            None => self.active_group = 0,
+        }
+        cx.notify();
+    }
+
+    /// 空になったグループを畳む。取り分は隣に渡す。
+    fn remove_group(&mut self, index: usize) {
+        if index >= self.groups.len() {
+            return;
+        }
+        let flexes = flexes_after_group_removal(&self.flexes(), index);
+        self.groups.remove(index);
+        self.apply_flexes(&flexes);
+        self.active_group =
+            active_tab_after_close(self.groups.len() + 1, self.active_group, index).unwrap_or(0);
+    }
+
+    fn flexes(&self) -> Vec<f32> {
+        self.groups.iter().map(|group| group.flex).collect()
+    }
+
+    fn apply_flexes(&mut self, flexes: &[f32]) {
+        for (group, flex) in self.groups.iter_mut().zip(flexes.iter().copied()) {
+            group.flex = flex;
+        }
+    }
+
+    /// タブを別の位置へ動かす。`to_index` は移動先のタブ列での**挿入位置**。
+    fn move_tab(
+        &mut self,
+        from_group: usize,
+        from_index: usize,
+        to_group: usize,
+        to_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if from_group >= self.groups.len() || to_group >= self.groups.len() {
+            return;
+        }
+        if from_group == to_group {
+            let Some(pane) = self.groups.get_mut(from_group) else {
+                return;
+            };
+            if from_index >= pane.tabs.len() {
+                return;
+            }
+            let target = moved_tab_index(from_index, to_index.min(pane.tabs.len()));
+            if target != from_index {
+                let tab = pane.tabs.remove(from_index);
+                pane.tabs.insert(target, tab);
+            }
+            self.activate_tab(from_group, target, true, window, cx);
+            return;
+        }
+
+        let Some(source) = self.groups.get(from_group) else {
+            return;
+        };
+        if from_index >= source.tabs.len() {
+            return;
+        }
+        let next_source_active =
+            active_tab_after_close(source.tabs.len(), source.active, from_index);
+        let Some(tab) = self
+            .groups
+            .get_mut(from_group)
+            .map(|pane| pane.tabs.remove(from_index))
+        else {
+            return;
+        };
+        if let Some(active) = next_source_active
+            && let Some(pane) = self.groups.get_mut(from_group)
+        {
+            pane.active = active;
+        }
+        let Some(target_pane) = self.groups.get_mut(to_group) else {
+            return;
+        };
+        let target = to_index.min(target_pane.tabs.len());
+        target_pane.tabs.insert(target, tab);
+
+        let mut to_group = to_group;
+        if next_source_active.is_none() {
+            self.remove_group(from_group);
+            if from_group < to_group {
+                to_group -= 1;
+            }
+        }
+        self.activate_tab(to_group, target, true, window, cx);
+    }
+
+    /// タブを新しいグループへ切り出して左右に分割する。`at` は新しいグループを
+    /// 挿入する位置 (グループの並びでの添字)。
+    fn split_tab_into_group(
+        &mut self,
+        from_group: usize,
+        from_index: usize,
+        at: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(source) = self.groups.get(from_group) else {
+            return;
+        };
+        if from_index >= source.tabs.len() {
+            return;
+        }
+        let at = at.min(self.groups.len());
+        if source.tabs.len() == 1 && (at == from_group || at == from_group + 1) {
+            // 1 枚しかないグループを自分の隣へ切り出しても並びは変わらない。
+            return;
+        }
+        let next_source_active =
+            active_tab_after_close(source.tabs.len(), source.active, from_index);
+        let flexes = flexes_after_split(&self.flexes(), from_group, at);
+        let Some(tab) = self
+            .groups
+            .get_mut(from_group)
+            .map(|pane| pane.tabs.remove(from_index))
+        else {
+            return;
+        };
+        if let Some(active) = next_source_active
+            && let Some(pane) = self.groups.get_mut(from_group)
+        {
+            pane.active = active;
+        }
+        self.groups.insert(
+            at,
+            BrowserPaneGroup {
+                tabs: vec![tab],
+                active: 0,
+                flex: 0.,
+            },
+        );
+        self.apply_flexes(&flexes);
+
+        let mut target = at;
+        if next_source_active.is_none() {
+            // 挿入で 1 つ後ろにずれた切り出し元を畳む。
+            let source_after_insert = if at <= from_group {
+                from_group + 1
+            } else {
+                from_group
+            };
+            self.remove_group(source_after_insert);
+            if source_after_insert < target {
+                target -= 1;
+            }
+        }
+        self.activate_tab(target, 0, true, window, cx);
+    }
+
+    fn split_active_tab_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let group = self.active_group;
+        let Some(pane) = self.current_group() else {
+            return;
+        };
+        let index = pane.active;
+        if pane.tabs.len() > 1 {
+            self.split_tab_into_group(group, index, group + 1, window, cx);
+            return;
+        }
+        // 1 枚しかないグループを切り出しても並びは変わらないので、同じページを
+        // もう 1 枚開いてから右へ出す (ブラウザーの「タブの複製」と同じ)。
+        let url = pane
+            .tabs
+            .get(index)
+            .map(|tab| tab.view.read(cx).current_url().trim().to_string())
+            .filter(|url| !url.is_empty());
+        self.open_tab_in_group(group, url, NewTabPlacement::Foreground, window, cx);
+        let Some(duplicated) = self
+            .groups
+            .get(group)
+            .and_then(|pane| pane.tabs.len().checked_sub(1))
+        else {
+            return;
+        };
+        self.split_tab_into_group(group, duplicated, group + 1, window, cx);
+    }
+
+    fn focus_next_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.groups.len() < 2 {
+            return;
+        }
+        let group = (self.active_group + 1) % self.groups.len();
+        let Some(index) = self.groups.get(group).map(|pane| pane.active) else {
+            return;
+        };
+        self.activate_tab(group, index, true, window, cx);
+    }
+
+    fn drag_divider(&mut self, event: &DragMoveEvent<DraggedPaneDivider>, cx: &mut Context<Self>) {
+        let Some(divider) = event
+            .dragged_item()
+            .downcast_ref::<DraggedPaneDivider>()
+            .map(|divider| divider.index)
+        else {
+            return;
+        };
+        let width = event.bounds.size.width;
+        if width <= px(0.) {
+            return;
+        }
+        let ratio = (event.event.position.x - event.bounds.left()) / width;
+        let flexes = flexes_after_divider_drag(&self.flexes(), divider, ratio);
+        self.apply_flexes(&flexes);
         cx.notify();
     }
 
@@ -473,8 +886,11 @@ impl BrowserPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<String> {
-        let index = self.active_tab;
+        let group = self.active_group;
+        let index = self.current_group()?.active;
         let url = self
+            .groups
+            .get(group)?
             .tabs
             .get(index)?
             .view
@@ -485,25 +901,37 @@ impl BrowserPanel {
         if url.is_empty() {
             return None;
         }
-        self.close_tab(index, window, cx);
+        self.close_tab(group, index, window, cx);
         Some(url)
     }
 
     /// 表に出ていないタブの子 HWND を隠す。子 HWND は GPUI の描画に従わないので、
     /// 「隠すのは push、見せるのは pull」(次の描画で canvas が矩形を流し直す)。
-    fn hide_other_surfaces(&self, active: usize, cx: &mut App) {
-        for (index, tab) in self.tabs.iter().enumerate() {
-            if index != active {
-                tab.view.update(cx, |view, _| {
-                    view.hide_surface_from_host(HIDDEN_TAB_INACTIVE)
-                });
+    /// 左右に分割しているときは**グループごとに 1 枚**が表に出る。
+    fn hide_inactive_surfaces(&self, cx: &mut App) {
+        for pane in &self.groups {
+            for (index, tab) in pane.tabs.iter().enumerate() {
+                if index != pane.active {
+                    tab.view.update(cx, |view, _| {
+                        view.hide_surface_from_host(HIDDEN_TAB_INACTIVE)
+                    });
+                }
             }
         }
     }
 
+    fn locate_view(&self, view: &Entity<BrowserView>) -> Option<(usize, usize)> {
+        self.groups.iter().enumerate().find_map(|(group, pane)| {
+            pane.tabs
+                .iter()
+                .position(|tab| tab.view.entity_id() == view.entity_id())
+                .map(|index| (group, index))
+        })
+    }
+
     fn on_view_event(
         &mut self,
-        _: &Entity<BrowserView>,
+        view: &Entity<BrowserView>,
         event: &BrowserViewEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -511,8 +939,28 @@ impl BrowserPanel {
         match event {
             BrowserViewEvent::LocationChanged => cx.notify(),
             // ブラウザーと同じく背景タブとして開く (今のページは見えたまま)。
+            // 分割しているときは、そのページを出しているグループの中に開く。
             BrowserViewEvent::OpenInNewTab(url) => {
-                self.open_tab(Some(url.clone()), NewTabPlacement::Background, window, cx)
+                let group = self
+                    .locate_view(view)
+                    .map_or(self.active_group, |(group, _)| group);
+                self.open_tab_in_group(
+                    group,
+                    Some(url.clone()),
+                    NewTabPlacement::Background,
+                    window,
+                    cx,
+                )
+            }
+            // ページ側のクリックは子 HWND が飲むので GPUI には届かない。どのペインを
+            // 触っているかはビューからの申告でしか分からない。
+            BrowserViewEvent::Focused => {
+                if let Some((group, _)) = self.locate_view(view)
+                    && self.active_group != group
+                {
+                    self.active_group = group;
+                    cx.notify();
+                }
             }
         }
     }
@@ -572,13 +1020,189 @@ impl BrowserPanel {
 }
 
 impl BrowserPanel {
+    /// 左右に並べたグループ。境界はドラッグで動かせる。
+    fn render_groups(&self, cx: &mut Context<Self>) -> AnyElement {
+        let last = self.groups.len().saturating_sub(1);
+        let mut row = h_flex()
+            .id("browser-panel-groups")
+            .size_full()
+            .min_h_0()
+            .on_drag_move::<DraggedPaneDivider>(cx.listener(
+                |this, event: &DragMoveEvent<DraggedPaneDivider>, _, cx| {
+                    this.drag_divider(event, cx)
+                },
+            ));
+        for (index, group) in self.groups.iter().enumerate() {
+            row = row.child(self.render_group(index, group, cx));
+            if index < last {
+                row = row.child(self.render_divider(index, cx));
+            }
+        }
+        row.into_any_element()
+    }
+
+    fn render_group(
+        &self,
+        index: usize,
+        group: &BrowserPaneGroup,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let active_view = group.tabs.get(group.active).map(|tab| tab.view.clone());
+        let is_split = self.groups.len() > 1;
+        v_flex()
+            .id(("browser-panel-group", index))
+            .flex_shrink_1()
+            .min_w_0()
+            .h_full()
+            .flex_basis(relative(group.flex))
+            .when(is_split, |this| {
+                // 子 HWND はクリックを飲むので、ページ側を触ったときは
+                // `BrowserViewEvent::Focused` の方で拾う。
+                this.on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _, _, cx| {
+                        if this.active_group != index {
+                            this.active_group = index;
+                            cx.notify();
+                        }
+                    }),
+                )
+            })
+            .child(self.render_tab_bar(index, group, cx))
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .children(active_view)
+                    .children(self.render_drop_targets(index, cx)),
+            )
+            .into_any_element()
+    }
+
+    /// ドラッグ中だけ内容領域に敷く落とし先。左右の端はそこで分割、真ん中は
+    /// このグループへ移動。ドラッグ中は WebView が隠れているので手前に見える
+    /// (`BrowserView::surface_hidden_reason`)。
+    fn render_drop_targets(&self, index: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !cx.has_active_drag() {
+            return None;
+        }
+        let drop_background = cx.theme().colors().drop_target_background;
+        let drop_border = cx.theme().colors().drop_target_border;
+        Some(
+            h_flex()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .child(
+                    div()
+                        .id(("browser-panel-split-before", index))
+                        .h_full()
+                        .w(relative(SPLIT_EDGE_FRACTION))
+                        .border_color(drop_border)
+                        .drag_over::<DraggedPanelTab>(move |style, _, _, _| {
+                            style.bg(drop_background).border_l_2()
+                        })
+                        .on_drop(cx.listener(
+                            move |this, dragged: &DraggedPanelTab, window, cx| {
+                                this.split_tab_into_group(
+                                    dragged.group,
+                                    dragged.index,
+                                    index,
+                                    window,
+                                    cx,
+                                )
+                            },
+                        )),
+                )
+                .child(
+                    div()
+                        .id(("browser-panel-drop-into", index))
+                        .h_full()
+                        .flex_1()
+                        .drag_over::<DraggedPanelTab>(move |style, _, _, _| {
+                            style.bg(drop_background)
+                        })
+                        .on_drop(cx.listener(
+                            move |this, dragged: &DraggedPanelTab, window, cx| {
+                                let to_index =
+                                    this.groups.get(index).map_or(0, |pane| pane.tabs.len());
+                                this.move_tab(
+                                    dragged.group,
+                                    dragged.index,
+                                    index,
+                                    to_index,
+                                    window,
+                                    cx,
+                                )
+                            },
+                        )),
+                )
+                .child(
+                    div()
+                        .id(("browser-panel-split-after", index))
+                        .h_full()
+                        .w(relative(SPLIT_EDGE_FRACTION))
+                        .border_color(drop_border)
+                        .drag_over::<DraggedPanelTab>(move |style, _, _, _| {
+                            style.bg(drop_background).border_r_2()
+                        })
+                        .on_drop(cx.listener(
+                            move |this, dragged: &DraggedPanelTab, window, cx| {
+                                this.split_tab_into_group(
+                                    dragged.group,
+                                    dragged.index,
+                                    index + 1,
+                                    window,
+                                    cx,
+                                )
+                            },
+                        )),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// グループの境界。1px の線の上に、掴める幅のつまみを重ねてある。
+    fn render_divider(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .id(("browser-panel-divider", index))
+            .relative()
+            .h_full()
+            .flex_none()
+            .w(px(1.))
+            .bg(cx.theme().colors().border)
+            .child(
+                div()
+                    .id(("browser-panel-divider-handle", index))
+                    .absolute()
+                    .top_0()
+                    .left(px(-PANE_DIVIDER_HANDLE_WIDTH / 2.))
+                    .w(px(PANE_DIVIDER_HANDLE_WIDTH))
+                    .h_full()
+                    .cursor_col_resize()
+                    .block_mouse_except_scroll()
+                    .on_drag(DraggedPaneDivider { index }, |_, _, _, cx| {
+                        cx.new(|_| Empty)
+                    }),
+            )
+            .into_any_element()
+    }
+
     /// パネル内のタブバー。子 HWND はこの下の内容領域にしか出ないので、ここは
     /// 普通に GPUI で描いてよい (ページに覆われない)。
-    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
-        let active_tab = self.active_tab;
+    fn render_tab_bar(
+        &self,
+        group_index: usize,
+        group: &BrowserPaneGroup,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let focus_handle = self.focus_handle.clone();
+        let tab_count = group.tabs.len();
         h_flex()
-            .id("browser-panel-tab-bar")
+            .id(("browser-panel-tab-bar", group_index))
             .w_full()
             .flex_none()
             .gap_px()
@@ -586,32 +1210,53 @@ impl BrowserPanel {
             .pt_1()
             .overflow_x_scroll()
             .bg(cx.theme().colors().tab_bar_background)
-            .children(
-                self.tabs
-                    .iter()
-                    .enumerate()
-                    .map(|(index, tab)| self.render_tab(index, tab, index == active_tab, cx)),
-            )
+            .children(group.tabs.iter().enumerate().map(|(index, tab)| {
+                self.render_tab(group_index, index, tab, index == group.active, cx)
+            }))
             .child(
-                IconButton::new("browser-panel-new-tab", IconName::Plus)
+                IconButton::new(("browser-panel-new-tab", group_index), IconName::Plus)
                     .icon_size(IconSize::XSmall)
                     .tooltip(move |_, cx| {
                         Tooltip::for_action_in("新しいタブ", &NewPanelTab, &focus_handle, cx)
                     })
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_tab(None, NewTabPlacement::Foreground, window, cx)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_tab_in_group(
+                            group_index,
+                            None,
+                            NewTabPlacement::Foreground,
+                            window,
+                            cx,
+                        )
                     })),
+            )
+            // タブの無い余白に落としたら、このグループの末尾へ移す。
+            .drag_over::<DraggedPanelTab>(|style, _, _, cx| {
+                style.bg(cx.theme().colors().drop_target_background)
+            })
+            .on_drop(
+                cx.listener(move |this, dragged: &DraggedPanelTab, window, cx| {
+                    this.move_tab(
+                        dragged.group,
+                        dragged.index,
+                        group_index,
+                        tab_count,
+                        window,
+                        cx,
+                    )
+                }),
             )
             .into_any_element()
     }
 
     fn render_tab(
         &self,
+        group_index: usize,
         index: usize,
         tab: &PanelTab,
         selected: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let entity_id = tab.view.entity_id();
         let view = tab.view.read(cx);
         let label = view.tab_label();
         let url = view.current_url().trim().to_string();
@@ -622,7 +1267,7 @@ impl BrowserPanel {
         };
 
         h_flex()
-            .id(("browser-panel-tab", index))
+            .id(("browser-panel-tab", entity_id))
             .flex_none()
             .min_w(px(PANEL_TAB_MIN_WIDTH))
             .max_w(px(PANEL_TAB_MAX_WIDTH))
@@ -650,7 +1295,7 @@ impl BrowserPanel {
             // flex アイテムは最小内容幅より縮まず、長いタイトルでタブが伸びる。
             .child(
                 div().flex_1().min_w_0().child(
-                    Label::new(label)
+                    Label::new(label.clone())
                         .size(LabelSize::Small)
                         .color(if selected {
                             Color::Default
@@ -661,24 +1306,63 @@ impl BrowserPanel {
                 ),
             )
             .child(
-                IconButton::new(("browser-panel-tab-close", index), IconName::Close)
+                IconButton::new(("browser-panel-tab-close", entity_id), IconName::Close)
                     .icon_size(IconSize::XSmall)
                     .tooltip(Tooltip::text("タブを閉じる"))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         // タブ本体の on_click まで届くと、閉じた位置に繰り上がった
                         // 別のタブをアクティブにしてしまう。
                         cx.stop_propagation();
-                        this.close_tab(index, window, cx);
+                        this.close_tab(group_index, index, window, cx);
                     })),
             )
-            .on_click(
-                cx.listener(move |this, _, window, cx| this.activate_tab(index, true, window, cx)),
-            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.activate_tab(group_index, index, true, window, cx)
+            }))
             .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 if event.is_middle_click() {
-                    this.close_tab(index, window, cx);
+                    this.close_tab(group_index, index, window, cx);
                 }
             }))
+            .on_drag(
+                DraggedPanelTab {
+                    group: group_index,
+                    index,
+                    label,
+                },
+                |tab, _, _, cx| cx.new(|_| tab.clone()),
+            )
+            .drag_over::<DraggedPanelTab>(move |style, dragged: &DraggedPanelTab, _, cx| {
+                let style = style
+                    .bg(cx.theme().colors().drop_target_background)
+                    .border_color(cx.theme().colors().drop_target_border);
+                // 同じ列の中なら、来る向きに合わせて落ちる側に線を出す。
+                if dragged.group != group_index || index < dragged.index {
+                    style.border_l_2()
+                } else {
+                    style.border_r_2()
+                }
+            })
+            .on_drop(
+                cx.listener(move |this, dragged: &DraggedPanelTab, window, cx| {
+                    // タブバー全体の落とし先 (末尾へ移動) まで届かせない。
+                    cx.stop_propagation();
+                    // 「このタブの位置に入る」= 元が前にあるなら 1 つ後ろの挿入位置。
+                    let to_index = if dragged.group == group_index && dragged.index < index {
+                        index + 1
+                    } else {
+                        index
+                    };
+                    this.move_tab(
+                        dragged.group,
+                        dragged.index,
+                        group_index,
+                        to_index,
+                        window,
+                        cx,
+                    )
+                }),
+            )
             .into_any_element()
     }
 
@@ -702,7 +1386,11 @@ impl BrowserPanel {
 
 impl Render for BrowserPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let active_view = self.active_view().cloned();
+        let content = if self.groups.is_empty() {
+            self.render_empty_state(cx)
+        } else {
+            self.render_groups(cx)
+        };
         v_flex()
             .key_context(BROWSER_PANEL_KEY)
             .track_focus(&self.focus_handle)
@@ -712,20 +1400,19 @@ impl Render for BrowserPanel {
                 this.open_tab(None, NewTabPlacement::Foreground, window, cx)
             }))
             .on_action(cx.listener(|this, _: &ClosePanelTab, window, cx| {
-                let active_tab = this.active_tab;
-                this.close_tab(active_tab, window, cx)
+                let group = this.active_group;
+                let Some(index) = this.current_group().map(|pane| pane.active) else {
+                    return;
+                };
+                this.close_tab(group, index, window, cx)
             }))
-            .child(self.render_tab_bar(cx))
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .map(|this| match active_view {
-                        Some(view) => this.child(view),
-                        None => this.child(self.render_empty_state(cx)),
-                    }),
-            )
+            .on_action(cx.listener(|this, _: &SplitPanelRight, window, cx| {
+                this.split_active_tab_right(window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &FocusNextPaneGroup, window, cx| {
+                this.focus_next_group(window, cx)
+            }))
+            .child(div().flex_1().min_h_0().w_full().child(content))
     }
 }
 
@@ -784,10 +1471,12 @@ impl Panel for BrowserPanel {
     fn set_active(&mut self, active: bool, _: &mut Window, cx: &mut Context<Self>) {
         log::info!("browser panel: set_active({active})");
         if !active {
-            for tab in &self.tabs {
-                tab.view.update(cx, |view, _| {
-                    view.hide_surface_from_host(HIDDEN_PANEL_INACTIVE)
-                });
+            for pane in &self.groups {
+                for tab in &pane.tabs {
+                    tab.view.update(cx, |view, _| {
+                        view.hide_surface_from_host(HIDDEN_PANEL_INACTIVE)
+                    });
+                }
             }
         }
         cx.notify();
@@ -1014,6 +1703,84 @@ mod tests {
         assert_eq!(active_tab_after_close(0, 0, 0), None);
         // 範囲外を指しても今のタブは動かない。
         assert_eq!(active_tab_after_close(2, 1, 5), Some(1));
+    }
+
+    /// 取り分の比較は丸めてから。正規化の割り算で最下位の桁がずれるため。
+    fn rounded(flexes: &[f32]) -> Vec<f32> {
+        flexes
+            .iter()
+            .map(|flex| (flex * 1000.).round() / 1000.)
+            .collect()
+    }
+
+    #[test]
+    fn dropping_a_tab_uses_insertion_positions() {
+        // 後ろへ落とすときは、抜けた分だけ 1 つ手前に入る。
+        assert_eq!(moved_tab_index(0, 3), 2);
+        assert_eq!(moved_tab_index(0, 1), 0);
+        // 前へ落とすときは挿入位置そのもの。
+        assert_eq!(moved_tab_index(2, 0), 0);
+        assert_eq!(moved_tab_index(2, 2), 2);
+    }
+
+    #[test]
+    fn group_flexes_always_add_up_to_one() {
+        assert_eq!(rounded(&normalized_flexes(&[1., 1.])), [0.5, 0.5]);
+        assert_eq!(rounded(&normalized_flexes(&[3., 1.])), [0.75, 0.25]);
+        assert!(normalized_flexes(&[]).is_empty());
+        // 壊れた値 (0 以下・NaN・無限大) が混じっても割り算が壊れない。
+        assert_eq!(rounded(&normalized_flexes(&[0., 0.])), [0.5, 0.5]);
+        let repaired = normalized_flexes(&[f32::NAN, f32::INFINITY]);
+        assert_eq!(rounded(&repaired), [0.5, 0.5]);
+    }
+
+    #[test]
+    fn dragging_the_divider_only_moves_its_two_neighbours() {
+        let flexes = flexes_after_divider_drag(&[0.5, 0.5], 0, 0.3);
+        assert_eq!(rounded(&flexes), [0.3, 0.7]);
+        // 3 枚のときは境界の外側の取り分が動かない。
+        let flexes = flexes_after_divider_drag(&[0.25, 0.25, 0.5], 1, 0.4);
+        assert_eq!(rounded(&flexes), [0.25, 0.15, 0.6]);
+        // 端まで引いても下限までしか詰められない。
+        let flexes = flexes_after_divider_drag(&[0.5, 0.5], 0, 0.);
+        assert_eq!(rounded(&flexes), [0.15, 0.85]);
+        // 無い境界や壊れた割合では何も動かさない。
+        assert_eq!(rounded(&flexes_after_divider_drag(&[1.], 0, 0.5)), [1.]);
+        assert_eq!(
+            rounded(&flexes_after_divider_drag(&[0.5, 0.5], 0, f32::NAN)),
+            [0.5, 0.5]
+        );
+    }
+
+    #[test]
+    fn a_folded_group_hands_its_share_to_a_neighbour() {
+        // 空いた分は右隣へ。
+        assert_eq!(
+            rounded(&flexes_after_group_removal(&[0.5, 0.25, 0.25], 0)),
+            [0.75, 0.25]
+        );
+        // 右端を畳んだときだけ左隣へ。
+        assert_eq!(
+            rounded(&flexes_after_group_removal(&[0.5, 0.25, 0.25], 2)),
+            [0.5, 0.5]
+        );
+        // 最後の 1 枚を畳んだら残らない。範囲外は何も動かさない。
+        assert!(flexes_after_group_removal(&[1.], 0).is_empty());
+        assert_eq!(rounded(&flexes_after_group_removal(&[1.], 3)), [1.]);
+    }
+
+    #[test]
+    fn splitting_halves_the_share_of_the_group_it_came_from() {
+        assert_eq!(rounded(&flexes_after_split(&[1.], 0, 1)), [0.5, 0.5]);
+        // 切り出し元の取り分だけを分ける (隣は動かない)。
+        assert_eq!(
+            rounded(&flexes_after_split(&[0.5, 0.5], 1, 2)),
+            [0.5, 0.25, 0.25]
+        );
+        assert_eq!(
+            rounded(&flexes_after_split(&[0.5, 0.5], 0, 0)),
+            [0.25, 0.25, 0.5]
+        );
     }
 
     #[test]

@@ -1499,23 +1499,19 @@ fn render_mcp_server_form_page(
         .into_any_element()
 }
 
-fn input_box(editor: &Entity<Editor>, cx: &App) -> impl IntoElement {
-    let colors = cx.theme().colors();
+/// Shared framed text field for the settings form pages.
+pub(crate) fn input_box(editor: &Entity<Editor>, cx: &App) -> impl IntoElement {
+    let border_focused = cx.theme().colors().border_focused;
     // All form inputs share tab index 0, so tab order follows render (insertion)
     // order. Tracking the editor's focus handle makes the field a tab stop and
     // routes keyboard focus into the editor when tabbed to.
     let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
-    h_flex()
+    // The frame is rendered unfocused and the focused border is applied through
+    // the element's focus style, so no `Window` is needed here.
+    ui::input_frame(false, cx)
         .min_w_64()
-        .py_1()
-        .px_2()
-        .h_8()
-        .rounded_md()
-        .border_1()
-        .border_color(colors.border)
-        .bg(colors.editor_background)
         .track_focus(&focus_handle)
-        .focus(|style| style.border_color(colors.border_focused))
+        .focus(|style| style.border_color(border_focused))
         .child(editor.clone())
 }
 

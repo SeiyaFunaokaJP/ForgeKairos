@@ -2586,6 +2586,18 @@ mod tests {
         });
     }
 
+    /// Keeps the panel from opening — and so from spawning a shell of its own —
+    /// while a test sets up the terminals it is going to count.
+    /// `terminal.starts_open` defaults to true, and only
+    /// `test_terminal_panel_starts_open_follows_setting` is about that default.
+    fn pin_panel_closed_at_startup(cx: &mut TestAppContext) {
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.terminal.get_or_insert_default().starts_open = Some(false);
+            });
+        });
+    }
+
     /// A panel with `panes` side-by-side shells, plus the view in each of them
     /// in left-to-right order.
     async fn panel_with_panes(
@@ -2598,6 +2610,7 @@ mod tests {
     ) {
         cx.executor().allow_parking();
         init_test(cx);
+        pin_panel_closed_at_startup(cx);
 
         let fs = FakeFs::new(cx.executor());
         let project = Project::test(fs, [], cx).await;
@@ -3249,12 +3262,29 @@ mod tests {
             .update(cx, |_, window, cx| {
                 terminal_panel.update(cx, |terminal_panel, cx| {
                     assert!(
-                        !terminal_panel.starts_open(window, cx),
-                        "terminal panel should not start open by default"
+                        terminal_panel.starts_open(window, cx),
+                        "terminal panel should start open by default"
                     );
                 });
             })
             .expect("Failed to read terminal panel starts_open default");
+
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.terminal.get_or_insert_default().starts_open = Some(false);
+            });
+        });
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                terminal_panel.update(cx, |terminal_panel, cx| {
+                    assert!(
+                        !terminal_panel.starts_open(window, cx),
+                        "terminal panel should stay closed when configured"
+                    );
+                });
+            })
+            .expect("Failed to read configured terminal panel starts_open");
 
         cx.update_global(|store: &mut SettingsStore, cx| {
             store.update_user_settings(cx, |settings| {
@@ -3271,13 +3301,14 @@ mod tests {
                     );
                 });
             })
-            .expect("Failed to read configured terminal panel starts_open");
+            .expect("Failed to read reconfigured terminal panel starts_open");
     }
 
     #[gpui::test]
     async fn test_new_terminal_opens_in_panel_by_default(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         init_test(cx);
+        pin_panel_closed_at_startup(cx);
 
         let (window_handle, terminal_panel) = init_workspace_with_panel(cx).await;
 

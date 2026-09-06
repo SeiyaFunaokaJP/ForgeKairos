@@ -40,6 +40,13 @@ pub fn init_test(cx: &mut gpui::TestAppContext) {
     cx.update(|cx| {
         let settings = SettingsStore::test(cx);
         cx.set_global(settings);
+        // `terminal.starts_open` は既定 true (第 11 便 ⑩)。テストでは本物の PTY を
+        // 起こさない (test scheduler が別スレッドの活動で落ちる)。
+        gpui::BorrowAppContext::update_global::<SettingsStore, _>(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.terminal.get_or_insert_default().starts_open = Some(false);
+            });
+        });
         terminal_view::init(cx);
         theme_settings::init(theme::LoadThemes::JustBase, cx);
         command_palette_hooks::init(cx);

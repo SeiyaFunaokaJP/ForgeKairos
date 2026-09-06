@@ -6009,6 +6009,7 @@ dependencies = [
  "util",
  "workspace",
  "zed_actions",
+ "zed_credentials_provider",
  "zeroize",
 ]
 
@@ -14269,6 +14270,7 @@ dependencies = [
  "windows 0.61.3",
  "workspace",
  "worktree",
+ "zeroize",
  "zlog",
 ]
 
@@ -16929,9 +16931,11 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
+ "askpass",
  "async-channel 2.5.0",
  "chrono",
  "collections",
+ "credentials_provider",
  "fs",
  "futures 0.3.32",
  "futures-lite 1.13.0",
@@ -16962,6 +16966,7 @@ dependencies = [
  "util_macros",
  "vte",
  "windows 0.61.3",
+ "zeroize",
 ]
 
 [[package]]
@@ -17016,6 +17021,7 @@ dependencies = [
  "which 6.0.3",
  "workspace",
  "zed_actions",
+ "zed_credentials_provider",
 ]
 
 [[package]]

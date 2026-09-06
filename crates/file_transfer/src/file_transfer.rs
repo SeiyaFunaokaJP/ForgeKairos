@@ -20,8 +20,11 @@ use terminal::terminal_macro::{ConnectionProtocol, SavedConnection, TerminalSess
 use workspace::Workspace;
 use zed_actions::terminal::OpenFileTransfer;
 
-pub use file_transfer_modal::{FileTransferModal, PaneSide, open_file_transfer};
-pub use transfer_backend::{RemoteTarget, TransferProtocol};
+pub use file_transfer_modal::{
+    FileTransferModal, LocalSide, PaneSide, RemoteHostOptions, TransferHostOptions,
+    open_file_transfer,
+};
+pub use transfer_backend::{ExecHost, IdeExecHost, RemoteExecHost, RemoteTarget, TransferProtocol};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
@@ -81,6 +84,19 @@ fn target_from_action(action: &OpenFileTransfer) -> Option<RemoteTarget> {
     })
 }
 
+/// The directory the active terminal is sitting in *on the remote host*, so a
+/// transfer screen opened from it starts where the user is working rather than
+/// at the project root (ADR-F28). `None` for a local terminal, or before the
+/// remote shell has reported a directory.
+pub(crate) fn active_remote_working_directory(
+    workspace: &Workspace,
+    window: &Window,
+    cx: &App,
+) -> Option<std::path::PathBuf> {
+    let view = terminal_view::session_tools::active_terminal_view(workspace, window, cx)?;
+    view.read(cx).terminal().read(cx).remote_working_directory()
+}
+
 fn active_terminal_target(
     workspace: &Workspace,
     window: &Window,
@@ -98,8 +114,6 @@ fn active_terminal_target(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use gpui::{Entity, TestAppContext, VisualTestContext};
     use project::{FakeFs, Project};
     use settings::SettingsStore;
@@ -196,6 +210,6 @@ mod tests {
 
         // The local pane starts at the project's first worktree.
         let local = modal.update(cx, |modal, cx| modal.local_directory_for_test(cx));
-        assert_eq!(local, PathBuf::from(path!("/project")));
+        assert_eq!(local, path!("/project"));
     }
 }

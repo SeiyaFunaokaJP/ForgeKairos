@@ -6560,9 +6560,12 @@ impl Sidebar {
             .into_any_element()
     }
 
-    fn render_filter_input(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .min_w_0()
+    fn render_filter_input(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_focused = self
+            .filter_editor
+            .focus_handle(cx)
+            .contains_focused(window, cx);
+        ui::input_frame_sized(ui::InputFrameSize::Compact, is_focused, cx)
             .flex_1()
             .capture_action(
                 cx.listener(|this, _: &editor::actions::Newline, window, cx| {
@@ -7253,7 +7256,7 @@ impl Sidebar {
                                 .color(Color::Muted),
                         ),
                     )
-                    .child(self.render_filter_input(cx))
+                    .child(self.render_filter_input(window, cx))
                     .child(
                         h_flex()
                             .gap_1()

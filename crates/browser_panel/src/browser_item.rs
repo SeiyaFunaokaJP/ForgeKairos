@@ -195,6 +195,9 @@ impl BrowserItem {
                     })
                     .log_err();
             }
+            // エディター領域のタブは 1 枚 = 1 ビューなので、どのビューを触ったかを
+            // 追う必要が無い (パネル側の左右分割だけが使う)。
+            BrowserViewEvent::Focused => {}
         }
     }
 }

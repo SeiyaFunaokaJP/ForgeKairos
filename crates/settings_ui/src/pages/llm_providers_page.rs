@@ -1180,7 +1180,7 @@ fn render_form_field(
     editor: &Entity<Editor>,
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
-    let colors = cx.theme().colors();
+    let border_focused = cx.theme().colors().border_focused;
     let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
     v_flex()
         .w_full()
@@ -1203,17 +1203,13 @@ fn render_form_field(
                 ),
         )
         .child(
-            h_flex()
+            // The frame is rendered unfocused and the focused border comes from
+            // the element's focus style, so no `Window` is needed here.
+            ui::input_frame(false, cx)
                 .w_full()
                 .min_w_64()
-                .h_8()
-                .px_2()
-                .rounded_md()
-                .border_1()
-                .border_color(colors.border)
-                .bg(colors.editor_background)
                 .track_focus(&focus_handle)
-                .focus(|style| style.border_color(colors.border_focused))
+                .focus(|style| style.border_color(border_focused))
                 .child(editor.clone()),
         )
         .into_any_element()

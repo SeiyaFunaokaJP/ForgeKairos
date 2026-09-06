@@ -8,6 +8,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use collections::HashSet;
 use editor::{Editor, EditorEvent};
+use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     App, AsyncWindowContext, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Render,
@@ -19,6 +20,7 @@ use settings::Settings as _;
 use task::{RevealStrategy, RevealTarget, SpawnInTerminal, TaskId};
 use terminal::{
     Terminal,
+    quick_connect_credentials::{self, QuickConnectCredentials, StoredPassword},
     terminal_macro::{
         ConnectionProtocol, MacroStep, SavedConnection, TerminalMacro, TerminalSessionStore,
         normalize_folder, normalize_tags,
@@ -26,9 +28,9 @@ use terminal::{
     terminal_settings::TerminalSettings,
 };
 use ui::{
-    Checkbox, ContextMenu, Disclosure, DropdownMenu, DropdownStyle, HighlightedLabel, ListItem,
-    ListItemSpacing, Modal, ModalFooter, ModalHeader, Section, SectionHeader, ToggleState, Tooltip,
-    prelude::*,
+    Checkbox, ContextMenu, Disclosure, DropdownMenu, DropdownStyle, HighlightedLabel,
+    InputFrameSize, ListItem, ListItemSpacing, Modal, ModalFooter, ModalHeader, Section,
+    SectionHeader, ToggleState, Tooltip, input_frame, input_frame_sized, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Panel as _, Workspace};
@@ -593,8 +595,17 @@ impl MacroRunOptions {
 }
 
 impl Render for MacroRunOptions {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let name = self.terminal_macro.name.clone();
+        let count_field = input_frame(self.count.focus_handle(cx).contains_focused(window, cx), cx)
+            .w(rems(6.))
+            .child(self.count.clone());
+        let interval_field = input_frame(
+            self.interval.focus_handle(cx).contains_focused(window, cx),
+            cx,
+        )
+        .w(rems(6.))
+        .child(self.interval.clone());
         v_flex()
             .w(rems(28.))
             .elevation_3(cx)
@@ -623,7 +634,7 @@ impl Render for MacroRunOptions {
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(div().w(rems(6.)).child(self.count.clone()))
+                                        .child(count_field)
                                         .child(
                                             Label::new("(0 は中止まで繰り返します)")
                                                 .size(LabelSize::Small)
@@ -638,7 +649,7 @@ impl Render for MacroRunOptions {
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(div().w(rems(6.)).child(self.interval.clone())),
+                                        .child(interval_field),
                                 )
                                 .when_some(self.error.clone(), |this, error| {
                                     this.child(Label::new(error).color(Color::Error))
@@ -1828,7 +1839,14 @@ impl MacroEditor {
                     ),
             )
             .when(kind.has_text() && !read_only, |this| {
-                this.child(row.text.clone())
+                this.child(
+                    input_frame_sized(
+                        InputFrameSize::Compact,
+                        row.text.focus_handle(cx).contains_focused(window, cx),
+                        cx,
+                    )
+                    .child(row.text.clone()),
+                )
             })
             .when(kind == StepKind::Send && !read_only, |this| {
                 this.child(
@@ -1855,7 +1873,15 @@ impl MacroEditor {
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
-                        .child(div().w(rems(4.)).child(row.count.clone()))
+                        .child(
+                            input_frame_sized(
+                                InputFrameSize::Compact,
+                                row.count.focus_handle(cx).contains_focused(window, cx),
+                                cx,
+                            )
+                            .w(rems(4.))
+                            .child(row.count.clone()),
+                        )
                         .child(
                             Label::new("(0 回は中止まで繰り返します)")
                                 .size(LabelSize::Small)
@@ -1876,7 +1902,15 @@ impl MacroEditor {
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         )
-                        .child(div().w(rems(6.)).child(row.number.clone()))
+                        .child(
+                            input_frame_sized(
+                                InputFrameSize::Compact,
+                                row.number.focus_handle(cx).contains_focused(window, cx),
+                                cx,
+                            )
+                            .w(rems(6.))
+                            .child(row.number.clone()),
+                        )
                         .when(kind == StepKind::WaitFor, |this| {
                             this.child(
                                 Checkbox::new(("step-regex", element_id), row.regex.into())
@@ -1915,6 +1949,17 @@ impl Render for MacroEditor {
         let editing = self.original_name.clone();
         let pending_delete = self.pending_delete.clone();
         let folder_menu = self.render_folder_menu(window, cx).into_any_element();
+        let field = |editor: &Entity<Editor>, window: &mut Window, cx: &mut Context<Self>| {
+            input_frame(editor.focus_handle(cx).contains_focused(window, cx), cx)
+                .child(editor.clone())
+        };
+        let list_filter_field = field(&self.list_filter, window, cx);
+        let name_field = field(&self.name, window, cx);
+        let folder_field = field(&self.folder, window, cx);
+        let tags_field = field(&self.tags, window, cx);
+        let description_field = field(&self.description, window, cx);
+        let repeat_field = field(&self.repeat, window, cx).w(rems(4.));
+        let repeat_interval_field = field(&self.repeat_interval, window, cx).w(rems(4.));
 
         v_flex()
             .w(rems(40.))
@@ -1939,7 +1984,7 @@ impl Render for MacroEditor {
                             .child(
                                 v_flex()
                                     .gap_1()
-                                    .child(self.list_filter.clone())
+                                    .child(list_filter_field)
                                     .child(saved_macros),
                             ),
                     )
@@ -1949,15 +1994,15 @@ impl Render for MacroEditor {
                             .child(
                                 v_flex()
                                     .gap_2()
-                                    .child(self.name.clone())
+                                    .child(name_field)
                                     .child(
                                         h_flex()
                                             .gap_1()
-                                            .child(div().flex_1().child(self.folder.clone()))
+                                            .child(folder_field.flex_1())
                                             .child(folder_menu),
                                     )
-                                    .child(self.tags.clone())
-                                    .child(self.description.clone())
+                                    .child(tags_field)
+                                    .child(description_field)
                                     .child(
                                         h_flex()
                                             .gap_2()
@@ -1966,17 +2011,13 @@ impl Render for MacroEditor {
                                                     .size(LabelSize::Small)
                                                     .color(Color::Muted),
                                             )
-                                            .child(div().w(rems(4.)).child(self.repeat.clone()))
+                                            .child(repeat_field)
                                             .child(
                                                 Label::new("間隔 (秒)")
                                                     .size(LabelSize::Small)
                                                     .color(Color::Muted),
                                             )
-                                            .child(
-                                                div()
-                                                    .w(rems(4.))
-                                                    .child(self.repeat_interval.clone()),
-                                            )
+                                            .child(repeat_interval_field)
                                             .child(
                                                 Label::new("(0 回は中止まで繰り返します)")
                                                     .size(LabelSize::Small)
@@ -2119,9 +2160,18 @@ pub struct QuickConnectModal {
     host: Entity<Editor>,
     port: Entity<Editor>,
     user: Entity<Editor>,
+    /// Masked, and never filled in from the store: a remembered password is
+    /// read straight out of the credential store when connecting, so the
+    /// plaintext never has to come back to the screen.
+    password: Entity<Editor>,
     protocol: ConnectionProtocol,
     macro_name: Option<String>,
     log: bool,
+    remember_password: bool,
+    credentials: QuickConnectCredentials,
+    /// Credential URLs (see [`quick_connect_credentials::credential_url`])
+    /// known to hold a password, for the 「保存済み」 badge.
+    stored_passwords: HashSet<String>,
     error: Option<SharedString>,
     focus_handle: FocusHandle,
     _store_loaded: Subscription,
@@ -2151,13 +2201,23 @@ impl QuickConnectModal {
             editor
         });
         let user = single_line("ユーザー名 (SSH)", window, cx);
+        let password = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_placeholder_text("パスワード (省略可)", window, cx);
+            editor.set_masked(true, cx);
+            editor
+        });
 
         let log = TerminalSettings::get_global(cx).session_log.auto;
         let focus_handle = cx.focus_handle();
         window.focus(&host.focus_handle(cx), cx);
         // The saved-connection list and the macro dropdown both read the store
-        // on every render, and the file lands asynchronously.
-        let store_loaded = cx.observe(&store, |_, _, cx| cx.notify());
+        // on every render, and the file lands asynchronously. The badges follow
+        // the same file, so they are refreshed from here too.
+        let store_loaded = cx.observe(&store, |this, _, cx| {
+            this.refresh_stored_passwords(cx);
+            cx.notify();
+        });
 
         Self {
             store,
@@ -2167,13 +2227,66 @@ impl QuickConnectModal {
             host,
             port,
             user,
+            password,
             protocol: ConnectionProtocol::Ssh,
             macro_name: None,
             log,
+            remember_password: false,
+            credentials: QuickConnectCredentials::new(zed_credentials_provider::global(cx)),
+            stored_passwords: HashSet::default(),
             error: None,
             focus_handle,
             _store_loaded: store_loaded,
         }
+    }
+
+    /// Re-reads which saved connections have a remembered password. Runs on
+    /// every store change rather than on a timer, because the only things that
+    /// add or remove one also write the store.
+    fn refresh_stored_passwords(&mut self, cx: &mut Context<Self>) {
+        if !self.store.read(cx).is_loaded() {
+            return;
+        }
+        let connections = self.store.read(cx).connections().to_vec();
+        let credentials = self.credentials.clone();
+        cx.spawn(async move |this, cx| {
+            let mut stored = HashSet::default();
+            for connection in connections {
+                if credentials.has_password(&connection, cx).await {
+                    stored.insert(quick_connect_credentials::credential_url(&connection));
+                }
+            }
+            this.update(cx, |this, cx| {
+                if this.stored_passwords != stored {
+                    this.stored_passwords = stored;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn has_stored_password(&self, connection: &SavedConnection) -> bool {
+        self.stored_passwords
+            .contains(&quick_connect_credentials::credential_url(connection))
+    }
+
+    /// Drops the password stored for `connection`, then refreshes the badges.
+    fn forget_password(&mut self, connection: SavedConnection, cx: &mut Context<Self>) {
+        let credentials = self.credentials.clone();
+        cx.spawn(async move |this, cx| {
+            let result = credentials.forget(&connection, cx).await;
+            this.update(cx, |this, cx| {
+                if let Err(error) = result {
+                    this.error = Some(format!("{error}").into());
+                }
+                this.refresh_stored_passwords(cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn set_protocol(
@@ -2223,7 +2336,15 @@ impl QuickConnectModal {
             user: (!user.is_empty()).then_some(user),
             macro_name: self.macro_name.clone(),
             log: Some(self.log),
+            remember_password: self.remember_password,
         })
+    }
+
+    /// What the password field holds right now. Not trimmed: leading and
+    /// trailing spaces are part of a password.
+    fn typed_password(&self, cx: &App) -> Option<String> {
+        let password = self.password.read(cx).text(cx);
+        (!password.is_empty()).then_some(password)
     }
 
     fn apply_connection(
@@ -2237,6 +2358,11 @@ impl QuickConnectModal {
         self.log = connection
             .log
             .unwrap_or_else(|| TerminalSettings::get_global(cx).session_log.auto);
+        self.remember_password = connection.remember_password;
+        // A remembered password stays in the credential store; loading an entry
+        // must not put the previous entry's password back in the field either.
+        self.password
+            .update(cx, |editor, cx| editor.set_text("", window, cx));
         self.name.update(cx, |editor, cx| {
             editor.set_text(connection.name.clone(), window, cx)
         });
@@ -2272,6 +2398,8 @@ impl QuickConnectModal {
                 return;
             }
         };
+        let typed_password = self.typed_password(cx);
+        let credentials = self.credentials.clone();
         let write = self.store.update(cx, |store, cx| {
             let mut file = store.file().clone();
             match file
@@ -2279,8 +2407,8 @@ impl QuickConnectModal {
                 .iter()
                 .position(|candidate| candidate.name == connection.name)
             {
-                Some(index) => file.connections[index] = connection,
-                None => file.connections.push(connection),
+                Some(index) => file.connections[index] = connection.clone(),
+                None => file.connections.push(connection.clone()),
             }
             store.write(file, cx)
         });
@@ -2291,24 +2419,60 @@ impl QuickConnectModal {
                     cx.notify();
                 })
                 .ok();
+                return;
             }
+            // The password is the one thing that does not go into the file.
+            // Clearing 「パスワードを記憶する」 and saving is how the user drops
+            // one they no longer want kept.
+            let stored = match (connection.remember_password, typed_password) {
+                (true, Some(password)) => credentials.store(&connection, &password, cx).await,
+                // An empty field with the box still ticked keeps whatever is
+                // already stored, so the user can edit the port without having
+                // to retype the password.
+                (true, None) => Ok(()),
+                (false, _) => credentials.forget(&connection, cx).await,
+            };
+            this.update(cx, |this, cx| {
+                if let Err(error) = stored {
+                    this.error = Some(format!("{error}").into());
+                }
+                this.refresh_stored_passwords(cx);
+                cx.notify();
+            })
+            .ok();
         })
         .detach();
     }
 
-    fn delete_connection(&mut self, name: String, cx: &mut Context<Self>) {
+    fn delete_connection(&mut self, connection: SavedConnection, cx: &mut Context<Self>) {
         if !self.store.read(cx).is_loaded() {
             self.error = Some(LOADING_ERROR.into());
             cx.notify();
             return;
         }
-        let write = self.store.update(cx, |store, cx| {
+        let name = connection.name.clone();
+        let credentials = self.credentials.clone();
+        let url = quick_connect_credentials::credential_url(&connection);
+        let (write, password_still_used) = self.store.update(cx, |store, cx| {
             let mut file = store.file().clone();
             file.connections.retain(|candidate| candidate.name != name);
-            store.write(file, cx)
+            // Credentials are keyed by target, not by entry name, so a second
+            // entry for the same host:port is still using this password.
+            let still_used = file
+                .connections
+                .iter()
+                .any(|candidate| quick_connect_credentials::credential_url(candidate) == url);
+            (store.write(file, cx), still_used)
         });
-        cx.spawn(async move |_, _| {
+        cx.spawn(async move |this, cx| {
             write.await.log_err();
+            // Deleting the entry takes its password with it; otherwise a later
+            // entry for the same host would silently inherit it.
+            if !password_still_used {
+                credentials.forget(&connection, cx).await.log_err();
+            }
+            this.update(cx, |this, cx| this.refresh_stored_passwords(cx))
+                .ok();
         })
         .detach();
     }
@@ -2328,8 +2492,39 @@ impl QuickConnectModal {
             .and_then(|name| self.store.read(cx).macro_named(name).cloned());
         let start_log = connection.log.unwrap_or(false);
         let workspace = self.workspace.clone();
+
+        // A password typed here is used for this connection whether or not it
+        // is remembered; remembering only decides if it is also written to the
+        // credential store. Encrypting it up front keeps the plaintext out of
+        // the task that runs after the modal is gone.
+        let typed_password = self.typed_password(cx);
+        let password = typed_password
+            .as_deref()
+            .and_then(|password| StoredPassword::try_from(password).log_err());
+        if self.remember_password
+            && let Some(typed_password) = typed_password
+        {
+            let credentials = self.credentials.clone();
+            let connection = connection.clone();
+            cx.spawn(async move |_, cx| {
+                credentials
+                    .store(&connection, &typed_password, cx)
+                    .await
+                    .log_err();
+            })
+            .detach();
+        }
+
         cx.emit(DismissEvent);
-        connect_and_run(workspace, connection, terminal_macro, start_log, window, cx);
+        connect_and_run_with_password(
+            workspace,
+            connection,
+            terminal_macro,
+            start_log,
+            password,
+            window,
+            cx,
+        );
     }
 
     /// Hands the form's host over to the file transfer screen (ADR-F28)
@@ -2383,12 +2578,36 @@ pub fn connect_and_run(
     window: &mut Window,
     cx: &mut App,
 ) {
+    connect_and_run_with_password(
+        workspace,
+        connection,
+        terminal_macro,
+        start_log,
+        None,
+        window,
+        cx,
+    );
+}
+
+/// [`connect_and_run`] with a password that has not been stored yet — what
+/// 「接続」 uses for a password typed into the modal. When `password` is `None`
+/// and the connection remembers one, it is read from the credential store
+/// instead (ADR-F28).
+pub fn connect_and_run_with_password(
+    workspace: WeakEntity<Workspace>,
+    connection: SavedConnection,
+    terminal_macro: Option<TerminalMacro>,
+    start_log: bool,
+    password: Option<StoredPassword>,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let Some(workspace_entity) = workspace.upgrade() else {
         return;
     };
     workspace_entity.update(cx, |_, cx| {
         cx.spawn_in(window, async move |workspace, cx| {
-            let (program, args) = connection.command();
+            let (program, mut args) = connection.command();
             let lookup_program = program.clone();
             let found = cx
                 .background_spawn(async move { which::which(&lookup_program) })
@@ -2401,6 +2620,55 @@ pub fn connect_and_run(
                 return;
             }
 
+            let password = match password {
+                Some(password) => Some(password),
+                None if connection.remember_password => {
+                    match cx.update(|_, cx| zed_credentials_provider::global(cx)) {
+                        Ok(provider) => {
+                            QuickConnectCredentials::new(provider)
+                                .lookup(&connection, cx)
+                                .await
+                        }
+                        // The window went away while we were looking up the
+                        // program; there is nothing left to connect to.
+                        Err(_) => return,
+                    }
+                }
+                None => None,
+            };
+
+            // SSH takes the password out of band over an askpass socket, so it
+            // never travels through the PTY. Telnet has no such door and is
+            // answered after the terminal is up.
+            let askpass = match (&password, connection.protocol) {
+                (Some(password), ConnectionProtocol::Ssh) => {
+                    let executor = cx.background_executor().clone();
+                    match quick_connect_credentials::stored_password_proxy(
+                        password.clone(),
+                        executor,
+                    )
+                    .await
+                    {
+                        Ok(askpass) => Some(askpass),
+                        Err(error) => {
+                            log::warn!("askpass の準備に失敗しました: {error:#}");
+                            None
+                        }
+                    }
+                }
+                _ => None,
+            };
+            let mut env = collections::HashMap::default();
+            if let Some(askpass) = &askpass {
+                env.extend(askpass.env.clone());
+                let mut with_options = quick_connect_credentials::SSH_STORED_PASSWORD_ARGS
+                    .iter()
+                    .map(|option| option.to_string())
+                    .collect::<Vec<_>>();
+                with_options.append(&mut args);
+                args = with_options;
+            }
+
             let label = format!("{} ({})", connection.host, connection.protocol.label());
             let spawn_task = SpawnInTerminal {
                 id: TaskId(format!("terminal::quick-connect::{}", connection.name)),
@@ -2409,6 +2677,7 @@ pub fn connect_and_run(
                 command: Some(program),
                 args,
                 command_label: label,
+                env,
                 use_new_terminal: true,
                 allow_concurrent_runs: true,
                 reveal: RevealStrategy::Always,
@@ -2443,6 +2712,25 @@ pub fn connect_and_run(
             let Some(terminal) = terminal.upgrade() else {
                 return;
             };
+
+            match (askpass, password) {
+                (Some(askpass), _) => {
+                    let proxy = askpass.proxy;
+                    terminal.update(cx, |terminal, _| terminal.hold_askpass_proxy(proxy));
+                    report_askpass_outcomes(workspace.clone(), askpass.outcomes, cx);
+                }
+                (None, Some(password)) if connection.protocol == ConnectionProtocol::Telnet => {
+                    quick_connect_credentials::answer_telnet_login(
+                        &terminal,
+                        connection.user.clone(),
+                        password,
+                        cx,
+                    )
+                    .detach();
+                }
+                (None, _) => {}
+            }
+
             finish_connection(
                 workspace,
                 terminal,
@@ -2454,6 +2742,33 @@ pub fn connect_and_run(
         })
         .detach();
     });
+}
+
+/// Turns what the askpass proxy refused into a message the user can act on.
+/// Ends by itself once the proxy is dropped with the terminal.
+fn report_askpass_outcomes(
+    workspace: WeakEntity<Workspace>,
+    mut outcomes: futures::channel::mpsc::UnboundedReceiver<
+        quick_connect_credentials::AskPassOutcome,
+    >,
+    cx: &mut AsyncWindowContext,
+) {
+    cx.spawn(async move |cx| {
+        while let Some(outcome) = outcomes.next().await {
+            let Some(message) = outcome.message() else {
+                continue;
+            };
+            if workspace
+                .update(cx, |workspace, cx| {
+                    workspace.show_error(message.to_string(), cx)
+                })
+                .is_err()
+            {
+                return;
+            }
+        }
+    })
+    .detach();
 }
 
 fn finish_connection(
@@ -2559,23 +2874,25 @@ impl QuickConnectModal {
                     );
                 }
             }
-            let name = connection.name.clone();
             let detail = format!(
                 "{} {}:{}",
                 connection.protocol.label(),
                 connection.host,
                 connection.port_or_default()
             );
+            let has_password = self.has_stored_password(&connection);
+            let applied = connection.clone();
+            let deleted = connection.clone();
             list = list.child(
                 h_flex()
                     .w_full()
                     .gap_1()
                     .justify_between()
                     .child(
-                        Button::new(("saved-connection", index), name.clone())
+                        Button::new(("saved-connection", index), connection.name.clone())
                             .full_width()
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.apply_connection(&connection, window, cx);
+                                this.apply_connection(&applied, window, cx);
                             })),
                     )
                     .child(
@@ -2583,12 +2900,29 @@ impl QuickConnectModal {
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
+                    .when(has_password, |this| {
+                        this.child(
+                            Label::new("保存済み")
+                                .size(LabelSize::XSmall)
+                                .color(Color::Accent),
+                        )
+                        .child(
+                            IconButton::new(("forget-password", index), IconName::LockOff)
+                                .icon_size(IconSize::Small)
+                                .tooltip(Tooltip::text("この接続先の保存済みパスワードを消します"))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.forget_password(connection.clone(), cx);
+                                })),
+                        )
+                    })
                     .child(
                         IconButton::new(("delete-connection", index), IconName::Trash)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("この接続先を削除します"))
+                            .tooltip(Tooltip::text(
+                                "この接続先を削除します (保存済みパスワードも消えます)",
+                            ))
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.delete_connection(name.clone(), cx);
+                                this.delete_connection(deleted.clone(), cx);
                             })),
                     ),
             );
@@ -2646,6 +2980,19 @@ impl Render for QuickConnectModal {
 
         let protocol = self.protocol;
         let saved = self.render_saved_connections(cx);
+        let field = |editor: &Entity<Editor>, window: &mut Window, cx: &mut Context<Self>| {
+            input_frame(editor.focus_handle(cx).contains_focused(window, cx), cx)
+                .child(editor.clone())
+        };
+        let host_field = field(&self.host, window, cx);
+        let port_field = field(&self.port, window, cx).w(rems(5.));
+        let user_field = field(&self.user, window, cx);
+        let password_field = field(&self.password, window, cx);
+        let name_field = field(&self.name, window, cx);
+        let folder_field = field(&self.folder, window, cx);
+        // The user name is what the stored password is filed under, so telnet
+        // needs the field visible as soon as one is being remembered.
+        let show_user = protocol == ConnectionProtocol::Ssh || self.remember_password;
 
         v_flex()
             .w(rems(38.))
@@ -2698,17 +3045,16 @@ impl Render for QuickConnectModal {
                                 .child(
                                     h_flex()
                                         .gap_2()
-                                        .child(div().flex_1().child(self.host.clone()))
+                                        .child(host_field.flex_1())
                                         .child(
                                             Label::new("ポート")
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(div().w(rems(5.)).child(self.port.clone())),
+                                        .child(port_field),
                                 )
-                                .when(protocol == ConnectionProtocol::Ssh, |this| {
-                                    this.child(self.user.clone())
-                                })
+                                .when(show_user, |this| this.child(user_field))
+                                .child(password_field)
                                 .child(
                                     h_flex()
                                         .gap_2()
@@ -2727,20 +3073,45 @@ impl Render for QuickConnectModal {
                                         ),
                                 )
                                 .child(
-                                    Checkbox::new("quick-connect-log", self.log.into())
-                                        .label("ログを記録する")
-                                        .on_click(cx.listener(
-                                            |this, state: &ToggleState, _, cx| {
-                                                let checked = *state == ToggleState::Selected;
-                                                if this.log != checked {
-                                                    this.log = checked;
-                                                    cx.notify();
-                                                }
-                                            },
-                                        )),
+                                    h_flex()
+                                        .gap_3()
+                                        .child(
+                                            Checkbox::new("quick-connect-log", self.log.into())
+                                                .label("ログを記録する")
+                                                .on_click(cx.listener(
+                                                    |this, state: &ToggleState, _, cx| {
+                                                        let checked =
+                                                            *state == ToggleState::Selected;
+                                                        if this.log != checked {
+                                                            this.log = checked;
+                                                            cx.notify();
+                                                        }
+                                                    },
+                                                )),
+                                        )
+                                        .child(
+                                            Checkbox::new(
+                                                "quick-connect-remember-password",
+                                                self.remember_password.into(),
+                                            )
+                                            .label("パスワードを記憶する")
+                                            .tooltip(Tooltip::text(
+                                                "パスワードは OS の資格情報マネージャーに保存され、\
+                                                 terminal_sessions.json には書き込まれません",
+                                            ))
+                                            .on_click(cx.listener(
+                                                |this, state: &ToggleState, _, cx| {
+                                                    let checked = *state == ToggleState::Selected;
+                                                    if this.remember_password != checked {
+                                                        this.remember_password = checked;
+                                                        cx.notify();
+                                                    }
+                                                },
+                                            )),
+                                        ),
                                 )
-                                .child(self.name.clone())
-                                .child(self.folder.clone())
+                                .child(name_field)
+                                .child(folder_field)
                                 .when_some(self.error.clone(), |this, error| {
                                     this.child(Label::new(error).color(Color::Error))
                                 }),
@@ -2843,6 +3214,14 @@ mod tests {
         gpui::WindowHandle<MultiWorkspace>,
     ) {
         init_test(cx);
+        // `terminal.starts_open` defaults to true, so a panel added by a test
+        // would open and spawn a shell of its own — a real PTY whose reader
+        // thread then schedules onto the test's foreground executor.
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.terminal.get_or_insert_default().starts_open = Some(false);
+            });
+        });
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree(
             path!("/config"),

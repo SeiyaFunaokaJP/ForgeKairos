@@ -194,6 +194,30 @@ impl BookmarksFile {
         Some(moved)
     }
 
+    /// 兄弟の中で `to_index` の**手前**へ動かす (ドラッグ＆ドロップの挿入位置)。
+    /// `to_index` は取り除く前の添字で数えるので、自分より後ろを指したときは
+    /// 取り除いた分だけ 1 つ手前に補正する。動かない位置を指しても失敗にはしない。
+    pub fn reorder_within_parent(
+        &mut self,
+        path: &[usize],
+        to_index: usize,
+    ) -> Option<BookmarkPath> {
+        let (&index, parent) = path.split_last()?;
+        let items = self.items_in_mut(parent)?;
+        if index >= items.len() {
+            return None;
+        }
+        let target = to_index.min(items.len());
+        let target = if target > index { target - 1 } else { target };
+        if target != index {
+            let node = items.remove(index);
+            items.insert(target, node);
+        }
+        let mut moved = parent.to_vec();
+        moved.push(target);
+        Some(moved)
+    }
+
     /// 別のフォルダー (空の添字列 = 根) の末尾へ移す。
     /// 自分自身や自分の子孫へは移せない。
     pub fn move_to_folder(&mut self, path: &[usize], folder: &[usize]) -> Option<BookmarkPath> {
@@ -571,6 +595,53 @@ mod tests {
         assert_eq!(file.move_within_parent(&[0], -1), None);
         assert_eq!(file.move_within_parent(&[1], 1), None);
         assert_eq!(file.move_within_parent(&[1, 0], 1), None);
+    }
+
+    #[test]
+    fn siblings_can_be_dropped_at_an_insertion_point() {
+        let mut file = sample();
+        // 末尾 (兄弟の数と同じ添字) に落とすと最後尾へ。
+        assert_eq!(
+            file.reorder_within_parent(&[0], 2).as_deref(),
+            Some([1].as_slice())
+        );
+        assert_eq!(file.node(&[1]).map(BookmarkNode::name), Some("Google"));
+        // 先頭へ戻す。
+        assert_eq!(
+            file.reorder_within_parent(&[1], 0).as_deref(),
+            Some([0].as_slice())
+        );
+        assert_eq!(file, sample());
+        // 自分自身の直前 / 直後は「動かない位置」。失敗にはしない。
+        assert_eq!(
+            file.reorder_within_parent(&[0], 0).as_deref(),
+            Some([0].as_slice())
+        );
+        assert_eq!(
+            file.reorder_within_parent(&[0], 1).as_deref(),
+            Some([0].as_slice())
+        );
+        assert_eq!(file, sample());
+    }
+
+    #[test]
+    fn dropping_outside_the_bar_does_not_move_anything() {
+        let mut file = sample();
+        // 兄弟の数を超える挿入位置は末尾に丸める。
+        assert_eq!(
+            file.reorder_within_parent(&[0], 99).as_deref(),
+            Some([1].as_slice())
+        );
+        // 根そのもの・存在しない位置・ブックマークの中は動かせない。
+        assert_eq!(file.reorder_within_parent(&[], 0), None);
+        assert_eq!(file.reorder_within_parent(&[9], 0), None);
+        assert_eq!(file.reorder_within_parent(&[1, 0], 0), None);
+        // 入れ子の中でも兄弟の並びだけが変わる。
+        assert_eq!(
+            file.reorder_within_parent(&[0, 1], 0).as_deref(),
+            Some([0, 0].as_slice())
+        );
+        assert_eq!(file.node(&[0, 0]).map(BookmarkNode::name), Some("社内"));
     }
 
     #[test]

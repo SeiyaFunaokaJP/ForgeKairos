@@ -6230,7 +6230,21 @@ mod tests {
 
             gpui_tokio::init(cx);
             AppState::set_global(app_state.clone(), cx);
+            // Without a per-`App` database these tests fall back to the shared
+            // `TEST_APP_DATABASE`. `WindowId`s restart at 1 in every
+            // `TestAppContext`, so concurrently running tests would read and
+            // overwrite each other's `multi_workspace_state/<window_id>` rows and
+            // workspace rows, which shows up as project groups from a different
+            // test appearing in a restored window.
+            cx.set_global(db::AppDatabase::test_new());
             theme_settings::init(theme::LoadThemes::JustBase, cx);
+            // `terminal.starts_open` は既定 true (第 11 便 ⑩) だが、テストで本物の
+            // PTY が立つと test scheduler が「別スレッドの活動」を検出して落ちる。
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.terminal.get_or_insert_default().starts_open = Some(false);
+                });
+            });
             audio::init(cx);
             channel::init(&app_state.client, app_state.user_store.clone(), cx);
             notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);

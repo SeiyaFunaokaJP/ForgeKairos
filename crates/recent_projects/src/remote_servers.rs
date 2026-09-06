@@ -426,6 +426,7 @@ impl ProjectPicker {
             // dependent's dev-dependency can do without this crate's own
             // `test-support` — so a `#[cfg]`-gated arm for it leaves the match
             // non-exhaustive under `--all-targets`.
+            #[allow(unreachable_patterns)]
             other => ProjectPickerData::Ssh {
                 connection_string: other.display_name().into(),
                 nickname: None,

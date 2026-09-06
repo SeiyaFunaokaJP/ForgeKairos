@@ -12,3 +12,4 @@ crates/zed/resources/windows/zed.sh text eol=lf
 *.json text eol=lf
 *.scm text eol=lf
 *.txt text eol=lf
+*.proto text eol=lf

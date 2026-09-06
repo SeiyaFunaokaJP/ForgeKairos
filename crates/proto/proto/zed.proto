@@ -9,6 +9,7 @@ import "channel.proto";
 import "core.proto";
 import "debugger.proto";
 import "download.proto";
+import "file_transfer.proto";
 import "git.proto";
 import "image.proto";
 import "lsp.proto";
@@ -512,7 +513,15 @@ message Envelope {
     GitRunCommand git_run_command = 481;
     GitRunCommandResponse git_run_command_response = 482;
     ProxyHttpRequest proxy_http_request = 483;
-    ProxyHttpResponse proxy_http_response = 484; // current max
+    ProxyHttpResponse proxy_http_response = 484;
+    RunTransferCommand run_transfer_command = 485;
+    RunTransferCommandResponse run_transfer_command_response = 486;
+    CancelTransferCommand cancel_transfer_command = 487;
+    TransferAskPassRequest transfer_ask_pass_request = 488;
+    TransferAskPassResponse transfer_ask_pass_response = 489;
+    ListTransferDirectory list_transfer_directory = 490;
+    ListTransferDirectoryResponse list_transfer_directory_response = 491;
+    TransferFileOperation transfer_file_operation = 492; // current max
   }
 
   reserved 87 to 88;

@@ -2,6 +2,7 @@ mod mappings;
 
 mod alacritty;
 mod pty_info;
+pub mod quick_connect_credentials;
 pub mod remote_cwd;
 pub mod session_log;
 pub mod terminal_macro;
@@ -1010,6 +1011,7 @@ impl TerminalBuilder {
             vi_mode_enabled: false,
             is_remote_terminal: false,
             connection_origin: None,
+            _askpass_proxy: None,
             last_mouse_move_time: Instant::now(),
             last_hyperlink_search_position: None,
             mouse_down_hyperlink: None,
@@ -1302,6 +1304,7 @@ impl TerminalBuilder {
                 vi_mode_enabled: false,
                 is_remote_terminal,
                 connection_origin: None,
+                _askpass_proxy: None,
                 last_mouse_move_time: Instant::now(),
                 last_hyperlink_search_position: None,
                 mouse_down_hyperlink: None,
@@ -1518,6 +1521,10 @@ pub struct Terminal {
     /// (ADR-F28). Kept so the file-transfer screen can pre-fill host / port /
     /// user without the user retyping them.
     connection_origin: Option<crate::terminal_macro::SavedConnection>,
+    /// Askpass socket feeding a remembered password to this terminal's `ssh`
+    /// (ADR-F28). Kept for the terminal's whole life because `ssh` re-asks on
+    /// every reconnect attempt, and a dropped socket would hang it.
+    _askpass_proxy: Option<Arc<askpass::PasswordProxy>>,
     last_mouse_move_time: Instant,
     last_hyperlink_search_position: Option<GpuiPoint<Pixels>>,
     mouse_down_hyperlink: Option<HyperlinkMatch>,
@@ -2102,18 +2109,43 @@ impl Terminal {
     /// (This is a no-op for display-only terminals.)
     fn write_to_pty(&self, input: impl Into<Cow<'static, [u8]>>) {
         let input = input.into();
+        if let TerminalType::Pty { .. } = &self.terminal_type
+            && log::log_enabled!(log::Level::Debug)
+        {
+            if let Ok(str) = str::from_utf8(&input) {
+                log::debug!("Writing to PTY: {:?}", str);
+            } else {
+                log::debug!("Writing to PTY: {:?}", input);
+            }
+        }
+        self.write_to_pty_unlogged(input);
+    }
+
+    /// [`Self::write_to_pty`] without the debug log line, for payloads that
+    /// must not end up in `Zed.log` even with debug logging turned on.
+    fn write_to_pty_unlogged(&self, input: Cow<'static, [u8]>) {
         #[cfg(any(test, feature = "test-support"))]
         self.pty_write_log.borrow_mut().push(input.to_vec());
         if let TerminalType::Pty { pty_tx, .. } = &self.terminal_type {
-            if log::log_enabled!(log::Level::Debug) {
-                if let Ok(str) = str::from_utf8(&input) {
-                    log::debug!("Writing to PTY: {:?}", str);
-                } else {
-                    log::debug!("Writing to PTY: {:?}", input);
-                }
-            }
             pty_tx.notify(input);
         }
+    }
+
+    /// Types a secret followed by Enter, the way a password prompt expects it.
+    ///
+    /// Unlike [`Self::write_init_command`] this never reaches the debug log,
+    /// because the payload is a password (ADR-F28). Two leaks remain and cannot
+    /// be closed from here: the bytes are handed to the PTY writer, which is
+    /// free to keep them until the write completes, and a device that echoes
+    /// what it receives will put the password in the terminal's own output —
+    /// and therefore in a running session log.
+    pub fn write_secret(&mut self, secret: &str) {
+        let mut bytes = Vec::with_capacity(secret.len() + 1);
+        bytes.extend_from_slice(secret.as_bytes());
+        bytes.push(b'\r');
+        self.events.push_back(InternalEvent::Scroll(Scroll::Bottom));
+        self.events.push_back(InternalEvent::SetSelection(None));
+        self.write_to_pty_unlogged(bytes.into());
     }
 
     pub fn input(&mut self, input: impl Into<Cow<'static, [u8]>>) {
@@ -2230,6 +2262,23 @@ impl Terminal {
         self.session_log.as_ref().map(SessionLog::path)
     }
 
+    /// Stops a running session log from recording, without stopping the log.
+    ///
+    /// Wrapped around a password written with [`Self::write_secret`] (ADR-F29):
+    /// the log taps the PTY's *read* side, so a device that echoes what it is
+    /// sent would otherwise put the password in the file. Only what the log
+    /// records is affected — the terminal grid still shows everything.
+    ///
+    /// Must be paired with [`Self::resume_session_log`].
+    pub fn pause_session_log(&self) {
+        self.session_log_tap.pause();
+    }
+
+    /// Resumes recording and notes the gap in the file.
+    pub fn resume_session_log(&self) {
+        self.session_log_tap.resume();
+    }
+
     /// The timestamp flag of the running log, which the recording strip flips
     /// without restarting the log.
     pub fn session_log_timestamps(&self) -> Option<&session_log::TimestampFlag> {
@@ -2295,7 +2344,9 @@ impl Terminal {
         std::mem::take(self.pty_write_log.get_mut())
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    /// Whether anything has been typed into this terminal by hand. Automation
+    /// (the macro engine, the quick-connect login watcher) checks this before
+    /// writing, so it never types into the middle of what the user is doing.
     pub fn keyboard_input_sent(&self) -> bool {
         self.keyboard_input_sent
     }
@@ -3138,6 +3189,14 @@ impl Terminal {
     /// The quick-connect entry this terminal was started from (ADR-F28).
     pub fn connection_origin(&self) -> Option<&crate::terminal_macro::SavedConnection> {
         self.connection_origin.as_ref()
+    }
+
+    /// Ties an askpass socket to this terminal's lifetime. See
+    /// [`crate::quick_connect_credentials::stored_password_proxy`]: the socket
+    /// has to outlive the `ssh` process it feeds, and the process dies with the
+    /// terminal.
+    pub fn hold_askpass_proxy(&mut self, proxy: Arc<askpass::PasswordProxy>) {
+        self._askpass_proxy = Some(proxy);
     }
 
     /// Recognizes the exit of a remote shell whose `ssh` process was killed by a
@@ -4829,6 +4888,38 @@ mod tests {
         );
         let input_log = terminal.update(cx, |terminal, _| terminal.take_input_log());
         assert_eq!(input_log, vec![b"user input".to_vec()]);
+    }
+
+    #[gpui::test]
+    async fn test_write_secret_types_the_secret_without_claiming_keyboard_input(
+        cx: &mut TestAppContext,
+    ) {
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                SettingsCursorShape::default(),
+                AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+
+        terminal.update(cx, |terminal, _| terminal.write_secret("hunter2"));
+
+        let (input_log, pty_log, typed) = terminal.update(cx, |terminal, _| {
+            (
+                terminal.take_input_log(),
+                terminal.take_pty_write_log(),
+                terminal.keyboard_input_sent(),
+            )
+        });
+        assert_eq!(pty_log, vec![b"hunter2\r".to_vec()]);
+        // The generic input log feeds the debug-visible paths, which a password
+        // must stay out of.
+        assert!(input_log.is_empty());
+        assert!(!typed);
     }
 
     #[gpui::test]

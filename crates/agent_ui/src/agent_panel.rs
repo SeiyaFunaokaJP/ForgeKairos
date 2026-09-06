@@ -1776,8 +1776,8 @@ impl AgentPanel {
 
                 workspace_read.all_docks().iter().any(|dock| {
                     dock.read(cx)
-                        .visible_panel()
-                        .is_some_and(|visible_panel| visible_panel.panel_id() == panel_id)
+                        .visible_panels()
+                        .any(|visible_panel| visible_panel.panel_id() == panel_id)
                 })
             })
             .unwrap_or(false)

@@ -326,6 +326,7 @@ pub async fn open_remote_project(
                                 // can do without this crate's own `test-support`
                                 // — so a `#[cfg]`-gated arm for it leaves the
                                 // match non-exhaustive under `--all-targets`.
+                                #[allow(unreachable_patterns)]
                                 _ => "リモートホストに接続できませんでした",
                             },
                             Some(&format!("{e:#}")),
@@ -389,6 +390,7 @@ pub async fn open_remote_project(
                                 // can do without this crate's own `test-support`
                                 // — so a `#[cfg]`-gated arm for it leaves the
                                 // match non-exhaustive under `--all-targets`.
+                                #[allow(unreachable_patterns)]
                                 _ => "リモートホストに接続できませんでした",
                             },
                             Some(&format!("{e:#}")),

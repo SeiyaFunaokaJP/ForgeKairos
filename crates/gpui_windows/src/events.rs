@@ -391,6 +391,29 @@ impl WindowsWindowInner {
                 .set(Some(callback));
         }
 
+        // The element tree only learns about the cursor from mouse moves, and no
+        // more of them arrive once the cursor sits over a child window (the
+        // browser panel's WebView2 surface) or another application. Without this
+        // the last position stays current, so hover styles and tooltips - which
+        // gpui re-evaluates from `Window::mouse_position` during prepaint - stay
+        // up until the cursor comes back. Report a move to a position no element
+        // can contain instead, through the regular input path so the window also
+        // redraws.
+        //
+        // A held button means a drag is in flight: those keep receiving moves
+        // through the mouse capture, and a move without a pressed button would
+        // read as the drag having ended.
+        if !any_mouse_button_pressed()
+            && let Some(mut func) = self.state.callbacks.input.take()
+        {
+            func(PlatformInput::MouseMove(MouseMoveEvent {
+                position: point(px(-1.), px(-1.)),
+                pressed_button: None,
+                modifiers: current_modifiers(),
+            }));
+            self.state.callbacks.input.set(Some(func));
+        }
+
         Some(0)
     }
 
@@ -1756,6 +1779,14 @@ fn should_use_ime_cursor_position(ctx: HIMC, cursor_pos: usize) -> bool {
 #[inline]
 fn is_virtual_key_pressed(vkey: VIRTUAL_KEY) -> bool {
     unsafe { GetKeyState(vkey.0 as i32) < 0 }
+}
+
+/// Whether any mouse button is down right now. `GetKeyState` is used rather
+/// than tracked state because `WM_MOUSELEAVE` carries no button information.
+fn any_mouse_button_pressed() -> bool {
+    [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2]
+        .into_iter()
+        .any(is_virtual_key_pressed)
 }
 
 #[inline]

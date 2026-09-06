@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result, anyhow};
+use askpass::{AskPassDelegate, AskPassSession, EncryptedPassword};
 use client::ProjectId;
 use collections::HashMap;
 use collections::HashSet;
@@ -10,7 +11,8 @@ use client::ProxySettings;
 use egress_policy::child_process_proxy::Supervisor as ChildProcessProxySupervisor;
 use extension::ExtensionHostProxy;
 use extension_host::headless_host::HeadlessExtensionStore;
-use fs::Fs;
+use fs::{Fs, RemoveOptions, RenameOptions};
+use futures::channel::oneshot;
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, PromptLevel, TaskExt};
 use http_client::{EgressPolicy, EgressPolicyHandle, HttpClient};
 use language::{Buffer, BufferEvent, LanguageRegistry, proto::serialize_operation};
@@ -51,6 +53,7 @@ use std::{
 use sysinfo::{ProcessRefreshKind, RefreshKind, System, UpdateKind};
 use util::{ResultExt, paths::PathStyle, rel_path::RelPath};
 use worktree::Worktree;
+use zeroize::Zeroize as _;
 
 pub struct HeadlessProject {
     pub fs: Arc<dyn Fs>,
@@ -88,6 +91,11 @@ pub struct HeadlessProject {
     // Local variant is used within LSP store, but that's a separate entity.
     pub _toolchain_store: Entity<ToolchainStore>,
     pub kernels: HashMap<String, Child>,
+    /// ADR-F28: the transfer commands (`sftp` / `scp` / `curl`) this host is
+    /// running for the IDE's file transfer screen. Sending on the channel
+    /// makes the handler drop its child, which `kill_on_drop` then kills — the
+    /// child itself cannot live here, because awaiting its output consumes it.
+    transfer_commands: HashMap<u64, oneshot::Sender<()>>,
 }
 
 pub struct HeadlessAppState {
@@ -358,6 +366,13 @@ impl HeadlessProject {
         session.add_request_handler(cx.weak_entity(), Self::handle_spawn_kernel);
         session.add_request_handler(cx.weak_entity(), Self::handle_kill_kernel);
 
+        // ADR-F28: the IDE's file transfer screen, using this host as its
+        // "local" side.
+        session.add_request_handler(cx.weak_entity(), Self::handle_run_transfer_command);
+        session.add_request_handler(cx.weak_entity(), Self::handle_cancel_transfer_command);
+        session.add_request_handler(cx.weak_entity(), Self::handle_list_transfer_directory);
+        session.add_request_handler(cx.weak_entity(), Self::handle_transfer_file_operation);
+
         BufferStore::init(&session);
         WorktreeStore::init(&session);
         SettingsObserver::init(&session);
@@ -393,6 +408,7 @@ impl HeadlessProject {
             profiling_collector: gpui::ProfilingCollector::new(startup_time),
             _toolchain_store: toolchain_store,
             kernels: Default::default(),
+            transfer_commands: Default::default(),
         }
     }
 
@@ -1085,6 +1101,222 @@ impl HeadlessProject {
         Ok(proto::Ack {})
     }
 
+    /// ADR-F28: runs one transfer program on this host on behalf of the IDE's
+    /// file transfer screen, so the screen's "local" pane can be this machine
+    /// instead of the Windows IDE's.
+    ///
+    /// The user pressed a button to get here, which ADR-F18 / F19 class with
+    /// typing into a terminal, so the process is **not** put behind the egress
+    /// proxy. What keeps that from being a general remote-exec hole is
+    /// [`ALLOWED_TRANSFER_PROGRAMS`] plus the absence of a shell: the program
+    /// and its arguments are passed to `execvp` as given.
+    async fn handle_run_transfer_command(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::RunTransferCommand>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::RunTransferCommandResponse> {
+        use futures::{AsyncWriteExt as _, FutureExt as _, select_biased};
+
+        let payload = envelope.payload;
+        anyhow::ensure!(
+            ALLOWED_TRANSFER_PROGRAMS.contains(&payload.program.as_str()),
+            "リモートでは {} を実行できません。",
+            payload.program
+        );
+        let command_id = payload.command_id;
+        let session = this.read_with(&cx, |this, _| this.session.clone());
+
+        let mut command = util::command::new_command(&payload.program);
+        command
+            .args(&payload.args)
+            .stdin(if payload.stdin.is_some() {
+                std::process::Stdio::piped()
+            } else {
+                // `scp` has nothing to read; leaving a pipe open would only
+                // give it something to block on.
+                std::process::Stdio::null()
+            })
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        if let Some(working_directory) = payload.cwd.as_deref() {
+            command.current_dir(working_directory);
+        }
+
+        // Held for as long as the process runs: the helper script it writes
+        // lives in a temporary directory that this value owns.
+        let mut askpass = if payload.wants_askpass {
+            let delegate = transfer_askpass_delegate(session, command_id, &mut cx);
+            let askpass = AskPassSession::new(cx.background_executor().clone(), delegate).await?;
+            command
+                .env("SSH_ASKPASS", askpass.script_path())
+                // OpenSSH 8.4+: ask even though this process has no DISPLAY.
+                .env("SSH_ASKPASS_REQUIRE", "force");
+            Some(askpass)
+        } else {
+            None
+        };
+
+        let mut child = command.spawn().with_context(|| {
+            format!(
+                "リモートで {} を実行できませんでした。\
+                 インストールされているか確認してください。",
+                payload.program
+            )
+        })?;
+        if let Some(stdin) = payload.stdin {
+            let mut handle = child.stdin.take().context("標準入力を開けませんでした")?;
+            handle.write_all(stdin.as_bytes()).await?;
+            handle.flush().await?;
+            drop(handle);
+        }
+
+        let (cancellation_sender, cancellation) = oneshot::channel::<()>();
+        this.update(&mut cx, |this, _| {
+            this.transfer_commands
+                .insert(command_id, cancellation_sender);
+        });
+
+        // No timeout on `run`: a transfer may legitimately go a long time
+        // without prompting, and the connect timeout in the arguments already
+        // bounds the unreachable-host case.
+        let output = match askpass.as_mut() {
+            Some(askpass) => select_biased! {
+                _ = askpass.run(None).fuse() => None,
+                _ = cancellation.fuse() => None,
+                output = child.output().fuse() => Some(output?),
+            },
+            None => select_biased! {
+                _ = cancellation.fuse() => None,
+                output = child.output().fuse() => Some(output?),
+            },
+        };
+        this.update(&mut cx, |this, _| {
+            this.transfer_commands.remove(&command_id);
+        });
+
+        let Some(output) = output else {
+            return Ok(proto::RunTransferCommandResponse {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: None,
+                cancelled: true,
+            });
+        };
+        Ok(proto::RunTransferCommandResponse {
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            exit_code: output.status.code(),
+            cancelled: false,
+        })
+    }
+
+    async fn handle_cancel_transfer_command(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::CancelTransferCommand>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::Ack> {
+        this.update(&mut cx, |this, _| {
+            // An id that is not here belongs to a command that already ended.
+            if let Some(cancellation) = this.transfer_commands.remove(&envelope.payload.command_id)
+            {
+                cancellation.send(()).ok();
+            }
+        });
+        Ok(proto::Ack {})
+    }
+
+    /// ADR-F28: like `ListRemoteDirectory`, but with the sizes and timestamps
+    /// a file manager pane has to show.
+    async fn handle_list_transfer_directory(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::ListTransferDirectory>,
+        cx: AsyncApp,
+    ) -> Result<proto::ListTransferDirectoryResponse> {
+        use smol::stream::StreamExt as _;
+
+        let fs = cx.read_entity(&this, |this, _| this.fs.clone());
+        let directory = PathBuf::from(shellexpand::tilde(&envelope.payload.path).to_string());
+        let mut children = fs.read_dir(&directory).await?;
+        let mut entries = Vec::new();
+        while let Some(child) = children.next().await {
+            let child = child?;
+            let Some(name) = child
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+            else {
+                continue;
+            };
+            let metadata = fs.metadata(&child).await.ok().flatten();
+            let kind = match &metadata {
+                Some(metadata) if metadata.is_dir => {
+                    proto::TransferEntryKind::TransferEntryDirectory
+                }
+                Some(metadata) if metadata.is_symlink => {
+                    proto::TransferEntryKind::TransferEntrySymlink
+                }
+                _ => proto::TransferEntryKind::TransferEntryFile,
+            };
+            entries.push(proto::TransferEntry {
+                name,
+                kind: kind as i32,
+                size: metadata
+                    .as_ref()
+                    .filter(|metadata| !metadata.is_dir)
+                    .map(|metadata| metadata.len),
+                mtime_epoch_seconds: metadata.as_ref().and_then(|metadata| {
+                    metadata
+                        .mtime
+                        .timestamp_for_user()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .ok()
+                        .map(|since_epoch| since_epoch.as_secs() as i64)
+                }),
+            });
+        }
+        Ok(proto::ListTransferDirectoryResponse { entries })
+    }
+
+    async fn handle_transfer_file_operation(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::TransferFileOperation>,
+        cx: AsyncApp,
+    ) -> Result<proto::Ack> {
+        let fs = cx.read_entity(&this, |this, _| this.fs.clone());
+        let operation = envelope
+            .payload
+            .operation
+            .context("操作が指定されていません")?;
+        match operation {
+            proto::transfer_file_operation::Operation::MakeDirectory(make_directory) => {
+                fs.create_dir(Path::new(&make_directory.path)).await?;
+            }
+            proto::transfer_file_operation::Operation::Rename(rename) => {
+                fs.rename(
+                    Path::new(&rename.from),
+                    Path::new(&rename.to),
+                    RenameOptions::default(),
+                )
+                .await?;
+            }
+            proto::transfer_file_operation::Operation::Remove(remove) => {
+                let path = PathBuf::from(&remove.path);
+                let options = RemoveOptions {
+                    recursive: remove.recursive,
+                    ignore_if_not_exists: false,
+                };
+                // Decided here rather than taken from the client, whose
+                // listing may be stale by now.
+                if fs.is_dir(&path).await {
+                    fs.remove_dir(&path, options).await?;
+                } else {
+                    fs.remove_file(&path, options).await?;
+                }
+            }
+        }
+        Ok(proto::Ack {})
+    }
+
     async fn handle_find_search_candidates(
         this: Entity<Self>,
         envelope: TypedEnvelope<proto::FindSearchCandidates>,
@@ -1425,6 +1657,44 @@ impl HeadlessProject {
             .collect();
         Ok(proto::DirectoryEnvironment { environment })
     }
+}
+
+/// ADR-F28: the only programs the IDE's file transfer screen may start on this
+/// host. `RunTransferCommand` is a remote-exec message in every other respect,
+/// so this list — and the fact that no shell is involved — is what keeps it
+/// from being one.
+const ALLOWED_TRANSFER_PROGRAMS: [&str; 3] = ["sftp", "scp", "curl"];
+
+/// Relays OpenSSH's passphrase / password / host-key questions to the IDE,
+/// which renders them inside the transfer screen. The same shape as the git
+/// askpass relay, but keyed by transfer command rather than by repository.
+fn transfer_askpass_delegate(
+    session: AnyProtoClient,
+    command_id: u64,
+    cx: &mut AsyncApp,
+) -> AskPassDelegate {
+    AskPassDelegate::new(cx, move |prompt, response_sender, cx| {
+        let session = session.clone();
+        cx.spawn(async move |_| {
+            let response = session
+                .request(proto::TransferAskPassRequest {
+                    project_id: REMOTE_SERVER_PROJECT_ID,
+                    command_id,
+                    prompt,
+                })
+                .await;
+            // Dropping `response_sender` without sending is how the askpass
+            // session learns the user declined, which stops the process.
+            let Some(mut secret) = response.log_err().and_then(|response| response.response) else {
+                return;
+            };
+            if let Some(password) = EncryptedPassword::try_from(secret.as_str()).log_err() {
+                response_sender.send(password).ok();
+            }
+            secret.zeroize();
+        })
+        .detach();
+    })
 }
 
 fn prompt_to_proto(

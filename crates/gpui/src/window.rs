@@ -3227,8 +3227,19 @@ impl Window {
             let mouse_position = tooltip_request.tooltip.mouse_position;
             let tooltip_size = element.layout_as_root(AvailableSpace::min_size(), self, cx);
 
-            let mut tooltip_bounds =
-                Bounds::new(mouse_position + point(px(1.), px(1.)), tooltip_size);
+            // The gap that keeps a tooltip clear of the mouse cursor is applied
+            // here rather than as transparent padding inside the tooltip
+            // element: `overlay_bounds` reports `tooltip_bounds` verbatim, and
+            // the Windows browser panel cuts it out of its WebView2 child
+            // window (ADR-F19), so a rectangle larger than what is drawn leaves
+            // the surface underneath showing around the tooltip. The values
+            // match the padding `ui::tooltip_container` used to add.
+            let rem_size = self.rem_size();
+            let cursor_offset = point(
+                rems(0.5).to_pixels(rem_size) + px(1.),
+                rems(0.625).to_pixels(rem_size) + px(1.),
+            );
+            let mut tooltip_bounds = Bounds::new(mouse_position + cursor_offset, tooltip_size);
             let window_bounds = Bounds {
                 origin: Point::default(),
                 size: self.viewport_size(),
@@ -6894,6 +6905,7 @@ mod tests {
         cell::{Cell, RefCell},
         path::PathBuf,
         rc::Rc,
+        time::Duration,
     };
 
     use crate::{
@@ -6969,6 +6981,91 @@ mod tests {
         assert_eq!(
             captured.borrow().as_slice(),
             [Bounds::new(point(px(10.), px(20.)), size(px(30.), px(40.)))]
+        );
+    }
+
+    struct FixedSizeTooltip;
+
+    impl Render for FixedSizeTooltip {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(20.)).h(px(30.))
+        }
+    }
+
+    struct ShowsTooltip {
+        captured: Rc<RefCell<Vec<Bounds<Pixels>>>>,
+    }
+
+    impl Render for ShowsTooltip {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let captured = self.captured.clone();
+            div()
+                .relative()
+                .size_full()
+                .child(
+                    div()
+                        .id("tooltip-source")
+                        .absolute()
+                        .left(px(0.))
+                        .top(px(0.))
+                        .w(px(50.))
+                        .h(px(50.))
+                        .tooltip(|_, cx| cx.new(|_| FixedSizeTooltip).into()),
+                )
+                .child(canvas(
+                    |_, _, _| {},
+                    move |_, _, window, _| {
+                        *captured.borrow_mut() = window.overlay_bounds();
+                    },
+                ))
+        }
+    }
+
+    /// The gap that keeps a tooltip clear of the mouse cursor is part of where
+    /// the tooltip is placed, not transparent padding inside it: the Windows
+    /// browser panel cuts `overlay_bounds` out of the child window hosting
+    /// WebView2 (ADR-F19), so a reported rectangle bigger than the tooltip it
+    /// draws leaves the panel's background showing around the tooltip.
+    #[test]
+    fn test_tooltip_overlay_bounds_are_the_bounds_the_tooltip_draws() {
+        let mut cx = TestAppContext::single();
+
+        let captured: Rc<RefCell<Vec<Bounds<Pixels>>>> = Rc::default();
+        let window = cx.add_window({
+            let captured = captured.clone();
+            move |_, _| ShowsTooltip { captured }
+        });
+        let window = AnyWindowHandle::from(window);
+
+        cx.update_window(window, |_, window, cx| {
+            window.dispatch_event(
+                MouseMoveEvent {
+                    position: point(px(10.), px(10.)),
+                    modifiers: Default::default(),
+                    pressed_button: None,
+                }
+                .to_platform_input(),
+                cx,
+            );
+        })
+        .unwrap();
+
+        // Comfortably past the tooltip show delay.
+        cx.dispatcher.advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+        cx.update_window(window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+
+        // The tooltip is placed 0.5rem right and 0.625rem below the cursor,
+        // plus the one pixel that keeps it off the cursor itself.
+        let expected = Bounds::new(point(px(19.), px(21.)), size(px(20.), px(30.)));
+        let overlays = captured.borrow().clone();
+        assert!(!overlays.is_empty(), "the tooltip reported no overlay");
+        assert!(
+            overlays.iter().all(|bounds| *bounds == expected),
+            "{overlays:?}"
         );
     }
 

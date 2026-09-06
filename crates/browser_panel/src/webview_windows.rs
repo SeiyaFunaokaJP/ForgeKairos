@@ -40,8 +40,8 @@ use windows::{
     Win32::{
         Foundation::{E_POINTER, HWND, LPARAM, POINT, RECT},
         Graphics::Gdi::{
-            CombineRgn, CreateRectRgn, DeleteObject, RGN_DIFF, RGN_ERROR, ScreenToClient,
-            SetWindowRgn,
+            CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, RGN_DIFF, RGN_ERROR,
+            ScreenToClient, SetWindowRgn,
         },
         UI::{
             Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE},
@@ -99,6 +99,14 @@ pub(crate) struct Viewport {
     /// child window; see [`WebView::sync_viewport`].
     pub(crate) overlays: Vec<OverlayRect>,
 }
+
+/// Corner radius of the holes cut for gpui's overlays, in logical pixels.
+///
+/// Tooltips, context menus and popovers are all drawn by `ui::elevation_2`,
+/// which rounds its corners by `rounded_lg` (0.5rem, 8px at the default rem
+/// size). A square hole would expose what gpui painted *under* the overlay -
+/// the panel's own dark background - in the four corners.
+const OVERLAY_CORNER_RADIUS: f64 = 8.;
 
 /// A gpui overlay rectangle in logical pixels, relative to the host window's
 /// client origin - the same space [`Viewport`] uses.
@@ -395,7 +403,15 @@ impl WebView {
     /// child window's region, because the compositor puts the child in front of
     /// gpui's swap chain and a tooltip drawn over the surface would otherwise be
     /// invisible (ADR-F19).
-    pub(crate) fn sync_viewport(&self, viewport: Viewport) {
+    ///
+    /// Returns `true` when cutting those holes was held back: this runs while
+    /// gpui paints, so the frame that draws the overlay has not been presented
+    /// yet, and opening the hole now uncovers the host window (whose class brush
+    /// is black) for one frame. The caller applies it from a next-frame callback
+    /// with [`WebView::apply_deferred_clip`] instead. Removing holes is never
+    /// deferred - it only ever covers more of the surface back up.
+    #[must_use]
+    pub(crate) fn sync_viewport(&self, viewport: Viewport) -> bool {
         let scale = viewport.scale_factor.max(0.1) as f64;
         let (bounds, holes) = viewport_geometry(&viewport);
 
@@ -415,7 +431,13 @@ impl WebView {
             state.visible = hidden_reason.is_none();
             state.hidden_reason = hidden_reason;
         }
-        self.inner.apply_viewport();
+        self.inner.apply_viewport(true)
+    }
+
+    /// Cuts the holes [`WebView::sync_viewport`] held back. Meant to be called
+    /// once the frame that painted the overlays has been presented.
+    pub(crate) fn apply_deferred_clip(&self) {
+        self.inner.apply_clip(false);
     }
 
     /// Hides the surface without touching the cached geometry, so the next
@@ -426,7 +448,7 @@ impl WebView {
             state.visible = false;
             state.hidden_reason = Some(reason);
         }
-        self.inner.apply_viewport();
+        self.inner.apply_viewport(false);
     }
 
     pub(crate) fn navigate(&self, url: &str) {
@@ -586,7 +608,7 @@ impl Inner {
         if let Some(dark) = pending_dark_mode {
             apply_dark_mode(&webview, dark);
         }
-        self.apply_viewport();
+        self.apply_viewport(false);
         // Always take the inventory once, even when the surface stays hidden:
         // it is the one log line that separates "WebView2 never attached" from
         // "the child window exists but is never composited".
@@ -750,13 +772,16 @@ impl Inner {
         self.send(WebViewEvent::PageFocusChanged(focused));
     }
 
-    fn apply_viewport(&self) {
+    /// `defer_cuts` postpones opening holes in the child window; see
+    /// [`WebView::sync_viewport`] for why, and [`Inner::apply_clip`] for what is
+    /// deferred. Returns whether a cut is still outstanding.
+    fn apply_viewport(&self, defer_cuts: bool) -> bool {
         // Collect the deltas, drop the borrow, then talk to WebView2: the calls
         // below can re-enter handlers that write to `state`.
         let (controller, scale, bounds, visible, hidden_reason) = {
             let state = self.state.borrow();
             let Some(controller) = state.controller.clone() else {
-                return;
+                return false;
             };
             (
                 controller,
@@ -819,7 +844,7 @@ impl Inner {
             }
         }
 
-        self.apply_clip();
+        self.apply_clip(defer_cuts)
     }
 
     /// Cuts the gpui overlays out of the child windows WebView2 renders into.
@@ -827,11 +852,16 @@ impl Inner {
     /// Only the controller's own top-level children are touched: the region is
     /// expressed in each window's own coordinates, and clipping the outermost
     /// one clips everything WebView2 nests inside it.
-    fn apply_clip(&self) {
-        let (bounds, holes, children) = {
+    ///
+    /// With `defer_cuts` the region is left alone whenever the new one has any
+    /// hole in it, and `true` is returned so the caller can apply it after the
+    /// overlay has been presented; a region without holes is always applied
+    /// right away, since giving the surface back is never visible as a gap.
+    fn apply_clip(&self, defer_cuts: bool) -> bool {
+        let (bounds, holes, children, scale) = {
             let state = self.state.borrow();
             if state.controller.is_none() || !state.visible {
-                return;
+                return false;
             }
             let unchanged = match state.applied_clip.as_ref() {
                 None => false,
@@ -843,12 +873,16 @@ impl Inner {
                 }
             };
             if unchanged {
-                return;
+                return false;
+            }
+            if defer_cuts && !state.holes.is_empty() {
+                return true;
             }
             (
                 state.bounds,
                 state.holes.clone(),
                 state.owned_children.clone(),
+                state.scale,
             )
         };
 
@@ -859,10 +893,11 @@ impl Inner {
             if unsafe { GetParent(child) }.ok() != Some(self.host_hwnd) {
                 continue;
             }
-            clip_child_window(self.host_hwnd, child, &holes);
+            clip_child_window(self.host_hwnd, child, &holes, scale);
         }
 
         self.state.borrow_mut().applied_clip = Some((bounds, holes));
+        false
     }
 
     fn log_owned_children(&self) {
@@ -1018,6 +1053,19 @@ fn viewport_geometry(viewport: &Viewport) -> (RECT, Vec<RECT>) {
     (bounds, holes)
 }
 
+/// Radius, in physical pixels, of the rounded corners a hole is cut with.
+///
+/// Clamped to half the shorter side: a larger radius would round the hole into
+/// an ellipse that no longer covers the overlay it was cut for. A hole thinner
+/// than a couple of pixels gets square corners instead, since rounding one is
+/// all corner and no hole.
+fn hole_corner_radius(hole: RECT, scale: f64) -> i32 {
+    let half_width = (hole.right - hole.left) / 2;
+    let half_height = (hole.bottom - hole.top) / 2;
+    let radius = (OVERLAY_CORNER_RADIUS * scale).round() as i32;
+    radius.min(half_width).min(half_height).max(0)
+}
+
 /// `None` when the two rectangles do not overlap, so that degenerate
 /// rectangles never reach the region arithmetic.
 fn intersect_rects(one: RECT, other: RECT) -> Option<RECT> {
@@ -1033,12 +1081,13 @@ fn intersect_rects(one: RECT, other: RECT) -> Option<RECT> {
 
 /// Gives `child` a window region that is its own rectangle minus `holes`
 /// (host client coordinates, physical pixels), or removes the region when
-/// there is nothing to cut away.
+/// there is nothing to cut away. `scale` is the window's scale factor, which
+/// turns [`OVERLAY_CORNER_RADIUS`] into physical pixels.
 ///
 /// Windows keeps a window region across moves and resizes without adjusting it,
 /// so the region is rebuilt from the child's current rectangle whenever either
 /// the holes or the surface bounds change.
-fn clip_child_window(host_hwnd: HWND, child: HWND, holes: &[RECT]) {
+fn clip_child_window(host_hwnd: HWND, child: HWND, holes: &[RECT], scale: f64) {
     if holes.is_empty() {
         // Passing no region restores the default (the whole window) and
         // repaints it.
@@ -1084,13 +1133,21 @@ fn clip_child_window(host_hwnd: HWND, child: HWND, holes: &[RECT]) {
     }
 
     for hole in holes {
+        let radius = hole_corner_radius(*hole, scale);
+        let (left, top, right, bottom) = (
+            hole.left - origin.x,
+            hole.top - origin.y,
+            hole.right - origin.x,
+            hole.bottom - origin.y,
+        );
         let hole = unsafe {
-            CreateRectRgn(
-                hole.left - origin.x,
-                hole.top - origin.y,
-                hole.right - origin.x,
-                hole.bottom - origin.y,
-            )
+            if radius > 0 {
+                // `CreateRoundRectRgn` takes the size of the ellipse the corners
+                // are cut from, which is twice the radius.
+                CreateRoundRectRgn(left, top, right, bottom, radius * 2, radius * 2)
+            } else {
+                CreateRectRgn(left, top, right, bottom)
+            }
         };
         if hole.is_invalid() {
             log::warn!("WebView2: could not create a region for a gpui overlay");
@@ -1242,6 +1299,22 @@ mod tests {
         let (bounds, holes) = viewport_geometry(&viewport(1., vec![overlay(0., 0., 4000., 4000.)]));
 
         assert_eq!(holes, vec![bounds]);
+    }
+
+    #[test]
+    fn hole_corners_are_rounded_like_the_overlay_that_is_cut_out() {
+        assert_eq!(hole_corner_radius(rect(0, 0, 200, 100), 1.), 8);
+        assert_eq!(hole_corner_radius(rect(0, 0, 200, 100), 1.5), 12);
+        assert_eq!(hole_corner_radius(rect(0, 0, 200, 100), 2.), 16);
+    }
+
+    #[test]
+    fn a_thin_hole_is_not_rounded_away() {
+        // A tooltip clipped down to a sliver by the edge of the surface: half of
+        // the shorter side is all the rounding the hole can take.
+        assert_eq!(hole_corner_radius(rect(0, 0, 200, 6), 1.), 3);
+        assert_eq!(hole_corner_radius(rect(0, 0, 1, 100), 1.), 0);
+        assert_eq!(hole_corner_radius(rect(0, 0, 0, 0), 2.), 0);
     }
 
     #[test]

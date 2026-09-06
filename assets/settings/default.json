@@ -2021,8 +2021,8 @@
     "dock": "bottom",
     // Whether the terminal panel should open on startup.
     //
-    // Default: false
-    "starts_open": false,
+    // Default: true
+    "starts_open": true,
     // Whether the terminal panel should use flexible (proportional) sizing.
     //
     // Default: true

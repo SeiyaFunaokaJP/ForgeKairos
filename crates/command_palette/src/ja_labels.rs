@@ -1745,6 +1745,14 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "browser_panel::AskCopilot",
         "ブラウザー: 選択テキストを Copilot に聞く",
     ),
+    (
+        "browser_panel::SplitPanelRight",
+        "ブラウザー: パネルを右に分割",
+    ),
+    (
+        "browser_panel::FocusNextPaneGroup",
+        "ブラウザー: 次のペインにフォーカス",
+    ),
 ];
 
 #[cfg(test)]

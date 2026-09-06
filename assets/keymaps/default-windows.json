@@ -1627,6 +1627,10 @@
       "ctrl-l": "browser_panel::FocusAddressBar",
       "ctrl-d": "browser_panel::AddBookmark",
       "ctrl-shift-o": "browser_panel::ToggleBookmarks",
+      "ctrl-t": "browser_panel::NewPanelTab",
+      "ctrl-w": "browser_panel::ClosePanelTab",
+      "ctrl-alt-\\": "browser_panel::SplitPanelRight",
+      "ctrl-alt-]": "browser_panel::FocusNextPaneGroup",
     },
   },
   {

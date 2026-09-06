@@ -8,10 +8,10 @@ use client::proto;
 use db::kvp::KeyValueStore;
 
 use gpui::{
-    Action, Anchor, AnyView, App, Axis, Context, Entity, EntityId, EventEmitter, FocusHandle,
-    Focusable, IntoElement, KeyContext, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement,
-    Render, SharedString, StyleRefinement, Styled, Subscription, WeakEntity, Window, deferred, div,
-    px,
+    Action, Anchor, AnyView, App, Axis, Bounds, Context, Div, DragMoveEvent, Entity, EntityId,
+    EventEmitter, FocusHandle, Focusable, IntoElement, KeyContext, MouseButton, MouseDownEvent,
+    MouseUpEvent, ParentElement, Point, Render, SharedString, StyleRefinement, Styled,
+    Subscription, WeakEntity, Window, deferred, div, px, relative,
 };
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsStore, TerminalDockPosition};
@@ -23,6 +23,30 @@ use ui::{
 use util::ResultExt as _;
 
 pub(crate) const RESIZE_HANDLE_SIZE: Pixels = px(6.);
+
+/// Share of a dock given to a newly stacked secondary panel.
+pub const DEFAULT_SECONDARY_RATIO: f32 = 0.5;
+const MIN_SECONDARY_RATIO: f32 = 0.15;
+const MAX_SECONDARY_RATIO: f32 = 0.85;
+
+/// Panel stacked below the agent panel by default in this fork's right dock.
+/// Matches `browser_panel::BrowserPanel::persistent_name`; an unknown name is
+/// simply ignored when the dock state is restored.
+pub(crate) const DEFAULT_STACKED_SECONDARY_PANEL: &str = "BrowserPanel";
+
+fn clamp_secondary_ratio(ratio: f32) -> f32 {
+    ratio.clamp(MIN_SECONDARY_RATIO, MAX_SECONDARY_RATIO)
+}
+
+/// Drag state for the divider between two stacked panels inside a dock.
+#[derive(Clone)]
+pub(crate) struct DraggedDockSplit(DockPosition);
+
+impl Render for DraggedDockSplit {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
+}
 
 pub enum PanelEvent {
     ZoomIn,
@@ -111,6 +135,7 @@ pub trait PanelHandle: Send + Sync {
     fn position_is_valid(&self, position: DockPosition, cx: &App) -> bool;
     fn set_position(&self, position: DockPosition, window: &mut Window, cx: &mut App);
     fn is_zoomed(&self, window: &Window, cx: &App) -> bool;
+    fn starts_open(&self, window: &Window, cx: &App) -> bool;
     fn set_zoomed(&self, zoomed: bool, window: &mut Window, cx: &mut App);
     fn set_active(&self, active: bool, window: &mut Window, cx: &mut App);
     fn remote_id(&self) -> Option<proto::PanelId>;
@@ -181,6 +206,10 @@ where
 
     fn is_zoomed(&self, window: &Window, cx: &App) -> bool {
         self.read(cx).is_zoomed(window, cx)
+    }
+
+    fn starts_open(&self, window: &Window, cx: &App) -> bool {
+        self.read(cx).starts_open(window, cx)
     }
 
     fn set_zoomed(&self, zoomed: bool, window: &mut Window, cx: &mut App) {
@@ -286,6 +315,13 @@ pub struct Dock {
     workspace: WeakEntity<Workspace>,
     is_open: bool,
     active_panel_index: Option<usize>,
+    /// A second panel shown alongside the active ("primary") one, split by a
+    /// draggable divider. `None` means the dock shows a single panel, which is
+    /// the upstream behaviour.
+    secondary_panel_index: Option<usize>,
+    /// Share of the dock the stacked secondary panel occupies, along
+    /// [`Dock::stack_axis`].
+    secondary_ratio: f32,
     focus_handle: FocusHandle,
     focus_follows_mouse: FocusFollowsMouse,
     pub(crate) serialized_dock: Option<DockData>,
@@ -432,6 +468,8 @@ impl Dock {
                 workspace: workspace.downgrade(),
                 panel_entries: Default::default(),
                 active_panel_index: None,
+                secondary_panel_index: None,
+                secondary_ratio: DEFAULT_SECONDARY_RATIO,
                 is_open: false,
                 focus_handle: focus_handle.clone(),
                 focus_follows_mouse: WorkspaceSettings::get_global(cx).focus_follows_mouse,
@@ -555,11 +593,141 @@ impl Dock {
         self.active_panel_index
     }
 
+    /// The index of the panel stacked next to the active one, if any. Always
+    /// distinct from [`Dock::active_panel_index`] and always in range.
+    pub fn secondary_panel_index(&self) -> Option<usize> {
+        self.secondary_panel_index
+            .filter(|index| Some(*index) != self.active_panel_index)
+            .filter(|index| *index < self.panel_entries.len())
+    }
+
+    /// Indices of the panels the dock lays out, primary first. Independent of
+    /// whether the dock is open.
+    fn stacked_panel_indices(&self) -> [Option<usize>; 2] {
+        [self.active_panel_index, self.secondary_panel_index()]
+    }
+
+    pub fn panel_at(&self, index: usize) -> Option<&Arc<dyn PanelHandle>> {
+        self.panel_entries.get(index).map(|entry| &entry.panel)
+    }
+
+    pub fn secondary_panel(&self) -> Option<&Arc<dyn PanelHandle>> {
+        self.panel_at(self.secondary_panel_index()?)
+    }
+
+    /// Every panel the open dock currently shows: the primary panel first, then
+    /// the stacked secondary one when there is one. Empty while the dock is closed.
+    pub fn visible_panels(&self) -> impl Iterator<Item = &Arc<dyn PanelHandle>> {
+        let indices = if self.is_open {
+            self.stacked_panel_indices()
+        } else {
+            [None, None]
+        };
+        indices
+            .into_iter()
+            .flatten()
+            .filter_map(|index| self.panel_at(index))
+    }
+
+    /// Axis the primary and secondary panels are stacked along. Side docks stack
+    /// vertically (one panel above the other); the bottom dock stacks horizontally
+    /// so both panels keep the dock's height.
+    fn stack_axis(&self) -> Axis {
+        match self.position {
+            DockPosition::Left | DockPosition::Right => Axis::Vertical,
+            DockPosition::Bottom => Axis::Horizontal,
+        }
+    }
+
+    pub fn secondary_ratio(&self) -> f32 {
+        self.secondary_ratio
+    }
+
+    pub fn set_secondary_ratio(&mut self, ratio: f32, cx: &mut Context<Self>) {
+        let ratio = clamp_secondary_ratio(ratio);
+        if ratio != self.secondary_ratio {
+            self.secondary_ratio = ratio;
+            cx.notify();
+        }
+    }
+
+    /// Stacks `index` next to the active panel, or unstacks the current secondary
+    /// when passed `None`. Panels that are already primary, or out of range, are
+    /// ignored so the two slots can never collide.
+    pub fn set_secondary_panel(
+        &mut self,
+        index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let index = index
+            .filter(|index| *index < self.panel_entries.len())
+            .filter(|index| Some(*index) != self.active_panel_index);
+        let previous = self.secondary_panel_index();
+        if index == previous {
+            // Keep the stored index normalized so it can never become visible
+            // again once it has been filtered out.
+            self.secondary_panel_index = index;
+            return;
+        }
+
+        let deactivated = previous.and_then(|index| self.panel_at(index)).cloned();
+        let activated = index
+            .filter(|_| self.is_open)
+            .and_then(|index| self.panel_at(index))
+            .cloned();
+        self.secondary_panel_index = index;
+        if let Some(panel) = deactivated {
+            panel.set_active(false, window, cx);
+        }
+        if let Some(panel) = activated {
+            panel.set_active(true, window, cx);
+        }
+        cx.notify();
+    }
+
+    /// Opens the dock for any panel that asked to start open. `starts_open` is a
+    /// user-facing "open this at startup" switch, so it has to survive a persisted
+    /// "closed" dock state, which is applied after the panels have been added.
+    /// Returns whether such a panel was found.
+    pub(crate) fn ensure_starts_open_panels(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(index) = self
+            .panel_entries
+            .iter()
+            .position(|entry| entry.panel.starts_open(window, cx))
+        else {
+            return false;
+        };
+
+        // Never take the primary slot away from a panel the user had active in an
+        // open dock; only a closed dock (or one without any active panel) is ours
+        // to claim.
+        let claim_primary = match self.active_panel_index {
+            None => true,
+            Some(active) => active != index && !self.is_open,
+        };
+        if claim_primary {
+            self.activate_panel(index, window, cx);
+        }
+        self.set_open(true, window, cx);
+        true
+    }
+
     pub fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
         if open != self.is_open {
             self.is_open = open;
-            if let Some(active_panel) = self.active_panel_entry() {
-                active_panel.panel.set_active(open, window, cx);
+            let panels = self
+                .stacked_panel_indices()
+                .into_iter()
+                .flatten()
+                .filter_map(|index| self.panel_at(index).cloned())
+                .collect::<Vec<_>>();
+            for panel in panels {
+                panel.set_active(open, window, cx);
             }
 
             cx.notify();
@@ -573,6 +741,18 @@ impl Dock {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Zoom shows a single panel, so a stacked secondary has to become the
+        // primary before it can take over the dock.
+        if zoomed
+            && let Some(index) = self
+                .panel_entries
+                .iter()
+                .position(|entry| entry.panel.panel_id() == panel.entity_id())
+            && self.secondary_panel_index() == Some(index)
+        {
+            self.activate_panel(index, window, cx);
+        }
+
         for entry in &mut self.panel_entries {
             if entry.panel.panel_id() == panel.entity_id() {
                 if zoomed != entry.panel.is_zoomed(window, cx) {
@@ -633,10 +813,9 @@ impl Dock {
                     };
 
                     let panel_id = Entity::entity_id(&panel);
-                    let was_visible = this.is_open()
-                        && this
-                            .visible_panel()
-                            .is_some_and(|active_panel| active_panel.panel_id() == panel_id);
+                    let was_visible = this
+                        .visible_panels()
+                        .any(|visible_panel| visible_panel.panel_id() == panel_id);
                     let size_state = this
                         .panel_entries
                         .iter()
@@ -738,14 +917,24 @@ impl Dock {
                             .position(|entry| entry.panel.panel_id() == Entity::entity_id(panel))
                         {
                             this.set_open(true, window, cx);
-                            this.activate_panel(ix, window, cx);
+                            // A stacked panel is already on screen, so focus it
+                            // instead of swapping it into the primary slot.
+                            if this.secondary_panel_index() != Some(ix) {
+                                this.activate_panel(ix, window, cx);
+                            }
                             window.focus(&panel.read(cx).activation_focus_handle(cx), cx);
                         }
                     }
                     PanelEvent::Close => {
+                        let panel_id = Entity::entity_id(panel);
                         if this
+                            .secondary_panel()
+                            .is_some_and(|p| p.panel_id() == panel_id)
+                        {
+                            this.set_secondary_panel(None, window, cx);
+                        } else if this
                             .visible_panel()
-                            .is_some_and(|p| p.panel_id() == Entity::entity_id(panel))
+                            .is_some_and(|p| p.panel_id() == panel_id)
                         {
                             this.set_open(false, window, cx);
                         }
@@ -775,6 +964,11 @@ impl Dock {
             && *active_index >= index
         {
             *active_index += 1;
+        }
+        if let Some(secondary_index) = self.secondary_panel_index.as_mut()
+            && *secondary_index >= index
+        {
+            *secondary_index += 1;
         }
         let size_state = panel.read(cx).initial_size_state(window, cx);
 
@@ -812,6 +1006,16 @@ impl Dock {
                 panel.set_zoomed(true, window, cx)
             }
             self.set_open(serialized.visible, window, cx);
+            if let Some(ratio) = serialized.secondary_ratio {
+                self.secondary_ratio = clamp_secondary_ratio(ratio);
+            }
+            // Applied after `set_open` so the stacked panel is activated only when
+            // the dock is actually showing.
+            let secondary_index = serialized
+                .secondary_panel
+                .as_deref()
+                .and_then(|name| self.panel_index_for_persistent_name(name, cx));
+            self.set_secondary_panel(secondary_index, window, cx);
             return true;
         }
         false
@@ -828,20 +1032,31 @@ impl Dock {
             .iter()
             .position(|entry| entry.panel.panel_id() == Entity::entity_id(panel))
         {
-            if let Some(active_panel_index) = self.active_panel_index.as_mut() {
-                match panel_ix.cmp(active_panel_index) {
-                    std::cmp::Ordering::Less => {
-                        *active_panel_index -= 1;
-                    }
-                    std::cmp::Ordering::Equal => {
-                        self.active_panel_index = None;
-                        self.set_open(false, window, cx);
-                    }
-                    std::cmp::Ordering::Greater => {}
-                }
+            let shift = |slot: Option<usize>| match slot {
+                Some(index) => match panel_ix.cmp(&index) {
+                    std::cmp::Ordering::Less => Some(index - 1),
+                    std::cmp::Ordering::Equal => None,
+                    std::cmp::Ordering::Greater => Some(index),
+                },
+                None => None,
+            };
+            let mut active_panel_index = shift(self.active_panel_index);
+            let mut secondary_panel_index = shift(self.secondary_panel_index);
+            // Losing the primary panel shouldn't hide a stacked panel the user can
+            // still see, so promote it instead of closing the dock.
+            if active_panel_index.is_none()
+                && let Some(promoted) = secondary_panel_index.take()
+            {
+                active_panel_index = Some(promoted);
             }
+            let close_dock = active_panel_index.is_none();
+            self.active_panel_index = active_panel_index;
+            self.secondary_panel_index = secondary_panel_index;
 
             self.panel_entries.remove(panel_ix);
+            if close_dock {
+                self.set_open(false, window, cx);
+            }
             cx.notify();
 
             true
@@ -861,18 +1076,29 @@ impl Dock {
     }
 
     pub fn activate_panel(&mut self, panel_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if Some(panel_ix) != self.active_panel_index {
-            if let Some(active_panel) = self.active_panel_entry() {
-                active_panel.panel.set_active(false, window, cx);
-            }
-
-            self.active_panel_index = Some(panel_ix);
-            if let Some(active_panel) = self.active_panel_entry() {
-                active_panel.panel.set_active(true, window, cx);
-            }
-
-            cx.notify();
+        if Some(panel_ix) == self.active_panel_index {
+            return;
         }
+
+        // Activating the stacked panel promotes it rather than hiding it: both
+        // panels stay on screen, they just swap slots.
+        if self.secondary_panel_index() == Some(panel_ix) {
+            self.secondary_panel_index = self.active_panel_index;
+            self.active_panel_index = Some(panel_ix);
+            cx.notify();
+            return;
+        }
+
+        if let Some(active_panel) = self.active_panel_entry() {
+            active_panel.panel.set_active(false, window, cx);
+        }
+
+        self.active_panel_index = Some(panel_ix);
+        if let Some(active_panel) = self.active_panel_entry() {
+            active_panel.panel.set_active(true, window, cx);
+        }
+
+        cx.notify();
     }
 
     pub fn visible_panel(&self) -> Option<&Arc<dyn PanelHandle>> {
@@ -1122,6 +1348,31 @@ impl Dock {
         cx.notify();
     }
 
+    /// Moves the divider between the stacked panels. `bounds` is the container
+    /// holding both panels; the secondary one always sits at the far end of it.
+    fn resize_secondary(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        let ratio = match self.stack_axis() {
+            Axis::Vertical => {
+                if bounds.size.height <= px(0.) {
+                    return;
+                }
+                (bounds.bottom() - position.y) / bounds.size.height
+            }
+            Axis::Horizontal => {
+                if bounds.size.width <= px(0.) {
+                    return;
+                }
+                (bounds.right() - position.x) / bounds.size.width
+            }
+        };
+        self.set_secondary_ratio(ratio, cx);
+    }
+
     pub fn toggle_action(&self) -> Box<dyn Action> {
         match self.position {
             DockPosition::Left => crate::ToggleLeftDock.boxed_clone(),
@@ -1161,6 +1412,112 @@ impl Dock {
         }
     }
 
+    /// Renders the primary panel, plus the stacked secondary one and the divider
+    /// between them when the dock is showing two panels.
+    fn render_panels(&self, cx: &mut Context<Self>) -> AnyElement {
+        let panel_element = |panel: &Arc<dyn PanelHandle>| {
+            panel
+                .to_any()
+                .cached(StyleRefinement::default().v_flex().size_full())
+        };
+        let Some(primary) = self.visible_entry().map(|entry| entry.panel.clone()) else {
+            return div().into_any_element();
+        };
+        let Some(secondary) = self.secondary_panel().cloned() else {
+            return div()
+                .size_full()
+                .child(panel_element(&primary))
+                .into_any_element();
+        };
+
+        let stack_axis = self.stack_axis();
+        let position = self.position;
+        let secondary_ratio = self.secondary_ratio;
+        let sized = |mut element: Div, share: f32| {
+            let style = element.style();
+            style.flex_grow = Some(share.max(0.001));
+            style.flex_shrink = Some(1.0);
+            style.flex_basis = Some(relative(0.).into());
+            element
+        };
+
+        let divider = div()
+            .id("dock-split-handle")
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .occlude()
+            .map(|this| match stack_axis {
+                Axis::Vertical => this.w_full().h(RESIZE_HANDLE_SIZE).cursor_row_resize(),
+                Axis::Horizontal => this.h_full().w(RESIZE_HANDLE_SIZE).cursor_col_resize(),
+            })
+            .child(
+                div()
+                    .bg(cx.theme().colors().border)
+                    .map(|this| match stack_axis {
+                        Axis::Vertical => this.w_full().h(px(1.)),
+                        Axis::Horizontal => this.h_full().w(px(1.)),
+                    }),
+            )
+            .on_drag(DraggedDockSplit(position), |split, _, _, cx| {
+                cx.stop_propagation();
+                cx.new(|_| split.clone())
+            })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|dock, e: &MouseUpEvent, window, cx| {
+                    if e.click_count == 2 {
+                        dock.set_secondary_ratio(DEFAULT_SECONDARY_RATIO, cx);
+                        dock.workspace
+                            .update(cx, |workspace, cx| {
+                                workspace.serialize_workspace(window, cx);
+                            })
+                            .ok();
+                        cx.stop_propagation();
+                    }
+                }),
+            );
+
+        div()
+            .id("dock-panel-stack")
+            .size_full()
+            .flex()
+            .map(|this| match stack_axis {
+                Axis::Vertical => this.flex_col(),
+                Axis::Horizontal => this.flex_row(),
+            })
+            .on_drag_move(cx.listener(
+                move |dock, e: &DragMoveEvent<DraggedDockSplit>, window, cx| {
+                    if e.drag(cx).0 != dock.position {
+                        return;
+                    }
+                    dock.resize_secondary(e.bounds, e.event.position, cx);
+                    dock.workspace
+                        .update(cx, |workspace, cx| {
+                            workspace.serialize_workspace(window, cx);
+                        })
+                        .ok();
+                },
+            ))
+            .child(sized(
+                div().overflow_hidden().child(panel_element(&primary)),
+                1.0 - secondary_ratio,
+            ))
+            .child(divider)
+            .child(sized(
+                div().overflow_hidden().child(panel_element(&secondary)),
+                secondary_ratio,
+            ))
+            .into_any_element()
+    }
+
     pub(crate) fn load_persisted_size_state(
         workspace: &Workspace,
         panel_key: &'static str,
@@ -1183,8 +1540,9 @@ impl Dock {
 impl Render for Dock {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dispatch_context = Self::dispatch_context();
-        if let Some(entry) = self.visible_entry() {
+        if self.visible_entry().is_some() {
             let position = self.position;
+            let panels = self.render_panels(cx);
             let create_resize_handle = || {
                 let handle = div()
                     .id("resize-handle")
@@ -1270,12 +1628,7 @@ impl Render for Dock {
                             Axis::Horizontal => this.w_full().h_full(),
                             Axis::Vertical => this.h_full().w_full(),
                         })
-                        .child(
-                            entry
-                                .panel
-                                .to_any()
-                                .cached(StyleRefinement::default().v_flex().size_full()),
-                        ),
+                        .child(panels),
                 )
                 .when(self.resizable(cx), |this| {
                     this.child(create_resize_handle())
@@ -1304,6 +1657,11 @@ impl Render for PanelButtons {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dock = self.dock.read(cx);
         let active_index = dock.active_panel_index;
+        let secondary_index = dock.secondary_panel_index();
+        let stack_entry_label = match dock.stack_axis() {
+            Axis::Vertical => "下に並べて表示",
+            Axis::Horizontal => "横に並べて表示",
+        };
         let is_open = dock.is_open;
         let dock_position = dock.position;
 
@@ -1335,6 +1693,8 @@ impl Render for PanelButtons {
                 let workspace_for_menu = workspace.clone();
 
                 let is_active_button = Some(i) == active_index && is_open;
+                let is_stacked_button = Some(i) == secondary_index && is_open;
+                let can_stack = !is_active_button && active_index.is_some();
                 let (action, tooltip) = if is_active_button {
                     let action = dock.toggle_action();
 
@@ -1432,6 +1792,42 @@ impl Render for PanelButtons {
                                         },
                                     );
                                 }
+                                if is_stacked_button {
+                                    let dock_for_unstack = dock_for_menu.clone();
+                                    let workspace_for_unstack = workspace_for_menu.clone();
+                                    menu = menu.separator().entry(
+                                        "並べ表示をやめる",
+                                        None,
+                                        move |window, cx| {
+                                            dock_for_unstack.update(cx, |dock, cx| {
+                                                dock.set_secondary_panel(None, window, cx);
+                                            });
+                                            workspace_for_unstack
+                                                .update(cx, |workspace, cx| {
+                                                    workspace.serialize_workspace(window, cx);
+                                                })
+                                                .ok();
+                                        },
+                                    );
+                                } else if can_stack {
+                                    let dock_for_stack = dock_for_menu.clone();
+                                    let workspace_for_stack = workspace_for_menu.clone();
+                                    menu = menu.separator().entry(
+                                        stack_entry_label,
+                                        None,
+                                        move |window, cx| {
+                                            dock_for_stack.update(cx, |dock, cx| {
+                                                dock.set_secondary_panel(Some(i), window, cx);
+                                                dock.set_open(true, window, cx);
+                                            });
+                                            workspace_for_stack
+                                                .update(cx, |workspace, cx| {
+                                                    workspace.serialize_workspace(window, cx);
+                                                })
+                                                .ok();
+                                        },
+                                    );
+                                }
                                 if let Some(hide) = panel_hide {
                                     menu = crate::status_bar::add_hide_button_entry(
                                         menu.separator(),
@@ -1446,9 +1842,10 @@ impl Render for PanelButtons {
                         .trigger(move |is_active, _window, _cx| {
                             // Include active state in element ID to invalidate the cached
                             // tooltip when panel state changes (e.g., via keyboard shortcut)
-                            let button = IconButton::new((name, is_active_button as u64), icon)
+                            let shown = is_active_button || is_stacked_button;
+                            let button = IconButton::new((name, shown as u64), icon)
                                 .icon_size(IconSize::Small)
-                                .toggle_state(is_active_button)
+                                .toggle_state(shown)
                                 .tab_index(0isize)
                                 .aria_label(icon_tooltip)
                                 .on_click({
@@ -1527,6 +1924,7 @@ pub mod test {
         pub activation_focus_handle: Option<FocusHandle>,
         pub default_size: Pixels,
         pub flexible: bool,
+        pub starts_open: bool,
         pub activation_priority: u32,
     }
     actions!(test_only, [ToggleTestPanel]);
@@ -1543,7 +1941,19 @@ pub mod test {
                 activation_focus_handle: None,
                 default_size: px(300.),
                 flexible: false,
+                starts_open: false,
                 activation_priority,
+            }
+        }
+
+        pub fn new_starts_open(
+            position: DockPosition,
+            activation_priority: u32,
+            cx: &mut App,
+        ) -> Self {
+            Self {
+                starts_open: true,
+                ..Self::new(position, activation_priority, cx)
             }
         }
 
@@ -1651,6 +2061,10 @@ pub mod test {
 
         fn is_zoomed(&self, _window: &Window, _: &App) -> bool {
             self.zoomed
+        }
+
+        fn starts_open(&self, _window: &Window, _: &App) -> bool {
+            self.starts_open
         }
 
         fn set_zoomed(&mut self, zoomed: bool, _window: &mut Window, _cx: &mut Context<Self>) {

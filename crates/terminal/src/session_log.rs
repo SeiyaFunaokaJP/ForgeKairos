@@ -79,12 +79,21 @@ impl Default for SessionLogOptions {
     }
 }
 
+/// What [`SessionLogTap::resume`] writes in place of the output it dropped, so
+/// a gap in the log is visible rather than mysterious (ADR-F29).
+pub const PAUSED_MARKER: &str = "[パスワード入力を省略]";
+
 /// Handle installed into the PTY reader. Cloning is cheap; every clone shares
 /// the same sink, so the terminal can start and stop logging long after the PTY
 /// was created.
 #[derive(Clone, Default)]
 pub struct SessionLogTap {
     sink: Arc<Mutex<Option<async_channel::Sender<Vec<u8>>>>>,
+    /// While set, [`Self::record`] throws away what it reads. Used around a
+    /// password write so a device that echoes it does not put it in the file
+    /// (ADR-F29). Separate from the sink because the pause must not stop, or be
+    /// stopped by, the log itself.
+    paused: Arc<AtomicBool>,
 }
 
 impl SessionLogTap {
@@ -92,6 +101,9 @@ impl SessionLogTap {
     /// block: the channel is unbounded, so `try_send` only fails once the
     /// writer task is gone, in which case the tap uninstalls itself.
     pub(crate) fn record(&self, bytes: &[u8]) {
+        if self.paused.load(Ordering::Relaxed) {
+            return;
+        }
         let mut sink = self.sink.lock();
         let Some(sender) = sink.as_ref() else {
             return;
@@ -106,7 +118,23 @@ impl SessionLogTap {
         }
     }
 
+    /// Stops recording without stopping the log. Every pause must be matched by
+    /// a [`Self::resume`], or the log stays silent until it is restarted.
+    pub(crate) fn pause(&self) {
+        self.paused.store(true, Ordering::Relaxed);
+    }
+
+    /// Resumes recording, writing `PAUSED_MARKER` on its own line first. The
+    /// leading break closes the prompt line the pause interrupted.
+    pub(crate) fn resume(&self) {
+        self.paused.store(false, Ordering::Relaxed);
+        self.record(format!("\r\n{PAUSED_MARKER}\r\n").as_bytes());
+    }
+
     pub(crate) fn install(&self, sender: async_channel::Sender<Vec<u8>>) {
+        // A pause belongs to the write it was taken for, never to a log started
+        // afterwards; a leaked one would silently record nothing.
+        self.paused.store(false, Ordering::Relaxed);
         *self.sink.lock() = Some(sender);
     }
 
@@ -661,6 +689,48 @@ mod tests {
         formatter.push(input);
         formatter.finish();
         String::from_utf8_lossy(&formatter.take_output()).into_owned()
+    }
+
+    /// Everything the tap has queued, run through the formatter the writer
+    /// would use, so the assertions read like the log file.
+    fn drain(receiver: &async_channel::Receiver<Vec<u8>>) -> String {
+        let mut recorded = Vec::new();
+        while let Ok(chunk) = receiver.try_recv() {
+            recorded.extend_from_slice(&chunk);
+        }
+        strip(&recorded)
+    }
+
+    #[test]
+    fn a_paused_tap_keeps_the_password_out_of_the_log() {
+        let tap = SessionLogTap::default();
+        let (sender, receiver) = async_channel::unbounded();
+        tap.install(sender);
+
+        tap.record(b"Password: ");
+        tap.pause();
+        // What a device that echoes its input sends back.
+        tap.record(b"hunter2\r\n");
+        tap.resume();
+        tap.record(b"switch> \r\n");
+
+        let logged = drain(&receiver);
+        assert!(!logged.contains("hunter2"), "{logged:?}");
+        assert!(logged.contains("Password:"), "{logged:?}");
+        assert!(logged.contains(PAUSED_MARKER), "{logged:?}");
+        assert!(logged.contains("switch>"), "{logged:?}");
+    }
+
+    #[test]
+    fn starting_a_log_clears_a_pause_left_behind_by_a_dropped_one() {
+        let tap = SessionLogTap::default();
+        tap.pause();
+
+        let (sender, receiver) = async_channel::unbounded();
+        tap.install(sender);
+        tap.record(b"after the restart\r\n");
+
+        assert!(drain(&receiver).contains("after the restart"));
     }
 
     #[test]

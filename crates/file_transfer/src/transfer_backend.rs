@@ -14,7 +14,9 @@
 //!
 //! The module is split so the fiddly parts are testable without a server:
 //! parsing (`parse_*`) and command-line assembly (`*_args`, `curl_url`) are
-//! pure functions, and only [`TransferBackend`] spawns processes.
+//! pure functions, and process spawning sits behind [`ExecHost`] — which also
+//! lets the "local" side of the screen be the *remote SSH host* rather than
+//! the machine Zed runs on (see the trait's comment).
 
 use std::{
     path::{Path, PathBuf},
@@ -25,7 +27,19 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use askpass::{AskPassDelegate, AskPassResult, AskPassSession};
 use fs::{Fs, RemoveOptions, RenameOptions};
 use futures::{AsyncWriteExt as _, FutureExt as _, StreamExt as _, select_biased};
-use gpui::AsyncApp;
+use gpui::{App, AppContext as _, AsyncApp, SharedString, Task, WeakEntity};
+use project::{
+    Project,
+    remote_exec::{
+        RemoteDirectoryEntry, RemoteEntryKind, RemoteFileOperation, TransferAskPass,
+        TransferCommand, TransferProgram,
+    },
+};
+use terminal::{
+    quick_connect_credentials::{AskPassPrompt, classify_prompt},
+    terminal_macro::ConnectionProtocol,
+};
+use util::ResultExt as _;
 
 /// How the user reaches the remote host. SCP has no listing or management
 /// commands of its own, so it borrows SFTP's (see [`TransferBackend::list`]).
@@ -84,6 +98,63 @@ impl TransferProtocol {
     /// identity, and therefore needs the password field in the modal.
     pub fn uses_password(self) -> bool {
         matches!(self, TransferProtocol::Ftp | TransferProtocol::Ftps)
+    }
+}
+
+// -------------------------------------------------------------------------
+// Remembered passwords
+// -------------------------------------------------------------------------
+
+/// The quick-connect credential keys a transfer target can be answered from,
+/// most specific first.
+///
+/// SFTP and SCP talk to the SSH daemon on the very port the transfer uses, so
+/// their key is exact. FTP has no quick-connect protocol of its own — ADR-F28
+/// already pairs it with Telnet ([`crate::target_from_saved_connection`]),
+/// because a device that speaks Telnet is the kind that also speaks FTP and
+/// its Telnet password is normally its FTP password. That pairing rewrites the
+/// port to FTP's, which is why Telnet's own port is tried after the exact one.
+pub fn credential_lookups(protocol: TransferProtocol, port: u16) -> Vec<(ConnectionProtocol, u16)> {
+    match protocol {
+        TransferProtocol::Sftp | TransferProtocol::Scp => vec![(ConnectionProtocol::Ssh, port)],
+        TransferProtocol::Ftp | TransferProtocol::Ftps => {
+            let telnet_port = ConnectionProtocol::Telnet.default_port();
+            let mut keys = vec![(ConnectionProtocol::Telnet, port)];
+            if port != telnet_port {
+                keys.push((ConnectionProtocol::Telnet, telnet_port));
+            }
+            keys
+        }
+    }
+}
+
+/// What the transfer screen does with one of OpenSSH's askpass prompts while a
+/// password is remembered for the target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoredPasswordUse {
+    /// Hand the remembered password over without troubling the user.
+    Answer,
+    /// `ssh` asked for the password a second time, so the remembered one was
+    /// refused. Answering again would only spend another attempt on the same
+    /// wrong secret.
+    Rejected,
+    /// A host key confirmation, a key passphrase, or something unrecognized.
+    /// Only a person can answer these — a first-contact host key in particular
+    /// must never be accepted on the user's behalf.
+    AskUser,
+}
+
+/// Decides one prompt. Unlike the quick-connect terminal's policy, which has
+/// nowhere to fall back to and therefore fails everything after the first
+/// password, this screen can put the prompt on the user's screen — so a
+/// refused password turns into a prompt rather than a dead connection.
+pub fn decide_stored_password_use(prompt: &str, already_answered: bool) -> StoredPasswordUse {
+    match classify_prompt(prompt) {
+        AskPassPrompt::Password if already_answered => StoredPasswordUse::Rejected,
+        AskPassPrompt::Password => StoredPasswordUse::Answer,
+        AskPassPrompt::Passphrase | AskPassPrompt::HostKey | AskPassPrompt::Other => {
+            StoredPasswordUse::AskUser
+        }
     }
 }
 
@@ -519,15 +590,17 @@ pub enum TransferDirection {
     Download,
 }
 
-/// `scp` command line. The local side is always a bare file name, with the
-/// process's working directory set to the local pane's directory: a Windows
-/// path would otherwise have to survive `scp`'s `host:path` splitting on the
-/// drive letter's colon.
+/// `scp` command line.
+///
+/// `local_argument` is the source file when uploading and the destination
+/// directory when downloading; [`TransferBackend::scp_local_argument`] decides
+/// whether it is an absolute path or a bare name resolved against a working
+/// directory, which is where the Windows drive-letter problem is handled.
 pub fn scp_args(
     target: &RemoteTarget,
     direction: TransferDirection,
     recursive: bool,
-    local_name: &str,
+    local_argument: &str,
     remote_path: &str,
 ) -> Vec<String> {
     let mut args = vec![
@@ -542,7 +615,7 @@ pub fn scp_args(
     let destination = target.ssh_destination();
     match direction {
         TransferDirection::Upload => {
-            args.push(local_name.to_string());
+            args.push(local_argument.to_string());
             args.push(format!(
                 "{destination}:{}",
                 scp_quote_remote(&format!("{}/", normalize_remote_dir(remote_path)))
@@ -550,7 +623,7 @@ pub fn scp_args(
         }
         TransferDirection::Download => {
             args.push(format!("{destination}:{}", scp_quote_remote(remote_path)));
-            args.push(".".to_string());
+            args.push(local_argument.to_string());
         }
     }
     args
@@ -621,7 +694,7 @@ fn sftp_quote(path: &str) -> String {
 }
 
 // -------------------------------------------------------------------------
-// Running the commands
+// Execution hosts
 // -------------------------------------------------------------------------
 
 /// Builds the askpass delegate that answers SSH's prompts in the GUI. It is a
@@ -629,30 +702,418 @@ fn sftp_quote(path: &str) -> String {
 /// session, and a session cannot outlive the process it belongs to.
 pub type AskPassFactory = Arc<dyn Fn(&mut AsyncApp) -> AskPassDelegate + Send + Sync>;
 
+/// One invocation of a transfer program, as handed to an [`ExecHost`].
+pub struct HostCommand {
+    pub program: TransferProgram,
+    /// Written to the process's stdin, which is then closed. `None` leaves
+    /// stdin closed from the start.
+    pub stdin: Option<String>,
+    pub args: Vec<String>,
+    pub working_directory: Option<String>,
+    /// Whether OpenSSH's passphrase / password / host-key questions should be
+    /// answered through the GUI.
+    pub wants_askpass: bool,
+}
+
+/// Which machine the transfer screen's "local" side is.
+///
+/// For a plain local project this is always the machine Zed runs on. For an
+/// SSH remote project the remote host is offered too — and is the default,
+/// because the project, its terminals and every path the user is looking at
+/// live over there, so `/home/ubuntu` in the local pane has to mean the
+/// remote's `/home/ubuntu` rather than a missing Windows directory (ADR-F28).
+pub trait ExecHost: Send + Sync + 'static {
+    /// Names this side in the pane header's selector.
+    fn label(&self) -> SharedString;
+
+    /// Whether this is the remote SSH host rather than the machine Zed runs
+    /// on. Only `scp`'s local argument depends on it; see
+    /// [`TransferBackend::scp_local_argument`].
+    fn is_remote(&self) -> bool;
+
+    /// Where the pane starts when this side is selected.
+    fn root_directory(&self) -> String;
+
+    fn join(&self, directory: &str, name: &str) -> String;
+
+    /// `None` at the top of the tree.
+    fn parent(&self, directory: &str) -> Option<String>;
+
+    fn list_directory(
+        &self,
+        directory: String,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<Vec<DirectoryEntry>>>;
+
+    fn make_directory(&self, path: String, cx: &mut AsyncApp) -> Task<Result<()>>;
+
+    fn rename(&self, from: String, to: String, cx: &mut AsyncApp) -> Task<Result<()>>;
+
+    fn remove(&self, path: String, kind: EntryKind, cx: &mut AsyncApp) -> Task<Result<()>>;
+
+    /// Runs one transfer program to completion and returns its stdout. A
+    /// non-zero exit becomes an error carrying the program's own message.
+    fn run(&self, command: HostCommand, cx: &mut AsyncApp) -> Task<Result<String>>;
+
+    /// Stops anything still running, so a transfer cannot outlive the screen
+    /// that started it. A no-op where the processes are this process's own
+    /// children: dropping their task already kills them.
+    fn cancel_running(&self, _cx: &mut App) {}
+}
+
+/// The machine Zed itself runs on: the transfer programs are its own child
+/// processes and the pane reads its [`Fs`].
+pub struct IdeExecHost {
+    fs: Arc<dyn Fs>,
+    root: String,
+    askpass: AskPassFactory,
+}
+
+impl IdeExecHost {
+    pub fn new(fs: Arc<dyn Fs>, root: String, askpass: AskPassFactory) -> Self {
+        Self { fs, root, askpass }
+    }
+}
+
+impl ExecHost for IdeExecHost {
+    fn label(&self) -> SharedString {
+        "この PC".into()
+    }
+
+    fn is_remote(&self) -> bool {
+        false
+    }
+
+    fn root_directory(&self) -> String {
+        self.root.clone()
+    }
+
+    fn join(&self, directory: &str, name: &str) -> String {
+        Path::new(directory)
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn parent(&self, directory: &str) -> Option<String> {
+        Path::new(directory)
+            .parent()
+            .map(|parent| parent.to_string_lossy().into_owned())
+    }
+
+    fn list_directory(
+        &self,
+        directory: String,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<Vec<DirectoryEntry>>> {
+        let fs = self.fs.clone();
+        cx.background_spawn(async move { list_local_directory(&fs, Path::new(&directory)).await })
+    }
+
+    fn make_directory(&self, path: String, cx: &mut AsyncApp) -> Task<Result<()>> {
+        let fs = self.fs.clone();
+        cx.background_spawn(async move { fs.create_dir(Path::new(&path)).await })
+    }
+
+    fn rename(&self, from: String, to: String, cx: &mut AsyncApp) -> Task<Result<()>> {
+        let fs = self.fs.clone();
+        cx.background_spawn(async move {
+            fs.rename(Path::new(&from), Path::new(&to), RenameOptions::default())
+                .await
+        })
+    }
+
+    fn remove(&self, path: String, kind: EntryKind, cx: &mut AsyncApp) -> Task<Result<()>> {
+        let fs = self.fs.clone();
+        cx.background_spawn(async move {
+            let options = RemoveOptions {
+                recursive: true,
+                ignore_if_not_exists: false,
+            };
+            let path = PathBuf::from(path);
+            if kind.is_directory() {
+                fs.remove_dir(&path, options).await
+            } else {
+                fs.remove_file(&path, options).await
+            }
+        })
+    }
+
+    fn run(&self, command: HostCommand, cx: &mut AsyncApp) -> Task<Result<String>> {
+        let askpass = self.askpass.clone();
+        cx.spawn(async move |cx| run_on_this_machine(command, askpass, cx).await)
+    }
+}
+
+/// The SSH host the project is connected to. The pane reads that host's own
+/// file system over the project's RPC channel and the transfer programs run
+/// over there, so a transfer between the project's host and a third machine
+/// never passes through the IDE (ADR-F28).
+///
+/// A fresh `ssh` per operation was rejected: Windows has no ControlMaster, so
+/// every listing would re-authenticate.
+pub struct RemoteExecHost {
+    project: WeakEntity<Project>,
+    label: SharedString,
+    root: String,
+    askpass: TransferAskPass,
+}
+
+impl RemoteExecHost {
+    pub fn new(
+        project: WeakEntity<Project>,
+        display_name: &str,
+        root: String,
+        askpass: TransferAskPass,
+    ) -> Self {
+        Self {
+            project,
+            label: format!("このリモート ({display_name})").into(),
+            root,
+            askpass,
+        }
+    }
+}
+
+impl ExecHost for RemoteExecHost {
+    fn label(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn is_remote(&self) -> bool {
+        true
+    }
+
+    fn root_directory(&self) -> String {
+        self.root.clone()
+    }
+
+    fn join(&self, directory: &str, name: &str) -> String {
+        remote_join(directory, name)
+    }
+
+    fn parent(&self, directory: &str) -> Option<String> {
+        let directory = normalize_remote_dir(directory);
+        (directory != "/").then(|| remote_parent(&directory))
+    }
+
+    fn list_directory(
+        &self,
+        directory: String,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<Vec<DirectoryEntry>>> {
+        let project = self.project.clone();
+        cx.spawn(async move |cx| {
+            let entries = project
+                .update(cx, |project, cx| {
+                    project.list_transfer_directory(directory, cx)
+                })?
+                .await?;
+            let mut entries = entries
+                .into_iter()
+                .map(remote_directory_entry)
+                .collect::<Vec<_>>();
+            sort_entries(&mut entries);
+            Ok(entries)
+        })
+    }
+
+    fn make_directory(&self, path: String, cx: &mut AsyncApp) -> Task<Result<()>> {
+        self.file_operation(RemoteFileOperation::MakeDirectory { path }, cx)
+    }
+
+    fn rename(&self, from: String, to: String, cx: &mut AsyncApp) -> Task<Result<()>> {
+        self.file_operation(RemoteFileOperation::Rename { from, to }, cx)
+    }
+
+    fn remove(&self, path: String, kind: EntryKind, cx: &mut AsyncApp) -> Task<Result<()>> {
+        self.file_operation(
+            RemoteFileOperation::Remove {
+                path,
+                recursive: kind.is_directory(),
+            },
+            cx,
+        )
+    }
+
+    fn run(&self, command: HostCommand, cx: &mut AsyncApp) -> Task<Result<String>> {
+        let project = self.project.clone();
+        let askpass = self.askpass.clone();
+        cx.spawn(async move |cx| {
+            let output = project
+                .update(cx, |project, cx| {
+                    project.run_transfer_command(
+                        TransferCommand {
+                            program: command.program,
+                            args: command.args,
+                            stdin: command.stdin,
+                            working_directory: command.working_directory,
+                            wants_askpass: command.wants_askpass,
+                        },
+                        askpass,
+                        cx,
+                    )
+                })?
+                .await?;
+            if output.cancelled {
+                bail!("キャンセルされました。");
+            }
+            if !output.succeeded() {
+                bail!(command_failure_message(&output.stderr, &output.stdout));
+            }
+            Ok(output.stdout)
+        })
+    }
+
+    fn cancel_running(&self, cx: &mut App) {
+        self.project
+            .update(cx, |project, cx| project.cancel_transfer_commands(cx))
+            .log_err();
+    }
+}
+
+impl RemoteExecHost {
+    fn file_operation(
+        &self,
+        operation: RemoteFileOperation,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<()>> {
+        let project = self.project.clone();
+        cx.spawn(async move |cx| {
+            project
+                .update(cx, |project, cx| {
+                    project.transfer_file_operation(operation, cx)
+                })?
+                .await
+        })
+    }
+}
+
+fn remote_directory_entry(entry: RemoteDirectoryEntry) -> DirectoryEntry {
+    DirectoryEntry {
+        name: entry.name,
+        kind: match entry.kind {
+            RemoteEntryKind::Directory => EntryKind::Directory,
+            RemoteEntryKind::Symlink => EntryKind::Symlink,
+            RemoteEntryKind::File => EntryKind::File,
+        },
+        size: entry.size,
+        modified: entry.mtime_epoch_seconds.and_then(format_epoch_seconds),
+    }
+}
+
+/// The remote host's timestamps, shown the way the local pane shows its own.
+fn format_epoch_seconds(seconds: i64) -> Option<String> {
+    Some(
+        chrono::DateTime::from_timestamp(seconds, 0)?
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M")
+            .to_string(),
+    )
+}
+
+/// Runs a transfer program as a child of this process, with Zed's askpass
+/// helper wired up so passphrase, password and first-time host-key prompts
+/// appear in the GUI exactly as they do for a remote project (ADR-F28).
+async fn run_on_this_machine(
+    command: HostCommand,
+    askpass: AskPassFactory,
+    cx: &mut AsyncApp,
+) -> Result<String> {
+    let mut process = util::command::new_command(ide_program_path(command.program));
+    process
+        .args(&command.args)
+        .stdin(if command.stdin.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(working_directory) = &command.working_directory {
+        process.current_dir(working_directory);
+    }
+
+    let mut session = if command.wants_askpass {
+        let delegate = (askpass)(cx);
+        let session = AskPassSession::new(cx.background_executor().clone(), delegate).await?;
+        process
+            .env("SSH_ASKPASS", session.script_path())
+            .env("SSH_ASKPASS_REQUIRE", "force");
+        #[cfg(target_os = "windows")]
+        process.env("ZED_ASKPASS_SOCKET", session.socket_path());
+        Some(session)
+    } else {
+        None
+    };
+
+    let mut child = process
+        .spawn()
+        .with_context(|| format!("{} を実行できませんでした。", command.program.name()))?;
+    if let Some(stdin) = command.stdin {
+        let mut handle = child.stdin.take().context("標準入力を開けませんでした")?;
+        handle.write_all(stdin.as_bytes()).await?;
+        handle.flush().await?;
+        drop(handle);
+    }
+
+    // No timeout is given to `run`: a transfer may legitimately go a long time
+    // without prompting, and `ConnectTimeout` already bounds the
+    // unreachable-host case.
+    let output = match session.as_mut() {
+        Some(session) => select_biased! {
+            result = session.run(None).fuse() => {
+                match result {
+                    AskPassResult::CancelledByUser => bail!("認証がキャンセルされました。"),
+                    AskPassResult::Timedout => bail!("接続がタイムアウトしました。"),
+                }
+            }
+            output = child.output().fuse() => output?,
+        },
+        None => child.output().await?,
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        bail!(command_failure_message(&stderr, &stdout));
+    }
+    Ok(stdout)
+}
+
+/// How this machine invokes each transfer program. Only curl needs pointing
+/// at: Windows keeps it in System32, while its `sftp` and `scp` are on `PATH`.
+fn ide_program_path(program: TransferProgram) -> PathBuf {
+    match program {
+        TransferProgram::Curl => curl_program(),
+        program => PathBuf::from(program.name()),
+    }
+}
+
+// -------------------------------------------------------------------------
+// The transfer engine
+// -------------------------------------------------------------------------
+
 /// Guard against a pathological tree turning a single click into an unbounded
 /// number of processes.
 const MAX_WALKED_ENTRIES: usize = 2000;
 
 pub struct TransferBackend {
     target: RemoteTarget,
-    fs: Arc<dyn Fs>,
-    askpass: AskPassFactory,
+    /// The machine the transfer programs run on, which is also the machine the
+    /// "local" pane is showing.
+    host: Arc<dyn ExecHost>,
     /// FTP only, held for the life of the connection and never written to
     /// disk (ADR-F28). `None` lets curl fall back to `.netrc`.
     password: Option<String>,
 }
 
 impl TransferBackend {
-    pub fn new(
-        target: RemoteTarget,
-        fs: Arc<dyn Fs>,
-        askpass: AskPassFactory,
-        password: Option<String>,
-    ) -> Self {
+    pub fn new(target: RemoteTarget, host: Arc<dyn ExecHost>, password: Option<String>) -> Self {
         Self {
             target,
-            fs,
-            askpass,
+            host,
             password,
         }
     }
@@ -666,22 +1127,27 @@ impl TransferBackend {
         validate_remote_path(&directory).map_err(|message| anyhow!("{message}"))?;
         let mut entries = if self.target.protocol.is_ssh() {
             let stdout = self
-                .run_sftp_script(None, &format!("ls -l -a {}\n", sftp_quote(&directory)), cx)
+                .run_sftp_script(None, format!("ls -l -a {}\n", sftp_quote(&directory)), cx)
                 .await?;
             parse_sftp_listing(&stdout)
         } else {
-            self.list_over_ftp(&directory).await?
+            self.list_over_ftp(&directory, cx).await?
         };
         sort_entries(&mut entries);
         Ok(entries)
     }
 
-    async fn list_over_ftp(&self, directory: &str) -> Result<Vec<DirectoryEntry>> {
+    async fn list_over_ftp(
+        &self,
+        directory: &str,
+        cx: &mut AsyncApp,
+    ) -> Result<Vec<DirectoryEntry>> {
         let url = curl_url(&self.target, directory, true);
         let mlsd = self
             .run_curl(
                 None,
                 vec!["-X".to_string(), "MLSD".to_string(), url.clone()],
+                cx,
             )
             .await;
         match mlsd {
@@ -690,7 +1156,7 @@ impl TransferBackend {
             // Servers without `MLSD` answer 500; fall back to `LIST`, which
             // every FTP server has.
             _ => {
-                let stdout = self.run_curl(None, vec![url]).await?;
+                let stdout = self.run_curl(None, vec![url], cx).await?;
                 Ok(parse_ftp_listing(&stdout))
             }
         }
@@ -699,7 +1165,7 @@ impl TransferBackend {
     pub async fn make_directory(&self, path: &str, cx: &mut AsyncApp) -> Result<()> {
         validate_remote_path(path).map_err(|message| anyhow!("{message}"))?;
         if self.target.protocol.is_ssh() {
-            self.run_sftp_script(None, &format!("mkdir {}\n", sftp_quote(path)), cx)
+            self.run_sftp_script(None, format!("mkdir {}\n", sftp_quote(path)), cx)
                 .await?;
         } else {
             self.run_curl(
@@ -709,6 +1175,7 @@ impl TransferBackend {
                     format!("MKD {path}"),
                     curl_url(&self.target, &remote_parent(path), true),
                 ],
+                cx,
             )
             .await?;
         }
@@ -720,7 +1187,7 @@ impl TransferBackend {
         validate_remote_path(to).map_err(|message| anyhow!("{message}"))?;
         if self.target.protocol.is_ssh() {
             let script = format!("rename {} {}\n", sftp_quote(from), sftp_quote(to));
-            self.run_sftp_script(None, &script, cx).await?;
+            self.run_sftp_script(None, script, cx).await?;
         } else {
             self.run_curl(
                 None,
@@ -731,6 +1198,7 @@ impl TransferBackend {
                     format!("RNTO {to}"),
                     curl_url(&self.target, &remote_parent(from), true),
                 ],
+                cx,
             )
             .await?;
         }
@@ -770,7 +1238,7 @@ impl TransferBackend {
                 };
                 script.push_str(&format!("{command} {}\n", sftp_quote(victim)));
             }
-            self.run_sftp_script(None, &script, cx).await?;
+            self.run_sftp_script(None, script, cx).await?;
         } else {
             let mut args = Vec::new();
             for (victim, victim_kind) in victims.iter().rev() {
@@ -783,7 +1251,7 @@ impl TransferBackend {
                 args.push(format!("{command} {victim}"));
             }
             args.push(curl_url(&self.target, &remote_parent(path), true));
-            self.run_curl(None, args).await?;
+            self.run_curl(None, args, cx).await?;
         }
         Ok(())
     }
@@ -791,7 +1259,7 @@ impl TransferBackend {
     /// Sends `local_directory/name` into `remote_directory`.
     pub async fn upload(
         &self,
-        local_directory: &Path,
+        local_directory: &str,
         name: &str,
         is_directory: bool,
         remote_directory: &str,
@@ -811,23 +1279,25 @@ impl TransferBackend {
                     sftp_quote(name),
                     sftp_quote(&remote_join(&remote_directory, name))
                 );
-                self.run_sftp_script(Some(local_directory), &script, cx)
+                self.run_sftp_script(Some(local_directory.to_string()), script, cx)
                     .await?;
                 Ok(())
             }
             TransferProtocol::Scp => {
+                let (working_directory, local_argument) =
+                    self.scp_local_argument(local_directory, Some(name));
                 self.run_scp(
-                    local_directory,
+                    working_directory,
                     TransferDirection::Upload,
                     is_directory,
-                    name,
+                    &local_argument,
                     &remote_directory,
                     cx,
                 )
                 .await
             }
             TransferProtocol::Ftp | TransferProtocol::Ftps => {
-                self.upload_over_ftp(local_directory, name, is_directory, &remote_directory)
+                self.upload_over_ftp(local_directory, name, is_directory, &remote_directory, cx)
                     .await
             }
         }
@@ -839,7 +1309,7 @@ impl TransferBackend {
         remote_directory: &str,
         name: &str,
         is_directory: bool,
-        local_directory: &Path,
+        local_directory: &str,
         cx: &mut AsyncApp,
     ) -> Result<()> {
         let remote_directory = normalize_remote_dir(remote_directory);
@@ -854,25 +1324,50 @@ impl TransferBackend {
                     sftp_quote(&remote_path),
                     sftp_quote(name)
                 );
-                self.run_sftp_script(Some(local_directory), &script, cx)
+                self.run_sftp_script(Some(local_directory.to_string()), script, cx)
                     .await?;
                 Ok(())
             }
             TransferProtocol::Scp => {
+                let (working_directory, local_argument) =
+                    self.scp_local_argument(local_directory, None);
                 self.run_scp(
-                    local_directory,
+                    working_directory,
                     TransferDirection::Download,
                     is_directory,
-                    name,
+                    &local_argument,
                     &remote_path,
                     cx,
                 )
                 .await
             }
             TransferProtocol::Ftp | TransferProtocol::Ftps => {
-                self.download_over_ftp(&remote_path, name, is_directory, local_directory)
+                self.download_over_ftp(&remote_directory, name, is_directory, local_directory, cx)
                     .await
             }
+        }
+    }
+
+    /// `scp`'s local-side argument, and the working directory to run it in.
+    ///
+    /// `scp` splits an argument into `host:path` at the first colon that has
+    /// no `/` before it, so a Windows path would be split on its drive
+    /// letter — hence the bare name plus a working directory there. On the
+    /// remote host the paths are absolute and `/`-separated, so they can be
+    /// passed as they are, which also survives a name that contains a colon.
+    ///
+    /// `name` is the file being uploaded; `None` means a download, whose local
+    /// argument is the destination directory.
+    fn scp_local_argument(
+        &self,
+        local_directory: &str,
+        name: Option<&str>,
+    ) -> (Option<String>, String) {
+        match (self.host.is_remote(), name) {
+            (true, Some(name)) => (None, self.host.join(local_directory, name)),
+            (true, None) => (None, local_directory.to_string()),
+            (false, Some(name)) => (Some(local_directory.to_string()), name.to_string()),
+            (false, None) => (Some(local_directory.to_string()), ".".to_string()),
         }
     }
 
@@ -880,18 +1375,22 @@ impl TransferBackend {
     /// and turned into `MKD` plus one upload per file (ADR-F28).
     async fn upload_over_ftp(
         &self,
-        local_directory: &Path,
+        local_directory: &str,
         name: &str,
         is_directory: bool,
         remote_directory: &str,
+        cx: &mut AsyncApp,
     ) -> Result<()> {
         let mut pending = vec![(
-            local_directory.join(name),
-            remote_join(remote_directory, name),
+            local_directory.to_string(),
+            name.to_string(),
+            remote_directory.to_string(),
             is_directory,
         )];
         let mut walked = 0;
-        while let Some((local, remote, local_is_directory)) = pending.pop() {
+        while let Some((local_parent, name, remote_parent_directory, entry_is_directory)) =
+            pending.pop()
+        {
             walked += 1;
             if walked > MAX_WALKED_ENTRIES {
                 bail!(
@@ -899,42 +1398,40 @@ impl TransferBackend {
                      フォルダーを分けて転送してください。"
                 );
             }
-            if local_is_directory {
+            let local = self.host.join(&local_parent, &name);
+            let remote = remote_join(&remote_parent_directory, &name);
+            if entry_is_directory {
                 self.run_curl(
                     None,
                     vec![
                         "-Q".to_string(),
                         format!("MKD {remote}"),
-                        curl_url(&self.target, &remote_parent(&remote), true),
+                        curl_url(&self.target, &remote_parent_directory, true),
                     ],
+                    cx,
                 )
                 .await
                 // A directory that already exists is not a failure; whether
                 // the tree is usable is decided by the file uploads below.
                 .ok();
-                for child in self.read_local_directory(&local).await? {
-                    let Some(child_name) = child
-                        .file_name()
-                        .map(|name| name.to_string_lossy().to_string())
-                    else {
-                        continue;
-                    };
-                    let child_is_directory = self.fs.is_dir(&child).await;
-                    pending.push((child, remote_join(&remote, &child_name), child_is_directory));
+                for child in self.host.list_directory(local.clone(), cx).await? {
+                    let child_is_directory = child.kind.is_directory();
+                    pending.push((
+                        local.clone(),
+                        child.name,
+                        remote.clone(),
+                        child_is_directory,
+                    ));
                 }
             } else {
-                let parent = local.parent().unwrap_or(local_directory).to_path_buf();
-                let file_name = local
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .context("アップロードするファイル名を特定できませんでした")?;
                 self.run_curl(
-                    Some(&parent),
+                    Some(local_parent),
                     vec![
                         "-T".to_string(),
-                        file_name,
-                        curl_url(&self.target, &remote_parent(&remote), true),
+                        name,
+                        curl_url(&self.target, &remote_parent_directory, true),
                     ],
+                    cx,
                 )
                 .await?;
             }
@@ -944,18 +1441,22 @@ impl TransferBackend {
 
     async fn download_over_ftp(
         &self,
-        remote_path: &str,
+        remote_directory: &str,
         name: &str,
         is_directory: bool,
-        local_directory: &Path,
+        local_directory: &str,
+        cx: &mut AsyncApp,
     ) -> Result<()> {
         let mut pending = vec![(
-            remote_path.to_string(),
-            local_directory.join(name),
+            remote_directory.to_string(),
+            name.to_string(),
+            local_directory.to_string(),
             is_directory,
         )];
         let mut walked = 0;
-        while let Some((remote, local, remote_is_directory)) = pending.pop() {
+        while let Some((remote_parent_directory, name, local_parent, entry_is_directory)) =
+            pending.pop()
+        {
             walked += 1;
             if walked > MAX_WALKED_ENTRIES {
                 bail!(
@@ -963,28 +1464,28 @@ impl TransferBackend {
                      フォルダーを分けて転送してください。"
                 );
             }
-            if remote_is_directory {
-                self.fs.create_dir(&local).await?;
-                for entry in self.list_over_ftp(&remote).await? {
+            let remote = remote_join(&remote_parent_directory, &name);
+            let local = self.host.join(&local_parent, &name);
+            if entry_is_directory {
+                self.host.make_directory(local.clone(), cx).await?;
+                for entry in self.list_over_ftp(&remote, cx).await? {
+                    let child_is_directory = entry.kind.is_directory();
                     pending.push((
-                        remote_join(&remote, &entry.name),
-                        local.join(&entry.name),
-                        entry.kind.is_directory(),
+                        remote.clone(),
+                        entry.name,
+                        local.clone(),
+                        child_is_directory,
                     ));
                 }
             } else {
-                let parent = local.parent().unwrap_or(local_directory).to_path_buf();
-                let file_name = local
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .context("保存するファイル名を特定できませんでした")?;
                 self.run_curl(
-                    Some(&parent),
+                    Some(local_parent),
                     vec![
                         "-o".to_string(),
-                        file_name,
+                        name,
                         curl_url(&self.target, &remote, false),
                     ],
+                    cx,
                 )
                 .await?;
             }
@@ -992,168 +1493,114 @@ impl TransferBackend {
         Ok(())
     }
 
-    async fn read_local_directory(&self, directory: &Path) -> Result<Vec<PathBuf>> {
-        let mut stream = self.fs.read_dir(directory).await?;
-        let mut children = Vec::new();
-        while let Some(child) = stream.next().await {
-            children.push(child?);
-        }
-        Ok(children)
-    }
-
     async fn run_sftp_script(
         &self,
-        working_directory: Option<&Path>,
-        script: &str,
+        working_directory: Option<String>,
+        script: String,
         cx: &mut AsyncApp,
     ) -> Result<String> {
-        let mut command = util::command::new_command("sftp");
-        command
-            .args(sftp_args(&self.target))
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true);
-        if let Some(working_directory) = working_directory {
-            command.current_dir(working_directory);
-        }
-        self.run_with_askpass(command, Some(script.to_string()), cx)
+        self.host
+            .run(
+                HostCommand {
+                    program: TransferProgram::Sftp,
+                    args: sftp_args(&self.target),
+                    stdin: Some(script),
+                    working_directory,
+                    wants_askpass: true,
+                },
+                cx,
+            )
             .await
     }
 
     async fn run_scp(
         &self,
-        local_directory: &Path,
+        working_directory: Option<String>,
         direction: TransferDirection,
         recursive: bool,
-        local_name: &str,
+        local_argument: &str,
         remote_path: &str,
         cx: &mut AsyncApp,
     ) -> Result<()> {
-        let mut command = util::command::new_command("scp");
-        command
-            .args(scp_args(
-                &self.target,
-                direction,
-                recursive,
-                local_name,
-                remote_path,
-            ))
-            .current_dir(local_directory)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true);
-        self.run_with_askpass(command, None, cx).await.map(|_| ())
-    }
-
-    /// Runs an OpenSSH command with Zed's askpass helper wired up, so
-    /// passphrase, password and first-time host-key prompts appear in the GUI
-    /// exactly as they do for a remote project (ADR-F28).
-    async fn run_with_askpass(
-        &self,
-        mut command: util::command::Command,
-        stdin: Option<String>,
-        cx: &mut AsyncApp,
-    ) -> Result<String> {
-        let delegate = (self.askpass)(cx);
-        let mut askpass = AskPassSession::new(cx.background_executor().clone(), delegate).await?;
-        command
-            .env("SSH_ASKPASS", askpass.script_path())
-            .env("SSH_ASKPASS_REQUIRE", "force");
-        #[cfg(target_os = "windows")]
-        command.env("ZED_ASKPASS_SOCKET", askpass.socket_path());
-
-        let mut child = command.spawn()?;
-        if let Some(stdin) = stdin {
-            let mut handle = child
-                .stdin
-                .take()
-                .context("sftp の標準入力を開けませんでした")?;
-            handle.write_all(stdin.as_bytes()).await?;
-            handle.flush().await?;
-            drop(handle);
-        }
-
-        // No timeout is given to `run`: a transfer may legitimately go a long
-        // time without prompting, and `ConnectTimeout` already bounds the
-        // unreachable-host case.
-        let output = select_biased! {
-            result = askpass.run(None).fuse() => {
-                match result {
-                    AskPassResult::CancelledByUser => bail!("認証がキャンセルされました。"),
-                    AskPassResult::Timedout => bail!("接続がタイムアウトしました。"),
-                }
-            }
-            output = child.output().fuse() => output?,
-        };
-
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if !output.status.success() {
-            bail!(command_failure_message(&stderr, &stdout));
-        }
-        Ok(stdout)
+        self.host
+            .run(
+                HostCommand {
+                    program: TransferProgram::Scp,
+                    args: scp_args(
+                        &self.target,
+                        direction,
+                        recursive,
+                        local_argument,
+                        remote_path,
+                    ),
+                    stdin: None,
+                    working_directory,
+                    wants_askpass: true,
+                },
+                cx,
+            )
+            .await
+            .map(|_| ())
     }
 
     async fn run_curl(
         &self,
-        working_directory: Option<&Path>,
+        working_directory: Option<String>,
         args: Vec<String>,
+        cx: &mut AsyncApp,
     ) -> Result<String> {
-        let mut command = util::command::new_command(curl_program());
-        // `--disable` has to come first for curl to skip `.curlrc`.
-        command
-            .arg("--disable")
-            .args([
-                "--silent",
-                "--show-error",
-                "--connect-timeout",
-                &CONNECT_TIMEOUT_SECONDS.to_string(),
-            ])
-            .args(&args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true);
-        if let Some(working_directory) = working_directory {
-            command.current_dir(working_directory);
-        }
-
-        // Credentials go through a config file on stdin rather than `-u`, so
-        // the password never appears in the process list. With no user name,
-        // curl is told it may use `~/.netrc` instead (ADR-F28).
-        let mut configuration = String::new();
-        match self.target.user.as_deref().filter(|user| !user.is_empty()) {
-            Some(user) => {
-                command.arg("--config").arg("-");
-                configuration.push_str(&format!(
-                    "user = \"{}\"\n",
-                    escape_curl_config(&format!(
-                        "{user}:{}",
-                        self.password.as_deref().unwrap_or_default()
-                    ))
-                ));
-            }
-            None => {
-                command.arg("--netrc-optional");
-            }
-        }
-
-        let mut child = command.spawn()?;
-        if let Some(mut handle) = child.stdin.take() {
-            handle.write_all(configuration.as_bytes()).await?;
-            handle.flush().await?;
-            drop(handle);
-        }
-        let output = child.output().await?;
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if !output.status.success() {
-            bail!(command_failure_message(&stderr, &stdout));
-        }
-        Ok(stdout)
+        let configuration = curl_config(&self.target, self.password.as_deref());
+        self.host
+            .run(
+                HostCommand {
+                    program: TransferProgram::Curl,
+                    args: curl_args(&args, configuration.is_some()),
+                    // Always piped, so that curl reading `--config -` sees the
+                    // end of the file rather than waiting on a terminal.
+                    stdin: Some(configuration.unwrap_or_default()),
+                    working_directory,
+                    wants_askpass: false,
+                },
+                cx,
+            )
+            .await
     }
+}
+
+/// The fixed part of every curl invocation. `--disable` has to come first for
+/// curl to skip `.curlrc`, and the credential switch comes last so that the
+/// operation's own `-o` / `-T` still sit next to their URL.
+pub fn curl_args(operation: &[String], uses_config: bool) -> Vec<String> {
+    let mut args = vec![
+        "--disable".to_string(),
+        "--silent".to_string(),
+        "--show-error".to_string(),
+        "--connect-timeout".to_string(),
+        CONNECT_TIMEOUT_SECONDS.to_string(),
+    ];
+    args.extend_from_slice(operation);
+    if uses_config {
+        args.push("--config".to_string());
+        args.push("-".to_string());
+    } else {
+        args.push("--netrc-optional".to_string());
+    }
+    args
+}
+
+/// Credentials go through a config file on stdin rather than `-u`, so the
+/// password never appears in the process list. With no user name, curl is told
+/// it may use `~/.netrc` instead (ADR-F28).
+pub fn curl_config(target: &RemoteTarget, password: Option<&str>) -> Option<String> {
+    let user = target
+        .user
+        .as_deref()
+        .map(str::trim)
+        .filter(|user| !user.is_empty())?;
+    Some(format!(
+        "user = \"{}\"\n",
+        escape_curl_config(&format!("{user}:{}", password.unwrap_or_default()))
+    ))
 }
 
 fn command_failure_message(stderr: &str, stdout: &str) -> String {
@@ -1189,15 +1636,13 @@ fn curl_program() -> PathBuf {
 }
 
 // -------------------------------------------------------------------------
-// Local side
+// This machine's file system
 // -------------------------------------------------------------------------
 
-/// Local-side operations live here too, so the modal only ever deals in
-/// [`DirectoryEntry`] regardless of which pane it is talking about.
-pub async fn list_local_directory(
-    fs: &Arc<dyn Fs>,
-    directory: &Path,
-) -> Result<Vec<DirectoryEntry>> {
+/// Backs [`IdeExecHost::list_directory`], so the modal only ever deals in
+/// [`DirectoryEntry`] regardless of which pane — or which machine — it is
+/// talking about.
+async fn list_local_directory(fs: &Arc<dyn Fs>, directory: &Path) -> Result<Vec<DirectoryEntry>> {
     let mut stream = fs.read_dir(directory).await?;
     let mut entries = Vec::new();
     while let Some(child) = stream.next().await {
@@ -1232,26 +1677,6 @@ pub async fn list_local_directory(
     Ok(entries)
 }
 
-pub async fn make_local_directory(fs: &Arc<dyn Fs>, path: &Path) -> Result<()> {
-    fs.create_dir(path).await
-}
-
-pub async fn rename_local(fs: &Arc<dyn Fs>, from: &Path, to: &Path) -> Result<()> {
-    fs.rename(from, to, RenameOptions::default()).await
-}
-
-pub async fn remove_local(fs: &Arc<dyn Fs>, path: &Path, kind: EntryKind) -> Result<()> {
-    let options = RemoveOptions {
-        recursive: true,
-        ignore_if_not_exists: false,
-    };
-    if kind.is_directory() {
-        fs.remove_dir(path, options).await
-    } else {
-        fs.remove_file(path, options).await
-    }
-}
-
 /// A human-readable size for the pane, with directories left blank.
 pub fn format_size(size: Option<u64>) -> String {
     let Some(size) = size else {
@@ -1272,6 +1697,11 @@ pub fn format_size(size: Option<u64>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, sync::Mutex};
+
+    use gpui::TestAppContext;
+    use util::path;
+
     use super::*;
 
     fn directory(name: &str) -> DirectoryEntry {
@@ -1494,7 +1924,7 @@ drwxr-xr-x    2 ftp      ftp          4096 Sep  6 12:34 pub
             &ssh_target(),
             TransferDirection::Download,
             false,
-            "notes.txt",
+            ".",
             "/srv/notes.txt",
         );
         assert_eq!(
@@ -1593,6 +2023,133 @@ drwxr-xr-x    2 ftp      ftp          4096 Sep  6 12:34 pub
     }
 
     #[test]
+    fn parses_linux_openssh_listing() {
+        // OpenBSD/Linux の sftp(1): 名前だけ (ディレクトリ前置なし)、権限は実値。
+        let listing = "sftp> ls -l -a \"/home/ubuntu\"
+drwxr-xr-x    5 ubuntu   ubuntu       4096 Sep  6 12:34 .
+drwxr-xr-x    3 root     root         4096 Mar  4  2026 ..
+drwxrwxr-x    8 ubuntu   ubuntu       4096 Sep  5 19:39 zed-jp-llm
+-rw-rw-r--    1 ubuntu   ubuntu    12345678 Sep  6 09:00 backup.tar.gz
+lrwxrwxrwx    1 ubuntu   ubuntu          7 Apr 22  2024 bin -> /usr/bin
+-rw-------    1 ubuntu   ubuntu        512 Jan 10  2024 .bash_history
+";
+        let entries = parse_sftp_listing(listing);
+        let names = entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["zed-jp-llm", "backup.tar.gz", "bin", ".bash_history"]
+        );
+        assert_eq!(entries[0].kind, EntryKind::Directory);
+        assert_eq!(entries[0].size, None);
+        assert_eq!(entries[1].size, Some(12345678));
+        assert_eq!(entries[1].modified.as_deref(), Some("Sep 6 09:00"));
+        assert_eq!(entries[2].kind, EntryKind::Symlink);
+    }
+
+    #[test]
+    fn curl_arguments_keep_the_credential_switch_last() {
+        let operation = vec!["-T".to_string(), "notes.txt".to_string()];
+        assert_eq!(
+            curl_args(&operation, true),
+            vec![
+                "--disable",
+                "--silent",
+                "--show-error",
+                "--connect-timeout",
+                "15",
+                "-T",
+                "notes.txt",
+                "--config",
+                "-",
+            ]
+        );
+        assert_eq!(
+            curl_args(&operation, false).last().map(String::as_str),
+            Some("--netrc-optional")
+        );
+    }
+
+    #[test]
+    fn curl_configuration_falls_back_to_netrc_without_a_user() {
+        assert_eq!(
+            curl_config(&ftp_target(), Some("pa\"ss")).as_deref(),
+            Some("user = \"anonymous:pa\\\"ss\"\n")
+        );
+        assert_eq!(
+            curl_config(
+                &RemoteTarget {
+                    user: None,
+                    ..ftp_target()
+                },
+                Some("ignored")
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn the_stored_password_answers_once_then_hands_over_to_the_user() {
+        let password = "ubuntu@192.168.100.150's password: ";
+        assert_eq!(
+            decide_stored_password_use(password, false),
+            StoredPasswordUse::Answer
+        );
+        // The second prompt from the same `ssh` means it was refused; the user
+        // types the next one rather than the screen spending another attempt.
+        assert_eq!(
+            decide_stored_password_use(password, true),
+            StoredPasswordUse::Rejected
+        );
+
+        // A host key must never be confirmed on the user's behalf, and a key
+        // passphrase is not the account password.
+        for prompt in [
+            "Are you sure you want to continue connecting (yes/no/[fingerprint])? ",
+            "Enter passphrase for key '/home/ubuntu/.ssh/id_ed25519': ",
+            "Verification code: ",
+        ] {
+            assert_eq!(
+                decide_stored_password_use(prompt, false),
+                StoredPasswordUse::AskUser,
+                "{prompt:?}"
+            );
+            assert_eq!(
+                decide_stored_password_use(prompt, true),
+                StoredPasswordUse::AskUser,
+                "{prompt:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn credential_keys_follow_the_quick_connect_pairing() {
+        assert_eq!(
+            credential_lookups(TransferProtocol::Sftp, 2222),
+            [(ConnectionProtocol::Ssh, 2222)]
+        );
+        assert_eq!(
+            credential_lookups(TransferProtocol::Scp, 22),
+            [(ConnectionProtocol::Ssh, 22)]
+        );
+        // FTP's port is not the Telnet entry's, so the device's own port is
+        // tried after the exact one.
+        assert_eq!(
+            credential_lookups(TransferProtocol::Ftp, 21),
+            [
+                (ConnectionProtocol::Telnet, 21),
+                (ConnectionProtocol::Telnet, 23)
+            ]
+        );
+        assert_eq!(
+            credential_lookups(TransferProtocol::Ftps, 23),
+            [(ConnectionProtocol::Telnet, 23)]
+        );
+    }
+
+    #[test]
     fn reads_protocol_names_case_insensitively() {
         assert_eq!(
             TransferProtocol::from_name(" SFTP "),
@@ -1603,5 +2160,310 @@ drwxr-xr-x    2 ftp      ftp          4096 Sep  6 12:34 pub
             Some(TransferProtocol::Ftps)
         );
         assert_eq!(TransferProtocol::from_name("http"), None);
+    }
+
+    // ---------------------------------------------------------------------
+    // The execution host
+    // ---------------------------------------------------------------------
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct RecordedCommand {
+        program: &'static str,
+        args: Vec<String>,
+        stdin: Option<String>,
+        working_directory: Option<String>,
+        wants_askpass: bool,
+    }
+
+    /// An [`ExecHost`] that runs nothing: it records what it was asked to run
+    /// and answers listings from a fixed table, so the engine's behaviour on
+    /// either machine can be checked without a server or a `sftp` binary.
+    struct FakeExecHost {
+        remote: bool,
+        stdout: String,
+        listings: HashMap<String, Vec<DirectoryEntry>>,
+        commands: Mutex<Vec<RecordedCommand>>,
+        made_directories: Mutex<Vec<String>>,
+    }
+
+    impl FakeExecHost {
+        fn new(remote: bool) -> Self {
+            Self {
+                remote,
+                stdout: String::new(),
+                listings: HashMap::new(),
+                commands: Mutex::new(Vec::new()),
+                made_directories: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn with_stdout(mut self, stdout: &str) -> Self {
+            self.stdout = stdout.to_string();
+            self
+        }
+
+        fn recorded(&self) -> Vec<RecordedCommand> {
+            std::mem::take(&mut self.commands.lock().expect("the fake host is not poisoned"))
+        }
+    }
+
+    impl ExecHost for FakeExecHost {
+        fn label(&self) -> SharedString {
+            "テスト".into()
+        }
+
+        fn is_remote(&self) -> bool {
+            self.remote
+        }
+
+        fn root_directory(&self) -> String {
+            "/".to_string()
+        }
+
+        fn join(&self, directory: &str, name: &str) -> String {
+            if self.remote {
+                remote_join(directory, name)
+            } else {
+                Path::new(directory)
+                    .join(name)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        }
+
+        fn parent(&self, directory: &str) -> Option<String> {
+            if self.remote {
+                let directory = normalize_remote_dir(directory);
+                (directory != "/").then(|| remote_parent(&directory))
+            } else {
+                Path::new(directory)
+                    .parent()
+                    .map(|parent| parent.to_string_lossy().into_owned())
+            }
+        }
+
+        fn list_directory(
+            &self,
+            directory: String,
+            _cx: &mut AsyncApp,
+        ) -> Task<Result<Vec<DirectoryEntry>>> {
+            Task::ready(Ok(self
+                .listings
+                .get(&directory)
+                .cloned()
+                .unwrap_or_default()))
+        }
+
+        fn make_directory(&self, path: String, _cx: &mut AsyncApp) -> Task<Result<()>> {
+            self.made_directories
+                .lock()
+                .expect("the fake host is not poisoned")
+                .push(path);
+            Task::ready(Ok(()))
+        }
+
+        fn rename(&self, _from: String, _to: String, _cx: &mut AsyncApp) -> Task<Result<()>> {
+            Task::ready(Ok(()))
+        }
+
+        fn remove(&self, _path: String, _kind: EntryKind, _cx: &mut AsyncApp) -> Task<Result<()>> {
+            Task::ready(Ok(()))
+        }
+
+        fn run(&self, command: HostCommand, _cx: &mut AsyncApp) -> Task<Result<String>> {
+            self.commands
+                .lock()
+                .expect("the fake host is not poisoned")
+                .push(RecordedCommand {
+                    program: command.program.name(),
+                    args: command.args,
+                    stdin: command.stdin,
+                    working_directory: command.working_directory,
+                    wants_askpass: command.wants_askpass,
+                });
+            Task::ready(Ok(self.stdout.clone()))
+        }
+    }
+
+    fn sftp_target() -> RemoteTarget {
+        RemoteTarget {
+            protocol: TransferProtocol::Sftp,
+            ..ssh_target()
+        }
+    }
+
+    #[gpui::test]
+    async fn lists_through_the_execution_host(cx: &mut TestAppContext) {
+        let host = Arc::new(FakeExecHost::new(true).with_stdout(
+            "sftp> ls -l -a \"/srv\"
+drwxr-xr-x    2 ubuntu   ubuntu       4096 Sep  6 12:34 incoming
+-rw-r--r--    1 ubuntu   ubuntu        120 Sep  6 12:34 readme.txt
+",
+        ));
+        let backend = TransferBackend::new(sftp_target(), host.clone(), None);
+        let mut cx = cx.to_async();
+
+        let entries = backend
+            .list("/srv", &mut cx)
+            .await
+            .expect("the fake host always answers");
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
+            ["incoming", "readme.txt"]
+        );
+
+        let commands = host.recorded();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].program, "sftp");
+        assert_eq!(commands[0].stdin.as_deref(), Some("ls -l -a \"/srv\"\n"));
+        // The listing needs the same authentication as a transfer does.
+        assert!(commands[0].wants_askpass);
+    }
+
+    #[gpui::test]
+    async fn scp_uses_absolute_paths_on_the_remote_host(cx: &mut TestAppContext) {
+        let host = Arc::new(FakeExecHost::new(true));
+        let backend = TransferBackend::new(ssh_target(), host.clone(), None);
+        let mut cx = cx.to_async();
+
+        backend
+            .upload("/home/ubuntu/work", "notes.txt", false, "/srv", &mut cx)
+            .await
+            .expect("the fake host always answers");
+        backend
+            .download("/srv", "notes.txt", false, "/home/ubuntu/work", &mut cx)
+            .await
+            .expect("the fake host always answers");
+
+        let commands = host.recorded();
+        assert_eq!(commands.len(), 2);
+        // No working directory is needed: a `/`-rooted path has a slash before
+        // any colon, so `scp` cannot mistake it for `host:path`.
+        assert_eq!(commands[0].working_directory, None);
+        assert_eq!(
+            commands[0].args.iter().rev().take(2).collect::<Vec<_>>(),
+            vec!["operator@example.com:/srv/", "/home/ubuntu/work/notes.txt"]
+        );
+        assert_eq!(commands[1].working_directory, None);
+        assert_eq!(
+            commands[1].args.last().map(String::as_str),
+            Some("/home/ubuntu/work")
+        );
+    }
+
+    #[gpui::test]
+    async fn scp_keeps_the_working_directory_trick_on_this_machine(cx: &mut TestAppContext) {
+        let host = Arc::new(FakeExecHost::new(false));
+        let backend = TransferBackend::new(ssh_target(), host.clone(), None);
+        let mut cx = cx.to_async();
+
+        backend
+            .upload(path!("/work"), "notes.txt", false, "/srv", &mut cx)
+            .await
+            .expect("the fake host always answers");
+        backend
+            .download("/srv", "notes.txt", false, path!("/work"), &mut cx)
+            .await
+            .expect("the fake host always answers");
+
+        let commands = host.recorded();
+        assert_eq!(
+            commands[0].working_directory.as_deref(),
+            Some(path!("/work"))
+        );
+        assert_eq!(
+            commands[0].args.iter().rev().take(2).collect::<Vec<_>>(),
+            vec!["operator@example.com:/srv/", "notes.txt"]
+        );
+        assert_eq!(
+            commands[1].working_directory.as_deref(),
+            Some(path!("/work"))
+        );
+        assert_eq!(commands[1].args.last().map(String::as_str), Some("."));
+    }
+
+    #[gpui::test]
+    async fn ftp_download_creates_directories_through_the_host(cx: &mut TestAppContext) {
+        let host = Arc::new(FakeExecHost::new(true));
+        let backend = TransferBackend::new(ftp_target(), host.clone(), Some("secret".into()));
+        let mut cx = cx.to_async();
+
+        // The empty `MLSD` answer ends the walk after the directory itself.
+        backend
+            .download("/pub", "data", true, "/home/ubuntu", &mut cx)
+            .await
+            .expect("the fake host always answers");
+
+        assert_eq!(
+            host.made_directories
+                .lock()
+                .expect("the fake host is not poisoned")
+                .as_slice(),
+            ["/home/ubuntu/data"]
+        );
+        let commands = host.recorded();
+        assert!(commands.iter().all(|command| command.program == "curl"));
+        // The password reaches curl through stdin, never the command line.
+        assert!(
+            commands
+                .iter()
+                .all(|command| !command.args.iter().any(|arg| arg.contains("secret")))
+        );
+        assert_eq!(
+            commands[0].stdin.as_deref(),
+            Some("user = \"anonymous:secret\"\n")
+        );
+    }
+
+    #[gpui::test]
+    async fn ftp_upload_walks_the_host_it_is_reading_from(cx: &mut TestAppContext) {
+        let mut host = FakeExecHost::new(true);
+        host.listings.insert(
+            "/home/ubuntu/data".to_string(),
+            vec![DirectoryEntry {
+                name: "notes.txt".into(),
+                kind: EntryKind::File,
+                size: Some(12),
+                modified: None,
+            }],
+        );
+        let host = Arc::new(host);
+        let backend = TransferBackend::new(ftp_target(), host.clone(), None);
+        let mut cx = cx.to_async();
+
+        backend
+            .upload("/home/ubuntu", "data", true, "/pub", &mut cx)
+            .await
+            .expect("the fake host always answers");
+
+        let commands = host.recorded();
+        assert_eq!(commands.len(), 2);
+        assert!(
+            commands[0]
+                .args
+                .iter()
+                .any(|argument| argument == "MKD /pub/data")
+        );
+        // The file is uploaded from the directory holding it, so only its bare
+        // name has to survive the command line.
+        assert_eq!(
+            commands[1].working_directory.as_deref(),
+            Some("/home/ubuntu/data")
+        );
+        assert!(
+            commands[1]
+                .args
+                .windows(2)
+                .any(|pair| pair == ["-T", "notes.txt"])
+        );
+        assert!(
+            commands[1]
+                .args
+                .iter()
+                .any(|argument| argument == "ftp://files.example.com:2121/pub/data/")
+        );
     }
 }
