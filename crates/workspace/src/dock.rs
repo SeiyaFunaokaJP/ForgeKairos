@@ -1460,16 +1460,14 @@ impl Dock {
                         Axis::Horizontal => this.h_full().w(px(1.)),
                     }),
             )
+            // No `on_mouse_down` here: a listener that stops propagation runs
+            // before the drag machinery's own mouse-down listener and would
+            // keep the drag from ever starting (the handle is `occlude()`d, so
+            // nothing underneath sees the click anyway).
             .on_drag(DraggedDockSplit(position), |split, _, _, cx| {
                 cx.stop_propagation();
                 cx.new(|_| split.clone())
             })
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|_, _: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                }),
-            )
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|dock, e: &MouseUpEvent, window, cx| {

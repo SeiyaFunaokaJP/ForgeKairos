@@ -2605,7 +2605,12 @@ pub fn connect_and_run_with_password(
     let Some(workspace_entity) = workspace.upgrade() else {
         return;
     };
-    workspace_entity.update(cx, |_, cx| {
+    workspace_entity.update(cx, |workspace, cx| {
+        // リモートプロジェクトの端末はリモートホストで動くので、この PC の askpass
+        // ソケット (`SSH_ASKPASS` / `ZED_ASKPASS_SOCKET`) は届かない。そのまま渡すと
+        // `SSH_ASKPASS_REQUIRE=force` の ssh が問い合わせ先を失って失敗するため、
+        // リモートでは保存パスワードを使わず端末内のプロンプトに任せる。
+        let remote_project = workspace.project().read(cx).is_via_remote_server();
         cx.spawn_in(window, async move |workspace, cx| {
             let (program, mut args) = connection.command();
             let lookup_program = program.clone();
@@ -2641,7 +2646,7 @@ pub fn connect_and_run_with_password(
             // never travels through the PTY. Telnet has no such door and is
             // answered after the terminal is up.
             let askpass = match (&password, connection.protocol) {
-                (Some(password), ConnectionProtocol::Ssh) => {
+                (Some(password), ConnectionProtocol::Ssh) if !remote_project => {
                     let executor = cx.background_executor().clone();
                     match quick_connect_credentials::stored_password_proxy(
                         password.clone(),
@@ -2888,17 +2893,23 @@ impl QuickConnectModal {
                     .w_full()
                     .gap_1()
                     .justify_between()
+                    // The name takes whatever is left; without `min_w_0` a
+                    // full-width button keeps its content width and pushes the
+                    // host, badge, and buttons past the modal's edge.
                     .child(
-                        Button::new(("saved-connection", index), connection.name.clone())
-                            .full_width()
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.apply_connection(&applied, window, cx);
-                            })),
+                        div().flex_1().min_w_0().child(
+                            Button::new(("saved-connection", index), connection.name.clone())
+                                .full_width()
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.apply_connection(&applied, window, cx);
+                                })),
+                        ),
                     )
                     .child(
                         Label::new(detail)
                             .size(LabelSize::Small)
-                            .color(Color::Muted),
+                            .color(Color::Muted)
+                            .truncate(),
                     )
                     .when(has_password, |this| {
                         this.child(
