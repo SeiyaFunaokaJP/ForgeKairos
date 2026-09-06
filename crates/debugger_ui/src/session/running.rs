@@ -1656,6 +1656,24 @@ impl RunningState {
         &self.stack_frame_list
     }
 
+    /// Points every editor this session shows at `window`. Focus listeners are
+    /// stored on the window they were registered against, so a debug session
+    /// tab moved to another window has to register them again.
+    pub(crate) fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App) {
+        self.console.update(cx, |console, cx| {
+            console.rebind_window_focus_listeners(window, cx);
+        });
+        self.memory_view.update(cx, |memory_view, cx| {
+            memory_view.rebind_window_focus_listeners(window, cx);
+        });
+        self.breakpoint_list.update(cx, |breakpoint_list, cx| {
+            breakpoint_list.rebind_window_focus_listeners(window, cx);
+        });
+        self.variable_list.update(cx, |variable_list, cx| {
+            variable_list.rebind_window_focus_listeners(window, cx);
+        });
+    }
+
     #[cfg(test)]
     pub fn console(&self) -> &Entity<Console> {
         &self.console

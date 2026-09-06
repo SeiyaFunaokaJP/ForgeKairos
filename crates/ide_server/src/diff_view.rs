@@ -235,6 +235,19 @@ impl Render for IdeServerDiff {
 impl Item for IdeServerDiff {
     type Event = IdeServerDiffEvent;
 
+    fn added_to_workspace(
+        &mut self,
+        workspace: &mut workspace::Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // The diff this tab wraps owns the editors, and their focus listeners
+        // belong to the window they were registered against.
+        self.diff_view.update(cx, |diff_view, cx| {
+            diff_view.added_to_workspace(workspace, window, cx);
+        });
+    }
+
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
         self.tab_name.clone()
     }

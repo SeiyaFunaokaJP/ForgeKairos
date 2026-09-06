@@ -833,6 +833,19 @@ impl Item for ProjectSearchView {
         self.results_editor.update(cx, |editor, cx| {
             editor.added_to_workspace(workspace, window, cx)
         });
+        // The query and filter fields are editors too, and their focus
+        // listeners belong to the window they were registered against, so they
+        // have to register them again once this tab has moved elsewhere.
+        for editor in [
+            &self.query_editor,
+            &self.replacement_editor,
+            &self.included_files_editor,
+            &self.excluded_files_editor,
+        ] {
+            editor.update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx);
+            });
+        }
     }
 
     fn set_nav_history(

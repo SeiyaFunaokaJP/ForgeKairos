@@ -1115,6 +1115,7 @@ impl Item for Editor {
         cx: &mut Context<Self>,
     ) {
         self.workspace = Some((workspace.weak_handle(), workspace.database_id()));
+        self.rebind_window_focus_listeners(window, cx);
         if let Some(workspace_entity) = &workspace.weak_handle().upgrade() {
             cx.subscribe(
                 workspace_entity,

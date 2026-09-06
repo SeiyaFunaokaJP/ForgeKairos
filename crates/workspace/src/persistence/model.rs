@@ -154,6 +154,12 @@ pub struct DockStructure {
     pub left: DockData,
     pub right: DockData,
     pub bottom: DockData,
+    /// Whether this fork's default right dock pairing has already been settled
+    /// for this workspace, either by applying it or by finding a layout the user
+    /// arranged. A workspace saved before the pairing existed stores NULL, which
+    /// is how it gets the layout once and only once.
+    #[serde(default)]
+    pub default_layout_applied: bool,
 }
 
 impl RemoteConnectionKind {
@@ -180,11 +186,13 @@ impl Column for DockStructure {
         let (left, next_index) = DockData::column(statement, start_index)?;
         let (right, next_index) = DockData::column(statement, next_index)?;
         let (bottom, next_index) = DockData::column(statement, next_index)?;
+        let (default_layout_applied, next_index) = Option::<bool>::column(statement, next_index)?;
         Ok((
             DockStructure {
                 left,
                 right,
                 bottom,
+                default_layout_applied: default_layout_applied.unwrap_or(false),
             },
             next_index,
         ))
@@ -195,7 +203,8 @@ impl Bind for DockStructure {
     fn bind(&self, statement: &Statement, start_index: i32) -> Result<i32> {
         let next_index = statement.bind(&self.left, start_index)?;
         let next_index = statement.bind(&self.right, next_index)?;
-        statement.bind(&self.bottom, next_index)
+        let next_index = statement.bind(&self.bottom, next_index)?;
+        statement.bind(&self.default_layout_applied, next_index)
     }
 }
 

@@ -732,6 +732,10 @@ impl MetalRenderer {
                     command_encoder,
                 ),
                 PrimitiveBatch::SubpixelSprites { .. } => unreachable!(),
+                // Punch-throughs exist so that gpui can uncover a child window
+                // the compositor draws behind its own surface; nothing on macOS
+                // is hosted that way.
+                PrimitiveBatch::PunchThroughs(_range) => {}
             }
         }
 

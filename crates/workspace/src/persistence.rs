@@ -1060,6 +1060,12 @@ impl Domain for WorkspaceDb {
             ALTER TABLE workspaces ADD COLUMN bottom_dock_secondary_panel TEXT;
             ALTER TABLE workspaces ADD COLUMN bottom_dock_secondary_ratio REAL;
         ),
+        // NULL marks a workspace saved before this fork paired the browser panel
+        // with the agent panel, which is how such a workspace gets the pairing
+        // exactly once.
+        sql!(
+            ALTER TABLE workspaces ADD COLUMN default_dock_layout_applied INTEGER;
+        ),
     ];
 
     // Allow recovering from bad migration that was initially shipped to nightly
@@ -1160,6 +1166,7 @@ impl WorkspaceDb {
                     bottom_dock_zoom,
                     bottom_dock_secondary_panel,
                     bottom_dock_secondary_ratio,
+                    default_dock_layout_applied,
                     window_id
                 FROM workspaces
                 WHERE
@@ -1276,6 +1283,7 @@ impl WorkspaceDb {
                     bottom_dock_zoom,
                     bottom_dock_secondary_panel,
                     bottom_dock_secondary_ratio,
+                    default_dock_layout_applied,
                     window_id,
                     remote_connection_id
                 FROM workspaces
@@ -1622,11 +1630,12 @@ impl WorkspaceDb {
                         bottom_dock_zoom,
                         bottom_dock_secondary_panel,
                         bottom_dock_secondary_ratio,
+                        default_dock_layout_applied,
                         session_id,
                         window_id,
                         timestamp
                     )
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, CURRENT_TIMESTAMP)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, CURRENT_TIMESTAMP)
                     ON CONFLICT DO
                     UPDATE SET
                         paths = ?2,
@@ -1649,8 +1658,9 @@ impl WorkspaceDb {
                         bottom_dock_zoom = ?19,
                         bottom_dock_secondary_panel = ?20,
                         bottom_dock_secondary_ratio = ?21,
-                        session_id = ?22,
-                        window_id = ?23,
+                        default_dock_layout_applied = ?22,
+                        session_id = ?23,
+                        window_id = ?24,
                         timestamp = CURRENT_TIMESTAMP
                 );
                 let mut prepared_query = conn.exec_bound(query)?;
@@ -3432,6 +3442,7 @@ mod tests {
                 secondary_panel: None,
                 secondary_ratio: None,
             },
+            default_layout_applied: true,
         };
 
         let workspace = SerializedWorkspace {
@@ -3458,6 +3469,21 @@ mod tests {
         assert_eq!(
             workspace.docks,
             db.workspace_for_id(WorkspaceId(11)).unwrap().docks
+        );
+
+        // A row written before the fork paired the two right dock panels reads
+        // back as "not applied yet", which is what triggers the one-off layout.
+        assert!(!db.workspace_for_id(WorkspaceId(12)).is_some());
+        let mut older = workspace.clone();
+        older.id = WorkspaceId(12);
+        older.paths = PathList::new(&["/tmp-secondary-older"]);
+        older.docks.default_layout_applied = false;
+        db.save_workspace(older).await;
+        assert!(
+            !db.workspace_for_id(WorkspaceId(12))
+                .unwrap()
+                .docks
+                .default_layout_applied
         );
     }
 

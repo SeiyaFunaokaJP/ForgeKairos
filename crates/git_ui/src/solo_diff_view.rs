@@ -534,9 +534,18 @@ impl Item for SoloDiffView {
         cx: &mut Context<Self>,
     ) {
         self.editor.update(cx, |editor, cx| {
+            let lhs_editor = editor.lhs_editor().cloned();
             editor.rhs_editor().update(cx, |editor, cx| {
                 editor.added_to_workspace(workspace, window, cx)
-            })
+            });
+            // The left-hand side of a split diff is a second editor, and its
+            // focus listeners belong to the window they were registered
+            // against just like the right-hand side's.
+            if let Some(lhs_editor) = lhs_editor {
+                lhs_editor.update(cx, |editor, cx| {
+                    editor.rebind_window_focus_listeners(window, cx);
+                });
+            }
         });
     }
 

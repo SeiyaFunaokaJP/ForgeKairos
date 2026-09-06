@@ -205,6 +205,15 @@ pub struct VariableList {
 }
 
 impl VariableList {
+    /// See [`super::console::Console::rebind_window_focus_listeners`].
+    pub(crate) fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App) {
+        if let Some((_, editor)) = self.edited_path.as_ref() {
+            editor.update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx);
+            });
+        }
+    }
+
     pub(crate) fn new(
         session: Entity<Session>,
         stack_frame_list: Entity<StackFrameList>,

@@ -94,8 +94,7 @@ pub(crate) struct Viewport {
     pub(crate) hidden_reason: Option<&'static str>,
     /// What gpui paints on top of the element tree this frame (tooltips,
     /// context menus, popovers), in the same logical pixels and origin as the
-    /// viewport itself. The child HWND is composited above everything gpui
-    /// draws, so whatever of this lands on the surface has to be cut out of the
+    /// viewport itself. Whatever of it lands on the surface is cut out of the
     /// child window; see [`WebView::sync_viewport`].
     pub(crate) overlays: Vec<OverlayRect>,
 }
@@ -104,8 +103,10 @@ pub(crate) struct Viewport {
 ///
 /// Tooltips, context menus and popovers are all drawn by `ui::elevation_2`,
 /// which rounds its corners by `rounded_lg` (0.5rem, 8px at the default rem
-/// size). A square hole would expose what gpui painted *under* the overlay -
-/// the panel's own dark background - in the four corners.
+/// size). The four corners of the bounding box are not covered by the overlay,
+/// so a square hole would cut away page the user is still meant to see through
+/// gpui's punch-through (and, without DirectComposition, expose the panel's own
+/// dark background instead).
 const OVERLAY_CORNER_RADIUS: f64 = 8.;
 
 /// A gpui overlay rectangle in logical pixels, relative to the host window's
@@ -121,13 +122,14 @@ pub(crate) struct OverlayRect {
 /// Whether the host window was created with `WS_EX_NOREDIRECTIONBITMAP`, which
 /// `gpui_windows` does unless `GPUI_DISABLE_DIRECT_COMPOSITION` is set.
 ///
-/// Such a window has no DWM redirection surface, and child HWNDs have nowhere
-/// to draw; on top of that gpui binds its composition tree with
-/// `CreateTargetForHwnd(hwnd, topmost = true)`, which composites gpui's own
-/// (opaque) swap chain *above* every child window. Either one on its own is
-/// enough to make a windowed-hosted WebView2 invisible, so the panel warns
-/// instead of leaving the user with a blank surface.
-pub(crate) fn host_uses_direct_composition(host_hwnd: isize) -> bool {
+/// Only logged, because both cases work but differ in how the page ends up on
+/// screen. With DirectComposition gpui binds its visual tree with
+/// `CreateTargetForHwnd(hwnd, topmost = true)`, so its swap chain composites
+/// *above* this child window and the page is only visible because gpui clears
+/// the rectangle to transparent (`Window::paint_punch_through`). Without it the
+/// swap chain is bound straight to the HWND and the child is in front of
+/// everything gpui draws, which is why the overlay holes below exist.
+fn host_uses_direct_composition(host_hwnd: isize) -> bool {
     let hwnd = HWND(host_hwnd as *mut c_void);
     let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
     (ex_style as u32) & WS_EX_NOREDIRECTIONBITMAP.0 != 0
@@ -400,15 +402,20 @@ impl WebView {
     /// to follow the monitor DPI on its own).
     ///
     /// The overlays gpui reported for this frame are turned into holes in the
-    /// child window's region, because the compositor puts the child in front of
-    /// gpui's swap chain and a tooltip drawn over the surface would otherwise be
-    /// invisible (ADR-F19).
+    /// child window's region (ADR-F19). Under DirectComposition gpui already
+    /// draws the overlay in front of the page, so the hole is what lets the
+    /// mouse reach it: a child HWND hit-tests its whole rectangle, and a
+    /// popover or menu over the surface would otherwise be unclickable. Without
+    /// DirectComposition the child is in front of gpui's swap chain and the
+    /// hole is what makes the overlay visible at all.
     ///
     /// Returns `true` when cutting those holes was held back: this runs while
     /// gpui paints, so the frame that draws the overlay has not been presented
-    /// yet, and opening the hole now uncovers the host window (whose class brush
-    /// is black) for one frame. The caller applies it from a next-frame callback
-    /// with [`WebView::apply_deferred_clip`] instead. Removing holes is never
+    /// yet, and opening the hole now uncovers - for one frame - whatever is
+    /// behind the child window, which is the host window's black class brush or,
+    /// under DirectComposition, gpui's punch-through and with it the desktop.
+    /// The caller applies it from a next-frame callback with
+    /// [`WebView::apply_deferred_clip`] instead. Removing holes is never
     /// deferred - it only ever covers more of the surface back up.
     #[must_use]
     pub(crate) fn sync_viewport(&self, viewport: Viewport) -> bool {
@@ -973,8 +980,7 @@ fn enumerate_child_windows(host_hwnd: HWND) -> Vec<isize> {
 /// Diagnostics: when the surface is configured correctly but the user still
 /// sees nothing, this log tells whether the child HWND exists and where Windows
 /// thinks it is - which separates "WebView2 never attached" from "the child
-/// window is fine but the compositor never shows it" (see
-/// [`host_uses_direct_composition`]).
+/// window is fine but the compositor never shows it".
 fn log_child_window(child: HWND) {
     let mut class = [0u16; 128];
     let written = unsafe { GetClassNameW(child, &mut class) };

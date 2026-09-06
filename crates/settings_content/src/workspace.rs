@@ -144,6 +144,37 @@ pub struct WorkspaceSettingsContent {
     /// Whether the focused panel follows the mouse location
     /// Default: false
     pub focus_follows_mouse: Option<FocusFollowsMouse>,
+    /// Which panel the right dock stacks below the agent panel the first time a
+    /// project is opened. Once a project has a saved dock layout, that layout is
+    /// restored instead and this setting no longer applies to it.
+    ///
+    /// Default: browser
+    pub right_dock_secondary_panel: Option<RightDockSecondaryPanel>,
+}
+
+/// Second panel the right dock shows by default, stacked below the main one.
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RightDockSecondaryPanel {
+    /// Show a single panel, as upstream Zed does.
+    #[strum(serialize = "並べない")]
+    None,
+    /// Stack the browser panel below the agent panel.
+    #[default]
+    #[strum(serialize = "ブラウザーパネル")]
+    Browser,
 }
 
 #[with_fallible_options]

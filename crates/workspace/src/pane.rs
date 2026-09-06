@@ -1,7 +1,7 @@
 use crate::{
-    CloseWindow, NewCenterTerminal, NewFile, NewTerminal, OpenInTerminal, OpenOptions,
-    OpenTerminal, OpenVisible, SplitDirection, ToggleFileFinder, ToggleProjectSymbols, ToggleZoom,
-    Workspace, WorkspaceItemBuilder, ZoomIn, ZoomOut,
+    CloseWindow, MoveItemToNewWindow, NewCenterTerminal, NewFile, NewTerminal, OpenInTerminal,
+    OpenOptions, OpenTerminal, OpenVisible, SplitDirection, ToggleFileFinder, ToggleProjectSymbols,
+    ToggleZoom, Workspace, WorkspaceItemBuilder, ZoomIn, ZoomOut,
     focus_follows_mouse::FocusFollowsMouse as _,
     invalid_item_view::InvalidItemView,
     item::{
@@ -391,6 +391,36 @@ impl fmt::Debug for Event {
     }
 }
 
+/// タブを端に落として分割するときに、新しいペインを作る役目を引き取るフック。
+///
+/// 既定の [`Pane::handle_tab_drop`] は [`Workspace::split_pane`] を呼ぶが、これは
+/// **中央の** `PaneGroup` しか割れない ([`PaneGroup::split`] は見つからない
+/// ペインを渡されると先頭のペインを割るフォールバックに落ちる)。ドックのパネルが
+/// 自前の `PaneGroup` を持つとき (ターミナルパネル / ブラウザーパネル) は、
+/// このフックで自分の `PaneGroup` を割って新しいペインを返す。`None` を返したら
+/// **分割せず**、落とされた先のペインにそのまま開く (中央を割るよりは驚きが小さい)。
+///
+/// タブだけでなくファイル (プロジェクトパネルの項目 / OS からのドロップ) の
+/// 落下でも同じフックを通す。
+pub type TabDropSplitHandler =
+    Arc<dyn Fn(&Entity<Pane>, SplitDirection, &mut Window, &mut App) -> Option<Entity<Pane>>>;
+
+/// 端に落としたときの分割先を決める。フックを持つペイン (ドックのパネル) は
+/// その持ち主に割ってもらい、持たないペインは従来どおり中央を割る。
+fn split_pane_for_drop(
+    workspace: &mut Workspace,
+    split_handler: Option<&TabDropSplitHandler>,
+    pane: Entity<Pane>,
+    direction: SplitDirection,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> Entity<Pane> {
+    match split_handler {
+        Some(split_handler) => split_handler(&pane, direction, window, cx).unwrap_or(pane),
+        None => workspace.split_pane(pane, direction, window, cx),
+    }
+}
+
 /// A container for 0 to many items that are open in the workspace.
 /// Treats all items uniformly via the [`ItemHandle`] trait, whether it's an editor, search results multibuffer, terminal or something else,
 /// responsible for managing item tabs, focus and zoom states and drag and drop features.
@@ -417,6 +447,7 @@ pub struct Pane {
     can_drop_predicate: Option<Arc<dyn Fn(&dyn Any, &mut Window, &mut App) -> bool>>,
     can_split_predicate:
         Option<Arc<dyn Fn(&mut Self, &dyn Any, &mut Window, &mut Context<Self>) -> bool>>,
+    tab_drop_split_handler: Option<TabDropSplitHandler>,
     can_toggle_zoom: bool,
     should_display_tab_bar: Rc<dyn Fn(&Window, &mut Context<Pane>) -> bool>,
     should_display_welcome_page: bool,
@@ -607,6 +638,7 @@ impl Pane {
             project: project.downgrade(),
             can_drop_predicate,
             can_split_predicate: None,
+            tab_drop_split_handler: None,
             can_toggle_zoom: true,
             should_display_tab_bar: Rc::new(|_, cx| TabBarSettings::get_global(cx).show),
             should_display_welcome_page: false,
@@ -871,6 +903,12 @@ impl Pane {
         >,
     ) {
         self.can_split_predicate = can_split_predicate;
+    }
+
+    /// タブを端に落としたときの分割を、このペインの持ち主に委ねる
+    /// ([`TabDropSplitHandler`])。設定しないと中央の `PaneGroup` が割られる。
+    pub fn set_tab_drop_split_handler(&mut self, handler: Option<TabDropSplitHandler>) {
+        self.tab_drop_split_handler = handler;
     }
 
     pub fn set_can_toggle_zoom(&mut self, can_toggle_zoom: bool, cx: &mut Context<Self>) {
@@ -3251,6 +3289,25 @@ impl Pane {
                                     pane.close_all_items(&close_all_items_action, window, cx)
                                         .detach_and_log_err(cx)
                                 }),
+                            )
+                            .separator()
+                            .entry(
+                                "新しいウィンドウへ移動",
+                                Some(Box::new(MoveItemToNewWindow)),
+                                window.handler_for(&pane, move |pane, window, cx| {
+                                    let source_pane = cx.entity();
+                                    pane.workspace
+                                        .update(cx, |workspace, cx| {
+                                            workspace.move_item_to_new_window(
+                                                source_pane,
+                                                item_id,
+                                                None,
+                                                window,
+                                                cx,
+                                            );
+                                        })
+                                        .log_err();
+                                }),
                             );
 
                         let pin_tab_entries = |menu: ContextMenu| {
@@ -3844,6 +3901,7 @@ impl Pane {
 
         let mut to_pane = cx.entity();
         let split_direction = self.drag_split_direction;
+        let split_handler = self.tab_drop_split_handler.clone();
         let item_id = dragged_tab.item.item_id();
         self.unpreview_item_if_preview(item_id);
 
@@ -3856,7 +3914,14 @@ impl Pane {
             .update(cx, |_, cx| {
                 cx.defer_in(window, move |workspace, window, cx| {
                     if let Some(split_direction) = split_direction {
-                        to_pane = workspace.split_pane(to_pane, split_direction, window, cx);
+                        to_pane = split_pane_for_drop(
+                            workspace,
+                            split_handler.as_ref(),
+                            to_pane,
+                            split_direction,
+                            window,
+                            cx,
+                        );
                     }
                     let database_id = workspace.database_id();
                     let was_pinned_in_from_pane = from_pane.read_with(cx, |pane, _| {
@@ -4015,6 +4080,7 @@ impl Pane {
 
         let mut to_pane = cx.entity();
         let split_direction = self.drag_split_direction;
+        let split_handler = self.tab_drop_split_handler.clone();
         let project_entry_id = *project_entry_id;
         self.workspace
             .update(cx, |_, cx| {
@@ -4033,7 +4099,9 @@ impl Pane {
                                 let (to_pane, new_item_handle) = workspace
                                     .update_in(cx, |workspace, window, cx| {
                                         if let Some(split_direction) = split_direction {
-                                            to_pane = workspace.split_pane(
+                                            to_pane = split_pane_for_drop(
+                                                workspace,
+                                                split_handler.as_ref(),
                                                 to_pane,
                                                 split_direction,
                                                 window,
@@ -4092,6 +4160,7 @@ impl Pane {
 
         let mut to_pane = cx.entity();
         let mut split_direction = self.drag_split_direction;
+        let split_handler = self.tab_drop_split_handler.clone();
         let paths = paths.paths().to_vec();
         let (should_block, needs_wsl_translation) = self
             .workspace
@@ -4178,8 +4247,14 @@ impl Pane {
                     if let Ok((open_task, to_pane)) =
                         workspace.update_in(cx, |workspace, window, cx| {
                             if let Some(split_direction) = split_direction {
-                                to_pane =
-                                    workspace.split_pane(to_pane, split_direction, window, cx);
+                                to_pane = split_pane_for_drop(
+                                    workspace,
+                                    split_handler.as_ref(),
+                                    to_pane,
+                                    split_direction,
+                                    window,
+                                    cx,
+                                );
                             }
                             (
                                 workspace.open_paths(
@@ -4203,7 +4278,12 @@ impl Pane {
                                     workspace.show_error(format!("Error: {e}"), cx);
                                 }
                             }
-                            if to_pane.read(cx).items_len() == 0 {
+                            // 空のまま残ったペインは畳む。ただしドックのパネルが
+                            // 持つペインは workspace の中央には居ないので触らない
+                            // (持ち主が `pane::Event::Remove` で始末する)。
+                            if to_pane.read(cx).items_len() == 0
+                                && workspace.panes().contains(&to_pane)
+                            {
                                 workspace.remove_pane(to_pane, None, window, cx);
                             }
                         });

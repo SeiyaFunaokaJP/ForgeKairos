@@ -1433,8 +1433,8 @@ pub mod test {
     };
     use gpui::{
         AnyElement, App, AppContext as _, Context, Entity, EntityId, EventEmitter, Focusable,
-        InteractiveElement, IntoElement, ParentElement, Render, SharedString, Task, WeakEntity,
-        Window,
+        InteractiveElement, IntoElement, ParentElement, Render, SharedString, Subscription, Task,
+        WeakEntity, Window, WindowId,
     };
     use project::{Project, ProjectEntryId, ProjectPath, WorktreeId};
     use std::{any::Any, cell::Cell, sync::Arc};
@@ -1464,6 +1464,15 @@ pub mod test {
         serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
         focus_handle: gpui::FocusHandle,
         pub child_focus_handles: Vec<gpui::FocusHandle>,
+        /// How many times the item was focused while tracking is on. Focus
+        /// listeners belong to the window they were registered against, so this
+        /// only keeps counting across a move to another window if
+        /// `added_to_workspace` registers them again - the same arrangement
+        /// `Editor` and `TerminalView` use.
+        pub focus_in_count: usize,
+        tracks_focus: bool,
+        tracked_focus_window: Option<WindowId>,
+        _window_focus_subscriptions: Vec<Subscription>,
     }
 
     impl project::ProjectItem for TestProjectItem {
@@ -1556,7 +1565,26 @@ pub mod test {
                 focus_handle: cx.focus_handle(),
                 serialize: None,
                 child_focus_handles: Vec::new(),
+                focus_in_count: 0,
+                tracks_focus: false,
+                tracked_focus_window: None,
+                _window_focus_subscriptions: Vec::new(),
             }
+        }
+
+        /// Begins counting focus-in events in `window`.
+        pub fn start_focus_tracking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+            self.tracks_focus = true;
+            self.bind_focus_listener(window, cx);
+        }
+
+        fn bind_focus_listener(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+            let focus_handle = self.focus_handle.clone();
+            self._window_focus_subscriptions =
+                vec![cx.on_focus_in(&focus_handle, window, |this, _window, _cx| {
+                    this.focus_in_count += 1;
+                })];
+            self.tracked_focus_window = Some(window.window_handle().window_id());
         }
 
         pub fn new_deserialized(id: WorkspaceId, cx: &mut Context<Self>) -> Self {
@@ -1644,6 +1672,19 @@ pub mod test {
 
         fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
             f(*event)
+        }
+
+        fn added_to_workspace(
+            &mut self,
+            _workspace: &mut Workspace,
+            window: &mut Window,
+            cx: &mut Context<Self>,
+        ) {
+            let window_id = window.window_handle().window_id();
+            if !self.tracks_focus || self.tracked_focus_window == Some(window_id) {
+                return;
+            }
+            self.bind_focus_listener(window, cx);
         }
 
         fn tab_content_text(&self, detail: usize, _cx: &App) -> SharedString {
@@ -1748,6 +1789,10 @@ pub mod test {
                         .iter()
                         .map(|_| cx.focus_handle())
                         .collect(),
+                    focus_in_count: 0,
+                    tracks_focus: false,
+                    tracked_focus_window: None,
+                    _window_focus_subscriptions: Vec::new(),
                 }
             })))
         }

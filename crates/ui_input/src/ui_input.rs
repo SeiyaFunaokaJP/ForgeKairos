@@ -34,6 +34,10 @@ pub trait ErasedEditor: 'static {
     ) -> Subscription;
     fn render(&self, window: &mut Window, cx: &App) -> AnyElement;
     fn as_any(&self) -> &dyn Any;
+    /// Points the input's focus listeners at `window`. They are stored on the
+    /// window they were registered against, so an input inside a tab that moved
+    /// to another window stops hearing about focus until this is called.
+    fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

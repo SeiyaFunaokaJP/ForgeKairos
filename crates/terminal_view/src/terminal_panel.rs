@@ -1818,13 +1818,43 @@ pub fn new_terminal_pane(
                     } else {
                         tab.pane.read(cx).item_for_index(tab.ix)
                     };
-                    if let Some(item) = item {
-                        return item.downcast::<TerminalView>().is_some();
-                    }
+                    // 第 12 便: IDE 内のどのタブでも同じドラッグ機構に乗せる。
+                    // ターミナル以外がターミナルパネルに載っても、パネルは
+                    // アクティブアイテムを `Option` で扱うので壊れない。
+                    return item.is_some();
                 }
             }
             false
         })));
+
+        // 端に落として分割するときは、ワークスペースの中央ではなくこのパネルの
+        // `PaneGroup` を割る (`Workspace::split_pane` は中央しか割れない)。
+        let split_handler_terminal_panel = terminal_panel.downgrade();
+        let split_handler_workspace = workspace.clone();
+        let split_handler_project = project.clone();
+        pane.set_tab_drop_split_handler(Some(Arc::new(
+            move |pane_to_split, direction, window, cx| {
+                let terminal_panel = split_handler_terminal_panel.upgrade()?;
+                terminal_panel.update(cx, |terminal_panel, cx| {
+                    if !terminal_panel.center.panes().contains(&pane_to_split) {
+                        return None;
+                    }
+                    let is_zoomed = terminal_panel.active_pane.read(cx).is_zoomed();
+                    let new_pane = new_terminal_pane(
+                        split_handler_workspace.clone(),
+                        split_handler_project.clone(),
+                        is_zoomed,
+                        window,
+                        cx,
+                    );
+                    terminal_panel.apply_tab_bar_buttons(&new_pane, cx);
+                    terminal_panel
+                        .center
+                        .split(pane_to_split, &new_pane, direction, cx);
+                    Some(new_pane)
+                })
+            },
+        )));
 
         let toolbar = pane.toolbar().clone();
         if let Some(callbacks) = cx.try_global::<workspace::PaneSearchBarCallbacks>() {

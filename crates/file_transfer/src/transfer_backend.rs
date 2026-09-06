@@ -77,6 +77,17 @@ impl TransferProtocol {
         }
     }
 
+    /// The name [`Self::from_name`] reads back, as written into a saved
+    /// connection's `transfer_protocol` and into `terminal::OpenFileTransfer`.
+    pub fn name(self) -> &'static str {
+        match self {
+            TransferProtocol::Sftp => "sftp",
+            TransferProtocol::Scp => "scp",
+            TransferProtocol::Ftp => "ftp",
+            TransferProtocol::Ftps => "ftps",
+        }
+    }
+
     /// Parses the `protocol` field of `terminal::OpenFileTransfer`. Unknown
     /// values are rejected rather than guessed at, so a typo in a keymap falls
     /// back to the default instead of silently connecting over plain FTP.
@@ -154,6 +165,48 @@ pub fn decide_stored_password_use(prompt: &str, already_answered: bool) -> Store
         AskPassPrompt::Password => StoredPasswordUse::Answer,
         AskPassPrompt::Passphrase | AskPassPrompt::HostKey | AskPassPrompt::Other => {
             StoredPasswordUse::AskUser
+        }
+    }
+}
+
+/// How the transfer screen asks the user to answer one of OpenSSH's askpass
+/// prompts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AskPassAnswerMode {
+    /// The first-contact host key question, answered with 「はい」「いいえ」
+    /// buttons. It is a two-way decision, and a text field only invites the
+    /// user to type something OpenSSH reads as "no" (第 12 便).
+    Confirm,
+    /// A masked field: the answer is a secret.
+    Secret,
+    /// A plain field. A user name is not a secret, and masking it makes it
+    /// impossible to check before sending.
+    PlainText,
+}
+
+/// What OpenSSH is answered with when the user presses 「はい」/「いいえ」 on a
+/// host key question. `yes` is the literal `ssh` expects; anything else it
+/// treats as a refusal, so 「いいえ」 sends the equally literal `no`.
+pub const HOST_KEY_ACCEPTED: &str = "yes";
+pub const HOST_KEY_REFUSED: &str = "no";
+
+pub fn askpass_answer_mode(prompt: &str) -> AskPassAnswerMode {
+    match classify_prompt(prompt) {
+        AskPassPrompt::HostKey => AskPassAnswerMode::Confirm,
+        AskPassPrompt::Password | AskPassPrompt::Passphrase => AskPassAnswerMode::Secret,
+        // An unrecognized prompt is masked unless it plainly asks who the user
+        // is: it is more likely to want a one-time code than a name, and
+        // masking the wrong one costs only convenience.
+        AskPassPrompt::Other => {
+            let prompt = prompt.to_ascii_lowercase();
+            if prompt.contains("username")
+                || prompt.contains("user name")
+                || prompt.contains("login")
+            {
+                AskPassAnswerMode::PlainText
+            } else {
+                AskPassAnswerMode::Secret
+            }
         }
     }
 }
@@ -2121,6 +2174,48 @@ lrwxrwxrwx    1 ubuntu   ubuntu          7 Apr 22  2024 bin -> /usr/bin
                 StoredPasswordUse::AskUser,
                 "{prompt:?}"
             );
+        }
+    }
+
+    #[test]
+    fn host_key_questions_get_buttons_and_secrets_get_a_masked_field() {
+        for prompt in [
+            "The authenticity of host 'h (1.2.3.4)' can't be established.\n\
+             ED25519 key fingerprint is SHA256:abcdef.\n\
+             Are you sure you want to continue connecting (yes/no/[fingerprint])? ",
+            "Please type 'yes', 'no' or the fingerprint: ",
+        ] {
+            assert_eq!(
+                askpass_answer_mode(prompt),
+                AskPassAnswerMode::Confirm,
+                "{prompt:?}"
+            );
+        }
+        for prompt in [
+            "ubuntu@192.168.100.150's password: ",
+            "Enter passphrase for key '/home/ubuntu/.ssh/id_ed25519': ",
+            // Not recognized, and more likely a one-time code than a name.
+            "Verification code: ",
+        ] {
+            assert_eq!(
+                askpass_answer_mode(prompt),
+                AskPassAnswerMode::Secret,
+                "{prompt:?}"
+            );
+        }
+        for prompt in ["Username: ", "login as: "] {
+            assert_eq!(
+                askpass_answer_mode(prompt),
+                AskPassAnswerMode::PlainText,
+                "{prompt:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn protocol_names_round_trip() {
+        for protocol in TransferProtocol::ALL {
+            assert_eq!(TransferProtocol::from_name(protocol.name()), Some(protocol));
         }
     }
 

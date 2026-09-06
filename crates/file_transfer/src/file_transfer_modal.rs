@@ -17,21 +17,37 @@ use gpui::{
     Modifiers, Render, Subscription, Task, Window, uniform_list,
 };
 use project::{Project, remote_exec::TransferAskPass};
+use settings::SettingsStore;
 use terminal::{
     quick_connect_credentials::{QuickConnectCredentials, StoredPassword},
-    terminal_macro::TerminalSessionStore,
+    terminal_macro::{ConnectionProtocol, TerminalSessionStore, normalize_folder},
 };
-use ui::{Divider, InputFrameSize, Tooltip, input_frame, input_frame_sized, prelude::*};
+use ui::{
+    Checkbox, Divider, InputFrameSize, ToggleState, Tooltip, input_frame, input_frame_sized,
+    prelude::*,
+};
 use util::ResultExt as _;
 use workspace::{ModalView, Workspace};
 use zeroize::Zeroize as _;
 
-use crate::transfer_backend::{
-    AskPassFactory, DirectoryEntry, EntryKind, ExecHost, IdeExecHost, RemoteExecHost, RemoteTarget,
-    StoredPasswordUse, TransferBackend, TransferProtocol, credential_lookups,
-    decide_stored_password_use, format_size, normalize_remote_dir, remote_join,
-    validate_entry_name, validate_host, validate_user,
+use crate::{
+    connection_presets::{
+        ConnectionPreset, PresetGroup, PresetSource, can_move_connection, move_connection,
+        preset_connection, preset_groups,
+    },
+    transfer_backend::{
+        AskPassAnswerMode, AskPassFactory, DirectoryEntry, EntryKind, ExecHost, HOST_KEY_ACCEPTED,
+        HOST_KEY_REFUSED, IdeExecHost, RemoteExecHost, RemoteTarget, StoredPasswordUse,
+        TransferBackend, TransferProtocol, askpass_answer_mode, credential_lookups,
+        decide_stored_password_use, format_size, normalize_remote_dir, remote_join,
+        validate_entry_name, validate_host, validate_user,
+    },
 };
+
+/// The credential key a remembered password was found under, so re-saving it
+/// updates the entry that is actually in use — quick connect's own, when that
+/// is where it came from (ADR-F29).
+type CredentialKey = (ConnectionProtocol, u16);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneSide {
@@ -137,6 +153,19 @@ enum PromptKind {
     },
 }
 
+/// What 「パスワードを記憶する」 asks of the credential store once a connection
+/// has been started.
+enum PasswordMemory {
+    Store {
+        key: CredentialKey,
+        user: Option<String>,
+        password: String,
+    },
+    Forget {
+        key: CredentialKey,
+    },
+}
+
 enum AskPassResponder {
     /// A prompt from a process this IDE started itself.
     Encrypted(oneshot::Sender<EncryptedPassword>),
@@ -146,11 +175,24 @@ enum AskPassResponder {
     Plain(oneshot::Sender<String>),
 }
 
+/// What the buttons under a prompt say. A host key question is a yes/no
+/// decision, so it gets 「はい」「いいえ」 and no text field at all (第 12 便).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PromptButtons {
+    OkCancel,
+    YesNo,
+}
+
 struct PendingPrompt {
     kind: PromptKind,
     title: SharedString,
+    /// Shown verbatim in a monospace block under the title: the host key
+    /// fingerprint, which is only useful if it can be compared character by
+    /// character.
+    detail: Option<SharedString>,
     /// `None` for a confirmation, which only needs its two buttons.
     editor: Option<Entity<Editor>>,
+    buttons: PromptButtons,
     _cancellation: Option<Task<()>>,
 }
 
@@ -203,15 +245,27 @@ pub struct FileTransferModal {
     password: Entity<Editor>,
     local_path: Entity<Editor>,
     remote_path: Entity<Editor>,
+    /// Name and folder a 「接続先を保存」 writes the current form to. Only shown
+    /// while the preset list is open.
+    preset_name: Entity<Editor>,
+    preset_folder: Entity<Editor>,
     protocol: TransferProtocol,
+    /// Whether the preset list under the connection bar is open.
+    presets_open: bool,
+    /// Whether the password in the bar is written to the OS credential store,
+    /// shared with quick connect (ADR-F29).
+    remember_password: bool,
     /// Reads the quick-connect passwords, so a host the user already saved a
     /// password for does not ask for it a second time (ADR-F28 追記).
     credentials: QuickConnectCredentials,
     /// The password remembered for the target now in the form, if any.
     stored_password: Option<StoredPassword>,
+    /// Which credential key it came from, so saving over it updates that entry
+    /// rather than adding a second one.
+    stored_password_key: Option<CredentialKey>,
     /// One shot per connection attempt: `ssh` asking for the password again
-    /// means the remembered one was refused. Reset by [`Self::connect`].
-    stored_password_answered: bool,
+    /// means the one already offered was refused. Reset by [`Self::connect`].
+    password_answered: bool,
     backend: Option<Arc<TransferBackend>>,
     connecting: bool,
     local: PaneState,
@@ -243,6 +297,10 @@ pub struct FileTransferModal {
     /// own slot so that editing the form mid-connect cannot cancel the
     /// connection.
     _credentials_work: Option<Task<()>>,
+    /// Writes to `terminal_sessions.json` made from the preset list (saving a
+    /// preset, moving one). Kept so a modal that goes away mid-write does not
+    /// leave the file half-written.
+    _preset_work: Option<Task<()>>,
 }
 
 impl FileTransferModal {
@@ -292,10 +350,14 @@ impl FileTransferModal {
         let port = cx.new(|cx| Editor::single_line(window, cx));
         let password = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("パスワード", window, cx);
+            // Optional: an SSH host that takes a key never asks for one, and
+            // the field only matters when it does (第 12 便).
+            editor.set_placeholder_text("パスワード (省略可)", window, cx);
             editor.set_masked(true, cx);
             editor
         });
+        let preset_name = single_line("接続名", window, cx);
+        let preset_folder = single_line("フォルダー (例: 拠点/本社)", window, cx);
         let local_path = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
             editor.set_text(local_root, window, cx);
@@ -345,10 +407,15 @@ impl FileTransferModal {
             password,
             local_path,
             remote_path,
+            preset_name,
+            preset_folder,
             protocol,
+            presets_open: false,
+            remember_password: false,
             credentials: QuickConnectCredentials::new(zed_credentials_provider::global(cx)),
             stored_password: None,
-            stored_password_answered: false,
+            stored_password_key: None,
+            password_answered: false,
             backend: None,
             connecting: false,
             local: PaneState::default(),
@@ -369,6 +436,7 @@ impl FileTransferModal {
             _queue: None,
             _connect: None,
             _credentials_work: None,
+            _preset_work: None,
         };
         this.refresh_local(cx);
         this.refresh_stored_password(window, cx);
@@ -385,25 +453,44 @@ impl FileTransferModal {
     fn refresh_stored_password(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Ok(target) = self.form_target(cx) else {
             self.stored_password = None;
+            self.stored_password_key = None;
             return;
         };
         let credentials = self.credentials.clone();
         self._credentials_work = Some(cx.spawn_in(window, async move |this, cx| {
             let stored = lookup_stored_password(&credentials, &target, cx).await;
             this.update_in(cx, |this, window, cx| {
-                this.apply_stored_password(stored, window, cx);
+                this.apply_stored_password(stored, true, window, cx);
             })
             .log_err();
         }));
     }
 
+    /// Takes in what the credential store had for the current target.
+    ///
+    /// `adopt_remember` follows the checkbox to what was found, which is right
+    /// when the target itself changed and wrong while connecting: there the
+    /// box is the instruction the user just gave.
     fn apply_stored_password(
         &mut self,
-        stored: Option<StoredPassword>,
+        stored: Option<(CredentialKey, StoredPassword)>,
+        adopt_remember: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let (key, stored) = match stored {
+            Some((key, stored)) => (Some(key), Some(stored)),
+            None => (None, None),
+        };
+        self.stored_password_key = key;
         self.stored_password = stored;
+        if adopt_remember {
+            // A remembered password is offered to the target it was saved for,
+            // so the box starts ticked: unticking it and connecting is how the
+            // user says "stop keeping this".
+            self.remember_password = self.stored_password.is_some();
+        }
+        cx.notify();
         // Only FTP carries its password in the form; SSH never shows the
         // secret, because it goes straight to the askpass socket. An edited
         // field is left alone: the user is correcting a password that failed.
@@ -425,18 +512,55 @@ impl FileTransferModal {
         }
     }
 
-    /// Whether the remembered password may answer `prompt`, consuming the one
-    /// attempt it gets. Prompts arrive one at a time on the foreground, so the
-    /// flag needs no synchronization.
-    fn take_stored_password_use(&mut self, prompt: &str) -> StoredPasswordUse {
-        if self.stored_password.is_none() {
+    /// What the password field holds. Not trimmed: spaces are part of a
+    /// password.
+    fn typed_password(&self, cx: &App) -> Option<String> {
+        let password = self.password.read(cx).text(cx);
+        (!password.is_empty()).then_some(password)
+    }
+
+    /// Whether the password in hand — typed into the bar, or remembered — may
+    /// answer `prompt`, consuming the one attempt it gets. Prompts arrive one
+    /// at a time on the foreground, so the flag needs no synchronization.
+    fn take_password_use(&mut self, prompt: &str, cx: &App) -> StoredPasswordUse {
+        if self.typed_password(cx).is_none() && self.stored_password.is_none() {
             return StoredPasswordUse::AskUser;
         }
-        let decision = decide_stored_password_use(prompt, self.stored_password_answered);
+        let decision = decide_stored_password_use(prompt, self.password_answered);
         if decision == StoredPasswordUse::Answer {
-            self.stored_password_answered = true;
+            self.password_answered = true;
         }
         decision
+    }
+
+    /// Hands the password in hand to whoever asked, the typed one first: it is
+    /// the correction the user just made to a remembered password that failed.
+    /// Gives the responder back when no secret can be produced, so the caller
+    /// can prompt instead.
+    fn send_password(&self, responder: AskPassResponder, cx: &App) -> Result<(), AskPassResponder> {
+        let Some(mut typed) = self.typed_password(cx) else {
+            return self.send_stored_password(responder);
+        };
+        let sent = match responder {
+            AskPassResponder::Encrypted(sender) => {
+                match EncryptedPassword::try_from(typed.as_str()) {
+                    Ok(password) => {
+                        sender.send(password).ok();
+                        Ok(())
+                    }
+                    Err(error) => {
+                        log::warn!("入力されたパスワードを渡せませんでした: {error:#}");
+                        Err(AskPassResponder::Encrypted(sender))
+                    }
+                }
+            }
+            AskPassResponder::Plain(sender) => {
+                sender.send(typed.clone()).ok();
+                Ok(())
+            }
+        };
+        typed.zeroize();
+        sent
     }
 
     /// Hands the remembered password to whoever asked. Gives the responder back
@@ -465,6 +589,69 @@ impl FileTransferModal {
                 }
             }
         }
+    }
+
+    /// What 「パスワードを記憶する」 asks the credential store to do for the
+    /// target being connected to. `None` when there is nothing to change.
+    ///
+    /// The key is the one the password was found under when there is one, so a
+    /// correction updates quick connect's own entry instead of leaving the old
+    /// password beside a new one; otherwise the most specific key
+    /// [`credential_lookups`] would look in.
+    fn password_memory_intent(&self, target: &RemoteTarget, cx: &App) -> Option<PasswordMemory> {
+        let key = self.stored_password_key.or_else(|| {
+            credential_lookups(target.protocol, target.port)
+                .into_iter()
+                .next()
+        })?;
+        match (self.remember_password, self.typed_password(cx)) {
+            (true, Some(password)) => Some(PasswordMemory::Store {
+                key,
+                user: target.user.clone(),
+                password,
+            }),
+            // Ticked with an empty field keeps whatever is already stored, so
+            // the port can be corrected without retyping the password.
+            (true, None) => None,
+            (false, _) => self
+                .stored_password
+                .is_some()
+                .then_some(PasswordMemory::Forget { key }),
+        }
+    }
+
+    /// Drops the password remembered for the target in the form, on the
+    /// 「パスワードを消す」 button.
+    fn forget_password(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Ok(target) = self.form_target(cx) else {
+            return;
+        };
+        let Some(key) = self.stored_password_key else {
+            return;
+        };
+        self.remember_password = false;
+        let credentials = self.credentials.clone();
+        self._credentials_work = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = credentials
+                .forget_target(key.0, &target.host, key.1, cx)
+                .await;
+            this.update_in(cx, |this, window, cx| {
+                match result {
+                    Ok(()) => {
+                        this.stored_password = None;
+                        this.stored_password_key = None;
+                        this.status = Some("保存されたパスワードを消しました。".into());
+                        if this.protocol.uses_password() {
+                            this.password
+                                .update(cx, |editor, cx| editor.set_text("", window, cx));
+                        }
+                    }
+                    Err(error) => this.status = Some(format!("{error}").into()),
+                }
+                cx.notify();
+            })
+            .log_err();
+        }));
     }
 
     // ---------------------------------------------------------------------
@@ -582,55 +769,91 @@ impl FileTransferModal {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // A remembered password answers the first password question silently.
-        // Every other question — a host key above all — still goes to the user
-        // (ADR-F28 追記).
-        let responder = match self.take_stored_password_use(&prompt) {
-            StoredPasswordUse::Answer => match self.send_stored_password(responder) {
+        // The password in hand — typed into the bar or remembered — answers the
+        // first password question silently. Every other question — a host key
+        // above all — still goes to the user (ADR-F28 追記).
+        let responder = match self.take_password_use(&prompt, cx) {
+            StoredPasswordUse::Answer => match self.send_password(responder, cx) {
                 Ok(()) => return,
                 Err(responder) => responder,
             },
             StoredPasswordUse::Rejected => {
-                self.status =
-                    Some("保存されたパスワードが拒否されました。入力し直してください。".into());
+                self.status = Some(
+                    if self.typed_password(cx).is_some() {
+                        "入力したパスワードが拒否されました。入力し直してください。"
+                    } else {
+                        "保存されたパスワードが拒否されました。入力し直してください。"
+                    }
+                    .into(),
+                );
+                // Emptied so the next attempt cannot spend itself on the same
+                // refused secret, and so the prompt below is the only way in.
+                self.password
+                    .update(cx, |editor, cx| editor.set_text("", window, cx));
                 responder
             }
             StoredPasswordUse::AskUser => responder,
         };
 
-        // The host-key question and a user-name request are not secrets, and
-        // masking them makes them impossible to answer confidently.
-        let is_secret = !(prompt.contains("yes/no") || prompt.contains("Username"));
+        let mode = askpass_answer_mode(&prompt);
+        if mode == AskPassAnswerMode::Confirm {
+            // The fingerprint is the whole content of the question, so it is
+            // shown verbatim under a title that says what is being decided.
+            self.prompt = Some(PendingPrompt {
+                kind: PromptKind::AskPass {
+                    responder: Some(responder),
+                },
+                title: "このホストの鍵は初めてです。接続を続けますか?".into(),
+                detail: Some(prompt.into()),
+                editor: None,
+                buttons: PromptButtons::YesNo,
+                _cancellation: cancellation
+                    .map(|cancellation| Self::watch_askpass_cancellation(cancellation, cx)),
+            });
+            window.focus(&self.focus_handle, cx);
+            cx.notify();
+            return;
+        }
+
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_masked(is_secret, cx);
+            editor.set_masked(mode == AskPassAnswerMode::Secret, cx);
             editor
         });
         window.focus(&editor.focus_handle(cx), cx);
-        let cancellation = cancellation.map(|cancellation| {
-            cx.spawn(async move |this, cx| {
-                cancellation.await.ok();
-                this.update(cx, |this, cx| {
-                    if matches!(
-                        this.prompt.as_ref().map(|prompt| &prompt.kind),
-                        Some(PromptKind::AskPass { .. })
-                    ) {
-                        this.prompt = None;
-                        cx.notify();
-                    }
-                })
-                .log_err();
-            })
-        });
         self.prompt = Some(PendingPrompt {
             kind: PromptKind::AskPass {
                 responder: Some(responder),
             },
             title: prompt.into(),
+            detail: None,
             editor: Some(editor),
-            _cancellation: cancellation,
+            buttons: PromptButtons::OkCancel,
+            _cancellation: cancellation
+                .map(|cancellation| Self::watch_askpass_cancellation(cancellation, cx)),
         });
         cx.notify();
+    }
+
+    /// Takes the prompt down when the process that asked has gone away, so a
+    /// dead question cannot be answered into a closed socket.
+    fn watch_askpass_cancellation(
+        cancellation: oneshot::Receiver<()>,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
+        cx.spawn(async move |this, cx| {
+            cancellation.await.ok();
+            this.update(cx, |this, cx| {
+                if matches!(
+                    this.prompt.as_ref().map(|prompt| &prompt.kind),
+                    Some(PromptKind::AskPass { .. })
+                ) {
+                    this.prompt = None;
+                    cx.notify();
+                }
+            })
+            .log_err();
+        })
     }
 
     fn connect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -642,8 +865,8 @@ impl FileTransferModal {
                 return;
             }
         };
-        // Every attempt gets one go at the remembered password.
-        self.stored_password_answered = false;
+        // Every attempt gets one go at the password in hand.
+        self.password_answered = false;
         self.connecting = true;
         self.status = Some(format!("{} に接続しています…", target.describe()).into());
         cx.notify();
@@ -654,9 +877,55 @@ impl FileTransferModal {
         let lookup_target = target.clone();
         self._connect = Some(cx.spawn_in(window, async move |this, cx| {
             let stored = lookup_stored_password(&credentials, &lookup_target, cx).await;
-            this.update_in(cx, |this, window, cx| {
-                this.apply_stored_password(stored, window, cx);
+            let Ok(memory) = this.update_in(cx, |this, window, cx| {
+                this.apply_stored_password(stored, false, window, cx);
+                let memory = this.password_memory_intent(&lookup_target, cx);
                 this.start_backend(target, cx);
+                memory
+            }) else {
+                return;
+            };
+            let Some(mut memory) = memory else {
+                return;
+            };
+            // Run after the connection has been started: remembering a
+            // password must never delay (or block) the transfer itself.
+            let result = match &mut memory {
+                PasswordMemory::Store {
+                    key,
+                    user,
+                    password,
+                } => {
+                    let stored = credentials
+                        .store_target(
+                            key.0,
+                            &lookup_target.host,
+                            key.1,
+                            user.as_deref(),
+                            password,
+                            cx,
+                        )
+                        .await;
+                    password.zeroize();
+                    stored
+                }
+                PasswordMemory::Forget { key } => {
+                    credentials
+                        .forget_target(key.0, &lookup_target.host, key.1, cx)
+                        .await
+                }
+            };
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(()) => {
+                        if matches!(memory, PasswordMemory::Forget { .. }) {
+                            this.stored_password = None;
+                            this.stored_password_key = None;
+                        }
+                    }
+                    Err(error) => this.status = Some(format!("{error}").into()),
+                }
+                cx.notify();
             })
             .log_err();
         }));
@@ -701,12 +970,35 @@ impl FileTransferModal {
         cx.notify();
     }
 
-    fn apply_saved_connection(
+    /// Fills the connection bar in from a preset, including the name and folder
+    /// a later 「接続先を保存」 would write back to.
+    fn apply_preset(
         &mut self,
-        target: RemoteTarget,
+        preset: &ConnectionPreset,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.preset_name.update(cx, |editor, cx| {
+            editor.set_text(preset.name.to_string(), window, cx)
+        });
+        self.preset_folder.update(cx, |editor, cx| {
+            editor.set_text(
+                preset
+                    .folder
+                    .as_ref()
+                    .map(|folder| folder.to_string())
+                    .unwrap_or_default(),
+                window,
+                cx,
+            )
+        });
+        // Picking a target is what the list is for, so it closes behind the
+        // choice rather than pushing the two panes down until dismissed.
+        self.presets_open = false;
+        self.apply_target(preset.target.clone(), window, cx);
+    }
+
+    fn apply_target(&mut self, target: RemoteTarget, window: &mut Window, cx: &mut Context<Self>) {
         self.protocol = target.protocol;
         self.host.update(cx, |editor, cx| {
             editor.set_text(target.host.clone(), window, cx)
@@ -724,6 +1016,115 @@ impl FileTransferModal {
         self.refresh_stored_password(window, cx);
         self.status = None;
         cx.notify();
+    }
+
+    // ---------------------------------------------------------------------
+    // Presets (the 接続先 list)
+    // ---------------------------------------------------------------------
+
+    /// The Remote SSH hosts from the settings file, which the picker offers
+    /// beside the quick connect entries.
+    fn ssh_connections(cx: &App) -> Vec<settings::SshConnection> {
+        cx.try_global::<SettingsStore>()
+            .and_then(|store| store.merged_settings().remote.ssh_connections.clone())
+            .unwrap_or_default()
+    }
+
+    fn preset_groups(&self, cx: &App) -> Vec<PresetGroup> {
+        preset_groups(
+            self.store.read(cx).connections(),
+            &Self::ssh_connections(cx),
+        )
+    }
+
+    /// Writes the connection bar's contents back to `terminal_sessions.json`
+    /// as a quick connect entry, so the terminal and the transfer screen share
+    /// one list (ADR-F28 追記).
+    fn save_preset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Writing before the first read of the file would truncate it to
+        // whatever little the store happens to hold, the same trap the quick
+        // connect modal guards against.
+        if !self.store.read(cx).is_loaded() {
+            self.status = Some("接続先の一覧をまだ読み込めていません。".into());
+            cx.notify();
+            return;
+        }
+        let target = match self.form_target(cx) {
+            Ok(target) => target,
+            Err(message) => {
+                self.status = Some(message);
+                cx.notify();
+                return;
+            }
+        };
+        let name = self.preset_name.read(cx).text(cx).trim().to_string();
+        let name = if name.is_empty() {
+            target.host.clone()
+        } else {
+            name
+        };
+        let folder = normalize_folder(&self.preset_folder.read(cx).text(cx));
+        let remember = self.remember_password;
+        let write = self.store.update(cx, |store, cx| {
+            let mut file = store.file().clone();
+            let existing = file
+                .connections
+                .iter()
+                .position(|candidate| candidate.name == name);
+            let connection = preset_connection(
+                existing.and_then(|index| file.connections.get(index)),
+                name.clone(),
+                folder,
+                &target,
+                remember,
+            );
+            match existing {
+                Some(index) => file.connections[index] = connection,
+                None => file.connections.push(connection),
+            }
+            store.write(file, cx)
+        });
+        self.preset_name
+            .update(cx, |editor, cx| editor.set_text(name.clone(), window, cx));
+        self._preset_work = Some(cx.spawn(async move |this, cx| {
+            let result = write.await;
+            this.update(cx, |this, cx| {
+                this.status = Some(match result {
+                    Ok(()) => format!("接続先「{name}」を保存しました。").into(),
+                    Err(error) => format!("接続先を保存できませんでした: {error}").into(),
+                });
+                cx.notify();
+            })
+            .log_err();
+        }));
+    }
+
+    /// Moves a saved connection one row up or down inside its folder. The order
+    /// lives in the file, so the quick connect modal shows the same one.
+    fn move_preset(&mut self, index: usize, up: bool, cx: &mut Context<Self>) {
+        if !self.store.read(cx).is_loaded() {
+            self.status = Some("接続先の一覧をまだ読み込めていません。".into());
+            cx.notify();
+            return;
+        }
+        let Some(connections) = move_connection(self.store.read(cx).connections(), index, up)
+        else {
+            return;
+        };
+        let write = self.store.update(cx, |store, cx| {
+            let mut file = store.file().clone();
+            file.connections = connections;
+            store.write(file, cx)
+        });
+        self._preset_work = Some(cx.spawn(async move |this, cx| {
+            if let Err(error) = write.await {
+                this.update(cx, |this, cx| {
+                    this.status = Some(format!("並び順を保存できませんでした: {error}").into());
+                    cx.notify();
+                })
+                .log_err();
+            }
+        }));
     }
 
     // ---------------------------------------------------------------------
@@ -980,7 +1381,9 @@ impl FileTransferModal {
         self.prompt = Some(PendingPrompt {
             kind,
             title: title.into(),
+            detail: None,
             editor,
+            buttons: PromptButtons::OkCancel,
             _cancellation: None,
         });
         cx.notify();
@@ -1057,14 +1460,22 @@ impl FileTransferModal {
     }
 
     fn confirm_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.answer_prompt(None, window, cx);
+    }
+
+    /// Answers the pending prompt. `answer` overrides the text field, which is
+    /// how the host key question's 「はい」「いいえ」 buttons reply without one.
+    fn answer_prompt(&mut self, answer: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
         let Some(prompt) = self.prompt.take() else {
             return;
         };
-        let answer = prompt.editor.as_ref().map(|editor| {
-            editor.update(cx, |editor, cx| {
-                let text = editor.text(cx);
-                editor.clear(window, cx);
-                text
+        let answer = answer.map(str::to_string).or_else(|| {
+            prompt.editor.as_ref().map(|editor| {
+                editor.update(cx, |editor, cx| {
+                    let text = editor.text(cx);
+                    editor.clear(window, cx);
+                    text
+                })
             })
         });
         match prompt.kind {
@@ -1306,20 +1717,21 @@ impl FileTransferModal {
 }
 
 /// The quick-connect password remembered for `target`, trying each key
-/// [`credential_lookups`] offers in turn. The user name has to match, so a
-/// password saved for `ubuntu` is never offered when connecting as `root`.
+/// [`credential_lookups`] offers in turn, together with the key it came from.
+/// The user name has to match, so a password saved for `ubuntu` is never
+/// offered when connecting as `root`.
 async fn lookup_stored_password(
     credentials: &QuickConnectCredentials,
     target: &RemoteTarget,
     cx: &AsyncApp,
-) -> Option<StoredPassword> {
+) -> Option<(CredentialKey, StoredPassword)> {
     let user = target.user.as_deref();
     for (protocol, port) in credential_lookups(target.protocol, target.port) {
         if let Some(password) = credentials
             .lookup_target(protocol, &target.host, port, user, cx)
             .await
         {
-            return Some(password);
+            return Some(((protocol, port), password));
         }
     }
     None
@@ -1396,7 +1808,6 @@ impl FileTransferModal {
     fn render_connection_bar(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let connected = self.backend.is_some();
         let protocol = self.protocol;
-        let saved = self.render_saved_connections(cx);
         let focused = |editor: &Entity<Editor>, cx: &App| -> bool {
             editor.focus_handle(cx).contains_focused(window, cx)
         };
@@ -1412,6 +1823,23 @@ impl FileTransferModal {
                 h_flex()
                     .gap_1()
                     .flex_wrap()
+                    .child(
+                        Button::new("presets", "接続先")
+                            .end_icon(Icon::new(if self.presets_open {
+                                IconName::ChevronUp
+                            } else {
+                                IconName::ChevronDown
+                            }))
+                            .toggle_state(self.presets_open)
+                            .tooltip(Tooltip::text(
+                                "保存済みの接続先とリモート SSH の一覧を開きます",
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.presets_open = !this.presets_open;
+                                cx.notify();
+                            })),
+                    )
+                    .child(Divider::vertical())
                     .children(TransferProtocol::ALL.map(|candidate| {
                         Button::new(SharedString::from(candidate.label()), candidate.label())
                             .toggle_state(protocol == candidate)
@@ -1440,13 +1868,15 @@ impl FileTransferModal {
                             .w(rems(8.))
                             .child(self.user.clone()),
                     )
-                    .when(protocol.uses_password(), |this| {
-                        this.child(
-                            input_frame_sized(InputFrameSize::Compact, password_focused, cx)
-                                .w(rems(8.))
-                                .child(self.password.clone()),
-                        )
-                    })
+                    // Always present, whatever the protocol: SFTP and SCP hand
+                    // it to OpenSSH's askpass prompt rather than to a command
+                    // line, which is exactly where the user expected to type it
+                    // (第 12 便).
+                    .child(
+                        input_frame_sized(InputFrameSize::Compact, password_focused, cx)
+                            .w(rems(10.))
+                            .child(self.password.clone()),
+                    )
                     .child(
                         Button::new("connect", if connected { "再接続" } else { "接続" }).on_click(
                             cx.listener(|this, _, window, cx| {
@@ -1462,38 +1892,199 @@ impl FileTransferModal {
                             })),
                     ),
             )
-            .children(saved)
+            .child(self.render_password_memory(cx))
+            .children(self.render_presets(window, cx))
             .into_any_element()
     }
 
-    /// The saved quick-connect entries, so a host can be picked instead of
-    /// typed. Hidden once connected, to keep the bar short.
-    fn render_saved_connections(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.backend.is_some() {
-            return None;
-        }
-        let connections = self.store.read(cx).connections().to_vec();
-        if connections.is_empty() {
-            return None;
-        }
-        let mut row = h_flex().gap_1().flex_wrap().child(
-            Label::new("保存済みの接続先")
-                .size(LabelSize::Small)
-                .color(Color::Muted),
-        );
-        for (index, connection) in connections.into_iter().enumerate() {
-            let target = crate::target_from_saved_connection(&connection);
-            let detail = target.describe();
-            row = row.child(
-                Button::new(("saved", index), connection.name.clone())
-                    .label_size(LabelSize::Small)
-                    .tooltip(Tooltip::text(detail))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.apply_saved_connection(target.clone(), window, cx);
+    /// 「パスワードを記憶する」 and what is already remembered for this target.
+    fn render_password_memory(&self, cx: &mut Context<Self>) -> AnyElement {
+        let stored = self.stored_password.is_some();
+        h_flex()
+            .gap_2()
+            .flex_wrap()
+            .child(
+                Checkbox::new("remember-password", self.remember_password.into())
+                    .label("パスワードを記憶する")
+                    .tooltip(Tooltip::text(
+                        "パスワードは OS の資格情報マネージャーに保存され、\
+                         クイック接続と共有されます",
+                    ))
+                    .on_click(cx.listener(|this, state: &ToggleState, _, cx| {
+                        let checked = *state == ToggleState::Selected;
+                        if this.remember_password != checked {
+                            this.remember_password = checked;
+                            cx.notify();
+                        }
                     })),
+            )
+            .when(stored, |this| {
+                this.child(
+                    Label::new("保存済み")
+                        .size(LabelSize::XSmall)
+                        .color(Color::Accent),
+                )
+                .child(
+                    IconButton::new("forget-password", IconName::LockOff)
+                        .icon_size(IconSize::Small)
+                        .tooltip(Tooltip::text("この接続先の保存済みパスワードを消します"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.forget_password(window, cx);
+                        })),
+                )
+            })
+            .into_any_element()
+    }
+
+    /// The 接続先 list: the quick connect entries grouped by folder, the Remote
+    /// SSH hosts from the settings file, and the form that writes the bar back
+    /// as a quick connect entry (ADR-F28 追記).
+    fn render_presets(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.presets_open {
+            return None;
+        }
+        let groups = self.preset_groups(cx);
+        let connections = self.store.read(cx).connections().to_vec();
+        let name_focused = self
+            .preset_name
+            .focus_handle(cx)
+            .contains_focused(window, cx);
+        let folder_focused = self
+            .preset_folder
+            .focus_handle(cx)
+            .contains_focused(window, cx);
+
+        let mut list = v_flex()
+            .id("connection-presets")
+            .max_h(rems(12.))
+            .overflow_y_scroll()
+            .gap_0p5();
+        if groups.is_empty() {
+            list = list.child(
+                Label::new("保存された接続先はまだありません。")
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
             );
         }
-        Some(row.into_any_element())
+        let mut row_id = 0;
+        for group in groups {
+            if let Some(label) = group.label.clone() {
+                list = list.child(Label::new(label).size(LabelSize::Small).color(Color::Muted));
+            }
+            for preset in group.presets {
+                let moves = match preset.source {
+                    PresetSource::QuickConnect { index } => (
+                        can_move_connection(&connections, index, true),
+                        can_move_connection(&connections, index, false),
+                    ),
+                    PresetSource::RemoteSsh => (false, false),
+                };
+                list = list.child(self.render_preset_row(preset, row_id, moves, cx));
+                row_id += 1;
+            }
+        }
+
+        Some(
+            v_flex()
+                .gap_1()
+                .p_1()
+                .border_1()
+                .rounded_sm()
+                .border_color(cx.theme().colors().border)
+                .child(list)
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .flex_wrap()
+                        .child(
+                            Label::new("この接続先を保存")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                        .child(
+                            input_frame_sized(InputFrameSize::Compact, name_focused, cx)
+                                .w(rems(12.))
+                                .child(self.preset_name.clone()),
+                        )
+                        .child(
+                            input_frame_sized(InputFrameSize::Compact, folder_focused, cx)
+                                .w(rems(14.))
+                                .child(self.preset_folder.clone()),
+                        )
+                        .child(
+                            Button::new("save-preset", "保存")
+                                .start_icon(Icon::new(IconName::Plus))
+                                .tooltip(Tooltip::text("クイック接続と共通の一覧に書き込みます"))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.save_preset(window, cx);
+                                })),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// One row of the 接続先 list. `row_id` is its position in the whole list,
+    /// which is what the element ids are keyed on: a Remote SSH host has no
+    /// index of its own to use. `moves` says whether 上へ / 下へ would get
+    /// anywhere, which depends on the folder rather than the file position.
+    fn render_preset_row(
+        &self,
+        preset: ConnectionPreset,
+        row_id: usize,
+        moves: (bool, bool),
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let (can_move_up, can_move_down) = moves;
+        let index = match preset.source {
+            PresetSource::QuickConnect { index } => Some(index),
+            PresetSource::RemoteSsh => None,
+        };
+        let applied = preset.clone();
+        h_flex()
+            .w_full()
+            .gap_1()
+            .justify_between()
+            .child(
+                div().flex_1().min_w_0().child(
+                    Button::new(("preset", row_id), preset.name.clone())
+                        .full_width()
+                        .label_size(LabelSize::Small)
+                        .tooltip(Tooltip::text(preset.detail.clone()))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.apply_preset(&applied, window, cx);
+                        })),
+                ),
+            )
+            .child(
+                Label::new(preset.detail)
+                    .size(LabelSize::Small)
+                    .color(Color::Muted)
+                    .truncate(),
+            )
+            .when_some(index, |this, index| {
+                // Only the quick connect entries have an order of their own;
+                // the Remote SSH hosts are the settings file's.
+                this.child(
+                    IconButton::new(("preset-up", row_id), IconName::ArrowUp)
+                        .icon_size(IconSize::Small)
+                        .disabled(!can_move_up)
+                        .tooltip(Tooltip::text("同じフォルダーの中で 1 つ上へ移動します"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.move_preset(index, true, cx);
+                        })),
+                )
+                .child(
+                    IconButton::new(("preset-down", row_id), IconName::ArrowDown)
+                        .icon_size(IconSize::Small)
+                        .disabled(!can_move_down)
+                        .tooltip(Tooltip::text("同じフォルダーの中で 1 つ下へ移動します"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.move_preset(index, false, cx);
+                        })),
+                )
+            })
+            .into_any_element()
     }
 
     /// 「ローカル側」 selector, shown only when the project is connected to an
@@ -1755,6 +2346,55 @@ impl FileTransferModal {
                 .w_full()
                 .child(editor)
         });
+        // The fingerprint has to be read character by character, which a
+        // proportional font makes needlessly hard.
+        let detail = prompt.detail.clone().map(|detail| {
+            div()
+                .id("prompt-detail")
+                .w_full()
+                .max_h(rems(7.))
+                .overflow_y_scroll()
+                .p_1()
+                .rounded_sm()
+                .bg(cx.theme().colors().editor_background)
+                .font_buffer(cx)
+                .text_size(TextSize::Small.rems(cx))
+                .child(detail)
+        });
+        let buttons = match prompt.buttons {
+            PromptButtons::OkCancel => h_flex()
+                .gap_1()
+                .child(Button::new("prompt-confirm", "OK").on_click(cx.listener(
+                    |this, _, window, cx| {
+                        this.confirm_prompt(window, cx);
+                    },
+                )))
+                .child(
+                    Button::new("prompt-cancel", "キャンセル").on_click(cx.listener(
+                        |this, _, window, cx| {
+                            this.cancel_prompt(window, cx);
+                        },
+                    )),
+                ),
+            PromptButtons::YesNo => h_flex()
+                .gap_1()
+                .child(
+                    Button::new("prompt-yes", "はい")
+                        .tooltip(Tooltip::text(
+                            "この鍵を受け入れて接続を続けます (known_hosts に記録されます)",
+                        ))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.answer_prompt(Some(HOST_KEY_ACCEPTED), window, cx);
+                        })),
+                )
+                .child(
+                    Button::new("prompt-no", "いいえ")
+                        .tooltip(Tooltip::text("接続を中止します"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.answer_prompt(Some(HOST_KEY_REFUSED), window, cx);
+                        })),
+                ),
+        };
         Some(
             v_flex()
                 .gap_1()
@@ -1763,23 +2403,9 @@ impl FileTransferModal {
                 .rounded_sm()
                 .border_color(cx.theme().colors().border_focused)
                 .child(Label::new(prompt.title.clone()))
+                .children(detail)
                 .children(editor)
-                .child(
-                    h_flex()
-                        .gap_1()
-                        .child(Button::new("prompt-confirm", "OK").on_click(cx.listener(
-                            |this, _, window, cx| {
-                                this.confirm_prompt(window, cx);
-                            },
-                        )))
-                        .child(
-                            Button::new("prompt-cancel", "キャンセル").on_click(cx.listener(
-                                |this, _, window, cx| {
-                                    this.cancel_prompt(window, cx);
-                                },
-                            )),
-                        ),
-                )
+                .child(buttons)
                 .into_any_element(),
         )
     }
@@ -1877,8 +2503,12 @@ impl Render for FileTransferModal {
                 }
             }))
             .on_action(cx.listener(|this, _: &menu::Confirm, window, cx| {
-                if this.prompt.is_some() {
-                    this.confirm_prompt(window, cx);
+                if let Some(prompt) = this.prompt.as_ref() {
+                    // A host key is accepted by pressing 「はい」 and nothing
+                    // else: Enter must not decide it by accident.
+                    if prompt.buttons == PromptButtons::OkCancel {
+                        this.confirm_prompt(window, cx);
+                    }
                     return;
                 }
                 // Enter in a path field means "go there"; anywhere else it
@@ -1988,6 +2618,72 @@ pub fn open_file_transfer(
 
 #[cfg(test)]
 impl FileTransferModal {
+    /// The picker's rows as `フォルダー/名前`, in the order they are drawn.
+    pub(crate) fn preset_rows_for_test(&self, cx: &App) -> Vec<String> {
+        self.preset_groups(cx)
+            .into_iter()
+            .flat_map(|group| {
+                let label = group
+                    .label
+                    .map(|label| label.to_string())
+                    .unwrap_or_default();
+                group
+                    .presets
+                    .into_iter()
+                    .map(move |preset| format!("{label}/{}", preset.name))
+            })
+            .collect()
+    }
+
+    fn preset_named(&self, name: &str, cx: &App) -> Option<ConnectionPreset> {
+        self.preset_groups(cx)
+            .into_iter()
+            .flat_map(|group| group.presets)
+            .find(|preset| preset.name.as_ref() == name)
+    }
+
+    pub(crate) fn apply_preset_for_test(
+        &mut self,
+        name: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(preset) = self.preset_named(name, cx) else {
+            return false;
+        };
+        self.apply_preset(&preset, window, cx);
+        true
+    }
+
+    pub(crate) fn move_preset_for_test(
+        &mut self,
+        name: &str,
+        up: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(PresetSource::QuickConnect { index }) =
+            self.preset_named(name, cx).map(|preset| preset.source)
+        else {
+            return false;
+        };
+        self.move_preset(index, up, cx);
+        true
+    }
+
+    pub(crate) fn save_preset_for_test(
+        &mut self,
+        name: &str,
+        folder: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.preset_name
+            .update(cx, |editor, cx| editor.set_text(name, window, cx));
+        self.preset_folder
+            .update(cx, |editor, cx| editor.set_text(folder, window, cx));
+        self.save_preset(window, cx);
+    }
+
     pub(crate) fn form_state(&self, cx: &App) -> (TransferProtocol, String, String, String) {
         (
             self.protocol,

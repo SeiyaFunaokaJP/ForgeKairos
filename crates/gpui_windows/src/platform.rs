@@ -174,14 +174,20 @@ impl WindowsPlatform {
             .context("CreateWindowExW did not run correctly")?;
         let handle = result?;
 
-        // zed-jp-enhance (ADR-F19): DirectComposition composes GPUI's opaque swap chain
-        // above every child HWND, which leaves the WebView2 browser panel invisible.
-        // The fork therefore defaults to the plain HWND swap chain; the upstream
-        // behaviour can be restored with GPUI_ENABLE_DIRECT_COMPOSITION=1.
+        // zed-jp-enhance (ADR-F19): DirectComposition composes gpui's swap chain above
+        // every child HWND, and the browser panel depends on it - gpui clears the
+        // rectangle the WebView2 child occupies to transparent
+        // (`Window::paint_punch_through`), so the page shows through while every
+        // tooltip, popover and modal painted afterwards lands in front of it.
+        // `GPUI_DISABLE_DIRECT_COMPOSITION=1` binds the swap chain straight to the
+        // HWND instead; the child window is then in front of everything gpui draws and
+        // the panel has to cut overlays out of it with `SetWindowRgn`.
+        // `GPUI_ENABLE_DIRECT_COMPOSITION=1` overrides that, for anyone who set the
+        // disable flag while the fork still defaulted to the plain path.
         let env_flag =
             |name: &str| std::env::var(name).is_ok_and(|value| value == "true" || value == "1");
         let disable_direct_composition =
-            env_flag(DISABLE_DIRECT_COMPOSITION) || !env_flag(ENABLE_DIRECT_COMPOSITION);
+            env_flag(DISABLE_DIRECT_COMPOSITION) && !env_flag(ENABLE_DIRECT_COMPOSITION);
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(dispatcher);
 

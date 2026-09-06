@@ -30,7 +30,7 @@ use terminal::{
 use ui::{
     Checkbox, ContextMenu, Disclosure, DropdownMenu, DropdownStyle, HighlightedLabel,
     InputFrameSize, ListItem, ListItemSpacing, Modal, ModalFooter, ModalHeader, Section,
-    SectionHeader, ToggleState, Tooltip, input_frame, input_frame_sized, prelude::*,
+    ToggleState, Tooltip, input_frame, input_frame_sized, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Panel as _, Workspace};
@@ -1175,6 +1175,98 @@ fn parse_seconds(value: &str) -> Option<u64> {
     Some((seconds * 1000.0).round() as u64)
 }
 
+/// Heading the tree files macros without a folder under. Only drawn once at
+/// least one folder exists, so a user who never made a folder is not shown a
+/// grouping they did not ask for.
+const UNFILED_FOLDER: &str = "未分類";
+
+/// A macro dragged from the tree onto a folder heading.
+#[derive(Clone)]
+struct DraggedMacro {
+    name: String,
+}
+
+/// What follows the pointer while a macro is dragged between folders.
+struct DraggedMacroLabel(SharedString);
+
+impl Render for DraggedMacroLabel {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .px_1p5()
+            .py_0p5()
+            .rounded_sm()
+            .elevation_2(cx)
+            .child(Label::new(self.0.clone()).size(LabelSize::Small))
+    }
+}
+
+/// One row of the saved-macro tree.
+enum MacroTreeRow {
+    /// A grouping heading; `folder` is `None` for [`UNFILED_FOLDER`].
+    Folder {
+        folder: Option<String>,
+        collapsed: bool,
+        count: usize,
+    },
+    /// A macro filed under the heading above it.
+    Macro(TerminalMacro),
+}
+
+/// The folder `folder` becomes when `from` is renamed to `to`, or `None` when
+/// the rename does not reach it. Sub-folders travel with their parent, so
+/// renaming 「拠点」 also renames 「拠点/本社」.
+fn folder_after_rename(folder: &str, from: &str, to: &str) -> Option<String> {
+    if folder == from {
+        return Some(to.to_string());
+    }
+    folder
+        .strip_prefix(from)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .map(|rest| format!("{to}/{rest}"))
+}
+
+/// The raw text of every field on the form. Comparing one of these against the
+/// snapshot taken when the macro was loaded is how the editor knows the form
+/// holds unsaved work: raw text rather than a parsed [`TerminalMacro`], so a
+/// half-typed number counts as a change too.
+#[derive(PartialEq, Eq)]
+struct FormSnapshot {
+    name: String,
+    folder: String,
+    tags: String,
+    description: String,
+    repeat: String,
+    repeat_interval: String,
+    steps: Vec<StepSnapshot>,
+}
+
+#[derive(PartialEq, Eq)]
+struct StepSnapshot {
+    kind: StepKind,
+    text: String,
+    number: String,
+    count: String,
+    regex: bool,
+    newline: bool,
+    children: Vec<StepSnapshot>,
+    preserved: Option<MacroStep>,
+}
+
+impl StepRow {
+    fn snapshot(&self, cx: &App) -> StepSnapshot {
+        StepSnapshot {
+            kind: self.kind,
+            text: self.text.read(cx).text(cx),
+            number: self.number.read(cx).text(cx),
+            count: self.count.read(cx).text(cx),
+            regex: self.regex,
+            newline: self.newline,
+            children: self.children.iter().map(|row| row.snapshot(cx)).collect(),
+            preserved: self.preserved.clone(),
+        }
+    }
+}
+
 pub struct MacroEditor {
     store: Entity<TerminalSessionStore>,
     /// Name the macro had when the form was last loaded, so a rename replaces
@@ -1186,13 +1278,25 @@ pub struct MacroEditor {
     description: Entity<Editor>,
     repeat: Entity<Editor>,
     repeat_interval: Entity<Editor>,
-    /// Narrows the saved-macro list only; it has nothing to do with the form.
+    /// Narrows the saved-macro tree only; it has nothing to do with the form.
     list_filter: Entity<Editor>,
-    collapsed_folders: HashSet<String>,
+    /// Field values as they stood when the form was loaded. `None` marks a form
+    /// that stands for nothing on disk (a 複製), which counts as unsaved from
+    /// the moment it is made.
+    saved_snapshot: Option<FormSnapshot>,
+    /// Collapsed headings of the tree; `None` is the [`UNFILED_FOLDER`] one.
+    collapsed_folders: HashSet<Option<String>>,
+    /// Folder whose name is being edited in the tree, with the field holding
+    /// the new name.
+    renaming_folder: Option<(String, Entity<Editor>)>,
     steps: Vec<StepRow>,
     error: Option<SharedString>,
     /// Macro whose 削除 has been asked for but not yet confirmed.
     pending_delete: Option<String>,
+    /// Macro picked in the tree while the form held unsaved edits, kept until
+    /// the user says whether to throw those edits away. The inner `None` is
+    /// 新規.
+    pending_selection: Option<Option<TerminalMacro>>,
     focus_handle: FocusHandle,
     _subscriptions: [Subscription; 2],
 }
@@ -1222,10 +1326,10 @@ impl MacroEditor {
 
         let focus_handle = cx.focus_handle();
         // `terminal_sessions.json` is read asynchronously, so an editor opened
-        // before the first read landed would otherwise show an empty list of
+        // before the first read landed would otherwise show an empty tree of
         // saved macros for as long as it stays open.
         let store_loaded = cx.observe(&store, |_, _, cx| cx.notify());
-        // The list is rebuilt during render, so the filter field only changes
+        // The tree is rebuilt during render, so the filter field only changes
         // it if the editor itself is re-rendered on every keystroke.
         let filter_edited = cx.subscribe(&list_filter, |_, _, event: &EditorEvent, cx| {
             if matches!(event, EditorEvent::BufferEdited) {
@@ -1243,10 +1347,13 @@ impl MacroEditor {
             repeat,
             repeat_interval,
             list_filter,
+            saved_snapshot: None,
             collapsed_folders: HashSet::default(),
+            renaming_folder: None,
             steps: Vec::new(),
             error: None,
             pending_delete: None,
+            pending_selection: None,
             focus_handle,
             _subscriptions: [store_loaded, filter_edited],
         };
@@ -1288,12 +1395,105 @@ impl MacroEditor {
             .collect();
         self.error = None;
         self.pending_delete = None;
+        self.pending_selection = None;
+        self.saved_snapshot = Some(self.snapshot(cx));
         window.focus(&self.name.focus_handle(cx), cx);
         cx.notify();
     }
 
-    /// The saved macros the list shows, in folder-then-name order. Read
-    /// straight from the store so the list is whatever is on disk right now,
+    fn snapshot(&self, cx: &App) -> FormSnapshot {
+        FormSnapshot {
+            name: self.name.read(cx).text(cx),
+            folder: self.folder.read(cx).text(cx),
+            tags: self.tags.read(cx).text(cx),
+            description: self.description.read(cx).text(cx),
+            repeat: self.repeat.read(cx).text(cx),
+            repeat_interval: self.repeat_interval.read(cx).text(cx),
+            steps: self.steps.iter().map(|row| row.snapshot(cx)).collect(),
+        }
+    }
+
+    /// Whether leaving the form now would throw work away.
+    fn has_unsaved_edits(&self, cx: &App) -> bool {
+        match &self.saved_snapshot {
+            Some(snapshot) => *snapshot != self.snapshot(cx),
+            None => true,
+        }
+    }
+
+    /// Loads `edited` into the form, asking first when that would discard
+    /// unsaved edits.
+    fn select_macro(
+        &mut self,
+        edited: Option<TerminalMacro>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Clicking the row that is already open is not a request to reload it,
+        // and reloading would throw away whatever is being typed into it.
+        if let Some(edited) = &edited
+            && self.original_name.as_deref() == Some(edited.name.as_str())
+        {
+            return;
+        }
+        if self.has_unsaved_edits(cx) {
+            self.pending_selection = Some(edited);
+            self.error = None;
+            cx.notify();
+            return;
+        }
+        self.load_macro(edited, window, cx);
+    }
+
+    fn confirm_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(edited) = self.pending_selection.take() else {
+            return;
+        };
+        self.load_macro(edited, window, cx);
+    }
+
+    /// Turns the form into a new, unsaved macro carrying the same steps, so a
+    /// variant of an existing macro does not have to be retyped. Nothing is
+    /// written until 保存.
+    fn duplicate_macro(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let copy_name = self.unused_copy_name(&self.name.read(cx).text(cx), cx);
+        self.original_name = None;
+        self.name.update(cx, |editor, cx| {
+            editor.set_text(copy_name, window, cx);
+        });
+        // A copy stands for nothing on disk, so switching away from it has to
+        // warn even though no field has been touched since.
+        self.saved_snapshot = None;
+        self.pending_delete = None;
+        self.pending_selection = None;
+        self.error = None;
+        window.focus(&self.name.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    /// `名前 のコピー`, numbered when that is taken, so a copy never silently
+    /// overwrites the macro it was made from.
+    fn unused_copy_name(&self, base: &str, cx: &App) -> String {
+        let base = base.trim();
+        let base = if base.is_empty() { "マクロ" } else { base };
+        let candidate = format!("{base} のコピー");
+        if self.store.read(cx).macro_named(&candidate).is_none() {
+            return candidate;
+        }
+        // There are only as many taken names as there are macros, so one of
+        // these suffixes is always free.
+        let limit = self.store.read(cx).macros().len() + 2;
+        for suffix in 2..=limit {
+            let numbered = format!("{base} のコピー {suffix}");
+            if self.store.read(cx).macro_named(&numbered).is_none() {
+                return numbered;
+            }
+        }
+        candidate
+    }
+
+    /// The saved macros the tree shows, in folder-then-name order. Read
+    /// straight from the store so the tree is whatever is on disk right now,
     /// not a copy taken at open time.
     fn listed_macros(&self, cx: &App) -> Vec<TerminalMacro> {
         let mut macros = self.store.read(cx).macros().to_vec();
@@ -1322,6 +1522,41 @@ impl MacroEditor {
         folders.sort();
         folders.dedup();
         folders
+    }
+
+    /// The tree the left pane draws: a heading per folder, then the macros in
+    /// it. Built from the sorted list, so one pass is enough.
+    fn macro_tree(&self, cx: &App) -> Vec<MacroTreeRow> {
+        // Whether the user has any folders at all, rather than whether the
+        // filtered list happens to show one, so the 未分類 heading does not
+        // appear and disappear while typing in the filter.
+        let unfiled_heading = !self.known_folders(cx).is_empty();
+
+        let mut groups: Vec<(Option<String>, Vec<TerminalMacro>)> = Vec::new();
+        for terminal_macro in self.listed_macros(cx) {
+            let folder = terminal_macro.folder.clone();
+            match groups.last_mut() {
+                Some((current, entries)) if *current == folder => entries.push(terminal_macro),
+                _ => groups.push((folder, vec![terminal_macro])),
+            }
+        }
+
+        let mut rows = Vec::new();
+        for (folder, entries) in groups {
+            let heading = folder.is_some() || unfiled_heading;
+            let collapsed = heading && self.collapsed_folders.contains(&folder);
+            if heading {
+                rows.push(MacroTreeRow::Folder {
+                    folder,
+                    collapsed,
+                    count: entries.len(),
+                });
+            }
+            if !collapsed {
+                rows.extend(entries.into_iter().map(MacroTreeRow::Macro));
+            }
+        }
+        rows
     }
 
     fn blank_step(kind: StepKind) -> MacroStep {
@@ -1390,6 +1625,155 @@ impl MacroEditor {
             StepPath::Top(_) => Some(&mut self.steps),
             StepPath::Child { parent, .. } => Some(&mut self.steps.get_mut(parent)?.children),
         }
+    }
+
+    /// Surfaces a failed background write in the form's error line rather than
+    /// leaving the tree showing something the file does not say.
+    fn report_write_failure(
+        &self,
+        write: Task<anyhow::Result<()>>,
+        what: &'static str,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn(async move |this, cx| {
+            if let Err(error) = write.await {
+                this.update(cx, |this, cx| {
+                    this.error = Some(format!("{what}できませんでした: {error}").into());
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// Points the form's folder field at `folder` without that counting as an
+    /// unsaved edit, for when the tree moved or renamed the macro on show.
+    fn set_form_folder(
+        &mut self,
+        folder: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = folder.unwrap_or_default();
+        self.folder.update(cx, |editor, cx| {
+            editor.set_text(text.clone(), window, cx);
+        });
+        if let Some(snapshot) = &mut self.saved_snapshot {
+            snapshot.folder = text;
+        }
+    }
+
+    fn begin_folder_rename(&mut self, folder: String, window: &mut Window, cx: &mut Context<Self>) {
+        let editor = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_text(folder.clone(), window, cx);
+            editor.select_all(&Default::default(), window, cx);
+            editor
+        });
+        window.focus(&editor.focus_handle(cx), cx);
+        self.renaming_folder = Some((folder, editor));
+        self.error = None;
+        cx.notify();
+    }
+
+    /// Renames a folder by rewriting the `folder` of every macro in it, which
+    /// is all a folder is: the macros stay a flat array on disk.
+    fn confirm_folder_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((from, field)) = self.renaming_folder.take() else {
+            return;
+        };
+        let Some(renamed) = normalize_folder(&field.read(cx).text(cx)) else {
+            self.error = Some("フォルダー名を入力してください。".into());
+            self.renaming_folder = Some((from, field));
+            cx.notify();
+            return;
+        };
+        if renamed == from {
+            cx.notify();
+            return;
+        }
+        // Writing before the first read would rewrite the file from an empty
+        // in-memory copy, dropping every macro and connection already in it.
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            self.renaming_folder = Some((from, field));
+            cx.notify();
+            return;
+        }
+
+        let mut file = self.store.read(cx).file().clone();
+        let mut moved = 0usize;
+        for terminal_macro in &mut file.macros {
+            let Some(folder) = terminal_macro.folder.as_deref() else {
+                continue;
+            };
+            if let Some(folder) = folder_after_rename(folder, &from, &renamed) {
+                terminal_macro.folder = Some(folder);
+                moved += 1;
+            }
+        }
+        if moved == 0 {
+            cx.notify();
+            return;
+        }
+
+        self.collapsed_folders = std::mem::take(&mut self.collapsed_folders)
+            .into_iter()
+            .map(|collapsed| {
+                collapsed
+                    .map(|folder| folder_after_rename(&folder, &from, &renamed).unwrap_or(folder))
+            })
+            .collect();
+        let form_folder = normalize_folder(&self.folder.read(cx).text(cx));
+        if let Some(folder) = form_folder
+            && let Some(folder) = folder_after_rename(&folder, &from, &renamed)
+        {
+            self.set_form_folder(Some(folder), window, cx);
+        }
+        self.error = None;
+
+        let write = self.store.update(cx, |store, cx| store.write(file, cx));
+        self.report_write_failure(write, "フォルダー名を変更", cx);
+        cx.notify();
+    }
+
+    /// Files `name` under `folder` (`None` for [`UNFILED_FOLDER`]), which is
+    /// what a drag from the tree onto a heading does.
+    fn move_macro_to_folder(
+        &mut self,
+        name: &str,
+        folder: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
+
+        let mut file = self.store.read(cx).file().clone();
+        let Some(moved) = file
+            .macros
+            .iter_mut()
+            .find(|candidate| candidate.name == name)
+        else {
+            return;
+        };
+        if moved.folder == folder {
+            return;
+        }
+        moved.folder = folder.clone();
+
+        if self.original_name.as_deref() == Some(name) {
+            self.set_form_folder(folder, window, cx);
+        }
+        self.error = None;
+
+        let write = self.store.update(cx, |store, cx| store.write(file, cx));
+        self.report_write_failure(write, "フォルダーを移動", cx);
+        cx.notify();
     }
 
     fn save(&mut self, cx: &mut Context<Self>) {
@@ -1504,19 +1888,12 @@ impl MacroEditor {
         }
         cx.notify();
 
-        cx.spawn(async move |this, cx| {
-            if let Err(error) = write.await {
-                this.update(cx, |this, cx| {
-                    this.error = Some(format!("削除できませんでした: {error}").into());
-                    cx.notify();
-                })
-                .ok();
-            }
-        })
-        .detach();
+        self.report_write_failure(write, "削除", cx);
     }
 
-    fn render_macro_list(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The left pane: the saved macros grouped by folder, with the folder
+    /// headings collapsible, renamable and droppable.
+    fn render_macro_tree(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if !self.store.read(cx).is_loaded() {
             return Label::new("読み込み中…")
                 .size(LabelSize::Small)
@@ -1524,8 +1901,8 @@ impl MacroEditor {
                 .into_any_element();
         }
 
-        let macros = self.listed_macros(cx);
-        if macros.is_empty() {
+        let rows = self.macro_tree(cx);
+        if rows.is_empty() {
             let filtered = !self.list_filter.read(cx).text(cx).trim().is_empty();
             return Label::new(if filtered {
                 "絞り込みに一致するマクロがありません"
@@ -1538,31 +1915,99 @@ impl MacroEditor {
         }
 
         let editing = self.original_name.clone();
-        let mut list = v_flex()
+        let renaming = self
+            .renaming_folder
+            .as_ref()
+            .map(|(folder, field)| (folder.clone(), field.clone()));
+        let mut tree = v_flex()
             .id("saved-macros")
-            .max_h(rems(18.))
+            .size_full()
             .overflow_y_scroll()
             .gap_0p5();
 
-        // The macros arrive folder-then-name ordered, so one pass is enough to
-        // emit a heading whenever the folder changes.
-        let mut current_folder: Option<String> = None;
-        let mut hidden = false;
-        for (index, terminal_macro) in macros.into_iter().enumerate() {
-            let folder = terminal_macro.folder.clone();
-            if current_folder != folder {
-                current_folder = folder.clone();
-                hidden = false;
-                if let Some(folder) = folder {
-                    let collapsed = self.collapsed_folders.contains(&folder);
-                    hidden = collapsed;
-                    list = list.child(
+        for (index, row) in rows.into_iter().enumerate() {
+            match row {
+                MacroTreeRow::Folder {
+                    folder,
+                    collapsed,
+                    count,
+                } => {
+                    let renamed_field = match (&renaming, &folder) {
+                        (Some((renamed, field)), Some(folder)) if renamed == folder => {
+                            Some(field.clone())
+                        }
+                        _ => None,
+                    };
+                    if let Some(field) = renamed_field {
+                        tree = tree.child(
+                            h_flex()
+                                .w_full()
+                                .gap_1()
+                                .child(
+                                    input_frame_sized(
+                                        InputFrameSize::Compact,
+                                        field.focus_handle(cx).contains_focused(window, cx),
+                                        cx,
+                                    )
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(field.clone()),
+                                )
+                                .child(
+                                    IconButton::new(
+                                        ("confirm-folder-rename", index),
+                                        IconName::Check,
+                                    )
+                                    .icon_size(IconSize::Small)
+                                    .tooltip(Tooltip::text("この名前に変更します"))
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
+                                            this.confirm_folder_rename(window, cx);
+                                        },
+                                    )),
+                                )
+                                .child(
+                                    IconButton::new(
+                                        ("cancel-folder-rename", index),
+                                        IconName::Close,
+                                    )
+                                    .icon_size(IconSize::Small)
+                                    .tooltip(Tooltip::text("名前の変更をやめます"))
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
+                                            this.renaming_folder = None;
+                                            cx.notify();
+                                        },
+                                    )),
+                                ),
+                        );
+                        continue;
+                    }
+
+                    let heading = folder.clone().unwrap_or_else(|| UNFILED_FOLDER.to_string());
+                    tree = tree.child(
                         h_flex()
+                            .id(("macro-folder", index))
                             .w_full()
                             .gap_1()
+                            .rounded_sm()
+                            .drag_over::<DraggedMacro>(|style, _, _, cx| {
+                                style.bg(cx.theme().colors().drop_target_background)
+                            })
+                            .on_drop(cx.listener({
+                                let folder = folder.clone();
+                                move |this, dragged: &DraggedMacro, window, cx| {
+                                    this.move_macro_to_folder(
+                                        &dragged.name,
+                                        folder.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                }
+                            }))
                             .child(
-                                Disclosure::new(("macro-folder", index), !collapsed).on_click(
-                                    cx.listener({
+                                Disclosure::new(("macro-folder-toggle", index), !collapsed)
+                                    .on_click(cx.listener({
                                         let folder = folder.clone();
                                         move |this, _, _, cx| {
                                             if !this.collapsed_folders.remove(&folder) {
@@ -1570,54 +2015,87 @@ impl MacroEditor {
                                             }
                                             cx.notify();
                                         }
-                                    }),
-                                ),
+                                    })),
                             )
                             .child(
-                                Label::new(folder)
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
+                                h_flex()
+                                    .id(("macro-folder-label", index))
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener({
+                                        let folder = folder.clone();
+                                        move |this, _, _, cx| {
+                                            if !this.collapsed_folders.remove(&folder) {
+                                                this.collapsed_folders.insert(folder.clone());
+                                            }
+                                            cx.notify();
+                                        }
+                                    }))
+                                    .child(
+                                        Icon::new(IconName::Folder)
+                                            .size(IconSize::XSmall)
+                                            .color(Color::Muted),
+                                    )
+                                    .child(
+                                        Label::new(heading)
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted)
+                                            .truncate(),
+                                    )
+                                    .child(
+                                        Label::new(format!("({count})"))
+                                            .size(LabelSize::XSmall)
+                                            .color(Color::Muted),
+                                    ),
+                            )
+                            .when_some(folder, |this, folder| {
+                                this.child(
+                                    IconButton::new(("rename-folder", index), IconName::Pencil)
+                                        .icon_size(IconSize::Small)
+                                        .tooltip(Tooltip::text(
+                                            "フォルダー名を変更します (中のマクロをまとめて移動します)",
+                                        ))
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.begin_folder_rename(folder.clone(), window, cx);
+                                        })),
+                                )
+                            }),
+                    );
+                }
+                MacroTreeRow::Macro(terminal_macro) => {
+                    let name = terminal_macro.name.clone();
+                    let selected = editing.as_deref() == Some(name.as_str());
+                    let detail = format!("{} ステップ", terminal_macro.steps.len());
+                    tree = tree.child(
+                        div()
+                            .id(("saved-macro-row", index))
+                            .w_full()
+                            .on_drag(DraggedMacro { name: name.clone() }, |dragged, _, _, cx| {
+                                let label = SharedString::from(dragged.name.clone());
+                                cx.new(|_| DraggedMacroLabel(label))
+                            })
+                            .child(
+                                ListItem::new(("saved-macro", index))
+                                    .spacing(ListItemSpacing::Sparse)
+                                    .toggle_state(selected)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.select_macro(Some(terminal_macro.clone()), window, cx);
+                                    }))
+                                    .child(Label::new(name).truncate())
+                                    .end_slot(
+                                        Label::new(detail)
+                                            .size(LabelSize::XSmall)
+                                            .color(Color::Muted),
+                                    ),
                             ),
                     );
                 }
             }
-            if hidden {
-                continue;
-            }
-
-            let name = terminal_macro.name.clone();
-            let selected = editing.as_deref() == Some(name.as_str());
-            let detail = format!("{} ステップ", terminal_macro.steps.len());
-            list = list.child(
-                h_flex()
-                    .w_full()
-                    .gap_1()
-                    .justify_between()
-                    .child(
-                        Button::new(("saved-macro", index), name.clone())
-                            .full_width()
-                            .toggle_state(selected)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.load_macro(Some(terminal_macro.clone()), window, cx);
-                            })),
-                    )
-                    .child(
-                        Label::new(detail)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
-                    )
-                    .child(
-                        IconButton::new(("delete-saved-macro", index), IconName::Trash)
-                            .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("このマクロを削除します"))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.request_delete(name.clone(), cx);
-                            })),
-                    ),
-            );
         }
 
-        list.into_any_element()
+        tree.into_any_element()
     }
 
     /// Dropdown of the folders already in use, so a macro can be filed under an
@@ -1941,13 +2419,21 @@ impl Render for MacroEditor {
         let steps = (0..self.steps.len())
             .map(|index| self.render_step(StepPath::Top(index), window, cx))
             .collect::<Vec<_>>();
-        let saved_macros = self.render_macro_list(cx);
+        let tree = self.render_macro_tree(window, cx);
+        let listed = self.listed_macros(cx).len();
+        let total = self.store.read(cx).macros().len();
+        let tree_header = if listed == total {
+            format!("保存済みのマクロ ({total} 件)")
+        } else {
+            format!("保存済みのマクロ ({listed} / {total} 件)")
+        };
         let form_header = match &self.original_name {
             Some(name) => format!("『{name}』を編集"),
             None => "新規マクロ".to_string(),
         };
         let editing = self.original_name.clone();
         let pending_delete = self.pending_delete.clone();
+        let pending_selection = self.pending_selection.clone();
         let folder_menu = self.render_folder_menu(window, cx).into_any_element();
         let field = |editor: &Entity<Editor>, window: &mut Window, cx: &mut Context<Self>| {
             input_frame(editor.focus_handle(cx).contains_focused(window, cx), cx)
@@ -1960,9 +2446,16 @@ impl Render for MacroEditor {
         let description_field = field(&self.description, window, cx);
         let repeat_field = field(&self.repeat, window, cx).w(rems(4.));
         let repeat_interval_field = field(&self.repeat_interval, window, cx).w(rems(4.));
+        let viewport = window.viewport_size();
 
         v_flex()
-            .w(rems(40.))
+            // The two panes need a bounded box: the tree and the form each
+            // scroll inside it rather than growing the modal off screen.
+            .w(rems(60.))
+            .h(rems(38.))
+            .max_w(viewport.width - px(64.))
+            .max_h(viewport.height - px(96.))
+            .overflow_hidden()
             .elevation_3(cx)
             .key_context("TerminalMacroEditor")
             .track_focus(&self.focus_handle)
@@ -1970,70 +2463,213 @@ impl Render for MacroEditor {
             .child(
                 Modal::new("terminal-macro-editor", None)
                     .header(ModalHeader::new().headline("マクロの編集"))
-                    .section(
-                        Section::new()
-                            .header(
-                                SectionHeader::new("保存済みのマクロ").end_slot(
-                                    Button::new("new-macro", "新規作成")
-                                        .start_icon(Icon::new(IconName::Plus))
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.load_macro(None, window, cx);
-                                        })),
-                                ),
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .flex_1()
+                            .min_h_0()
+                            .px(DynamicSpacing::Base12.rems(cx))
+                            .gap_3()
+                            .child(
+                                v_flex()
+                                    .w(rems(17.))
+                                    .flex_none()
+                                    .h_full()
+                                    .min_h_0()
+                                    .gap_1()
+                                    .pr_3()
+                                    .border_r_1()
+                                    .border_color(cx.theme().colors().border_variant)
+                                    .child(
+                                        h_flex()
+                                            .w_full()
+                                            .gap_1()
+                                            .justify_between()
+                                            .child(
+                                                Label::new(tree_header)
+                                                    .size(LabelSize::Small)
+                                                    .color(Color::Muted)
+                                                    .truncate(),
+                                            )
+                                            .child(
+                                                Button::new("new-macro", "新規")
+                                                    .label_size(LabelSize::Small)
+                                                    .start_icon(Icon::new(IconName::Plus))
+                                                    .tooltip(Tooltip::text(
+                                                        "空のマクロを右側に開きます",
+                                                    ))
+                                                    .on_click(cx.listener(
+                                                        |this, _, window, cx| {
+                                                            this.select_macro(None, window, cx);
+                                                        },
+                                                    )),
+                                            ),
+                                    )
+                                    .child(list_filter_field)
+                                    .child(v_flex().flex_1().min_h_0().child(tree)),
                             )
                             .child(
                                 v_flex()
-                                    .gap_1()
-                                    .child(list_filter_field)
-                                    .child(saved_macros),
-                            ),
-                    )
-                    .section(
-                        Section::new()
-                            .header(SectionHeader::new(form_header))
-                            .child(
-                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .h_full()
+                                    .min_h_0()
                                     .gap_2()
-                                    .child(name_field)
                                     .child(
                                         h_flex()
+                                            .w_full()
                                             .gap_1()
-                                            .child(folder_field.flex_1())
-                                            .child(folder_menu),
+                                            .justify_between()
+                                            .child(
+                                                Label::new(form_header)
+                                                    .size(LabelSize::Small)
+                                                    .color(Color::Muted)
+                                                    .truncate(),
+                                            )
+                                            .when_some(editing, |this, name| {
+                                                this.child(
+                                                    h_flex()
+                                                        .gap_1()
+                                                        .child(
+                                                            Button::new("duplicate-macro", "複製")
+                                                                .label_size(LabelSize::Small)
+                                                                .start_icon(Icon::new(
+                                                                    IconName::Copy,
+                                                                ))
+                                                                .tooltip(Tooltip::text(
+                                                                    "同じ内容の新しいマクロとして開きます",
+                                                                ))
+                                                                .on_click(cx.listener(
+                                                                    |this, _, window, cx| {
+                                                                        this.duplicate_macro(
+                                                                            window, cx,
+                                                                        );
+                                                                    },
+                                                                )),
+                                                        )
+                                                        .child(
+                                                            Button::new("delete-macro", "削除")
+                                                                .label_size(LabelSize::Small)
+                                                                .color(Color::Error)
+                                                                .start_icon(Icon::new(
+                                                                    IconName::Trash,
+                                                                ))
+                                                                .on_click(cx.listener(
+                                                                    move |this, _, _, cx| {
+                                                                        this.request_delete(
+                                                                            name.clone(),
+                                                                            cx,
+                                                                        );
+                                                                    },
+                                                                )),
+                                                        ),
+                                                )
+                                            }),
                                     )
-                                    .child(tags_field)
-                                    .child(description_field)
                                     .child(
-                                        h_flex()
+                                        v_flex()
+                                            .id("macro-form")
+                                            .flex_1()
+                                            .min_h_0()
+                                            .overflow_y_scroll()
                                             .gap_2()
+                                            .pr_1()
+                                            .child(name_field)
                                             .child(
-                                                Label::new("繰り返し回数")
-                                                    .size(LabelSize::Small)
-                                                    .color(Color::Muted),
+                                                h_flex()
+                                                    .gap_1()
+                                                    .child(folder_field.flex_1())
+                                                    .child(folder_menu),
                                             )
-                                            .child(repeat_field)
+                                            .child(tags_field)
+                                            .child(description_field)
                                             .child(
-                                                Label::new("間隔 (秒)")
-                                                    .size(LabelSize::Small)
-                                                    .color(Color::Muted),
+                                                h_flex()
+                                                    .gap_2()
+                                                    .child(
+                                                        Label::new("繰り返し回数")
+                                                            .size(LabelSize::Small)
+                                                            .color(Color::Muted),
+                                                    )
+                                                    .child(repeat_field)
+                                                    .child(
+                                                        Label::new("間隔 (秒)")
+                                                            .size(LabelSize::Small)
+                                                            .color(Color::Muted),
+                                                    )
+                                                    .child(repeat_interval_field)
+                                                    .child(
+                                                        Label::new("(0 回は中止まで繰り返します)")
+                                                            .size(LabelSize::Small)
+                                                            .color(Color::Muted),
+                                                    ),
                                             )
-                                            .child(repeat_interval_field)
+                                            .children(steps)
                                             .child(
-                                                Label::new("(0 回は中止まで繰り返します)")
-                                                    .size(LabelSize::Small)
-                                                    .color(Color::Muted),
+                                                h_flex().gap_1().child(
+                                                    Button::new("add-step", "ステップを追加")
+                                                        .start_icon(Icon::new(IconName::Plus))
+                                                        .on_click(cx.listener(
+                                                            |this, _, window, cx| {
+                                                                this.add_step(
+                                                                    StepKind::Send,
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                            },
+                                                        )),
+                                                ),
                                             ),
                                     )
-                                    .children(steps)
-                                    .child(
-                                        h_flex().gap_1().child(
-                                            Button::new("add-step", "ステップを追加")
-                                                .start_icon(Icon::new(IconName::Plus))
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.add_step(StepKind::Send, window, cx);
-                                                })),
-                                        ),
-                                    )
+                                    .when_some(pending_selection, |this, edited| {
+                                        let prompt = match &edited {
+                                            Some(edited) => format!(
+                                                "編集中の内容は保存されていません。破棄して『{}』を開きますか？",
+                                                edited.name
+                                            ),
+                                            None => "編集中の内容は保存されていません。破棄して新規マクロを開きますか？"
+                                                .to_string(),
+                                        };
+                                        this.child(
+                                            v_flex()
+                                                .w_full()
+                                                .gap_1()
+                                                .child(
+                                                    Label::new(prompt)
+                                                        .size(LabelSize::Small)
+                                                        .color(Color::Warning),
+                                                )
+                                                .child(
+                                                    h_flex()
+                                                        .gap_1()
+                                                        .child(
+                                                            Button::new(
+                                                                "confirm-selection",
+                                                                "破棄して切り替え",
+                                                            )
+                                                            .on_click(cx.listener(
+                                                                |this, _, window, cx| {
+                                                                    this.confirm_selection(
+                                                                        window, cx,
+                                                                    );
+                                                                },
+                                                            )),
+                                                        )
+                                                        .child(
+                                                            Button::new(
+                                                                "cancel-selection",
+                                                                "編集を続ける",
+                                                            )
+                                                            .on_click(cx.listener(
+                                                                |this, _, _, cx| {
+                                                                    this.pending_selection = None;
+                                                                    cx.notify();
+                                                                },
+                                                            )),
+                                                        ),
+                                                ),
+                                        )
+                                    })
                                     .when_some(pending_delete, |this, name| {
                                         this.child(
                                             h_flex()
@@ -2076,35 +2712,27 @@ impl Render for MacroEditor {
                                         )
                                     })
                                     .when_some(self.error.clone(), |this, error| {
-                                        this.child(Label::new(error).color(Color::Error))
+                                        this.child(
+                                            Label::new(error)
+                                                .size(LabelSize::Small)
+                                                .color(Color::Error),
+                                        )
                                     }),
                             ),
                     )
                     .footer(
-                        ModalFooter::new()
-                            .when_some(editing, |footer, name| {
-                                footer.start_slot(
-                                    Button::new("delete-macro", "削除")
-                                        .color(Color::Error)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.request_delete(name.clone(), cx);
-                                        })),
-                                )
-                            })
-                            .end_slot(
-                                h_flex()
-                                    .gap_1()
-                                    .child(
-                                        Button::new("cancel", "キャンセル").on_click(
-                                            cx.listener(|_, _, _, cx| cx.emit(DismissEvent)),
-                                        ),
-                                    )
-                                    .child(Button::new("save", "保存").on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.save(cx);
-                                        },
-                                    ))),
-                            ),
+                        ModalFooter::new().end_slot(
+                            h_flex()
+                                .gap_1()
+                                .child(Button::new("cancel", "キャンセル").on_click(
+                                    cx.listener(|_, _, _, cx| cx.emit(DismissEvent)),
+                                ))
+                                .child(Button::new("save", "保存").on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.save(cx);
+                                    },
+                                ))),
+                        ),
                     ),
             )
     }
@@ -2326,9 +2954,24 @@ impl QuickConnectModal {
             )
         };
         let name = self.name.read(cx).text(cx).trim().to_string();
+        let name = if name.is_empty() { host.clone() } else { name };
+        // The file transfer protocol and port are part of the same entry
+        // (ADR-F28) but are chosen on the transfer screen, so existing ones are
+        // carried over rather than dropped when this form saves over the entry.
+        let existing = self
+            .store
+            .read(cx)
+            .connections()
+            .iter()
+            .find(|candidate| candidate.name == name)
+            .cloned();
+        let transfer_protocol = existing
+            .as_ref()
+            .and_then(|existing| existing.transfer_protocol.clone());
+        let transfer_port = existing.and_then(|existing| existing.transfer_port);
 
         Ok(SavedConnection {
-            name: if name.is_empty() { host.clone() } else { name },
+            name,
             folder: normalize_folder(&self.folder.read(cx).text(cx)),
             protocol: self.protocol,
             host,
@@ -2337,6 +2980,8 @@ impl QuickConnectModal {
             macro_name: self.macro_name.clone(),
             log: Some(self.log),
             remember_password: self.remember_password,
+            transfer_protocol,
+            transfer_port,
         })
     }
 
@@ -2858,12 +3503,15 @@ impl QuickConnectModal {
                 .into_any_element();
         }
         let mut connections = self.store.read(cx).connections().to_vec();
+        // Grouped by folder, and inside a folder left in the order the file
+        // has them (`sort_by` is stable): that order is what the file transfer
+        // screen's 接続先 picker lets the user rearrange (ADR-F28), so sorting
+        // by name here would hide the result.
         connections.sort_by(|left, right| {
             left.folder
                 .as_deref()
                 .unwrap_or_default()
                 .cmp(right.folder.as_deref().unwrap_or_default())
-                .then_with(|| left.name.cmp(&right.name))
         });
 
         let mut list = v_flex().id("saved-connections").gap_0p5();
@@ -3785,6 +4433,439 @@ mod tests {
             });
         });
         assert_eq!(listed(&editor, cx), vec!["ログイン"]);
+    }
+
+    /// Every row of the editor's tree, folder headings marked by a trailing
+    /// `/` and their macro count.
+    fn tree_rows(editor: &Entity<MacroEditor>, cx: &mut VisualTestContext) -> Vec<String> {
+        editor.update(cx, |editor, cx| {
+            editor
+                .macro_tree(cx)
+                .into_iter()
+                .map(|row| match row {
+                    MacroTreeRow::Folder { folder, count, .. } => format!(
+                        "{}/ ({count})",
+                        folder.unwrap_or_else(|| UNFILED_FOLDER.to_string())
+                    ),
+                    MacroTreeRow::Macro(terminal_macro) => terminal_macro.name,
+                })
+                .collect::<Vec<_>>()
+        })
+    }
+
+    fn stored_macro(
+        editor: &Entity<MacroEditor>,
+        name: &str,
+        cx: &mut VisualTestContext,
+    ) -> TerminalMacro {
+        editor.update(cx, |editor, cx| {
+            editor
+                .store
+                .read(cx)
+                .macro_named(name)
+                .unwrap_or_else(|| panic!("『{name}』 should be in the store"))
+                .clone()
+        })
+    }
+
+    #[gpui::test]
+    async fn the_tree_groups_by_folder_and_collapses_a_heading(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec![
+                "未分類/ (1)",
+                "メモ",
+                "拠点/大阪/ (1)",
+                "再起動",
+                "拠点/本社/ (2)",
+                "ログイン",
+                "設定保存",
+            ]
+        );
+
+        // A collapsed heading keeps its count but hides what is under it.
+        editor.update(cx, |editor, cx| {
+            editor
+                .collapsed_folders
+                .insert(Some("拠点/本社".to_string()));
+            cx.notify();
+        });
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec![
+                "未分類/ (1)",
+                "メモ",
+                "拠点/大阪/ (1)",
+                "再起動",
+                "拠点/本社/ (2)",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn the_tree_leaves_out_the_unfiled_heading_when_there_are_no_folders(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "ログイン", "steps": [] }, { "name": "再起動", "steps": [] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        assert_eq!(tree_rows(&editor, cx), vec!["ログイン", "再起動"]);
+    }
+
+    #[gpui::test]
+    async fn selecting_in_the_tree_loads_the_macro_into_the_form(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let login = stored_macro(&editor, "ログイン", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            assert!(
+                !editor.has_unsaved_edits(cx),
+                "a freshly opened blank form has nothing to discard"
+            );
+            editor.select_macro(Some(login), window, cx);
+        });
+
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.original_name.as_deref(), Some("ログイン"));
+            assert_eq!(editor.name.read(cx).text(cx), "ログイン");
+            assert_eq!(editor.folder.read(cx).text(cx), "拠点/本社");
+            assert_eq!(editor.tags.read(cx).text(cx), "ルーター, 定期");
+            assert!(editor.pending_selection.is_none());
+            assert!(!editor.has_unsaved_edits(cx));
+        });
+    }
+
+    #[gpui::test]
+    async fn switching_away_from_unsaved_edits_asks_first(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let login = stored_macro(&editor, "ログイン", cx);
+        let saved = stored_macro(&editor, "設定保存", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(login), window, cx);
+            editor.add_step(StepKind::Clear, window, cx);
+            assert!(editor.has_unsaved_edits(cx), "a new step is an edit");
+            editor.select_macro(Some(saved.clone()), window, cx);
+        });
+
+        editor.update(cx, |editor, _| {
+            assert_eq!(
+                editor.original_name.as_deref(),
+                Some("ログイン"),
+                "the form must stay put until the edits are dealt with"
+            );
+            assert_eq!(
+                editor
+                    .pending_selection
+                    .as_ref()
+                    .and_then(|edited| edited.as_ref())
+                    .map(|edited| edited.name.as_str()),
+                Some("設定保存")
+            );
+            assert_eq!(editor.steps.len(), 1);
+            assert!(editor.error.is_none());
+        });
+
+        // Backing out leaves the edits alone.
+        editor.update(cx, |editor, cx| {
+            editor.pending_selection = None;
+            cx.notify();
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            assert_eq!(editor.steps.len(), 1);
+            editor.select_macro(Some(saved), window, cx);
+            editor.confirm_selection(window, cx);
+        });
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.original_name.as_deref(), Some("設定保存"));
+            assert_eq!(editor.name.read(cx).text(cx), "設定保存");
+            assert!(editor.steps.is_empty(), "the discarded step must be gone");
+            assert!(editor.pending_selection.is_none());
+        });
+    }
+
+    #[gpui::test]
+    async fn reselecting_the_open_macro_keeps_the_edits(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let login = stored_macro(&editor, "ログイン", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(login.clone()), window, cx);
+            editor.add_step(StepKind::Clear, window, cx);
+            editor.select_macro(Some(login), window, cx);
+        });
+        editor.update(cx, |editor, _| {
+            assert!(editor.pending_selection.is_none());
+            assert_eq!(editor.steps.len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn renaming_a_folder_moves_every_macro_under_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let restart = stored_macro(&editor, "再起動", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(restart), window, cx);
+            editor
+                .collapsed_folders
+                .insert(Some("拠点/大阪".to_string()));
+            editor.begin_folder_rename("拠点".to_string(), window, cx);
+            let Some((_, field)) = editor.renaming_folder.clone() else {
+                panic!("the rename should be in progress");
+            };
+            field.update(cx, |field, cx| {
+                field.set_text(" 全社 / ", window, cx);
+            });
+            editor.confirm_folder_rename(window, cx);
+        });
+        cx.run_until_parked();
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        let folders = saved
+            .macros
+            .iter()
+            .map(|terminal_macro| {
+                (
+                    terminal_macro.name.as_str(),
+                    terminal_macro.folder.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            folders,
+            vec![
+                ("再起動", Some("全社/大阪")),
+                ("設定保存", Some("全社/本社")),
+                ("ログイン", Some("全社/本社")),
+                ("メモ", None),
+            ],
+            "sub-folders travel with the folder that was renamed"
+        );
+
+        editor.update(cx, |editor, cx| {
+            assert!(editor.renaming_folder.is_none());
+            assert_eq!(
+                editor.folder.read(cx).text(cx),
+                "全社/大阪",
+                "the open macro follows its folder"
+            );
+            assert!(
+                !editor.has_unsaved_edits(cx),
+                "a rename from the tree is not an unsaved form edit"
+            );
+            assert!(
+                editor
+                    .collapsed_folders
+                    .contains(&Some("全社/大阪".to_string())),
+                "the collapsed heading keeps its state under the new name"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn renaming_a_folder_to_nothing_is_refused(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.begin_folder_rename("拠点/本社".to_string(), window, cx);
+            let Some((_, field)) = editor.renaming_folder.clone() else {
+                panic!("the rename should be in progress");
+            };
+            field.update(cx, |field, cx| {
+                field.set_text("  ", window, cx);
+            });
+            editor.confirm_folder_rename(window, cx);
+        });
+        editor.update(cx, |editor, _| {
+            assert!(
+                editor.renaming_folder.is_some(),
+                "the field stays open so the name can be fixed"
+            );
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("フォルダー名を入力してください。")
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn moving_a_macro_files_it_under_another_folder(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let memo = stored_macro(&editor, "メモ", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(memo), window, cx);
+            editor.move_macro_to_folder("メモ", Some("拠点/本社".to_string()), window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec![
+                "拠点/大阪/ (1)",
+                "再起動",
+                "拠点/本社/ (3)",
+                "メモ",
+                "ログイン",
+                "設定保存",
+            ]
+        );
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.folder.read(cx).text(cx), "拠点/本社");
+            assert!(!editor.has_unsaved_edits(cx));
+        });
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(
+            saved
+                .macros
+                .iter()
+                .find(|terminal_macro| terminal_macro.name == "メモ")
+                .and_then(|terminal_macro| terminal_macro.folder.as_deref()),
+            Some("拠点/本社")
+        );
+
+        // Dropping it back on 未分類 clears the folder again.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.move_macro_to_folder("メモ", None, window, cx);
+        });
+        cx.run_until_parked();
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.folder.read(cx).text(cx), "");
+            assert_eq!(
+                editor
+                    .store
+                    .read(cx)
+                    .macro_named("メモ")
+                    .and_then(|terminal_macro| terminal_macro.folder.as_deref()),
+                None
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn duplicating_opens_an_unused_copy_name(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "macros": [
+                    {
+                        "name": "ログイン",
+                        "folder": "拠点/本社",
+                        "steps": [{ "type": "send", "text": "enable" }]
+                    },
+                    { "name": "ログイン のコピー", "steps": [] }
+                ]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let login = stored_macro(&editor, "ログイン", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(login), window, cx);
+            editor.duplicate_macro(window, cx);
+        });
+
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.original_name, None, "a copy is a new macro");
+            assert_eq!(editor.name.read(cx).text(cx), "ログイン のコピー 2");
+            assert_eq!(editor.folder.read(cx).text(cx), "拠点/本社");
+            assert_eq!(editor.steps.len(), 1);
+            assert!(
+                editor.has_unsaved_edits(cx),
+                "a copy is unsaved until 保存, so switching away must warn"
+            );
+        });
+
+        editor.update(cx, |editor, cx| editor.save(cx));
+        cx.run_until_parked();
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(
+            saved
+                .macros
+                .iter()
+                .map(|terminal_macro| terminal_macro.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ログイン", "ログイン のコピー", "ログイン のコピー 2"]
+        );
+        assert_eq!(
+            saved.macros[2].steps,
+            vec![MacroStep::Send {
+                text: "enable".to_string(),
+                newline: true
+            }],
+            "the copy carries the steps it was made from"
+        );
+    }
+
+    #[test]
+    fn a_folder_rename_reaches_sub_folders_only() {
+        assert_eq!(
+            folder_after_rename("拠点", "拠点", "全社").as_deref(),
+            Some("全社")
+        );
+        assert_eq!(
+            folder_after_rename("拠点/本社", "拠点", "全社").as_deref(),
+            Some("全社/本社")
+        );
+        // A folder that merely starts with the same characters is untouched.
+        assert_eq!(folder_after_rename("拠点外", "拠点", "全社"), None);
+        assert_eq!(folder_after_rename("別/拠点", "拠点", "全社"), None);
     }
 
     #[test]

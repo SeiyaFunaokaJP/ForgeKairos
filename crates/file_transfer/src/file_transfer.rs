@@ -12,6 +12,7 @@
 //! treat them like typing into a terminal: outside the egress allow list, and
 //! deliberately not exposed as an agent tool.
 
+mod connection_presets;
 mod file_transfer_modal;
 mod transfer_backend;
 
@@ -20,6 +21,7 @@ use terminal::terminal_macro::{ConnectionProtocol, SavedConnection, TerminalSess
 use workspace::Workspace;
 use zed_actions::terminal::OpenFileTransfer;
 
+pub use connection_presets::{ConnectionPreset, PresetGroup, PresetSource, preset_groups};
 pub use file_transfer_modal::{
     FileTransferModal, LocalSide, PaneSide, RemoteHostOptions, TransferHostOptions,
     open_file_transfer,
@@ -114,7 +116,10 @@ fn active_terminal_target(
 
 #[cfg(test)]
 mod tests {
-    use gpui::{Entity, TestAppContext, VisualTestContext};
+    use std::path::PathBuf;
+
+    use fs::Fs as _;
+    use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext};
     use project::{FakeFs, Project};
     use settings::SettingsStore;
     use util::path;
@@ -211,5 +216,131 @@ mod tests {
         // The local pane starts at the project's first worktree.
         let local = modal.update(cx, |modal, cx| modal.local_directory_for_test(cx));
         assert_eq!(local, path!("/project"));
+    }
+
+    #[gpui::test]
+    async fn the_preset_picker_groups_by_folder_and_writes_back_to_the_shared_file(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+        });
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/config"),
+            serde_json::json!({
+                "terminal_sessions.json": r#"{
+                    "connections": [
+                        { "name": "本社ルーター", "folder": "拠点/本社",
+                          "host": "10.0.0.1", "port": 2222, "user": "operator" },
+                        { "name": "検証機", "host": "10.0.0.2" },
+                        { "name": "支社スイッチ", "folder": "拠点/本社", "protocol": "telnet",
+                          "host": "10.0.0.3", "transfer_protocol": "ftps", "transfer_port": 2121 }
+                    ]
+                }"#
+            }),
+        )
+        .await;
+        let sessions_path = PathBuf::from(path!("/config/terminal_sessions.json"));
+        let store = cx.update(|cx| {
+            cx.new(|cx| TerminalSessionStore::new(fs.clone(), sessions_path.clone(), cx))
+        });
+        let window = cx.add_window(|window, cx| {
+            FileTransferModal::new(
+                store.clone(),
+                TransferHostOptions {
+                    fs: fs.clone(),
+                    ide_root: PathBuf::from(path!("/project")),
+                    remote: None,
+                },
+                None,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        // Unfoldered entries first, then the folder, and inside it the order
+        // the file has rather than the alphabet.
+        let rows = window
+            .update(cx, |modal, _, cx| modal.preset_rows_for_test(cx))
+            .expect("the window is open");
+        assert_eq!(
+            rows,
+            vec![
+                "/検証機".to_string(),
+                "拠点/本社/本社ルーター".to_string(),
+                "拠点/本社/支社スイッチ".to_string(),
+            ]
+        );
+
+        // The entry's own transfer protocol and port win over the terminal's.
+        let form = window
+            .update(cx, |modal, window, cx| {
+                assert!(modal.apply_preset_for_test("支社スイッチ", window, cx));
+                modal.form_state(cx)
+            })
+            .expect("the window is open");
+        assert_eq!(
+            form,
+            (
+                TransferProtocol::Ftps,
+                "10.0.0.3".to_string(),
+                "2121".to_string(),
+                String::new()
+            )
+        );
+
+        window
+            .update(cx, |modal, _, cx| {
+                assert!(modal.move_preset_for_test("支社スイッチ", true, cx));
+            })
+            .expect("the window is open");
+        cx.run_until_parked();
+        let rows = window
+            .update(cx, |modal, _, cx| modal.preset_rows_for_test(cx))
+            .expect("the window is open");
+        assert_eq!(
+            rows,
+            vec![
+                "/検証機".to_string(),
+                "拠点/本社/支社スイッチ".to_string(),
+                "拠点/本社/本社ルーター".to_string(),
+            ]
+        );
+
+        window
+            .update(cx, |modal, window, cx| {
+                modal.save_preset_for_test("新しい機器", "拠点/支社", window, cx);
+            })
+            .expect("the window is open");
+        cx.run_until_parked();
+
+        let saved = store.read_with(cx, |store, _| {
+            store
+                .connections()
+                .iter()
+                .find(|connection| connection.name == "新しい機器")
+                .cloned()
+        });
+        let saved = saved.expect("the preset should be written to the shared file");
+        assert_eq!(saved.folder.as_deref(), Some("拠点/支社"));
+        assert_eq!(saved.host, "10.0.0.3");
+        // FTPS has no terminal protocol of its own, so a new entry is a Telnet
+        // one carrying the transfer protocol and port beside it.
+        assert_eq!(saved.protocol, ConnectionProtocol::Telnet);
+        assert_eq!(saved.port, None);
+        assert_eq!(saved.transfer_protocol.as_deref(), Some("ftps"));
+        assert_eq!(saved.transfer_port, Some(2121));
+
+        let written = fs
+            .load(&sessions_path)
+            .await
+            .expect("the file should have been written");
+        assert!(written.contains("新しい機器"), "{written}");
     }
 }

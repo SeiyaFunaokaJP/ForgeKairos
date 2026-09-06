@@ -103,6 +103,20 @@ impl Item for DebugSession {
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
         "デバッガー".into()
     }
+
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // The console, memory view, breakpoint list and variable list all hold
+        // editors whose focus listeners belong to the window they were
+        // registered against.
+        self.running_state.update(cx, |running_state, cx| {
+            running_state.rebind_window_focus_listeners(window, cx);
+        });
+    }
 }
 
 impl FollowableItem for DebugSession {

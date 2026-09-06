@@ -773,6 +773,15 @@ impl Item for ComponentPreview {
     ) {
         self.workspace_id = workspace.database_id();
 
+        // An editor's focus listeners belong to the window they were
+        // registered against, so the filter field has to register them again
+        // once this tab has moved to another window.
+        self.filter_editor
+            .read(cx)
+            .editor()
+            .clone()
+            .rebind_window_focus_listeners(window, cx);
+
         let focus_handle = self.filter_editor.read(cx).focus_handle(cx);
         window.focus(&focus_handle, cx);
     }

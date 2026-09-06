@@ -368,6 +368,22 @@ impl EventEmitter<()> for EditPredictionContextView {}
 impl Item for EditPredictionContextView {
     type Event = ();
 
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut workspace::Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // An editor's focus listeners belong to the window they were
+        // registered against, so every editor inside a tab moved to another
+        // window has to register them again.
+        for run in &self.runs {
+            run.editor.update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx);
+            });
+        }
+    }
+
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
         "Edit Prediction Context".into()
     }

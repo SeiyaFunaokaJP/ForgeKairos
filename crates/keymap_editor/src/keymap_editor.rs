@@ -1979,6 +1979,20 @@ fn muted_styled_text(text: SharedString, cx: &App) -> StyledText {
 impl Item for KeymapEditor {
     type Event = ();
 
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut workspace::Workspace,
+        window: &mut Window,
+        cx: &mut ui::Context<Self>,
+    ) {
+        // An editor's focus listeners belong to the window they were
+        // registered against, so the filter field inside a tab moved to
+        // another window has to register them again.
+        self.filter_editor.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
+    }
+
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> ui::SharedString {
         "キーマップエディター".into()
     }

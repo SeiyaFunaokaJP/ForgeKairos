@@ -2201,6 +2201,7 @@ name = "browser_panel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "db",
  "editor",
  "fs",
  "futures 0.3.32",
@@ -2208,11 +2209,14 @@ dependencies = [
  "http_client",
  "log",
  "paths",
+ "project",
  "raw-window-handle",
  "serde",
  "serde_json",
  "settings",
  "settings_json",
+ "theme",
+ "theme_settings",
  "ui",
  "url",
  "urlencoding",

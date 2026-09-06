@@ -992,6 +992,20 @@ impl Item for DapLogView {
         Editor::to_item_events(event, f)
     }
 
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut workspace::Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // An editor's focus listeners belong to the window they were
+        // registered against, so one inside a tab moved to another window has
+        // to register them again.
+        self.editor.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
+    }
+
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
         "DAP ログ".into()
     }

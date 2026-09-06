@@ -164,14 +164,31 @@ impl QuickConnectCredentials {
         password: &str,
         cx: &AsyncApp,
     ) -> Result<()> {
-        let url = credential_url(connection);
+        self.store_target(
+            connection.protocol,
+            &connection.host,
+            connection.port_or_default(),
+            connection.user.as_deref(),
+            password,
+            cx,
+        )
+        .await
+    }
+
+    /// Remembers a password for a bare target, the counterpart of
+    /// [`Self::lookup_target`] for callers that hold no [`SavedConnection`].
+    pub async fn store_target(
+        &self,
+        protocol: ConnectionProtocol,
+        host: &str,
+        port: u16,
+        user: Option<&str>,
+        password: &str,
+        cx: &AsyncApp,
+    ) -> Result<()> {
+        let url = credential_url_for_target(protocol, host, port);
         self.provider
-            .write_credentials(
-                &url,
-                credential_username(connection.user.as_deref()),
-                password.as_bytes(),
-                cx,
-            )
+            .write_credentials(&url, credential_username(user), password.as_bytes(), cx)
             .await
             .with_context(|| format!("パスワードを保存できませんでした ({url})"))
     }
@@ -179,7 +196,25 @@ impl QuickConnectCredentials {
     /// Removes the stored password. A target that has none is not an error, so
     /// this checks before deleting: `CredDeleteW` fails on a missing entry.
     pub async fn forget(&self, connection: &SavedConnection, cx: &AsyncApp) -> Result<()> {
-        let url = credential_url(connection);
+        self.forget_target(
+            connection.protocol,
+            &connection.host,
+            connection.port_or_default(),
+            cx,
+        )
+        .await
+    }
+
+    /// See [`Self::forget`]. The user name is not part of the key, so this
+    /// drops whichever account is filed under the target.
+    pub async fn forget_target(
+        &self,
+        protocol: ConnectionProtocol,
+        host: &str,
+        port: u16,
+        cx: &AsyncApp,
+    ) -> Result<()> {
+        let url = credential_url_for_target(protocol, host, port);
         let stored = self
             .provider
             .read_credentials(&url, cx)

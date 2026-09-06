@@ -50,6 +50,7 @@ pub struct Scene {
     pub subpixel_sprites: Vec<SubpixelSprite>,
     pub polychrome_sprites: Vec<PolychromeSprite>,
     pub surfaces: Vec<PaintSurface>,
+    pub punch_throughs: Vec<PunchThrough>,
 }
 
 #[expect(missing_docs)]
@@ -66,6 +67,7 @@ impl Scene {
         self.subpixel_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
+        self.punch_throughs.clear();
     }
 
     pub fn len(&self) -> usize {
@@ -133,6 +135,10 @@ impl Scene {
                 surface.order = order;
                 self.surfaces.push(surface.clone());
             }
+            Primitive::PunchThrough(punch_through) => {
+                punch_through.order = order;
+                self.punch_throughs.push(*punch_through);
+            }
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
@@ -160,6 +166,8 @@ impl Scene {
         self.polychrome_sprites
             .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.surfaces.sort_by_key(|surface| surface.order);
+        self.punch_throughs
+            .sort_by_key(|punch_through| punch_through.order);
     }
 
     #[cfg_attr(
@@ -187,6 +195,8 @@ impl Scene {
             polychrome_sprites_iter: self.polychrome_sprites.iter().peekable(),
             surfaces_start: 0,
             surfaces_iter: self.surfaces.iter().peekable(),
+            punch_throughs_start: 0,
+            punch_throughs_iter: self.punch_throughs.iter().peekable(),
         }
     }
 }
@@ -209,6 +219,10 @@ pub(crate) enum PrimitiveKind {
     SubpixelSprite,
     PolychromeSprite,
     Surface,
+    /// Last on purpose: primitives that share a draw order are drawn in the
+    /// order of this enum, and a punch-through has to erase what the rest of
+    /// its layer painted rather than be painted over by it.
+    PunchThrough,
 }
 
 pub(crate) enum PaintOperation {
@@ -228,6 +242,7 @@ pub enum Primitive {
     SubpixelSprite(SubpixelSprite),
     PolychromeSprite(PolychromeSprite),
     Surface(PaintSurface),
+    PunchThrough(PunchThrough),
 }
 
 #[expect(missing_docs)]
@@ -242,6 +257,7 @@ impl Primitive {
             Primitive::SubpixelSprite(sprite) => &sprite.bounds,
             Primitive::PolychromeSprite(sprite) => &sprite.bounds,
             Primitive::Surface(surface) => &surface.bounds,
+            Primitive::PunchThrough(punch_through) => &punch_through.bounds,
         }
     }
 
@@ -255,6 +271,7 @@ impl Primitive {
             Primitive::SubpixelSprite(sprite) => &sprite.content_mask,
             Primitive::PolychromeSprite(sprite) => &sprite.content_mask,
             Primitive::Surface(surface) => &surface.content_mask,
+            Primitive::PunchThrough(punch_through) => &punch_through.content_mask,
         }
     }
 }
@@ -283,6 +300,8 @@ struct BatchIterator<'a> {
     polychrome_sprites_iter: Peekable<slice::Iter<'a, PolychromeSprite>>,
     surfaces_start: usize,
     surfaces_iter: Peekable<slice::Iter<'a, PaintSurface>>,
+    punch_throughs_start: usize,
+    punch_throughs_iter: Peekable<slice::Iter<'a, PunchThrough>>,
 }
 
 impl<'a> Iterator for BatchIterator<'a> {
@@ -315,6 +334,10 @@ impl<'a> Iterator for BatchIterator<'a> {
             (
                 self.surfaces_iter.peek().map(|s| s.order),
                 PrimitiveKind::Surface,
+            ),
+            (
+                self.punch_throughs_iter.peek().map(|p| p.order),
+                PrimitiveKind::PunchThrough,
             ),
         ];
         orders_and_kinds.sort_by_key(|(order, kind)| (order.unwrap_or(u32::MAX), *kind));
@@ -461,6 +484,22 @@ impl<'a> Iterator for BatchIterator<'a> {
                 self.surfaces_start = surfaces_end;
                 Some(PrimitiveBatch::Surfaces(surfaces_start..surfaces_end))
             }
+            PrimitiveKind::PunchThrough => {
+                let punch_throughs_start = self.punch_throughs_start;
+                let mut punch_throughs_end = punch_throughs_start + 1;
+                self.punch_throughs_iter.next();
+                while self
+                    .punch_throughs_iter
+                    .next_if(|punch_through| (punch_through.order, batch_kind) < max_order_and_kind)
+                    .is_some()
+                {
+                    punch_throughs_end += 1;
+                }
+                self.punch_throughs_start = punch_throughs_end;
+                Some(PrimitiveBatch::PunchThroughs(
+                    punch_throughs_start..punch_throughs_end,
+                ))
+            }
         }
     }
 }
@@ -493,6 +532,7 @@ pub enum PrimitiveBatch {
         range: Range<usize>,
     },
     Surfaces(Range<usize>),
+    PunchThroughs(Range<usize>),
 }
 
 impl PrimitiveBatch {
@@ -525,6 +565,7 @@ impl PrimitiveBatch {
                 )
             }
             Self::Surfaces(range) => format!("surfaces ({})", range.len()),
+            Self::PunchThroughs(range) => format!("punch throughs ({})", range.len()),
         }
     }
 }
@@ -779,6 +820,34 @@ impl From<PaintSurface> for Primitive {
     }
 }
 
+/// A rectangle that replaces the window surface with transparent black instead
+/// of blending into it, so that whatever the platform composites *behind* the
+/// window's own drawing shows through.
+///
+/// Exists for the Windows browser panel (ADR-F19 / ADR-F32): WebView2 renders into a
+/// child HWND, which the desktop compositor draws underneath gpui's
+/// DirectComposition visual, so gpui has to stop covering it. Anything painted
+/// after the punch-through covers it again, which is how tooltips, popovers and
+/// modals end up in front of the browser.
+///
+/// Renderers that do not composite the window against anything (every backend
+/// other than the DirectX one) ignore it.
+#[derive(Default, Debug, Copy, Clone)]
+pub struct PunchThrough {
+    /// Draw order, assigned by [`Scene::insert_primitive`].
+    pub order: DrawOrder,
+    /// The rectangle to clear, in scaled (device) pixels.
+    pub bounds: Bounds<ScaledPixels>,
+    /// The clip rectangle in effect where this was painted.
+    pub content_mask: ContentMask<ScaledPixels>,
+}
+
+impl From<PunchThrough> for Primitive {
+    fn from(punch_through: PunchThrough) -> Self {
+        Primitive::PunchThrough(punch_through)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[expect(missing_docs)]
 pub struct PathId(pub usize);
@@ -945,5 +1014,69 @@ impl PathVertex<Pixels> {
             st_position: self.st_position,
             content_mask: self.content_mask.scale(factor),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{point, size};
+
+    fn scaled(left: f32, top: f32, width: f32, height: f32) -> Bounds<ScaledPixels> {
+        Bounds::new(
+            point(ScaledPixels(left), ScaledPixels(top)),
+            size(ScaledPixels(width), ScaledPixels(height)),
+        )
+    }
+
+    /// A punch-through has to erase what was painted before it and be covered
+    /// again by what is painted after it, which only holds if the batches come
+    /// out in the order the primitives were inserted in.
+    #[test]
+    fn punch_throughs_are_batched_in_paint_order() {
+        let content_mask = ContentMask {
+            bounds: scaled(0., 0., 100., 100.),
+        };
+        let mut scene = Scene::default();
+        scene.insert_primitive(Quad {
+            bounds: scaled(0., 0., 100., 100.),
+            content_mask,
+            ..Default::default()
+        });
+        scene.insert_primitive(PunchThrough {
+            order: 0,
+            bounds: scaled(10., 10., 50., 50.),
+            content_mask,
+        });
+        scene.insert_primitive(Quad {
+            bounds: scaled(20., 20., 10., 10.),
+            content_mask,
+            ..Default::default()
+        });
+        scene.finish();
+
+        let batches = scene
+            .batches()
+            .map(|batch| batch.label())
+            .collect::<Vec<_>>();
+        assert_eq!(batches, ["quads (1)", "punch throughs (1)", "quads (1)"]);
+    }
+
+    /// Clipping matters here more than for anything else: an uncovered pixel
+    /// outside the clip rectangle shows the desktop, not another element.
+    #[test]
+    fn a_punch_through_outside_the_content_mask_is_dropped() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(PunchThrough {
+            order: 0,
+            bounds: scaled(200., 0., 50., 50.),
+            content_mask: ContentMask {
+                bounds: scaled(0., 0., 100., 100.),
+            },
+        });
+        scene.finish();
+
+        assert!(scene.punch_throughs.is_empty());
+        assert_eq!(scene.batches().count(), 0);
     }
 }

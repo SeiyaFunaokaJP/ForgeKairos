@@ -52,6 +52,17 @@ pub struct Console {
 }
 
 impl Console {
+    /// Points this view's editors at `window`. Focus listeners are stored on
+    /// the window they were registered against, so a debug session tab moved
+    /// to another window has to register them again.
+    pub(crate) fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App) {
+        for editor in [&self.console, &self.query_bar] {
+            editor.update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx);
+            });
+        }
+    }
+
     pub fn new(
         session: Entity<Session>,
         stack_frame_list: Entity<StackFrameList>,

@@ -1830,6 +1830,27 @@ impl EventEmitter<()> for NotebookEditor {}
 impl Item for NotebookEditor {
     type Event = ();
 
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut workspace::Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Every cell holds an editor, and an editor's focus listeners belong to
+        // the window they were registered against, so they all have to register
+        // them again once this tab has moved to another window.
+        let cell_editors = self
+            .cell_map
+            .values()
+            .filter_map(|cell| cell.editor(cx).cloned())
+            .collect::<Vec<_>>();
+        for editor in cell_editors {
+            editor.update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx);
+            });
+        }
+    }
+
     fn can_split(&self) -> bool {
         true
     }

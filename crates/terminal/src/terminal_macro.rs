@@ -261,6 +261,19 @@ pub struct SavedConnection {
     /// itself never does — see [`crate::quick_connect_credentials`].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub remember_password: bool,
+    /// Which file transfer protocol the transfer screen offers for this target
+    /// (`sftp` / `scp` / `ftp` / `ftps`, ADR-F28), so one saved entry serves
+    /// both the terminal and the transfer screen. A string rather than an enum
+    /// because the protocols are defined in `file_transfer`, which depends on
+    /// this crate; an unreadable value falls back to the protocol implied by
+    /// [`Self::protocol`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transfer_protocol: Option<String>,
+    /// The port the transfer screen uses, when it is not the terminal's. An
+    /// FTP service on a device the terminal reaches over Telnet is the case
+    /// this exists for; SFTP and SCP share the SSH port and leave it unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transfer_port: Option<u16>,
 }
 
 impl SavedConnection {
@@ -846,6 +859,8 @@ mod tests {
                 macro_name: Some("ログイン".to_string()),
                 log: Some(true),
                 remember_password: true,
+                transfer_protocol: Some("ftp".to_string()),
+                transfer_port: Some(2121),
             }],
             macros: vec![TerminalMacro {
                 name: "ログイン".to_string(),
@@ -911,6 +926,33 @@ mod tests {
             }"#,
         );
         assert!(!file.connections[0].remember_password);
+        assert_eq!(file.connections[0].transfer_protocol, None);
+        assert_eq!(file.connections[0].transfer_port, None);
+    }
+
+    #[test]
+    fn the_transfer_protocol_is_optional_and_stays_out_of_the_file_when_unset() {
+        let mut connection = SavedConnection {
+            name: "r1".into(),
+            host: "10.0.0.1".into(),
+            ..SavedConnection::default()
+        };
+        let text = serialize_sessions_file(&TerminalSessionsFile {
+            connections: vec![connection.clone()],
+            macros: Vec::new(),
+        })
+        .expect("serializes");
+        assert!(!text.contains("transfer_protocol"), "{text}");
+        assert!(!text.contains("transfer_port"), "{text}");
+
+        connection.transfer_protocol = Some("scp".to_string());
+        connection.transfer_port = Some(2121);
+        let file = TerminalSessionsFile {
+            connections: vec![connection],
+            macros: Vec::new(),
+        };
+        let text = serialize_sessions_file(&file).expect("serializes");
+        assert_eq!(parse_sessions_file(&text), file);
     }
 
     #[test]
@@ -1112,6 +1154,8 @@ mod tests {
             macro_name: None,
             log: None,
             remember_password: false,
+            transfer_protocol: None,
+            transfer_port: None,
         };
         assert_eq!(
             connection.command(),
@@ -1131,6 +1175,8 @@ mod tests {
             macro_name: None,
             log: None,
             remember_password: false,
+            transfer_protocol: None,
+            transfer_port: None,
         };
         assert_eq!(
             connection.command(),

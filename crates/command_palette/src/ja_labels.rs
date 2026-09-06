@@ -274,7 +274,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ),
     (
         "window::MoveTabToNewWindow",
-        "ウィンドウ: タブを新しいウィンドウへ移動",
+        "ウィンドウ: システムタブを新しいウィンドウへ移動",
     ),
     (
         "window::MergeAllWindows",
@@ -282,6 +282,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ),
     // pane / tabs
     ("pane::CloseActiveItem", "タブ: タブを閉じる"),
+    (
+        "workspace::MoveItemToNewWindow",
+        "タブ: 新しいウィンドウへ移動",
+    ),
     ("pane::CloseAllItems", "タブ: すべてのタブを閉じる"),
     ("pane::CloseCleanItems", "タブ: 未編集のタブを閉じる"),
     ("pane::CloseItemsToTheLeft", "タブ: 左側のタブを閉じる"),

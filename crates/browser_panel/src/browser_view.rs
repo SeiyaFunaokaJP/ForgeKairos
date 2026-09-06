@@ -15,9 +15,9 @@ use editor::Editor;
 use fs::Fs;
 use futures::StreamExt as _;
 use gpui::{
-    AnyElement, App, ClickEvent, ClipboardItem, Context, DispatchPhase, Entity, EventEmitter,
-    FocusHandle, Focusable, MouseButton, MouseDownEvent, SharedString, Subscription, Task,
-    WeakEntity, Window, canvas, px, relative,
+    AnyElement, App, ClickEvent, Context, DispatchPhase, Entity, EventEmitter, FocusHandle,
+    Focusable, MouseButton, MouseDownEvent, SharedString, Subscription, Task, WeakEntity, Window,
+    canvas, px, relative,
 };
 use settings::{Settings as _, SettingsStore};
 use ui::{Tooltip, prelude::*};
@@ -31,23 +31,16 @@ use crate::{
 };
 
 #[cfg(windows)]
-use crate::webview_windows::{
-    OverlayRect, Viewport, WebView, WebViewEvent, host_uses_direct_composition,
-};
+use crate::webview_windows::{OverlayRect, Viewport, WebView, WebViewEvent};
 
 #[cfg(not(windows))]
-use crate::webview_unsupported::{
-    OverlayRect, Viewport, WebView, WebViewEvent, host_uses_direct_composition,
-};
+use crate::webview_unsupported::{OverlayRect, Viewport, WebView, WebViewEvent};
 
 const WEBVIEW2_DOWNLOAD_URL: &str = "https://developer.microsoft.com/microsoft-edge/webview2/";
 
 /// ブックマークのサイドペインの幅。ツリーの行に「編集 / 上へ / 下へ / 削除」の
 /// アイコンボタンが並ぶので、名前が潰れない程度には要る。
 const BOOKMARKS_PANE_WIDTH: f32 = 244.;
-
-/// 子 HWND が表示されない環境で案内するコマンド (ADR-F19 の既知の制約)。
-const DISABLE_DIRECT_COMPOSITION_COMMAND: &str = "setx GPUI_DISABLE_DIRECT_COMPOSITION 1";
 
 /// タブに出すページタイトルの上限。長いタイトルでタブが伸び切らないようにする。
 const MAX_TAB_TITLE_CHARS: usize = 40;
@@ -139,9 +132,6 @@ pub struct BrowserView {
     /// 子 HWND は元のウィンドウにぶら下がったままなので、変わったら作り直す。
     host_hwnd: Option<isize>,
     surface: SurfaceState,
-    /// ホストウィンドウが DirectComposition で描画されていて、子 HWND を出せない。
-    /// 表示できない理由をページの下に敷いて案内する。
-    direct_composition_host: bool,
     warned_missing_window_handle: bool,
     current_url: String,
     page_title: SharedString,
@@ -197,7 +187,6 @@ impl BrowserView {
             webview: None,
             host_hwnd: None,
             surface: SurfaceState::Idle,
-            direct_composition_host: false,
             warned_missing_window_handle: false,
             current_url: String::new(),
             page_title: SharedString::default(),
@@ -222,6 +211,26 @@ impl BrowserView {
     }
 
     // -- ホストから使う API --------------------------------------------------
+
+    pub fn host(&self) -> BrowserHost {
+        self.host
+    }
+
+    /// ドラッグでパネルと中央のペインを行き来するので、載っている場所は
+    /// 生成時に決め打てない。持ち主 ([`crate::BrowserItem`]) が知らせてくる。
+    pub(crate) fn set_host(&mut self, host: BrowserHost, cx: &mut Context<Self>) {
+        if self.host == host {
+            return;
+        }
+        self.host = host;
+        cx.notify();
+    }
+
+    /// タブを別ウィンドウへ移したときに持ち主が張り替える。モーダル判定
+    /// ([`Self::surface_hidden_reason`]) が消えたウィンドウを見に行かないように。
+    pub(crate) fn set_workspace(&mut self, workspace: WeakEntity<Workspace>) {
+        self.workspace = workspace;
+    }
 
     pub fn current_url(&self) -> &str {
         &self.current_url
@@ -318,15 +327,6 @@ impl BrowserView {
             log::warn!(
                 "browser.use_egress_proxy is on but no egress proxy is running; \
                  the built-in browser will connect directly"
-            );
-        }
-
-        self.direct_composition_host = host_uses_direct_composition(host_hwnd);
-        if self.direct_composition_host {
-            log::warn!(
-                "browser view: the gpui window has WS_EX_NOREDIRECTIONBITMAP (DirectComposition), \
-                 so a windowed WebView2 child cannot be composited; \
-                 set GPUI_DISABLE_DIRECT_COMPOSITION=1 and restart to use the built-in browser"
             );
         }
 
@@ -771,17 +771,13 @@ impl BrowserView {
 
     // -- 表示 ----------------------------------------------------------------
 
-    /// 子 HWND は GPUI の合成面より手前に出るので、覆ってはいけない状況では
-    /// 隠す (ADR-F19 の z-order 緩和策)。
+    /// 子 HWND は自分の矩形でマウス入力を受け取り続けるので、GPUI 側が
+    /// その上に何かを出している間は隠す (ADR-F19)。DirectComposition が
+    /// 無効なときは描画でも手前に出るため、隠すのは見た目のためでもある。
     ///
     /// **このメソッドが呼ばれている = ビューが描画されている** ので、ホストは
     /// このビューを表示している。はっきり検出できた条件でだけ隠す。
     fn surface_hidden_reason(&self, window: &mut Window, cx: &mut App) -> Option<&'static str> {
-        if self.direct_composition_host {
-            // 合成されないだけで子 HWND は `WS_VISIBLE` のまま残るため、内容領域の
-            // クリックを全部飲んでしまい、案内のボタンさえ押せなくなる。隠す。
-            return Some("the host window is composited with DirectComposition");
-        }
         if cx.has_active_drag() {
             return Some("a drag is in progress");
         }
@@ -911,7 +907,7 @@ impl BrowserView {
                         .icon_size(IconSize::Small)
                         .tooltip(move |_, cx| {
                             Tooltip::for_action_in(
-                                "エディター領域で開く",
+                                "エディター領域へ移す",
                                 &OpenInCenter,
                                 &focus_handle,
                                 cx,
@@ -1463,13 +1459,18 @@ impl BrowserView {
             } => self.render_unavailable(message.clone(), *offer_runtime_download, cx),
             SurfaceState::Idle | SurfaceState::Starting | SurfaceState::Ready => {
                 let hidden_reason = self.surface_hidden_reason(window, cx);
+                // 穴を開けてよいのは実際にページが載っているときだけ。ページの
+                // 無い矩形を透明にすると、ウィンドウの背後 (デスクトップ) が
+                // そのまま見えてしまう。
+                let surface_is_up = matches!(self.surface, SurfaceState::Ready);
                 let webview = self.webview.clone();
                 div()
                     .relative()
                     .size_full()
                     .bg(cx.theme().colors().editor_background)
-                    // 案内は子 HWND が載るのと同じ場所に敷いておく。ページが描けて
-                    // いれば覆われて見えないので、見えている = 描けていない。
+                    // 起動中の案内は子 HWND が載るのと同じ場所に敷いておく。
+                    // ページが出る段になると下の canvas が同じ矩形を透明に
+                    // 抜くので、案内はそのフレームから消える。
                     .child(
                         v_flex()
                             .absolute()
@@ -1485,9 +1486,6 @@ impl BrowserView {
                                     Label::new("内蔵ブラウザーを起動しています…")
                                         .color(Color::Muted),
                                 )
-                            })
-                            .when(self.direct_composition_host, |this| {
-                                this.child(self.render_direct_composition_notice(cx))
                             }),
                     )
                     .child(
@@ -1510,6 +1508,13 @@ impl BrowserView {
                                     },
                                     window,
                                 );
+                                // 子 HWND は gpui の合成面の「後ろ」に居るので、
+                                // ページの矩形だけ透明に抜いて見せる。この後に
+                                // 描かれるツールチップ / ポップオーバー / モーダルは
+                                // 普通に手前へ出る (ADR-F19)。
+                                if surface_is_up && hidden_reason.is_none() {
+                                    window.paint_punch_through(bounds);
+                                }
                                 // Windows はクリックが親のクライアント領域に落ちても
                                 // 子 HWND からフォーカスを外さないので、GPUI 側に
                                 // 届いたマウス押下で明示的に取り戻す。
@@ -1528,49 +1533,6 @@ impl BrowserView {
                     .into_any_element()
             }
         }
-    }
-
-    /// gpui のウィンドウが DirectComposition で描かれていると、子 HWND は
-    /// リダイレクション面を持てず (さらに gpui の合成ツリーが topmost なので)
-    /// WebView2 は一切描画されない。直せるのはユーザーだけなので手順を出す。
-    fn render_direct_composition_notice(&self, cx: &mut Context<Self>) -> AnyElement {
-        v_flex()
-            .max_w(px(360.))
-            .gap_1()
-            .items_center()
-            .child(Label::new("内蔵ブラウザーの画面を表示できません。").color(Color::Error))
-            .child(
-                Label::new(
-                    "Zed のウィンドウが DirectComposition で描画されているため、\
-                     WebView2 の子ウィンドウが合成されません。\
-                     環境変数 GPUI_DISABLE_DIRECT_COMPOSITION に 1 を設定して \
-                     Zed を再起動すると表示されます。",
-                )
-                .size(LabelSize::Small)
-                .color(Color::Muted),
-            )
-            .child(
-                h_flex()
-                    .gap_1()
-                    .child(
-                        Button::new("browser-copy-dc-command", "コマンドをコピー")
-                            .label_size(LabelSize::Small)
-                            .tooltip(Tooltip::text(DISABLE_DIRECT_COMPOSITION_COMMAND))
-                            .on_click(|_, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(
-                                    DISABLE_DIRECT_COMPOSITION_COMMAND.to_string(),
-                                ));
-                            }),
-                    )
-                    .child(
-                        Button::new("browser-open-external-dc", "外部ブラウザーで開く")
-                            .label_size(LabelSize::Small)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_in_external_browser(&OpenInExternalBrowser, window, cx)
-                            })),
-                    ),
-            )
-            .into_any_element()
     }
 
     fn render_unavailable(

@@ -163,6 +163,13 @@ static HEX_BYTES_MEMOIZED: LazyLock<[SharedString; 256]> =
 static UNKNOWN_BYTE: SharedString = SharedString::new_static("??");
 
 impl MemoryView {
+    /// See [`super::console::Console::rebind_window_focus_listeners`].
+    pub(crate) fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App) {
+        self.query_editor.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
+    }
+
     pub(crate) fn new(
         session: Entity<Session>,
         workspace: WeakEntity<Workspace>,

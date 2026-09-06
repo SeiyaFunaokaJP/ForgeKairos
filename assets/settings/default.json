@@ -102,6 +102,11 @@
   // Layout mode of the bottom dock. Defaults to "contained"
   //   choices: contained, full, left_aligned, right_aligned
   "bottom_dock_layout": "contained",
+  // フォーク既定: プロジェクトを初めて開いたとき、右ドックのエージェントパネルの
+  // 下に並べて表示するパネル (DESIGN.md ADR-F30)。保存済みレイアウトがある
+  // プロジェクトでは、そちらが優先される。
+  //   choices: none, browser
+  "right_dock_secondary_panel": "browser",
   // The direction that you want to split panes horizontally. Defaults to "down"
   "pane_split_direction_horizontal": "down",
   // The direction that you want to split panes vertically. Defaults to "right"

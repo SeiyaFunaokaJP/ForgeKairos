@@ -167,7 +167,7 @@ use gpui::{
     KeyContext, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, PaintQuad, ParentElement,
     Pixels, PressureStage, Render, ScrollHandle, SharedString, SharedUri, Size, Stateful, Styled,
     Subscription, Task, TextRun, TextStyle, TextStyleRefinement, UTF16Selection, UnderlineStyle,
-    UniformListScrollHandle, WeakEntity, WeakFocusHandle, Window, div, point, prelude::*,
+    UniformListScrollHandle, WeakEntity, WeakFocusHandle, Window, WindowId, div, point, prelude::*,
     pulsating_between, px, relative, size,
 };
 use hover_links::{HoverLink, HoveredLinkState, find_file};
@@ -1057,6 +1057,14 @@ pub struct Editor {
     in_leading_whitespace: bool,
     next_inlay_id: usize,
     next_color_inlay_id: usize,
+    /// Focus and pending-input listeners live on the `Window` they were
+    /// registered against, so they have to be re-registered when the editor's
+    /// tab is torn off into another window. Held here rather than detached so
+    /// the stale ones can be dropped at that point.
+    _window_focus_subscriptions: Vec<Subscription>,
+    /// Which window [`Editor::_window_focus_subscriptions`] were registered
+    /// against, or `None` for a minimap, which registers none.
+    focus_listener_window: Option<WindowId>,
     _subscriptions: Vec<Subscription>,
     pixel_position_of_newest_cursor: Option<gpui::Point<Pixels>>,
     gutter_dimensions: GutterDimensions,
@@ -2213,18 +2221,12 @@ impl Editor {
         let inlay_hint_settings =
             inlay_hint_settings(selections.newest_anchor().head(), &buffer_snapshot, cx);
         let focus_handle = cx.focus_handle();
-        if !is_minimap {
-            cx.on_focus(&focus_handle, window, Self::handle_focus)
-                .detach();
-            cx.on_focus_in(&focus_handle, window, Self::handle_focus_in)
-                .detach();
-            cx.on_focus_out(&focus_handle, window, Self::handle_focus_out)
-                .detach();
-            cx.on_blur(&focus_handle, window, Self::handle_blur)
-                .detach();
-            cx.observe_pending_input(window, Self::observe_pending_input)
-                .detach();
-        }
+        let window_focus_subscriptions = if is_minimap {
+            Vec::new()
+        } else {
+            Self::build_window_focus_subscriptions(&focus_handle, window, cx)
+        };
+        let focus_listener_window = (!is_minimap).then(|| window.window_handle().window_id());
 
         let show_indent_guides =
             if matches!(mode, EditorMode::SingleLine | EditorMode::Minimap { .. }) {
@@ -2420,6 +2422,8 @@ impl Editor {
             stored_review_comments: Vec::new(),
             next_review_comment_id: 0,
             hovered_diff_hunk_row: None,
+            _window_focus_subscriptions: window_focus_subscriptions,
+            focus_listener_window,
             _subscriptions: (!is_minimap)
                 .then(|| {
                     vec![
@@ -10573,6 +10577,40 @@ impl Editor {
         self.focus_handle.is_focused(window)
     }
 
+    fn build_window_focus_subscriptions(
+        focus_handle: &FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<Subscription> {
+        vec![
+            cx.on_focus(focus_handle, window, Self::handle_focus),
+            cx.on_focus_in(focus_handle, window, Self::handle_focus_in),
+            cx.on_focus_out(focus_handle, window, Self::handle_focus_out),
+            cx.on_blur(focus_handle, window, Self::handle_blur),
+            cx.observe_pending_input(window, Self::observe_pending_input),
+        ]
+    }
+
+    /// Points the focus and pending-input listeners at `window`, which they do
+    /// not follow on their own: they are stored on the `Window` that created
+    /// them. Only a tab moved to a different window needs this, and
+    /// `Item::added_to_workspace` also runs for ordinary moves within one
+    /// window, so the window is compared before anything is rebuilt.
+    pub fn rebind_window_focus_listeners(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let window_id = window.window_handle().window_id();
+        if self
+            .focus_listener_window
+            .is_none_or(|registered| registered == window_id)
+        {
+            return;
+        }
+
+        let focus_handle = self.focus_handle.clone();
+        self._window_focus_subscriptions =
+            Self::build_window_focus_subscriptions(&focus_handle, window, cx);
+        self.focus_listener_window = Some(window_id);
+    }
+
     fn handle_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         cx.emit(EditorEvent::Focused);
 
@@ -12188,6 +12226,12 @@ impl ui_input::ErasedEditor for ErasedEditorImpl {
 
     fn as_any(&self) -> &dyn Any {
         &self.0
+    }
+
+    fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App) {
+        self.0.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
     }
 
     fn move_selection_to_end(&self, window: &mut Window, cx: &mut App) {

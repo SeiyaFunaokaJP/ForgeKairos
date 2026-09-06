@@ -42,6 +42,7 @@ pub struct WorkspaceSettings {
     pub zoomed_padding: bool,
     pub window_decorations: settings::WindowDecorations,
     pub focus_follows_mouse: FocusFollowsMouse,
+    pub right_dock_secondary_panel: settings::RightDockSecondaryPanel,
 }
 
 #[derive(Copy, Clone, Deserialize)]
@@ -145,6 +146,8 @@ impl Settings for WorkspaceSettings {
                         .unwrap_or(250),
                 ),
             },
+            // Fork addition, so it tolerates a `default.json` that predates it.
+            right_dock_secondary_panel: workspace.right_dock_secondary_panel.unwrap_or_default(),
         }
     }
 }

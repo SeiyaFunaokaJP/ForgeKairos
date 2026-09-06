@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use gpui_util::ResultExt;
 use windows::{
     Win32::{
-        Foundation::HWND,
+        Foundation::{HWND, RECT},
         Graphics::{
             Direct3D::*,
             Direct3D11::*,
@@ -66,6 +66,9 @@ pub(crate) struct DirectXRendererDevices {
     pub(crate) device_context: ID3D11DeviceContext,
     dxgi_device: Option<IDXGIDevice>,
     annotation: Option<ID3DUserDefinedAnnotation>,
+    /// Only used for `ClearView`, which is how a punch-through erases a
+    /// rectangle of the render target without going through the blend state.
+    device_context1: Option<ID3D11DeviceContext1>,
 }
 
 struct DirectXResources {
@@ -139,6 +142,12 @@ impl DirectXRendererDevices {
             Some(device.cast().context("Creating DXGI device")?)
         };
         let annotation = device_context.cast().ok();
+        let device_context1 = device_context
+            .cast::<ID3D11DeviceContext1>()
+            .context(
+                "Getting ID3D11DeviceContext1; punch-through rectangles will not be transparent",
+            )
+            .log_err();
 
         Ok(Self {
             adapter: adapter.clone(),
@@ -147,6 +156,7 @@ impl DirectXRendererDevices {
             device_context: device_context.clone(),
             dxgi_device,
             annotation,
+            device_context1,
         })
     }
 }
@@ -373,6 +383,9 @@ impl DirectXRenderer {
                     self.draw_polychrome_sprites(texture_id, range.start, range.len())
                 }
                 PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
+                PrimitiveBatch::PunchThroughs(range) => {
+                    self.draw_punch_throughs(&scene.punch_throughs[range])
+                }
             }
             .with_context(|| {
                 format!(
@@ -520,6 +533,61 @@ impl DirectXRenderer {
             start as u32,
             len as u32,
         )
+    }
+
+    /// Replaces each rectangle with transparent black so that the desktop
+    /// compositor shows what it draws behind gpui's visual - the browser
+    /// panel's WebView2 child window (ADR-F19).
+    ///
+    /// `ClearView` writes the render target directly, so it neither disturbs
+    /// the pipeline state the surrounding batches set up nor blends with what
+    /// is already there; it just has to be issued in the order the scene put it
+    /// in, which is what the batch iterator guarantees.
+    fn draw_punch_throughs(&mut self, punch_throughs: &[PunchThrough]) -> Result<()> {
+        // Without DirectComposition the swap chain is bound straight to the
+        // HWND with `DXGI_ALPHA_MODE_IGNORE`: nothing is composited behind it,
+        // and clearing would paint the rectangle black instead of transparent.
+        if punch_throughs.is_empty() || self.direct_composition.is_none() {
+            return Ok(());
+        }
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let Some(device_context1) = devices.device_context1.as_ref() else {
+            return Ok(());
+        };
+        let render_target_view = self
+            .resources
+            .as_ref()
+            .context("resources missing")?
+            .render_target_view
+            .as_ref()
+            .context("missing render target view")?;
+
+        // Rounded inwards, like the bounds gpui already snapped: a hole that is
+        // a pixel too large uncovers whatever is behind the window itself.
+        let rectangles = punch_throughs
+            .iter()
+            .filter_map(|punch_through| {
+                let bounds = punch_through
+                    .bounds
+                    .intersect(&punch_through.content_mask.bounds);
+                let rectangle = RECT {
+                    left: bounds.left().0.ceil() as i32,
+                    top: bounds.top().0.ceil() as i32,
+                    right: bounds.right().0.floor() as i32,
+                    bottom: bounds.bottom().0.floor() as i32,
+                };
+                (rectangle.left < rectangle.right && rectangle.top < rectangle.bottom)
+                    .then_some(rectangle)
+            })
+            .collect::<Vec<_>>();
+        if rectangles.is_empty() {
+            return Ok(());
+        }
+
+        unsafe {
+            device_context1.ClearView(render_target_view, &[0.0; 4], Some(&rectangles));
+        }
+        Ok(())
     }
 
     fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {

@@ -21,20 +21,25 @@
 //!
 //! ブックマークは設定ではなく `browser_bookmarks.json` に置く ([`browser_bookmarks`])。
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
+use db::kvp::KeyValueStore;
 use editor::Editor;
 use gpui::{
-    Action, AnyElement, App, AsyncWindowContext, ClickEvent, Context, DragMoveEvent, Empty, Entity,
-    EventEmitter, FocusHandle, Focusable, MouseButton, Pixels, Subscription, WeakEntity, Window,
-    actions, px, relative,
+    Action, App, AsyncWindowContext, Axis, Context, Entity, EntityId, EventEmitter, FocusHandle,
+    Focusable, Pixels, Task, WeakEntity, Window, actions,
 };
+use project::Project;
+use serde::{Deserialize, Serialize};
 use settings::{IntoGpui, RegisterSetting, Settings};
 use ui::{Tooltip, prelude::*};
+use util::{ResultExt as _, TryFutureExt as _};
 use workspace::{
+    CloseActiveItem, DraggedTab, Member, Pane, PaneAxis, PaneGroup, SplitDirection, SplitMode,
     Workspace,
     dock::{DockPosition, Panel, PanelEvent},
+    pane,
     searchable::SearchableItem as _,
 };
 
@@ -59,19 +64,9 @@ const HIDDEN_TAB_INACTIVE: &str = "the browser tab is not the active tab in the 
 const HIDDEN_TAB_CLOSED: &str = "the browser tab was closed";
 const HIDDEN_PANEL_INACTIVE: &str = "the panel is no longer the active dock panel";
 
-/// パネルのタブ 1 枚分の幅。狭いドックでも 2, 3 枚は並ぶ程度に抑える。
-const PANEL_TAB_MIN_WIDTH: f32 = 84.;
-const PANEL_TAB_MAX_WIDTH: f32 = 176.;
 // OAuth のリダイレクト URL は数千文字になり、ツールチップが WebView の上に
 // 画面いっぱいに広がる (2026-09-06 の実機)。タブのツールチップは先頭だけで足りる。
 const MAX_TAB_TOOLTIP_CHARS: usize = 160;
-
-/// 分割の境界のつまみの幅。境界の線そのものは 1px なので、掴める幅を別に取る。
-const PANE_DIVIDER_HANDLE_WIDTH: f32 = 8.;
-/// 内容領域のうち「ここへ落としたら分割」になる左右の端の割合。
-const SPLIT_EDGE_FRACTION: f32 = 0.25;
-/// 分割したグループ 1 つあたりの取り分の下限。境界を端まで引いても潰れないように。
-const MIN_GROUP_FLEX: f32 = 0.15;
 
 /// 検索・質問に渡すテキストの上限。長すぎる選択範囲で URL が壊れるのを防ぐ。
 const MAX_QUERY_CHARS: usize = 400;
@@ -182,7 +177,7 @@ const NAVIGABLE_SCHEMES: &[&str] = &[
 ];
 
 /// タブのツールチップ。長い URL は先頭 [`MAX_TAB_TOOLTIP_CHARS`] 文字で切る。
-fn tab_tooltip(url: &str) -> SharedString {
+pub(crate) fn tab_tooltip(url: &str) -> SharedString {
     if url.chars().count() <= MAX_TAB_TOOLTIP_CHARS {
         return url.to_string().into();
     }
@@ -265,59 +260,9 @@ pub fn template_accepts_query(template: &str) -> bool {
 // パネル
 // ---------------------------------------------------------------------------
 
-/// タブ 1 枚 = ページ 1 つ = WebView2 コントローラー 1 つ。
-struct PanelTab {
-    view: Entity<BrowserView>,
-    _subscription: Subscription,
-}
-
-/// 横に並ぶペイン 1 枚。中はタブ列で、表に出るのは `active` の 1 枚だけ。
-/// 入れ子の分割は持たない (ドックの幅で意味があるのは左右 2, 3 枚まで)。
-struct BrowserPaneGroup {
-    tabs: Vec<PanelTab>,
-    /// 表に出ているタブの位置。空になったグループは畳むので常に有効な添字。
-    active: usize,
-    /// 横幅の取り分。全グループの合計が 1.0 になるよう正規化して持つ。
-    flex: f32,
-}
-
-/// パネルのタブをドラッグしている間の持ち物。ワークスペースの `DraggedTab` とは
-/// 別の型にしてある (エディターのペインに落とせてしまわないように)。
-#[derive(Clone)]
-struct DraggedPanelTab {
-    group: usize,
-    index: usize,
-    label: SharedString,
-}
-
-impl Render for DraggedPanelTab {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .px_1p5()
-            .py_0p5()
-            .max_w(px(PANEL_TAB_MAX_WIDTH))
-            .overflow_hidden()
-            .rounded_sm()
-            .border_1()
-            .border_color(cx.theme().colors().border)
-            .bg(cx.theme().colors().tab_active_background)
-            .child(
-                Label::new(self.label.clone())
-                    .size(LabelSize::Small)
-                    .truncate(),
-            )
-    }
-}
-
-/// 分割の境界 (グループ `index` と `index + 1` の間) をつまんでいる。
-#[derive(Clone, Copy)]
-struct DraggedPaneDivider {
-    index: usize,
-}
-
 /// 新しいタブをどう開くか。
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum NewTabPlacement {
+pub(crate) enum NewTabPlacement {
     /// 表に出してフォーカスも移す (「+」ボタンなど、利用者が明示的に開いたとき)。
     Foreground,
     /// 表には出すがフォーカスは動かさない。ドックの復元でパネルが作られたときに
@@ -328,127 +273,22 @@ enum NewTabPlacement {
     Background,
 }
 
+/// 右ドックの内蔵ブラウザー。中身はワークスペースと同じ [`PaneGroup`] + [`Pane`] で、
+/// タブ 1 枚 = [`BrowserItem`] 1 つ = WebView2 コントローラー 1 つ。
+///
+/// ターミナルパネルと同じ作りにしてあるのは、**IDE 内のどのタブ列にもドラッグで
+/// 移せる**ようにするため (第 12 便)。パネル独自のタブ実装だと、掴んだタブは
+/// パネルの外へ出られない。
 pub struct BrowserPanel {
     fs: Arc<dyn fs::Fs>,
     workspace: WeakEntity<Workspace>,
-    /// タブが 1 枚も無いときに使うフォーカス先。タブがあるときはそのタブの
-    /// [`BrowserView`] にフォーカスを渡す。
+    project: Entity<Project>,
+    /// タブが 1 枚も無いときに使うフォーカス先。タブがあるときはペインに渡す。
     focus_handle: FocusHandle,
-    /// 左から右へ並ぶペイン。空ならタブが 1 枚も無い状態。
-    groups: Vec<BrowserPaneGroup>,
-    /// 操作の対象になるグループ。`groups` が空のときは意味を持たない。
-    active_group: usize,
-}
-
-/// タブを 1 枚閉じた後にアクティブにするタブ。`tab_count` は閉じる**前**の枚数。
-/// アクティブなタブを閉じたときは右隣 (無ければ左隣) を選ぶ。最後の 1 枚を
-/// 閉じたら `None` = タブ無しの空状態。グループを 1 つ畳んだ後の
-/// [`BrowserPanel::active_group`] も同じ規則で繰り上げる。
-fn active_tab_after_close(tab_count: usize, active: usize, closed: usize) -> Option<usize> {
-    if closed >= tab_count {
-        // 閉じるタブが無い = 何も動かない。
-        return tab_count.checked_sub(1).map(|last| active.min(last));
-    }
-    let remaining = tab_count - 1;
-    if remaining == 0 {
-        return None;
-    }
-    let active = if closed < active { active - 1 } else { active };
-    Some(active.min(remaining - 1))
-}
-
-/// 同じタブ列の中で `from` のタブを「`to` の手前」へ動かした後の添字。
-/// `to` は取り除く**前**の添字で数えるので、後ろを指したときは 1 つ補正する。
-fn moved_tab_index(from: usize, to: usize) -> usize {
-    if to > from { to - 1 } else { to }
-}
-
-/// 取り分は合計 1.0 で持つ。壊れた値 (NaN や 0 以下) が混じっても均等割りに落とす。
-fn normalized_flexes(flexes: &[f32]) -> Vec<f32> {
-    if flexes.is_empty() {
-        return Vec::new();
-    }
-    let sanitized: Vec<f32> = flexes
-        .iter()
-        .map(|flex| {
-            if flex.is_finite() && *flex > 0. {
-                *flex
-            } else {
-                MIN_GROUP_FLEX
-            }
-        })
-        .collect();
-    let total: f32 = sanitized.iter().sum();
-    if total <= 0. {
-        return vec![1. / sanitized.len() as f32; sanitized.len()];
-    }
-    sanitized.iter().map(|flex| flex / total).collect()
-}
-
-/// 境界 `divider` (グループ `divider` と `divider + 1` の間) を、パネル全体に対する
-/// 割合 `ratio` の位置へ動かす。動くのは両隣の 2 つだけで、合計は変えない。
-fn flexes_after_divider_drag(flexes: &[f32], divider: usize, ratio: f32) -> Vec<f32> {
-    let mut flexes = normalized_flexes(flexes);
-    let (Some(left), Some(right)) = (
-        flexes.get(divider).copied(),
-        flexes.get(divider + 1).copied(),
-    ) else {
-        return flexes;
-    };
-    if !ratio.is_finite() {
-        return flexes;
-    }
-    let pair = left + right;
-    let start: f32 = flexes.iter().take(divider).sum();
-    // ペアの取り分が下限の 2 倍より狭くても `clamp` の前提 (min <= max) を壊さない。
-    let low = MIN_GROUP_FLEX.min(pair / 2.);
-    let high = (pair - MIN_GROUP_FLEX).max(pair / 2.);
-    let new_left = (ratio - start).clamp(low, high);
-    if let Some(flex) = flexes.get_mut(divider) {
-        *flex = new_left;
-    }
-    if let Some(flex) = flexes.get_mut(divider + 1) {
-        *flex = pair - new_left;
-    }
-    flexes
-}
-
-/// グループを 1 つ畳んだ後の取り分。空いた分は右隣、無ければ左隣に渡す。
-fn flexes_after_group_removal(flexes: &[f32], removed: usize) -> Vec<f32> {
-    let mut flexes = flexes.to_vec();
-    if removed >= flexes.len() {
-        return normalized_flexes(&flexes);
-    }
-    let freed = flexes.remove(removed);
-    let neighbour = if removed < flexes.len() {
-        Some(removed)
-    } else {
-        removed.checked_sub(1)
-    };
-    if let Some(neighbour) = neighbour
-        && let Some(flex) = flexes.get_mut(neighbour)
-    {
-        *flex += freed;
-    }
-    normalized_flexes(&flexes)
-}
-
-/// タブを切り出して `at` に新しいグループを作った後の取り分。
-/// 切り出し元の取り分を新旧で半分ずつ分ける。
-fn flexes_after_split(flexes: &[f32], source: usize, at: usize) -> Vec<f32> {
-    let mut flexes = flexes.to_vec();
-    let share = flexes
-        .get(source)
-        .copied()
-        .filter(|flex| flex.is_finite() && *flex > 0.)
-        .unwrap_or(1.)
-        / 2.;
-    if let Some(flex) = flexes.get_mut(source) {
-        *flex = share;
-    }
-    let at = at.min(flexes.len());
-    flexes.insert(at, share);
-    normalized_flexes(&flexes)
+    pub(crate) center: PaneGroup,
+    pub(crate) active_pane: Entity<Pane>,
+    pending_serialization: Task<Option<()>>,
+    active: bool,
 }
 
 pub fn init(cx: &mut App) {
@@ -466,11 +306,9 @@ pub fn init(cx: &mut App) {
                 BrowserItem::open(workspace, None, window, cx);
             });
             workspace.register_action(|workspace, _: &OpenInCenter, window, cx| {
-                // 「開く」ではなく「移す」。パネル側のタブは畳んで中央ペインへ渡す。
-                let url = workspace.panel::<BrowserPanel>(cx).and_then(|panel| {
-                    panel.update(cx, |panel, cx| panel.take_active_tab_url(window, cx))
-                });
-                BrowserItem::open(workspace, url, window, cx);
+                // 「開く」ではなく「移す」。同じアイテムを中央のペインへ渡すので、
+                // 読み込み済みのページも履歴もそのまま付いていく。
+                BrowserPanel::move_active_tab_to_center(workspace, window, cx);
             });
             workspace.register_action(|workspace, _: &SearchSelection, window, cx| {
                 BrowserPanel::open_selection_query(workspace, QueryKind::Search, window, cx);
@@ -494,47 +332,49 @@ impl BrowserPanel {
         workspace: WeakEntity<Workspace>,
         mut cx: AsyncWindowContext,
     ) -> Result<Entity<Self>> {
-        workspace.update_in(&mut cx, |workspace, window, cx| {
+        let stored = workspace
+            .read_with(&cx, |workspace, cx| {
+                Self::serialization_key(workspace).map(|key| (key, KeyValueStore::global(cx)))
+            })
+            .ok()
+            .flatten();
+        let serialized = match stored {
+            Some((key, kvp)) => cx
+                .background_spawn(async move { kvp.read_kvp(&key) })
+                .await
+                .log_err()
+                .flatten()
+                .and_then(|raw| serde_json::from_str::<SerializedBrowserPanel>(&raw).log_err()),
+            None => None,
+        };
+
+        let panel = workspace.update_in(&mut cx, |workspace, window, cx| {
             cx.new(|cx| BrowserPanel::new(workspace, window, cx))
-        })
+        })?;
+        // タブを開くのはワークスペースの更新が終わってから。`BrowserItem` の生成が
+        // ワークスペースを読みに行くので、`update_in` の中でやると二重借用になる。
+        panel.update_in(&mut cx, |panel, window, cx| {
+            let restored =
+                serialized.is_some_and(|serialized| panel.restore(serialized, window, cx));
+            if !restored {
+                panel.open_tab(None, NewTabPlacement::ForegroundWithoutFocus, window, cx);
+            }
+        })?;
+        Ok(panel)
     }
 
     fn new(workspace: &Workspace, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut panel = Self {
+        let project = workspace.project().clone();
+        let pane = new_browser_pane(workspace.weak_handle(), project.clone(), window, cx);
+        Self {
             fs: workspace.app_state().fs.clone(),
             workspace: workspace.weak_handle(),
+            project,
             focus_handle: cx.focus_handle(),
-            groups: Vec::new(),
-            active_group: 0,
-        };
-        panel.open_tab(None, NewTabPlacement::ForegroundWithoutFocus, window, cx);
-        panel
-    }
-
-    fn current_group(&self) -> Option<&BrowserPaneGroup> {
-        self.groups.get(self.active_group)
-    }
-
-    pub fn active_view(&self) -> Option<&Entity<BrowserView>> {
-        let group = self.current_group()?;
-        group.tabs.get(group.active).map(|tab| &tab.view)
-    }
-
-    pub fn current_url(&self, cx: &App) -> String {
-        self.active_view()
-            .map(|view| view.read(cx).current_url().to_string())
-            .unwrap_or_default()
-    }
-
-    pub fn navigate_to(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
-        match self.active_view() {
-            Some(view) => view.update(cx, |view, cx| view.navigate_to(url, cx)),
-            None => self.open_tab(
-                Some(url.to_string()),
-                NewTabPlacement::Foreground,
-                window,
-                cx,
-            ),
+            center: PaneGroup::new(pane.clone()),
+            active_pane: pane,
+            pending_serialization: Task::ready(None),
+            active: false,
         }
     }
 
@@ -553,419 +393,519 @@ impl BrowserPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let group = self.active_group;
-        self.open_tab_in_group(group, url, placement, window, cx);
+        let pane = self.active_pane.clone();
+        self.open_tab_in_pane(&pane, url, placement, window, cx);
     }
 
-    fn open_tab_in_group(
+    pub(crate) fn open_tab_in_pane(
         &mut self,
-        group: usize,
+        pane: &Entity<Pane>,
         url: Option<String>,
         placement: NewTabPlacement,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let view = cx.new(|cx| {
-            BrowserView::new(
+        let item = cx.new(|cx| {
+            BrowserItem::new(
                 self.workspace.clone(),
                 self.fs.clone(),
                 BrowserHost::Panel,
+                url,
                 window,
                 cx,
             )
         });
-        let initial_url = url.unwrap_or_else(|| BrowserSettings::get_global(cx).home_url.clone());
-        view.update(cx, |view, cx| {
-            if initial_url.trim().is_empty() {
-                view.open_bookmarks_pane(cx);
-            } else {
-                view.set_initial_url(initial_url, window, cx);
-            }
+        // 既にパネルの中にフォーカスがあるなら、フォーカスは新しいタブへ移す
+        // (タブを閉じた直後に開いたときにフォーカスが宙に浮かないように)。
+        let focus = placement == NewTabPlacement::Foreground
+            || (placement == NewTabPlacement::ForegroundWithoutFocus
+                && self.contains_focus(window, cx));
+        // `Pane::add_item` は必ず表に出してしまうので、背景タブは
+        // `add_item_inner` で「足すだけ」にする (WebView2 はまだ作られない)。
+        let activate = placement != NewTabPlacement::Background;
+        pane.update(cx, |pane, cx| {
+            pane.add_item_inner(Box::new(item), focus, focus, activate, None, window, cx);
         });
-        let subscription = cx.subscribe_in(&view, window, Self::on_view_event);
-        if self.groups.is_empty() {
-            self.groups.push(BrowserPaneGroup {
-                tabs: Vec::new(),
-                active: 0,
-                flex: 1.,
-            });
-        }
-        let group = group.min(self.groups.len() - 1);
-        let Some(pane) = self.groups.get_mut(group) else {
-            return;
-        };
-        pane.tabs.push(PanelTab {
-            view,
-            _subscription: subscription,
-        });
-        let index = pane.tabs.len() - 1;
-        let is_first_tab = pane.tabs.len() == 1;
-        if placement != NewTabPlacement::Background || is_first_tab {
-            let focus = placement == NewTabPlacement::Foreground;
-            self.activate_tab(group, index, focus, window, cx);
-        }
-        cx.notify();
     }
 
-    /// `focus` が false でも、既にパネルの中にフォーカスがあるならフォーカスは
-    /// 新しいタブへ移る (タブを閉じたときにフォーカスが宙に浮かないように)。
-    fn activate_tab(
+    fn contains_focus(&self, window: &Window, cx: &App) -> bool {
+        self.center
+            .panes()
+            .into_iter()
+            .any(|pane| pane.focus_handle(cx).contains_focused(window, cx))
+    }
+
+    pub fn active_view(&self, cx: &App) -> Option<Entity<BrowserView>> {
+        self.active_pane
+            .read(cx)
+            .active_item()?
+            .downcast::<BrowserItem>()
+            .map(|item| item.read(cx).view().clone())
+    }
+
+    pub fn current_url(&self, cx: &App) -> String {
+        self.active_view(cx)
+            .map(|view| view.read(cx).current_url().to_string())
+            .unwrap_or_default()
+    }
+
+    pub fn navigate_to(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        match self.active_view(cx) {
+            Some(view) => view.update(cx, |view, cx| view.navigate_to(url, cx)),
+            None => self.open_tab(
+                Some(url.to_string()),
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            ),
+        }
+    }
+
+    /// 「このタブの隣にもう 1 枚」の受け口。そのページを出していたペインの中に、
+    /// ブラウザーと同じく**背景タブ**として足す (今のページは見えたまま)。
+    pub(crate) fn open_beside_item(
         &mut self,
-        group: usize,
-        index: usize,
-        focus: bool,
+        item_id: EntityId,
+        url: Option<String>,
+        placement: NewTabPlacement,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(focus_handle) = self
-            .groups
-            .get(group)
-            .and_then(|pane| pane.tabs.get(index))
-            .map(|tab| tab.view.read(cx).focus_handle(cx))
-        else {
-            return;
-        };
-        if let Some(pane) = self.groups.get_mut(group) {
-            pane.active = index;
-        }
-        self.active_group = group;
-        self.hide_inactive_surfaces(cx);
-        if focus || self.focus_handle.contains_focused(window, cx) {
-            window.focus(&focus_handle, cx);
-        }
-        cx.notify();
+        let pane = self
+            .pane_for_item(item_id, cx)
+            .unwrap_or_else(|| self.active_pane.clone());
+        self.open_tab_in_pane(&pane, url, placement, window, cx);
     }
 
-    fn close_tab(
+    /// ファイルを落として開くときの受け口。端に落とされていたら (`split` が
+    /// `Some`) まずそのペインを割り、開いたページを新しいペインに入れる。
+    /// 1 つ目だけ表に出し、残りは背景タブ。
+    pub(crate) fn open_dropped_urls(
         &mut self,
-        group: usize,
-        index: usize,
+        item_id: EntityId,
+        urls: Vec<String>,
+        split: Option<SplitDirection>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(pane) = self.groups.get_mut(group) else {
-            return;
+        let pane = self
+            .pane_for_item(item_id, cx)
+            .unwrap_or_else(|| self.active_pane.clone());
+        let pane = match split {
+            Some(direction) => self.split_pane(&pane, direction, window, cx),
+            None => pane,
         };
-        if index >= pane.tabs.len() {
-            return;
-        }
-        let next_active = active_tab_after_close(pane.tabs.len(), pane.active, index);
-        let tab = pane.tabs.remove(index);
-        if let Some(next_active) = next_active {
-            pane.active = next_active;
-        }
-        // コントローラーは `WebView` の drop (= `ICoreWebView2Controller::Close`) で
-        // 閉じるが、drop が次の描画まで遅れても透明な子 HWND がクリックを飲まない
-        // よう、外した時点で隠しておく。
-        tab.view
-            .update(cx, |view, _| view.hide_surface_from_host(HIDDEN_TAB_CLOSED));
-        drop(tab);
-        if next_active.is_none() {
-            self.remove_group(group);
-        }
-        match self.current_group().map(|pane| pane.active) {
-            Some(active) => {
-                let group = self.active_group;
-                self.activate_tab(group, active, false, window, cx);
-            }
-            None => self.active_group = 0,
-        }
-        cx.notify();
-    }
-
-    /// 空になったグループを畳む。取り分は隣に渡す。
-    fn remove_group(&mut self, index: usize) {
-        if index >= self.groups.len() {
-            return;
-        }
-        let flexes = flexes_after_group_removal(&self.flexes(), index);
-        self.groups.remove(index);
-        self.apply_flexes(&flexes);
-        self.active_group =
-            active_tab_after_close(self.groups.len() + 1, self.active_group, index).unwrap_or(0);
-    }
-
-    fn flexes(&self) -> Vec<f32> {
-        self.groups.iter().map(|group| group.flex).collect()
-    }
-
-    fn apply_flexes(&mut self, flexes: &[f32]) {
-        for (group, flex) in self.groups.iter_mut().zip(flexes.iter().copied()) {
-            group.flex = flex;
-        }
-    }
-
-    /// タブを別の位置へ動かす。`to_index` は移動先のタブ列での**挿入位置**。
-    fn move_tab(
-        &mut self,
-        from_group: usize,
-        from_index: usize,
-        to_group: usize,
-        to_index: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if from_group >= self.groups.len() || to_group >= self.groups.len() {
-            return;
-        }
-        if from_group == to_group {
-            let Some(pane) = self.groups.get_mut(from_group) else {
-                return;
-            };
-            if from_index >= pane.tabs.len() {
-                return;
-            }
-            let target = moved_tab_index(from_index, to_index.min(pane.tabs.len()));
-            if target != from_index {
-                let tab = pane.tabs.remove(from_index);
-                pane.tabs.insert(target, tab);
-            }
-            self.activate_tab(from_group, target, true, window, cx);
-            return;
-        }
-
-        let Some(source) = self.groups.get(from_group) else {
-            return;
-        };
-        if from_index >= source.tabs.len() {
-            return;
-        }
-        let next_source_active =
-            active_tab_after_close(source.tabs.len(), source.active, from_index);
-        let Some(tab) = self
-            .groups
-            .get_mut(from_group)
-            .map(|pane| pane.tabs.remove(from_index))
-        else {
-            return;
-        };
-        if let Some(active) = next_source_active
-            && let Some(pane) = self.groups.get_mut(from_group)
-        {
-            pane.active = active;
-        }
-        let Some(target_pane) = self.groups.get_mut(to_group) else {
-            return;
-        };
-        let target = to_index.min(target_pane.tabs.len());
-        target_pane.tabs.insert(target, tab);
-
-        let mut to_group = to_group;
-        if next_source_active.is_none() {
-            self.remove_group(from_group);
-            if from_group < to_group {
-                to_group -= 1;
-            }
-        }
-        self.activate_tab(to_group, target, true, window, cx);
-    }
-
-    /// タブを新しいグループへ切り出して左右に分割する。`at` は新しいグループを
-    /// 挿入する位置 (グループの並びでの添字)。
-    fn split_tab_into_group(
-        &mut self,
-        from_group: usize,
-        from_index: usize,
-        at: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(source) = self.groups.get(from_group) else {
-            return;
-        };
-        if from_index >= source.tabs.len() {
-            return;
-        }
-        let at = at.min(self.groups.len());
-        if source.tabs.len() == 1 && (at == from_group || at == from_group + 1) {
-            // 1 枚しかないグループを自分の隣へ切り出しても並びは変わらない。
-            return;
-        }
-        let next_source_active =
-            active_tab_after_close(source.tabs.len(), source.active, from_index);
-        let flexes = flexes_after_split(&self.flexes(), from_group, at);
-        let Some(tab) = self
-            .groups
-            .get_mut(from_group)
-            .map(|pane| pane.tabs.remove(from_index))
-        else {
-            return;
-        };
-        if let Some(active) = next_source_active
-            && let Some(pane) = self.groups.get_mut(from_group)
-        {
-            pane.active = active;
-        }
-        self.groups.insert(
-            at,
-            BrowserPaneGroup {
-                tabs: vec![tab],
-                active: 0,
-                flex: 0.,
-            },
-        );
-        self.apply_flexes(&flexes);
-
-        let mut target = at;
-        if next_source_active.is_none() {
-            // 挿入で 1 つ後ろにずれた切り出し元を畳む。
-            let source_after_insert = if at <= from_group {
-                from_group + 1
+        for (index, url) in urls.into_iter().enumerate() {
+            let placement = if index == 0 {
+                NewTabPlacement::Foreground
             } else {
-                from_group
+                NewTabPlacement::Background
             };
-            self.remove_group(source_after_insert);
-            if source_after_insert < target {
-                target -= 1;
-            }
+            self.open_tab_in_pane(&pane, Some(url), placement, window, cx);
         }
-        self.activate_tab(target, 0, true, window, cx);
     }
 
-    fn split_active_tab_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let group = self.active_group;
-        let Some(pane) = self.current_group() else {
+    /// ページの中がクリックされたときに、そのタブが載っているペインを
+    /// アクティブにする。子 HWND のクリックは GPUI に届かないので、
+    /// [`BrowserViewEvent::Focused`] の申告だけが手掛かりになる。
+    pub(crate) fn activate_pane_for_item(
+        &mut self,
+        item_id: EntityId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pane) = self.pane_for_item(item_id, cx) else {
             return;
         };
-        let index = pane.active;
-        if pane.tabs.len() > 1 {
-            self.split_tab_into_group(group, index, group + 1, window, cx);
+        if pane == self.active_pane {
             return;
         }
-        // 1 枚しかないグループを切り出しても並びは変わらないので、同じページを
-        // もう 1 枚開いてから右へ出す (ブラウザーの「タブの複製」と同じ)。
+        self.active_pane = pane.clone();
+        window.focus(&pane.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    fn url_of_active_item(&self, pane: &Entity<Pane>, cx: &App) -> Option<String> {
         let url = pane
-            .tabs
-            .get(index)
-            .map(|tab| tab.view.read(cx).current_url().trim().to_string())
-            .filter(|url| !url.is_empty());
-        self.open_tab_in_group(group, url, NewTabPlacement::Foreground, window, cx);
-        let Some(duplicated) = self
-            .groups
-            .get(group)
-            .and_then(|pane| pane.tabs.len().checked_sub(1))
-        else {
-            return;
-        };
-        self.split_tab_into_group(group, duplicated, group + 1, window, cx);
-    }
-
-    fn focus_next_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.groups.len() < 2 {
-            return;
-        }
-        let group = (self.active_group + 1) % self.groups.len();
-        let Some(index) = self.groups.get(group).map(|pane| pane.active) else {
-            return;
-        };
-        self.activate_tab(group, index, true, window, cx);
-    }
-
-    fn drag_divider(&mut self, event: &DragMoveEvent<DraggedPaneDivider>, cx: &mut Context<Self>) {
-        let Some(divider) = event
-            .dragged_item()
-            .downcast_ref::<DraggedPaneDivider>()
-            .map(|divider| divider.index)
-        else {
-            return;
-        };
-        let width = event.bounds.size.width;
-        if width <= px(0.) {
-            return;
-        }
-        let ratio = (event.event.position.x - event.bounds.left()) / width;
-        let flexes = flexes_after_divider_drag(&self.flexes(), divider, ratio);
-        self.apply_flexes(&flexes);
-        cx.notify();
-    }
-
-    /// アクティブなタブをパネルから外して URL を返す。「エディター領域で開く」は
-    /// コピーではなく**移動**なので、開いた後にパネル側のタブは残さない。
-    fn take_active_tab_url(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<String> {
-        let group = self.active_group;
-        let index = self.current_group()?.active;
-        let url = self
-            .groups
-            .get(group)?
-            .tabs
-            .get(index)?
-            .view
+            .read(cx)
+            .active_item()?
+            .downcast::<BrowserItem>()?
+            .read(cx)
+            .view()
             .read(cx)
             .current_url()
             .trim()
             .to_string();
-        if url.is_empty() {
-            return None;
-        }
-        self.close_tab(group, index, window, cx);
-        Some(url)
+        (!url.is_empty()).then_some(url)
     }
 
-    /// 表に出ていないタブの子 HWND を隠す。子 HWND は GPUI の描画に従わないので、
+    fn pane_for_item(&self, item_id: EntityId, cx: &App) -> Option<Entity<Pane>> {
+        self.center
+            .panes()
+            .into_iter()
+            .find(|pane| pane.read(cx).items().any(|item| item.item_id() == item_id))
+            .cloned()
+    }
+
+    /// 表に出ていないタブの子 HWND を隠す。子 HWND は GPUI の描画に従わないので
     /// 「隠すのは push、見せるのは pull」(次の描画で canvas が矩形を流し直す)。
-    /// 左右に分割しているときは**グループごとに 1 枚**が表に出る。
+    /// 分割しているときは**ペインごとに 1 枚**が表に出る。
     fn hide_inactive_surfaces(&self, cx: &mut App) {
-        for pane in &self.groups {
-            for (index, tab) in pane.tabs.iter().enumerate() {
-                if index != pane.active {
-                    tab.view.update(cx, |view, _| {
-                        view.hide_surface_from_host(HIDDEN_TAB_INACTIVE)
-                    });
-                }
+        for pane in self.center.panes() {
+            let active_item_id = pane.read(cx).active_item().map(|item| item.item_id());
+            let inactive = pane
+                .read(cx)
+                .items()
+                .filter(|item| Some(item.item_id()) != active_item_id)
+                .filter_map(|item| item.downcast::<BrowserItem>())
+                .collect::<Vec<_>>();
+            for item in inactive {
+                item.update(cx, |item, cx| item.hide_surface(HIDDEN_TAB_INACTIVE, cx));
             }
         }
     }
 
-    fn locate_view(&self, view: &Entity<BrowserView>) -> Option<(usize, usize)> {
-        self.groups.iter().enumerate().find_map(|(group, pane)| {
-            pane.tabs
-                .iter()
-                .position(|tab| tab.view.entity_id() == view.entity_id())
-                .map(|index| (group, index))
-        })
+    fn hide_all_surfaces(&self, reason: &'static str, cx: &mut App) {
+        for pane in self.center.panes() {
+            let items = pane
+                .read(cx)
+                .items()
+                .filter_map(|item| item.downcast::<BrowserItem>())
+                .collect::<Vec<_>>();
+            for item in items {
+                item.update(cx, |item, cx| item.hide_surface(reason, cx));
+            }
+        }
     }
 
-    fn on_view_event(
+    fn has_no_tabs(&self, cx: &App) -> bool {
+        self.center
+            .panes()
+            .into_iter()
+            .all(|pane| pane.read(cx).items_len() == 0)
+    }
+
+    // -- ペイン --------------------------------------------------------------
+
+    fn split_pane(
         &mut self,
-        view: &Entity<BrowserView>,
-        event: &BrowserViewEvent,
+        pane_to_split: &Entity<Pane>,
+        direction: SplitDirection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<Pane> {
+        let new_pane = new_browser_pane(self.workspace.clone(), self.project.clone(), window, cx);
+        self.center.split(pane_to_split, &new_pane, direction, cx);
+        cx.notify();
+        new_pane
+    }
+
+    /// 今のタブを右に切り出して左右に分割する (`SplitPanelRight`)。ペインに 1 枚しか
+    /// 無いときは同じページをもう 1 枚開いてから出す (ブラウザーの「タブの複製」)。
+    fn split_active_tab_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let pane = self.active_pane.clone();
+        let items_len = pane.read(cx).items_len();
+        if items_len == 0 {
+            return;
+        }
+        if items_len == 1 {
+            let url = self.url_of_active_item(&pane, cx);
+            let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
+            self.open_tab_in_pane(&new_pane, url, NewTabPlacement::Foreground, window, cx);
+            return;
+        }
+        let Some(item) = pane.update(cx, |pane, cx| pane.take_active_item(window, cx)) else {
+            return;
+        };
+        let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
+        new_pane.update(cx, |pane, cx| {
+            pane.add_item(item, true, true, None, window, cx);
+        });
+        // フォーカスの往復を待たずに、次の操作 (新しいタブなど) が新しいペインに
+        // 向くようにしておく。
+        self.active_pane = new_pane.clone();
+        window.focus(&new_pane.focus_handle(cx), cx);
+    }
+
+    fn focus_next_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let panes = self.center.panes();
+        if panes.len() < 2 {
+            return;
+        }
+        let Some(index) = panes.iter().position(|pane| **pane == self.active_pane) else {
+            return;
+        };
+        let Some(next) = panes.get((index + 1) % panes.len()) else {
+            return;
+        };
+        window.focus(&next.focus_handle(cx), cx);
+    }
+
+    fn handle_pane_event(
+        &mut self,
+        pane: &Entity<Pane>,
+        event: &pane::Event,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event {
-            BrowserViewEvent::LocationChanged => cx.notify(),
-            // ブラウザーと同じく背景タブとして開く (今のページは見えたまま)。
-            // 分割しているときは、そのページを出しているグループの中に開く。
-            BrowserViewEvent::OpenInNewTab(url) => {
-                let group = self
-                    .locate_view(view)
-                    .map_or(self.active_group, |(group, _)| group);
-                self.open_tab_in_group(
-                    group,
-                    Some(url.clone()),
-                    NewTabPlacement::Background,
-                    window,
-                    cx,
-                )
+            pane::Event::ActivateItem { .. } => {
+                self.hide_inactive_surfaces(cx);
+                self.serialize(cx);
             }
-            // ページ側のクリックは子 HWND が飲むので GPUI には届かない。どのペインを
-            // 触っているかはビューからの申告でしか分からない。
-            BrowserViewEvent::Focused => {
-                if let Some((group, _)) = self.locate_view(view)
-                    && self.active_group != group
-                {
-                    self.active_group = group;
-                    cx.notify();
+            pane::Event::RemovedItem { item } => {
+                if let Some(item) = item.downcast::<BrowserItem>() {
+                    item.update(cx, |item, cx| item.hide_surface(HIDDEN_TAB_CLOSED, cx));
                 }
+                self.serialize(cx);
+            }
+            pane::Event::Remove { focus_on_pane } => {
+                let pane_count_before_removal = self.center.panes().len();
+                if let Err(error) = self.center.remove(pane, cx) {
+                    log::warn!("browser panel: could not remove a pane: {error:#}");
+                }
+                if pane_count_before_removal == 1 {
+                    self.center.first_pane().update(cx, |pane, cx| {
+                        pane.set_zoomed(false, cx);
+                    });
+                    cx.emit(PanelEvent::Close);
+                } else if let Some(focus_on_pane) =
+                    focus_on_pane.as_ref().or_else(|| self.center.panes().pop())
+                {
+                    focus_on_pane.focus_handle(cx).focus(window, cx);
+                }
+                self.serialize(cx);
+            }
+            pane::Event::ZoomIn => {
+                for pane in self.center.panes() {
+                    pane.update(cx, |pane, cx| pane.set_zoomed(true, cx));
+                }
+                cx.emit(PanelEvent::ZoomIn);
+                cx.notify();
+            }
+            pane::Event::ZoomOut => {
+                for pane in self.center.panes() {
+                    pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
+                }
+                cx.emit(PanelEvent::ZoomOut);
+                cx.notify();
+            }
+            pane::Event::AddItem { item } => {
+                if let Some(workspace) = self.workspace.upgrade() {
+                    workspace.update(cx, |workspace, cx| {
+                        item.added_to_pane(workspace, pane.clone(), window, cx)
+                    })
+                }
+                // `Item::added_to_workspace` が既定の「エディター領域のタブ」に
+                // 戻すので、パネルに載ったことはここで上書きして教える
+                // (ツールバーの「エディター領域で開く」の出し分けに効く)。
+                if let Some(item) = item.downcast::<BrowserItem>() {
+                    item.update(cx, |item, cx| item.set_host(BrowserHost::Panel, cx));
+                }
+                self.hide_inactive_surfaces(cx);
+                self.serialize(cx);
+            }
+            &pane::Event::Split { direction, mode } => {
+                let pane = pane.clone();
+                match mode {
+                    SplitMode::ClonePane | SplitMode::EmptyPane => {
+                        let url = if matches!(mode, SplitMode::ClonePane) {
+                            self.url_of_active_item(&pane, cx)
+                        } else {
+                            None
+                        };
+                        let new_pane = self.split_pane(&pane, direction, window, cx);
+                        self.active_pane = new_pane.clone();
+                        self.open_tab_in_pane(
+                            &new_pane,
+                            url,
+                            NewTabPlacement::Foreground,
+                            window,
+                            cx,
+                        );
+                        window.focus(&new_pane.focus_handle(cx), cx);
+                    }
+                    SplitMode::MovePane => {
+                        let Some(item) =
+                            pane.update(cx, |pane, cx| pane.take_active_item(window, cx))
+                        else {
+                            return;
+                        };
+                        let new_pane = self.split_pane(&pane, direction, window, cx);
+                        new_pane.update(cx, |pane, cx| {
+                            pane.add_item(item, true, true, None, window, cx);
+                        });
+                        self.active_pane = new_pane.clone();
+                        window.focus(&new_pane.focus_handle(cx), cx);
+                    }
+                }
+            }
+            pane::Event::Focus => {
+                self.active_pane = pane.clone();
+                cx.notify();
+            }
+            pane::Event::ItemPinned | pane::Event::ItemUnpinned => self.serialize(cx),
+            _ => {}
+        }
+    }
+
+    // -- 永続化 --------------------------------------------------------------
+
+    fn serialization_key(workspace: &Workspace) -> Option<String> {
+        workspace
+            .database_id()
+            .map(|id| i64::from(id).to_string())
+            .or(workspace.session_id())
+            .map(|id| format!("{BROWSER_PANEL_KEY:?}-{id:?}"))
+    }
+
+    fn serialize(&mut self, cx: &mut Context<Self>) {
+        let Some(serialization_key) = self
+            .workspace
+            .read_with(cx, |workspace, _| Self::serialization_key(workspace))
+            .ok()
+            .flatten()
+        else {
+            return;
+        };
+        let kvp = KeyValueStore::global(cx);
+        self.pending_serialization = cx.spawn(async move |panel, cx| {
+            // まとめて動く操作 (ドロップ = 取り外し + 追加) で 2 回書かないように。
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
+            let panel = panel.upgrade()?;
+            let serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
+                root: serialize_pane_group(&panel.center.root, &panel.active_pane, cx),
+            });
+            cx.background_spawn(
+                async move {
+                    kvp.write_kvp(serialization_key, serde_json::to_string(&serialized)?)
+                        .await?;
+                    anyhow::Ok(())
+                }
+                .log_err(),
+            )
+            .await;
+            Some(())
+        });
+    }
+
+    /// 保存したレイアウトを組み立て直す。1 枚も復元できなければ `false` を返し、
+    /// 呼び出し側がホームのタブを 1 枚開く。
+    fn restore(
+        &mut self,
+        serialized: SerializedBrowserPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some((root, active_pane)) = self.deserialize_pane_group(&serialized.root, window, cx)
+        else {
+            return false;
+        };
+        self.center = PaneGroup::with_root(root);
+        self.active_pane = active_pane.unwrap_or_else(|| self.center.first_pane());
+        self.hide_inactive_surfaces(cx);
+        true
+    }
+
+    fn deserialize_pane_group(
+        &mut self,
+        serialized: &SerializedBrowserPaneGroup,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<(Member, Option<Entity<Pane>>)> {
+        match serialized {
+            SerializedBrowserPaneGroup::Group {
+                axis,
+                flexes,
+                children,
+            } => {
+                let mut active_pane = None;
+                let mut members = Vec::new();
+                for child in children {
+                    if let Some((member, child_active)) =
+                        self.deserialize_pane_group(child, window, cx)
+                    {
+                        members.push(member);
+                        active_pane = active_pane.or(child_active);
+                    }
+                }
+                match members.len() {
+                    0 => None,
+                    1 => Some((members.remove(0), active_pane)),
+                    _ => Some((
+                        Member::Axis(PaneAxis::load(axis.0, members, flexes.clone())),
+                        active_pane,
+                    )),
+                }
+            }
+            SerializedBrowserPaneGroup::Pane(serialized_pane) => {
+                if serialized_pane.urls.is_empty() {
+                    return None;
+                }
+                let pane =
+                    new_browser_pane(self.workspace.clone(), self.project.clone(), window, cx);
+                for url in &serialized_pane.urls {
+                    // 復元直後はどのタブも裏。表に出す 1 枚だけをこの後選ぶので、
+                    // 起動時に作られる WebView2 はペインごとに 1 つで済む。
+                    self.open_tab_in_pane(
+                        &pane,
+                        Some(url.clone()),
+                        NewTabPlacement::Background,
+                        window,
+                        cx,
+                    );
+                }
+                let active_item = serialized_pane
+                    .active_item
+                    .unwrap_or(0)
+                    .min(serialized_pane.urls.len().saturating_sub(1));
+                pane.update(cx, |pane, cx| {
+                    pane.activate_item(active_item, false, false, window, cx);
+                });
+                Some((
+                    Member::Pane(pane.clone()),
+                    serialized_pane.active.then_some(pane),
+                ))
             }
         }
     }
 
-    // -- エディターからの導線 ------------------------------------------------
+    // -- エディター領域との行き来 --------------------------------------------
+
+    /// パネルの今のタブを中央のペインへ**移す** (`OpenInCenter`)。
+    fn move_active_tab_to_center(
+        workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let Some(panel) = workspace.panel::<BrowserPanel>(cx) else {
+            return;
+        };
+        let source_pane = panel.read(cx).active_pane.clone();
+        let Some(item_id) = source_pane
+            .read(cx)
+            .active_item()
+            .map(|item| item.item_id())
+        else {
+            return;
+        };
+        let destination = workspace.active_pane().clone();
+        if destination == source_pane {
+            return;
+        }
+        let destination_index = destination.read(cx).items_len();
+        workspace::move_item(
+            &source_pane,
+            &destination,
+            item_id,
+            destination_index,
+            true,
+            window,
+            cx,
+        );
+    }
 
     fn open_selection_query(
         workspace: &mut Workspace,
@@ -1006,7 +946,7 @@ impl BrowserPanel {
                 // Copilot のようにクエリパラメーターが公開されていない宛先では、
                 // 貼り付けられる形で渡すのが最も確実。
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(query.clone()));
-                if let Some(view) = panel.active_view().cloned() {
+                if let Some(view) = panel.active_view(cx) {
                     view.update(cx, |view, cx| {
                         view.set_status_message(
                             "選択テキストをクリップボードにコピーしました。貼り付けて質問してください。",
@@ -1019,378 +959,169 @@ impl BrowserPanel {
     }
 }
 
-impl BrowserPanel {
-    /// 左右に並べたグループ。境界はドラッグで動かせる。
-    fn render_groups(&self, cx: &mut Context<Self>) -> AnyElement {
-        let last = self.groups.len().saturating_sub(1);
-        let mut row = h_flex()
-            .id("browser-panel-groups")
-            .size_full()
-            .min_h_0()
-            .on_drag_move::<DraggedPaneDivider>(cx.listener(
-                |this, event: &DragMoveEvent<DraggedPaneDivider>, _, cx| {
-                    this.drag_divider(event, cx)
-                },
-            ));
-        for (index, group) in self.groups.iter().enumerate() {
-            row = row.child(self.render_group(index, group, cx));
-            if index < last {
-                row = row.child(self.render_divider(index, cx));
+/// パネルの中のペインを 1 枚作る。ターミナルパネルの `new_terminal_pane` と同じ作りで、
+/// 違うのは「+」が新しいブラウザータブになることと、分割を中央ではなくこのパネルの
+/// [`PaneGroup`] に向けること。
+fn new_browser_pane(
+    workspace: WeakEntity<Workspace>,
+    project: Entity<Project>,
+    window: &mut Window,
+    cx: &mut Context<BrowserPanel>,
+) -> Entity<Pane> {
+    let browser_panel = cx.entity();
+    let pane = cx.new(|cx| {
+        let mut pane = Pane::new(
+            workspace.clone(),
+            project.clone(),
+            Default::default(),
+            None,
+            NewPanelTab.boxed_clone(),
+            false,
+            window,
+            cx,
+        );
+        pane.set_can_navigate(false, cx);
+        pane.display_nav_history_buttons(None);
+        pane.set_should_display_tab_bar(|_, _| true);
+        pane.set_zoom_out_on_close(false);
+
+        let split_predicate_panel = browser_panel.downgrade();
+        pane.set_can_split(Some(Arc::new(move |pane, dragged_item, _window, cx| {
+            let Some(tab) = dragged_item.downcast_ref::<DraggedTab>() else {
+                return false;
+            };
+            let is_current_pane = tab.pane == cx.entity();
+            let Ok(can_drag_away) = split_predicate_panel.read_with(cx, |panel, _| {
+                let panes = panel.center.panes();
+                !panes.contains(&&tab.pane)
+                    || panes.len() > 1
+                    || (!is_current_pane || pane.items_len() > 1)
+            }) else {
+                return false;
+            };
+            if !can_drag_away {
+                return false;
             }
-        }
-        row.into_any_element()
-    }
+            // 第 12 便: IDE 内のどのタブでも同じ機構でここへ落とせる。
+            if is_current_pane {
+                pane.item_for_index(tab.ix).is_some()
+            } else {
+                tab.pane.read(cx).item_for_index(tab.ix).is_some()
+            }
+        })));
 
-    fn render_group(
-        &self,
-        index: usize,
-        group: &BrowserPaneGroup,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let active_view = group.tabs.get(group.active).map(|tab| tab.view.clone());
-        let is_split = self.groups.len() > 1;
-        v_flex()
-            .id(("browser-panel-group", index))
-            .flex_shrink_1()
-            .min_w_0()
-            .h_full()
-            .flex_basis(relative(group.flex))
-            .when(is_split, |this| {
-                // 子 HWND はクリックを飲むので、ページ側を触ったときは
-                // `BrowserViewEvent::Focused` の方で拾う。
-                this.on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _, _, cx| {
-                        if this.active_group != index {
-                            this.active_group = index;
-                            cx.notify();
-                        }
-                    }),
-                )
-            })
-            .child(self.render_tab_bar(index, group, cx))
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .children(active_view)
-                    .children(self.render_drop_targets(index, cx)),
-            )
-            .into_any_element()
-    }
+        // 端に落として分割するときは、ワークスペースの中央ではなくこのパネルの
+        // `PaneGroup` を割る (`Workspace::split_pane` は中央しか割れない)。
+        let split_handler_panel = browser_panel.downgrade();
+        pane.set_tab_drop_split_handler(Some(Arc::new(
+            move |pane_to_split, direction, window, cx| {
+                let panel = split_handler_panel.upgrade()?;
+                panel.update(cx, |panel, cx| {
+                    if !panel.center.panes().contains(&pane_to_split) {
+                        return None;
+                    }
+                    Some(panel.split_pane(pane_to_split, direction, window, cx))
+                })
+            },
+        )));
 
-    /// ドラッグ中だけ内容領域に敷く落とし先。左右の端はそこで分割、真ん中は
-    /// このグループへ移動。ドラッグ中は WebView が隠れているので手前に見える
-    /// (`BrowserView::surface_hidden_reason`)。
-    fn render_drop_targets(&self, index: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !cx.has_active_drag() {
-            return None;
-        }
-        let drop_background = cx.theme().colors().drop_target_background;
-        let drop_border = cx.theme().colors().drop_target_border;
-        Some(
-            h_flex()
-                .absolute()
-                .top_0()
-                .left_0()
-                .size_full()
-                .child(
-                    div()
-                        .id(("browser-panel-split-before", index))
-                        .h_full()
-                        .w(relative(SPLIT_EDGE_FRACTION))
-                        .border_color(drop_border)
-                        .drag_over::<DraggedPanelTab>(move |style, _, _, _| {
-                            style.bg(drop_background).border_l_2()
-                        })
-                        .on_drop(cx.listener(
-                            move |this, dragged: &DraggedPanelTab, window, cx| {
-                                this.split_tab_into_group(
-                                    dragged.group,
-                                    dragged.index,
-                                    index,
-                                    window,
-                                    cx,
-                                )
-                            },
-                        )),
-                )
-                .child(
-                    div()
-                        .id(("browser-panel-drop-into", index))
-                        .h_full()
-                        .flex_1()
-                        .drag_over::<DraggedPanelTab>(move |style, _, _, _| {
-                            style.bg(drop_background)
-                        })
-                        .on_drop(cx.listener(
-                            move |this, dragged: &DraggedPanelTab, window, cx| {
-                                let to_index =
-                                    this.groups.get(index).map_or(0, |pane| pane.tabs.len());
-                                this.move_tab(
-                                    dragged.group,
-                                    dragged.index,
-                                    index,
-                                    to_index,
-                                    window,
-                                    cx,
-                                )
-                            },
-                        )),
-                )
-                .child(
-                    div()
-                        .id(("browser-panel-split-after", index))
-                        .h_full()
-                        .w(relative(SPLIT_EDGE_FRACTION))
-                        .border_color(drop_border)
-                        .drag_over::<DraggedPanelTab>(move |style, _, _, _| {
-                            style.bg(drop_background).border_r_2()
-                        })
-                        .on_drop(cx.listener(
-                            move |this, dragged: &DraggedPanelTab, window, cx| {
-                                this.split_tab_into_group(
-                                    dragged.group,
-                                    dragged.index,
-                                    index + 1,
-                                    window,
-                                    cx,
-                                )
-                            },
-                        )),
-                )
-                .into_any_element(),
-        )
-    }
-
-    /// グループの境界。1px の線の上に、掴める幅のつまみを重ねてある。
-    fn render_divider(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .id(("browser-panel-divider", index))
-            .relative()
-            .h_full()
-            .flex_none()
-            .w(px(1.))
-            .bg(cx.theme().colors().border)
-            .child(
-                div()
-                    .id(("browser-panel-divider-handle", index))
-                    .absolute()
-                    .top_0()
-                    .left(px(-PANE_DIVIDER_HANDLE_WIDTH / 2.))
-                    .w(px(PANE_DIVIDER_HANDLE_WIDTH))
-                    .h_full()
-                    .cursor_col_resize()
-                    .block_mouse_except_scroll()
-                    .on_drag(DraggedPaneDivider { index }, |_, _, _, cx| {
-                        cx.new(|_| Empty)
-                    }),
-            )
-            .into_any_element()
-    }
-
-    /// パネル内のタブバー。子 HWND はこの下の内容領域にしか出ないので、ここは
-    /// 普通に GPUI で描いてよい (ページに覆われない)。
-    fn render_tab_bar(
-        &self,
-        group_index: usize,
-        group: &BrowserPaneGroup,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let focus_handle = self.focus_handle.clone();
-        let tab_count = group.tabs.len();
-        h_flex()
-            .id(("browser-panel-tab-bar", group_index))
-            .w_full()
-            .flex_none()
-            .gap_px()
-            .px_1()
-            .pt_1()
-            .overflow_x_scroll()
-            .bg(cx.theme().colors().tab_bar_background)
-            .children(group.tabs.iter().enumerate().map(|(index, tab)| {
-                self.render_tab(group_index, index, tab, index == group.active, cx)
-            }))
-            .child(
-                IconButton::new(("browser-panel-new-tab", group_index), IconName::Plus)
-                    .icon_size(IconSize::XSmall)
-                    .tooltip(move |_, cx| {
-                        Tooltip::for_action_in("新しいタブ", &NewPanelTab, &focus_handle, cx)
-                    })
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_tab_in_group(
-                            group_index,
-                            None,
-                            NewTabPlacement::Foreground,
-                            window,
-                            cx,
+        let buttons_panel = browser_panel.downgrade();
+        pane.set_render_tab_bar_buttons(cx, move |pane, _window, cx| {
+            let new_tab_panel = buttons_panel.clone();
+            let split_panel = buttons_panel.clone();
+            let pane_handle = cx.entity();
+            let focus_handle = pane.focus_handle(cx);
+            let split_focus_handle = focus_handle.clone();
+            (
+                None,
+                Some(
+                    h_flex()
+                        .gap(DynamicSpacing::Base02.rems(cx))
+                        .child(
+                            IconButton::new("browser-panel-new-tab", IconName::Plus)
+                                .icon_size(IconSize::Small)
+                                .tooltip(move |_, cx| {
+                                    Tooltip::for_action_in(
+                                        "新しいタブ",
+                                        &NewPanelTab,
+                                        &focus_handle,
+                                        cx,
+                                    )
+                                })
+                                .on_click(move |_, window, cx| {
+                                    new_tab_panel
+                                        .update(cx, |panel, cx| {
+                                            panel.open_tab_in_pane(
+                                                &pane_handle,
+                                                None,
+                                                NewTabPlacement::Foreground,
+                                                window,
+                                                cx,
+                                            )
+                                        })
+                                        .log_err();
+                                }),
                         )
-                    })),
-            )
-            // タブの無い余白に落としたら、このグループの末尾へ移す。
-            .drag_over::<DraggedPanelTab>(|style, _, _, cx| {
-                style.bg(cx.theme().colors().drop_target_background)
-            })
-            .on_drop(
-                cx.listener(move |this, dragged: &DraggedPanelTab, window, cx| {
-                    this.move_tab(
-                        dragged.group,
-                        dragged.index,
-                        group_index,
-                        tab_count,
-                        window,
-                        cx,
-                    )
-                }),
-            )
-            .into_any_element()
-    }
-
-    fn render_tab(
-        &self,
-        group_index: usize,
-        index: usize,
-        tab: &PanelTab,
-        selected: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let entity_id = tab.view.entity_id();
-        let view = tab.view.read(cx);
-        let label = view.tab_label();
-        let url = view.current_url().trim().to_string();
-        let background = if selected {
-            cx.theme().colors().tab_active_background
-        } else {
-            cx.theme().colors().tab_inactive_background
-        };
-
-        h_flex()
-            .id(("browser-panel-tab", entity_id))
-            .flex_none()
-            .min_w(px(PANEL_TAB_MIN_WIDTH))
-            .max_w(px(PANEL_TAB_MAX_WIDTH))
-            .gap_1()
-            .pl_1p5()
-            .pr_0p5()
-            .py_0p5()
-            .rounded_t_sm()
-            .overflow_hidden()
-            .bg(background)
-            .cursor_pointer()
-            .when(!url.is_empty(), |this| {
-                this.tooltip(Tooltip::text(tab_tooltip(&url)))
-            })
-            .child(
-                Icon::new(IconName::ToolWeb)
-                    .size(IconSize::XSmall)
-                    .color(if selected {
-                        Color::Default
-                    } else {
-                        Color::Muted
-                    }),
-            )
-            // 名前は残り幅を全部使ったうえで切り詰める。`min_w_0` が無いと
-            // flex アイテムは最小内容幅より縮まず、長いタイトルでタブが伸びる。
-            .child(
-                div().flex_1().min_w_0().child(
-                    Label::new(label.clone())
-                        .size(LabelSize::Small)
-                        .color(if selected {
-                            Color::Default
-                        } else {
-                            Color::Muted
-                        })
-                        .truncate(),
+                        .child(
+                            IconButton::new("browser-panel-split-right", IconName::Split)
+                                .icon_size(IconSize::Small)
+                                .tooltip(move |_, cx| {
+                                    Tooltip::for_action_in(
+                                        "右に分割",
+                                        &SplitPanelRight,
+                                        &split_focus_handle,
+                                        cx,
+                                    )
+                                })
+                                .on_click(move |_, window, cx| {
+                                    split_panel
+                                        .update(cx, |panel, cx| {
+                                            panel.split_active_tab_right(window, cx)
+                                        })
+                                        .log_err();
+                                }),
+                        )
+                        .into_any_element(),
                 ),
             )
-            .child(
-                IconButton::new(("browser-panel-tab-close", entity_id), IconName::Close)
-                    .icon_size(IconSize::XSmall)
-                    .tooltip(Tooltip::text("タブを閉じる"))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        // タブ本体の on_click まで届くと、閉じた位置に繰り上がった
-                        // 別のタブをアクティブにしてしまう。
-                        cx.stop_propagation();
-                        this.close_tab(group_index, index, window, cx);
-                    })),
-            )
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.activate_tab(group_index, index, true, window, cx)
-            }))
-            .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                if event.is_middle_click() {
-                    this.close_tab(group_index, index, window, cx);
-                }
-            }))
-            .on_drag(
-                DraggedPanelTab {
-                    group: group_index,
-                    index,
-                    label,
-                },
-                |tab, _, _, cx| cx.new(|_| tab.clone()),
-            )
-            .drag_over::<DraggedPanelTab>(move |style, dragged: &DraggedPanelTab, _, cx| {
-                let style = style
-                    .bg(cx.theme().colors().drop_target_background)
-                    .border_color(cx.theme().colors().drop_target_border);
-                // 同じ列の中なら、来る向きに合わせて落ちる側に線を出す。
-                if dragged.group != group_index || index < dragged.index {
-                    style.border_l_2()
-                } else {
-                    style.border_r_2()
-                }
-            })
-            .on_drop(
-                cx.listener(move |this, dragged: &DraggedPanelTab, window, cx| {
-                    // タブバー全体の落とし先 (末尾へ移動) まで届かせない。
-                    cx.stop_propagation();
-                    // 「このタブの位置に入る」= 元が前にあるなら 1 つ後ろの挿入位置。
-                    let to_index = if dragged.group == group_index && dragged.index < index {
-                        index + 1
-                    } else {
-                        index
-                    };
-                    this.move_tab(
-                        dragged.group,
-                        dragged.index,
-                        group_index,
-                        to_index,
-                        window,
-                        cx,
-                    )
-                }),
-            )
-            .into_any_element()
-    }
+        });
 
-    fn render_empty_state(&self, cx: &mut Context<Self>) -> AnyElement {
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .child(Label::new("開いているページはありません。").color(Color::Muted))
-            .child(
-                Button::new("browser-panel-empty-new-tab", "新しいタブ").on_click(cx.listener(
-                    |this, _, window, cx| {
-                        this.open_tab(None, NewTabPlacement::Foreground, window, cx)
-                    },
-                )),
-            )
-            .into_any_element()
-    }
+        pane
+    });
+
+    cx.subscribe_in(&pane, window, BrowserPanel::handle_pane_event)
+        .detach();
+    cx.observe(&pane, |_, _, cx| cx.notify()).detach();
+
+    pane
 }
 
 impl Render for BrowserPanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let content = if self.groups.is_empty() {
-            self.render_empty_state(cx)
-        } else {
-            self.render_groups(cx)
-        };
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let center = self
+            .workspace
+            .update(cx, |workspace, cx| {
+                let follower_states = Default::default();
+                let workspace_handle = workspace.weak_handle();
+                self.center
+                    .render(
+                        workspace.zoomed_item(),
+                        None,
+                        &workspace::PaneRenderContext {
+                            follower_states: &follower_states,
+                            active_call: workspace.active_call(),
+                            active_pane: &self.active_pane,
+                            app_state: workspace.app_state(),
+                            project: workspace.project(),
+                            workspace: &workspace_handle,
+                        },
+                        window,
+                        cx,
+                    )
+                    .into_any_element()
+            })
+            .ok();
+
         v_flex()
             .key_context(BROWSER_PANEL_KEY)
             .track_focus(&self.focus_handle)
@@ -1400,28 +1131,28 @@ impl Render for BrowserPanel {
                 this.open_tab(None, NewTabPlacement::Foreground, window, cx)
             }))
             .on_action(cx.listener(|this, _: &ClosePanelTab, window, cx| {
-                let group = this.active_group;
-                let Some(index) = this.current_group().map(|pane| pane.active) else {
-                    return;
-                };
-                this.close_tab(group, index, window, cx)
+                let pane = this.active_pane.clone();
+                pane.update(cx, |pane, cx| {
+                    pane.close_active_item(&CloseActiveItem::default(), window, cx)
+                        .detach_and_log_err(cx);
+                });
             }))
             .on_action(cx.listener(|this, _: &SplitPanelRight, window, cx| {
                 this.split_active_tab_right(window, cx)
             }))
             .on_action(cx.listener(|this, _: &FocusNextPaneGroup, window, cx| {
-                this.focus_next_group(window, cx)
+                this.focus_next_pane(window, cx)
             }))
-            .child(div().flex_1().min_h_0().w_full().child(content))
+            .children(center)
     }
 }
 
 impl Focusable for BrowserPanel {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        match self.active_view() {
-            Some(view) => view.read(cx).focus_handle(cx),
-            None => self.focus_handle.clone(),
+        if self.active_pane.read(cx).items_len() == 0 {
+            return self.focus_handle.clone();
         }
+        self.active_pane.focus_handle(cx)
     }
 }
 
@@ -1468,18 +1199,41 @@ impl Panel for BrowserPanel {
         Box::new(ToggleFocus)
     }
 
-    fn set_active(&mut self, active: bool, _: &mut Window, cx: &mut Context<Self>) {
-        log::info!("browser panel: set_active({active})");
-        if !active {
-            for pane in &self.groups {
-                for tab in &pane.tabs {
-                    tab.view.update(cx, |view, _| {
-                        view.hide_surface_from_host(HIDDEN_PANEL_INACTIVE)
-                    });
-                }
-            }
+    fn pane(&self) -> Option<Entity<Pane>> {
+        Some(self.active_pane.clone())
+    }
+
+    fn is_zoomed(&self, _: &Window, cx: &App) -> bool {
+        self.center
+            .panes()
+            .into_iter()
+            .any(|pane| pane.read(cx).is_zoomed())
+    }
+
+    fn set_zoomed(&mut self, zoomed: bool, _: &mut Window, cx: &mut Context<Self>) {
+        for pane in self.center.panes() {
+            pane.update(cx, |pane, cx| pane.set_zoomed(zoomed, cx));
         }
         cx.notify();
+    }
+
+    fn set_active(&mut self, active: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let was_active = self.active;
+        self.active = active;
+        if !active {
+            self.hide_all_surfaces(HIDDEN_PANEL_INACTIVE, cx);
+            cx.notify();
+            return;
+        }
+        cx.notify();
+        if was_active || !self.has_no_tabs(cx) {
+            return;
+        }
+        // 最後のタブを閉じてパネルを畳んだあと、また開いたとき。空のペインには
+        // タブバーすら出ないので、ホームのページを 1 枚用意する。
+        cx.defer_in(window, |this, window, cx| {
+            this.open_tab(None, NewTabPlacement::Foreground, window, cx)
+        });
     }
 
     fn activation_priority(&self) -> u32 {
@@ -1491,6 +1245,124 @@ impl Panel for BrowserPanel {
         Some(workspace::HideStatusItem::new(|settings| {
             settings.browser.get_or_insert_default().button = Some(false);
         }))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 永続化
+// ---------------------------------------------------------------------------
+
+/// パネルのレイアウトはワークスペースの kvp に置く (ターミナルパネルと同じ流儀)。
+/// タブの中身は URL 1 本で足りるので、アイテムごとの DB 行は持たない。
+#[derive(Debug, Serialize, Deserialize)]
+struct SerializedBrowserPanel {
+    root: SerializedBrowserPaneGroup,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum SerializedBrowserPaneGroup {
+    Pane(SerializedBrowserPane),
+    Group {
+        axis: SerializedAxis,
+        flexes: Option<Vec<f32>>,
+        children: Vec<SerializedBrowserPaneGroup>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SerializedBrowserPane {
+    active: bool,
+    urls: Vec<String>,
+    active_item: Option<usize>,
+}
+
+/// `gpui::Axis` は `serde` を実装していないので、読める文字列で持つ
+/// (ターミナルパネルの `SerializedAxis` と同じ形式)。
+#[derive(Debug)]
+struct SerializedAxis(Axis);
+
+impl Serialize for SerializedAxis {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.0 {
+            Axis::Horizontal => serializer.serialize_str("horizontal"),
+            Axis::Vertical => serializer.serialize_str("vertical"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SerializedAxis {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let axis = String::deserialize(deserializer)?;
+        match axis.as_str() {
+            "horizontal" => Ok(SerializedAxis(Axis::Horizontal)),
+            "vertical" => Ok(SerializedAxis(Axis::Vertical)),
+            invalid => Err(serde::de::Error::custom(format!(
+                "Invalid axis value: '{invalid}'"
+            ))),
+        }
+    }
+}
+
+fn serialize_pane_group(
+    member: &Member,
+    active_pane: &Entity<Pane>,
+    cx: &App,
+) -> SerializedBrowserPaneGroup {
+    match member {
+        Member::Axis(PaneAxis {
+            axis,
+            members,
+            flexes,
+            bounding_boxes: _,
+        }) => SerializedBrowserPaneGroup::Group {
+            axis: SerializedAxis(*axis),
+            children: members
+                .iter()
+                .map(|member| serialize_pane_group(member, active_pane, cx))
+                .collect(),
+            flexes: Some(flexes.lock().clone()),
+        },
+        Member::Pane(pane) => {
+            SerializedBrowserPaneGroup::Pane(serialize_pane(pane, pane == active_pane, cx))
+        }
+    }
+}
+
+/// ブラウザーのタブだけを書き出す。ドラッグで他の種類のタブ (ターミナルや
+/// エディター) がパネルに載っていても、それらは持ち主の側で復元される。
+fn serialize_pane(pane: &Entity<Pane>, active: bool, cx: &App) -> SerializedBrowserPane {
+    let pane = pane.read(cx);
+    let mut urls = Vec::new();
+    let mut active_item = None;
+    for (index, item) in pane.items().enumerate() {
+        let Some(browser_item) = item.downcast::<BrowserItem>() else {
+            continue;
+        };
+        let url = browser_item
+            .read(cx)
+            .view()
+            .read(cx)
+            .current_url()
+            .trim()
+            .to_string();
+        if url.is_empty() {
+            continue;
+        }
+        if index == pane.active_item_index() {
+            active_item = Some(urls.len());
+        }
+        urls.push(url);
+    }
+    SerializedBrowserPane {
+        active,
+        urls,
+        active_item,
     }
 }
 
@@ -1539,10 +1411,6 @@ pub(crate) mod webview_unsupported {
         pub(crate) bottom: f32,
     }
 
-    pub(crate) fn host_uses_direct_composition(_host_hwnd: isize) -> bool {
-        false
-    }
-
     pub(crate) struct WebView;
 
     impl WebView {
@@ -1570,6 +1438,11 @@ pub(crate) mod webview_unsupported {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::{ExternalPaths, TestAppContext, VisualTestContext};
+    use project::{FakeFs, Project};
+    use settings::SettingsStore;
+    use std::path::PathBuf;
+    use workspace::MultiWorkspace;
 
     #[test]
     fn tab_tooltip_keeps_short_urls_and_truncates_long_ones() {
@@ -1677,113 +1550,6 @@ mod tests {
     }
 
     #[test]
-    fn closing_an_inactive_tab_keeps_the_active_page() {
-        // 左のタブを閉じたら、アクティブなタブは 1 つ手前にずれる。
-        assert_eq!(active_tab_after_close(3, 2, 0), Some(1));
-        assert_eq!(active_tab_after_close(3, 1, 0), Some(0));
-        // 右のタブを閉じてもアクティブな位置は動かない。
-        assert_eq!(active_tab_after_close(3, 0, 2), Some(0));
-        assert_eq!(active_tab_after_close(3, 0, 1), Some(0));
-    }
-
-    #[test]
-    fn closing_the_active_tab_selects_its_neighbour() {
-        // 右隣を選ぶ (右隣が繰り上がって同じ添字になる)。
-        assert_eq!(active_tab_after_close(3, 1, 1), Some(1));
-        assert_eq!(active_tab_after_close(3, 0, 0), Some(0));
-        // 右端を閉じたときだけ左隣。
-        assert_eq!(active_tab_after_close(3, 2, 2), Some(1));
-        assert_eq!(active_tab_after_close(2, 1, 1), Some(0));
-    }
-
-    #[test]
-    fn closing_the_last_tab_leaves_the_panel_empty() {
-        assert_eq!(active_tab_after_close(1, 0, 0), None);
-        // 空の状態からは何も閉じられない。
-        assert_eq!(active_tab_after_close(0, 0, 0), None);
-        // 範囲外を指しても今のタブは動かない。
-        assert_eq!(active_tab_after_close(2, 1, 5), Some(1));
-    }
-
-    /// 取り分の比較は丸めてから。正規化の割り算で最下位の桁がずれるため。
-    fn rounded(flexes: &[f32]) -> Vec<f32> {
-        flexes
-            .iter()
-            .map(|flex| (flex * 1000.).round() / 1000.)
-            .collect()
-    }
-
-    #[test]
-    fn dropping_a_tab_uses_insertion_positions() {
-        // 後ろへ落とすときは、抜けた分だけ 1 つ手前に入る。
-        assert_eq!(moved_tab_index(0, 3), 2);
-        assert_eq!(moved_tab_index(0, 1), 0);
-        // 前へ落とすときは挿入位置そのもの。
-        assert_eq!(moved_tab_index(2, 0), 0);
-        assert_eq!(moved_tab_index(2, 2), 2);
-    }
-
-    #[test]
-    fn group_flexes_always_add_up_to_one() {
-        assert_eq!(rounded(&normalized_flexes(&[1., 1.])), [0.5, 0.5]);
-        assert_eq!(rounded(&normalized_flexes(&[3., 1.])), [0.75, 0.25]);
-        assert!(normalized_flexes(&[]).is_empty());
-        // 壊れた値 (0 以下・NaN・無限大) が混じっても割り算が壊れない。
-        assert_eq!(rounded(&normalized_flexes(&[0., 0.])), [0.5, 0.5]);
-        let repaired = normalized_flexes(&[f32::NAN, f32::INFINITY]);
-        assert_eq!(rounded(&repaired), [0.5, 0.5]);
-    }
-
-    #[test]
-    fn dragging_the_divider_only_moves_its_two_neighbours() {
-        let flexes = flexes_after_divider_drag(&[0.5, 0.5], 0, 0.3);
-        assert_eq!(rounded(&flexes), [0.3, 0.7]);
-        // 3 枚のときは境界の外側の取り分が動かない。
-        let flexes = flexes_after_divider_drag(&[0.25, 0.25, 0.5], 1, 0.4);
-        assert_eq!(rounded(&flexes), [0.25, 0.15, 0.6]);
-        // 端まで引いても下限までしか詰められない。
-        let flexes = flexes_after_divider_drag(&[0.5, 0.5], 0, 0.);
-        assert_eq!(rounded(&flexes), [0.15, 0.85]);
-        // 無い境界や壊れた割合では何も動かさない。
-        assert_eq!(rounded(&flexes_after_divider_drag(&[1.], 0, 0.5)), [1.]);
-        assert_eq!(
-            rounded(&flexes_after_divider_drag(&[0.5, 0.5], 0, f32::NAN)),
-            [0.5, 0.5]
-        );
-    }
-
-    #[test]
-    fn a_folded_group_hands_its_share_to_a_neighbour() {
-        // 空いた分は右隣へ。
-        assert_eq!(
-            rounded(&flexes_after_group_removal(&[0.5, 0.25, 0.25], 0)),
-            [0.75, 0.25]
-        );
-        // 右端を畳んだときだけ左隣へ。
-        assert_eq!(
-            rounded(&flexes_after_group_removal(&[0.5, 0.25, 0.25], 2)),
-            [0.5, 0.5]
-        );
-        // 最後の 1 枚を畳んだら残らない。範囲外は何も動かさない。
-        assert!(flexes_after_group_removal(&[1.], 0).is_empty());
-        assert_eq!(rounded(&flexes_after_group_removal(&[1.], 3)), [1.]);
-    }
-
-    #[test]
-    fn splitting_halves_the_share_of_the_group_it_came_from() {
-        assert_eq!(rounded(&flexes_after_split(&[1.], 0, 1)), [0.5, 0.5]);
-        // 切り出し元の取り分だけを分ける (隣は動かない)。
-        assert_eq!(
-            rounded(&flexes_after_split(&[0.5, 0.5], 1, 2)),
-            [0.5, 0.25, 0.25]
-        );
-        assert_eq!(
-            rounded(&flexes_after_split(&[0.5, 0.5], 0, 0)),
-            [0.25, 0.25, 0.5]
-        );
-    }
-
-    #[test]
     fn settings_fall_back_to_the_fork_defaults() {
         let settings = BrowserSettings::from_settings(&settings::SettingsContent::default());
         assert_eq!(settings.home_url, DEFAULT_HOME_URL);
@@ -1792,5 +1558,341 @@ mod tests {
         assert_eq!(settings.dock, DockPosition::Right);
         assert!(settings.button);
         assert!(!settings.use_egress_proxy);
+    }
+    // -- ペイン化したパネル ---------------------------------------------------
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+            crate::init(cx);
+        });
+    }
+
+    async fn init_workspace_with_panel(
+        cx: &mut TestAppContext,
+    ) -> (gpui::WindowHandle<MultiWorkspace>, Entity<BrowserPanel>) {
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+
+        let panel = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    cx.new(|cx| BrowserPanel::new(workspace, window, cx))
+                })
+            })
+            .expect("failed to build the browser panel");
+        window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    workspace.add_panel(panel.clone(), window, cx);
+                })
+            })
+            .expect("failed to add the browser panel to the workspace");
+
+        (window_handle, panel)
+    }
+
+    fn pane_urls(pane: &Entity<Pane>, cx: &App) -> Vec<String> {
+        pane.read(cx)
+            .items()
+            .filter_map(|item| item.downcast::<BrowserItem>())
+            .map(|item| item.read(cx).view().read(cx).current_url().to_string())
+            .collect()
+    }
+
+    fn open_tabs(panel: &Entity<BrowserPanel>, urls: &[&str], cx: &mut VisualTestContext) {
+        panel.update_in(cx, |panel, window, cx| {
+            for url in urls {
+                panel.open_tab(
+                    Some((*url).to_string()),
+                    NewTabPlacement::Foreground,
+                    window,
+                    cx,
+                );
+            }
+        });
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn a_new_tab_lands_in_the_panel_s_own_pane(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(&panel, &["https://example.com/one"], cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_tab(
+                Some("https://example.com/two".to_string()),
+                NewTabPlacement::Background,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(panel.center.panes().len(), 1);
+            assert_eq!(
+                pane_urls(&panel.active_pane, cx),
+                vec![
+                    "https://example.com/one".to_string(),
+                    "https://example.com/two".to_string()
+                ]
+            );
+            // 背景タブは表に出ない = そのタブの WebView2 はまだ作られない。
+            assert_eq!(panel.active_pane.read(cx).active_item_index(), 0);
+        });
+    }
+
+    #[gpui::test]
+    async fn splitting_the_panel_moves_the_tab_into_a_second_pane(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(
+            &panel,
+            &["https://example.com/one", "https://example.com/two"],
+            cx,
+        );
+        panel.update_in(cx, |panel, window, cx| {
+            panel.split_active_tab_right(window, cx)
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            let panes = panel.center.panes();
+            assert_eq!(panes.len(), 2, "the panel should own both panes itself");
+            assert_eq!(
+                pane_urls(panes[0], cx),
+                vec!["https://example.com/one".to_string()]
+            );
+            assert_eq!(
+                pane_urls(panes[1], cx),
+                vec!["https://example.com/two".to_string()]
+            );
+        });
+        window_handle
+            .read_with(cx, |multi_workspace, cx| {
+                assert_eq!(
+                    multi_workspace.workspace().read(cx).panes().len(),
+                    1,
+                    "the center must not be split by a panel-local split"
+                );
+            })
+            .expect("failed to read the workspace panes");
+    }
+
+    #[gpui::test]
+    async fn a_tab_dropped_on_the_edge_splits_the_panel_not_the_center(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(
+            &panel,
+            &["https://example.com/one", "https://example.com/two"],
+            cx,
+        );
+
+        let pane = panel.read_with(cx, |panel, _| panel.active_pane.clone());
+        pane.update_in(cx, |pane, window, cx| {
+            let item = pane
+                .item_for_index(1)
+                .expect("two tabs are open")
+                .boxed_clone();
+            // 端に落とした = `handle_drag_move` が向きを立てた状態。
+            pane.drag_split_direction = Some(SplitDirection::Right);
+            let dragged = DraggedTab {
+                pane: cx.entity(),
+                item,
+                ix: 1,
+                detail: 0,
+                is_active: true,
+            };
+            pane.handle_tab_drop(&dragged, 1, true, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            let panes = panel.center.panes();
+            assert_eq!(panes.len(), 2, "the drop should split the panel");
+            assert_eq!(
+                pane_urls(panes[0], cx),
+                vec!["https://example.com/one".to_string()]
+            );
+            assert_eq!(
+                pane_urls(panes[1], cx),
+                vec!["https://example.com/two".to_string()]
+            );
+        });
+        window_handle
+            .read_with(cx, |multi_workspace, cx| {
+                assert_eq!(
+                    multi_workspace.workspace().read(cx).panes().len(),
+                    1,
+                    "the center must stay whole when a panel tab is dropped on an edge"
+                );
+            })
+            .expect("failed to read the workspace panes");
+    }
+
+    #[gpui::test]
+    async fn dropping_an_html_file_on_the_edge_splits_the_panel_not_the_center(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(&panel, &["https://example.com/one"], cx);
+
+        let pane = panel.read_with(cx, |panel, _| panel.active_pane.clone());
+        let dropped = if cfg!(windows) {
+            PathBuf::from(r"C:\tmp\page.html")
+        } else {
+            PathBuf::from("/tmp/page.html")
+        };
+        pane.update_in(cx, |pane, window, cx| {
+            // 端に落とした = `handle_drag_move` が向きを立てた状態。
+            pane.drag_split_direction = Some(SplitDirection::Right);
+            let item = pane.active_item().expect("the browser tab is open");
+            let paths = ExternalPaths(vec![dropped].into());
+            assert!(
+                item.handle_drop(pane, &paths, window, cx),
+                "an HTML file dropped on a browser pane should be opened as a page"
+            );
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            let panes = panel.center.panes();
+            assert_eq!(panes.len(), 2, "the drop should split the panel");
+            assert_eq!(
+                pane_urls(panes[0], cx),
+                vec!["https://example.com/one".to_string()]
+            );
+            let opened = pane_urls(panes[1], cx);
+            assert_eq!(opened.len(), 1);
+            assert!(
+                opened[0].starts_with("file://") && opened[0].ends_with("page.html"),
+                "an HTML file should open as a browser tab, got {:?}",
+                opened[0]
+            );
+        });
+        window_handle
+            .read_with(cx, |multi_workspace, cx| {
+                assert_eq!(
+                    multi_workspace.workspace().read(cx).panes().len(),
+                    1,
+                    "the center must stay whole when a file is dropped on a panel edge"
+                );
+            })
+            .expect("failed to read the workspace panes");
+    }
+
+    #[gpui::test]
+    async fn the_panel_layout_is_restored_after_a_restart(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(
+            &panel,
+            &["https://example.com/one", "https://example.com/two"],
+            cx,
+        );
+        panel.update_in(cx, |panel, window, cx| {
+            panel.split_active_tab_right(window, cx);
+            panel.open_tab(
+                Some("https://example.com/three".to_string()),
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
+            root: serialize_pane_group(&panel.center.root, &panel.active_pane, cx),
+        });
+        let round_tripped: SerializedBrowserPanel = serde_json::from_str(
+            &serde_json::to_string(&serialized).expect("the layout should serialize"),
+        )
+        .expect("the layout should deserialize");
+
+        let restored = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    cx.new(|cx| BrowserPanel::new(workspace, window, cx))
+                })
+            })
+            .expect("failed to build the restored panel");
+        restored.update_in(cx, |panel, window, cx| {
+            assert!(panel.restore(round_tripped, window, cx));
+        });
+        cx.run_until_parked();
+
+        restored.read_with(cx, |panel, cx| {
+            let panes = panel.center.panes();
+            assert_eq!(panes.len(), 2);
+            assert_eq!(
+                pane_urls(panes[0], cx),
+                vec!["https://example.com/one".to_string()]
+            );
+            assert_eq!(
+                pane_urls(panes[1], cx),
+                vec![
+                    "https://example.com/two".to_string(),
+                    "https://example.com/three".to_string()
+                ]
+            );
+            assert_eq!(panes[1].read(cx).active_item_index(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn moving_a_tab_to_the_center_takes_it_out_of_the_panel(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(&panel, &["https://example.com/one"], cx);
+
+        window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    BrowserPanel::move_active_tab_to_center(workspace, window, cx);
+                })
+            })
+            .expect("failed to move the browser tab to the center");
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(panel.active_pane.read(cx).items_len(), 0);
+        });
+        window_handle
+            .read_with(cx, |multi_workspace, cx| {
+                let workspace = multi_workspace.workspace().read(cx);
+                let center = workspace.active_pane();
+                assert_eq!(
+                    pane_urls(center, cx),
+                    vec!["https://example.com/one".to_string()]
+                );
+                let item = center
+                    .read(cx)
+                    .active_item()
+                    .and_then(|item| item.downcast::<BrowserItem>())
+                    .expect("the browser tab should be the active center item");
+                // 中央に来たタブは「エディター領域で開く」を出さない。
+                assert_eq!(item.read(cx).view().read(cx).host(), BrowserHost::EditorTab);
+            })
+            .expect("failed to read the center pane");
     }
 }

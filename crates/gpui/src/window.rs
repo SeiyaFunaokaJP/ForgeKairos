@@ -2756,6 +2756,20 @@ impl Window {
         )
     }
 
+    /// Ceils the near edge and floors the far edge, producing a strict subset of the raw region.
+    #[inline]
+    fn inset_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<ScaledPixels> {
+        let scale_factor = self.scale_factor();
+        let left = ceil_to_device_pixel(bounds.left().0, scale_factor);
+        let top = ceil_to_device_pixel(bounds.top().0, scale_factor);
+        let right = floor_to_device_pixel(bounds.right().0, scale_factor).max(left);
+        let bottom = floor_to_device_pixel(bounds.bottom().0, scale_factor).max(top);
+        Bounds::from_corners(
+            point(ScaledPixels(left), ScaledPixels(top)),
+            point(ScaledPixels(right), ScaledPixels(bottom)),
+        )
+    }
+
     #[inline]
     fn snapped_content_mask(&self) -> ContentMask<ScaledPixels> {
         ContentMask {
@@ -3073,9 +3087,12 @@ impl Window {
     /// prepaint of the element tree it is empty.
     ///
     /// Exists for the Windows browser panel (ADR-F19): its WebView2 lives in a
-    /// child HWND, which the desktop compositor always puts in front of
-    /// everything gpui draws, so the panel has to cut these rectangles out of
-    /// the child window or they are invisible wherever the two overlap.
+    /// child HWND, and the panel cuts these rectangles out of that window. With
+    /// DirectComposition that is what lets the mouse reach an overlay drawn over
+    /// the page - a child HWND hit-tests its whole rectangle even when nothing
+    /// of it is visible - and without it (`GPUI_DISABLE_DIRECT_COMPOSITION=1`)
+    /// the child is in front of everything gpui draws, so the cut is also what
+    /// makes the overlay visible at all.
     pub fn overlay_bounds(&self) -> Vec<Bounds<Pixels>> {
         let mut overlays = Vec::new();
         if let Some(hitboxes) = self.next_frame.hitboxes.get(self.overlay_hitboxes_start..) {
@@ -4627,6 +4644,40 @@ impl Window {
             bounds,
             content_mask,
             image_buffer,
+        });
+    }
+
+    /// Paint a punch-through into the scene for the next frame at the current
+    /// z-index: `bounds` is replaced with transparent black instead of being
+    /// blended into, so whatever the platform composites behind the window's
+    /// own drawing shows through. Anything painted afterwards covers it again.
+    ///
+    /// Exists for the Windows browser panel (ADR-F19 / ADR-F32), whose WebView2 lives in
+    /// a child HWND that the desktop compositor draws *underneath* gpui's
+    /// DirectComposition visual: gpui has to stop covering the child for the
+    /// page to be visible, and tooltips, popovers and modals then land on top
+    /// of it simply by being painted later. Renderers that composite the window
+    /// against nothing ignore this primitive.
+    ///
+    /// The rectangle is rounded *inwards* to whole device pixels so that it
+    /// never uncovers a pixel just outside `bounds`, where there may be nothing
+    /// to show but the desktop.
+    ///
+    /// This method should only be called as part of the paint phase of element
+    /// drawing.
+    pub fn paint_punch_through(&mut self, bounds: Bounds<Pixels>) {
+        use crate::PunchThrough;
+
+        self.invalidator.debug_assert_paint();
+
+        let bounds = self.inset_bounds(bounds);
+        let content_mask = ContentMask {
+            bounds: self.inset_bounds(self.content_mask().bounds),
+        };
+        self.next_frame.scene.insert_primitive(PunchThrough {
+            order: 0,
+            bounds,
+            content_mask,
         });
     }
 
@@ -6982,6 +7033,55 @@ mod tests {
             captured.borrow().as_slice(),
             [Bounds::new(point(px(10.), px(20.)), size(px(30.), px(40.)))]
         );
+    }
+
+    struct PaintsPunchThrough {
+        captured: Rc<RefCell<Option<(f32, crate::PunchThrough)>>>,
+    }
+
+    impl Render for PaintsPunchThrough {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let captured = self.captured.clone();
+            div().relative().size_full().child(canvas(
+                |_, _, _| {},
+                move |_, _, window, _| {
+                    window.paint_punch_through(Bounds::new(
+                        point(px(10.25), px(20.25)),
+                        size(px(30.1), px(40.1)),
+                    ));
+                    *captured.borrow_mut() = window
+                        .next_frame
+                        .scene
+                        .punch_throughs
+                        .last()
+                        .map(|punch_through| (window.scale_factor(), *punch_through));
+                },
+            ))
+        }
+    }
+
+    /// The rectangle has to end up inside what the caller asked for: the
+    /// Windows browser panel positions its WebView2 child window from the same
+    /// bounds, and a punch-through that reaches a pixel further uncovers the
+    /// desktop rather than the page (ADR-F19).
+    #[test]
+    fn test_paint_punch_through_rounds_inwards_to_device_pixels() {
+        let mut cx = TestAppContext::single();
+
+        let captured: Rc<RefCell<Option<(f32, crate::PunchThrough)>>> = Rc::default();
+        cx.add_window({
+            let captured = captured.clone();
+            move |_, _| PaintsPunchThrough { captured }
+        });
+
+        let (scale_factor, punch_through) = captured.borrow().expect("nothing was painted");
+        assert_eq!(scale_factor, 2.);
+        // (10.25, 20.25)-(40.35, 60.35) logical is (20.5, 40.5)-(80.7, 120.7)
+        // in device pixels; every edge moves towards the middle.
+        assert_eq!(punch_through.bounds.left().0, 21.);
+        assert_eq!(punch_through.bounds.top().0, 41.);
+        assert_eq!(punch_through.bounds.right().0, 80.);
+        assert_eq!(punch_through.bounds.bottom().0, 120.);
     }
 
     struct FixedSizeTooltip;

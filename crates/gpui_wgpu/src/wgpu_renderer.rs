@@ -1529,6 +1529,10 @@ impl WgpuRenderer {
                     // Surfaces are macOS-only for video playback and are not
                     // implemented by the WGPU renderer.
                     PrimitiveBatch::Surfaces(_surfaces) => {}
+                    // Punch-throughs uncover a child window that the platform
+                    // compositor draws behind gpui's surface, which only the
+                    // DirectX renderer hosts.
+                    PrimitiveBatch::PunchThroughs(_punch_throughs) => {}
                 }
             }
         }

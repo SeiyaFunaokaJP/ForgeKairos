@@ -4888,9 +4888,31 @@ fn window_and_layout_page() -> SettingsPage {
         ]
     }
 
-    fn layout_section() -> [SettingsPageItem; 6] {
+    fn layout_section() -> [SettingsPageItem; 7] {
         [
             SettingsPageItem::SectionHeader("レイアウト"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "右ドックに並べる 2 枚目のパネル",
+                description: "プロジェクトを初めて開いたときに、右ドックのエージェントパネルの下へ並べて表示するパネルです。以降はプロジェクトごとに保存されたレイアウトが優先されます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("right_dock_secondary_panel"),
+                    pick: |settings_content| {
+                        settings_content
+                            .workspace
+                            .right_dock_secondary_panel
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.workspace.right_dock_secondary_panel = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    should_do_titlecase: Some(false),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "下ドックのレイアウト",
                 description: "下ドックのレイアウトモードです。",

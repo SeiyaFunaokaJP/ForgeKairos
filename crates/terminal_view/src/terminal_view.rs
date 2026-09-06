@@ -13,7 +13,7 @@ use gpui::{
     Action, AnyElement, App, ClipboardEntry, DismissEvent, Entity, EventEmitter, ExternalPaths,
     FocusHandle, Focusable, Font, KeyContext, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent,
     Pixels, Point as GpuiPoint, Render, ScrollWheelEvent, Styled, Subscription, Task, TaskExt,
-    WeakEntity, actions, anchored, deferred, div,
+    WeakEntity, WindowId, actions, anchored, deferred, div,
 };
 use menu;
 use persistence::TerminalDb;
@@ -193,6 +193,13 @@ pub struct TerminalView {
     /// Kept so a restart in flight is cancelled with the view, and so a second
     /// request cannot spawn a second shell.
     restart_task: Option<Task<()>>,
+    /// Focus listeners live on the `Window` they were registered against, so a
+    /// terminal whose tab is torn off into another window has to register them
+    /// again. Kept apart from `_subscriptions` so only these are rebuilt.
+    _window_focus_subscriptions: Vec<Subscription>,
+    /// Which window [`TerminalView::_window_focus_subscriptions`] were
+    /// registered against.
+    focus_listener_window: WindowId,
     _subscriptions: Vec<Subscription>,
     _terminal_subscriptions: Vec<Subscription>,
 }
@@ -349,16 +356,9 @@ impl TerminalView {
             subscribe_for_terminal_events(&terminal, workspace, window, cx);
 
         let focus_handle = cx.focus_handle();
-        let focus_in = cx.on_focus_in(&focus_handle, window, |terminal_view, window, cx| {
-            terminal_view.focus_in(window, cx);
-        });
-        let focus_out = cx.on_focus_out(
-            &focus_handle,
-            window,
-            |terminal_view, _event, window, cx| {
-                terminal_view.focus_out(window, cx);
-            },
-        );
+        let window_focus_subscriptions =
+            Self::build_window_focus_subscriptions(&focus_handle, window, cx);
+        let focus_listener_window = window.window_handle().window_id();
         let cursor_shape = TerminalSettings::get_global(cx).cursor_shape;
 
         let scroll_handle = TerminalScrollHandle::new(terminal.read(cx));
@@ -377,8 +377,6 @@ impl TerminalView {
         });
 
         let mut subscriptions = vec![
-            focus_in,
-            focus_out,
             cx.observe(&blink_manager, |_, _, cx| cx.notify()),
             cx.observe_global::<SettingsStore>(Self::settings_changed),
         ];
@@ -430,6 +428,8 @@ impl TerminalView {
             session_log_tail: None,
             remote_connection_was_connected,
             restart_task: None,
+            _window_focus_subscriptions: window_focus_subscriptions,
+            focus_listener_window,
             _subscriptions: subscriptions,
             _terminal_subscriptions: terminal_subscriptions,
         };
@@ -2147,6 +2147,37 @@ impl TerminalView {
         }
     }
 
+    fn build_window_focus_subscriptions(
+        focus_handle: &FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<Subscription> {
+        vec![
+            cx.on_focus_in(focus_handle, window, |terminal_view, window, cx| {
+                terminal_view.focus_in(window, cx);
+            }),
+            cx.on_focus_out(focus_handle, window, |terminal_view, _event, window, cx| {
+                terminal_view.focus_out(window, cx);
+            }),
+        ]
+    }
+
+    /// Points the focus listeners at `window`, which they do not follow on
+    /// their own: they are stored on the `Window` that created them. Without
+    /// this a terminal moved to another window never tells the PTY it gained
+    /// or lost focus, so its cursor and focus reporting freeze.
+    fn rebind_window_focus_listeners(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let window_id = window.window_handle().window_id();
+        if self.focus_listener_window == window_id {
+            return;
+        }
+
+        let focus_handle = self.focus_handle.clone();
+        self._window_focus_subscriptions =
+            Self::build_window_focus_subscriptions(&focus_handle, window, cx);
+        self.focus_listener_window = window_id;
+    }
+
     fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.terminal.update(cx, |terminal, _| {
             terminal.set_cursor_shape(self.cursor_shape);
@@ -2493,80 +2524,16 @@ impl Item for TerminalView {
                 return false;
             };
 
-            if item.downcast::<TerminalView>().is_some() {
-                let Some(split_direction) = active_pane.drag_split_direction() else {
-                    return false;
-                };
-
-                let Some(terminal_panel) = workspace.read(cx).panel::<TerminalPanel>(cx) else {
-                    return false;
-                };
-
-                if !terminal_panel.read(cx).center.panes().contains(&&this_pane) {
-                    return false;
-                }
-
-                let source = tab.pane.clone();
-                let item_id_to_move = item.item_id();
-                let is_zoomed = {
-                    let terminal_panel = terminal_panel.read(cx);
-                    if terminal_panel.active_pane == this_pane {
-                        active_pane.is_zoomed()
-                    } else {
-                        terminal_panel.active_pane.read(cx).is_zoomed()
-                    }
-                };
-
-                let workspace = workspace.downgrade();
-                let terminal_panel = terminal_panel.downgrade();
-                // Defer the split operation to avoid re-entrancy panic.
-                // The pane may be the one currently being updated, so we cannot
-                // call mark_positions (via split) synchronously.
-                window
-                    .spawn(cx, async move |cx| {
-                        cx.update(|window, cx| {
-                            let Ok(new_pane) = terminal_panel.update(cx, |terminal_panel, cx| {
-                                let new_pane = terminal_panel::new_terminal_pane(
-                                    workspace, project, is_zoomed, window, cx,
-                                );
-                                terminal_panel.apply_tab_bar_buttons(&new_pane, cx);
-                                terminal_panel.center.split(
-                                    &this_pane,
-                                    &new_pane,
-                                    split_direction,
-                                    cx,
-                                );
-                                anyhow::Ok(new_pane)
-                            }) else {
-                                return;
-                            };
-
-                            let Some(new_pane) = new_pane.log_err() else {
-                                return;
-                            };
-
-                            workspace::move_item(
-                                &source,
-                                &new_pane,
-                                item_id_to_move,
-                                new_pane.read(cx).active_item_index(),
-                                true,
-                                window,
-                                cx,
-                            );
-                        })
-                        .ok();
-                    })
-                    .detach();
-
+            // ターミナルのタブをペインの端に落としたときの分割は
+            // `Pane::set_tab_drop_split_handler` (ターミナルパネルが登録) が引き受ける
+            // ので、ここでは横取りしない。エディターのタブを落としたときだけは
+            // 「移動」ではなく「パスを打ち込む」が期待どおりの動きなので残す。
+            if item.downcast::<TerminalView>().is_none()
+                && let Some(project_path) = item.project_path(cx)
+                && let Some(path) = project.read(cx).absolute_path(&project_path, cx)
+            {
+                self.add_paths_to_terminal(&[path], window, cx);
                 return true;
-            } else {
-                if let Some(project_path) = item.project_path(cx)
-                    && let Some(path) = project.read(cx).absolute_path(&project_path, cx)
-                {
-                    self.add_paths_to_terminal(&[path], window, cx);
-                    return true;
-                }
             }
 
             return false;
@@ -2710,9 +2677,15 @@ impl Item for TerminalView {
     fn added_to_workspace(
         &mut self,
         workspace: &mut Workspace,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Everything this view reaches the workspace for - the terminal panel
+        // it broadcasts to, where a session log opens, the working directory a
+        // restart falls back to, the links a click follows - has to follow the
+        // tab, or a terminal moved to a new window keeps driving the old one.
+        self.workspace = workspace.weak_handle();
+        self.rebind_window_focus_listeners(window, cx);
         if self.terminal().read(cx).task().is_none() {
             if let Some((new_id, old_id)) = workspace.database_id().zip(self.workspace_id) {
                 log::debug!(

@@ -4121,6 +4121,20 @@ impl Focusable for GitGraph {
 impl Item for GitGraph {
     type Event = ItemEvent;
 
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut workspace::Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // An editor's focus listeners belong to the window they were
+        // registered against, so the search field inside a tab moved to
+        // another window has to register them again.
+        self.search_state.editor.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
+    }
+
     fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
         Some(Icon::new(IconName::GitGraph))
     }

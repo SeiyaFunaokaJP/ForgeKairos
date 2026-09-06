@@ -76,6 +76,13 @@ enum ActiveBreakpointStripMode {
 }
 
 impl BreakpointList {
+    /// See [`super::console::Console::rebind_window_focus_listeners`].
+    pub(crate) fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App) {
+        self.input.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
+    }
+
     pub(crate) fn new(
         session: Option<Entity<Session>>,
         workspace: WeakEntity<Workspace>,

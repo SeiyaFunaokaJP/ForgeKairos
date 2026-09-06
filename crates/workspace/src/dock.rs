@@ -8,10 +8,10 @@ use client::proto;
 use db::kvp::KeyValueStore;
 
 use gpui::{
-    Action, Anchor, AnyView, App, Axis, Bounds, Context, Div, DragMoveEvent, Entity, EntityId,
-    EventEmitter, FocusHandle, Focusable, IntoElement, KeyContext, MouseButton, MouseDownEvent,
-    MouseUpEvent, ParentElement, Point, Render, SharedString, StyleRefinement, Styled,
-    Subscription, WeakEntity, Window, deferred, div, px, relative,
+    Action, Anchor, AnyView, App, Axis, Bounds, ClickEvent, Context, Div, DragMoveEvent, Entity,
+    EntityId, EventEmitter, FocusHandle, Focusable, IntoElement, KeyContext, MouseButton,
+    MouseDownEvent, MouseUpEvent, ParentElement, Point, Render, SharedString, StyleRefinement,
+    Styled, Subscription, WeakEntity, Window, deferred, div, px, relative,
 };
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsStore, TerminalDockPosition};
@@ -34,8 +34,23 @@ const MAX_SECONDARY_RATIO: f32 = 0.85;
 /// simply ignored when the dock state is restored.
 pub(crate) const DEFAULT_STACKED_SECONDARY_PANEL: &str = "BrowserPanel";
 
+/// Panel the fork's default right dock layout shows above
+/// [`DEFAULT_STACKED_SECONDARY_PANEL`]. Matches
+/// `agent_ui::AgentPanel::persistent_name`.
+pub(crate) const DEFAULT_STACKED_PRIMARY_PANEL: &str = "AgentPanel";
+
 fn clamp_secondary_ratio(ratio: f32) -> f32 {
     ratio.clamp(MIN_SECONDARY_RATIO, MAX_SECONDARY_RATIO)
+}
+
+/// Half of a stacked pair that the user hid by clicking its status bar button.
+/// Remembering it lets the same button put the panel back where it was instead
+/// of falling back to the "switch panels" click, so a stacked pair behaves as
+/// two independent show/hide toggles.
+#[derive(Clone, Copy)]
+struct HiddenStackedPanel {
+    index: usize,
+    was_primary: bool,
 }
 
 /// Drag state for the divider between two stacked panels inside a dock.
@@ -322,6 +337,7 @@ pub struct Dock {
     /// Share of the dock the stacked secondary panel occupies, along
     /// [`Dock::stack_axis`].
     secondary_ratio: f32,
+    hidden_stacked_panel: Option<HiddenStackedPanel>,
     focus_handle: FocusHandle,
     focus_follows_mouse: FocusFollowsMouse,
     pub(crate) serialized_dock: Option<DockData>,
@@ -470,6 +486,7 @@ impl Dock {
                 active_panel_index: None,
                 secondary_panel_index: None,
                 secondary_ratio: DEFAULT_SECONDARY_RATIO,
+                hidden_stacked_panel: None,
                 is_open: false,
                 focus_handle: focus_handle.clone(),
                 focus_follows_mouse: WorkspaceSettings::get_global(cx).focus_follows_mouse,
@@ -677,6 +694,8 @@ impl Dock {
             .and_then(|index| self.panel_at(index))
             .cloned();
         self.secondary_panel_index = index;
+        // Any new pairing supersedes the one the hidden panel belonged to.
+        self.hidden_stacked_panel = None;
         if let Some(panel) = deactivated {
             panel.set_active(false, window, cx);
         }
@@ -684,6 +703,126 @@ impl Dock {
             panel.set_active(true, window, cx);
         }
         cx.notify();
+    }
+
+    /// The panel that [`Dock::hide_stacked_panel`] took out of a stacked pair,
+    /// as long as it is still the one [`Dock::restack_hidden_panel`] would
+    /// bring back.
+    pub fn hidden_stacked_panel_index(&self) -> Option<usize> {
+        self.hidden_stacked_panel
+            .map(|hidden| hidden.index)
+            .filter(|index| *index < self.panel_entries.len())
+            .filter(|index| Some(*index) != self.active_panel_index)
+            .filter(|_| self.is_open && self.secondary_panel_index().is_none())
+    }
+
+    /// Hides one half of a stacked pair, leaving the other half in the dock.
+    /// Returns whether `index` was part of a pair the dock is showing.
+    pub fn hide_stacked_panel(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(secondary_index) = self.secondary_panel_index().filter(|_| self.is_open) else {
+            return false;
+        };
+        let was_primary = self.active_panel_index == Some(index);
+        if !was_primary && secondary_index != index {
+            return false;
+        }
+        if was_primary {
+            // Promoting the stacked panel is what frees the primary slot; the
+            // dock keeps showing the other half either way.
+            self.activate_panel(secondary_index, window, cx);
+        }
+        self.set_secondary_panel(None, window, cx);
+        self.hidden_stacked_panel = Some(HiddenStackedPanel { index, was_primary });
+        true
+    }
+
+    /// Puts the panel hidden by [`Dock::hide_stacked_panel`] back into the slot
+    /// it had. Returns whether `index` is that panel.
+    pub fn restack_hidden_panel(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.hidden_stacked_panel_index() != Some(index) {
+            return false;
+        }
+        let was_primary = self
+            .hidden_stacked_panel
+            .is_some_and(|hidden| hidden.was_primary);
+        self.set_secondary_panel(Some(index), window, cx);
+        if was_primary {
+            self.activate_panel(index, window, cx);
+        }
+        true
+    }
+
+    /// Stacks `index` next to whatever the dock shows, opening the dock first.
+    /// Returns false only when `index` isn't a panel of this dock.
+    pub fn stack_panel_beside_primary(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if index >= self.panel_entries.len() {
+            return false;
+        }
+        match self.active_panel_index {
+            None => {
+                self.activate_panel(index, window, cx);
+                self.set_open(true, window, cx);
+            }
+            // Nothing to pair the dock's only visible panel with; opening it is
+            // still better than the plain click's "close the dock".
+            Some(active_index) if active_index == index => self.set_open(true, window, cx),
+            Some(_) => {
+                self.set_open(true, window, cx);
+                self.set_secondary_panel(Some(index), window, cx);
+            }
+        }
+        true
+    }
+
+    /// Fork default for a project that has no persisted dock layout yet: show
+    /// `primary_name` with `secondary_name` stacked below it. Panels are added
+    /// asynchronously during startup, so this reports whether both were there
+    /// and the caller retries until they are.
+    pub(crate) fn apply_default_stacked_layout(
+        &mut self,
+        primary_name: &str,
+        secondary_name: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(primary_index) = self.panel_index_for_persistent_name(primary_name, cx) else {
+            return false;
+        };
+        let Some(secondary_index) = self.panel_index_for_persistent_name(secondary_name, cx) else {
+            return false;
+        };
+        if primary_index == secondary_index {
+            return false;
+        }
+
+        // A dock that is already showing something was opened deliberately (by
+        // `Panel::starts_open`, say), so only the pairing is ours to add.
+        if !self.is_open || self.active_panel_index.is_none() {
+            self.activate_panel(primary_index, window, cx);
+        }
+        self.set_open(true, window, cx);
+        let stacked_index = if self.active_panel_index == Some(secondary_index) {
+            primary_index
+        } else {
+            secondary_index
+        };
+        self.set_secondary_panel(Some(stacked_index), window, cx);
+        true
     }
 
     /// Opens the dock for any panel that asked to start open. `starts_open` is a
@@ -970,6 +1109,11 @@ impl Dock {
         {
             *secondary_index += 1;
         }
+        if let Some(hidden) = self.hidden_stacked_panel.as_mut()
+            && hidden.index >= index
+        {
+            hidden.index += 1;
+        }
         let size_state = panel.read(cx).initial_size_state(window, cx);
 
         self.panel_entries.insert(
@@ -1052,6 +1196,9 @@ impl Dock {
             let close_dock = active_panel_index.is_none();
             self.active_panel_index = active_panel_index;
             self.secondary_panel_index = secondary_panel_index;
+            self.hidden_stacked_panel = self.hidden_stacked_panel.and_then(|hidden| {
+                shift(Some(hidden.index)).map(|index| HiddenStackedPanel { index, ..hidden })
+            });
 
             self.panel_entries.remove(panel_ix);
             if close_dock {
@@ -1656,12 +1803,18 @@ impl Render for PanelButtons {
         let dock = self.dock.read(cx);
         let active_index = dock.active_panel_index;
         let secondary_index = dock.secondary_panel_index();
+        let hidden_stacked_index = dock.hidden_stacked_panel_index();
         let stack_entry_label = match dock.stack_axis() {
             Axis::Vertical => "下に並べて表示",
             Axis::Horizontal => "横に並べて表示",
         };
+        let stack_hint_meta: SharedString =
+            format!("右クリック / Shift+クリックで{stack_entry_label}").into();
         let is_open = dock.is_open;
         let dock_position = dock.position;
+        // Arranging the right dock by hand answers the question the fork's
+        // default pairing exists to answer, so it must not be applied later.
+        let settles_default_layout = dock_position == DockPosition::Right;
 
         let (menu_anchor, menu_attach) = match dock.position {
             DockPosition::Left => (Anchor::BottomLeft, Anchor::TopLeft),
@@ -1693,6 +1846,9 @@ impl Render for PanelButtons {
                 let is_active_button = Some(i) == active_index && is_open;
                 let is_stacked_button = Some(i) == secondary_index && is_open;
                 let can_stack = !is_active_button && active_index.is_some();
+                let shows_in_pair =
+                    (is_active_button && secondary_index.is_some()) || is_stacked_button;
+                let is_restorable = Some(i) == hidden_stacked_index;
                 let (action, tooltip) = if is_active_button {
                     let action = dock.toggle_action();
 
@@ -1706,7 +1862,34 @@ impl Render for PanelButtons {
                     (action, icon_tooltip.into())
                 };
 
+                // While the dock shows a pair, each button hides or restores its
+                // own panel, so it no longer stands for the action (and the key
+                // binding) the tooltip would otherwise advertise.
+                let (tooltip_title, tooltip_action, tooltip_meta): (
+                    SharedString,
+                    Option<Box<dyn Action>>,
+                    Option<SharedString>,
+                ) = if shows_in_pair {
+                    (format!("{icon_tooltip}を隠す").into(), None, None)
+                } else if is_restorable {
+                    (
+                        format!("{icon_tooltip}を{stack_entry_label}").into(),
+                        None,
+                        None,
+                    )
+                } else if can_stack {
+                    (
+                        tooltip,
+                        Some(action.boxed_clone()),
+                        Some(stack_hint_meta.clone()),
+                    )
+                } else {
+                    (tooltip, Some(action.boxed_clone()), None)
+                };
+
                 let focus_handle = dock.focus_handle(cx);
+                let dock_for_click = dock_entity.clone();
+                let workspace_for_click = workspace.clone();
                 let icon_label = entry.panel.icon_label(window, cx);
 
                 Some(
@@ -1802,6 +1985,10 @@ impl Render for PanelButtons {
                                             });
                                             workspace_for_unstack
                                                 .update(cx, |workspace, cx| {
+                                                    if settles_default_layout {
+                                                        workspace
+                                                            .settle_default_dock_layout(window, cx);
+                                                    }
                                                     workspace.serialize_workspace(window, cx);
                                                 })
                                                 .ok();
@@ -1820,6 +2007,10 @@ impl Render for PanelButtons {
                                             });
                                             workspace_for_stack
                                                 .update(cx, |workspace, cx| {
+                                                    if settles_default_layout {
+                                                        workspace
+                                                            .settle_default_dock_layout(window, cx);
+                                                    }
                                                     workspace.serialize_workspace(window, cx);
                                                 })
                                                 .ok();
@@ -1839,23 +2030,68 @@ impl Render for PanelButtons {
                         .attach(menu_attach)
                         .trigger(move |is_active, _window, _cx| {
                             // Include active state in element ID to invalidate the cached
-                            // tooltip when panel state changes (e.g., via keyboard shortcut)
+                            // tooltip when panel state changes (e.g., via keyboard shortcut).
+                            // The stacking states get their own bits because they change
+                            // what the tooltip says without changing `shown`.
                             let shown = is_active_button || is_stacked_button;
-                            let button = IconButton::new((name, shown as u64), icon)
+                            let button_state = (shown as u64)
+                                | ((shows_in_pair as u64) << 1)
+                                | ((is_restorable as u64) << 2);
+                            let button = IconButton::new((name, button_state), icon)
                                 .icon_size(IconSize::Small)
                                 .toggle_state(shown)
                                 .tab_index(0isize)
                                 .aria_label(icon_tooltip)
                                 .on_click({
                                     let action = action.boxed_clone();
-                                    move |_, window, cx| {
+                                    move |event: &ClickEvent, window, cx| {
                                         window.focus(&focus_handle, cx);
-                                        window.dispatch_action(action.boxed_clone(), cx)
+                                        // Shift stacks the panel next to the one
+                                        // the dock shows; a plain click on either
+                                        // half of a stacked pair hides or restores
+                                        // just that half. Anything else keeps the
+                                        // panel's own toggle action.
+                                        let handled = dock_for_click.update(cx, |dock, cx| {
+                                            if event.modifiers().shift {
+                                                dock.stack_panel_beside_primary(i, window, cx)
+                                            } else {
+                                                dock.hide_stacked_panel(i, window, cx)
+                                                    || dock.restack_hidden_panel(i, window, cx)
+                                            }
+                                        });
+                                        if handled {
+                                            workspace_for_click
+                                                .update(cx, |workspace, cx| {
+                                                    if settles_default_layout {
+                                                        workspace
+                                                            .settle_default_dock_layout(window, cx);
+                                                    }
+                                                    workspace.serialize_workspace(window, cx);
+                                                })
+                                                .ok();
+                                        } else {
+                                            window.dispatch_action(action.boxed_clone(), cx)
+                                        }
                                     }
                                 })
                                 .when(!is_active, |this| {
                                     this.tooltip(move |_window, cx| {
-                                        Tooltip::for_action(tooltip.clone(), &*action, cx)
+                                        match (&tooltip_meta, &tooltip_action) {
+                                            (Some(meta), action) => Tooltip::with_meta(
+                                                tooltip_title.clone(),
+                                                action.as_deref(),
+                                                meta.clone(),
+                                                cx,
+                                            ),
+                                            (None, Some(action)) => Tooltip::for_action(
+                                                tooltip_title.clone(),
+                                                action.as_ref(),
+                                                cx,
+                                            ),
+                                            (None, None) => {
+                                                Tooltip::simple(tooltip_title.clone(), cx)
+                                            }
+                                        }
                                     })
                                 });
 
@@ -2083,4 +2319,101 @@ pub mod test {
             self.focus_handle.clone()
         }
     }
+
+    /// Stand-ins for the panels the fork's default right dock layout names. That
+    /// layout resolves panels through [`Panel::persistent_name`], so only a panel
+    /// carrying the real name exercises it.
+    macro_rules! named_test_panel {
+        ($type_name:ident, $panel_name:literal) => {
+            pub struct $type_name {
+                pub panel: TestPanel,
+            }
+
+            impl $type_name {
+                pub fn new(position: DockPosition, activation_priority: u32, cx: &mut App) -> Self {
+                    Self {
+                        panel: TestPanel::new(position, activation_priority, cx),
+                    }
+                }
+            }
+
+            impl EventEmitter<PanelEvent> for $type_name {}
+
+            impl Focusable for $type_name {
+                fn focus_handle(&self, cx: &App) -> FocusHandle {
+                    self.panel.focus_handle(cx)
+                }
+            }
+
+            impl Render for $type_name {
+                fn render(
+                    &mut self,
+                    _window: &mut Window,
+                    cx: &mut Context<Self>,
+                ) -> impl IntoElement {
+                    div().id($panel_name).track_focus(&self.focus_handle(cx))
+                }
+            }
+
+            impl Panel for $type_name {
+                fn persistent_name() -> &'static str {
+                    $panel_name
+                }
+
+                fn panel_key() -> &'static str {
+                    $panel_name
+                }
+
+                fn position(&self, _window: &Window, _: &App) -> DockPosition {
+                    self.panel.position
+                }
+
+                fn position_is_valid(&self, _: DockPosition) -> bool {
+                    true
+                }
+
+                fn set_position(
+                    &mut self,
+                    position: DockPosition,
+                    _: &mut Window,
+                    cx: &mut Context<Self>,
+                ) {
+                    self.panel.position = position;
+                    cx.update_global::<SettingsStore, _>(|_, _| {});
+                }
+
+                fn default_size(&self, _window: &Window, _: &App) -> Pixels {
+                    self.panel.default_size
+                }
+
+                fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconName> {
+                    None
+                }
+
+                fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
+                    None
+                }
+
+                fn toggle_action(&self) -> Box<dyn Action> {
+                    ToggleTestPanel.boxed_clone()
+                }
+
+                fn set_active(
+                    &mut self,
+                    active: bool,
+                    _window: &mut Window,
+                    _cx: &mut Context<Self>,
+                ) {
+                    self.panel.active = active;
+                }
+
+                fn activation_priority(&self) -> u32 {
+                    self.panel.activation_priority
+                }
+            }
+        };
+    }
+
+    named_test_panel!(TestAgentPanel, "AgentPanel");
+    named_test_panel!(TestBrowserPanel, "BrowserPanel");
 }
