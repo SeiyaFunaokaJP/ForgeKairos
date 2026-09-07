@@ -123,7 +123,11 @@ pub(crate) async fn handle_proxy_http_request(
     envelope: TypedEnvelope<proto::ProxyHttpRequest>,
     cx: AsyncApp,
 ) -> Result<proto::Ack> {
-    let http_client = cx.update(|cx| cx.http_client());
+    // ADR-F38: the far side has already judged this request against the
+    // allowlist it was pushed (ADR-F11) before asking for the relay, and what
+    // it relays is its IDE tooling — language servers, node, extensions. Its
+    // AI child processes go through the proxy (ADR-F14), not through here.
+    let http_client = cx.update(|cx| http_client::ide_lane(cx.http_client()));
     let this = this.downgrade();
     let payload = envelope.payload;
     let request_id = payload.request_id;

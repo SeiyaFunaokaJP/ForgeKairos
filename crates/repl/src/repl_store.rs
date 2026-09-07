@@ -227,7 +227,8 @@ impl ReplStore {
                     base_url: server,
                     token,
                 };
-                let http_client = cx.http_client();
+                // ADR-F38: as in `remote_kernels.rs`.
+                let http_client = http_client::ide_lane(cx.http_client());
                 Some(cx.spawn(async move |_, _| {
                     list_remote_kernelspecs(remote_server, http_client)
                         .await

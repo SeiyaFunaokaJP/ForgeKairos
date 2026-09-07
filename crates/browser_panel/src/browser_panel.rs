@@ -29,7 +29,7 @@ use db::kvp::KeyValueStore;
 use editor::Editor;
 use gpui::{
     Action, App, AsyncWindowContext, Axis, Context, Entity, EntityId, EventEmitter, FocusHandle,
-    Focusable, MouseDownEvent, Pixels, Point, Subscription, Task, WeakEntity, Window, actions,
+    Focusable, MouseDownEvent, Pixels, Point, Task, WeakEntity, Window, actions,
 };
 use project::Project;
 use serde::{Deserialize, Serialize};
@@ -293,9 +293,6 @@ pub struct BrowserPanel {
     /// 書いてしまうので止める ([`BrowserPanel::load_inner`])。
     restoring: bool,
     active: bool,
-    /// ブックマークバーはパネルに 1 本なので、木が変わったときに描き直すのも
-    /// パネルの仕事 (中身を描く [`BrowserView`] 側の購読では届かない)。
-    _bookmarks_subscription: Subscription,
 }
 
 pub fn init(cx: &mut App) {
@@ -416,7 +413,6 @@ impl BrowserPanel {
         let project = workspace.project().clone();
         let pane = new_browser_pane(workspace.weak_handle(), project.clone(), window, cx);
         let fs = workspace.app_state().fs.clone();
-        let bookmarks = BookmarkStore::global(fs.clone(), cx);
         Self {
             fs,
             workspace: workspace.weak_handle(),
@@ -427,16 +423,7 @@ impl BrowserPanel {
             pending_serialization: Task::ready(None),
             restoring: false,
             active: false,
-            _bookmarks_subscription: cx.observe(&bookmarks, |_, _, cx| cx.notify()),
         }
-    }
-
-    /// ブックマークバーはパネルに 1 本 (ADR-F33 追記)。分割していても上に 1 本だけ
-    /// 出し、中身はアクティブなペインのビューのものを借りる (クリックでの移動も
-    /// 中クリックでの新しいタブも、そのビューの手元で起きる)。
-    fn render_bookmark_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let view = self.active_view(cx)?;
-        view.update(cx, |view, cx| view.render_bookmarks_bar(cx))
     }
 
     // -- タブ ----------------------------------------------------------------
@@ -502,6 +489,15 @@ impl BrowserPanel {
             .active_item()?
             .downcast::<BrowserItem>()
             .map(|item| item.read(cx).view().clone())
+    }
+
+    /// ブックマークバーを出してよいビューか (ADR-F33 追記 2)。バーはビューの中の
+    /// アドレス欄の下に戻したので、分割していても「アクティブなペインのアクティブな
+    /// ビュー」だけが出す。ビュー側が描くたびに聞きに来る (push しないので、
+    /// タブを閉じた・落とした後に古い旗が残らない)。
+    pub(crate) fn is_active_view(&self, view_id: EntityId, cx: &App) -> bool {
+        self.active_view(cx)
+            .is_some_and(|view| view.entity_id() == view_id)
     }
 
     pub fn current_url(&self, cx: &App) -> String {
@@ -593,7 +589,18 @@ impl BrowserPanel {
         if pane == self.active_pane {
             return;
         }
+        // 宛先が移った両側のビューを描き直させる (ブックマークバーの出し入れは
+        // ビューの中で起きる)。ペインは `.cached()` なので、パネルの `notify` だけでは
+        // 前のフレームの描画がそのまま流し直される。
+        let previously_active_view = self.active_view(cx);
         self.active_pane = pane;
+        let newly_active_view = self.active_view(cx);
+        for view in [previously_active_view, newly_active_view]
+            .into_iter()
+            .flatten()
+        {
+            view.update(cx, |_, cx| cx.notify());
+        }
         cx.notify();
     }
 
@@ -709,7 +716,7 @@ impl BrowserPanel {
         });
         // フォーカスの往復を待たずに、次の操作 (新しいタブなど) が新しいペインに
         // 向くようにしておく。
-        self.active_pane = new_pane.clone();
+        self.activate_pane(new_pane.clone(), cx);
         window.focus(&new_pane.focus_handle(cx), cx);
     }
 
@@ -807,7 +814,7 @@ impl BrowserPanel {
                             None
                         };
                         let new_pane = self.split_pane(&pane, direction, window, cx);
-                        self.active_pane = new_pane.clone();
+                        self.activate_pane(new_pane.clone(), cx);
                         self.open_tab_in_pane(
                             &new_pane,
                             url,
@@ -827,7 +834,7 @@ impl BrowserPanel {
                         new_pane.update(cx, |pane, cx| {
                             pane.add_item(item, true, true, None, window, cx);
                         });
-                        self.active_pane = new_pane.clone();
+                        self.activate_pane(new_pane.clone(), cx);
                         window.focus(&new_pane.focus_handle(cx), cx);
                     }
                 }
@@ -1162,7 +1169,6 @@ impl Render for BrowserPanel {
             .on_action(cx.listener(|this, _: &FocusNextPaneGroup, window, cx| {
                 this.focus_next_pane(window, cx)
             }))
-            .children(self.render_bookmark_bar(cx))
             .children(center)
     }
 }
@@ -2561,8 +2567,35 @@ mod tests {
         });
     }
 
+    /// 各ペインのアクティブなビューがブックマークバーを出しているか。ブラウザーで
+    /// ないタブを見ているペインは `false` になる。
+    fn bookmark_bar_per_pane(
+        panel: &Entity<BrowserPanel>,
+        cx: &mut VisualTestContext,
+    ) -> Vec<bool> {
+        let views = panel.read_with(cx, |panel, cx| {
+            panel
+                .center
+                .panes()
+                .into_iter()
+                .map(|pane| {
+                    pane.read(cx)
+                        .active_item()
+                        .and_then(|item| item.downcast::<BrowserItem>())
+                        .map(|item| item.read(cx).view().clone())
+                })
+                .collect::<Vec<_>>()
+        });
+        views
+            .into_iter()
+            .map(|view| {
+                view.is_some_and(|view| view.update(cx, |view, cx| view.shows_bookmark_bar(cx)))
+            })
+            .collect()
+    }
+
     #[gpui::test]
-    async fn the_bookmark_bar_belongs_to_the_panel_not_to_each_pane(cx: &mut TestAppContext) {
+    async fn the_bookmark_bar_follows_the_panel_s_active_pane(cx: &mut TestAppContext) {
         init_test(cx);
         let (window_handle, panel) = init_workspace_with_panel(cx).await;
         let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
@@ -2582,35 +2615,39 @@ mod tests {
             });
         });
 
-        open_tabs(
-            &panel,
-            &["https://example.com/one", "https://example.com/two"],
-            cx,
+        let (first, second) = split_panel(&window_handle, &panel, cx);
+        // 分割で切り出した右のペインがアクティブ。バーはそのビューの中だけ。
+        panel.read_with(cx, |panel, _| assert_eq!(panel.active_pane, second));
+        assert_eq!(
+            bookmark_bar_per_pane(&panel, cx),
+            vec![false, true],
+            "only the active pane's view shows the bookmark bar"
         );
-        panel.update_in(cx, |panel, window, cx| {
-            panel.split_active_tab_right(window, cx)
+
+        // 宛先のペインが移るとバーも移る。
+        panel.update_in(cx, |_, window, cx| {
+            window.focus(&first.focus_handle(cx), cx);
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
         });
         cx.run_until_parked();
+        panel.read_with(cx, |panel, _| assert_eq!(panel.active_pane, first));
+        assert_eq!(bookmark_bar_per_pane(&panel, cx), vec![true, false]);
 
-        panel.update(cx, |panel, cx| {
-            assert_eq!(panel.center.panes().len(), 2);
-            assert!(
-                panel.render_bookmark_bar(cx).is_some(),
-                "a split panel still shows a single bookmark bar"
-            );
-        });
-
-        // ブラウザーでないタブを見ているペインにはバーを出さない。
+        // ブラウザーでないタブを落としてもパネルの枠組みは動かない (そのタブに
+        // バーが無いだけ)。前のビューにバーが残らないことも見る。
         panel.update_in(cx, |panel, window, cx| {
             let item = cx.new(TestItem::new);
             panel.active_pane.update(cx, |pane, cx| {
                 pane.add_item(Box::new(item), false, false, None, window, cx);
             });
         });
-        cx.run_until_parked();
-        panel.update(cx, |panel, cx| {
-            assert!(panel.render_bookmark_bar(cx).is_none());
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
         });
+        cx.run_until_parked();
+        assert_eq!(bookmark_bar_per_pane(&panel, cx), vec![false, false]);
     }
 
     #[gpui::test]
@@ -2633,7 +2670,7 @@ mod tests {
         panel.read_with(cx, |panel, cx| {
             assert_eq!(panel.active_pane.read(cx).items_len(), 0);
         });
-        window_handle
+        let center_view = window_handle
             .read_with(cx, |multi_workspace, cx| {
                 let workspace = multi_workspace.workspace().read(cx);
                 let center = workspace.active_pane();
@@ -2648,8 +2685,11 @@ mod tests {
                     .expect("the browser tab should be the active center item");
                 // 中央に来たタブは「エディター領域で開く」を出さない。
                 assert_eq!(item.read(cx).view().read(cx).host(), BrowserHost::EditorTab);
+                item.read(cx).view().clone()
             })
             .expect("failed to read the center pane");
+        // エディター領域のタブは自分のバーを出す (パネルの「1 本だけ」に縛られない)。
+        assert!(center_view.update(cx, |view, cx| view.shows_bookmark_bar(cx)));
     }
 
     /// ワークスペースに DB の ID を与えて、掃除が走る状態にする。

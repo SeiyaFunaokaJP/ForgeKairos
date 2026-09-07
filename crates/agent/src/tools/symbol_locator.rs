@@ -40,15 +40,16 @@ pub struct PendingCodeActions {
 /// ambiguity as a broken editor setup — the report that prompted this had the
 /// model telling the user to install a VS Code extension instead of reporting
 /// what actually happened. So state the fact, name the two causes this fork
-/// actually produces (nothing installed, or the download refused by the egress
-/// allowlist — ADR-F22), rule out the wrong fix, and give the next step.
+/// actually produces (nothing installed, or the automatic download failed),
+/// rule out the wrong fix, and give the next step. The egress allowlist is no
+/// longer one of them: it stopped covering language servers in ADR-F38.
 pub fn no_language_server_message(action: &str, file_path: &str) -> String {
     format!(
         "{action}できませんでした: `{file_path}` に対応する言語サーバーが起動していません \
-         (この言語の言語サーバーが未インストールか、外部通信の許可リストでダウンロードが\
-         拒否されました)。これはエディターや LSP の設定を変更しても解決しません。言語\
-         サーバーのインストール、または「ネットワーク許可リスト」設定への追加が必要である\
-         ことを、まずユーザーに伝えてください。そのうえで、シンボルを探すだけなら `grep` \
+         (この言語の言語サーバーが未インストールか、自動ダウンロードに失敗しました)。\
+         これはエディターや LSP の設定を変更しても解決しません。言語サーバーの\
+         インストールが必要であることを、まずユーザーに伝えてください。\
+         そのうえで、シンボルを探すだけなら `grep` \
          ツールを使ってください。書き換えが必要な場合は `grep` で全出現箇所を確認してから \
          `edit_file` を使い、意味解析なしの単純な文字列置換であることをユーザーに明示して\
          ください。"

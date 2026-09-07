@@ -1268,7 +1268,8 @@ impl Project {
 
             let dap_store = cx.new(|cx| {
                 DapStore::new_local(
-                    client.http_client(),
+                    // ADR-F38: debug adapters are IDE tooling, not AI traffic.
+                    http_client::ide_lane(client.http_client()),
                     node.clone(),
                     fs.clone(),
                     environment.clone(),
@@ -1341,7 +1342,9 @@ impl Project {
                     environment.clone(),
                     manifest_tree,
                     languages.clone(),
-                    client.http_client(),
+                    // ADR-F38: this is what `LspAdapterDelegate::http_client`
+                    // hands language servers to fetch themselves with.
+                    http_client::ide_lane(client.http_client()),
                     fs.clone(),
                     cx,
                 )
@@ -1535,7 +1538,8 @@ impl Project {
                     breakpoint_store.clone(),
                     worktree_store.clone(),
                     node.clone(),
-                    client.http_client(),
+                    // ADR-F38: as for the local dap_store above.
+                    http_client::ide_lane(client.http_client()),
                     fs.clone(),
                     cx,
                 )

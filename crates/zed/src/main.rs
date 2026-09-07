@@ -573,7 +573,14 @@ fn main() {
         .detach();
         ui::on_new_scrollbars::<SettingsStore>(cx);
 
-        let node_runtime = NodeRuntime::new(client.http_client(), Some(shell_env_loaded_rx), rx);
+        // ADR-F38: node/npm is IDE plumbing — language servers, prettier and
+        // extension builds run through it. The agent's own npm invocations are
+        // child processes and are governed by the proxy (ADR-F14) instead.
+        let node_runtime = NodeRuntime::new(
+            http_client::ide_lane(client.http_client()),
+            Some(shell_env_loaded_rx),
+            rx,
+        );
 
         debug_adapter_extension::init(extension_host_proxy.clone(), cx);
         languages::init(languages.clone(), fs.clone(), node_runtime.clone(), cx);

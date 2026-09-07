@@ -6540,7 +6540,7 @@ impl Workspace {
         // If this pane is in a dock, preserve that dock when dismissing zoomed items.
         // This prevents the dock from closing when focus events fire during window activation.
         // We also preserve any dock whose active panel itself has focus — this covers
-        // panels like AgentPanel that don't implement `pane()` but can still be zoomed.
+        // panels that don't implement `pane()` (e.g. the project panel) but can still be zoomed.
         let dock_to_preserve = self.all_docks().iter().find_map(|dock| {
             let dock_read = dock.read(cx);
             if let Some(panel) = dock_read.active_panel() {

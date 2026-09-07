@@ -2110,6 +2110,8 @@
     "open_links_in_mouse_mode": true,
     // Whether to show the terminal button in the status bar
     "button": true,
+    // Whether the macro picker (「マクロを実行」) opens with every folder collapsed.
+    "macro_picker_folders_collapsed": false,
     // Any key-value pairs added to this list will be added to the terminal's
     // environment. Use `:` to separate multiple values.
     "env": {

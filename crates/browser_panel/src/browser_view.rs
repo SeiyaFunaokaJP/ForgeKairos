@@ -25,8 +25,8 @@ use workspace::Workspace;
 
 use crate::{
     AddBookmark, BookmarkNode, BookmarkPath, BookmarkRow, BookmarkStore, BookmarksFile,
-    BrowserSettings, FocusAddressBar, GoHome, NavigateBack, NavigateForward, OpenInCenter,
-    OpenInExternalBrowser, Reload, SetAsHomePage, SubmitAddress, ToggleBookmarks,
+    BrowserPanel, BrowserSettings, FocusAddressBar, GoHome, NavigateBack, NavigateForward,
+    OpenInCenter, OpenInExternalBrowser, Reload, SetAsHomePage, SubmitAddress, ToggleBookmarks,
     normalize_bookmark_url, resolve_address_input,
 };
 
@@ -974,14 +974,28 @@ impl BrowserView {
             .into_any_element()
     }
 
+    /// このビューがブックマークバーを出すか (ADR-F33 追記 2)。
+    ///
+    /// バーは Chrome と同じ並び (タブバー → アドレス欄 → ブックマークバー → ページ)
+    /// になるようにビューの中に置く。「パネルに 1 本だけ」は**アクティブなペインの
+    /// アクティブなビューだけが出す**という規則で保つので、パネルからの push は
+    /// 要らない (押し忘れた状態が残らない)。エディター領域やターミナルパネルに
+    /// 置いたタブは、それぞれが自分のバーを出す。
+    pub(crate) fn shows_bookmark_bar(&self, cx: &Context<Self>) -> bool {
+        match self.host {
+            BrowserHost::EditorTab => true,
+            BrowserHost::Panel => self
+                .workspace
+                .upgrade()
+                .and_then(|workspace| workspace.read(cx).panel::<BrowserPanel>(cx))
+                .is_some_and(|panel| panel.read(cx).is_active_view(cx.entity_id(), cx)),
+        }
+    }
+
     /// ブックマークバー。最上位の項目だけを並べ、フォルダーはサイドペインを
     /// そのフォルダーで開くボタンにする (メニューはページに隠れるため)。
     /// 並べ替えはドラッグ＆ドロップ (落とし先はドラッグ中だけ上に敷く)。
-    ///
-    /// 描くのは**パネルが 1 本だけ** (ADR-F33 追記): 分割してもバーは上に 1 本で、
-    /// アクティブなビューのものを [`crate::BrowserPanel`] が引き取って出す。
-    /// エディター領域やターミナルパネルに移したタブにはバーが付かない。
-    pub(crate) fn render_bookmarks_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn render_bookmarks_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let items = self.bookmarks_file(cx).items;
         if items.is_empty() {
             return None;
@@ -1632,6 +1646,10 @@ impl Render for BrowserView {
             (None, false) => SharedString::default(),
         };
         let bookmarks_pane_open = self.bookmarks_pane_open;
+        let bookmarks_bar = self
+            .shows_bookmark_bar(cx)
+            .then(|| self.render_bookmarks_bar(cx))
+            .flatten();
         v_flex()
             .key_context("BrowserPanel")
             .track_focus(&self.focus_handle)
@@ -1657,6 +1675,7 @@ impl Render for BrowserView {
                 }),
             )
             .child(self.render_toolbar(window, cx))
+            .children(bookmarks_bar)
             .child(
                 h_flex()
                     .w_full()

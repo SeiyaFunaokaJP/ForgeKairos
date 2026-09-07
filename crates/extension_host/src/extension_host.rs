@@ -275,8 +275,11 @@ pub fn init(
             None,
             extension_host_proxy,
             fs,
-            client.http_client(),
-            client.http_client(),
+            // ADR-F38: the marketplace, the archives it hands out, and the
+            // `fetch`/`download_file` an installed extension makes are all IDE
+            // tooling — extensions are how most language servers arrive.
+            http_client::ide_lane_with_url(client.http_client()),
+            http_client::ide_lane(client.http_client()),
             Some(client.telemetry().clone()),
             node_runtime,
             cx,

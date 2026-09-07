@@ -1,17 +1,24 @@
-//! Deny-by-default egress allowlist. See `docs/jp-enhance/DESIGN.md` §4 (ADR-F03).
+//! Deny-by-default egress allowlist. See `docs/jp-enhance/DESIGN.md` §4 (ADR-F03)
+//! and §4.38 (ADR-F38) for the two lanes.
 //!
 //! [`AllowlistedHttpClient`] decorates the process-wide [`HttpClient`] at the
 //! single construction point in `crates/zed/src/main.rs`, so every HTTP(S)
-//! request the app makes — LLM providers, extension `fetch`, node/LSP
-//! downloads, telemetry, auto-update — passes through the host check below.
+//! request the app makes passes through here. What it *gates* is the AI lane
+//! (see [`EgressLane`]): LLM providers, agent tools, MCP servers and the
+//! external agent processes the fork installs. Requests the IDE's own tooling
+//! makes — language servers, formatters, debug adapters, extensions, updates,
+//! the remote server — are stamped [`EgressLane::Ide`] at the point they are
+//! handed their client and pass through unchecked.
+//!
 //! Loopback is always allowed so local model servers (Ollama, LM Studio,
-//! llama.cpp) work with an empty policy; every other host must be listed —
-//! except the few path-scoped entries in [`BUILTIN_ALLOWLIST`], which the fork
-//! opens on its own so the extension marketplace works out of the box.
+//! llama.cpp) work with an empty policy; every other host on the AI lane must
+//! be listed — except the few path-scoped entries in [`BUILTIN_ALLOWLIST`].
 //!
 //! The decorator also follows redirects itself, one hop at a time, because a
 //! transport that follows them internally (which `reqwest` does) would move
-//! between hosts without this check ever seeing the later hops.
+//! between hosts without this check ever seeing the later hops. It keeps doing
+//! that on both lanes, so the credential-stripping rules a cross-host redirect
+//! goes through do not depend on which lane the request is on.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -27,7 +34,96 @@ use http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, header
 use parking_lot::RwLock;
 use url::{Host, Url};
 
-use crate::{AsyncBody, HttpClient, Inner, RedirectPolicy, RequestTimeout};
+use crate::{AsyncBody, HttpClient, HttpClientWithUrl, Inner, RedirectPolicy, RequestTimeout};
+
+/// Which kind of traffic a request is, and therefore whether the allowlist
+/// applies to it (`docs/jp-enhance/DESIGN.md` ADR-F38).
+///
+/// The allowlist exists to keep *the AI* from talking to whatever it likes —
+/// a model provider, an agent's fetch/web-search tool, an MCP server, an
+/// external agent process. It was never meant to stand between the editor and
+/// the tools a developer expects to just work (language servers, formatters,
+/// debug adapters, extensions, updates), and gating those made the IDE look
+/// broken for reasons that had nothing to do with AI.
+///
+/// Carried as a request extension rather than as separate client types so that
+/// a caller reached through `Arc<dyn HttpClient>` — which is how every one of
+/// them is reached — needs no signature change, and so the stamp survives the
+/// `HttpClientWithUrl` / `HttpClientWithProxy` wrappers, which pass extensions
+/// through untouched.
+///
+/// [`Ai`](Self::Ai) is the default for a request that carries no stamp at all,
+/// which keeps the system fail-closed: a new call site is gated until someone
+/// decides it is IDE infrastructure and says so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EgressLane {
+    /// Gated by the allowlist. Anything the model or an agent can steer.
+    Ai,
+    /// Not gated. The editor's own tooling, acting for the user.
+    Ide,
+}
+
+/// Stamps every request it forwards with an [`EgressLane`], leaving the rest of
+/// the request untouched. Wraps *outside* [`AllowlistedHttpClient`] (usually
+/// far outside — at the point some subsystem is handed its client), because the
+/// decorator has to see the stamp to act on it.
+pub struct LaneHttpClient {
+    inner: Arc<dyn HttpClient>,
+    lane: EgressLane,
+}
+
+impl LaneHttpClient {
+    pub fn new(inner: Arc<dyn HttpClient>, lane: EgressLane) -> Self {
+        Self { inner, lane }
+    }
+}
+
+impl HttpClient for LaneHttpClient {
+    fn user_agent(&self) -> Option<&HeaderValue> {
+        self.inner.user_agent()
+    }
+
+    fn proxy(&self) -> Option<&Url> {
+        self.inner.proxy()
+    }
+
+    fn send(
+        &self,
+        mut request: Request<AsyncBody>,
+    ) -> BoxFuture<'static, anyhow::Result<Response<AsyncBody>>> {
+        // A caller that stamped a lane itself keeps it: the only such caller is
+        // another `LaneHttpClient`, and the innermost one is the one that knows
+        // what the request really is.
+        if request.extensions().get::<EgressLane>().is_none() {
+            request.extensions_mut().insert(self.lane);
+        }
+        self.inner.send(request)
+    }
+
+    fn egress_policy(&self) -> Option<&EgressPolicyHandle> {
+        self.inner.egress_policy()
+    }
+
+    #[cfg(feature = "test-support")]
+    fn as_fake(&self) -> &crate::FakeHttpClient {
+        self.inner.as_fake()
+    }
+}
+
+/// Marks everything sent through `inner` as IDE tooling traffic, exempt from
+/// the allowlist.
+pub fn ide_lane(inner: Arc<dyn HttpClient>) -> Arc<dyn HttpClient> {
+    Arc::new(LaneHttpClient::new(inner, EgressLane::Ide))
+}
+
+/// [`ide_lane`] for the callers that need the URL-building surface of
+/// [`HttpClientWithUrl`] (the extension store builds every marketplace URL with
+/// it). Shares the base URL cell rather than copying the string, so a later
+/// `set_base_url` is still seen through this handle.
+pub fn ide_lane_with_url(inner: Arc<HttpClientWithUrl>) -> Arc<HttpClientWithUrl> {
+    let lane = ide_lane(inner.clone());
+    Arc::new(inner.with_transport(lane))
+}
 
 /// Cap applied to [`RedirectPolicy::FollowAll`]. Matches the limit
 /// `reqwest_client` used to hand to reqwest for that policy.
@@ -431,6 +527,15 @@ pub fn egress_denied_hosts(error: &anyhow::Error) -> Option<Vec<String>> {
 
 /// Destinations allowed regardless of the user's allowlist (2026-08-28 product
 /// decision: extension search and install must work out of the box).
+///
+/// ADR-F38 narrowed what the allowlist covers to the AI lane, which left only
+/// the ACP registry entry load-bearing — the marketplace, the bucket it
+/// redirects to and this fork's release index are all reached by tooling that
+/// is no longer gated at all. The table is kept whole anyway: those three are
+/// path-scoped GETs on destinations this fork already trusts, and keeping them
+/// means a request that arrives on the AI lane because some path was never
+/// stamped still works instead of failing in a way nobody would connect to
+/// this table.
 ///
 /// Scope is deliberately just what browsing and installing an extension needs:
 /// `ExtensionStore` builds every marketplace URL with
@@ -880,6 +985,13 @@ async fn send_allowlisted(
 ) -> anyhow::Result<Response<AsyncBody>> {
     let (mut parts, body) = request.into_parts();
 
+    // Unstamped means AI: a call site nobody has classified stays gated
+    // (ADR-F38).
+    let lane = parts
+        .extensions
+        .get::<EgressLane>()
+        .copied()
+        .unwrap_or(EgressLane::Ai);
     let requested_policy = parts.extensions.get::<RedirectPolicy>().cloned();
     let follows_redirects = !matches!(requested_policy, Some(RedirectPolicy::NoFollow));
     let mut hops_left = match requested_policy {
@@ -909,9 +1021,17 @@ async fn send_allowlisted(
     let mut original_parts = Some(parts);
 
     loop {
-        policy.check_url(&url).inspect_err(|denied| {
-            log::warn!("{denied}");
-        })?;
+        // The IDE lane skips only the allowlist check; every hop still goes
+        // around this same loop, so the redirect limit and the cross-host
+        // header stripping below apply identically on both lanes.
+        match lane {
+            EgressLane::Ai => policy.check_url(&url).inspect_err(|denied| {
+                log::warn!("{denied}");
+            })?,
+            EgressLane::Ide => {
+                log::trace!("egress: IDE-lane request to {}", redacted_url(&url));
+            }
+        }
 
         let Some(next_body) = body.next() else {
             bail!(
@@ -1747,6 +1867,150 @@ mod tests {
             "a relative URI has no host to check",
         );
         assert!(error.to_string().contains("not an absolute URL"), "{error}");
+    }
+
+    /// ADR-F38: a language server fetching its own binary must not need the
+    /// user to have listed GitHub.
+    #[test]
+    fn an_ide_lane_request_reaches_a_host_the_allowlist_refuses() {
+        let (inner, seen) = StubClient::new(|_, _| ok());
+        let client = ide_lane(Arc::new(AllowlistedHttpClient::new(inner, policy(&[]))));
+
+        let response = futures::executor::block_on(client.send(get(
+            "https://github.com/clangd/clangd/releases/download/18/clangd.zip",
+            RedirectPolicy::NoFollow,
+        )))
+        .expect("the IDE lane is not gated");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(seen.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_unlabelled_request_to_the_same_host_is_denied() {
+        let (inner, seen) = StubClient::new(|_, _| ok());
+        let client = AllowlistedHttpClient::new(inner, policy(&[]));
+
+        let error = expect_error(
+            futures::executor::block_on(client.send(get(
+                "https://github.com/clangd/clangd/releases/download/18/clangd.zip",
+                RedirectPolicy::NoFollow,
+            ))),
+            "an unstamped request must stay on the gated lane",
+        );
+
+        assert_eq!(
+            error
+                .downcast_ref::<EgressDenied>()
+                .expect("should be an EgressDenied")
+                .host,
+            "github.com"
+        );
+        assert!(seen.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_explicit_ai_lane_stamp_is_gated_like_no_stamp_at_all() {
+        let (inner, _seen) = StubClient::new(|_, _| ok());
+        let client = Arc::new(LaneHttpClient::new(
+            Arc::new(AllowlistedHttpClient::new(inner, policy(&[]))),
+            EgressLane::Ai,
+        ));
+
+        let error = expect_error(
+            futures::executor::block_on(client.send(get(
+                "https://api.openai.com/v1/chat",
+                RedirectPolicy::NoFollow,
+            ))),
+            "the AI lane is the gated one",
+        );
+        assert!(error.downcast_ref::<EgressDenied>().is_some(), "{error}");
+    }
+
+    /// The lane decides whether the host is checked and nothing else: a hop
+    /// that changes host still drops the caller's credentials, and the inner
+    /// client is still told not to follow anything itself.
+    #[test]
+    fn an_ide_lane_redirect_keeps_every_other_invariant() {
+        let (inner, seen) = StubClient::new(|index, _| {
+            if index == 0 {
+                redirect_to("https://release-assets.githubusercontent.com/blob")
+            } else {
+                ok()
+            }
+        });
+        let client = ide_lane(Arc::new(AllowlistedHttpClient::new(inner, policy(&[]))));
+
+        let request = Request::builder()
+            .uri("https://github.com/owner/repo/releases/download/v1/blob")
+            .header(header::AUTHORIZATION, "Bearer secret")
+            .header("x-api-key", "secret")
+            .follow_redirects(RedirectPolicy::FollowAll)
+            .body(AsyncBody::empty())
+            .expect("valid request");
+        futures::executor::block_on(client.send(request))
+            .expect("neither hop is gated on this lane");
+
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "the decorator still walks the hops itself");
+        assert_eq!(seen[0].2, Some(RedirectPolicy::NoFollow));
+        assert_eq!(seen[1].2, Some(RedirectPolicy::NoFollow));
+        assert!(seen[0].3.contains_key(header::AUTHORIZATION));
+        assert!(!seen[1].3.contains_key(header::AUTHORIZATION));
+        assert!(!seen[1].3.contains_key("x-api-key"));
+    }
+
+    #[test]
+    fn the_lane_survives_the_url_and_proxy_wrappers() {
+        let (inner, seen) = StubClient::new(|_, _| ok());
+        let gated = Arc::new(HttpClientWithUrl::new(
+            Arc::new(AllowlistedHttpClient::new(inner, policy(&[]))),
+            "https://zed.dev",
+            None,
+        ));
+        let laned = ide_lane_with_url(gated.clone());
+
+        futures::executor::block_on(laned.send(get(
+            "https://registry.npmjs.org/typescript",
+            RedirectPolicy::NoFollow,
+        )))
+        .expect("the stamp has to reach the decorator through both wrappers");
+        assert_eq!(seen.lock().unwrap().len(), 1);
+
+        // The URL surface keeps working, and keeps tracking the original.
+        assert_eq!(laned.base_url(), "https://zed.dev");
+        gated.set_base_url("http://localhost:3000");
+        assert_eq!(laned.base_url(), "http://localhost:3000");
+
+        // …while the client it wraps is still gated for everyone else.
+        expect_error(
+            futures::executor::block_on(gated.send(get(
+                "https://registry.npmjs.org/typescript",
+                RedirectPolicy::NoFollow,
+            ))),
+            "the underlying client must still gate unstamped requests",
+        );
+    }
+
+    #[test]
+    fn the_lane_wrapper_still_reports_the_allowlist_it_wraps() {
+        let (inner, _seen) = StubClient::new(|_, _| ok());
+        let handle = policy(&["api.anthropic.com"]);
+        let client = ide_lane(Arc::new(AllowlistedHttpClient::new(inner, handle.clone())));
+
+        // `remote_server` reaches its policy this way to apply the list the IDE
+        // pushes it (ADR-F11), and it now holds a laned client.
+        let reached = client
+            .egress_policy()
+            .expect("the accessor must pass through");
+        assert!(reached.allows(&host("api.anthropic.com")));
+        assert!(!reached.allows(&host("api.openai.com")));
+
+        handle.set(EgressPolicy::from_host_strings(["api.openai.com"]).0);
+        assert!(
+            reached.allows(&host("api.openai.com")),
+            "the accessor must reach the handle backing this client, not a copy"
+        );
     }
 
     fn endpoint() -> Url {

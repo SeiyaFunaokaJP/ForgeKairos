@@ -198,6 +198,20 @@ impl WindowsWindowState {
         !self.is_fullscreen() && unsafe { IsZoomed(self.hwnd) }.as_bool()
     }
 
+    /// See [`Callbacks::detach`]. `restore_from_minimized` parks the frame
+    /// callback for the duration of a minimize, so a window removed while
+    /// minimized holds one there instead of in `callbacks`.
+    pub(crate) fn detach_callbacks(&self) {
+        self.callbacks.detach();
+        self.restore_from_minimized.take();
+    }
+
+    /// [`Self::detach_callbacks`], and the `close` callback with them.
+    pub(crate) fn take_all_callbacks(&self) {
+        self.callbacks.close.take();
+        self.detach_callbacks();
+    }
+
     fn bounds(&self) -> Bounds<Pixels> {
         Bounds {
             origin: self.origin.get(),
@@ -390,14 +404,20 @@ pub(crate) struct Callbacks {
 }
 
 impl Callbacks {
-    /// Drops every callback that is still registered.
+    /// Drops every callback except `close`.
     ///
-    /// Each of them owns a handle to a gpui `Window`, so once the window has
-    /// been destroyed calling one can only fail with "window not found".
-    /// Messages do arrive after `WM_DESTROY`: the vsync thread invalidates
-    /// every HWND still in the platform's list, and `WM_ACTIVATE` dispatches
-    /// its callback through the foreground executor rather than inline.
-    pub(crate) fn take_all(&self) {
+    /// Each of them owns a handle to a gpui `Window`, so once that window has
+    /// been removed from the app calling one can only fail with "window not
+    /// found". Messages keep arriving in the gap between the removal and
+    /// `WM_DESTROY`: the vsync thread invalidates every HWND still in the
+    /// platform's list, and `WM_ACTIVATE` dispatches its callback through the
+    /// foreground executor rather than inline.
+    ///
+    /// `close` stays: it is the one callback that expects to run for a window
+    /// that is already gone (it takes the window out of the app when the user
+    /// closed it, and tells [`SystemWindowTabController`] about it either way),
+    /// it runs at most once, and it reports failure without logging.
+    pub(crate) fn detach(&self) {
         self.request_frame.take();
         self.input.take();
         self.active_status_change.take();
@@ -405,7 +425,6 @@ impl Callbacks {
         self.resize.take();
         self.moved.take();
         self.should_close.take();
-        self.close.take();
         self.hit_test_window_control.take();
         self.appearance_changed.take();
     }
@@ -616,6 +635,14 @@ impl rwh::HasDisplayHandle for WindowsWindow {
 
 impl Drop for WindowsWindow {
     fn drop(&mut self) {
+        // `DestroyWindow` has to be deferred (running it here would re-enter
+        // this window's procedure while the `App` is borrowed), so this HWND
+        // keeps receiving messages for at least one turn of the foreground
+        // executor. The gpui `Window` the callbacks were bound to is gone by
+        // now - this drop is part of removing it - so detach them here as well
+        // as in `PlatformWindow::detach_callbacks`, which covers the paths that
+        // drop a window without going through `App::update_window_id`.
+        self.state.detach_callbacks();
         // clone this `Rc` to prevent early release of the pointer
         let this = self.0.clone();
         self.0
@@ -992,6 +1019,10 @@ impl PlatformWindow for WindowsWindow {
 
     fn on_close(&self, callback: Box<dyn FnOnce()>) {
         self.state.callbacks.close.set(Some(callback));
+    }
+
+    fn detach_callbacks(&self) {
+        self.state.detach_callbacks();
     }
 
     fn on_hit_test_window_control(&self, callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
@@ -1645,9 +1676,53 @@ fn set_non_rude_hwnd(hwnd: HWND, non_rude: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::ClickState;
-    use gpui::{DevicePixels, MouseButton, point};
+    use super::{Callbacks, ClickState};
+    use gpui::{DevicePixels, DispatchEventResult, MouseButton, point};
     use std::time::Duration;
+
+    /// Once gpui has removed a window, everything the platform can still deliver
+    /// to its HWND - the vsync thread's redraw, an asynchronously dispatched
+    /// `WM_ACTIVATE`, messages already queued - reaches a callback holding a
+    /// handle to a `Window` that is gone, and can only log "window not found".
+    /// `close` is the exception: it expects to run for a window that is already
+    /// gone, exactly once, on `WM_DESTROY`.
+    #[test]
+    fn test_detach_keeps_only_the_close_callback() {
+        let callbacks = Callbacks::default();
+        callbacks.request_frame.set(Some(Box::new(|_| {})));
+        callbacks
+            .input
+            .set(Some(Box::new(|_| DispatchEventResult::default())));
+        callbacks.active_status_change.set(Some(Box::new(|_| {})));
+        callbacks.hovered_status_change.set(Some(Box::new(|_| {})));
+        callbacks.resize.set(Some(Box::new(|_, _| {})));
+        callbacks.moved.set(Some(Box::new(|| {})));
+        callbacks.should_close.set(Some(Box::new(|| true)));
+        callbacks.close.set(Some(Box::new(|| {})));
+        callbacks
+            .hit_test_window_control
+            .set(Some(Box::new(|| None)));
+        callbacks.appearance_changed.set(Some(Box::new(|| {})));
+
+        callbacks.detach();
+
+        assert!(
+            callbacks.request_frame.take().is_none(),
+            "the frame callback is what logged `window not found` on every vsync"
+        );
+        assert!(callbacks.input.take().is_none());
+        assert!(callbacks.active_status_change.take().is_none());
+        assert!(callbacks.hovered_status_change.take().is_none());
+        assert!(callbacks.resize.take().is_none());
+        assert!(callbacks.moved.take().is_none());
+        assert!(callbacks.should_close.take().is_none());
+        assert!(callbacks.hit_test_window_control.take().is_none());
+        assert!(callbacks.appearance_changed.take().is_none());
+        assert!(
+            callbacks.close.take().is_some(),
+            "`close` still has to run once on WM_DESTROY"
+        );
+    }
 
     #[test]
     fn test_double_click_interval() {

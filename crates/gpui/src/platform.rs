@@ -872,6 +872,19 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn on_should_close(&self, callback: Box<dyn FnMut() -> bool>);
     fn on_hit_test_window_control(&self, callback: Box<dyn FnMut() -> Option<WindowControlArea>>);
     fn on_close(&self, callback: Box<dyn FnOnce()>);
+    /// Drops the callbacks registered above, `on_close` excepted, because the
+    /// [`Window`](crate::Window) they were bound to has just been removed from
+    /// the app and they can no longer do anything but fail.
+    ///
+    /// Called the moment the window leaves `App::windows`, which is before the
+    /// platform window itself is dropped and long before the platform has
+    /// finished tearing the native window down. A platform that keeps
+    /// delivering events in that gap - Windows redraws every live `HWND` from
+    /// its vsync thread and dispatches `WM_ACTIVATE` asynchronously - must
+    /// implement this or those events reach callbacks that only log "window not
+    /// found". `on_close` is left registered: it is what tells the platform's
+    /// own bookkeeping the window is gone, and it runs at most once.
+    fn detach_callbacks(&self) {}
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>);
     fn on_button_layout_changed(&self, _callback: Box<dyn FnMut()>) {}
     fn draw(&self, scene: &Scene);

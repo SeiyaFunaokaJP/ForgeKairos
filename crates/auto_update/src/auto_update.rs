@@ -10,9 +10,9 @@ use gpui::{
     Window, actions,
 };
 use http_client::{
-    EgressDenied, HttpClient, HttpClientWithUrl, RequestHost, UPDATE_REPO,
+    EgressDenied, HttpClient, RequestHost, UPDATE_REPO,
     github::{GithubRelease, get_release_by_tag_name, latest_github_release},
-    hosts_required_to_download,
+    ide_lane,
 };
 use paths::remote_servers_dir;
 use release_channel::{AppCommitSha, ReleaseChannel};
@@ -646,7 +646,7 @@ impl AutoUpdater {
         let version_path = platform_dir.join(format!("{}.gz", release.version));
         smol::fs::create_dir_all(&platform_dir).await.ok();
 
-        let client = this.read_with(cx, |this, _| this.client.http_client());
+        let client = this.read_with(cx, |this, _| ide_lane(this.client.http_client()));
 
         if smol::fs::metadata(&version_path).await.is_err() {
             log::info!(
@@ -707,7 +707,7 @@ impl AutoUpdater {
         arch: &str,
         cx: &mut AsyncApp,
     ) -> Result<ReleaseAsset> {
-        let http_client = this.read_with(cx, |this, _| this.client.http_client());
+        let http_client = this.read_with(cx, |this, _| ide_lane(this.client.http_client()));
         let asset_name = asset_name(asset, os, arch)?;
 
         let release = match version {
@@ -731,20 +731,6 @@ impl AutoUpdater {
         .with_context(|| format!("fetching the {UPDATE_REPO} release carrying {asset_name}"))?;
 
         asset_from_release(release, &asset_name)
-    }
-
-    /// The hosts a download from `url` needs that the running egress policy
-    /// does not permit yet. Empty when this process has no allowlist at all
-    /// (a build without the decorator, or a test), because then there is
-    /// nothing to consent to.
-    fn hosts_needing_consent(client: &Arc<HttpClientWithUrl>, url: &str) -> Vec<String> {
-        let Some(policy) = client.egress_policy() else {
-            return Vec::new();
-        };
-        hosts_required_to_download(url)
-            .into_iter()
-            .filter(|host| RequestHost::parse(host).is_none_or(|host| !policy.allows(&host)))
-            .collect()
     }
 
     /// Adds the hosts the held-back download needs to `network_allowlist.json`
@@ -807,7 +793,8 @@ impl AutoUpdater {
         let (client, installed_version, previous_status, release_channel) =
             this.read_with(cx, |this, cx| {
                 (
-                    this.client.http_client(),
+                    // ADR-F38: updating the editor is IDE infrastructure.
+                    ide_lane(this.client.http_client()),
                     this.current_version.clone(),
                     this.status.clone(),
                     ReleaseChannel::try_global(cx).unwrap_or(ReleaseChannel::Stable),
@@ -846,26 +833,11 @@ impl AutoUpdater {
             return Ok(());
         };
 
-        // The check itself is covered by a built-in allowlist entry, but the
-        // release binaries live on GitHub's download hosts, which this fork
-        // will not open on the user's behalf (ADR-F16). Stop here and let the
-        // UI ask, rather than failing with an error nobody can act on.
-        let hosts_needing_consent = Self::hosts_needing_consent(&client, &fetched_release_data.url);
-        if !hosts_needing_consent.is_empty() {
-            log::info!(
-                "Auto Update: holding the download for {}; not on the network allowlist",
-                hosts_needing_consent.join(", ")
-            );
-            this.update(cx, |this, cx| {
-                this.status = AutoUpdateStatus::NeedsEgressConsent {
-                    version: newer_version,
-                    hosts: hosts_needing_consent,
-                };
-                cx.notify();
-            });
-            return Ok(());
-        }
-
+        // ADR-F16 used to hold the download here until the user put GitHub's
+        // asset hosts on the allowlist. ADR-F38 narrowed the allowlist to
+        // AI-originated traffic, so updating the editor is no longer something
+        // the user has to permit; the consent path below survives only for a
+        // denial this lane is not supposed to produce.
         this.update(cx, |this, cx| {
             this.status = AutoUpdateStatus::Downloading {
                 version: newer_version.clone(),
@@ -1142,7 +1114,7 @@ fn asset_from_release(release: GithubRelease, asset_name: &str) -> Result<Releas
 async fn download_remote_server_binary(
     target_path: &PathBuf,
     release: ReleaseAsset,
-    client: Arc<HttpClientWithUrl>,
+    client: Arc<dyn HttpClient>,
 ) -> Result<()> {
     let temp = tempfile::Builder::new().tempfile_in(remote_servers_dir())?;
     let mut temp_file = File::create(&temp).await?;
@@ -1219,7 +1191,7 @@ async fn cleanup_remote_server_cache(
 async fn download_release(
     target_path: &Path,
     release: ReleaseAsset,
-    client: Arc<HttpClientWithUrl>,
+    client: Arc<dyn HttpClient>,
     mut on_progress: impl FnMut(Option<f32>),
 ) -> Result<()> {
     let mut target_file = File::create(&target_path).await?;

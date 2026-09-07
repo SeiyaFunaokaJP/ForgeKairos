@@ -189,7 +189,8 @@ impl HeadlessProject {
 
         let dap_store = cx.new(|cx| {
             let mut dap_store = DapStore::new_local(
-                http_client.clone(),
+                // ADR-F38: debug adapters are IDE tooling here too.
+                http_client::ide_lane(http_client.clone()),
                 node_runtime.clone(),
                 fs.clone(),
                 environment.clone(),
@@ -262,7 +263,10 @@ impl HeadlessProject {
                 environment.clone(),
                 manifest_tree,
                 languages.clone(),
-                http_client.clone(),
+                // ADR-F38: what language servers on this host fetch
+                // themselves with. Relayed to the IDE by ADR-F27, and the IDE
+                // does not gate the relay either.
+                http_client::ide_lane(http_client.clone()),
                 fs.clone(),
                 cx,
             );
@@ -270,6 +274,10 @@ impl HeadlessProject {
             lsp_store
         });
 
+        // Deliberately *not* on the IDE lane (ADR-F38): the ACP registry and
+        // the agent binaries it points at are AI infrastructure, and the local
+        // side keeps them gated too. The allowlist the IDE pushed (ADR-F11) is
+        // what they are judged against.
         AgentRegistryStore::init_global(cx, fs.clone(), http_client.clone());
 
         let agent_server_store = cx.new(|cx| {
@@ -307,7 +315,8 @@ impl HeadlessProject {
 
         let extensions = HeadlessExtensionStore::new(
             fs.clone(),
-            http_client.clone(),
+            // ADR-F38: extensions are how most language servers arrive.
+            http_client::ide_lane(http_client.clone()),
             paths::remote_extensions_dir().to_path_buf(),
             proxy,
             node_runtime,

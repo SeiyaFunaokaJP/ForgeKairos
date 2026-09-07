@@ -1279,8 +1279,8 @@ impl SshRemoteConnection {
             .context("リモートサーバーのバイナリをローカルにダウンロードできませんでした")
             .context(
                 "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。\
-                 本フォークは既定で外部通信を遮断しています。script\\build-dev.ps1 でビルドして \
-                 同梱アーティファクトを用意するか、許可リストに配信元を追加してください",
+                 script\\build-dev.ps1 でビルドして同梱アーティファクトを用意するか、\
+                 この PC から配信元に接続できることを確認してください",
             )?;
         self.upload_local_server_binary(&src_path, &tmp_path_compressed, delegate, cx)
             .await

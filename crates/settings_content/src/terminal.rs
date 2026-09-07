@@ -195,6 +195,10 @@ pub struct TerminalSettingsContent {
     pub bell: Option<TerminalBell>,
     /// Session log (TeraTerm-style output recording) settings.
     pub session_log: Option<TerminalSessionLogContent>,
+    /// マクロの実行ピッカーを開いたときフォルダーを閉じた状態にする。
+    ///
+    /// Default: false
+    pub macro_picker_folders_collapsed: Option<bool>,
 }
 
 #[with_fallible_options]

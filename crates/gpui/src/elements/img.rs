@@ -624,7 +624,10 @@ impl Asset for ImageAssetLoader {
         source: Self::Source,
         cx: &mut App,
     ) -> impl Future<Output = Self::Output> + Send + 'static {
-        let client = cx.http_client();
+        // ADR-F38: images the editor is asked to render (avatars, icons,
+        // documentation images) are IDE traffic, so they are not gated by the
+        // AI allowlist.
+        let client = http_client::ide_lane(cx.http_client());
         // TODO: Can we make SVGs always rescale?
         // let scale_factor = cx.scale_factor();
         let svg_renderer = cx.svg_renderer();

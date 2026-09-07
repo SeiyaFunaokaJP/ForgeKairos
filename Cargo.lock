@@ -478,6 +478,7 @@ dependencies = [
  "ai_onboarding",
  "anyhow",
  "async-channel 2.5.0",
+ "async-recursion",
  "audio",
  "base64 0.22.1",
  "buffer_diff",

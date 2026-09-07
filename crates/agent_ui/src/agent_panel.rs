@@ -65,6 +65,7 @@ use crate::{
 use agent_settings::AgentSettings;
 use ai_onboarding::AgentPanelOnboarding;
 use anyhow::{Context as _, Result, anyhow};
+use async_recursion::async_recursion;
 #[cfg(feature = "audio")]
 use audio::{Audio, Sound};
 use chrono::{DateTime, Utc};
@@ -78,10 +79,10 @@ use feature_flags::{CreateThreadToolFeatureFlag, FeatureFlagAppExt as _};
 use fs::Fs;
 use futures::FutureExt as _;
 use gpui::{
-    Action, Anchor, Animation, AnimationExt, AnyElement, App, AsyncWindowContext, Bounds,
-    ClipboardItem, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable, KeyContext, Pixels,
-    PlatformDisplay, Subscription, Task, TaskExt, WeakEntity, WindowHandle, canvas, prelude::*,
-    pulsating_between,
+    Action, Anchor, Animation, AnimationExt, AnyElement, App, AsyncWindowContext, Axis, Bounds,
+    ClipboardItem, Entity, EntityId, EventEmitter, ExternalPaths, FocusHandle, Focusable,
+    KeyContext, MouseDownEvent, Pixels, PlatformDisplay, Point, Subscription, Task, TaskExt,
+    WeakEntity, WindowHandle, canvas, prelude::*, pulsating_between,
 };
 use language::LanguageRegistry;
 use language_model::LanguageModelRegistry;
@@ -99,15 +100,18 @@ use ui::{
     ContextMenu, ContextMenuEntry, GradientFade, IconButton, KeyBinding, PopoverMenu,
     PopoverMenuHandle, ProjectEmptyState, Tab, Tooltip, prelude::*, utils::WithRemSize,
 };
-use util::ResultExt as _;
+use util::{ResultExt as _, TryFutureExt as _};
 use workspace::{
-    CollaboratorId, DraggedSelection, DraggedTab, MultiWorkspace, PathList, SerializedPathList,
-    ToggleWorkspaceSidebar, ToggleZoom, ToolbarItemView, Workspace, WorkspaceId,
+    CollaboratorId, DraggedSelection, DraggedTab, ItemId, Member, MultiWorkspace, Pane, PaneAxis,
+    PaneGroup, PathList, SerializedPathList, SplitDirection, SplitMode, ToggleWorkspaceSidebar,
+    ToggleZoom, ToolbarItemView, Workspace, WorkspaceId,
     dock::{DockPosition, Panel, PanelEvent},
     item::{ItemEvent, ItemHandle},
+    pane,
 };
 
 const AGENT_PANEL_KEY: &str = "agent_panel";
+const AGENT_PANEL_LAYOUT_KEY: &str = "agent_panel_layout";
 const MIN_PANEL_WIDTH: Pixels = px(300.);
 const LAST_USED_AGENT_KEY: &str = "agent_panel__last_used_external_agent";
 const LAST_CREATED_ENTRY_KIND_KEY: &str = "agent_panel__last_created_entry_kind";
@@ -333,6 +337,13 @@ fn read_legacy_serialized_panel(kvp: &KeyValueStore) -> Option<SerializedAgentPa
         .and_then(|json| serde_json::from_str::<SerializedAgentPanel>(&json).log_err())
 }
 
+/// 復元中のエージェントパネル (ワークスペースごと)。`load` が返るまでは
+/// `Workspace::panel::<AgentPanel>` では見つからないので、その間だけここに置く。
+#[derive(Default)]
+struct LoadingAgentPanels(HashMap<EntityId, WeakEntity<AgentPanel>>);
+
+impl gpui::Global for LoadingAgentPanels {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThreadTitleRegenerationResult {
     NotOpen,
@@ -371,6 +382,283 @@ struct SerializedActiveThread {
     agent_type: Agent,
     title: Option<String>,
     work_dirs: Option<SerializedPathList>,
+}
+
+// ---------------------------------------------------------------------------
+// パネル内レイアウトの永続化 (ADR-F36 Phase B / ADR-F37)
+// ---------------------------------------------------------------------------
+
+/// 分割の形とタブの並びは [`SerializedAgentPanel`] とは別の鍵に置く。
+/// 両者は別々のきっかけで書かれるので、1 行にまとめると read-modify-write で
+/// 取りこぼす。タブの中身は種類ごとの `SerializableItem` が自分の DB 行に持つ
+/// ので、ここには「どの種類のタブがどの順で並んでいたか」だけを残す。
+#[derive(Debug, Serialize, Deserialize)]
+struct SerializedAgentPanelLayout {
+    root: SerializedAgentPaneGroup,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum SerializedAgentPaneGroup {
+    Pane(SerializedAgentPane),
+    Group {
+        axis: SerializedAxis,
+        flexes: Option<Vec<f32>>,
+        children: Vec<SerializedAgentPaneGroup>,
+    },
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct SerializedAgentPane {
+    active: bool,
+    #[serde(default)]
+    items: Vec<SerializedPanelItem>,
+}
+
+/// パネルのタブ 1 枚。中央の `SerializedItem` と同じ 4 つ組で、種類ごとの復元は
+/// `workspace::deserialize_serializable_item` に投げる (ADR-F37)。
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct SerializedPanelItem {
+    kind: Arc<str>,
+    item_id: ItemId,
+    active: bool,
+    #[serde(default)]
+    preview: bool,
+}
+
+/// `gpui::Axis` は `serde` を実装していないので、読める文字列で持つ
+/// (ターミナル / ブラウザーパネルの `SerializedAxis` と同じ形式)。
+#[derive(Debug)]
+struct SerializedAxis(Axis);
+
+impl Serialize for SerializedAxis {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.0 {
+            Axis::Horizontal => serializer.serialize_str("horizontal"),
+            Axis::Vertical => serializer.serialize_str("vertical"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SerializedAxis {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let axis = String::deserialize(deserializer)?;
+        match axis.as_str() {
+            "horizontal" => Ok(SerializedAxis(Axis::Horizontal)),
+            "vertical" => Ok(SerializedAxis(Axis::Vertical)),
+            invalid => Err(serde::de::Error::custom(format!(
+                "Invalid axis value: '{invalid}'"
+            ))),
+        }
+    }
+}
+
+fn read_serialized_layout(
+    workspace_id: WorkspaceId,
+    kvp: &KeyValueStore,
+) -> Option<SerializedAgentPanelLayout> {
+    kvp.scoped(AGENT_PANEL_LAYOUT_KEY)
+        .read(&i64::from(workspace_id).to_string())
+        .log_err()
+        .flatten()
+        .and_then(|json| serde_json::from_str::<SerializedAgentPanelLayout>(&json).log_err())
+}
+
+fn serialize_pane_group(
+    member: &Member,
+    active_pane: &Entity<Pane>,
+    cx: &App,
+) -> SerializedAgentPaneGroup {
+    match member {
+        Member::Axis(PaneAxis {
+            axis,
+            members,
+            flexes,
+            bounding_boxes: _,
+        }) => SerializedAgentPaneGroup::Group {
+            axis: SerializedAxis(*axis),
+            children: members
+                .iter()
+                .map(|member| serialize_pane_group(member, active_pane, cx))
+                .collect(),
+            flexes: Some(flexes.lock().clone()),
+        },
+        Member::Pane(pane) => {
+            SerializedAgentPaneGroup::Pane(serialize_pane(pane, pane == active_pane, cx))
+        }
+    }
+}
+
+/// 種類を問わず、復元できるタブをすべて書き出す (ADR-F37)。
+fn serialize_pane(pane: &Entity<Pane>, active: bool, cx: &App) -> SerializedAgentPane {
+    let active_item_index = pane.read(cx).active_item_index();
+    let preview_item_id = pane.read(cx).preview_item_id();
+    let items = pane
+        .read(cx)
+        .items()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            let handle = item.to_serializable_item_handle(cx)?;
+            Some(SerializedPanelItem {
+                kind: Arc::from(handle.serialized_item_kind()),
+                item_id: item.item_id().as_u64(),
+                active: index == active_item_index,
+                preview: Some(item.item_id()) == preview_item_id,
+            })
+        })
+        .collect();
+    SerializedAgentPane { active, items }
+}
+
+/// 保存したレイアウトを組み立て直す。1 枚も復元できなければ `false`。
+async fn restore_layout(
+    panel: &Entity<AgentPanel>,
+    serialized: SerializedAgentPanelLayout,
+    workspace_id: Option<WorkspaceId>,
+    cx: &mut AsyncWindowContext,
+) -> bool {
+    let Some((root, active_pane)) =
+        deserialize_pane_group(panel, &serialized.root, workspace_id, cx).await
+    else {
+        return false;
+    };
+    panel
+        .update_in(cx, |panel, window, cx| {
+            panel.center = PaneGroup::with_root(root);
+            panel.active_pane = active_pane.unwrap_or_else(|| panel.center.first_pane());
+            panel.refresh_tabbed_threads(cx);
+            panel.sync_base_view_from_pane(window, cx);
+        })
+        .log_err()
+        .is_some()
+}
+
+#[async_recursion(?Send)]
+async fn deserialize_pane_group(
+    panel: &Entity<AgentPanel>,
+    serialized: &SerializedAgentPaneGroup,
+    workspace_id: Option<WorkspaceId>,
+    cx: &mut AsyncWindowContext,
+) -> Option<(Member, Option<Entity<Pane>>)> {
+    match serialized {
+        SerializedAgentPaneGroup::Group {
+            axis,
+            flexes,
+            children,
+        } => {
+            let mut active_pane = None;
+            let mut members = Vec::new();
+            for child in children {
+                if let Some((member, child_active)) =
+                    deserialize_pane_group(panel, child, workspace_id, cx).await
+                {
+                    members.push(member);
+                    active_pane = active_pane.or(child_active);
+                }
+            }
+            match members.len() {
+                0 => None,
+                1 => Some((members.remove(0), active_pane)),
+                _ => Some((
+                    Member::Axis(PaneAxis::load(axis.0, members, flexes.clone())),
+                    active_pane,
+                )),
+            }
+        }
+        SerializedAgentPaneGroup::Pane(serialized_pane) => {
+            if serialized_pane.items.is_empty() {
+                return None;
+            }
+            let pane = panel
+                .update_in(cx, |panel, window, cx| {
+                    new_thread_pane(panel.workspace.clone(), panel.project.clone(), window, cx)
+                })
+                .log_err()?;
+            restore_pane_items(panel, &pane, &serialized_pane.items, workspace_id, cx).await;
+            // 1 枚も戻せなかったペインは畳む (空のペインはタブバーすら描かれない)。
+            if pane.read_with(cx, |pane, _| pane.items_len()) == 0 {
+                return None;
+            }
+            Some((
+                Member::Pane(pane.clone()),
+                serialized_pane.active.then_some(pane),
+            ))
+        }
+    }
+}
+
+/// 種類ごとの復元。`workspace` に登録の無い種類は飛ばす。
+async fn restore_pane_items(
+    panel: &Entity<AgentPanel>,
+    pane: &Entity<Pane>,
+    items: &[SerializedPanelItem],
+    workspace_id: Option<WorkspaceId>,
+    cx: &mut AsyncWindowContext,
+) {
+    let Some(workspace_id) = workspace_id else {
+        log::info!("agent panel: this window has no workspace id, so its tabs cannot be restored");
+        return;
+    };
+    let (workspace, project) = panel.read_with(cx, |panel, _| {
+        (panel.workspace.clone(), panel.project.clone())
+    });
+
+    let mut tasks = Vec::new();
+    for item in items {
+        let task = pane.update_in(cx, |_, window, cx| {
+            workspace::deserialize_serializable_item(
+                &item.kind,
+                project.clone(),
+                workspace.clone(),
+                workspace_id,
+                item.item_id,
+                window,
+                cx,
+            )
+        });
+        match task {
+            Ok(Some(task)) => tasks.push((item.active, task)),
+            Ok(None) => log::info!(
+                "agent panel: no restore handler for a {:?} tab; skipping it",
+                item.kind
+            ),
+            Err(error) => {
+                log::warn!("agent panel: the window went away while restoring its tabs: {error:#}");
+                return;
+            }
+        }
+    }
+
+    let mut active_index = None;
+    let mut next_index = 0;
+    for (active, task) in tasks {
+        let Some(item) = task.await.log_err() else {
+            continue;
+        };
+        // 裏で足すときの挿し先は `Pane` に任せると「表のタブの次」になって
+        // 並びが崩れるので、末尾を明示する。
+        let added = pane
+            .update_in(cx, |pane, window, cx| {
+                pane.add_item_inner(item, false, false, false, Some(next_index), window, cx);
+            })
+            .log_err()
+            .is_some();
+        if added {
+            if active {
+                active_index = Some(next_index);
+            }
+            next_index += 1;
+        }
+    }
+    pane.update_in(cx, |pane, window, cx| {
+        pane.activate_item(active_index.unwrap_or(0), false, false, window, cx);
+    })
+    .log_err();
 }
 
 pub fn init(cx: &mut App) {
@@ -1191,6 +1479,21 @@ pub struct AgentPanel {
     context_server_registry: Entity<ContextServerRegistry>,
     focus_handle: FocusHandle,
     base_view: BaseView,
+    /// パネルの中のタブ列 (ADR-F36 Phase B)。スレッドは 1 本 = 1 枚の
+    /// [`ThreadItem`] としてここに載る。`base_view` の `AgentThread` は
+    /// 「[`Self::active_pane`] のアクティブなアイテム」の写しで、両者は
+    /// [`Self::sync_base_view_from_pane`] / [`Self::set_base_view`] で
+    /// 同期する。
+    center: PaneGroup,
+    active_pane: Entity<Pane>,
+    /// パネルに載っているスレッドの索引。`Panel::panes()` を辿れば同じものが
+    /// 得られるが、`&App` を取れない呼び出し元 ([`Self::conversation_views`])
+    /// のために持つ。更新はペインのイベントごとに丸ごと作り直す。
+    tabbed_threads: HashMap<ThreadId, Entity<ConversationView>>,
+    /// 保存したレイアウトを組み立てている最中。この間の保存は「まだ空の
+    /// パネル」を書いてしまうので止める。
+    restoring_layout: bool,
+    pending_layout_serialization: Task<Option<()>>,
     last_created_entry_kind: AgentPanelEntryKind,
     draft_thread: Option<Entity<ConversationView>>,
     retained_threads: HashMap<ThreadId, Entity<ConversationView>>,
@@ -1306,9 +1609,30 @@ impl AgentPanel {
         }));
     }
 
+    /// 復元しなかったアイテムの行の掃除は、中央とすべてのパネルの復元が揃って
+    /// からワークスペースが 1 回だけ走らせる (ADR-F37)。ここでやることは
+    /// 待ち合わせへの参加だけで、失敗しても必ず抜ける。
     pub fn load(
         workspace: WeakEntity<Workspace>,
-        mut cx: AsyncWindowContext,
+        cx: AsyncWindowContext,
+    ) -> Task<Result<Entity<Self>>> {
+        cx.spawn(async move |cx| {
+            workspace
+                .update(cx, |workspace, _| workspace.begin_item_restore())
+                .log_err();
+            let panel = Self::load_inner(workspace.clone(), cx).await;
+            workspace
+                .update_in(cx, |workspace, window, cx| {
+                    workspace.end_item_restore(window, cx);
+                })
+                .log_err();
+            panel
+        })
+    }
+
+    fn load_inner(
+        workspace: WeakEntity<Workspace>,
+        cx: &mut AsyncWindowContext,
     ) -> Task<Result<Entity<Self>>> {
         let kvp = cx.update(|_window, cx| KeyValueStore::global(cx)).ok();
         cx.spawn(async move |cx| {
@@ -1317,18 +1641,25 @@ impl AgentPanel {
                 .ok()
                 .flatten();
 
-            let (serialized_panel, global_last_used_agent, global_last_created_entry_kind) = cx
+            let (
+                serialized_panel,
+                serialized_layout,
+                global_last_used_agent,
+                global_last_created_entry_kind,
+            ) = cx
                 .background_spawn(async move {
                     match kvp {
                         Some(kvp) => {
                             let panel = workspace_id
                                 .and_then(|id| read_serialized_panel(id, &kvp))
                                 .or_else(|| read_legacy_serialized_panel(&kvp));
+                            let layout =
+                                workspace_id.and_then(|id| read_serialized_layout(id, &kvp));
                             let global_agent = read_global_last_used_agent(&kvp);
                             let global_entry_kind = read_global_last_created_entry_kind(&kvp);
-                            (panel, global_agent, global_entry_kind)
+                            (panel, layout, global_agent, global_entry_kind)
                         }
-                        None => (None, None, None),
+                        None => (None, None, None, None),
                     }
                 })
                 .await;
@@ -1386,6 +1717,9 @@ impl AgentPanel {
                 None
             };
 
+            // 保存したレイアウト (タブの並び) があるなら、旧形式の
+            // 「最後に見ていたスレッド 1 本」は読まない。1 世代だけ両方を読む
+            // 移行期間で、レイアウトが無いときだけ旧形式が効く。
             let thread_to_restore = if has_open_project && terminal_to_restore.is_none() {
                 if let Some(info) = serialized_panel
                     .as_ref()
@@ -1434,6 +1768,22 @@ impl AgentPanel {
             } else {
                 None
             };
+            // 借りたままだと `serialized_panel` を動かせないので、必要な分だけ写す。
+            let thread_to_restore = thread_to_restore.map(|(info, thread_id)| {
+                (
+                    info.agent_type.clone(),
+                    info.work_dirs.clone(),
+                    info.title.clone(),
+                    thread_id,
+                )
+            });
+            // レイアウト (タブの並び) があるならそちらが本命。旧形式の
+            // 「最後に見ていたスレッド 1 本」は、レイアウトが 1 枚も戻せな
+            // かったときの受け皿として取っておく (移行期の 1 世代)。
+            let restore_thread_now = serialized_layout.is_none();
+            let new_draft_thread_id = serialized_panel
+                .as_ref()
+                .and_then(|panel| panel.new_draft_thread_id);
 
             let panel = workspace.update_in(cx, |workspace, window, cx| {
                 let panel = cx.new(|cx| Self::new(workspace, window, cx));
@@ -1467,7 +1817,7 @@ impl AgentPanel {
                     // backend; otherwise fall back to the serialized
                     // selection, then the global last-used agent.
                     let initial_agent = match &thread_to_restore {
-                        Some((info, _)) => Some(clamp(info.agent_type.clone())),
+                        Some((agent_type, ..)) => Some(clamp(agent_type.clone())),
                         None => serialized_panel
                             .as_ref()
                             .and_then(|p| p.selected_agent.clone())
@@ -1487,24 +1837,20 @@ impl AgentPanel {
                             window,
                             cx,
                         );
-                    } else if let Some((info, thread_id)) = thread_to_restore {
+                    } else if restore_thread_now
+                        && let Some((_, work_dirs, title, thread_id)) = &thread_to_restore
+                    {
                         let agent = panel.selected_agent.clone();
                         panel.load_agent_thread(
                             agent,
-                            thread_id,
-                            info.work_dirs.as_ref().map(PathList::deserialize),
-                            info.title.clone().map(Into::into),
+                            *thread_id,
+                            work_dirs.as_ref().map(PathList::deserialize),
+                            title.clone().map(Into::into),
                             false,
                             AgentThreadSource::AgentPanel,
                             window,
                             cx,
                         );
-                    }
-                    if let Some(new_draft_thread_id) = serialized_panel
-                        .as_ref()
-                        .and_then(|p| p.new_draft_thread_id)
-                    {
-                        panel.restore_new_draft(new_draft_thread_id, window, cx);
                     }
                     cx.notify();
                 });
@@ -1512,8 +1858,78 @@ impl AgentPanel {
                 panel
             })?;
 
+            if let Some(layout) = serialized_layout {
+                // タブの復元 (`ThreadItem::deserialize`) はエージェントパネルを
+                // 借りに来るが、パネルがワークスペースに載るのは `load` が
+                // 返ってから。復元のあいだだけ「読み込み中のパネル」として
+                // 見せる ([`AgentPanel::loading_for_workspace`])。
+                let workspace_key = workspace.entity_id();
+                cx.update(|_window, cx| {
+                    cx.default_global::<LoadingAgentPanels>()
+                        .0
+                        .insert(workspace_key, panel.downgrade());
+                })
+                .log_err();
+                panel.update(cx, |panel, _| panel.restoring_layout = true);
+                let restored = restore_layout(&panel, layout, workspace_id, cx).await;
+                panel.update(cx, |panel, _| panel.restoring_layout = false);
+                // 1 枚も戻せなかった (保存した行がもう無い等) ときは、旧形式の
+                // 「最後に見ていたスレッド」でいつもどおり 1 本だけ開く。
+                if !restored
+                    && let Some((_, work_dirs, title, thread_id)) = thread_to_restore
+                {
+                    panel
+                        .update_in(cx, |panel, window, cx| {
+                            let agent = panel.selected_agent.clone();
+                            panel.load_agent_thread(
+                                agent,
+                                thread_id,
+                                work_dirs.as_ref().map(PathList::deserialize),
+                                title.map(Into::into),
+                                false,
+                                AgentThreadSource::AgentPanel,
+                                window,
+                                cx,
+                            );
+                        })
+                        .log_err();
+                }
+                cx.update(|_window, cx| {
+                    if let Some(loading) = cx.try_global::<LoadingAgentPanels>()
+                        && loading.0.contains_key(&workspace_key)
+                    {
+                        cx.default_global::<LoadingAgentPanels>()
+                            .0
+                            .remove(&workspace_key);
+                    }
+                })
+                .log_err();
+            }
+
+            // 下書き枠の復元はタブを組み立て終えてから。先にやると、復元した
+            // タブと同じスレッドをもう 1 つ作ってしまう (ADR-F36 Phase B)。
+            if let Some(new_draft_thread_id) = new_draft_thread_id {
+                panel
+                    .update_in(cx, |panel, window, cx| {
+                        panel.restore_new_draft(new_draft_thread_id, window, cx);
+                        cx.notify();
+                    })
+                    .log_err();
+            }
+
             Ok(panel)
         })
+    }
+
+    /// 復元中でまだワークスペースに載っていないパネル。
+    pub(crate) fn loading_for_workspace(
+        workspace: &WeakEntity<Workspace>,
+        cx: &App,
+    ) -> Option<Entity<Self>> {
+        cx.try_global::<LoadingAgentPanels>()?
+            .0
+            .get(&workspace.entity_id())?
+            .upgrade()
     }
 
     pub(crate) fn new(workspace: &Workspace, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -1634,9 +2050,16 @@ impl AgentPanel {
             },
         );
 
+        let pane = new_thread_pane(workspace.clone(), project.clone(), window, cx);
+
         let panel = Self {
             workspace_id,
             base_view,
+            center: PaneGroup::new(pane.clone()),
+            active_pane: pane,
+            tabbed_threads: HashMap::default(),
+            restoring_layout: false,
+            pending_layout_serialization: Task::ready(None),
             last_created_entry_kind: AgentPanelEntryKind::Thread,
             workspace,
             user_store,
@@ -1889,7 +2312,11 @@ impl AgentPanel {
                 let draft_id = draft.read(cx).thread_id;
                 self.draft_thread = None;
                 self._draft_editor_observation = None;
-                self.retained_threads.insert(draft_id, draft);
+                // タブに載っている下書きは、そのタブが持ち続ける
+                // (ADR-F36 Phase B: 保持枠はタブの無いスレッドだけ)。
+                if !ThreadItem::is_open_in_a_tab(draft_id, cx) {
+                    self.retained_threads.insert(draft_id, draft);
+                }
             } else if *draft.read(cx).agent_key() != self.selected_agent {
                 let old_draft_id = draft.read(cx).thread_id;
                 ThreadMetadataStore::global(cx).update(cx, |store, cx| {
@@ -1942,13 +2369,15 @@ impl AgentPanel {
             return;
         }
 
+        // 復元したタブに同じスレッドが載っているなら、それを下書き枠に据える
+        // (同じスレッドの `ConversationView` を 2 つ作らない)。
         let active_matching = match &self.base_view {
             BaseView::AgentThread { conversation_view }
                 if conversation_view.read(cx).thread_id == thread_id =>
             {
                 Some(conversation_view.clone())
             }
-            _ => None,
+            _ => self.tabbed_threads.get(&thread_id).cloned(),
         };
         if let Some(conversation_view) = active_matching {
             self.observe_draft_editor(&conversation_view, cx);
@@ -3326,6 +3755,9 @@ impl AgentPanel {
         let conversation_view = if let Some(view) = self.retained_threads.remove(&id) {
             self.try_make_empty_draft_ephemeral(view.clone(), cx);
             view
+        } else if let Some(view) = self.tabbed_threads.get(&id).cloned() {
+            // すでにパネルのタブに載っている: そのタブを前に出すだけ。
+            view
         } else if let Some(draft) = &self.draft_thread {
             if draft.read(cx).thread_id == id {
                 draft.clone()
@@ -3376,6 +3808,8 @@ impl AgentPanel {
         cx: &mut Context<Self>,
     ) {
         self.retained_threads.remove(&id);
+        // 消したスレッドのタブがパネルに残っていると、無いスレッドを描き続ける。
+        self.take_thread_from_tab(id, window, cx);
         ThreadMetadataStore::global(cx).update(cx, |store, cx| {
             store.delete(id, cx);
         });
@@ -3444,6 +3878,7 @@ impl AgentPanel {
         let cv = self
             .retained_threads
             .get(&id)
+            .or_else(|| self.tabbed_threads.get(&id))
             .or_else(|| {
                 self.draft_thread
                     .as_ref()
@@ -3474,6 +3909,7 @@ impl AgentPanel {
         let cv = self
             .retained_threads
             .get(&id)
+            .or_else(|| self.tabbed_threads.get(&id))
             .or_else(|| {
                 self.draft_thread
                     .as_ref()
@@ -4146,15 +4582,18 @@ impl AgentPanel {
         thread_id: &ThreadId,
         cx: &App,
     ) -> Option<&Entity<ConversationView>> {
-        self.retained_threads.get(thread_id).or_else(|| {
-            if let Some(view) = self.active_conversation_view()
-                && view.read(cx).thread_id == *thread_id
-            {
-                Some(view)
-            } else {
-                None
-            }
-        })
+        self.retained_threads
+            .get(thread_id)
+            .or_else(|| self.tabbed_threads.get(thread_id))
+            .or_else(|| {
+                if let Some(view) = self.active_conversation_view()
+                    && view.read(cx).thread_id == *thread_id
+                {
+                    Some(view)
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn regenerate_thread_title(
@@ -4193,11 +4632,16 @@ impl AgentPanel {
         })
     }
 
+    /// パネルが知っているスレッドの一覧: 表示中のもの、パネルのタブに載って
+    /// いるもの、保持枠のもの。同じスレッドが 2 度出ないように束ねる。
     pub fn conversation_views(&self) -> Vec<Entity<ConversationView>> {
+        let mut seen = HashSet::default();
         self.active_conversation_view()
             .into_iter()
             .cloned()
+            .chain(self.tabbed_threads.values().cloned())
             .chain(self.retained_threads.values().cloned())
+            .filter(|view| seen.insert(view.entity_id()))
             .collect()
     }
 
@@ -4223,6 +4667,7 @@ impl AgentPanel {
         let conversation_views = self
             .active_conversation_view()
             .into_iter()
+            .chain(self.tabbed_threads.values())
             .chain(self.retained_threads.values());
 
         for conversation_view in conversation_views {
@@ -4246,7 +4691,13 @@ impl AgentPanel {
             });
         }
 
-        for conversation_view in self.retained_threads.values() {
+        for conversation_view in self
+            .retained_threads
+            .values()
+            .chain(self.tabbed_threads.values())
+            .cloned()
+            .collect::<Vec<_>>()
+        {
             conversation_view.update(cx, |conversation_view, cx| {
                 conversation_view.set_work_dirs(new_work_dirs.clone(), cx);
             });
@@ -4260,10 +4711,16 @@ impl AgentPanel {
         // the project's current worktrees. Without this, threads saved
         // before a worktree was added would have stale paths and not
         // appear under the correct sidebar group.
-        let mut thread_ids: Vec<ThreadId> = self.retained_threads.keys().copied().collect();
+        let mut seen_thread_ids: HashSet<ThreadId> = self
+            .retained_threads
+            .keys()
+            .chain(self.tabbed_threads.keys())
+            .copied()
+            .collect();
         if let Some(active_id) = self.active_thread_id(cx) {
-            thread_ids.push(active_id);
+            seen_thread_ids.insert(active_id);
         }
+        let thread_ids: Vec<ThreadId> = seen_thread_ids.into_iter().collect();
         if !thread_ids.is_empty() {
             ThreadMetadataStore::global(cx).update(cx, |store, cx| {
                 store.update_worktree_paths(&thread_ids, new_worktree_paths, cx);
@@ -4271,10 +4728,20 @@ impl AgentPanel {
         }
     }
 
+    /// 表示枠から外れたスレッドを保持枠へ預ける。
+    ///
+    /// 預けるのは**どこにもタブが無い**スレッドだけ (ADR-F36 Phase B)。
+    /// パネル自身がタブ列になったので、タブを切り替えただけのスレッドは
+    /// そのタブが持ち続ける。保持枠にも入れると同じ `ConversationView` を
+    /// 2 か所が握り、`cleanup_retained_threads` の勘定も狂う。
     fn retain_running_thread(&mut self, old_view: BaseView, cx: &mut Context<Self>) {
         let BaseView::AgentThread { conversation_view } = old_view else {
             return;
         };
+
+        if ThreadItem::is_open_in_a_tab(conversation_view.read(cx).thread_id, cx) {
+            return;
+        }
 
         if self
             .draft_thread
@@ -4356,26 +4823,32 @@ impl AgentPanel {
         self.retained_threads.remove(&thread_id);
     }
 
-    /// いま見せているスレッドをタブへ明け渡す。パネルは新しい下書きに戻る。
-    pub(crate) fn take_active_thread_for_tab(
+    /// パネルのペインからこのスレッドのタブを外し、`ConversationView` だけ
+    /// 明け渡す。アイテムごと移せない経路 (別ウィンドウのタブとして開き直す
+    /// 等) の受け口で、外したタブはパネルに何も残さない。
+    fn take_thread_from_tab(
         &mut self,
+        thread_id: ThreadId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Entity<ConversationView>> {
-        let BaseView::AgentThread { conversation_view } = &self.base_view else {
-            return None;
-        };
-        let conversation_view = conversation_view.clone();
-        // `retain_running_thread` を通さない = パネルには残さない。
-        self.base_view = BaseView::Uninitialized;
+        let (pane, item) = self.center.panes().into_iter().find_map(|pane| {
+            let item = pane
+                .read(cx)
+                .items()
+                .filter_map(|item| item.downcast::<ThreadItem>())
+                .find(|item| item.read(cx).thread_id() == thread_id)?;
+            Some((pane.clone(), item))
+        })?;
+
+        let conversation_view = item.read(cx).conversation_view().clone();
+        // 外したときにパネルへ返させない (返させると同じスレッドを 2 か所が持つ)。
+        item.update(cx, |item, cx| item.give_up_thread(cx));
+        pane.update(cx, |pane, cx| {
+            pane.remove_item(item.entity_id(), false, false, window, cx);
+        });
         self.release_conversation_view(&conversation_view, cx);
-        // 下書きに戻れないとき (開いているプロジェクトが無い) でも、手放した
-        // スレッドの購読が残らないようにここで一度張り替えておく。
-        self.refresh_base_view_subscriptions(window, cx);
-        self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
-        self.serialize(cx);
-        cx.emit(AgentPanelEvent::ActiveViewChanged);
-        cx.notify();
+        self.refresh_tabbed_threads(cx);
         Some(conversation_view)
     }
 
@@ -4388,12 +4861,8 @@ impl AgentPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<ConversationView> {
-        let is_active = matches!(
-            &self.base_view,
-            BaseView::AgentThread { conversation_view }
-                if conversation_view.read(cx).thread_id == thread_id
-        );
-        if is_active && let Some(conversation_view) = self.take_active_thread_for_tab(window, cx) {
+        if let Some(conversation_view) = self.take_thread_from_tab(thread_id, window, cx) {
+            self.sync_base_view_from_pane(window, cx);
             return conversation_view;
         }
 
@@ -4409,8 +4878,10 @@ impl AgentPanel {
             return conversation_view;
         }
 
-        let (work_dirs, title) = ThreadMetadataStore::try_global(cx)
-            .and_then(|store| store.read(cx).entry(thread_id).cloned())
+        let metadata = ThreadMetadataStore::try_global(cx)
+            .and_then(|store| store.read(cx).entry(thread_id).cloned());
+        let (work_dirs, title) = metadata
+            .as_ref()
             .map(|metadata| {
                 (
                     Some(metadata.folder_paths().clone()),
@@ -4418,6 +4889,16 @@ impl AgentPanel {
                 )
             })
             .unwrap_or((None, None));
+        // 下書きのまま保存されていたスレッドは、打ちかけの本文も一緒に戻す
+        // (`restore_new_draft` と同じ扱い)。
+        let initial_content = metadata
+            .as_ref()
+            .filter(|metadata| metadata.is_draft())
+            .and_then(|_| crate::draft_prompt_store::read(thread_id, cx))
+            .map(|blocks| AgentInitialContent::ContentBlock {
+                blocks,
+                auto_submit: false,
+            });
 
         // タブへ渡すスレッドはパネルの選択とは無関係なので、パネルが覚えて
         // いるエージェント (と「最後に使ったエージェント」) を書き換えない。
@@ -4431,7 +4912,7 @@ impl AgentPanel {
             Some(thread_id),
             work_dirs,
             title,
-            None,
+            initial_content,
             None,
             AgentThreadSource::AgentPanel,
             window,
@@ -4469,6 +4950,496 @@ impl AgentPanel {
         self.retain_running_thread(BaseView::AgentThread { conversation_view }, cx);
     }
 
+    // -- パネル内のペイン (ADR-F36 Phase B) ----------------------------------
+
+    pub(crate) fn active_pane(&self) -> &Entity<Pane> {
+        &self.active_pane
+    }
+
+    /// 分割の形とタブの並びを保存する。中身は種類ごとの `SerializableItem` が
+    /// 自分の行に書くので、ここが持つのは並びだけ (ADR-F37)。
+    fn serialize_layout(&mut self, cx: &mut Context<Self>) {
+        if self.restoring_layout {
+            return;
+        }
+        let Some(workspace_id) = self.workspace_id else {
+            return;
+        };
+        let kvp = KeyValueStore::global(cx);
+        self.pending_layout_serialization = cx.spawn(async move |panel, cx| {
+            // まとめて動く操作 (ドロップ = 取り外し + 追加) で 2 回書かないように。
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
+            let panel = panel.upgrade()?;
+            let serialized = panel.update(cx, |panel, cx| SerializedAgentPanelLayout {
+                root: serialize_pane_group(&panel.center.root, &panel.active_pane, cx),
+            });
+            cx.background_spawn(
+                async move {
+                    kvp.scoped(AGENT_PANEL_LAYOUT_KEY)
+                        .write(
+                            i64::from(workspace_id).to_string(),
+                            serde_json::to_string(&serialized)?,
+                        )
+                        .await?;
+                    anyhow::Ok(())
+                }
+                .log_err(),
+            )
+            .await;
+            Some(())
+        });
+    }
+
+    /// パネルのアクティブなペインが出しているスレッドのタブ。
+    pub(crate) fn active_thread_item(&self, cx: &App) -> Option<(Entity<Pane>, EntityId)> {
+        let item = self.active_pane.read(cx).active_item()?;
+        item.downcast::<ThreadItem>()?;
+        Some((self.active_pane.clone(), item.item_id()))
+    }
+
+    fn panel_panes(&self) -> Vec<Entity<Pane>> {
+        self.center.panes().into_iter().cloned().collect()
+    }
+
+    fn thread_items(&self, cx: &App) -> Vec<Entity<ThreadItem>> {
+        self.center
+            .panes()
+            .into_iter()
+            .flat_map(|pane| pane.read(cx).items())
+            .filter_map(|item| item.downcast::<ThreadItem>())
+            .collect()
+    }
+
+    /// このパネルの中で、その `ConversationView` を出しているタブ。
+    fn thread_item_for_view(
+        &self,
+        conversation_view: &Entity<ConversationView>,
+        cx: &App,
+    ) -> Option<(Entity<Pane>, Entity<ThreadItem>)> {
+        for pane in self.center.panes() {
+            for item in pane.read(cx).items() {
+                let Some(item) = item.downcast::<ThreadItem>() else {
+                    continue;
+                };
+                if item.read(cx).conversation_view().entity_id() == conversation_view.entity_id() {
+                    return Some((pane.clone(), item));
+                }
+            }
+        }
+        None
+    }
+
+    /// パネルに載っているスレッドの索引を作り直す。
+    fn refresh_tabbed_threads(&mut self, cx: &App) {
+        self.tabbed_threads = self
+            .thread_items(cx)
+            .into_iter()
+            .map(|item| {
+                let conversation_view = item.read(cx).conversation_view().clone();
+                let thread_id = conversation_view.read(cx).thread_id;
+                (thread_id, conversation_view)
+            })
+            .collect();
+    }
+
+    /// `conversation_view` のタブをアクティブなペインに用意して前に出す。
+    /// すでにどこかのペインにあれば、そのペインごとアクティブにする。
+    fn show_thread_in_pane(
+        &mut self,
+        conversation_view: &Entity<ConversationView>,
+        focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some((pane, item)) = self.thread_item_for_view(conversation_view, cx) {
+            let index = pane
+                .read(cx)
+                .items()
+                .position(|candidate| candidate.item_id() == item.entity_id());
+            if let Some(index) = index {
+                pane.update(cx, |pane, cx| {
+                    pane.activate_item(index, focus, focus, window, cx);
+                });
+            }
+            self.activate_pane(pane, cx);
+            return;
+        }
+
+        let item = ThreadItem::for_panel(
+            conversation_view.clone(),
+            self.workspace.clone(),
+            window,
+            cx,
+        );
+        let pane = self.active_pane.clone();
+        pane.update(cx, |pane, cx| {
+            pane.add_item(Box::new(item), focus, focus, None, window, cx);
+        });
+    }
+
+    /// [`Self::active_pane`] のアクティブなアイテムに `base_view` を合わせる。
+    /// タブのクリックやタブを閉じたあとの選び直しがここを通る。
+    fn sync_base_view_from_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let active = self
+            .active_pane
+            .read(cx)
+            .active_item()
+            .and_then(|item| item.downcast::<ThreadItem>())
+            .map(|item| item.read(cx).conversation_view().clone());
+
+        match active {
+            Some(conversation_view) => {
+                if matches!(
+                    &self.base_view,
+                    BaseView::AgentThread { conversation_view: current }
+                        if current.entity_id() == conversation_view.entity_id()
+                ) {
+                    return;
+                }
+                self.set_base_view(
+                    BaseView::AgentThread { conversation_view },
+                    false,
+                    window,
+                    cx,
+                );
+            }
+            None => {
+                // 最後のタブが閉じられた。パネルは畳まず、いつもの下書きに戻す
+                // (ADR-F36 Phase B)。
+                if matches!(self.base_view, BaseView::Terminal { .. }) {
+                    return;
+                }
+                // レイアウトを組み立て直している最中は、途中の「まだ空の
+                // ペイン」を見て下書きを作らない (作ると復元したタブの隣に
+                // 空の下書きが混ざる)。
+                if self.restoring_layout {
+                    return;
+                }
+                let old_view = std::mem::replace(&mut self.base_view, BaseView::Uninitialized);
+                self.retain_running_thread(old_view, cx);
+                self.refresh_base_view_subscriptions(window, cx);
+                self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
+                cx.emit(AgentPanelEvent::ActiveViewChanged);
+                cx.notify();
+            }
+        }
+    }
+
+    /// このペインを「次の操作の宛先」にする。フォーカスは動かさない。
+    fn activate_pane(&mut self, pane: Entity<Pane>, cx: &mut Context<Self>) {
+        if pane == self.active_pane {
+            return;
+        }
+        self.active_pane = pane;
+        cx.notify();
+    }
+
+    /// クリックが落ちたペインをアクティブにする ([`pane::Event::Focus`] は
+    /// ペインの外からフォーカスが入ったときにしか鳴らないので取りこぼす)。
+    fn activate_pane_at(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pane) = self.center.pane_at_pixel_position(position).cloned() else {
+            return;
+        };
+        if pane == self.active_pane {
+            return;
+        }
+        self.activate_pane(pane, cx);
+        self.sync_base_view_from_pane(window, cx);
+    }
+
+    fn split_pane(
+        &mut self,
+        pane_to_split: &Entity<Pane>,
+        direction: SplitDirection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<Pane> {
+        let new_pane = new_thread_pane(self.workspace.clone(), self.project.clone(), window, cx);
+        self.center.split(pane_to_split, &new_pane, direction, cx);
+        cx.notify();
+        new_pane
+    }
+
+    /// 新しいスレッドを**このペインに**開く。
+    ///
+    /// 分割した先を埋めるための入り口。`activate_new_thread` は「下書き枠」を
+    /// 使い回すので、既にどこかのタブに載っている下書きを前に出すだけになり、
+    /// 割ったペインが空のまま残ってしまう。ここでは必ず新しいスレッドを作る。
+    fn open_new_thread_in_pane(
+        &mut self,
+        pane: &Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.has_open_project(cx) {
+            return;
+        }
+        let thread = self.create_agent_thread_with_server(
+            self.selected_agent(cx),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            AgentThreadSource::AgentPanel,
+            window,
+            cx,
+        );
+        let conversation_view = thread.conversation_view;
+        let item = ThreadItem::for_panel(
+            conversation_view.clone(),
+            self.workspace.clone(),
+            window,
+            cx,
+        );
+        pane.update(cx, |pane, cx| {
+            pane.add_item(Box::new(item), true, true, None, window, cx);
+        });
+        self.set_base_view(
+            BaseView::AgentThread { conversation_view },
+            true,
+            window,
+            cx,
+        );
+    }
+
+    /// 今のスレッドを右に切り出して左右に分割する。ペインに 1 枚しか無いときは
+    /// 新しいスレッドを右に開く。
+    pub(crate) fn split_active_thread_right(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane = self.active_pane.clone();
+        if pane.read(cx).items_len() < 2 {
+            let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
+            self.activate_pane(new_pane.clone(), cx);
+            self.open_new_thread_in_pane(&new_pane, window, cx);
+            window.focus(&new_pane.focus_handle(cx), cx);
+            return;
+        }
+        let Some(item) = pane.update(cx, |pane, cx| pane.take_active_item(window, cx)) else {
+            return;
+        };
+        let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
+        new_pane.update(cx, |pane, cx| {
+            pane.add_item(item, true, true, None, window, cx);
+        });
+        self.activate_pane(new_pane.clone(), cx);
+        window.focus(&new_pane.focus_handle(cx), cx);
+        self.sync_base_view_from_pane(window, cx);
+    }
+
+    /// パネルの外のペインへ移っていったスレッドへの参照を手放す。
+    ///
+    /// タブを他所へ動かすと `Pane` は `ActivateItem` → `RemovedItem` の順に
+    /// 鳴らすので、最初の 1 発の時点でもう「このパネルの持ち物ではない」。
+    /// ここで手放しておかないと、その直後の `activate_draft` が
+    /// `draft_thread` に残った参照を拾って、他所のタブにあるスレッドを
+    /// パネルにもう 1 枚描いてしまう (ADR-F36 Phase B)。
+    ///
+    /// **閉じられた**アイテムは手放さない (どのペインにも居ないので区別が付く)。
+    /// 走っているスレッドの引き取りは従来どおり `retain_running_thread` の担当。
+    fn release_views_that_left_the_panel(&mut self, cx: &mut Context<Self>) {
+        let this = cx.entity_id();
+        if let Some(draft) = self.draft_thread.clone()
+            && self.view_moved_out_of_this_panel(&draft, this, cx)
+        {
+            self.draft_thread = None;
+            self._draft_editor_observation = None;
+        }
+
+        let moved_out = self
+            .retained_threads
+            .iter()
+            .filter(|(_, view)| self.view_moved_out_of_this_panel(view, this, cx))
+            .map(|(thread_id, _)| *thread_id)
+            .collect::<Vec<_>>();
+        for thread_id in moved_out {
+            self.retained_threads.remove(&thread_id);
+        }
+    }
+
+    /// そのスレッドのタブが、このパネルの外のペインに載っているか。
+    ///
+    /// 閉じられたばかりのアイテムは索引には残るがどのペインにも居ないので
+    /// `false` (= このパネルがまだ持ち主)。走っているスレッドの引き取りは
+    /// 従来どおり [`Self::retain_running_thread`] の担当。
+    fn view_moved_out_of_this_panel(
+        &self,
+        conversation_view: &Entity<ConversationView>,
+        this: EntityId,
+        cx: &App,
+    ) -> bool {
+        let thread_id = conversation_view.read(cx).thread_id;
+        let Some(item_id) =
+            ThreadItem::item_showing_view(thread_id, conversation_view.entity_id(), cx)
+        else {
+            return false;
+        };
+        let hosted_by =
+            |pane: &Entity<Pane>| pane.read(cx).items().any(|item| item.item_id() == item_id);
+        if self.center.panes().into_iter().any(hosted_by) {
+            return false;
+        }
+        self.panes_outside_this_panel(this, cx)
+            .iter()
+            .any(hosted_by)
+    }
+
+    /// このウィンドウのワークスペースが持つペインのうち、このパネルのもの
+    /// 以外。**自分を読まない**のが肝心で、`Workspace::all_panes` はドックの
+    /// 全パネルを `read` するので、パネル自身の更新中に呼ぶと落ちる。
+    fn panes_outside_this_panel(&self, this: EntityId, cx: &App) -> Vec<Entity<Pane>> {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return Vec::new();
+        };
+        let workspace = workspace.read(cx);
+        let mut panes = workspace.panes().to_vec();
+        for dock in workspace.all_docks() {
+            for panel in dock.read(cx).panels() {
+                if panel.panel_id() == this {
+                    continue;
+                }
+                panes.extend(panel.panes(cx));
+            }
+        }
+        panes
+    }
+
+    fn handle_pane_event(
+        &mut self,
+        pane: &Entity<Pane>,
+        event: &pane::Event,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.release_views_that_left_the_panel(cx);
+        match event {
+            pane::Event::ActivateItem { local, .. } => {
+                if *local {
+                    self.activate_pane(pane.clone(), cx);
+                }
+                if pane == &self.active_pane {
+                    self.sync_base_view_from_pane(window, cx);
+                }
+                self.serialize_layout(cx);
+            }
+            pane::Event::AddItem { item } => {
+                if let Some(workspace) = self.workspace.upgrade() {
+                    workspace.update(cx, |workspace, cx| {
+                        item.added_to_pane(workspace, pane.clone(), window, cx)
+                    })
+                }
+                // `Item::added_to_workspace` が既定の「エディター領域のタブ」に
+                // 戻すので、パネルに載ったことはここで上書きして教える。
+                if let Some(item) = item.downcast::<ThreadItem>() {
+                    item.update(cx, |item, cx| {
+                        item.set_host(crate::thread_item::ThreadItemHost::Panel, cx)
+                    });
+                    // タブで戻ってきたスレッドは保持枠から出す (二重所有を避ける)。
+                    let thread_id = item.read(cx).thread_id();
+                    self.retained_threads.remove(&thread_id);
+                }
+                self.refresh_tabbed_threads(cx);
+                if pane == &self.active_pane {
+                    self.sync_base_view_from_pane(window, cx);
+                }
+                self.serialize_layout(cx);
+            }
+            pane::Event::RemovedItem { .. } => {
+                self.refresh_tabbed_threads(cx);
+                if pane == &self.active_pane {
+                    self.sync_base_view_from_pane(window, cx);
+                }
+                self.serialize_layout(cx);
+            }
+            pane::Event::Remove { focus_on_pane } => {
+                let pane_count_before_removal = self.center.panes().len();
+                if pane_count_before_removal == 1 {
+                    // 最後のペインは畳まない。空のままだとタブバーすら出ない
+                    // ので、いつもの下書きを 1 枚出しておく (ADR-F36 Phase B)。
+                    self.sync_base_view_from_pane(window, cx);
+                    return;
+                }
+                if let Err(error) = self.center.remove(pane, cx) {
+                    log::warn!("agent panel: could not remove a pane: {error:#}");
+                }
+                let focus_on_pane = focus_on_pane
+                    .clone()
+                    .or_else(|| self.center.panes().pop().cloned());
+                if let Some(focus_on_pane) = focus_on_pane {
+                    focus_on_pane.focus_handle(cx).focus(window, cx);
+                    if self.center.panes().contains(&&focus_on_pane) {
+                        self.activate_pane(focus_on_pane, cx);
+                    }
+                }
+                if !self.center.panes().contains(&&self.active_pane) {
+                    self.active_pane = self.center.first_pane();
+                }
+                self.refresh_tabbed_threads(cx);
+                self.sync_base_view_from_pane(window, cx);
+                self.serialize_layout(cx);
+            }
+            pane::Event::ZoomIn => {
+                for pane in self.center.panes() {
+                    pane.update(cx, |pane, cx| pane.set_zoomed(true, cx));
+                }
+                self.zoomed = true;
+                cx.emit(PanelEvent::ZoomIn);
+                cx.notify();
+            }
+            pane::Event::ZoomOut => {
+                for pane in self.center.panes() {
+                    pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
+                }
+                self.zoomed = false;
+                cx.emit(PanelEvent::ZoomOut);
+                cx.notify();
+            }
+            &pane::Event::Split { direction, mode } => {
+                let pane = pane.clone();
+                match mode {
+                    SplitMode::ClonePane | SplitMode::EmptyPane => {
+                        let new_pane = self.split_pane(&pane, direction, window, cx);
+                        self.activate_pane(new_pane.clone(), cx);
+                        // 新しいペインは空なので、新しいスレッドを 1 本入れる。
+                        self.open_new_thread_in_pane(&new_pane, window, cx);
+                        window.focus(&new_pane.focus_handle(cx), cx);
+                    }
+                    SplitMode::MovePane => {
+                        let Some(item) =
+                            pane.update(cx, |pane, cx| pane.take_active_item(window, cx))
+                        else {
+                            return;
+                        };
+                        let new_pane = self.split_pane(&pane, direction, window, cx);
+                        new_pane.update(cx, |pane, cx| {
+                            pane.add_item(item, true, true, None, window, cx);
+                        });
+                        self.activate_pane(new_pane.clone(), cx);
+                        window.focus(&new_pane.focus_handle(cx), cx);
+                        self.sync_base_view_from_pane(window, cx);
+                    }
+                }
+            }
+            pane::Event::Focus => {
+                self.activate_pane(pane.clone(), cx);
+                self.sync_base_view_from_pane(window, cx);
+            }
+            pane::Event::ItemPinned | pane::Event::ItemUnpinned => self.serialize_layout(cx),
+            _ => {}
+        }
+    }
+
     fn set_base_view(
         &mut self,
         new_view: BaseView,
@@ -4478,6 +5449,11 @@ impl AgentPanel {
     ) {
         let old_view = std::mem::replace(&mut self.base_view, new_view);
         self.retain_running_thread(old_view, cx);
+
+        if let BaseView::AgentThread { conversation_view } = &self.base_view {
+            let conversation_view = conversation_view.clone();
+            self.show_thread_in_pane(&conversation_view, focus, window, cx);
+        }
 
         if let BaseView::AgentThread { conversation_view } = &self.base_view {
             let conversation_view = conversation_view.read(cx);
@@ -4643,10 +5619,26 @@ impl AgentPanel {
             });
         }
 
+        // ADR-F36 Phase B: パネル自身のタブにあるなら、そのタブを前に出す。
+        // (`ThreadItem::activate_existing` は `Workspace::activate_item` 経由
+        // なのでドックのパネルのペインには届かない。)
+        if let Some(conversation_view) = self.tabbed_threads.get(&thread_id).cloned() {
+            self.set_base_view(
+                BaseView::AgentThread { conversation_view },
+                focus,
+                window,
+                cx,
+            );
+            return;
+        }
+
         // ADR-F36: the user moved this thread into a tab. Activate that tab
         // instead of taking the thread back into the panel — the tab is where
-        // they chose to keep it.
-        if ThreadItem::activate_existing(thread_id, cx) {
+        // they chose to keep it. 別のワークスペース (同じウィンドウの別
+        // プロジェクト) のタブは相手のものなので触らない。
+        if ThreadItem::is_open_in_workspace(thread_id, &self.workspace, cx)
+            && ThreadItem::activate_existing(thread_id, cx)
+        {
             if matches!(self.base_view, BaseView::Uninitialized) {
                 self.activate_draft(false, source, window, cx);
             }
@@ -5190,6 +6182,136 @@ impl agent::SiblingThreadHost for AgentPanelSiblingHost {
     }
 }
 
+/// パネルの中のペインを 1 枚作る (ADR-F36 Phase B)。ブラウザーパネルの
+/// `new_browser_pane` と同じ作りで、違うのは「+」が新しいスレッドになることと、
+/// 分割を中央ではなくこのパネルの [`PaneGroup`] に向けること。
+fn new_thread_pane(
+    workspace: WeakEntity<Workspace>,
+    project: Entity<Project>,
+    window: &mut Window,
+    cx: &mut Context<AgentPanel>,
+) -> Entity<Pane> {
+    let agent_panel = cx.entity();
+    let pane = cx.new(|cx| {
+        let mut pane = Pane::new(
+            workspace.clone(),
+            project.clone(),
+            Default::default(),
+            None,
+            NewThread.boxed_clone(),
+            false,
+            window,
+            cx,
+        );
+        pane.set_can_navigate(false, cx);
+        pane.display_nav_history_buttons(None);
+        pane.set_should_display_tab_bar(|_, _| true);
+        pane.set_zoom_out_on_close(false);
+
+        let split_predicate_panel = agent_panel.downgrade();
+        pane.set_can_split(Some(Arc::new(move |pane, dragged_item, _window, cx| {
+            let Some(tab) = dragged_item.downcast_ref::<DraggedTab>() else {
+                return false;
+            };
+            let is_current_pane = tab.pane == cx.entity();
+            let Ok(can_drag_away) = split_predicate_panel.read_with(cx, |panel, _| {
+                let panes = panel.center.panes();
+                !panes.contains(&&tab.pane)
+                    || panes.len() > 1
+                    || (!is_current_pane || pane.items_len() > 1)
+            }) else {
+                return false;
+            };
+            if !can_drag_away {
+                return false;
+            }
+            // 種類は問わない: IDE 内のどのタブでもここへ落とせる (ADR-F33)。
+            if is_current_pane {
+                pane.item_for_index(tab.ix).is_some()
+            } else {
+                tab.pane.read(cx).item_for_index(tab.ix).is_some()
+            }
+        })));
+
+        // 端に落として分割するときは、ワークスペースの中央ではなくこのパネルの
+        // `PaneGroup` を割る (`Workspace::split_pane` は中央しか割れない)。
+        let split_handler_panel = agent_panel.downgrade();
+        pane.set_tab_drop_split_handler(Some(Arc::new(
+            move |pane_to_split, direction, window, cx| {
+                let panel = split_handler_panel.upgrade()?;
+                panel.update(cx, |panel, cx| {
+                    if !panel.center.panes().contains(&pane_to_split) {
+                        return None;
+                    }
+                    Some(panel.split_pane(pane_to_split, direction, window, cx))
+                })
+            },
+        )));
+
+        let buttons_panel = agent_panel.downgrade();
+        pane.set_render_tab_bar_buttons(cx, move |pane, _window, cx| {
+            let new_thread_panel = buttons_panel.clone();
+            let split_panel = buttons_panel.clone();
+            let focus_handle = pane.focus_handle(cx);
+            (
+                None,
+                Some(
+                    h_flex()
+                        .gap(DynamicSpacing::Base02.rems(cx))
+                        .child(
+                            IconButton::new("agent-panel-new-thread", IconName::Plus)
+                                .icon_size(IconSize::Small)
+                                .tooltip(move |_, cx| {
+                                    Tooltip::for_action_in(
+                                        "新しいスレッド",
+                                        &NewThread,
+                                        &focus_handle,
+                                        cx,
+                                    )
+                                })
+                                .on_click(move |_, window, cx| {
+                                    new_thread_panel
+                                        .update(cx, |panel, cx| {
+                                            // タブバーの「+」は必ずスレッド
+                                            // (`NewThread` は直前に作ったのが
+                                            // ターミナルならターミナルを作る)。
+                                            panel.activate_new_thread(
+                                                true,
+                                                AgentThreadSource::AgentPanel,
+                                                window,
+                                                cx,
+                                            )
+                                        })
+                                        .log_err();
+                                }),
+                        )
+                        .child(
+                            IconButton::new("agent-panel-split-right", IconName::Split)
+                                .icon_size(IconSize::Small)
+                                .tooltip(Tooltip::text("右に分割"))
+                                .on_click(move |_, window, cx| {
+                                    split_panel
+                                        .update(cx, |panel, cx| {
+                                            panel.split_active_thread_right(window, cx)
+                                        })
+                                        .log_err();
+                                }),
+                        )
+                        .into_any_element(),
+                ),
+            )
+        });
+
+        pane
+    });
+
+    cx.subscribe_in(&pane, window, AgentPanel::handle_pane_event)
+        .detach();
+    cx.observe(&pane, |_, _, cx| cx.notify()).detach();
+
+    pane
+}
+
 impl Focusable for AgentPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -5234,14 +6356,16 @@ impl Panel for AgentPanel {
         agent_panel_dock_position(cx)
     }
 
-    fn position_is_valid(&self, position: DockPosition) -> bool {
-        position != DockPosition::Bottom
+    /// パネルの中がタブ列になったので、下ドックでも実用になる (ADR-F36 Phase B)。
+    fn position_is_valid(&self, _position: DockPosition) -> bool {
+        true
     }
 
     fn set_position(&mut self, position: DockPosition, _: &mut Window, cx: &mut Context<Self>) {
         let side = match position {
             DockPosition::Left => "left",
-            DockPosition::Right | DockPosition::Bottom => "right",
+            DockPosition::Right => "right",
+            DockPosition::Bottom => "bottom",
         };
         telemetry::event!("Agent Panel Side Changed", side = side);
         settings::update_settings_file(self.fs.clone(), cx, move |settings, _| {
@@ -5271,8 +6395,9 @@ impl Panel for AgentPanel {
         true
     }
 
-    fn has_flexible_size(&self, _window: &Window, cx: &App) -> bool {
-        AgentSettings::get_global(cx).flexible
+    fn has_flexible_size(&self, window: &Window, cx: &App) -> bool {
+        // 可変 (比率) サイズは左右のドックの話 (設定の説明もそう書いてある)。
+        AgentSettings::get_global(cx).flexible && self.position(window, cx) != DockPosition::Bottom
     }
 
     fn set_flexible_size(&mut self, flexible: bool, _window: &mut Window, cx: &mut Context<Self>) {
@@ -5319,6 +6444,14 @@ impl Panel for AgentPanel {
         true
     }
 
+    fn pane(&self) -> Option<Entity<Pane>> {
+        Some(self.active_pane.clone())
+    }
+
+    fn panes(&self) -> Vec<Entity<Pane>> {
+        self.panel_panes()
+    }
+
     fn hide_button_setting(&self, _: &App) -> Option<workspace::HideStatusItem> {
         Some(workspace::HideStatusItem::new(|settings| {
             settings.agent.get_or_insert_default().button = Some(false);
@@ -5331,6 +6464,9 @@ impl Panel for AgentPanel {
 
     fn set_zoomed(&mut self, zoomed: bool, _window: &mut Window, cx: &mut Context<Self>) {
         self.zoomed = zoomed;
+        for pane in self.center.panes() {
+            pane.update(cx, |pane, cx| pane.set_zoomed(zoomed, cx));
+        }
         cx.notify();
     }
 }
@@ -5438,6 +6574,11 @@ impl AgentPanel {
 
     fn destination_has_meaningful_state(&self, cx: &App) -> bool {
         if !self.retained_threads.is_empty() || !self.terminals.is_empty() {
+            return true;
+        }
+        // パネルはいつも 1 枚は下書きのタブを持っているので、「タブがある」
+        // ことは中身がある証拠にならない。2 枚目以降だけを数える。
+        if self.tabbed_threads.len() > 1 {
             return true;
         }
 
@@ -6595,7 +7736,12 @@ impl AgentPanel {
         )
     }
 
-    fn render_drag_target(&self, cx: &Context<Self>) -> Div {
+    /// ファイルを落として文脈に足すための受け皿。
+    ///
+    /// `accepts_tabs` はタブ列 (ペイングループ) を出していないときだけ真。
+    /// 出しているときにここでタブを取ると、パネルの中のペインへタブを移す
+    /// 操作 (ADR-F36 Phase B) がこの覆いに全部吸われる。
+    fn render_drag_target(&self, accepts_tabs: bool, cx: &Context<Self>) -> Div {
         let is_local = self.project.read(cx).is_local();
         div()
             .invisible()
@@ -6605,19 +7751,21 @@ impl AgentPanel {
             .bottom_0()
             .left_0()
             .bg(cx.theme().colors().drop_target_background)
-            .drag_over::<DraggedTab>(|this, _, _, _| this.visible())
+            .when(accepts_tabs, |this| {
+                this.drag_over::<DraggedTab>(|this, _, _, _| this.visible())
+                    .on_drop(cx.listener(move |this, tab: &DraggedTab, window, cx| {
+                        let item = tab.pane.read(cx).item_for_index(tab.ix);
+                        let project_paths = item
+                            .and_then(|item| item.project_path(cx))
+                            .into_iter()
+                            .collect::<Vec<_>>();
+                        this.handle_drop(project_paths, vec![], window, cx);
+                    }))
+            })
             .drag_over::<DraggedSelection>(|this, _, _, _| this.visible())
             .when(is_local, |this| {
                 this.drag_over::<ExternalPaths>(|this, _, _, _| this.visible())
             })
-            .on_drop(cx.listener(move |this, tab: &DraggedTab, window, cx| {
-                let item = tab.pane.read(cx).item_for_index(tab.ix);
-                let project_paths = item
-                    .and_then(|item| item.project_path(cx))
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                this.handle_drop(project_paths, vec![], window, cx);
-            }))
             .on_drop(
                 cx.listener(move |this, selection: &DraggedSelection, window, cx| {
                     let project_paths = selection
@@ -6767,6 +7915,37 @@ impl AgentPanel {
             .into_any_element()
     }
 
+    /// パネルの中のタブ列 (ADR-F36 Phase B)。ワークスペースが取れないときだけ
+    /// `None` (ウィンドウを閉じている最中)。
+    fn render_pane_group(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        self.workspace
+            .update(cx, |workspace, cx| {
+                let follower_states = Default::default();
+                let workspace_handle = workspace.weak_handle();
+                self.center
+                    .render(
+                        workspace.zoomed_item(),
+                        None,
+                        &workspace::PaneRenderContext {
+                            follower_states: &follower_states,
+                            active_call: workspace.active_call(),
+                            active_pane: &self.active_pane,
+                            app_state: workspace.app_state(),
+                            project: workspace.project(),
+                            workspace: &workspace_handle,
+                        },
+                        window,
+                        cx,
+                    )
+                    .into_any_element()
+            })
+            .ok()
+    }
+
     /// Records the panel's own width so the next render can tell whether the
     /// history list still fits. Measuring in an element keeps this correct for
     /// flexible docks and zoomed panels, where the stored dock size lies.
@@ -6818,6 +7997,11 @@ impl Render for AgentPanel {
             .justify_between()
             .track_focus(&self.focus_handle)
             .bg(cx.theme().colors().panel_background)
+            // 触ったペインを宛先にする。捕捉フェーズで拾うのは、タブや「+」が
+            // クリックを消費してもここまで届かせるため (何も止めない)。
+            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                this.activate_pane_at(event.position, window, cx);
+            }))
             .on_action(cx.listener(|this, action: &NewThread, window, cx| {
                 this.new_thread(action, window, cx);
             }))
@@ -6858,12 +8042,13 @@ impl Render for AgentPanel {
                     parent.child(self.render_no_project_state(cx))
                 }
                 VisibleSurface::Uninitialized => parent,
-                VisibleSurface::AgentThread(conversation_view) => parent
-                    .child(self.render_surface_with_thread_history(
-                        conversation_view.clone().into_any_element(),
-                        show_thread_history,
-                    ))
-                    .child(self.render_drag_target(cx)),
+                // スレッドはパネルの中のペイングループが描く (ADR-F36 Phase B)。
+                // `conversation_view` 自体は `ThreadItem` の中にある。
+                VisibleSurface::AgentThread(_) => parent
+                    .children(self.render_pane_group(window, cx).map(|pane_group| {
+                        self.render_surface_with_thread_history(pane_group, show_thread_history)
+                    }))
+                    .child(self.render_drag_target(false, cx)),
                 VisibleSurface::Terminal(terminal_view) => {
                     let search_bar = self
                         .active_terminal_id()
@@ -6893,7 +8078,7 @@ impl Render for AgentPanel {
                             terminal_content.into_any_element(),
                             show_thread_history,
                         ))
-                        .child(self.render_drag_target(cx))
+                        .child(self.render_drag_target(true, cx))
                 }
             })
             .child(self.render_width_probe(cx))
@@ -6944,8 +8129,81 @@ impl AgentPanel {
         self.selected_agent = agent;
     }
 
+    /// このパネルがそのスレッドを生かしているか: パネルのタブに載っている
+    /// (ADR-F36 Phase B) か、タブを持たない保持枠にあるか。
     pub fn test_retains_thread(&self, id: ThreadId) -> bool {
-        self.retained_threads.contains_key(&id)
+        self.retained_threads.contains_key(&id) || self.tabbed_threads.contains_key(&id)
+    }
+
+    /// そのスレッドを「裏で」生かしているか (= 生かしているが、いま表に
+    /// 出しているスレッドではない)。Phase B より前の `retained_threads` に
+    /// 相当する。
+    pub fn test_thread_is_in_background(&self, id: ThreadId) -> bool {
+        let Some(view) = self.test_background_view(id) else {
+            return false;
+        };
+        self.test_visible_view_id() != Some(view.entity_id())
+    }
+
+    /// 裏で生きているスレッドの数。
+    pub fn test_background_thread_count(&self) -> usize {
+        let visible = self.test_visible_view_id();
+        self.retained_threads
+            .iter()
+            .chain(self.tabbed_threads.iter())
+            .filter(|(_, view)| Some(view.entity_id()) != visible)
+            .map(|(id, _)| *id)
+            .collect::<HashSet<_>>()
+            .len()
+    }
+
+    /// 裏でも表でも、このパネルが持っているスレッドのビュー。
+    pub fn test_background_view(&self, id: ThreadId) -> Option<Entity<ConversationView>> {
+        self.retained_threads
+            .get(&id)
+            .or_else(|| self.tabbed_threads.get(&id))
+            .cloned()
+    }
+
+    fn test_visible_view_id(&self) -> Option<EntityId> {
+        match &self.base_view {
+            BaseView::AgentThread { conversation_view } => Some(conversation_view.entity_id()),
+            _ => None,
+        }
+    }
+
+    /// パネルのタブを 1 枚閉じる。閉じたスレッドが生成中なら、通常どおり
+    /// 保持枠へ返る (返却は非同期なので `run_until_parked` が要る)。
+    /// パネルのタブを全部閉じる。再起動を模して同じワークスペースにもう 1 つ
+    /// パネルを作るテストで、古いパネルにタブを手放させるために使う。
+    pub fn test_close_all_thread_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // 最後の 1 枚を閉じたあとに新しい下書きを作らせない (作ると保存済みの
+        // 「最後に見ていたスレッド」を上書きしてしまう)。旗を戻すのは
+        // ペインのイベントを捌いたあと = `defer` で。
+        self.restoring_layout = true;
+        for thread_id in self.tabbed_threads.keys().copied().collect::<Vec<_>>() {
+            self.test_close_thread_tab(thread_id, window, cx);
+        }
+        let panel = cx.entity();
+        cx.defer(move |cx| {
+            panel.update(cx, |panel, _| panel.restoring_layout = false);
+        });
+    }
+
+    pub fn test_close_thread_tab(
+        &mut self,
+        id: ThreadId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(conversation_view) = self.take_thread_from_tab(id, window, cx) else {
+            return false;
+        };
+        if self.test_visible_view_id() == Some(conversation_view.entity_id()) {
+            self.base_view = BaseView::Uninitialized;
+        }
+        self.retain_running_thread(BaseView::AgentThread { conversation_view }, cx);
+        true
     }
 
     /// Opens an external thread using an arbitrary AgentServer.
@@ -7487,6 +8745,12 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.toggle_zoom(&ToggleZoom, window, cx);
         });
+
+        // ADR-F36 Phase B: スレッドはパネルの中の `Pane` (キャッシュされた
+        // ビュー) の下にあるので、キャッシュを使い回したフレームでは
+        // `debug_selector` が記録されない。読む前に 1 回描き直させる。
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
 
         // The thread receives only tool-call updates, so entry index 0 should remain stable.
         let output_bounds = cx
@@ -8899,7 +10163,13 @@ mod tests {
         connection: &StubAgentConnection,
         cx: &mut VisualTestContext,
     ) -> (acp::SessionId, ThreadId) {
+        let previous = panel.read_with(cx, |panel, cx| panel.active_thread_id(cx));
         open_thread_with_custom_connection(panel, connection.clone(), cx);
+        // ADR-F36 Phase B: 別のスレッドを開いてもタブは残るので、「前のスレッド
+        // から離れた」を作るにはそのタブを閉じる。
+        if let Some(previous) = previous {
+            close_panel_tab(panel, previous, cx);
+        }
         let session_id = active_session_id(panel, cx);
         let thread_id = active_thread_id(panel, cx);
         send_message(panel, cx);
@@ -8919,7 +10189,11 @@ mod tests {
         connection: &StubAgentConnection,
         cx: &mut VisualTestContext,
     ) -> (acp::SessionId, ThreadId) {
+        let previous = panel.read_with(cx, |panel, cx| panel.active_thread_id(cx));
         open_thread_with_custom_connection(panel, connection.clone(), cx);
+        if let Some(previous) = previous {
+            close_panel_tab(panel, previous, cx);
+        }
         let session_id = active_session_id(panel, cx);
         let thread_id = active_thread_id(panel, cx);
 
@@ -8929,6 +10203,20 @@ mod tests {
         send_message(panel, cx);
 
         (session_id, thread_id)
+    }
+
+    /// パネルのタブを閉じて、そのスレッドを保持枠 (`retained_threads`) へ
+    /// 追い出す。ADR-F36 Phase B からは「別のスレッドを開く」だけではタブが
+    /// 残るので、保持枠の挙動を試すテストは明示的に閉じる。
+    fn close_panel_tab(
+        panel: &Entity<AgentPanel>,
+        thread_id: ThreadId,
+        cx: &mut VisualTestContext,
+    ) {
+        panel.update_in(cx, |panel, window, cx| {
+            panel.test_close_thread_tab(thread_id, window, cx);
+        });
+        cx.run_until_parked();
     }
 
     #[gpui::test]
@@ -9009,6 +10297,18 @@ mod tests {
         // persists the prompt to the kvp store.
         crate::test_support::type_draft_prompt(&panel, "Hello from draft", cx);
         panel.update(cx, |panel, cx| panel.serialize(cx));
+        cx.executor().advance_clock(Duration::from_millis(200));
+        cx.run_until_parked();
+
+        // 再起動なら古いパネルは居ない。ADR-F36 Phase B ではスレッドは
+        // パネルのタブが持つので、手放させて、ワークスペースからも外してから
+        // 読み直す。
+        panel.update_in(cx, |panel, window, cx| {
+            panel.test_close_all_thread_tabs(window, cx);
+        });
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.remove_panel::<AgentPanel>(&panel, window, cx);
+        });
         cx.run_until_parked();
 
         let async_cx = cx.update(|window, cx| window.to_async(cx));
@@ -9101,6 +10401,12 @@ mod tests {
 
         // Serialize the panel, then reload it again.
         panel.update(cx, |panel, cx| panel.serialize(cx));
+        cx.executor().advance_clock(Duration::from_millis(200));
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.test_close_all_thread_tabs(window, cx);
+        });
         cx.run_until_parked();
 
         let async_cx = cx.update(|window, cx| window.to_async(cx));
@@ -9189,7 +10495,7 @@ mod tests {
         // and a fresh empty ephemeral new-draft is active.
         panel.read_with(cx, |panel, cx| {
             assert!(
-                panel.retained_threads.contains_key(&retained_draft_id),
+                panel.test_thread_is_in_background(retained_draft_id),
                 "first draft with content should be parked into retained_threads"
             );
             assert_ne!(
@@ -9253,6 +10559,18 @@ mod tests {
 
         // 5. Serialize + reload.
         panel.update(cx, |panel, cx| panel.serialize(cx));
+        // パネル内レイアウトの保存は 50 ms のデバウンス越しなので、時計を
+        // 進めて書き終えさせる。
+        cx.executor().advance_clock(Duration::from_millis(200));
+        cx.run_until_parked();
+        // 再起動なら古いパネルは居ない。タブを手放させ、ワークスペースからも
+        // 外してから読み直す (ADR-F36 Phase B)。
+        panel.update_in(cx, |panel, window, cx| {
+            panel.test_close_all_thread_tabs(window, cx);
+        });
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.remove_panel::<AgentPanel>(&panel, window, cx);
+        });
         cx.run_until_parked();
         let async_cx = cx.update(|window, cx| window.to_async(cx));
         let loaded_panel = AgentPanel::load(workspace.downgrade(), async_cx)
@@ -9273,9 +10591,15 @@ mod tests {
                 !panel.active_thread_is_draft(cx),
                 "real thread is not a draft"
             );
-            assert!(
-                panel.draft_thread.is_none(),
-                "draft_thread slot should be empty since the draft was parked on navigate-away"
+            // ADR-F36 Phase B: 打ちかけの下書きはタブに残るので、下書き枠も
+            // そのまま次の起動へ持ち越す (以前は「離れたら保持枠へ」だった)。
+            assert_eq!(
+                panel
+                    .draft_thread
+                    .as_ref()
+                    .map(|draft| draft.read(cx).thread_id),
+                Some(draft_thread_id),
+                "the new-draft slot keeps the draft that still has its own tab"
             );
         });
 
@@ -11261,7 +12585,7 @@ mod tests {
         panel.read_with(&cx, |panel, cx| {
             let thread = panel.active_agent_thread(cx).unwrap();
             assert_eq!(thread.read(cx).status(), ThreadStatus::Generating);
-            assert!(panel.retained_threads.is_empty());
+            assert!((panel.test_background_thread_count() == 0));
         });
 
         // Open a new thread B — thread A should be retained in background.
@@ -11270,12 +12594,12 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert_eq!(
-                panel.retained_threads.len(),
+                panel.test_background_thread_count(),
                 1,
                 "Running thread A should be retained in retained_threads"
             );
             assert!(
-                panel.retained_threads.contains_key(&thread_id_a),
+                panel.test_thread_is_in_background(thread_id_a),
                 "Retained thread should be keyed by thread A's thread ID"
             );
         });
@@ -11309,12 +12633,12 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert_eq!(
-                panel.retained_threads.len(),
+                panel.test_background_thread_count(),
                 1,
                 "Idle non-loadable thread A should be retained in retained_threads"
             );
             assert!(
-                panel.retained_threads.contains_key(&thread_id_a),
+                panel.test_thread_is_in_background(thread_id_a),
                 "Retained thread should be keyed by thread A's thread ID"
             );
         });
@@ -11354,8 +12678,8 @@ mod tests {
         let thread_id_b = active_thread_id(&panel, &cx);
 
         panel.read_with(&cx, |panel, _cx| {
-            assert_eq!(panel.retained_threads.len(), 1);
-            assert!(panel.retained_threads.contains_key(&thread_id_a));
+            assert_eq!(panel.test_background_thread_count(), 1);
+            assert!(panel.test_thread_is_in_background(thread_id_a));
         });
 
         // Load thread A back via load_agent_thread — should promote from background.
@@ -11381,11 +12705,11 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert!(
-                !panel.retained_threads.contains_key(&thread_id_a),
+                !panel.test_thread_is_in_background(thread_id_a),
                 "Promoted thread A should no longer be in retained_threads"
             );
             assert!(
-                panel.retained_threads.contains_key(&thread_id_b),
+                panel.test_thread_is_in_background(thread_id_b),
                 "Thread B (idle, non-loadable) should remain retained in retained_threads"
             );
         });
@@ -11573,7 +12897,7 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert_eq!(
-                panel.retained_threads.len(),
+                panel.test_background_thread_count(),
                 5,
                 "cleanup should keep at most five idle loadable retained threads"
             );
@@ -11648,12 +12972,12 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert_eq!(
-                panel.retained_threads.len(),
+                panel.test_background_thread_count(),
                 6,
                 "cleanup should keep the non-loadable idle thread in addition to five loadable ones"
             );
             assert!(
-                panel.retained_threads.contains_key(&non_loadable_thread_id),
+                panel.test_thread_is_in_background(non_loadable_thread_id),
                 "idle non-loadable retained threads should not be cleanup candidates"
             );
             assert!(
@@ -11798,11 +13122,11 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert!(
-                panel.retained_threads.contains_key(&thread_id_a),
+                panel.test_thread_is_in_background(thread_id_a),
                 "Thread A should be in retained_threads"
             );
             assert!(
-                panel.retained_threads.contains_key(&thread_id_c),
+                panel.test_thread_is_in_background(thread_id_c),
                 "Thread C should be in retained_threads"
             );
         });
@@ -11846,7 +13170,7 @@ mod tests {
 
         // Verify thread A's (background) work_dirs are also updated.
         let updated_a_paths = panel.read_with(&cx, |panel, cx| {
-            let bg_view = panel.retained_threads.get(&thread_id_a).unwrap();
+            let bg_view = panel.test_background_view(thread_id_a).unwrap();
             let root_thread = bg_view.read(cx).root_thread_view().unwrap();
             root_thread
                 .read(cx)
@@ -11866,7 +13190,7 @@ mod tests {
 
         // Verify thread idle C was also updated.
         let updated_c_paths = panel.read_with(&cx, |panel, cx| {
-            let bg_view = panel.retained_threads.get(&thread_id_c).unwrap();
+            let bg_view = panel.test_background_view(thread_id_c).unwrap();
             let root_thread = bg_view.read(cx).root_thread_view().unwrap();
             root_thread
                 .read(cx)
@@ -11920,7 +13244,7 @@ mod tests {
         );
 
         let after_remove_a = panel.read_with(&cx, |panel, cx| {
-            let bg_view = panel.retained_threads.get(&thread_id_a).unwrap();
+            let bg_view = panel.test_background_view(thread_id_a).unwrap();
             let root_thread = bg_view.read(cx).root_thread_view().unwrap();
             root_thread
                 .read(cx)
@@ -12350,7 +13674,7 @@ mod tests {
 
         panel.read_with(cx, |panel, _cx| {
             assert!(
-                panel.retained_threads.contains_key(&initial_thread_id),
+                panel.test_thread_is_in_background(initial_thread_id),
                 "typed draft should have been parked into retained_threads"
             );
             let active_draft_id = panel.draft_thread.as_ref().unwrap().entity_id();
@@ -12481,7 +13805,7 @@ mod tests {
                 "`+` should not have replaced the ephemeral draft"
             );
             assert!(
-                panel.retained_threads.contains_key(&parked_thread_id),
+                panel.test_thread_is_in_background(parked_thread_id),
                 "parked draft should remain in `retained_threads`"
             );
         });
@@ -12584,7 +13908,7 @@ mod tests {
                 "old Stub ephemeral draft should have been replaced"
             );
             assert!(
-                panel.retained_threads.contains_key(&parked_thread_id),
+                panel.test_thread_is_in_background(parked_thread_id),
                 "parked draft should still be in retained_threads"
             );
         });
@@ -12670,7 +13994,7 @@ mod tests {
                 "new draft should use the new agent"
             );
             assert!(
-                panel.retained_threads.contains_key(&initial_thread_id),
+                panel.test_thread_is_in_background(initial_thread_id),
                 "typed draft should have been parked into retained_threads"
             );
         });
@@ -13506,10 +14830,14 @@ mod tests {
         cx.run_until_parked();
         send_message(&panel, &mut cx);
 
+        // ADR-F36 Phase B: パネルはタブ列なので、B を開いただけでは A のタブが
+        // 残る。この試験は「保持枠にある A」の競合なので、明示的に閉じる。
+        close_panel_tab(&panel, _thread_id_a, &mut cx);
+
         // Confirm A is retained.
         panel.read_with(&cx, |panel, _cx| {
             assert!(
-                panel.retained_threads.contains_key(&_thread_id_a),
+                panel.test_thread_is_in_background(_thread_id_a),
                 "thread A should be in retained_threads after switching to B"
             );
         });
@@ -13519,10 +14847,8 @@ mod tests {
         // away, or a transient failure.
         let retained_conversation_a = panel.read_with(&cx, |panel, _cx| {
             panel
-                .retained_threads
-                .get(&_thread_id_a)
+                .test_background_view(_thread_id_a)
                 .expect("thread A should be retained")
-                .clone()
         });
         retained_conversation_a.update(&mut cx, |conversation, cx| {
             if let Some(thread_view) = conversation.active_thread() {
@@ -14010,7 +15336,7 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert!(
-                panel.retained_threads.contains_key(&no_override_id),
+                panel.test_thread_is_in_background(no_override_id),
                 "thread created via create_thread_with_options should be retained"
             );
             assert_eq!(
@@ -14042,7 +15368,7 @@ mod tests {
 
         panel.read_with(&cx, |panel, _cx| {
             assert!(
-                panel.retained_threads.contains_key(&override_id),
+                panel.test_thread_is_in_background(override_id),
                 "thread created with an agent override should also be retained"
             );
             assert_ne!(
@@ -14055,5 +15381,99 @@ mod tests {
                 "selected_agent should be restored to the original after an agent override"
             );
         });
+    }
+
+    // -- ADR-F36 Phase B: パネル内レイアウトの永続化 -------------------------
+
+    /// 分割の形とタブの並びが JSON を往復しても崩れないこと。
+    #[test]
+    fn serialized_panel_layout_round_trip() {
+        let layout = SerializedAgentPanelLayout {
+            root: SerializedAgentPaneGroup::Group {
+                axis: SerializedAxis(Axis::Horizontal),
+                flexes: Some(vec![1.0, 2.0]),
+                children: vec![
+                    SerializedAgentPaneGroup::Pane(SerializedAgentPane {
+                        active: false,
+                        items: vec![SerializedPanelItem {
+                            kind: Arc::from("AgentThread"),
+                            item_id: 3,
+                            active: true,
+                            preview: false,
+                        }],
+                    }),
+                    SerializedAgentPaneGroup::Pane(SerializedAgentPane {
+                        active: true,
+                        items: vec![
+                            SerializedPanelItem {
+                                kind: Arc::from("AgentThread"),
+                                item_id: 7,
+                                active: false,
+                                preview: false,
+                            },
+                            SerializedPanelItem {
+                                kind: Arc::from("Terminal"),
+                                item_id: 9,
+                                active: true,
+                                preview: false,
+                            },
+                        ],
+                    }),
+                ],
+            },
+        };
+
+        let json = serde_json::to_string(&layout).expect("the layout should serialize");
+        let restored: SerializedAgentPanelLayout =
+            serde_json::from_str(&json).expect("the layout should survive");
+
+        let SerializedAgentPaneGroup::Group {
+            axis,
+            flexes,
+            children,
+        } = restored.root
+        else {
+            panic!("the root should still be a split");
+        };
+        assert!(matches!(axis.0, Axis::Horizontal));
+        assert_eq!(flexes, Some(vec![1.0, 2.0]));
+        assert_eq!(children.len(), 2);
+
+        let SerializedAgentPaneGroup::Pane(second) = &children[1] else {
+            panic!("the second child should be a pane");
+        };
+        assert!(second.active, "the active pane should be remembered");
+        assert_eq!(second.items.len(), 2);
+        assert_eq!(&*second.items[1].kind, "Terminal");
+        assert!(
+            second.items[1].active,
+            "a pane remembers which of its tabs was in front"
+        );
+    }
+
+    /// 旧形式 (レイアウトが無く、最後に見ていたスレッドが 1 本だけ書いてある)
+    /// を 1 世代だけ読めること。読めた thread_id はタブ 1 枚として復元される。
+    #[test]
+    fn legacy_serialized_panel_without_a_layout_still_reads() {
+        let thread_id = ThreadId::new();
+        let legacy = serde_json::json!({
+            "selected_agent": Agent::NativeAgent,
+            "last_active_thread": {
+                "session_id": "session-1",
+                "thread_id": thread_id,
+                "agent_type": Agent::NativeAgent,
+                "title": "むかしのスレッド",
+                "work_dirs": null,
+            },
+        });
+
+        let restored: SerializedAgentPanel =
+            serde_json::from_value(legacy).expect("the old panel record should still parse");
+        let thread = restored
+            .last_active_thread
+            .expect("the old record carries the single active thread");
+        assert_eq!(thread.thread_id, Some(thread_id));
+        assert_eq!(thread.session_id.as_deref(), Some("session-1"));
+        assert_eq!(thread.agent_type, Agent::NativeAgent);
     }
 }

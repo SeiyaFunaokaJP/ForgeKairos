@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, atomic::AtomicBool};
 
-use collections::HashSet;
+use collections::{HashMap, HashSet};
 use editor::{Editor, EditorEvent};
 use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
@@ -334,14 +334,29 @@ impl MacroPicker {
             workspace,
             macros: Vec::new(),
             entries: Vec::new(),
-            unfiled_collapsed: false,
+            session_collapsed: HashMap::default(),
+            folders_collapsed_by_default: TerminalSettings::get_global(cx)
+                .macro_picker_folders_collapsed,
             selected_index: 0,
         };
-        // Not `uniform_list`: that lays every row out at one height, and this
-        // list has two shapes — a one-line folder heading and a two-line macro
-        // row (name over 「n ステップ」) — so the headings after the first were
-        // drawn on top of the row above them.
-        let picker = cx.new(|cx| Picker::list(delegate, window, cx));
+        // Not `uniform_list`: that lays every row out at one height, and a
+        // folder heading is not built like a macro row (no `ListItem` inset,
+        // its own padding), so the headings after the first were drawn on top
+        // of the row above them.
+        let picker = cx.new(|cx| {
+            Picker::list(delegate, window, cx)
+                // Long macro lists have to scroll rather than grow the modal
+                // past the screen; roughly a dozen rows before the scrollbar
+                // takes over.
+                .max_height(rems(20.))
+                .show_scrollbar(true)
+                // A `gpui::list` only knows the height of the rows it has
+                // drawn, so without this both the scrollbar thumb and jumping
+                // to a row far down the list (End, or a query that selects one)
+                // work off zero-height rows. Measuring up front is affordable
+                // here: the rows are one line of text each.
+                .list_measure_all()
+        });
         // The store loads `terminal_sessions.json` asynchronously, so the first
         // time this modal is opened it is built against an empty store and has
         // to re-query once the file lands.
@@ -478,9 +493,15 @@ pub struct MacroPickerDelegate {
     /// indexes it.
     macros: Vec<TerminalMacro>,
     entries: Vec<MacroPickerEntry>,
-    /// Whether the 未分類 heading is folded shut. A real folder keeps that in
-    /// the file; this one has nowhere to live, so it lasts as long as the modal.
-    unfiled_collapsed: bool,
+    /// Headings the user folded or unfolded *in this picker*, keyed by folder
+    /// (`None` is 未分類, which has no folder in the file to keep it in). It
+    /// overrides both the stored per-folder state and
+    /// [`Self::folders_collapsed_by_default`], and is thrown away with the modal.
+    session_collapsed: HashMap<Option<String>, bool>,
+    /// `terminal.macro_picker_folders_collapsed`, read once when the picker
+    /// opens so that changing the setting cannot reshuffle a list the user is
+    /// looking at.
+    folders_collapsed_by_default: bool,
     selected_index: usize,
 }
 
@@ -499,15 +520,33 @@ impl MacroPickerDelegate {
             .unwrap_or(0)
     }
 
+    /// Whether `folder`'s heading is folded shut: what this picker was told
+    /// during this session, else the setting, else what the file remembers.
+    /// 未分類 has no entry in the file, so it is open unless something above
+    /// says otherwise.
+    fn is_collapsed(&self, folder: Option<&str>, folders: &[MacroFolder]) -> bool {
+        if let Some(collapsed) = self.session_collapsed.get(&folder.map(str::to_string)) {
+            return *collapsed;
+        }
+        if self.folders_collapsed_by_default {
+            return true;
+        }
+        folder.is_some_and(|folder| {
+            folders
+                .iter()
+                .any(|candidate| candidate.name == folder && candidate.collapsed)
+        })
+    }
+
     /// Turns the matches into rows, one heading per folder in the order the
     /// user arranged them, 未分類 last. `honor_collapse` is false while a query
     /// narrows the list: a match must never be hidden behind a folded heading.
     fn build_entries(
+        &self,
         macros: &[TerminalMacro],
         folders: &[MacroFolder],
         mut matches: Vec<StringMatch>,
         honor_collapse: bool,
-        unfiled_collapsed: bool,
     ) -> Vec<MacroPickerEntry> {
         // `match_strings` returns best-scoring first; the list is ordered by
         // folder and name instead, and `candidate_id` is that position.
@@ -533,13 +572,7 @@ impl MacroPickerDelegate {
             // With no folders at all the list is flat, the way it was before
             // folders became something the user arranges.
             let heading = folder.is_some() || !folders.is_empty();
-            let collapsed = honor_collapse
-                && match &folder {
-                    Some(name) => folders
-                        .iter()
-                        .any(|candidate| candidate.name == *name && candidate.collapsed),
-                    None => unfiled_collapsed,
-                };
+            let collapsed = honor_collapse && self.is_collapsed(folder.as_deref(), folders);
             if heading {
                 entries.push(MacroPickerEntry::Folder {
                     folder: folder.clone(),
@@ -563,9 +596,10 @@ impl MacroPickerDelegate {
         entries
     }
 
-    /// Folds the heading the user clicked. A real folder's state goes into the
-    /// file (and comes back through the store's observer); 未分類 has none, so
-    /// it is toggled here and the list rebuilt directly.
+    /// Folds the heading the user clicked. The decision always holds for this
+    /// picker; it is also written to the file (so the editor tree and the next
+    /// session agree) unless the setting is folding everything anyway, in which
+    /// case there is nothing for the file to say.
     fn toggle_folder(
         picker: &mut Picker<Self>,
         folder: Option<String>,
@@ -573,9 +607,14 @@ impl MacroPickerDelegate {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) {
-        let Some(folder) = folder else {
-            picker.delegate.unfiled_collapsed = !collapsed;
-            picker.refresh(window, cx);
+        picker
+            .delegate
+            .session_collapsed
+            .insert(folder.clone(), !collapsed);
+        let persist = !picker.delegate.folders_collapsed_by_default;
+        picker.refresh(window, cx);
+        // 未分類 has no folder in the file to keep the state in.
+        let Some(folder) = folder.filter(|_| persist) else {
             return;
         };
         let store = picker.delegate.store.clone();
@@ -585,6 +624,44 @@ impl MacroPickerDelegate {
             })
             .detach();
         }
+    }
+
+    /// Whether every heading the list is showing is folded shut, which is what
+    /// the 「すべて展開 / すべて折りたたむ」 button flips.
+    fn every_folder_collapsed(&self) -> bool {
+        let mut headings = self
+            .entries
+            .iter()
+            .filter_map(|entry| match entry {
+                MacroPickerEntry::Folder { collapsed, .. } => Some(*collapsed),
+                MacroPickerEntry::Macro { .. } => None,
+            })
+            .peekable();
+        headings.peek().is_some() && headings.all(|collapsed| collapsed)
+    }
+
+    /// Folds or unfolds every heading at once. Session-only: this is a way of
+    /// looking through the list, not a change to how the folders are filed, so
+    /// nothing is written to `terminal_sessions.json`.
+    fn set_every_folder_collapsed(
+        picker: &mut Picker<Self>,
+        collapsed: bool,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let folders = picker
+            .delegate
+            .store
+            .read(cx)
+            .macro_folders()
+            .iter()
+            .map(|folder| Some(folder.name.clone()))
+            .chain([None])
+            .collect::<Vec<_>>();
+        for folder in folders {
+            picker.delegate.session_collapsed.insert(folder, collapsed);
+        }
+        picker.refresh(window, cx);
     }
 
     fn open_editor(
@@ -844,6 +921,37 @@ impl PickerDelegate for MacroPickerDelegate {
         "フォルダー / 名前 / タグで絞り込み…".into()
     }
 
+    /// 「すべて展開 / すべて折りたたむ」. Sits on the query row so it is always
+    /// reachable, and only appears once there is a heading to fold.
+    fn searchbar_trailer(
+        &self,
+        _: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) -> Option<AnyElement> {
+        if !self
+            .entries
+            .iter()
+            .any(|entry| matches!(entry, MacroPickerEntry::Folder { .. }))
+        {
+            return None;
+        }
+        let collapsed = self.every_folder_collapsed();
+        let (icon, label) = if collapsed {
+            (IconName::ChevronUpDown, "すべて展開")
+        } else {
+            (IconName::ChevronDownUp, "すべて折りたたむ")
+        };
+        Some(
+            IconButton::new("macro-picker-toggle-all-folders", icon)
+                .icon_size(IconSize::Small)
+                .tooltip(Tooltip::text(label))
+                .on_click(cx.listener(move |picker, _, window, cx| {
+                    Self::set_every_folder_collapsed(picker, !collapsed, window, cx);
+                }))
+                .into_any_element(),
+        )
+    }
+
     fn no_matches_text(&self, _: &mut Window, cx: &mut App) -> Option<SharedString> {
         if self.store.read(cx).is_loaded() {
             Some("保存済みのマクロがありません".into())
@@ -888,13 +996,8 @@ impl PickerDelegate for MacroPickerDelegate {
             picker
                 .update(cx, |picker, cx| {
                     let delegate = &mut picker.delegate;
-                    delegate.entries = Self::build_entries(
-                        &macros,
-                        &folders,
-                        matches,
-                        honor_collapse,
-                        delegate.unfiled_collapsed,
-                    );
+                    delegate.entries =
+                        delegate.build_entries(&macros, &folders, matches, honor_collapse);
                     delegate.macros = macros;
                     delegate.selected_index = delegate.first_selectable_index();
                     cx.notify();
@@ -999,42 +1102,41 @@ impl PickerDelegate for MacroPickerDelegate {
                 name_highlights,
             } => {
                 let terminal_macro = self.macros.get(*index)?;
-                let mut detail = if terminal_macro.description.is_empty() {
-                    format!("{} ステップ", terminal_macro.steps.len())
-                } else {
-                    format!(
-                        "{} ({} ステップ)",
-                        terminal_macro.description,
-                        terminal_macro.steps.len()
-                    )
-                };
-                if let Some(count) = terminal_macro.iteration_count() {
-                    if count > 1 {
-                        detail.push_str(&format!(" / {count} 回繰り返し"));
-                    }
-                } else {
-                    detail.push_str(" / 中止まで繰り返し");
-                }
-                if !terminal_macro.tags.is_empty() {
-                    detail.push_str(&format!(" / {}", terminal_macro.tags.join(", ")));
-                }
+                let description = (!terminal_macro.description.is_empty())
+                    .then(|| terminal_macro.description.clone());
                 Some(
                     ListItem::new(ix)
                         .inset(true)
                         .spacing(ListItemSpacing::Sparse)
                         .toggle_state(selected)
                         .child(
-                            v_flex()
+                            h_flex()
+                                .min_w_0()
+                                .gap_2()
                                 .debug_selector(|| picker_row_selector(ix))
                                 .child(HighlightedLabel::new(
                                     terminal_macro.name.clone(),
                                     name_highlights.clone(),
                                 ))
-                                .child(
-                                    Label::new(detail)
-                                        .size(LabelSize::Small)
-                                        .color(Color::Muted),
-                                ),
+                                // The row is one line, so anything that does not
+                                // fit is cut rather than wrapped; the tags are
+                                // left out of it entirely and stay searchable
+                                // through `macro_search_text`.
+                                .when_some(description, |this, description| {
+                                    this.child(
+                                        Label::new(description)
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted)
+                                            .truncate(),
+                                    )
+                                }),
+                        )
+                        .end_slot(
+                            div().debug_selector(|| picker_detail_selector(ix)).child(
+                                Label::new(macro_row_detail(terminal_macro))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            ),
                         )
                         .into_any_element(),
                 )
@@ -1081,12 +1183,29 @@ impl PickerDelegate for MacroPickerDelegate {
     }
 }
 
+/// The muted right-hand side of a picker row: how many steps the macro has, and
+/// how often it repeats when that is not once.
+fn macro_row_detail(terminal_macro: &TerminalMacro) -> String {
+    let steps = format!("{} ステップ", terminal_macro.steps.len());
+    match terminal_macro.iteration_count() {
+        Some(1) => steps,
+        Some(count) => format!("{steps} / {count} 回"),
+        None => format!("{steps} / 中止まで"),
+    }
+}
+
 /// Names a picker row for [`gpui::VisualTestContext::debug_bounds`], so a test
-/// can check that the two row shapes — a one-line folder heading and a two-line
-/// macro row — are laid out without landing on top of each other. Compiles away
-/// outside test builds.
+/// can check that the rows — one-line folder headings and one-line macro rows,
+/// which are still built differently — are laid out without landing on top of
+/// each other. Compiles away outside test builds.
 fn picker_row_selector(ix: usize) -> String {
     format!("macro-picker-row-{ix}")
+}
+
+/// Names the muted 「n ステップ」 slot of a picker row, so a test can check it
+/// really sits to the right of the name rather than on a second line.
+fn picker_detail_selector(ix: usize) -> String {
+    format!("macro-picker-detail-{ix}")
 }
 
 /// Maps the match positions of the whole search text onto the macro's name,
@@ -5192,6 +5311,57 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn a_picker_row_puts_the_step_count_beside_the_name(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec![
+                "ルータ用 (2)",
+                "show run",
+                "show ver",
+                "A-PC用 (1)",
+                "ls",
+                "B-PC用 (1)",
+                "ls",
+            ]
+        );
+
+        // Row 1 is 「show run」 (no description), row 4 is 「ls」 (description
+        // 「A」): both are one line, so the description must not add a second.
+        let plain = cx
+            .debug_bounds("macro-picker-row-1")
+            .expect("the first macro row should have been drawn");
+        let described = cx
+            .debug_bounds("macro-picker-row-4")
+            .expect("the described macro row should have been drawn");
+        assert_eq!(
+            plain.size.height, described.size.height,
+            "a description belongs beside the name, not under it"
+        );
+
+        // 「n ステップ」 is right of the name and on the same line as it.
+        let detail = cx
+            .debug_bounds("macro-picker-detail-1")
+            .expect("the step count should have been drawn");
+        assert!(
+            detail.left() >= plain.right(),
+            "the step count starts at {} but the name runs to {}",
+            detail.left(),
+            plain.right()
+        );
+        assert!(
+            detail.top() < plain.bottom() && plain.top() < detail.bottom(),
+            "the step count ({detail:?}) is not on the name's line ({plain:?})"
+        );
+    }
+
+    #[gpui::test]
     async fn a_collapsed_folder_hides_its_macros_until_the_query_asks_for_them(
         cx: &mut TestAppContext,
     ) {
@@ -5235,6 +5405,176 @@ mod tests {
         assert_eq!(
             picker_rows(&picker, cx),
             vec!["ルータ用 (2)", "show run", "show ver"]
+        );
+    }
+
+    /// `count` unfiled macros, which is more than any picker can show at once.
+    fn many_macros(count: usize) -> String {
+        let macros = (0..count)
+            .map(|index| format!(r#"{{ "name": "マクロ{index:02}", "steps": [] }}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{{ \"macros\": [{macros}] }}")
+    }
+
+    #[gpui::test]
+    async fn a_long_macro_list_scrolls_instead_of_growing_the_picker(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, &many_macros(80)).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(picker_names(&picker, cx).len(), 80);
+
+        // The list is capped, so the far end of it is not laid out at all —
+        // which is what makes the modal a fixed size rather than 80 rows tall.
+        assert!(
+            cx.debug_bounds("macro-picker-row-0").is_some(),
+            "the top of the list is on screen"
+        );
+        assert!(
+            cx.debug_bounds("macro-picker-row-79").is_none(),
+            "an 80-row picker must not draw its last row without scrolling"
+        );
+
+        // Keyboard navigation has to bring the selected row into view.
+        picker.update_in(cx, |picker, window, cx| {
+            picker.picker.update(cx, |picker, cx| {
+                picker.set_selected_index(79, None, true, window, cx);
+            });
+        });
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("macro-picker-row-79").is_some(),
+            "selecting the last macro should scroll it into view"
+        );
+        assert!(
+            cx.debug_bounds("macro-picker-row-0").is_none(),
+            "and scroll the top of the list away"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_setting_opens_the_picker_with_every_folder_folded(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        cx.update(|_, cx| {
+            cx.update_global(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .terminal
+                        .get_or_insert_default()
+                        .macro_picker_folders_collapsed = Some(true);
+                });
+            });
+        });
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec!["ルータ用 (2) [畳]", "A-PC用 (1) [畳]", "B-PC用 (1) [畳]"],
+            "nothing in the file says these are folded; the setting does"
+        );
+        assert!(
+            saved_file(&fs)
+                .await
+                .macro_folders
+                .iter()
+                .all(|folder| !folder.collapsed),
+            "the setting must not rewrite what the editor tree reads"
+        );
+
+        // A query still answers with every match, folded headings and all.
+        set_picker_query(&picker, "ls", cx);
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec!["A-PC用 (1)", "ls", "B-PC用 (1)", "ls"]
+        );
+
+        // Clicking a heading still opens it, for this picker only.
+        set_picker_query(&picker, "", cx);
+        picker.update_in(cx, |picker, window, cx| {
+            picker.picker.update(cx, |picker, cx| {
+                MacroPickerDelegate::toggle_folder(
+                    picker,
+                    Some("A-PC用".to_string()),
+                    true,
+                    window,
+                    cx,
+                );
+            });
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec!["ルータ用 (2) [畳]", "A-PC用 (1)", "ls", "B-PC用 (1) [畳]"]
+        );
+        assert!(
+            saved_file(&fs)
+                .await
+                .macro_folders
+                .iter()
+                .all(|folder| !folder.collapsed),
+            "with the setting on the file has nothing to say, so it is left alone"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_picker_can_fold_and_unfold_every_folder_at_once(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert!(picker.update(cx, |picker, cx| {
+            !picker.picker.read(cx).delegate.every_folder_collapsed()
+        }));
+
+        let fold_all = |collapsed: bool, cx: &mut VisualTestContext| {
+            picker.update_in(cx, |picker, window, cx| {
+                picker.picker.update(cx, |picker, cx| {
+                    MacroPickerDelegate::set_every_folder_collapsed(picker, collapsed, window, cx);
+                });
+            });
+            cx.run_until_parked();
+        };
+
+        fold_all(true, cx);
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec!["ルータ用 (2) [畳]", "A-PC用 (1) [畳]", "B-PC用 (1) [畳]"]
+        );
+        assert!(picker.update(cx, |picker, cx| {
+            picker.picker.read(cx).delegate.every_folder_collapsed()
+        }));
+        assert!(
+            saved_file(&fs)
+                .await
+                .macro_folders
+                .iter()
+                .all(|folder| !folder.collapsed),
+            "folding everything is a way of looking at the list, not a change to it"
+        );
+
+        fold_all(false, cx);
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec![
+                "ルータ用 (2)",
+                "show run",
+                "show ver",
+                "A-PC用 (1)",
+                "ls",
+                "B-PC用 (1)",
+                "ls",
+            ]
         );
     }
 

@@ -53,6 +53,9 @@ pub struct TerminalSettings {
     pub show_count_badge: bool,
     pub bell: TerminalBell,
     pub session_log: SessionLogSettings,
+    /// Whether 「マクロを実行」 opens with every folder heading folded shut,
+    /// ignoring the per-folder state kept in `terminal_sessions.json`.
+    pub macro_picker_folders_collapsed: bool,
 }
 
 /// Resolved `terminal.session_log` settings. See [`crate::session_log`].
@@ -170,6 +173,13 @@ impl settings::Settings for TerminalSettings {
                     timestamps: session_log.timestamps.unwrap(),
                 }
             },
+            // Unlike the fields above this one does not `unwrap`: the key is a
+            // fork addition, and a `default.json` that predates it (or that the
+            // user trimmed) must not take the terminal down over a picker
+            // preference.
+            macro_picker_folders_collapsed: user_content
+                .macro_picker_folders_collapsed
+                .unwrap_or(false),
         }
     }
 }

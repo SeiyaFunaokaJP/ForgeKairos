@@ -138,7 +138,8 @@ impl RemoteRunningKernel {
             token: kernelspec.token,
         };
 
-        let http_client = cx.http_client();
+        // ADR-F38: a Jupyter server is IDE tooling the user pointed at.
+        let http_client = http_client::ide_lane(cx.http_client());
 
         window.spawn(cx, async move |cx| {
             let kernel_id = launch_remote_kernel(

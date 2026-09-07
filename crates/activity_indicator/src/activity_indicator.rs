@@ -450,6 +450,11 @@ impl ActivityIndicator {
     /// Offers to add the hosts a language server download needs to the network
     /// allowlist, once per server per session (ADR-F22).
     ///
+    /// Since ADR-F38 language server downloads run on the IDE egress lane and
+    /// are not gated at all, so this is a fallback for a denial that reaches
+    /// here anyway — an older remote host, or a path nobody has stamped — and
+    /// no longer part of the ordinary first-run experience.
+    ///
     /// Silent when the hosts are already allowed — the denial is then stale,
     /// and the retry the user would be offered has already happened — and
     /// silent for a repeat of a denial already offered, so a server that

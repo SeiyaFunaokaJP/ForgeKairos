@@ -1867,6 +1867,14 @@ impl App {
                 cx.window_update_stack.pop();
 
                 if window.removed {
+                    // Everything below can pump the platform's event loop
+                    // (`quit` alone runs the app-quit futures), and the window
+                    // is already out of `cx.windows` by then, so any platform
+                    // callback still bound to it would only log "window not
+                    // found". Detaching first is what keeps a frame request
+                    // arriving mid-teardown - Windows keeps redrawing a live
+                    // `HWND` until `DestroyWindow` lands - from doing that.
+                    window.platform_window.detach_callbacks();
                     cx.end_platform_drag(id);
                     cx.window_handles.remove(&id);
                     cx.windows.remove(id);

@@ -1,6 +1,8 @@
 //! Reads and watches the egress allowlist policy file that drives
 //! [`http_client::AllowlistedHttpClient`]. See `docs/jp-enhance/DESIGN.md` §4
-//! (ADR-F03).
+//! (ADR-F03), and ADR-F38 for what the list covers: AI-originated traffic —
+//! model providers, agent tools, MCP servers, external agent processes — and
+//! not the IDE's own tooling.
 //!
 //! The file lives next to `settings.json` (on Windows,
 //! `%APPDATA%\Zed\network_allowlist.json`) and looks like:

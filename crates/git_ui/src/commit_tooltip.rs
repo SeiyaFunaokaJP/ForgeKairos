@@ -196,7 +196,9 @@ impl Asset for CommitAvatarAsset {
         source: Self::Source,
         cx: &mut App,
     ) -> impl Future<Output = Self::Output> + Send + 'static {
-        let client = cx.http_client();
+        // ADR-F38: a commit avatar is the editor showing git data, not AI
+        // traffic.
+        let client = gpui::http_client::ide_lane(cx.http_client());
 
         async move {
             source

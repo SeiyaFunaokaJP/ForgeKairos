@@ -7442,7 +7442,7 @@ fn terminal_page() -> SettingsPage {
         ]
     }
 
-    fn behavior_settings_section() -> [SettingsPageItem; 6] {
+    fn behavior_settings_section() -> [SettingsPageItem; 7] {
         [
             SettingsPageItem::SectionHeader("動作の設定"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -7524,6 +7524,29 @@ fn terminal_page() -> SettingsPage {
                             .terminal
                             .get_or_insert_default()
                             .open_links_in_mouse_mode = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "マクロのフォルダーを閉じて開く",
+                description: "「マクロを実行」を開いたとき、フォルダーをすべて閉じた状態で表示します。絞り込みを入力すると一致するマクロはすべて表示されます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.macro_picker_folders_collapsed"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .macro_picker_folders_collapsed
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .macro_picker_folders_collapsed = value;
                     },
                 }),
                 metadata: None,
@@ -9281,7 +9304,7 @@ fn network_page() -> SettingsPage {
             SettingsPageItem::SectionHeader("リモート"),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "リモートの通信をこの PC 経由にする",
-                description: "オンにすると、SSH などのリモートホストが行う外部通信 (言語サーバーや node のダウンロード、拡張機能のアーカイブ、エージェントのバイナリ) をこの PC が代行します。インターネットに出られないリモートでも言語サーバーを自動取得でき、取得はこの PC の許可リスト・同意ダイアログ・プロキシの管理下に入ります。オフにするとリモートが自分で外部に接続します。切り替えは再接続なしで反映されます。",
+                description: "オンにすると、SSH などのリモートホストが行う外部通信 (言語サーバーや node のダウンロード、拡張機能のアーカイブ、エージェントのバイナリ) をこの PC が代行します。インターネットに出られないリモートでも言語サーバーを自動取得できます。許可リストと同意ダイアログの対象になるのはエージェント関連の取得だけで、言語サーバーなど IDE の道具立ての取得は制限されません。オフにするとリモートが自分で外部に接続します。切り替えは再接続なしで反映されます。",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("remote.relay_http_through_client"),
@@ -9313,7 +9336,7 @@ fn network_page() -> SettingsPage {
                 r#type: SubPageType::NetworkAllowlist,
                 json_path: None,
                 description: Some(
-                    "IDE 全体の外部通信 (拡張機能・AI プロバイダー・エージェントや MCP の子プロセスを含む) を既定ですべて拒否する、このフォーク独自の機能です。通信を許可するホストを確認・追加・削除します。"
+                    "AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・外部エージェントのプロセス) を既定ですべて拒否する、このフォーク独自の機能です。言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。通信を許可するホストを確認・追加・削除します。"
                         .into(),
                 ),
                 search_aliases: &[

@@ -1,6 +1,9 @@
 //! Settings page for the egress allowlist (`docs/jp-enhance/DESIGN.md` §4,
 //! ADR-F03).
 //!
+//! Since ADR-F38 the list governs AI-originated traffic only — the IDE's own
+//! tooling is not gated by it — which is what the page has to explain.
+//!
 //! Unlike every other page in this crate, the values here do not live in
 //! `settings.json`: they are the `allowed_hosts` array and the
 //! `proxy_child_processes` flag (ADR-F14) of
@@ -26,9 +29,9 @@ use crate::components::{SettingsInputField, SettingsSectionHeader};
 const HOSTS_DESCRIPTION: &str = "各項目は完全一致のホスト名 (api.anthropic.com)、先頭の *. によるサブドメインのワイルドカード (*.corp.example。親ドメイン自身にはマッチしません)、または IP アドレス (10.0.0.5 / [fd00::1]) です。大文字と小文字は区別せず、ポートは指定しません。";
 
 /// See `docs/jp-enhance/DESIGN.md` §4.14 (ADR-F14) for what this actually covers.
-const PROXY_CHILD_PROCESSES_DESCRIPTION: &str = "有効にすると、ACP エージェント・MCP サーバー・AI エージェントのインストールに使う npm の各子プロセスに、ループバックのプロキシを渡してその外部通信も上の許可リストで判定します。既定は有効です。無効にすると、これらの子プロセスの外部通信は許可リストの統制外になります (IDE 本体の通信は統制されたままです)。";
+const PROXY_CHILD_PROCESSES_DESCRIPTION: &str = "有効にすると、ACP エージェント・MCP サーバー・AI エージェントのインストールに使う npm の各子プロセスに、ループバックのプロキシを渡してその外部通信も上の許可リストで判定します。既定は有効です。無効にすると、これらの子プロセスの外部通信は許可リストの統制外になります (IDE 本体からの AI 通信は統制されたままです)。";
 
-const PROXY_CHILD_PROCESSES_NOTE: &str = "変更は次に起動する子プロセスから反映されます (再起動は不要)。プロキシ設定を無視するプロセスは有効にしても統制できません。AI と無関係な npm や言語サーバーの通信は、有効にしても対象外です。";
+const PROXY_CHILD_PROCESSES_NOTE: &str = "変更は次に起動する子プロセスから反映されます (再起動は不要)。プロキシ設定を無視するプロセスは有効にしても統制できません。言語サーバーや拡張機能が使う npm など、AI と無関係な子プロセスは有効にしても対象外です。";
 
 /// Written when the file has to be created before it can be opened in the
 /// editor, so the user lands on something they can edit rather than a blank
@@ -36,7 +39,9 @@ const PROXY_CHILD_PROCESSES_NOTE: &str = "変更は次に起動する子プロ�
 const FILE_TEMPLATE: &str = "\
 // zed-jp-enhance 外部通信の許可リスト (docs/jp-enhance/DESIGN.md §4)
 //
-// ここに書いたホストだけが外部への HTTP(S) 通信を許可されます。
+// AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・
+// 外部エージェントのプロセス) は、ここに書いたホストだけが許可されます。
+// 言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。
 // 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。
 // // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。
 {
@@ -768,18 +773,25 @@ fn render_intro(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
     v_flex()
         .gap_1()
         .child(Label::new(
-            "外部への HTTP(S) 通信は既定ですべて拒否されます。ここに登録したホストだけが許可されます。",
+            "AI が起点になる外部通信だけを統制します。対象の通信は既定ですべて拒否され、ここに登録したホストだけが許可されます。",
         ))
         .child(
             Label::new(
-                "127.0.0.1 / ::1 / localhost は登録しなくても常に許可されるため、ローカルの LLM サーバー (Ollama など) は許可リストが空のままでも利用できます。拡張機能マーケットプレイス (一覧・検索・インストール) と本体の更新確認に必要なホストも組み込みで許可済みです。ただし更新のダウンロード先 (github.com など) は組み込みに含まれないため、確認のうえでここに追加されます。リダイレクト先も 1 ホップごとに同じ判定を受けます。",
+                "対象は、AI プロバイダー (LLM)・エージェントのツール (fetch / ウェブ検索)・MCP サーバー・外部エージェント (ACP) のプロセス・エージェントがサンドボックスで実行するコマンドの外部通信です。言語サーバー・フォーマッタ・デバッグアダプター・拡張機能・本体の更新・リモート開発サーバー・Git・ブラウザーパネルなど、IDE 自身の道具立ての通信は対象外で、制限しません。",
             )
             .size(LabelSize::Small)
             .color(Color::Muted),
         )
         .child(
             Label::new(
-                "対象は AI 機能に限りません。拡張機能・AI プロバイダー・エージェントや MCP の子プロセスを含む、IDE 全体の外部通信が対象です。「AI」ページの「サンドボックス」は、エージェントが実行するコマンドの隔離 (アクセスできるドメインと書き込み先の制限) を扱う別の設定です。ただし、そちらで許可したドメインが効くのはこのリストの範囲内だけです。サンドボックス側は許可を広げるのではなく、この範囲をさらに狭めるものと考えてください。",
+                "127.0.0.1 / ::1 / localhost は登録しなくても常に許可されるため、ローカルの LLM サーバー (Ollama など) は許可リストが空のままでも利用できます。外部エージェント (ACP) のレジストリなど、ごく一部のホストは組み込みで許可済みです。リダイレクト先も 1 ホップごとに同じ判定を受けます。",
+            )
+            .size(LabelSize::Small)
+            .color(Color::Muted),
+        )
+        .child(
+            Label::new(
+                "「AI」ページの「サンドボックス」は、エージェントが実行するコマンドの隔離 (アクセスできるドメインと書き込み先の制限) を扱う別の設定です。ただし、そちらで許可したドメインが効くのはこのリストの範囲内だけです。サンドボックス側は許可を広げるのではなく、この範囲をさらに狭めるものと考えてください。",
             )
             .size(LabelSize::Small)
             .color(Color::Muted),

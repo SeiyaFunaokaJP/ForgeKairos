@@ -11,10 +11,11 @@ pub use async_body::{AsyncBody, Inner, Json};
 use derive_more::Deref;
 pub use egress::{
     AllowlistedHttpClient, BUILTIN_ALLOWLIST, BuiltinAllow, EGRESS_DENIED_MARKER, EgressDenied,
-    EgressPolicy, EgressPolicyHandle, HostPattern, HostPatternError, RequestHost, UPDATE_REPO,
-    apply_child_process_proxy_env, child_process_proxy, egress_denied_from_message,
-    egress_denied_hosts, egress_denied_marker_line, env_overrides_child_process_proxy,
-    hosts_required_to_download, set_child_process_proxy,
+    EgressLane, EgressPolicy, EgressPolicyHandle, HostPattern, HostPatternError, LaneHttpClient,
+    RequestHost, UPDATE_REPO, apply_child_process_proxy_env, child_process_proxy,
+    egress_denied_from_message, egress_denied_hosts, egress_denied_marker_line,
+    env_overrides_child_process_proxy, hosts_required_to_download, ide_lane, ide_lane_with_url,
+    set_child_process_proxy,
 };
 pub use proxy_relay::{
     PROXY_HTTP_CHUNK_SIZE, ProxyHttpFrame, ProxyHttpFrames, ProxyHttpRelayError,
@@ -254,7 +255,11 @@ impl HttpClient for HttpClientWithProxy {
 /// An [`HttpClient`] that has a base URL.
 #[derive(Deref)]
 pub struct HttpClientWithUrl {
-    base_url: Mutex<String>,
+    /// Shared so that [`HttpClientWithUrl::with_transport`] can hand out a
+    /// second handle onto the *same* base URL — `set_base_url` is called at
+    /// runtime when the `server_url` setting changes, and a copy would go
+    /// stale.
+    base_url: Arc<Mutex<String>>,
     #[deref]
     client: HttpClientWithProxy,
 }
@@ -269,7 +274,7 @@ impl HttpClientWithUrl {
         let client = HttpClientWithProxy::new(client, proxy_url);
 
         Self {
-            base_url: Mutex::new(base_url.into()),
+            base_url: Arc::new(Mutex::new(base_url.into())),
             client,
         }
     }
@@ -282,8 +287,22 @@ impl HttpClientWithUrl {
         let client = HttpClientWithProxy::new_url(client, proxy_url);
 
         Self {
-            base_url: Mutex::new(base_url.into()),
+            base_url: Arc::new(Mutex::new(base_url.into())),
             client,
+        }
+    }
+
+    /// Another handle onto the same base URL and proxy whose requests go
+    /// through `client`. Used to re-wrap the process client for a different
+    /// [`EgressLane`] (ADR-F38) without losing `build_zed_api_url` and
+    /// friends.
+    pub fn with_transport(&self, client: Arc<dyn HttpClient>) -> Self {
+        Self {
+            base_url: self.base_url.clone(),
+            client: HttpClientWithProxy {
+                client,
+                proxy: self.client.proxy.clone(),
+            },
         }
     }
 
@@ -471,7 +490,7 @@ impl FakeHttpClient {
         F: Fn(Request<AsyncBody>) -> Fut + Send + Sync + 'static,
     {
         Arc::new(HttpClientWithUrl {
-            base_url: Mutex::new("http://test.example".into()),
+            base_url: Arc::new(Mutex::new("http://test.example".into())),
             client: HttpClientWithProxy {
                 client: Arc::new(Self {
                     handler: Mutex::new(Some(Arc::new(move |req| Box::pin(handler(req))))),

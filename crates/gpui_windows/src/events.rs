@@ -332,14 +332,19 @@ impl WindowsWindowInner {
         if let Some(callback) = callback {
             callback();
         }
-        // The close callback drops the gpui `Window`, but this HWND stays in
-        // the platform's window list until `WM_GPUI_CLOSE_ONE_WINDOW` is
-        // processed, so the vsync thread keeps invalidating it and messages
-        // already queued for it (or dispatched asynchronously, as
-        // `WM_ACTIVATE` is) still arrive. Every remaining callback holds a
-        // handle to the window that is now gone and would only log "window not
-        // found", so drop them all here.
-        self.state.callbacks.take_all();
+        // This HWND stays in the platform's window list until
+        // `WM_GPUI_CLOSE_ONE_WINDOW` is processed, so the vsync thread keeps
+        // invalidating it and messages already queued for it (or dispatched
+        // asynchronously, as `WM_ACTIVATE` is) still arrive. Anything still
+        // registered holds a handle to a window that is gone and would only log
+        // "window not found".
+        //
+        // `Callbacks::detach` has normally run well before this - gpui detaches
+        // the moment the window leaves `App::windows` - so this is the fallback
+        // for an HWND the OS destroyed without gpui asking (a parent window
+        // taking its children down, say), and the one place `close` itself is
+        // dropped.
+        self.state.take_all_callbacks();
         unsafe {
             PostMessageW(
                 Some(self.platform_window_handle),
@@ -1367,11 +1372,19 @@ impl WindowsWindowInner {
 
     #[inline]
     fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
+        // No frame callback means the gpui window is gone: it was removed from
+        // the app, which detached the callbacks, and this HWND is only waiting
+        // for the `DestroyWindow` its drop scheduled. The vsync thread keeps
+        // invalidating it until then, so bail before taking the draw guard -
+        // that guard is shared with every other window, and a dying window must
+        // not make a live one defer its frame.
+        let mut request_frame = self.state.callbacks.request_frame.take()?;
         let Some(_guard) = self.state.draw_coordinator.try_begin_draw() else {
             log::debug!("deferring re-entrant draw of window {handle:?}");
             if force_render {
                 self.state.force_render_pending.set(true);
             }
+            self.state.callbacks.request_frame.set(Some(request_frame));
             // Validate the region so a nested message pump doesn't keep
             // re-dispatching WM_PAINT for the still-invalid region in a busy
             // loop until the in-progress draw unwinds. The vsync thread
@@ -1381,7 +1394,6 @@ impl WindowsWindowInner {
             unsafe { ValidateRect(Some(handle), None).ok().log_err() };
             return Some(0);
         };
-        let mut request_frame = self.state.callbacks.request_frame.take()?;
 
         self.state.direct_manipulation.update();
 
