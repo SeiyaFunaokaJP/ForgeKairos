@@ -332,6 +332,14 @@ impl WindowsWindowInner {
         if let Some(callback) = callback {
             callback();
         }
+        // The close callback drops the gpui `Window`, but this HWND stays in
+        // the platform's window list until `WM_GPUI_CLOSE_ONE_WINDOW` is
+        // processed, so the vsync thread keeps invalidating it and messages
+        // already queued for it (or dispatched asynchronously, as
+        // `WM_ACTIVATE` is) still arrive. Every remaining callback holds a
+        // handle to the window that is now gone and would only log "window not
+        // found", so drop them all here.
+        self.state.callbacks.take_all();
         unsafe {
             PostMessageW(
                 Some(self.platform_window_handle),

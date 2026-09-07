@@ -22,15 +22,15 @@ use terminal::{
     Terminal,
     quick_connect_credentials::{self, QuickConnectCredentials, StoredPassword},
     terminal_macro::{
-        ConnectionProtocol, MacroStep, SavedConnection, TerminalMacro, TerminalSessionStore,
-        normalize_folder, normalize_tags,
+        ConnectionProtocol, MacroFolder, MacroKey, MacroStep, SavedConnection, TerminalMacro,
+        TerminalSessionStore, TerminalSessionsFile, normalize_folder, normalize_tags,
     },
     terminal_settings::TerminalSettings,
 };
 use ui::{
     Checkbox, ContextMenu, Disclosure, DropdownMenu, DropdownStyle, HighlightedLabel,
     InputFrameSize, ListItem, ListItemSpacing, Modal, ModalFooter, ModalHeader, Section,
-    ToggleState, Tooltip, input_frame, input_frame_sized, prelude::*,
+    ToggleState, Tooltip, input_frame, input_frame_sized, prelude::*, right_click_menu,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Panel as _, Workspace};
@@ -334,9 +334,14 @@ impl MacroPicker {
             workspace,
             macros: Vec::new(),
             entries: Vec::new(),
+            unfiled_collapsed: false,
             selected_index: 0,
         };
-        let picker = cx.new(|cx| Picker::uniform_list(delegate, window, cx));
+        // Not `uniform_list`: that lays every row out at one height, and this
+        // list has two shapes — a one-line folder heading and a two-line macro
+        // row (name over 「n ステップ」) — so the headings after the first were
+        // drawn on top of the row above them.
+        let picker = cx.new(|cx| Picker::list(delegate, window, cx));
         // The store loads `terminal_sessions.json` asynchronously, so the first
         // time this modal is opened it is built against an empty store and has
         // to re-query once the file lands.
@@ -378,13 +383,53 @@ impl ModalView for MacroPicker {}
 
 /// One row of the macro list: either a folder heading or a macro.
 enum MacroPickerEntry {
-    Folder(SharedString),
+    Folder {
+        /// `None` is the [`UNFILED_FOLDER`] heading, which has no folder of its
+        /// own in the file and so no stored collapse state.
+        folder: Option<String>,
+        /// How many macros the heading stands for, matches only.
+        count: usize,
+        collapsed: bool,
+    },
     Macro {
         index: usize,
         /// Byte offsets of the matched characters within the macro's *name*,
         /// which is the only part of the search text the row shows.
         name_highlights: Vec<usize>,
     },
+}
+
+impl MacroPickerEntry {
+    /// 「ルータ用 (2)」, the heading the picker draws.
+    fn heading_label(folder: Option<&str>, count: usize) -> String {
+        format!("{} ({count})", folder.unwrap_or(UNFILED_FOLDER))
+    }
+}
+
+/// Folds a folder heading open or shut *in the file*, so the editor tree and
+/// the runner picker agree and the state outlives the modal. `None` when there
+/// is nothing to write, which the caller treats as success.
+fn write_folder_collapsed(
+    store: &Entity<TerminalSessionStore>,
+    folder: &str,
+    collapsed: bool,
+    cx: &mut App,
+) -> Option<Task<anyhow::Result<()>>> {
+    // Writing before the first read would rewrite the file from an empty
+    // in-memory copy, dropping every macro and connection already in it.
+    if !store.read(cx).is_loaded() {
+        return None;
+    }
+    let mut file = store.read(cx).file().clone();
+    let entry = file
+        .macro_folders
+        .iter_mut()
+        .find(|candidate| candidate.name == folder)?;
+    if entry.collapsed == collapsed {
+        return None;
+    }
+    entry.collapsed = collapsed;
+    Some(store.update(cx, |store, cx| store.write(file, cx)))
 }
 
 /// What the picker searches: `フォルダー/名前`, then the description, then the
@@ -403,12 +448,25 @@ fn macro_search_text(terminal_macro: &TerminalMacro) -> String {
     text
 }
 
-/// Macros are always listed folder first, then by name, whether or not a query
-/// narrowed them, so the same macro is always found in the same place.
-fn sort_macros(macros: &mut [TerminalMacro]) {
+/// Macros are always listed in folder order — the order the user arranged
+/// `macro_folders` in, 未分類 last — and by name inside a folder, whether or not
+/// a query narrowed them, so the same macro is always found in the same place.
+fn sort_macros(macros: &mut [TerminalMacro], folders: &[MacroFolder]) {
+    let rank = |folder: Option<&str>| {
+        folder
+            .and_then(|folder| {
+                folders
+                    .iter()
+                    .position(|candidate| candidate.name == folder)
+            })
+            .unwrap_or(usize::MAX)
+    };
     macros.sort_by(|left, right| {
-        left.folder_display()
-            .cmp(right.folder_display())
+        rank(left.folder.as_deref())
+            .cmp(&rank(right.folder.as_deref()))
+            // Only reached by a macro whose folder is not registered, which
+            // `ensure_macro_folders` normally repairs on load.
+            .then_with(|| left.folder_display().cmp(right.folder_display()))
             .then_with(|| left.name.cmp(&right.name))
     });
 }
@@ -416,9 +474,13 @@ fn sort_macros(macros: &mut [TerminalMacro]) {
 pub struct MacroPickerDelegate {
     store: Entity<TerminalSessionStore>,
     workspace: WeakEntity<Workspace>,
-    /// Sorted by folder then name; [`MacroPickerDelegate::entries`] indexes it.
+    /// Sorted in folder order then by name; [`MacroPickerDelegate::entries`]
+    /// indexes it.
     macros: Vec<TerminalMacro>,
     entries: Vec<MacroPickerEntry>,
+    /// Whether the 未分類 heading is folded shut. A real folder keeps that in
+    /// the file; this one has nowhere to live, so it lasts as long as the modal.
+    unfiled_collapsed: bool,
     selected_index: usize,
 }
 
@@ -426,7 +488,7 @@ impl MacroPickerDelegate {
     fn selected_macro(&self) -> Option<&TerminalMacro> {
         match self.entries.get(self.selected_index)? {
             MacroPickerEntry::Macro { index, .. } => self.macros.get(*index),
-            MacroPickerEntry::Folder(_) => None,
+            MacroPickerEntry::Folder { .. } => None,
         }
     }
 
@@ -437,35 +499,92 @@ impl MacroPickerDelegate {
             .unwrap_or(0)
     }
 
-    /// Turns the matches into rows, inserting a heading whenever the folder
-    /// changes. Macros with no folder sort first and get no heading.
+    /// Turns the matches into rows, one heading per folder in the order the
+    /// user arranged them, 未分類 last. `honor_collapse` is false while a query
+    /// narrows the list: a match must never be hidden behind a folded heading.
     fn build_entries(
         macros: &[TerminalMacro],
+        folders: &[MacroFolder],
         mut matches: Vec<StringMatch>,
+        honor_collapse: bool,
+        unfiled_collapsed: bool,
     ) -> Vec<MacroPickerEntry> {
         // `match_strings` returns best-scoring first; the list is ordered by
         // folder and name instead, and `candidate_id` is that position.
         matches.sort_by_key(|string_match| string_match.candidate_id);
 
         let mut entries = Vec::with_capacity(matches.len());
-        let mut current_folder: Option<&str> = None;
-        for string_match in matches {
-            let Some(terminal_macro) = macros.get(string_match.candidate_id) else {
+        let mut start = 0;
+        while start < matches.len() {
+            let Some(first) = macros.get(matches[start].candidate_id) else {
+                start += 1;
                 continue;
             };
-            let folder = terminal_macro.folder_display();
-            if current_folder != Some(folder) {
-                current_folder = Some(folder);
-                if !folder.is_empty() {
-                    entries.push(MacroPickerEntry::Folder(folder.to_string().into()));
+            let folder = first.folder.clone();
+            let mut end = start + 1;
+            while end < matches.len()
+                && macros
+                    .get(matches[end].candidate_id)
+                    .is_some_and(|candidate| candidate.folder == folder)
+            {
+                end += 1;
+            }
+
+            // With no folders at all the list is flat, the way it was before
+            // folders became something the user arranges.
+            let heading = folder.is_some() || !folders.is_empty();
+            let collapsed = honor_collapse
+                && match &folder {
+                    Some(name) => folders
+                        .iter()
+                        .any(|candidate| candidate.name == *name && candidate.collapsed),
+                    None => unfiled_collapsed,
+                };
+            if heading {
+                entries.push(MacroPickerEntry::Folder {
+                    folder: folder.clone(),
+                    count: end - start,
+                    collapsed,
+                });
+            }
+            if !(heading && collapsed) {
+                for string_match in &matches[start..end] {
+                    let Some(terminal_macro) = macros.get(string_match.candidate_id) else {
+                        continue;
+                    };
+                    entries.push(MacroPickerEntry::Macro {
+                        index: string_match.candidate_id,
+                        name_highlights: name_highlights(terminal_macro, &string_match.positions),
+                    });
                 }
             }
-            entries.push(MacroPickerEntry::Macro {
-                index: string_match.candidate_id,
-                name_highlights: name_highlights(terminal_macro, &string_match.positions),
-            });
+            start = end;
         }
         entries
+    }
+
+    /// Folds the heading the user clicked. A real folder's state goes into the
+    /// file (and comes back through the store's observer); 未分類 has none, so
+    /// it is toggled here and the list rebuilt directly.
+    fn toggle_folder(
+        picker: &mut Picker<Self>,
+        folder: Option<String>,
+        collapsed: bool,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let Some(folder) = folder else {
+            picker.delegate.unfiled_collapsed = !collapsed;
+            picker.refresh(window, cx);
+            return;
+        };
+        let store = picker.delegate.store.clone();
+        if let Some(write) = write_folder_collapsed(&store, &folder, !collapsed, cx) {
+            cx.spawn(async move |_, _| {
+                write.await.log_err();
+            })
+            .detach();
+        }
     }
 
     fn open_editor(
@@ -714,7 +833,7 @@ impl PickerDelegate for MacroPickerDelegate {
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| {
-                matches!(entry, MacroPickerEntry::Folder(_))
+                matches!(entry, MacroPickerEntry::Folder { .. })
                     .then(|| index.checked_sub(1))
                     .flatten()
             })
@@ -739,8 +858,9 @@ impl PickerDelegate for MacroPickerDelegate {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
+        let folders = self.store.read(cx).macro_folders().to_vec();
         let mut macros = self.store.read(cx).macros().to_vec();
-        sort_macros(&mut macros);
+        sort_macros(&mut macros, &folders);
         let candidates = macros
             .iter()
             .enumerate()
@@ -749,6 +869,9 @@ impl PickerDelegate for MacroPickerDelegate {
             })
             .collect::<Vec<_>>();
         let query = query.trim().to_string();
+        // A folded heading must never swallow a match, so the collapse state is
+        // only honoured while the list stands for everything the user has.
+        let honor_collapse = query.is_empty();
         let executor = cx.background_executor().clone();
 
         cx.spawn_in(window, async move |picker, cx| {
@@ -765,7 +888,13 @@ impl PickerDelegate for MacroPickerDelegate {
             picker
                 .update(cx, |picker, cx| {
                     let delegate = &mut picker.delegate;
-                    delegate.entries = Self::build_entries(&macros, matches);
+                    delegate.entries = Self::build_entries(
+                        &macros,
+                        &folders,
+                        matches,
+                        honor_collapse,
+                        delegate.unfiled_collapsed,
+                    );
                     delegate.macros = macros;
                     delegate.selected_index = delegate.first_selectable_index();
                     cx.notify();
@@ -808,27 +937,63 @@ impl PickerDelegate for MacroPickerDelegate {
         ix: usize,
         selected: bool,
         _: &mut Window,
-        _: &mut Context<Picker<Self>>,
+        cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
         match self.entries.get(ix)? {
-            MacroPickerEntry::Folder(folder) => Some(
-                h_flex()
-                    .w_full()
-                    .px_2()
-                    .pt_1()
-                    .gap_1()
-                    .child(
-                        Icon::new(IconName::Folder)
-                            .size(IconSize::XSmall)
-                            .color(Color::Muted),
-                    )
-                    .child(
-                        Label::new(folder.clone())
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
-                    )
-                    .into_any_element(),
-            ),
+            MacroPickerEntry::Folder {
+                folder,
+                count,
+                collapsed,
+            } => {
+                let label = MacroPickerEntry::heading_label(folder.as_deref(), *count);
+                let folder = folder.clone();
+                let collapsed = *collapsed;
+                let disclosure_folder = folder.clone();
+                Some(
+                    h_flex()
+                        .w_full()
+                        .px_2()
+                        .pt_1()
+                        .gap_1()
+                        .debug_selector(|| picker_row_selector(ix))
+                        .child(
+                            Disclosure::new(("macro-picker-folder-toggle", ix), !collapsed)
+                                .on_click(cx.listener(move |picker, _, window, cx| {
+                                    Self::toggle_folder(
+                                        picker,
+                                        disclosure_folder.clone(),
+                                        collapsed,
+                                        window,
+                                        cx,
+                                    );
+                                })),
+                        )
+                        .child(
+                            h_flex()
+                                .id(("macro-picker-folder", ix))
+                                .gap_1()
+                                .cursor_pointer()
+                                .on_click(cx.listener(move |picker, _, window, cx| {
+                                    Self::toggle_folder(
+                                        picker,
+                                        folder.clone(),
+                                        collapsed,
+                                        window,
+                                        cx,
+                                    );
+                                }))
+                                .child(
+                                    Icon::new(IconName::Folder)
+                                        .size(IconSize::XSmall)
+                                        .color(Color::Muted),
+                                )
+                                .child(
+                                    Label::new(label).size(LabelSize::Small).color(Color::Muted),
+                                ),
+                        )
+                        .into_any_element(),
+                )
+            }
             MacroPickerEntry::Macro {
                 index,
                 name_highlights,
@@ -860,6 +1025,7 @@ impl PickerDelegate for MacroPickerDelegate {
                         .toggle_state(selected)
                         .child(
                             v_flex()
+                                .debug_selector(|| picker_row_selector(ix))
                                 .child(HighlightedLabel::new(
                                     terminal_macro.name.clone(),
                                     name_highlights.clone(),
@@ -913,6 +1079,14 @@ impl PickerDelegate for MacroPickerDelegate {
                 .into_any_element(),
         )
     }
+}
+
+/// Names a picker row for [`gpui::VisualTestContext::debug_bounds`], so a test
+/// can check that the two row shapes — a one-line folder heading and a two-line
+/// macro row — are laid out without landing on top of each other. Compiles away
+/// outside test builds.
+fn picker_row_selector(ix: usize) -> String {
+    format!("macro-picker-row-{ix}")
 }
 
 /// Maps the match positions of the whole search text onto the macro's name,
@@ -1180,10 +1354,16 @@ fn parse_seconds(value: &str) -> Option<u64> {
 /// grouping they did not ask for.
 const UNFILED_FOLDER: &str = "未分類";
 
+/// Stands in for the macros of a folder the user made but has not filled yet.
+const EMPTY_FOLDER_ROW: &str = "マクロがありません — ここに追加";
+
+/// The form's folder dropdown entry for 未分類.
+const NO_FOLDER: &str = "(フォルダーなし)";
+
 /// A macro dragged from the tree onto a folder heading.
 #[derive(Clone)]
 struct DraggedMacro {
-    name: String,
+    key: MacroKey,
 }
 
 /// What follows the pointer while a macro is dragged between folders.
@@ -1208,6 +1388,9 @@ enum MacroTreeRow {
         collapsed: bool,
         count: usize,
     },
+    /// Placeholder under a folder that holds nothing yet — a state ADR-F35
+    /// made possible, and the only invitation to put something in it.
+    EmptyFolder { folder: String },
     /// A macro filed under the heading above it.
     Macro(TerminalMacro),
 }
@@ -1225,6 +1408,48 @@ fn folder_after_rename(folder: &str, from: &str, to: &str) -> Option<String> {
         .map(|rest| format!("{to}/{rest}"))
 }
 
+/// Which of `file.connections` run the macro `key` names, one flag per entry so
+/// the caller can rewrite them while walking the same list.
+///
+/// A connection saved after ADR-F35 names the folder as well; one written
+/// before it carries the name alone and is matched through
+/// [`TerminalSessionsFile::macro_for_connection`], which is the same reading
+/// the runner uses. Without that, renaming or moving a macro would leave the
+/// older reference behind and 「接続後に実行するマクロ」 would silently stop
+/// running — or worse, latch onto another folder's macro of the same name.
+///
+/// Must be called *before* the macros are rewritten: a name-only reference only
+/// resolves against the file as it stands.
+fn connections_running(file: &TerminalSessionsFile, key: &MacroKey) -> Vec<bool> {
+    file.connections
+        .iter()
+        .map(|connection| {
+            if connection.macro_folder.is_some() {
+                return connection.macro_folder == key.0
+                    && connection.macro_name.as_deref() == Some(key.1.as_str());
+            }
+            file.macro_for_connection(connection)
+                .is_some_and(|resolved| resolved.is(key.0.as_deref(), &key.1))
+        })
+        .collect()
+}
+
+/// Which of `file.connections` run a macro filed under `folder`, resolved the
+/// same way as [`connections_running`]. A `macro_folder` naming the folder
+/// counts even when nothing carries the name any more, so deleting the folder
+/// cannot leave a reference that `ensure_macro_folders` would resurrect it from.
+fn connections_in_folder(file: &TerminalSessionsFile, folder: &str) -> Vec<bool> {
+    file.connections
+        .iter()
+        .map(|connection| match connection.macro_folder.as_deref() {
+            Some(named) => named == folder,
+            None => file
+                .macro_for_connection(connection)
+                .is_some_and(|resolved| resolved.folder.as_deref() == Some(folder)),
+        })
+        .collect()
+}
+
 /// The raw text of every field on the form. Comparing one of these against the
 /// snapshot taken when the macro was loaded is how the editor knows the form
 /// holds unsaved work: raw text rather than a parsed [`TerminalMacro`], so a
@@ -1232,7 +1457,7 @@ fn folder_after_rename(folder: &str, from: &str, to: &str) -> Option<String> {
 #[derive(PartialEq, Eq)]
 struct FormSnapshot {
     name: String,
-    folder: String,
+    folder: Option<String>,
     tags: String,
     description: String,
     repeat: String,
@@ -1267,13 +1492,25 @@ impl StepRow {
     }
 }
 
+/// The inline 「新しいフォルダー」 name field. Both the tree's toolbar button and
+/// the form's folder dropdown open one; `file_open_macro_in_it` decides whether
+/// the folder that comes out also becomes the open macro's folder.
+struct NewFolderEntry {
+    field: Entity<Editor>,
+    file_open_macro_in_it: bool,
+}
+
 pub struct MacroEditor {
     store: Entity<TerminalSessionStore>,
-    /// Name the macro had when the form was last loaded, so a rename replaces
-    /// the original entry instead of adding a second one.
-    original_name: Option<String>,
+    /// Folder and name the macro had when the form was last loaded, so a rename
+    /// or a move replaces the original entry instead of adding a second one.
+    /// The name alone would not do: two folders may hold the same one.
+    original_key: Option<MacroKey>,
     name: Entity<Editor>,
-    folder: Entity<Editor>,
+    /// Folder picked in the form's dropdown; `None` is 未分類. A dropdown rather
+    /// than a text field, so a macro can only ever be filed under a folder that
+    /// exists (ADR-F35).
+    form_folder: Option<String>,
     tags: Entity<Editor>,
     description: Entity<Editor>,
     repeat: Entity<Editor>,
@@ -1284,15 +1521,21 @@ pub struct MacroEditor {
     /// that stands for nothing on disk (a 複製), which counts as unsaved from
     /// the moment it is made.
     saved_snapshot: Option<FormSnapshot>,
-    /// Collapsed headings of the tree; `None` is the [`UNFILED_FOLDER`] one.
-    collapsed_folders: HashSet<Option<String>>,
+    /// Whether the [`UNFILED_FOLDER`] heading is folded shut. A real folder
+    /// keeps that in the file; this one has nowhere to live, so it lasts as
+    /// long as the modal.
+    unfiled_collapsed: bool,
     /// Folder whose name is being edited in the tree, with the field holding
     /// the new name.
     renaming_folder: Option<(String, Entity<Editor>)>,
+    new_folder: Option<NewFolderEntry>,
     steps: Vec<StepRow>,
     error: Option<SharedString>,
     /// Macro whose 削除 has been asked for but not yet confirmed.
-    pending_delete: Option<String>,
+    pending_delete: Option<MacroKey>,
+    /// Folder whose 削除 has been asked for and which still holds macros, so
+    /// the user has to say what becomes of them.
+    pending_folder_delete: Option<String>,
     /// Macro picked in the tree while the form held unsaved edits, kept until
     /// the user says whether to throw those edits away. The inner `None` is
     /// 新規.
@@ -1317,7 +1560,6 @@ impl MacroEditor {
         };
 
         let name = placeholder_editor("マクロ名", window, cx);
-        let folder = placeholder_editor("フォルダー (例: 拠点/本社。省略可)", window, cx);
         let tags = placeholder_editor("タグ (カンマ区切り、省略可)", window, cx);
         let description = placeholder_editor("説明 (省略可)", window, cx);
         let repeat = cx.new(|cx| Editor::single_line(window, cx));
@@ -1339,20 +1581,22 @@ impl MacroEditor {
 
         let mut this = Self {
             store,
-            original_name: None,
+            original_key: None,
             name,
-            folder,
+            form_folder: None,
             tags,
             description,
             repeat,
             repeat_interval,
             list_filter,
             saved_snapshot: None,
-            collapsed_folders: HashSet::default(),
+            unfiled_collapsed: false,
             renaming_folder: None,
+            new_folder: None,
             steps: Vec::new(),
             error: None,
             pending_delete: None,
+            pending_folder_delete: None,
             pending_selection: None,
             focus_handle,
             _subscriptions: [store_loaded, filter_edited],
@@ -1369,13 +1613,14 @@ impl MacroEditor {
         cx: &mut Context<Self>,
     ) {
         let edited = edited.unwrap_or_default();
-        self.original_name = (!edited.name.is_empty()).then(|| edited.name.clone());
+        // A macro with no name yet stands for nothing on disk, which is how the
+        // tree hands the form 「このフォルダーに新しいマクロ」.
+        self.original_key = (!edited.name.is_empty()).then(|| edited.key());
         self.name.update(cx, |editor, cx| {
             editor.set_text(edited.name, window, cx);
         });
-        self.folder.update(cx, |editor, cx| {
-            editor.set_text(edited.folder.clone().unwrap_or_default(), window, cx);
-        });
+        self.form_folder = edited.folder.clone();
+        self.new_folder = None;
         self.tags.update(cx, |editor, cx| {
             editor.set_text(edited.tags.join(", "), window, cx);
         });
@@ -1395,6 +1640,7 @@ impl MacroEditor {
             .collect();
         self.error = None;
         self.pending_delete = None;
+        self.pending_folder_delete = None;
         self.pending_selection = None;
         self.saved_snapshot = Some(self.snapshot(cx));
         window.focus(&self.name.focus_handle(cx), cx);
@@ -1404,7 +1650,7 @@ impl MacroEditor {
     fn snapshot(&self, cx: &App) -> FormSnapshot {
         FormSnapshot {
             name: self.name.read(cx).text(cx),
-            folder: self.folder.read(cx).text(cx),
+            folder: self.form_folder.clone(),
             tags: self.tags.read(cx).text(cx),
             description: self.description.read(cx).text(cx),
             repeat: self.repeat.read(cx).text(cx),
@@ -1432,7 +1678,8 @@ impl MacroEditor {
         // Clicking the row that is already open is not a request to reload it,
         // and reloading would throw away whatever is being typed into it.
         if let Some(edited) = &edited
-            && self.original_name.as_deref() == Some(edited.name.as_str())
+            && !edited.name.is_empty()
+            && self.original_key.as_ref() == Some(&edited.key())
         {
             return;
         }
@@ -1457,7 +1704,7 @@ impl MacroEditor {
     /// written until 保存.
     fn duplicate_macro(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let copy_name = self.unused_copy_name(&self.name.read(cx).text(cx), cx);
-        self.original_name = None;
+        self.original_key = None;
         self.name.update(cx, |editor, cx| {
             editor.set_text(copy_name, window, cx);
         });
@@ -1471,13 +1718,16 @@ impl MacroEditor {
         cx.notify();
     }
 
-    /// `名前 のコピー`, numbered when that is taken, so a copy never silently
-    /// overwrites the macro it was made from.
+    /// `名前 のコピー`, numbered when that is taken *in the same folder*, so a
+    /// copy never silently overwrites the macro it was made from. A folder of
+    /// its own is what makes 「A-PC用/ls」 and 「B-PC用/ls」 both keep their name.
     fn unused_copy_name(&self, base: &str, cx: &App) -> String {
         let base = base.trim();
         let base = if base.is_empty() { "マクロ" } else { base };
+        let folder = self.form_folder.as_deref();
+        let taken = |candidate: &str| self.store.read(cx).macro_named(folder, candidate).is_some();
         let candidate = format!("{base} のコピー");
-        if self.store.read(cx).macro_named(&candidate).is_none() {
+        if !taken(&candidate) {
             return candidate;
         }
         // There are only as many taken names as there are macros, so one of
@@ -1485,19 +1735,41 @@ impl MacroEditor {
         let limit = self.store.read(cx).macros().len() + 2;
         for suffix in 2..=limit {
             let numbered = format!("{base} のコピー {suffix}");
-            if self.store.read(cx).macro_named(&numbered).is_none() {
+            if !taken(&numbered) {
                 return numbered;
             }
         }
         candidate
     }
 
+    /// `name` if `folder` does not hold it yet, otherwise 「name (2)」, 「name
+    /// (3)」… — what a macro dragged into a folder that already has one by that
+    /// name is renamed to.
+    fn unused_name_in_folder(&self, folder: Option<&str>, name: &str, cx: &App) -> String {
+        if self.store.read(cx).macro_named(folder, name).is_none() {
+            return name.to_string();
+        }
+        let limit = self.store.read(cx).macros().len() + 2;
+        for suffix in 2..=limit {
+            let numbered = format!("{name} ({suffix})");
+            if self.store.read(cx).macro_named(folder, &numbered).is_none() {
+                return numbered;
+            }
+        }
+        name.to_string()
+    }
+
+    fn macro_folders(&self, cx: &App) -> Vec<MacroFolder> {
+        self.store.read(cx).macro_folders().to_vec()
+    }
+
     /// The saved macros the tree shows, in folder-then-name order. Read
     /// straight from the store so the tree is whatever is on disk right now,
     /// not a copy taken at open time.
     fn listed_macros(&self, cx: &App) -> Vec<TerminalMacro> {
+        let folders = self.macro_folders(cx);
         let mut macros = self.store.read(cx).macros().to_vec();
-        sort_macros(&mut macros);
+        sort_macros(&mut macros, &folders);
         let filter = self.list_filter.read(cx).text(cx).trim().to_lowercase();
         if !filter.is_empty() {
             macros.retain(|terminal_macro| {
@@ -1509,52 +1781,85 @@ impl MacroEditor {
         macros
     }
 
-    /// Folder names already in use, offered as completions for the form's
-    /// folder field.
+    /// Folder names in the order the user arranged them, which is what both the
+    /// tree and the form's dropdown show.
     fn known_folders(&self, cx: &App) -> Vec<String> {
-        let mut folders = self
-            .store
-            .read(cx)
-            .macros()
-            .iter()
-            .filter_map(|terminal_macro| terminal_macro.folder.clone())
-            .collect::<Vec<_>>();
-        folders.sort();
-        folders.dedup();
-        folders
+        self.macro_folders(cx)
+            .into_iter()
+            .map(|folder| folder.name)
+            .collect()
     }
 
-    /// The tree the left pane draws: a heading per folder, then the macros in
-    /// it. Built from the sorted list, so one pass is enough.
+    /// The tree the left pane draws: every folder gets a heading, in order,
+    /// whether or not anything is filed under it, and 未分類 comes last. With no
+    /// folders at all the list stays flat, so a user who never made one is not
+    /// shown a grouping they did not ask for.
     fn macro_tree(&self, cx: &App) -> Vec<MacroTreeRow> {
-        // Whether the user has any folders at all, rather than whether the
-        // filtered list happens to show one, so the 未分類 heading does not
-        // appear and disappear while typing in the filter.
-        let unfiled_heading = !self.known_folders(cx).is_empty();
+        let folders = self.macro_folders(cx);
+        let filtering = !self.list_filter.read(cx).text(cx).trim().is_empty();
+        let listed = self.listed_macros(cx);
 
-        let mut groups: Vec<(Option<String>, Vec<TerminalMacro>)> = Vec::new();
-        for terminal_macro in self.listed_macros(cx) {
-            let folder = terminal_macro.folder.clone();
-            match groups.last_mut() {
-                Some((current, entries)) if *current == folder => entries.push(terminal_macro),
-                _ => groups.push((folder, vec![terminal_macro])),
+        let mut rows = Vec::new();
+        for folder in &folders {
+            let entries = listed
+                .iter()
+                .filter(|terminal_macro| terminal_macro.folder.as_deref() == Some(&folder.name))
+                .cloned()
+                .collect::<Vec<_>>();
+            // While the filter narrows the list, a folder with no match has
+            // nothing to say; unfiltered, an empty folder is shown so it can be
+            // filled, renamed or deleted.
+            if filtering && entries.is_empty() {
+                continue;
+            }
+            // A folded heading must never be the reason a match is not drawn,
+            // which is the same rule the runner picker follows: the count in
+            // the header and the rows under it have to agree.
+            let collapsed = folder.collapsed && !filtering;
+            rows.push(MacroTreeRow::Folder {
+                folder: Some(folder.name.clone()),
+                collapsed,
+                count: entries.len(),
+            });
+            if collapsed {
+                continue;
+            }
+            if entries.is_empty() {
+                rows.push(MacroTreeRow::EmptyFolder {
+                    folder: folder.name.clone(),
+                });
+            } else {
+                rows.extend(entries.into_iter().map(MacroTreeRow::Macro));
             }
         }
 
-        let mut rows = Vec::new();
-        for (folder, entries) in groups {
-            let heading = folder.is_some() || unfiled_heading;
-            let collapsed = heading && self.collapsed_folders.contains(&folder);
-            if heading {
-                rows.push(MacroTreeRow::Folder {
-                    folder,
-                    collapsed,
-                    count: entries.len(),
-                });
-            }
-            if !collapsed {
-                rows.extend(entries.into_iter().map(MacroTreeRow::Macro));
-            }
+        // A macro whose folder is not registered would otherwise fall out of
+        // the tree entirely; `ensure_macro_folders` normally prevents that, but
+        // the tree must not be the place where a hand-edited file loses rows.
+        let unfiled = listed
+            .into_iter()
+            .filter(|terminal_macro| {
+                terminal_macro
+                    .folder
+                    .as_ref()
+                    .is_none_or(|folder| !folders.iter().any(|candidate| candidate.name == *folder))
+            })
+            .collect::<Vec<_>>();
+        if unfiled.is_empty() {
+            return rows;
+        }
+        if folders.is_empty() {
+            rows.extend(unfiled.into_iter().map(MacroTreeRow::Macro));
+            return rows;
+        }
+        let unfiled_collapsed = self.unfiled_collapsed && !filtering;
+        rows.push(MacroTreeRow::Folder {
+            folder: None,
+            collapsed: unfiled_collapsed,
+            count: unfiled.len(),
+        });
+        if !unfiled_collapsed {
+            rows.extend(unfiled.into_iter().map(MacroTreeRow::Macro));
         }
         rows
     }
@@ -1647,21 +1952,306 @@ impl MacroEditor {
         .detach();
     }
 
-    /// Points the form's folder field at `folder` without that counting as an
-    /// unsaved edit, for when the tree moved or renamed the macro on show.
-    fn set_form_folder(
+    /// Points the form's folder dropdown at `folder` without that counting as
+    /// an unsaved edit, for when the tree moved or renamed the macro on show.
+    fn set_form_folder(&mut self, folder: Option<String>) {
+        self.form_folder = folder.clone();
+        if let Some(snapshot) = &mut self.saved_snapshot {
+            snapshot.folder = folder;
+        }
+    }
+
+    /// Points the 削除しますか / 破棄しますか prompts at wherever the macro they
+    /// name has just gone. `remap` answers with the macro's new key, or `None`
+    /// when it is no longer there — a prompt left standing for an entry that
+    /// moved would otherwise act on the wrong macro, or on none at all.
+    fn remap_pending_macro(&mut self, remap: impl Fn(&MacroKey) -> Option<MacroKey>) {
+        if let Some(key) = self.pending_delete.take() {
+            self.pending_delete = remap(&key);
+        }
+        // The inner `None` is 新規, which no rename or move can invalidate.
+        let Some(Some(edited)) = self.pending_selection.clone() else {
+            return;
+        };
+        self.pending_selection = remap(&edited.key()).map(|(folder, name)| {
+            Some(TerminalMacro {
+                folder,
+                name,
+                ..edited
+            })
+        });
+    }
+
+    /// Folds a heading. A real folder's state goes into the file so the runner
+    /// picker and the next session see it; 未分類 has no folder to keep it in.
+    fn toggle_folder_collapsed(&mut self, folder: Option<String>, cx: &mut Context<Self>) {
+        let Some(folder) = folder else {
+            self.unfiled_collapsed = !self.unfiled_collapsed;
+            cx.notify();
+            return;
+        };
+        let collapsed = self
+            .macro_folders(cx)
+            .iter()
+            .any(|candidate| candidate.name == folder && candidate.collapsed);
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
+        let store = self.store.clone();
+        if let Some(write) = write_folder_collapsed(&store, &folder, !collapsed, cx) {
+            self.report_write_failure(write, "フォルダーの開閉を保存", cx);
+        }
+        cx.notify();
+    }
+
+    /// Opens the inline 「新しいフォルダー」 field. `file_open_macro_in_it` is set
+    /// when the request came from the form's dropdown, where creating a folder
+    /// is also a way of choosing it.
+    fn begin_new_folder(
         &mut self,
-        folder: Option<String>,
+        file_open_macro_in_it: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let text = folder.unwrap_or_default();
-        self.folder.update(cx, |editor, cx| {
-            editor.set_text(text.clone(), window, cx);
+        let field = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_placeholder_text("フォルダー名", window, cx);
+            editor
         });
-        if let Some(snapshot) = &mut self.saved_snapshot {
-            snapshot.folder = text;
+        window.focus(&field.focus_handle(cx), cx);
+        self.new_folder = Some(NewFolderEntry {
+            field,
+            file_open_macro_in_it,
+        });
+        self.renaming_folder = None;
+        self.error = None;
+        cx.notify();
+    }
+
+    fn confirm_new_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(entry) = self.new_folder.take() else {
+            return;
+        };
+        let Some(name) = normalize_folder(&entry.field.read(cx).text(cx)) else {
+            self.error = Some("フォルダー名を入力してください。".into());
+            self.new_folder = Some(entry);
+            cx.notify();
+            return;
+        };
+        // Writing before the first read would rewrite the file from an empty
+        // in-memory copy, dropping every macro and connection already in it.
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            self.new_folder = Some(entry);
+            cx.notify();
+            return;
         }
+        if self.store.read(cx).file().has_folder(&name) {
+            self.error = Some("同じ名前のフォルダーがあります。".into());
+            self.new_folder = Some(entry);
+            cx.notify();
+            return;
+        }
+
+        let mut file = self.store.read(cx).file().clone();
+        file.macro_folders.push(MacroFolder::new(name.clone()));
+        if entry.file_open_macro_in_it {
+            self.form_folder = Some(name);
+        }
+        self.error = None;
+        let write = self.store.update(cx, |store, cx| store.write(file, cx));
+        self.report_write_failure(write, "フォルダーを作成", cx);
+        cx.notify();
+    }
+
+    /// Moves a folder one place up or down, which is all the order the tree and
+    /// the picker follow: the position in `macro_folders` is the display order.
+    fn move_folder(&mut self, folder: &str, up: bool, cx: &mut Context<Self>) {
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
+        let mut file = self.store.read(cx).file().clone();
+        let Some(index) = file.folder_index(folder) else {
+            return;
+        };
+        let Some(target) = (if up {
+            index.checked_sub(1)
+        } else {
+            (index + 1 < file.macro_folders.len()).then_some(index + 1)
+        }) else {
+            return;
+        };
+        file.macro_folders.swap(index, target);
+        self.error = None;
+        let write = self.store.update(cx, |store, cx| store.write(file, cx));
+        self.report_write_failure(write, "フォルダーを移動", cx);
+        cx.notify();
+    }
+
+    /// 削除… on a folder: an empty one goes straight away, one that still holds
+    /// macros has to be answered for first.
+    fn request_folder_delete(
+        &mut self,
+        folder: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let empty = self
+            .store
+            .read(cx)
+            .file()
+            .macros_in_folder(Some(&folder))
+            .next()
+            .is_none();
+        if empty {
+            self.delete_folder(&folder, true, window, cx);
+            return;
+        }
+        self.pending_folder_delete = Some(folder);
+        self.error = None;
+        cx.notify();
+    }
+
+    /// Removes `folder`. `keep_macros` files what was in it under 未分類;
+    /// otherwise the macros go with it.
+    fn delete_folder(
+        &mut self,
+        folder: &str,
+        keep_macros: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.pending_folder_delete = None;
+        if !self.store.read(cx).is_loaded() {
+            self.error = Some(LOADING_ERROR.into());
+            cx.notify();
+            return;
+        }
+
+        let mut file = self.store.read(cx).file().clone();
+        // Worked out while the macros are still in place, because a connection
+        // written before ADR-F35 only names one and has to be resolved.
+        let running = connections_in_folder(&file, folder);
+        file.macro_folders
+            .retain(|candidate| candidate.name != folder);
+        let open_in_folder = self
+            .original_key
+            .as_ref()
+            .is_some_and(|(open_folder, _)| open_folder.as_deref() == Some(folder));
+
+        if !keep_macros {
+            file.macros
+                .retain(|terminal_macro| terminal_macro.folder.as_deref() != Some(folder));
+            // The macros a connection pointed at are gone, so the reference has
+            // to go too — a stale `macro_folder` would put the folder straight
+            // back on the next load (`ensure_macro_folders`), and a stale name
+            // would attach the connection to some other folder's macro.
+            for (connection, runs) in file.connections.iter_mut().zip(running) {
+                if runs {
+                    connection.macro_name = None;
+                    connection.macro_folder = None;
+                }
+            }
+            self.remap_pending_macro(|(pending_folder, name)| {
+                (pending_folder.as_deref() != Some(folder))
+                    .then(|| (pending_folder.clone(), name.clone()))
+            });
+            if open_in_folder {
+                // The macro the form was showing has just gone away.
+                self.load_macro(None, window, cx);
+            } else if self.form_folder.as_deref() == Some(folder) {
+                self.set_form_folder(None);
+            }
+            self.error = None;
+            let write = self.store.update(cx, |store, cx| store.write(file, cx));
+            self.report_write_failure(write, "フォルダーを削除", cx);
+            cx.notify();
+            return;
+        }
+
+        // 未分類 may already hold one of these names, and identity is the
+        // (folder, name) pair, so an unfiled macro that would collide is
+        // numbered rather than made into a second entry with the same key.
+        let mut taken = file
+            .macros
+            .iter()
+            .filter(|candidate| candidate.folder.is_none())
+            .map(|candidate| candidate.name.clone())
+            .collect::<Vec<_>>();
+        let limit = file.macros.len() + 2;
+        let mut renamed: Vec<(String, String)> = Vec::new();
+        for terminal_macro in &mut file.macros {
+            if terminal_macro.folder.as_deref() != Some(folder) {
+                continue;
+            }
+            let mut name = terminal_macro.name.clone();
+            if taken.contains(&name) {
+                for suffix in 2..=limit {
+                    let numbered = format!("{name} ({suffix})");
+                    if !taken.contains(&numbered) {
+                        name = numbered;
+                        break;
+                    }
+                }
+            }
+            if name != terminal_macro.name {
+                renamed.push((terminal_macro.name.clone(), name.clone()));
+                terminal_macro.name = name.clone();
+            }
+            taken.push(name);
+            terminal_macro.folder = None;
+        }
+        let renamed_to = |name: &str| {
+            renamed
+                .iter()
+                .find(|(from, _)| from == name)
+                .map(|(_, to)| to.clone())
+        };
+        // The macros are still there, so the connections pointing at them keep
+        // working once the folder half of the reference is dropped.
+        for (connection, runs) in file.connections.iter_mut().zip(running) {
+            if !runs {
+                continue;
+            }
+            if let Some(name) = connection.macro_name.as_deref()
+                && let Some(renamed) = renamed_to(name)
+            {
+                connection.macro_name = Some(renamed);
+            }
+            connection.macro_folder = None;
+        }
+        self.remap_pending_macro(|(pending_folder, name)| {
+            Some(if pending_folder.as_deref() == Some(folder) {
+                (None, renamed_to(name).unwrap_or_else(|| name.clone()))
+            } else {
+                (pending_folder.clone(), name.clone())
+            })
+        });
+
+        if open_in_folder {
+            if let Some((_, open_name)) = self.original_key.take() {
+                let open_name = renamed_to(&open_name).unwrap_or(open_name);
+                self.name.update(cx, |editor, cx| {
+                    editor.set_text(open_name.clone(), window, cx);
+                });
+                if let Some(snapshot) = &mut self.saved_snapshot {
+                    snapshot.name = open_name.clone();
+                }
+                self.original_key = Some((None, open_name));
+            }
+            self.set_form_folder(None);
+        } else if self.form_folder.as_deref() == Some(folder) {
+            self.set_form_folder(None);
+        }
+        self.error = None;
+
+        let write = self.store.update(cx, |store, cx| store.write(file, cx));
+        self.report_write_failure(write, "フォルダーを削除", cx);
+        cx.notify();
     }
 
     fn begin_folder_rename(&mut self, folder: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -1673,13 +2263,16 @@ impl MacroEditor {
         });
         window.focus(&editor.focus_handle(cx), cx);
         self.renaming_folder = Some((folder, editor));
+        self.new_folder = None;
         self.error = None;
         cx.notify();
     }
 
-    /// Renames a folder by rewriting the `folder` of every macro in it, which
-    /// is all a folder is: the macros stay a flat array on disk.
-    fn confirm_folder_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Renames a folder: the [`MacroFolder`] itself, the `folder` of every
+    /// macro filed under it and the `macro_folder` of every connection that
+    /// points into it. Sub-folders travel with their parent, so renaming 「拠点」
+    /// also renames 「拠点/本社」.
+    fn confirm_folder_rename(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some((from, field)) = self.renaming_folder.take() else {
             return;
         };
@@ -1701,35 +2294,85 @@ impl MacroEditor {
             cx.notify();
             return;
         }
+        // The rename carries the sub-folders with it, so checking the typed
+        // name alone is not enough: 「拠点」 → 「全社」 also turns 「拠点/本社」 into
+        // 「全社/本社」, which a folder already called that would collide with —
+        // two `macro_folders` entries by the same name, and two macros sharing
+        // one `MacroKey`.
+        let after_rename = self
+            .store
+            .read(cx)
+            .macro_folders()
+            .iter()
+            .map(|folder| {
+                (
+                    folder.name.clone(),
+                    folder_after_rename(&folder.name, &from, &renamed),
+                )
+            })
+            .collect::<Vec<_>>();
+        let collides = after_rename.iter().any(|(name, after)| {
+            let Some(after) = after else {
+                return false;
+            };
+            after_rename.iter().any(|(other, other_after)| {
+                other != name && other_after.as_ref().unwrap_or(other) == after
+            })
+        });
+        if collides || self.store.read(cx).file().has_folder(&renamed) {
+            self.error = Some("同じ名前のフォルダーがあります。".into());
+            self.renaming_folder = Some((from, field));
+            cx.notify();
+            return;
+        }
 
         let mut file = self.store.read(cx).file().clone();
-        let mut moved = 0usize;
+        let mut touched = false;
+        for folder in &mut file.macro_folders {
+            if let Some(name) = folder_after_rename(&folder.name, &from, &renamed) {
+                folder.name = name;
+                touched = true;
+            }
+        }
         for terminal_macro in &mut file.macros {
             let Some(folder) = terminal_macro.folder.as_deref() else {
                 continue;
             };
             if let Some(folder) = folder_after_rename(folder, &from, &renamed) {
                 terminal_macro.folder = Some(folder);
-                moved += 1;
+                touched = true;
             }
         }
-        if moved == 0 {
+        for connection in &mut file.connections {
+            let Some(folder) = connection.macro_folder.as_deref() else {
+                continue;
+            };
+            if let Some(folder) = folder_after_rename(folder, &from, &renamed) {
+                connection.macro_folder = Some(folder);
+                touched = true;
+            }
+        }
+        if !touched {
             cx.notify();
             return;
         }
 
-        self.collapsed_folders = std::mem::take(&mut self.collapsed_folders)
-            .into_iter()
-            .map(|collapsed| {
-                collapsed
-                    .map(|folder| folder_after_rename(&folder, &from, &renamed).unwrap_or(folder))
-            })
-            .collect();
-        let form_folder = normalize_folder(&self.folder.read(cx).text(cx));
-        if let Some(folder) = form_folder
+        if let Some(key) = self.original_key.take() {
+            let folder = key
+                .0
+                .map(|folder| folder_after_rename(&folder, &from, &renamed).unwrap_or(folder));
+            self.original_key = Some((folder, key.1));
+        }
+        self.remap_pending_macro(|(pending_folder, name)| {
+            let folder = pending_folder.as_ref().map(|folder| {
+                folder_after_rename(folder, &from, &renamed).unwrap_or_else(|| folder.clone())
+            });
+            Some((folder, name.clone()))
+        });
+        if let Some(folder) = self.form_folder.clone()
             && let Some(folder) = folder_after_rename(&folder, &from, &renamed)
         {
-            self.set_form_folder(Some(folder), window, cx);
+            self.set_form_folder(Some(folder));
         }
         self.error = None;
 
@@ -1738,11 +2381,13 @@ impl MacroEditor {
         cx.notify();
     }
 
-    /// Files `name` under `folder` (`None` for [`UNFILED_FOLDER`]), which is
-    /// what a drag from the tree onto a heading does.
+    /// Files the macro `key` names under `folder` (`None` for
+    /// [`UNFILED_FOLDER`]), which is what a drag from the tree onto a heading
+    /// does. A folder that already holds that name keeps both: the moved macro
+    /// gets a numbered name rather than overwriting what is there.
     fn move_macro_to_folder(
         &mut self,
-        name: &str,
+        key: &MacroKey,
         folder: Option<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1752,22 +2397,53 @@ impl MacroEditor {
             cx.notify();
             return;
         }
+        if key.0 == folder {
+            return;
+        }
+        let renamed = self.unused_name_in_folder(folder.as_deref(), &key.1, cx);
 
         let mut file = self.store.read(cx).file().clone();
+        // Worked out before the macro moves, so a connection that names it
+        // without a folder still resolves.
+        let running = connections_running(&file, key);
         let Some(moved) = file
             .macros
             .iter_mut()
-            .find(|candidate| candidate.name == name)
+            .find(|candidate| candidate.is(key.0.as_deref(), &key.1))
         else {
             return;
         };
-        if moved.folder == folder {
-            return;
-        }
         moved.folder = folder.clone();
+        moved.name = renamed.clone();
+        // The connection that ran it should keep running it after the move.
+        for (connection, runs) in file.connections.iter_mut().zip(running) {
+            if runs {
+                connection.macro_name = Some(renamed.clone());
+                connection.macro_folder = folder.clone();
+            }
+        }
 
-        if self.original_name.as_deref() == Some(name) {
-            self.set_form_folder(folder, window, cx);
+        let moved_key = (folder.clone(), renamed.clone());
+        self.remap_pending_macro(|candidate| {
+            Some(if candidate == key {
+                moved_key.clone()
+            } else {
+                candidate.clone()
+            })
+        });
+        if self.original_key.as_ref() == Some(key) {
+            self.original_key = Some((folder.clone(), renamed.clone()));
+            self.set_form_folder(folder);
+            // A move that had to number the name must show that name, or the
+            // next 保存 would file the macro under the old one all over again.
+            if renamed != key.1 {
+                self.name.update(cx, |editor, cx| {
+                    editor.set_text(renamed.clone(), window, cx);
+                });
+                if let Some(snapshot) = &mut self.saved_snapshot {
+                    snapshot.name = renamed;
+                }
+            }
         }
         self.error = None;
 
@@ -1817,8 +2493,8 @@ impl MacroEditor {
         };
 
         let terminal_macro = TerminalMacro {
-            name: name.clone(),
-            folder: normalize_folder(&self.folder.read(cx).text(cx)),
+            name,
+            folder: self.form_folder.clone(),
             tags: normalize_tags(&self.tags.read(cx).text(cx)),
             description: self.description.read(cx).text(cx).trim().to_string(),
             repeat,
@@ -1826,21 +2502,53 @@ impl MacroEditor {
             steps,
         };
 
-        let original_name = self.original_name.clone();
+        // Identity is the (folder, name) pair, so the same name in another
+        // folder is a different macro and must not be written over — that is
+        // exactly what 「A-PC用/ls」 and 「B-PC用/ls」 rely on.
+        let key = terminal_macro.key();
+        let original_key = self.original_key.clone();
+        let taken = self
+            .store
+            .read(cx)
+            .file()
+            .macros
+            .iter()
+            .position(|candidate| candidate.key() == key);
+        if taken.is_some() && original_key.as_ref() != Some(&key) {
+            self.error = Some("同じフォルダーに同名のマクロがあります。".into());
+            cx.notify();
+            return;
+        }
+
         let write = self.store.update(cx, |store, cx| {
             let mut file = store.file().clone();
-            let existing = file
-                .macros
-                .iter()
-                .position(|candidate| Some(&candidate.name) == original_name.as_ref())
-                .or_else(|| {
+            // Which connections run the macro has to be settled before it is
+            // rewritten: a reference written before ADR-F35 carries the name
+            // alone and only resolves against the file as it stands.
+            let running = original_key
+                .as_ref()
+                .filter(|original| **original != key)
+                .map(|original| connections_running(&file, original));
+            let existing = taken.or_else(|| {
+                original_key.as_ref().and_then(|original| {
                     file.macros
                         .iter()
-                        .position(|candidate| candidate.name == name)
-                });
+                        .position(|candidate| candidate.key() == *original)
+                })
+            });
             match existing {
                 Some(index) => file.macros[index] = terminal_macro,
                 None => file.macros.push(terminal_macro),
+            }
+            // A rename or a move has to take the connections pointing at the
+            // macro with it, or 「接続後に実行するマクロ」 silently stops running.
+            if let Some(running) = running {
+                for (connection, runs) in file.connections.iter_mut().zip(running) {
+                    if runs {
+                        connection.macro_name = Some(key.1.clone());
+                        connection.macro_folder = key.0.clone();
+                    }
+                }
             }
             store.write(file, cx)
         });
@@ -1860,14 +2568,14 @@ impl MacroEditor {
         .detach();
     }
 
-    fn request_delete(&mut self, name: String, cx: &mut Context<Self>) {
-        self.pending_delete = Some(name);
+    fn request_delete(&mut self, key: MacroKey, cx: &mut Context<Self>) {
+        self.pending_delete = Some(key);
         self.error = None;
         cx.notify();
     }
 
     fn confirm_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(name) = self.pending_delete.take() else {
+        let Some(key) = self.pending_delete.take() else {
             return;
         };
         if !self.store.read(cx).is_loaded() {
@@ -1878,12 +2586,25 @@ impl MacroEditor {
 
         let write = self.store.update(cx, |store, cx| {
             let mut file = store.file().clone();
-            file.macros.retain(|candidate| candidate.name != name);
+            // Settled before the macro goes, so a name-only reference still
+            // resolves. Leaving it behind would make 「接続後に実行するマクロ」
+            // either do nothing or, once the name exists in another folder,
+            // run that one instead.
+            let running = connections_running(&file, &key);
+            file.macros
+                .retain(|candidate| !candidate.is(key.0.as_deref(), &key.1));
+            for (connection, runs) in file.connections.iter_mut().zip(running) {
+                if runs {
+                    connection.macro_name = None;
+                    connection.macro_folder = None;
+                }
+            }
             store.write(file, cx)
         });
+        self.remap_pending_macro(|candidate| (*candidate != key).then(|| candidate.clone()));
         // The form was showing the macro that just went away, so put it back to
         // a blank new macro rather than leaving a rename of a deleted entry.
-        if self.original_name.as_deref() == Some(name.as_str()) {
+        if self.original_key.as_ref() == Some(&key) {
             self.load_macro(None, window, cx);
         }
         cx.notify();
@@ -1891,8 +2612,27 @@ impl MacroEditor {
         self.report_write_failure(write, "削除", cx);
     }
 
-    /// The left pane: the saved macros grouped by folder, with the folder
-    /// headings collapsible, renamable and droppable.
+    /// Opens a blank form already filed under `folder` — what 「新しいマクロ」 on
+    /// a folder heading and the empty-folder placeholder both do.
+    fn new_macro_in_folder(
+        &mut self,
+        folder: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_macro(
+            Some(TerminalMacro {
+                folder,
+                ..TerminalMacro::default()
+            }),
+            window,
+            cx,
+        );
+    }
+
+    /// The left pane: every folder as a heading, in the order the user
+    /// arranged them, the macros filed under it, and 未分類 last. Headings
+    /// collapse, rename, reorder, take drops and carry a right-click menu.
     fn render_macro_tree(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if !self.store.read(cx).is_loaded() {
             return Label::new("読み込み中…")
@@ -1914,11 +2654,12 @@ impl MacroEditor {
             .into_any_element();
         }
 
-        let editing = self.original_name.clone();
+        let editing = self.original_key.clone();
         let renaming = self
             .renaming_folder
             .as_ref()
             .map(|(folder, field)| (folder.clone(), field.clone()));
+        let folder_count = self.macro_folders(cx).len();
         let mut tree = v_flex()
             .id("saved-macros")
             .size_full()
@@ -1939,142 +2680,76 @@ impl MacroEditor {
                         _ => None,
                     };
                     if let Some(field) = renamed_field {
-                        tree = tree.child(
-                            h_flex()
-                                .w_full()
-                                .gap_1()
-                                .child(
-                                    input_frame_sized(
-                                        InputFrameSize::Compact,
-                                        field.focus_handle(cx).contains_focused(window, cx),
-                                        cx,
-                                    )
-                                    .flex_1()
-                                    .min_w_0()
-                                    .child(field.clone()),
-                                )
-                                .child(
-                                    IconButton::new(
-                                        ("confirm-folder-rename", index),
-                                        IconName::Check,
-                                    )
-                                    .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("この名前に変更します"))
-                                    .on_click(cx.listener(
-                                        |this, _, window, cx| {
-                                            this.confirm_folder_rename(window, cx);
-                                        },
-                                    )),
-                                )
-                                .child(
-                                    IconButton::new(
-                                        ("cancel-folder-rename", index),
-                                        IconName::Close,
-                                    )
-                                    .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("名前の変更をやめます"))
-                                    .on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.renaming_folder = None;
-                                            cx.notify();
-                                        },
-                                    )),
-                                ),
-                        );
+                        tree = tree.child(self.render_folder_name_field(
+                            index,
+                            &field,
+                            "この名前に変更します",
+                            "名前の変更をやめます",
+                            |this, window, cx| this.confirm_folder_rename(window, cx),
+                            |this, _| this.renaming_folder = None,
+                            window,
+                            cx,
+                        ));
                         continue;
                     }
-
-                    let heading = folder.clone().unwrap_or_else(|| UNFILED_FOLDER.to_string());
+                    tree = tree.child(self.render_folder_heading(
+                        index,
+                        folder,
+                        collapsed,
+                        count,
+                        folder_count,
+                        cx,
+                    ));
+                }
+                MacroTreeRow::EmptyFolder { folder } => {
+                    let filled = folder.clone();
+                    let dropped = folder.clone();
                     tree = tree.child(
                         h_flex()
-                            .id(("macro-folder", index))
+                            .id(("empty-folder", index))
                             .w_full()
-                            .gap_1()
+                            .pl_5()
+                            .py_0p5()
                             .rounded_sm()
+                            .cursor_pointer()
                             .drag_over::<DraggedMacro>(|style, _, _, cx| {
                                 style.bg(cx.theme().colors().drop_target_background)
                             })
-                            .on_drop(cx.listener({
-                                let folder = folder.clone();
+                            .on_drop(cx.listener(
                                 move |this, dragged: &DraggedMacro, window, cx| {
                                     this.move_macro_to_folder(
-                                        &dragged.name,
-                                        folder.clone(),
+                                        &dragged.key,
+                                        Some(dropped.clone()),
                                         window,
                                         cx,
                                     );
-                                }
+                                },
+                            ))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.new_macro_in_folder(Some(filled.clone()), window, cx);
                             }))
                             .child(
-                                Disclosure::new(("macro-folder-toggle", index), !collapsed)
-                                    .on_click(cx.listener({
-                                        let folder = folder.clone();
-                                        move |this, _, _, cx| {
-                                            if !this.collapsed_folders.remove(&folder) {
-                                                this.collapsed_folders.insert(folder.clone());
-                                            }
-                                            cx.notify();
-                                        }
-                                    })),
-                            )
-                            .child(
-                                h_flex()
-                                    .id(("macro-folder-label", index))
-                                    .flex_1()
-                                    .min_w_0()
-                                    .gap_1()
-                                    .cursor_pointer()
-                                    .on_click(cx.listener({
-                                        let folder = folder.clone();
-                                        move |this, _, _, cx| {
-                                            if !this.collapsed_folders.remove(&folder) {
-                                                this.collapsed_folders.insert(folder.clone());
-                                            }
-                                            cx.notify();
-                                        }
-                                    }))
-                                    .child(
-                                        Icon::new(IconName::Folder)
-                                            .size(IconSize::XSmall)
-                                            .color(Color::Muted),
-                                    )
-                                    .child(
-                                        Label::new(heading)
-                                            .size(LabelSize::Small)
-                                            .color(Color::Muted)
-                                            .truncate(),
-                                    )
-                                    .child(
-                                        Label::new(format!("({count})"))
-                                            .size(LabelSize::XSmall)
-                                            .color(Color::Muted),
-                                    ),
-                            )
-                            .when_some(folder, |this, folder| {
-                                this.child(
-                                    IconButton::new(("rename-folder", index), IconName::Pencil)
-                                        .icon_size(IconSize::Small)
-                                        .tooltip(Tooltip::text(
-                                            "フォルダー名を変更します (中のマクロをまとめて移動します)",
-                                        ))
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.begin_folder_rename(folder.clone(), window, cx);
-                                        })),
-                                )
-                            }),
+                                Label::new(EMPTY_FOLDER_ROW)
+                                    .size(LabelSize::XSmall)
+                                    .color(Color::Muted),
+                            ),
                     );
                 }
                 MacroTreeRow::Macro(terminal_macro) => {
+                    let key = terminal_macro.key();
                     let name = terminal_macro.name.clone();
-                    let selected = editing.as_deref() == Some(name.as_str());
+                    let selected = editing.as_ref() == Some(&key);
                     let detail = format!("{} ステップ", terminal_macro.steps.len());
                     tree = tree.child(
                         div()
                             .id(("saved-macro-row", index))
                             .w_full()
-                            .on_drag(DraggedMacro { name: name.clone() }, |dragged, _, _, cx| {
-                                let label = SharedString::from(dragged.name.clone());
-                                cx.new(|_| DraggedMacroLabel(label))
+                            .on_drag(DraggedMacro { key }, {
+                                let name = name.clone();
+                                move |_, _, _, cx| {
+                                    let label = SharedString::from(name.clone());
+                                    cx.new(|_| DraggedMacroLabel(label))
+                                }
                             })
                             .child(
                                 ListItem::new(("saved-macro", index))
@@ -2098,19 +2773,216 @@ impl MacroEditor {
         tree.into_any_element()
     }
 
-    /// Dropdown of the folders already in use, so a macro can be filed under an
-    /// existing folder without retyping (and mistyping) its path.
+    /// One folder heading. 未分類 gets the same row without the pencil and the
+    /// menu, because there is no folder behind it to rename, reorder or delete.
+    fn render_folder_heading(
+        &self,
+        index: usize,
+        folder: Option<String>,
+        collapsed: bool,
+        count: usize,
+        folder_count: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let heading = folder.clone().unwrap_or_else(|| UNFILED_FOLDER.to_string());
+        let disclosure_folder = folder.clone();
+        let label_folder = folder.clone();
+        let row = h_flex()
+            .id(("macro-folder", index))
+            .w_full()
+            .gap_1()
+            .rounded_sm()
+            .drag_over::<DraggedMacro>(|style, _, _, cx| {
+                style.bg(cx.theme().colors().drop_target_background)
+            })
+            .on_drop(cx.listener({
+                let folder = folder.clone();
+                move |this, dragged: &DraggedMacro, window, cx| {
+                    this.move_macro_to_folder(&dragged.key, folder.clone(), window, cx);
+                }
+            }))
+            .child(
+                Disclosure::new(("macro-folder-toggle", index), !collapsed).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.toggle_folder_collapsed(disclosure_folder.clone(), cx);
+                    },
+                )),
+            )
+            .child(
+                h_flex()
+                    .id(("macro-folder-label", index))
+                    .flex_1()
+                    .min_w_0()
+                    .gap_1()
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.toggle_folder_collapsed(label_folder.clone(), cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::Folder)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        Label::new(heading)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .truncate(),
+                    )
+                    .child(
+                        Label::new(format!("({count})"))
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                    ),
+            )
+            .when_some(folder.clone(), |this, folder| {
+                this.child(
+                    IconButton::new(("rename-folder", index), IconName::Pencil)
+                        .icon_size(IconSize::Small)
+                        .tooltip(Tooltip::text(
+                            "フォルダー名を変更します (中のマクロをまとめて移動します)",
+                        ))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.begin_folder_rename(folder.clone(), window, cx);
+                        })),
+                )
+            });
+
+        let Some(name) = folder else {
+            return row.into_any_element();
+        };
+        let position = self
+            .store
+            .read(cx)
+            .file()
+            .folder_index(&name)
+            .unwrap_or(usize::MAX);
+        let view = cx.weak_entity();
+        right_click_menu(("macro-folder-menu", index))
+            .trigger(move |_, _, _| row)
+            .menu(move |window, cx| {
+                let name = name.clone();
+                let view = view.clone();
+                ContextMenu::build(window, cx, move |mut menu, _, _| {
+                    menu = menu.entry("新しいマクロ", None, {
+                        let name = name.clone();
+                        let view = view.clone();
+                        move |window, cx| {
+                            let name = name.clone();
+                            view.update(cx, |this, cx| {
+                                this.new_macro_in_folder(Some(name), window, cx);
+                            })
+                            .ok();
+                        }
+                    });
+                    menu = menu.entry("名前を変更", None, {
+                        let name = name.clone();
+                        let view = view.clone();
+                        move |window, cx| {
+                            let name = name.clone();
+                            view.update(cx, |this, cx| {
+                                this.begin_folder_rename(name, window, cx);
+                            })
+                            .ok();
+                        }
+                    });
+                    if position > 0 {
+                        menu = menu.entry("上へ移動", None, {
+                            let name = name.clone();
+                            let view = view.clone();
+                            move |_, cx| {
+                                view.update(cx, |this, cx| this.move_folder(&name, true, cx))
+                                    .ok();
+                            }
+                        });
+                    }
+                    if position + 1 < folder_count {
+                        menu = menu.entry("下へ移動", None, {
+                            let name = name.clone();
+                            let view = view.clone();
+                            move |_, cx| {
+                                view.update(cx, |this, cx| this.move_folder(&name, false, cx))
+                                    .ok();
+                            }
+                        });
+                    }
+                    menu.separator().entry("削除…", None, {
+                        move |window, cx| {
+                            let name = name.clone();
+                            view.update(cx, |this, cx| {
+                                this.request_folder_delete(name, window, cx);
+                            })
+                            .ok();
+                        }
+                    })
+                })
+            })
+            .into_any_element()
+    }
+
+    /// The inline folder-name field, shared by 「名前を変更」 in the tree and
+    /// 「新しいフォルダー」 in both the tree's toolbar and the form's dropdown.
+    #[allow(clippy::too_many_arguments)]
+    fn render_folder_name_field(
+        &self,
+        index: usize,
+        field: &Entity<Editor>,
+        confirm_tooltip: &'static str,
+        cancel_tooltip: &'static str,
+        confirm: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        cancel: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        h_flex()
+            .w_full()
+            .gap_1()
+            .child(
+                input_frame_sized(
+                    InputFrameSize::Compact,
+                    field.focus_handle(cx).contains_focused(window, cx),
+                    cx,
+                )
+                .flex_1()
+                .min_w_0()
+                .child(field.clone()),
+            )
+            .child(
+                IconButton::new(("confirm-folder-name", index), IconName::Check)
+                    .icon_size(IconSize::Small)
+                    .tooltip(Tooltip::text(confirm_tooltip))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        confirm(this, window, cx);
+                    })),
+            )
+            .child(
+                IconButton::new(("cancel-folder-name", index), IconName::Close)
+                    .icon_size(IconSize::Small)
+                    .tooltip(Tooltip::text(cancel_tooltip))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cancel(this, cx);
+                        cx.notify();
+                    })),
+            )
+            .into_any_element()
+    }
+
+    /// The form's folder chooser. A dropdown rather than a free-text field: a
+    /// macro can only be filed under a folder that exists, and a new one is
+    /// made from the last entry (ADR-F35).
     fn render_folder_menu(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let folders = self.known_folders(cx);
+        let selected = self
+            .form_folder
+            .clone()
+            .unwrap_or_else(|| NO_FOLDER.to_string());
         let view = cx.weak_entity();
         let menu = ContextMenu::build(window, cx, move |mut menu, _, _| {
-            menu = menu.entry("(フォルダーなし)", None, {
+            menu = menu.entry(NO_FOLDER, None, {
                 let view = view.clone();
-                move |window, cx| {
+                move |_, cx| {
                     view.update(cx, |this, cx| {
-                        this.folder.update(cx, |editor, cx| {
-                            editor.set_text("", window, cx);
-                        });
+                        this.form_folder = None;
                         cx.notify();
                     })
                     .ok();
@@ -2119,22 +2991,24 @@ impl MacroEditor {
             for folder in &folders {
                 let folder = folder.clone();
                 let view = view.clone();
-                menu = menu.entry(folder.clone(), None, move |window, cx| {
+                menu = menu.entry(folder.clone(), None, move |_, cx| {
                     let folder = folder.clone();
                     view.update(cx, |this, cx| {
-                        this.folder.update(cx, |editor, cx| {
-                            editor.set_text(folder, window, cx);
-                        });
+                        this.form_folder = Some(folder);
                         cx.notify();
                     })
                     .ok();
                 });
             }
-            menu
+            menu.separator().entry("新しいフォルダー…", None, {
+                move |window, cx| {
+                    view.update(cx, |this, cx| this.begin_new_folder(true, window, cx))
+                        .ok();
+                }
+            })
         });
 
-        DropdownMenu::new("macro-folder-choices", "既存のフォルダー", menu)
-            .style(DropdownStyle::Outlined)
+        DropdownMenu::new("macro-folder-choices", selected, menu).style(DropdownStyle::Outlined)
     }
 
     fn render_step(
@@ -2427,21 +3301,43 @@ impl Render for MacroEditor {
         } else {
             format!("保存済みのマクロ ({listed} / {total} 件)")
         };
-        let form_header = match &self.original_name {
-            Some(name) => format!("『{name}』を編集"),
+        let form_header = match &self.original_key {
+            Some((_, name)) => format!("『{name}』を編集"),
             None => "新規マクロ".to_string(),
         };
-        let editing = self.original_name.clone();
+        let editing = self.original_key.clone();
         let pending_delete = self.pending_delete.clone();
+        let pending_folder_delete = self.pending_folder_delete.clone();
         let pending_selection = self.pending_selection.clone();
         let folder_menu = self.render_folder_menu(window, cx).into_any_element();
+        // The same inline field serves the tree's toolbar and the form's
+        // dropdown; it is drawn wherever the request came from.
+        let new_folder_field = self.new_folder.as_ref().map(|entry| {
+            (
+                entry.file_open_macro_in_it,
+                self.render_folder_name_field(
+                    usize::MAX,
+                    &entry.field,
+                    "この名前でフォルダーを作ります",
+                    "フォルダーの作成をやめます",
+                    |this, _, cx| this.confirm_new_folder(cx),
+                    |this, _| this.new_folder = None,
+                    window,
+                    cx,
+                ),
+            )
+        });
+        let (new_folder_in_form, new_folder_in_tree) = match new_folder_field {
+            Some((true, field)) => (Some(field), None),
+            Some((false, field)) => (None, Some(field)),
+            None => (None, None),
+        };
         let field = |editor: &Entity<Editor>, window: &mut Window, cx: &mut Context<Self>| {
             input_frame(editor.focus_handle(cx).contains_focused(window, cx), cx)
                 .child(editor.clone())
         };
         let list_filter_field = field(&self.list_filter, window, cx);
         let name_field = field(&self.name, window, cx);
-        let folder_field = field(&self.folder, window, cx);
         let tags_field = field(&self.tags, window, cx);
         let description_field = field(&self.description, window, cx);
         let repeat_field = field(&self.repeat, window, cx).w(rems(4.));
@@ -2492,20 +3388,42 @@ impl Render for MacroEditor {
                                                     .truncate(),
                                             )
                                             .child(
-                                                Button::new("new-macro", "新規")
-                                                    .label_size(LabelSize::Small)
-                                                    .start_icon(Icon::new(IconName::Plus))
-                                                    .tooltip(Tooltip::text(
-                                                        "空のマクロを右側に開きます",
-                                                    ))
-                                                    .on_click(cx.listener(
-                                                        |this, _, window, cx| {
-                                                            this.select_macro(None, window, cx);
-                                                        },
-                                                    )),
+                                                h_flex()
+                                                    .gap_1()
+                                                    .child(
+                                                        Button::new("new-macro", "新規")
+                                                            .label_size(LabelSize::Small)
+                                                            .start_icon(Icon::new(IconName::Plus))
+                                                            .tooltip(Tooltip::text(
+                                                                "空のマクロを右側に開きます",
+                                                            ))
+                                                            .on_click(cx.listener(
+                                                                |this, _, window, cx| {
+                                                                    this.select_macro(
+                                                                        None, window, cx,
+                                                                    );
+                                                                },
+                                                            )),
+                                                    )
+                                                    .child(
+                                                        Button::new("new-folder", "フォルダー")
+                                                            .label_size(LabelSize::Small)
+                                                            .start_icon(Icon::new(IconName::Plus))
+                                                            .tooltip(Tooltip::text(
+                                                                "マクロをまとめるフォルダーを作ります",
+                                                            ))
+                                                            .on_click(cx.listener(
+                                                                |this, _, window, cx| {
+                                                                    this.begin_new_folder(
+                                                                        false, window, cx,
+                                                                    );
+                                                                },
+                                                            )),
+                                                    ),
                                             ),
                                     )
                                     .child(list_filter_field)
+                                    .children(new_folder_in_tree)
                                     .child(v_flex().flex_1().min_h_0().child(tree)),
                             )
                             .child(
@@ -2526,7 +3444,7 @@ impl Render for MacroEditor {
                                                     .color(Color::Muted)
                                                     .truncate(),
                                             )
-                                            .when_some(editing, |this, name| {
+                                            .when_some(editing, |this, key| {
                                                 this.child(
                                                     h_flex()
                                                         .gap_1()
@@ -2557,7 +3475,7 @@ impl Render for MacroEditor {
                                                                 .on_click(cx.listener(
                                                                     move |this, _, _, cx| {
                                                                         this.request_delete(
-                                                                            name.clone(),
+                                                                            key.clone(),
                                                                             cx,
                                                                         );
                                                                     },
@@ -2577,10 +3495,15 @@ impl Render for MacroEditor {
                                             .child(name_field)
                                             .child(
                                                 h_flex()
-                                                    .gap_1()
-                                                    .child(folder_field.flex_1())
+                                                    .gap_2()
+                                                    .child(
+                                                        Label::new("フォルダー")
+                                                            .size(LabelSize::Small)
+                                                            .color(Color::Muted),
+                                                    )
                                                     .child(folder_menu),
                                             )
+                                            .children(new_folder_in_form)
                                             .child(tags_field)
                                             .child(description_field)
                                             .child(
@@ -2622,7 +3545,10 @@ impl Render for MacroEditor {
                                             ),
                                     )
                                     .when_some(pending_selection, |this, edited| {
-                                        let prompt = match &edited {
+                                        let prompt = match edited
+                                            .as_ref()
+                                            .filter(|edited| !edited.name.is_empty())
+                                        {
                                             Some(edited) => format!(
                                                 "編集中の内容は保存されていません。破棄して『{}』を開きますか？",
                                                 edited.name
@@ -2670,7 +3596,69 @@ impl Render for MacroEditor {
                                                 ),
                                         )
                                     })
-                                    .when_some(pending_delete, |this, name| {
+                                    .when_some(pending_folder_delete, |this, folder| {
+                                        let moved = folder.clone();
+                                        let removed = folder.clone();
+                                        this.child(
+                                            v_flex()
+                                                .w_full()
+                                                .gap_1()
+                                                .child(
+                                                    Label::new(format!(
+                                                        "フォルダー『{folder}』を削除します。中のマクロをどうしますか？"
+                                                    ))
+                                                    .size(LabelSize::Small)
+                                                    .color(Color::Warning),
+                                                )
+                                                .child(
+                                                    h_flex()
+                                                        .gap_1()
+                                                        .child(
+                                                            Button::new(
+                                                                "folder-delete-keep",
+                                                                "マクロを未分類へ移す",
+                                                            )
+                                                            .on_click(cx.listener(
+                                                                move |this, _, window, cx| {
+                                                                    this.delete_folder(
+                                                                        &moved, true, window, cx,
+                                                                    );
+                                                                },
+                                                            )),
+                                                        )
+                                                        .child(
+                                                            Button::new(
+                                                                "folder-delete-all",
+                                                                "マクロごと削除",
+                                                            )
+                                                            .color(Color::Error)
+                                                            .on_click(cx.listener(
+                                                                move |this, _, window, cx| {
+                                                                    this.delete_folder(
+                                                                        &removed, false, window,
+                                                                        cx,
+                                                                    );
+                                                                },
+                                                            )),
+                                                        )
+                                                        .child(
+                                                            Button::new(
+                                                                "folder-delete-cancel",
+                                                                "キャンセル",
+                                                            )
+                                                            .on_click(cx.listener(
+                                                                |this, _, _, cx| {
+                                                                    this.pending_folder_delete =
+                                                                        None;
+                                                                    cx.notify();
+                                                                },
+                                                            )),
+                                                        ),
+                                                ),
+                                        )
+                                    })
+                                    .when_some(pending_delete, |this, key| {
+                                        let name = key.1;
                                         this.child(
                                             h_flex()
                                                 .w_full()
@@ -2793,7 +3781,9 @@ pub struct QuickConnectModal {
     /// plaintext never has to come back to the screen.
     password: Entity<Editor>,
     protocol: ConnectionProtocol,
-    macro_name: Option<String>,
+    /// Which macro runs once the terminal is up, by folder and name: the same
+    /// name may exist in several folders (ADR-F35).
+    macro_key: Option<MacroKey>,
     log: bool,
     remember_password: bool,
     credentials: QuickConnectCredentials,
@@ -2857,7 +3847,7 @@ impl QuickConnectModal {
             user,
             password,
             protocol: ConnectionProtocol::Ssh,
-            macro_name: None,
+            macro_key: None,
             log,
             remember_password: false,
             credentials: QuickConnectCredentials::new(zed_credentials_provider::global(cx)),
@@ -2977,7 +3967,11 @@ impl QuickConnectModal {
             host,
             port,
             user: (!user.is_empty()).then_some(user),
-            macro_name: self.macro_name.clone(),
+            macro_name: self.macro_key.as_ref().map(|(_, name)| name.clone()),
+            macro_folder: self
+                .macro_key
+                .as_ref()
+                .and_then(|(folder, _)| folder.clone()),
             log: Some(self.log),
             remember_password: self.remember_password,
             transfer_protocol,
@@ -2999,7 +3993,10 @@ impl QuickConnectModal {
         cx: &mut Context<Self>,
     ) {
         self.protocol = connection.protocol;
-        self.macro_name = connection.macro_name.clone();
+        self.macro_key = connection
+            .macro_name
+            .clone()
+            .map(|name| (connection.macro_folder.clone(), name));
         self.log = connection
             .log
             .unwrap_or_else(|| TerminalSettings::get_global(cx).session_log.auto);
@@ -3131,10 +4128,11 @@ impl QuickConnectModal {
                 return;
             }
         };
-        let terminal_macro = connection
-            .macro_name
-            .as_deref()
-            .and_then(|name| self.store.read(cx).macro_named(name).cloned());
+        let terminal_macro = self
+            .store
+            .read(cx)
+            .macro_for_connection(&connection)
+            .cloned();
         let start_log = connection.log.unwrap_or(false);
         let workspace = self.workspace.clone();
 
@@ -3592,12 +4590,16 @@ impl QuickConnectModal {
 
 impl Render for QuickConnectModal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let folders = self.store.read(cx).macro_folders().to_vec();
         let mut macros = self.store.read(cx).macros().to_vec();
-        sort_macros(&mut macros);
-        let selected_macro_label = self
-            .macro_name
-            .clone()
-            .unwrap_or_else(|| "(なし)".to_string());
+        sort_macros(&mut macros, &folders);
+        // 「フォルダー / 名前」, because the name on its own no longer says which
+        // macro this is (ADR-F35).
+        let selected_macro_label = match &self.macro_key {
+            Some((Some(folder), name)) => format!("{folder} / {name}"),
+            Some((None, name)) => name.clone(),
+            None => "(なし)".to_string(),
+        };
         let view = cx.weak_entity();
         let macro_menu = ContextMenu::build(window, cx, {
             move |mut menu, _, _| {
@@ -3605,14 +4607,14 @@ impl Render for QuickConnectModal {
                     let view = view.clone();
                     move |_, cx| {
                         view.update(cx, |this, cx| {
-                            this.macro_name = None;
+                            this.macro_key = None;
                             cx.notify();
                         })
                         .ok();
                     }
                 });
-                // Same folder-then-name grouping as the macro picker, so a long
-                // list stays navigable here too.
+                // Same folder grouping as the macro picker, so a long list stays
+                // navigable here too.
                 let mut current_folder: Option<&str> = None;
                 for terminal_macro in &macros {
                     let folder = terminal_macro.folder_display();
@@ -3622,12 +4624,13 @@ impl Render for QuickConnectModal {
                             menu = menu.header(folder.to_string());
                         }
                     }
+                    let key = terminal_macro.key();
                     let name = terminal_macro.name.clone();
                     let view = view.clone();
-                    menu = menu.entry(name.clone(), None, move |_, cx| {
-                        let name = name.clone();
+                    menu = menu.entry(name, None, move |_, cx| {
+                        let key = key.clone();
                         view.update(cx, |this, cx| {
-                            this.macro_name = Some(name);
+                            this.macro_key = Some(key);
                             cx.notify();
                         })
                         .ok();
@@ -3945,13 +4948,13 @@ mod tests {
                     MacroPickerEntry::Macro { index, .. } => {
                         Some(picker.delegate.macros.get(*index)?.name.clone())
                     }
-                    MacroPickerEntry::Folder(_) => None,
+                    MacroPickerEntry::Folder { .. } => None,
                 })
                 .collect()
         })
     }
 
-    /// Every row of the picker, with folder headings marked by a trailing `/`.
+    /// Every row of the picker, folder headings rendered as 「名前 (件数)」.
     fn picker_rows(picker: &Entity<MacroPicker>, cx: &mut VisualTestContext) -> Vec<String> {
         picker.update(cx, |picker, cx| {
             let picker = picker.picker.read(cx);
@@ -3960,7 +4963,15 @@ mod tests {
                 .entries
                 .iter()
                 .filter_map(|entry| match entry {
-                    MacroPickerEntry::Folder(folder) => Some(format!("{folder}/")),
+                    MacroPickerEntry::Folder {
+                        folder,
+                        count,
+                        collapsed,
+                    } => Some(format!(
+                        "{}{}",
+                        MacroPickerEntry::heading_label(folder.as_deref(), *count),
+                        if *collapsed { " [畳]" } else { "" }
+                    )),
                     MacroPickerEntry::Macro { index, .. } => {
                         Some(picker.delegate.macros.get(*index)?.name.clone())
                     }
@@ -4053,6 +5064,22 @@ mod tests {
         ]
     }"#;
 
+    /// The layout ADR-F35 was written for: a folder per target device, with the
+    /// same macro name in two of them.
+    const TWO_DEVICE_MACROS: &str = r#"{
+        "macro_folders": [
+            { "name": "ルータ用" },
+            { "name": "A-PC用" },
+            { "name": "B-PC用" }
+        ],
+        "macros": [
+            { "name": "show run", "folder": "ルータ用", "steps": [] },
+            { "name": "show ver", "folder": "ルータ用", "steps": [] },
+            { "name": "ls", "folder": "A-PC用", "description": "A", "steps": [] },
+            { "name": "ls", "folder": "B-PC用", "description": "B", "steps": [] }
+        ]
+    }"#;
+
     #[gpui::test]
     async fn the_picker_groups_macros_by_folder(cx: &mut TestAppContext) {
         let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
@@ -4063,17 +5090,18 @@ mod tests {
         let picker = open_picker(&workspace, &store, cx);
         cx.run_until_parked();
 
-        // Un-foldered macros come first and get no heading; every folder is
-        // introduced once, and the names inside it are sorted.
+        // Folders come in the order the file lists them, each heading carries
+        // its count, and 未分類 is last.
         assert_eq!(
             picker_rows(&picker, cx),
             vec![
-                "メモ",
-                "拠点/大阪/",
+                "拠点/大阪 (1)",
                 "再起動",
-                "拠点/本社/",
+                "拠点/本社 (2)",
                 "ログイン",
                 "設定保存",
+                "未分類 (1)",
+                "メモ",
             ]
         );
 
@@ -4081,12 +5109,133 @@ mod tests {
         // the one the picker starts on.
         picker.update_in(cx, |picker, window, cx| {
             picker.picker.update(cx, |picker, cx| {
-                assert_eq!(picker.delegate.selected_index(), 0);
-                assert!(!picker.delegate.can_select(1, window, cx));
-                assert!(picker.delegate.can_select(2, window, cx));
-                assert_eq!(picker.delegate.separators_after_indices(), vec![0, 2]);
+                assert_eq!(picker.delegate.selected_index(), 1);
+                assert!(!picker.delegate.can_select(0, window, cx));
+                assert!(picker.delegate.can_select(1, window, cx));
+                assert_eq!(picker.delegate.separators_after_indices(), vec![1, 4]);
             });
         });
+    }
+
+    #[gpui::test]
+    async fn the_picker_shows_the_same_name_from_two_folders(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec![
+                "ルータ用 (2)",
+                "show run",
+                "show ver",
+                "A-PC用 (1)",
+                "ls",
+                "B-PC用 (1)",
+                "ls",
+            ]
+        );
+
+        // Both 「ls」 stay reachable, each under its own device's folder.
+        set_picker_query(&picker, "ls", cx);
+        assert_eq!(
+            picker_names(&picker, cx),
+            vec!["ls".to_string(), "ls".to_string()]
+        );
+    }
+
+    #[gpui::test]
+    async fn the_picker_draws_a_heading_clear_of_the_macro_row_above_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(
+            picker_rows(&picker, cx).len(),
+            7,
+            "three headings, each with the macros under it"
+        );
+
+        // A macro row is two lines (name over 「n ステップ」) and a heading is
+        // one, so a list that lays every row out at a single height draws
+        // 「A-PC用 (1)」 on top of the 「1 ステップ」 line above it.
+        const ROWS: [&str; 7] = [
+            "macro-picker-row-0",
+            "macro-picker-row-1",
+            "macro-picker-row-2",
+            "macro-picker-row-3",
+            "macro-picker-row-4",
+            "macro-picker-row-5",
+            "macro-picker-row-6",
+        ];
+        let mut previous: Option<(&str, gpui::Bounds<gpui::Pixels>)> = None;
+        for selector in ROWS {
+            let bounds = cx
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("{selector} should have been drawn"));
+            if let Some((above, above_bounds)) = previous {
+                assert!(
+                    above_bounds.bottom() <= bounds.top(),
+                    "{above} ends at {} but {selector} starts at {}",
+                    above_bounds.bottom(),
+                    bounds.top()
+                );
+            }
+            previous = Some((selector, bounds));
+        }
+    }
+
+    #[gpui::test]
+    async fn a_collapsed_folder_hides_its_macros_until_the_query_asks_for_them(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+
+        // Clicking a heading folds it, and that goes into the file.
+        picker.update_in(cx, |picker, window, cx| {
+            picker.picker.update(cx, |picker, cx| {
+                MacroPickerDelegate::toggle_folder(
+                    picker,
+                    Some("ルータ用".to_string()),
+                    false,
+                    window,
+                    cx,
+                );
+            });
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec!["ルータ用 (2) [畳]", "A-PC用 (1)", "ls", "B-PC用 (1)", "ls",]
+        );
+        assert!(
+            saved_file(&fs)
+                .await
+                .macro_folders
+                .iter()
+                .any(|folder| folder.name == "ルータ用" && folder.collapsed),
+            "the collapse state belongs in the file"
+        );
+
+        // A query must never be answered with a folded heading.
+        set_picker_query(&picker, "show", cx);
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec!["ルータ用 (2)", "show run", "show ver"]
+        );
     }
 
     #[gpui::test]
@@ -4148,7 +5297,7 @@ mod tests {
                     MacroPickerEntry::Macro {
                         name_highlights, ..
                     } => Some(name_highlights.clone()),
-                    MacroPickerEntry::Folder(_) => None,
+                    MacroPickerEntry::Folder { .. } => None,
                 })
                 .expect("the macro should still be listed");
             assert_eq!(highlights, vec![0, 1, 2]);
@@ -4183,8 +5332,8 @@ mod tests {
                 .active_modal::<MacroEditor>(cx)
                 .expect("the editor should have replaced the picker");
             assert_eq!(
-                editor.read(cx).original_name.as_deref(),
-                Some("ログイン"),
+                editor.read(cx).original_key,
+                Some((None, "ログイン".to_string())),
                 "the editor should have loaded the selected macro"
             );
             assert!(
@@ -4342,7 +5491,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn saving_normalizes_the_folder_and_tags_and_keeps_the_old_entries(
+    async fn saving_files_the_macro_under_the_chosen_folder_and_keeps_the_old_entries(
         cx: &mut TestAppContext,
     ) {
         let (fs, workspace, window) = init_workspace(
@@ -4359,9 +5508,23 @@ mod tests {
             editor.name.update(cx, |name, cx| {
                 name.set_text("再起動", window, cx);
             });
-            editor.folder.update(cx, |folder, cx| {
-                folder.set_text(" 拠点 / 本社 / ", window, cx);
+            // The folder comes from the dropdown, which only ever offers a
+            // folder that exists — so one is made first, the way
+            // 「新しいフォルダー…」 does.
+            editor.begin_new_folder(true, window, cx);
+            let Some(entry) = editor.new_folder.as_ref() else {
+                panic!("the name field should be open");
+            };
+            entry.field.update(cx, |field, cx| {
+                field.set_text(" 拠点 / 本社 / ", window, cx);
             });
+            editor.confirm_new_folder(cx);
+        });
+        // Creating the folder writes the file; letting that land keeps the save
+        // below from racing it.
+        cx.run_until_parked();
+
+        editor.update_in(cx, |editor, window, cx| {
             editor.tags.update(cx, |tags, cx| {
                 tags.set_text(" ルーター , 定期 , ルーター ", window, cx);
             });
@@ -4382,6 +5545,11 @@ mod tests {
             .expect("the sessions file should have been written");
         let saved = parse_sessions_file(&contents);
         assert_eq!(saved.macros.len(), 2, "the old macro must survive the save");
+        assert_eq!(
+            saved.macro_folders,
+            vec![terminal::terminal_macro::MacroFolder::new("拠点/本社")],
+            "the folder name is normalized when it is created"
+        );
         let written = &saved.macros[1];
         assert_eq!(written.folder.as_deref(), Some("拠点/本社"));
         assert_eq!(
@@ -4414,10 +5582,10 @@ mod tests {
             })
         };
 
-        // Unfiltered, the list is folder then name.
+        // Unfiltered, the list follows the folder order, 未分類 last.
         assert_eq!(
             listed(&editor, cx),
-            vec!["メモ", "再起動", "ログイン", "設定保存"]
+            vec!["再起動", "ログイン", "設定保存", "メモ"]
         );
 
         editor.update_in(cx, |editor, window, cx| {
@@ -4447,6 +5615,7 @@ mod tests {
                         "{}/ ({count})",
                         folder.unwrap_or_else(|| UNFILED_FOLDER.to_string())
                     ),
+                    MacroTreeRow::EmptyFolder { folder } => format!("{folder}/ (空)"),
                     MacroTreeRow::Macro(terminal_macro) => terminal_macro.name,
                 })
                 .collect::<Vec<_>>()
@@ -4455,6 +5624,7 @@ mod tests {
 
     fn stored_macro(
         editor: &Entity<MacroEditor>,
+        folder: Option<&str>,
         name: &str,
         cx: &mut VisualTestContext,
     ) -> TerminalMacro {
@@ -4462,10 +5632,34 @@ mod tests {
             editor
                 .store
                 .read(cx)
-                .macro_named(name)
+                .macro_named(folder, name)
                 .unwrap_or_else(|| panic!("『{name}』 should be in the store"))
                 .clone()
         })
+    }
+
+    /// The macro folders in the order the file lists them, which is the order
+    /// the tree and the picker follow.
+    fn folder_names(
+        store: &Entity<TerminalSessionStore>,
+        cx: &mut VisualTestContext,
+    ) -> Vec<String> {
+        cx.update(|_, cx| {
+            store
+                .read(cx)
+                .macro_folders()
+                .iter()
+                .map(|folder| folder.name.clone())
+                .collect()
+        })
+    }
+
+    async fn saved_file(fs: &Arc<FakeFs>) -> terminal::terminal_macro::TerminalSessionsFile {
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        parse_sessions_file(&contents)
     }
 
     #[gpui::test]
@@ -4476,35 +5670,57 @@ mod tests {
         cx.run_until_parked();
 
         let editor = open_editor(&workspace, &store, cx);
+        // The folders a pre-ADR-F35 file only implied are back, in the order
+        // its macros first mention them, and 未分類 comes last.
+        assert_eq!(
+            folder_names(&store, cx),
+            vec!["拠点/大阪".to_string(), "拠点/本社".to_string()]
+        );
         assert_eq!(
             tree_rows(&editor, cx),
             vec![
-                "未分類/ (1)",
-                "メモ",
                 "拠点/大阪/ (1)",
                 "再起動",
                 "拠点/本社/ (2)",
                 "ログイン",
                 "設定保存",
+                "未分類/ (1)",
+                "メモ",
             ]
         );
 
-        // A collapsed heading keeps its count but hides what is under it.
+        // A collapsed heading keeps its count but hides what is under it, and
+        // says so in the file.
         editor.update(cx, |editor, cx| {
-            editor
-                .collapsed_folders
-                .insert(Some("拠点/本社".to_string()));
-            cx.notify();
+            editor.toggle_folder_collapsed(Some("拠点/本社".to_string()), cx);
         });
+        cx.run_until_parked();
         assert_eq!(
             tree_rows(&editor, cx),
             vec![
-                "未分類/ (1)",
-                "メモ",
                 "拠点/大阪/ (1)",
                 "再起動",
                 "拠点/本社/ (2)",
+                "未分類/ (1)",
+                "メモ",
             ]
+        );
+        assert!(
+            saved_file(&fs)
+                .await
+                .macro_folders
+                .iter()
+                .any(|folder| folder.name == "拠点/本社" && folder.collapsed)
+        );
+
+        // 未分類 has no folder in the file to keep its state in, so it is only
+        // folded for as long as the modal is open.
+        editor.update(cx, |editor, cx| {
+            editor.toggle_folder_collapsed(None, cx);
+        });
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "未分類/ (1)",]
         );
     }
 
@@ -4533,7 +5749,7 @@ mod tests {
         cx.run_until_parked();
 
         let editor = open_editor(&workspace, &store, cx);
-        let login = stored_macro(&editor, "ログイン", cx);
+        let login = stored_macro(&editor, Some("拠点/本社"), "ログイン", cx);
         editor.update_in(cx, |editor, window, cx| {
             assert!(
                 !editor.has_unsaved_edits(cx),
@@ -4543,9 +5759,12 @@ mod tests {
         });
 
         editor.update(cx, |editor, cx| {
-            assert_eq!(editor.original_name.as_deref(), Some("ログイン"));
+            assert_eq!(
+                editor.original_key,
+                Some((Some("拠点/本社".to_string()), "ログイン".to_string()))
+            );
             assert_eq!(editor.name.read(cx).text(cx), "ログイン");
-            assert_eq!(editor.folder.read(cx).text(cx), "拠点/本社");
+            assert_eq!(editor.form_folder.as_deref(), Some("拠点/本社"));
             assert_eq!(editor.tags.read(cx).text(cx), "ルーター, 定期");
             assert!(editor.pending_selection.is_none());
             assert!(!editor.has_unsaved_edits(cx));
@@ -4560,8 +5779,8 @@ mod tests {
         cx.run_until_parked();
 
         let editor = open_editor(&workspace, &store, cx);
-        let login = stored_macro(&editor, "ログイン", cx);
-        let saved = stored_macro(&editor, "設定保存", cx);
+        let login = stored_macro(&editor, Some("拠点/本社"), "ログイン", cx);
+        let saved = stored_macro(&editor, Some("拠点/本社"), "設定保存", cx);
         editor.update_in(cx, |editor, window, cx| {
             editor.select_macro(Some(login), window, cx);
             editor.add_step(StepKind::Clear, window, cx);
@@ -4571,7 +5790,7 @@ mod tests {
 
         editor.update(cx, |editor, _| {
             assert_eq!(
-                editor.original_name.as_deref(),
+                editor.original_key.as_ref().map(|(_, name)| name.as_str()),
                 Some("ログイン"),
                 "the form must stay put until the edits are dealt with"
             );
@@ -4598,7 +5817,10 @@ mod tests {
             editor.confirm_selection(window, cx);
         });
         editor.update(cx, |editor, cx| {
-            assert_eq!(editor.original_name.as_deref(), Some("設定保存"));
+            assert_eq!(
+                editor.original_key.as_ref().map(|(_, name)| name.as_str()),
+                Some("設定保存")
+            );
             assert_eq!(editor.name.read(cx).text(cx), "設定保存");
             assert!(editor.steps.is_empty(), "the discarded step must be gone");
             assert!(editor.pending_selection.is_none());
@@ -4613,7 +5835,7 @@ mod tests {
         cx.run_until_parked();
 
         let editor = open_editor(&workspace, &store, cx);
-        let login = stored_macro(&editor, "ログイン", cx);
+        let login = stored_macro(&editor, Some("拠点/本社"), "ログイン", cx);
         editor.update_in(cx, |editor, window, cx| {
             editor.select_macro(Some(login.clone()), window, cx);
             editor.add_step(StepKind::Clear, window, cx);
@@ -4633,12 +5855,9 @@ mod tests {
         cx.run_until_parked();
 
         let editor = open_editor(&workspace, &store, cx);
-        let restart = stored_macro(&editor, "再起動", cx);
+        let restart = stored_macro(&editor, Some("拠点/大阪"), "再起動", cx);
         editor.update_in(cx, |editor, window, cx| {
             editor.select_macro(Some(restart), window, cx);
-            editor
-                .collapsed_folders
-                .insert(Some("拠点/大阪".to_string()));
             editor.begin_folder_rename("拠点".to_string(), window, cx);
             let Some((_, field)) = editor.renaming_folder.clone() else {
                 panic!("the rename should be in progress");
@@ -4676,22 +5895,29 @@ mod tests {
             "sub-folders travel with the folder that was renamed"
         );
 
+        assert_eq!(
+            saved.macro_folders,
+            vec![
+                terminal::terminal_macro::MacroFolder::new("全社/大阪"),
+                terminal::terminal_macro::MacroFolder::new("全社/本社"),
+            ],
+            "the folders themselves are renamed, keeping their order"
+        );
+
         editor.update(cx, |editor, cx| {
             assert!(editor.renaming_folder.is_none());
             assert_eq!(
-                editor.folder.read(cx).text(cx),
-                "全社/大阪",
+                editor.form_folder.as_deref(),
+                Some("全社/大阪"),
                 "the open macro follows its folder"
+            );
+            assert_eq!(
+                editor.original_key,
+                Some((Some("全社/大阪".to_string()), "再起動".to_string()))
             );
             assert!(
                 !editor.has_unsaved_edits(cx),
                 "a rename from the tree is not an unsaved form edit"
-            );
-            assert!(
-                editor
-                    .collapsed_folders
-                    .contains(&Some("全社/大阪".to_string())),
-                "the collapsed heading keeps its state under the new name"
             );
         });
     }
@@ -4734,10 +5960,15 @@ mod tests {
         cx.run_until_parked();
 
         let editor = open_editor(&workspace, &store, cx);
-        let memo = stored_macro(&editor, "メモ", cx);
+        let memo = stored_macro(&editor, None, "メモ", cx);
         editor.update_in(cx, |editor, window, cx| {
             editor.select_macro(Some(memo), window, cx);
-            editor.move_macro_to_folder("メモ", Some("拠点/本社".to_string()), window, cx);
+            editor.move_macro_to_folder(
+                &(None, "メモ".to_string()),
+                Some("拠点/本社".to_string()),
+                window,
+                cx,
+            );
         });
         cx.run_until_parked();
 
@@ -4753,39 +5984,70 @@ mod tests {
             ]
         );
         editor.update(cx, |editor, cx| {
-            assert_eq!(editor.folder.read(cx).text(cx), "拠点/本社");
+            assert_eq!(editor.form_folder.as_deref(), Some("拠点/本社"));
             assert!(!editor.has_unsaved_edits(cx));
         });
 
-        let contents = fs
-            .load(Path::new(path!("/config/terminal_sessions.json")))
-            .await
-            .expect("the sessions file should have been written");
-        let saved = parse_sessions_file(&contents);
         assert_eq!(
-            saved
-                .macros
-                .iter()
-                .find(|terminal_macro| terminal_macro.name == "メモ")
-                .and_then(|terminal_macro| terminal_macro.folder.as_deref()),
-            Some("拠点/本社")
+            saved_file(&fs)
+                .await
+                .macro_named(Some("拠点/本社"), "メモ")
+                .map(|terminal_macro| terminal_macro.name.as_str()),
+            Some("メモ")
         );
 
         // Dropping it back on 未分類 clears the folder again.
         editor.update_in(cx, |editor, window, cx| {
-            editor.move_macro_to_folder("メモ", None, window, cx);
+            editor.move_macro_to_folder(
+                &(Some("拠点/本社".to_string()), "メモ".to_string()),
+                None,
+                window,
+                cx,
+            );
         });
         cx.run_until_parked();
         editor.update(cx, |editor, cx| {
-            assert_eq!(editor.folder.read(cx).text(cx), "");
-            assert_eq!(
-                editor
-                    .store
-                    .read(cx)
-                    .macro_named("メモ")
-                    .and_then(|terminal_macro| terminal_macro.folder.as_deref()),
-                None
+            assert_eq!(editor.form_folder, None);
+            assert!(editor.store.read(cx).macro_named(None, "メモ").is_some());
+        });
+    }
+
+    #[gpui::test]
+    async fn moving_a_macro_into_a_folder_that_has_that_name_numbers_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let listing = stored_macro(&editor, Some("A-PC用"), "ls", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(listing), window, cx);
+            editor.move_macro_to_folder(
+                &(Some("A-PC用".to_string()), "ls".to_string()),
+                Some("B-PC用".to_string()),
+                window,
+                cx,
             );
+        });
+        cx.run_until_parked();
+
+        // Neither 「ls」 may be lost, so the moved one takes a numbered name.
+        let saved = saved_file(&fs).await;
+        assert_eq!(saved.macros_in_folder(Some("A-PC用")).count(), 0);
+        let mut moved = saved
+            .macros_in_folder(Some("B-PC用"))
+            .map(|terminal_macro| terminal_macro.name.as_str())
+            .collect::<Vec<_>>();
+        moved.sort();
+        assert_eq!(moved, vec!["ls", "ls (2)"]);
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.name.read(cx).text(cx), "ls (2)");
+            assert_eq!(
+                editor.original_key,
+                Some((Some("B-PC用".to_string()), "ls (2)".to_string()))
+            );
+            assert!(!editor.has_unsaved_edits(cx));
         });
     }
 
@@ -4800,7 +6062,8 @@ mod tests {
                         "folder": "拠点/本社",
                         "steps": [{ "type": "send", "text": "enable" }]
                     },
-                    { "name": "ログイン のコピー", "steps": [] }
+                    { "name": "ログイン のコピー", "folder": "拠点/本社", "steps": [] },
+                    { "name": "ログイン のコピー 2", "steps": [] }
                 ]
             }"#,
         )
@@ -4810,16 +6073,18 @@ mod tests {
         cx.run_until_parked();
 
         let editor = open_editor(&workspace, &store, cx);
-        let login = stored_macro(&editor, "ログイン", cx);
+        let login = stored_macro(&editor, Some("拠点/本社"), "ログイン", cx);
         editor.update_in(cx, |editor, window, cx| {
             editor.select_macro(Some(login), window, cx);
             editor.duplicate_macro(window, cx);
         });
 
         editor.update(cx, |editor, cx| {
-            assert_eq!(editor.original_name, None, "a copy is a new macro");
+            assert_eq!(editor.original_key, None, "a copy is a new macro");
+            // 「ログイン のコピー 2」 is taken, but under 未分類, so it is free
+            // here: names only have to be unique inside their folder.
             assert_eq!(editor.name.read(cx).text(cx), "ログイン のコピー 2");
-            assert_eq!(editor.folder.read(cx).text(cx), "拠点/本社");
+            assert_eq!(editor.form_folder.as_deref(), Some("拠点/本社"));
             assert_eq!(editor.steps.len(), 1);
             assert!(
                 editor.has_unsaved_edits(cx),
@@ -4830,26 +6095,736 @@ mod tests {
         editor.update(cx, |editor, cx| editor.save(cx));
         cx.run_until_parked();
 
-        let contents = fs
-            .load(Path::new(path!("/config/terminal_sessions.json")))
-            .await
-            .expect("the sessions file should have been written");
-        let saved = parse_sessions_file(&contents);
+        let saved = saved_file(&fs).await;
         assert_eq!(
             saved
                 .macros
                 .iter()
-                .map(|terminal_macro| terminal_macro.name.as_str())
+                .map(|terminal_macro| (
+                    terminal_macro.folder.as_deref(),
+                    terminal_macro.name.as_str()
+                ))
                 .collect::<Vec<_>>(),
-            vec!["ログイン", "ログイン のコピー", "ログイン のコピー 2"]
+            vec![
+                (Some("拠点/本社"), "ログイン"),
+                (Some("拠点/本社"), "ログイン のコピー"),
+                (None, "ログイン のコピー 2"),
+                (Some("拠点/本社"), "ログイン のコピー 2"),
+            ]
         );
         assert_eq!(
-            saved.macros[2].steps,
+            saved.macros[3].steps,
             vec![MacroStep::Send {
                 text: "enable".to_string(),
                 newline: true
             }],
             "the copy carries the steps it was made from"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_folder_can_be_made_empty_and_survives_a_save(cx: &mut TestAppContext) {
+        let (fs, workspace, window) =
+            init_workspace(cx, r#"{ "macros": [{ "name": "メモ", "steps": [] }] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.begin_new_folder(false, window, cx);
+            let Some(entry) = editor.new_folder.as_ref() else {
+                panic!("the name field should be open");
+            };
+            entry.field.update(cx, |field, cx| {
+                field.set_text(" ルータ用 / ", window, cx);
+            });
+            editor.confirm_new_folder(cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(folder_names(&store, cx), vec!["ルータ用".to_string()]);
+        // An empty folder is a real row that invites something to be put in it.
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec!["ルータ用/ (0)", "ルータ用/ (空)", "未分類/ (1)", "メモ"]
+        );
+        assert_eq!(
+            saved_file(&fs).await.macro_folders,
+            vec![terminal::terminal_macro::MacroFolder::new("ルータ用")],
+            "an empty folder is part of the file"
+        );
+
+        // The same name twice is refused rather than making a second folder.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.begin_new_folder(false, window, cx);
+            let Some(entry) = editor.new_folder.as_ref() else {
+                panic!("the name field should be open");
+            };
+            entry.field.update(cx, |field, cx| {
+                field.set_text("ルータ用", window, cx);
+            });
+            editor.confirm_new_folder(cx);
+        });
+        editor.update(cx, |editor, _| {
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("同じ名前のフォルダーがあります。")
+            );
+            assert!(editor.new_folder.is_some(), "the field stays open");
+        });
+        assert_eq!(folder_names(&store, cx), vec!["ルータ用".to_string()]);
+    }
+
+    #[gpui::test]
+    async fn the_empty_folder_row_starts_a_macro_already_filed_in_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macro_folders": [{ "name": "ルータ用" }], "macros": [] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec!["ルータ用/ (0)", "ルータ用/ (空)"]
+        );
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.new_macro_in_folder(Some("ルータ用".to_string()), window, cx);
+        });
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.original_key, None, "it is still a new macro");
+            assert_eq!(editor.form_folder.as_deref(), Some("ルータ用"));
+            assert!(
+                !editor.has_unsaved_edits(cx),
+                "a blank form in a folder is not work to be warned about"
+            );
+        });
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("show run", window, cx);
+            });
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            saved_file(&fs)
+                .await
+                .macro_named(Some("ルータ用"), "show run")
+                .map(|terminal_macro| terminal_macro.name.as_str()),
+            Some("show run")
+        );
+    }
+
+    #[gpui::test]
+    async fn folders_can_be_reordered_and_the_tree_follows(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update(cx, |editor, cx| editor.move_folder("B-PC用", true, cx));
+        cx.run_until_parked();
+
+        assert_eq!(
+            folder_names(&store, cx),
+            vec![
+                "ルータ用".to_string(),
+                "B-PC用".to_string(),
+                "A-PC用".to_string()
+            ]
+        );
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec![
+                "ルータ用/ (2)",
+                "show run",
+                "show ver",
+                "B-PC用/ (1)",
+                "ls",
+                "A-PC用/ (1)",
+                "ls",
+            ]
+        );
+
+        // The ends of the list are where 上へ / 下へ stop.
+        editor.update(cx, |editor, cx| editor.move_folder("ルータ用", true, cx));
+        editor.update(cx, |editor, cx| editor.move_folder("A-PC用", false, cx));
+        cx.run_until_parked();
+        assert_eq!(
+            folder_names(&store, cx),
+            vec![
+                "ルータ用".to_string(),
+                "B-PC用".to_string(),
+                "A-PC用".to_string()
+            ]
+        );
+
+        let picker = open_picker(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(
+            picker_rows(&picker, cx),
+            vec![
+                "ルータ用 (2)",
+                "show run",
+                "show ver",
+                "B-PC用 (1)",
+                "ls",
+                "A-PC用 (1)",
+                "ls",
+            ],
+            "the picker shows the order the editor arranged"
+        );
+    }
+
+    #[gpui::test]
+    async fn deleting_a_folder_either_unfiles_its_macros_or_takes_them_with_it(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "connections": [
+                    { "name": "r1", "host": "10.0.0.1", "macro": "ls", "macro_folder": "A-PC用" }
+                ],
+                "macro_folders": [{ "name": "A-PC用" }, { "name": "空" }],
+                "macros": [{ "name": "ls", "folder": "A-PC用", "steps": [] }]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        // An empty folder goes without asking.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.request_folder_delete("空".to_string(), window, cx);
+        });
+        cx.run_until_parked();
+        editor.update(cx, |editor, _| {
+            assert!(editor.pending_folder_delete.is_none());
+        });
+        assert_eq!(folder_names(&store, cx), vec!["A-PC用".to_string()]);
+
+        // One that still holds macros has to be answered for first.
+        let listing = stored_macro(&editor, Some("A-PC用"), "ls", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(listing), window, cx);
+            editor.request_folder_delete("A-PC用".to_string(), window, cx);
+        });
+        editor.update(cx, |editor, _| {
+            assert_eq!(editor.pending_folder_delete.as_deref(), Some("A-PC用"));
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.delete_folder("A-PC用", true, window, cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert!(saved.macro_folders.is_empty());
+        assert!(saved.macro_named(None, "ls").is_some(), "the macro stays");
+        assert_eq!(
+            saved.connections[0].macro_folder, None,
+            "the connection keeps running it, now by name alone"
+        );
+        assert_eq!(
+            saved
+                .macro_for_connection(&saved.connections[0])
+                .map(|terminal_macro| terminal_macro.name.as_str()),
+            Some("ls")
+        );
+        editor.update(cx, |editor, _| {
+            assert_eq!(editor.form_folder, None);
+            assert_eq!(editor.original_key, Some((None, "ls".to_string())));
+        });
+
+        // The other answer takes the macros with the folder.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.move_macro_to_folder(
+                &(None, "ls".to_string()),
+                Some("A-PC用".to_string()),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        editor.update_in(cx, |editor, window, cx| {
+            editor.delete_folder("A-PC用", false, window, cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert!(saved.macros.is_empty(), "the macros went with the folder");
+        assert!(saved.macro_folders.is_empty());
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.original_key, None);
+            assert_eq!(editor.name.read(cx).text(cx), "");
+        });
+    }
+
+    #[gpui::test]
+    async fn the_same_name_in_two_folders_is_saved_twice(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "macro_folders": [{ "name": "A-PC用" }, { "name": "B-PC用" }],
+                "macros": [{ "name": "ls", "folder": "A-PC用", "steps": [] }]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("ls", window, cx);
+            });
+            editor.form_folder = Some("B-PC用".to_string());
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert_eq!(
+            saved
+                .macros
+                .iter()
+                .map(|terminal_macro| (
+                    terminal_macro.folder.as_deref(),
+                    terminal_macro.name.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            vec![(Some("A-PC用"), "ls"), (Some("B-PC用"), "ls")],
+            "a name is only taken inside its own folder"
+        );
+    }
+
+    #[gpui::test]
+    async fn saving_a_name_the_same_folder_already_has_is_refused(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, TWO_DEVICE_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("show run", window, cx);
+            });
+            editor.form_folder = Some("ルータ用".to_string());
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        editor.update(cx, |editor, _| {
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("同じフォルダーに同名のマクロがあります。")
+            );
+        });
+        assert_eq!(
+            saved_file(&fs)
+                .await
+                .macros_in_folder(Some("ルータ用"))
+                .count(),
+            2,
+            "nothing may be written over"
+        );
+
+        // Renaming a macro onto a name another folder holds is fine. The
+        // refused form still holds the rejected edits, so the macro is loaded
+        // outright rather than through the 破棄しますか prompt.
+        let listing = stored_macro(&editor, Some("A-PC用"), "ls", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(listing), window, cx);
+            editor.name.update(cx, |name, cx| {
+                name.set_text("show run", window, cx);
+            });
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+        let saved = saved_file(&fs).await;
+        assert!(saved.macro_named(Some("A-PC用"), "show run").is_some());
+        assert!(saved.macro_named(Some("ルータ用"), "show run").is_some());
+    }
+
+    #[gpui::test]
+    async fn renaming_a_macro_takes_the_connections_that_run_it_along(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "connections": [
+                    { "name": "r1", "host": "10.0.0.1", "macro": "ls", "macro_folder": "A-PC用" }
+                ],
+                "macro_folders": [{ "name": "A-PC用" }, { "name": "B-PC用" }],
+                "macros": [{ "name": "ls", "folder": "A-PC用", "steps": [] }]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let listing = stored_macro(&editor, Some("A-PC用"), "ls", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(listing), window, cx);
+            editor.name.update(cx, |name, cx| {
+                name.set_text("dir", window, cx);
+            });
+            editor.form_folder = Some("B-PC用".to_string());
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert_eq!(saved.macros.len(), 1, "the macro moved, it was not copied");
+        assert_eq!(saved.connections[0].macro_name.as_deref(), Some("dir"));
+        assert_eq!(saved.connections[0].macro_folder.as_deref(), Some("B-PC用"));
+        assert_eq!(
+            saved
+                .macro_for_connection(&saved.connections[0])
+                .map(|terminal_macro| terminal_macro.name.as_str()),
+            Some("dir")
+        );
+    }
+
+    /// A connection written before ADR-F35: the macro is filed under a folder,
+    /// but the connection names it without one, which is also what an
+    /// explicitly 未分類 reference looks like on disk.
+    const LEGACY_CONNECTION: &str = r#"{
+        "connections": [
+            { "name": "r1", "host": "10.0.0.1", "macro": "ログイン" }
+        ],
+        "macro_folders": [{ "name": "拠点/本社" }, { "name": "拠点/大阪" }],
+        "macros": [{ "name": "ログイン", "folder": "拠点/本社", "steps": [] }]
+    }"#;
+
+    #[gpui::test]
+    async fn a_connection_that_names_its_macro_without_a_folder_follows_a_rename(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, LEGACY_CONNECTION).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let login = stored_macro(&editor, Some("拠点/本社"), "ログイン", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(login), window, cx);
+            editor.name.update(cx, |name, cx| {
+                name.set_text("ログイン2", window, cx);
+            });
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert_eq!(
+            (
+                saved.connections[0].macro_name.as_deref(),
+                saved.connections[0].macro_folder.as_deref()
+            ),
+            (Some("ログイン2"), Some("拠点/本社")),
+            "the older reference is rewritten in full, not left behind"
+        );
+        assert_eq!(
+            saved
+                .macro_for_connection(&saved.connections[0])
+                .map(|terminal_macro| terminal_macro.name.as_str()),
+            Some("ログイン2")
+        );
+    }
+
+    #[gpui::test]
+    async fn a_connection_that_names_its_macro_without_a_folder_follows_a_move(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, LEGACY_CONNECTION).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.move_macro_to_folder(
+                &(Some("拠点/本社".to_string()), "ログイン".to_string()),
+                Some("拠点/大阪".to_string()),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert_eq!(
+            (
+                saved.connections[0].macro_name.as_deref(),
+                saved.connections[0].macro_folder.as_deref()
+            ),
+            (Some("ログイン"), Some("拠点/大阪"))
+        );
+        assert_eq!(
+            saved
+                .macro_for_connection(&saved.connections[0])
+                .and_then(|terminal_macro| terminal_macro.folder.as_deref()),
+            Some("拠点/大阪")
+        );
+    }
+
+    #[gpui::test]
+    async fn a_connection_that_names_its_macro_without_a_folder_survives_a_folder_delete(
+        cx: &mut TestAppContext,
+    ) {
+        // The folder is only implied by the macro filed under it, the way a
+        // file written before ADR-F35 has it.
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "connections": [
+                    { "name": "r1", "host": "10.0.0.1", "macro": "ログイン" }
+                ],
+                "macros": [
+                    { "name": "ログイン", "folder": "拠点/本社", "steps": [] }
+                ]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.delete_folder("拠点/本社", true, window, cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert!(saved.macro_named(None, "ログイン").is_some());
+        assert_eq!(
+            saved
+                .macro_for_connection(&saved.connections[0])
+                .map(|terminal_macro| terminal_macro.name.as_str()),
+            Some("ログイン")
+        );
+
+        // The other answer takes the macro with the folder, so the reference
+        // goes as well — leaving it would put the folder back on the next load.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.move_macro_to_folder(
+                &(None, "ログイン".to_string()),
+                Some("拠点/本社".to_string()),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        editor.update_in(cx, |editor, window, cx| {
+            editor.delete_folder("拠点/本社", false, window, cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert!(saved.macros.is_empty());
+        assert_eq!(saved.connections[0].macro_name, None);
+        assert_eq!(saved.connections[0].macro_folder, None);
+        assert!(saved.macro_folders.is_empty());
+    }
+
+    #[gpui::test]
+    async fn deleting_a_macro_clears_the_connections_that_ran_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "connections": [
+                    { "name": "r1", "host": "10.0.0.1", "macro": "ls", "macro_folder": "A-PC用" },
+                    { "name": "r2", "host": "10.0.0.2", "macro": "ls" }
+                ],
+                "macro_folders": [{ "name": "A-PC用" }, { "name": "B-PC用" }],
+                "macros": [
+                    { "name": "ls", "folder": "A-PC用", "steps": [] },
+                    { "name": "ls", "folder": "B-PC用", "steps": [] }
+                ]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.request_delete((Some("A-PC用".to_string()), "ls".to_string()), cx);
+            editor.confirm_delete(window, cx);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs).await;
+        assert_eq!(saved.macros.len(), 1, "only 「B-PC用/ls」 is left");
+        // Both references named the macro that went away — the second one by
+        // name alone — and neither may be left to run 「B-PC用/ls」 instead.
+        for connection in &saved.connections {
+            assert_eq!(connection.macro_name, None, "{}", connection.name);
+            assert_eq!(connection.macro_folder, None, "{}", connection.name);
+        }
+    }
+
+    #[gpui::test]
+    async fn renaming_a_folder_onto_a_name_a_sub_folder_would_collide_with_is_refused(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "macro_folders": [{ "name": "拠点/本社" }, { "name": "全社/本社" }],
+                "macros": [
+                    { "name": "ログイン", "folder": "拠点/本社", "steps": [] },
+                    { "name": "ログイン", "folder": "全社/本社", "steps": [] }
+                ]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        // 「拠点」 → 「全社」 also turns 「拠点/本社」 into 「全社/本社」, which is
+        // already taken: two folders by that name, and two macros sharing one
+        // key.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.begin_folder_rename("拠点".to_string(), window, cx);
+            let Some((_, field)) = editor.renaming_folder.clone() else {
+                panic!("the rename should be in progress");
+            };
+            field.update(cx, |field, cx| {
+                field.set_text("全社", window, cx);
+            });
+            editor.confirm_folder_rename(window, cx);
+        });
+        cx.run_until_parked();
+
+        editor.update(cx, |editor, _| {
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("同じ名前のフォルダーがあります。")
+            );
+            assert!(
+                editor.renaming_folder.is_some(),
+                "the field stays open so the name can be fixed"
+            );
+        });
+        assert_eq!(
+            folder_names(&store, cx),
+            vec!["拠点/本社".to_string(), "全社/本社".to_string()],
+            "nothing may be renamed when any of the results would collide"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_tree_ignores_a_folded_heading_while_the_filter_is_on(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update(cx, |editor, cx| {
+            editor.toggle_folder_collapsed(Some("拠点/本社".to_string()), cx);
+            editor.toggle_folder_collapsed(None, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "未分類/ (1)"]
+        );
+
+        // A heading that says 1 件 must have that one row under it, folded or
+        // not — the same rule the runner picker follows.
+        let filter = |editor: &Entity<MacroEditor>, text: &str, cx: &mut VisualTestContext| {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.list_filter.update(cx, |list_filter, cx| {
+                    list_filter.set_text(text, window, cx);
+                });
+            });
+        };
+        filter(&editor, "ログイン", cx);
+        assert_eq!(tree_rows(&editor, cx), vec!["拠点/本社/ (1)", "ログイン"]);
+        editor.update(cx, |editor, cx| {
+            assert!(
+                editor.macro_tree(cx).iter().all(|row| !matches!(
+                    row,
+                    MacroTreeRow::Folder {
+                        collapsed: true,
+                        ..
+                    }
+                )),
+                "a heading drawn folded while filtering would lie about its rows"
+            );
+        });
+
+        // 未分類 keeps its collapse in the modal rather than the file, and has
+        // to follow the same rule.
+        filter(&editor, "メモ", cx);
+        assert_eq!(tree_rows(&editor, cx), vec!["未分類/ (1)", "メモ"]);
+
+        // Clearing the filter puts both back the way the user folded them.
+        filter(&editor, "", cx);
+        assert_eq!(
+            tree_rows(&editor, cx),
+            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "未分類/ (1)"]
+        );
+    }
+
+    #[gpui::test]
+    async fn a_folder_rename_carries_the_open_delete_prompt_with_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, FOLDERED_MACROS).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.request_delete((Some("拠点/本社".to_string()), "ログイン".to_string()), cx);
+            editor.begin_folder_rename("拠点".to_string(), window, cx);
+            let Some((_, field)) = editor.renaming_folder.clone() else {
+                panic!("the rename should be in progress");
+            };
+            field.update(cx, |field, cx| {
+                field.set_text("全社", window, cx);
+            });
+            editor.confirm_folder_rename(window, cx);
+        });
+        cx.run_until_parked();
+
+        editor.update(cx, |editor, _| {
+            assert_eq!(
+                editor.pending_delete,
+                Some((Some("全社/本社".to_string()), "ログイン".to_string())),
+                "confirming the prompt must still find the macro it named"
+            );
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.confirm_delete(window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            saved_file(&fs)
+                .await
+                .macro_named(Some("全社/本社"), "ログイン")
+                .is_none(),
+            "the macro the prompt named is the one that goes"
         );
     }
 

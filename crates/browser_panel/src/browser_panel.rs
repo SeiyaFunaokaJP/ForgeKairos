@@ -24,11 +24,12 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
+use async_recursion::async_recursion;
 use db::kvp::KeyValueStore;
 use editor::Editor;
 use gpui::{
     Action, App, AsyncWindowContext, Axis, Context, Entity, EntityId, EventEmitter, FocusHandle,
-    Focusable, Pixels, Task, WeakEntity, Window, actions,
+    Focusable, MouseDownEvent, Pixels, Point, Subscription, Task, WeakEntity, Window, actions,
 };
 use project::Project;
 use serde::{Deserialize, Serialize};
@@ -36,8 +37,8 @@ use settings::{IntoGpui, RegisterSetting, Settings};
 use ui::{Tooltip, prelude::*};
 use util::{ResultExt as _, TryFutureExt as _};
 use workspace::{
-    CloseActiveItem, DraggedTab, Member, Pane, PaneAxis, PaneGroup, SplitDirection, SplitMode,
-    Workspace,
+    CloseActiveItem, DraggedTab, ItemId, Member, Pane, PaneAxis, PaneGroup, SplitDirection,
+    SplitMode, Workspace, WorkspaceId,
     dock::{DockPosition, Panel, PanelEvent},
     pane,
     searchable::SearchableItem as _,
@@ -288,10 +289,19 @@ pub struct BrowserPanel {
     pub(crate) center: PaneGroup,
     pub(crate) active_pane: Entity<Pane>,
     pending_serialization: Task<Option<()>>,
+    /// 保存したレイアウトを組み立てている最中。この間の保存は「まだ空のパネル」を
+    /// 書いてしまうので止める ([`BrowserPanel::load_inner`])。
+    restoring: bool,
     active: bool,
+    /// ブックマークバーはパネルに 1 本なので、木が変わったときに描き直すのも
+    /// パネルの仕事 (中身を描く [`BrowserView`] 側の購読では届かない)。
+    _bookmarks_subscription: Subscription,
 }
 
 pub fn init(cx: &mut App) {
+    // ブラウザータブはパネルの外 (エディター領域 / ターミナルパネル) にも置けるので、
+    // 中央のタブと同じ per-kind の復元機構に載せる (ADR-F37)。
+    workspace::register_serializable_item::<BrowserItem>(cx);
     cx.observe_new(
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
             workspace.register_action(|workspace, _: &ToggleFocus, window, cx| {
@@ -328,7 +338,31 @@ enum QueryKind {
 }
 
 impl BrowserPanel {
+    /// 復元しなかったアイテムの行の掃除は、中央とすべてのパネルの復元が揃ってから
+    /// ワークスペースが 1 回だけ走らせる (ADR-F37)。ここでやることは待ち合わせへの
+    /// 参加だけで、失敗しても必ず抜ける (抜けないとそのウィンドウで掃除が止まる)。
+    ///
+    /// このパネルが workspace に載る (`add_panel`) のは `load` が返ってからなので、
+    /// ここで数えを戻した時点ではまだタブが「どのペインにも居ない」ように見える。
+    /// 掃除が実際に走るのは zed の `initialize_panels` が全パネルを載せ終えてから
+    /// (向こうでもう 1 つ数えている) なので、この順序に依存している。
     pub async fn load(
+        workspace: WeakEntity<Workspace>,
+        mut cx: AsyncWindowContext,
+    ) -> Result<Entity<Self>> {
+        workspace
+            .update(&mut cx, |workspace, _| workspace.begin_item_restore())
+            .log_err();
+        let panel = Self::load_inner(workspace.clone(), cx.clone()).await;
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.end_item_restore(window, cx);
+            })
+            .log_err();
+        panel
+    }
+
+    async fn load_inner(
         workspace: WeakEntity<Workspace>,
         mut cx: AsyncWindowContext,
     ) -> Result<Entity<Self>> {
@@ -348,34 +382,61 @@ impl BrowserPanel {
             None => None,
         };
 
+        let workspace_id = workspace
+            .read_with(&cx, |workspace, _| workspace.database_id())
+            .ok()
+            .flatten();
+
         let panel = workspace.update_in(&mut cx, |workspace, window, cx| {
             cx.new(|cx| BrowserPanel::new(workspace, window, cx))
         })?;
         // タブを開くのはワークスペースの更新が終わってから。`BrowserItem` の生成が
         // ワークスペースを読みに行くので、`update_in` の中でやると二重借用になる。
-        panel.update_in(&mut cx, |panel, window, cx| {
-            let restored =
-                serialized.is_some_and(|serialized| panel.restore(serialized, window, cx));
-            if !restored {
-                panel.open_tab(None, NewTabPlacement::ForegroundWithoutFocus, window, cx);
+        let restored = match serialized {
+            Some(serialized) => {
+                // 復元中のペインはまだ `panel.center` に載っていない。タブが 1 枚
+                // 足されるたびに `AddItem` で保存すると、その空のレイアウトが
+                // 保存済みのレイアウトを上書きしてしまう。
+                panel.update(&mut cx, |panel, _| panel.restoring = true);
+                let restored = restore(&panel, serialized, workspace_id, &mut cx).await;
+                panel.update(&mut cx, |panel, _| panel.restoring = false);
+                restored
             }
-        })?;
+            None => false,
+        };
+        if !restored {
+            panel.update_in(&mut cx, |panel, window, cx| {
+                panel.open_tab(None, NewTabPlacement::ForegroundWithoutFocus, window, cx);
+            })?;
+        }
         Ok(panel)
     }
 
     fn new(workspace: &Workspace, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let project = workspace.project().clone();
         let pane = new_browser_pane(workspace.weak_handle(), project.clone(), window, cx);
+        let fs = workspace.app_state().fs.clone();
+        let bookmarks = BookmarkStore::global(fs.clone(), cx);
         Self {
-            fs: workspace.app_state().fs.clone(),
+            fs,
             workspace: workspace.weak_handle(),
             project,
             focus_handle: cx.focus_handle(),
             center: PaneGroup::new(pane.clone()),
             active_pane: pane,
             pending_serialization: Task::ready(None),
+            restoring: false,
             active: false,
+            _bookmarks_subscription: cx.observe(&bookmarks, |_, _, cx| cx.notify()),
         }
+    }
+
+    /// ブックマークバーはパネルに 1 本 (ADR-F33 追記)。分割していても上に 1 本だけ
+    /// 出し、中身はアクティブなペインのビューのものを借りる (クリックでの移動も
+    /// 中クリックでの新しいタブも、そのビューの手元で起きる)。
+    fn render_bookmark_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let view = self.active_view(cx)?;
+        view.update(cx, |view, cx| view.render_bookmarks_bar(cx))
     }
 
     // -- タブ ----------------------------------------------------------------
@@ -517,12 +578,37 @@ impl BrowserPanel {
         let Some(pane) = self.pane_for_item(item_id, cx) else {
             return;
         };
+        // 既にそのペインの中にフォーカスがあるなら触らない。アドレス欄を
+        // クリックしたときもこの申告は飛ぶので、ここで奪うと入力できなくなる
+        // (ペインにフォーカスを移すと `Pane::focus_in` がビューへ送り直す)。
+        if !pane.focus_handle(cx).contains_focused(window, cx) {
+            window.focus(&pane.focus_handle(cx), cx);
+        }
+        self.activate_pane(pane, cx);
+    }
+
+    /// このペインを「次の操作の宛先」にする (ブックマークバー・アドレス欄・
+    /// `Ctrl+T` はすべてここを見る)。フォーカスは動かさない。
+    fn activate_pane(&mut self, pane: Entity<Pane>, cx: &mut Context<Self>) {
         if pane == self.active_pane {
             return;
         }
-        self.active_pane = pane.clone();
-        window.focus(&pane.focus_handle(cx), cx);
+        self.active_pane = pane;
         cx.notify();
+    }
+
+    /// クリックが落ちたペインをアクティブにする。
+    ///
+    /// [`pane::Event::Focus`] は**ペインの外から**フォーカスが入ったときにしか
+    /// 鳴らないので、既にそのペインの中にフォーカスがある状態でタブバーや
+    /// 「+」を押しても切り替わらない。逆に、フォーカスが子 HWND (ページ) に
+    /// あるあいだは GPUI 側のフォーカスが動かないままタブバーだけが押される。
+    /// どちらの取りこぼしもここで拾う。
+    fn activate_pane_at(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(pane) = self.center.pane_at_pixel_position(position).cloned() else {
+            return;
+        };
+        self.activate_pane(pane, cx);
     }
 
     fn url_of_active_item(&self, pane: &Entity<Pane>, cx: &App) -> Option<String> {
@@ -649,7 +735,13 @@ impl BrowserPanel {
         cx: &mut Context<Self>,
     ) {
         match event {
-            pane::Event::ActivateItem { .. } => {
+            pane::Event::ActivateItem { local, .. } => {
+                // `local` = そのペインの中でユーザーが選んだ (タブのクリック・
+                // 新しいタブ)。復元や裏での差し替えでは立たないので、これを
+                // 宛先の切り替えに使ってよい。
+                if *local {
+                    self.activate_pane(pane.clone(), cx);
+                }
                 self.hide_inactive_surfaces(cx);
                 self.serialize(cx);
             }
@@ -740,10 +832,7 @@ impl BrowserPanel {
                     }
                 }
             }
-            pane::Event::Focus => {
-                self.active_pane = pane.clone();
-                cx.notify();
-            }
+            pane::Event::Focus => self.activate_pane(pane.clone(), cx),
             pane::Event::ItemPinned | pane::Event::ItemUnpinned => self.serialize(cx),
             _ => {}
         }
@@ -760,9 +849,15 @@ impl BrowserPanel {
     }
 
     fn serialize(&mut self, cx: &mut Context<Self>) {
-        let Some(serialization_key) = self
+        if self.restoring {
+            return;
+        }
+        let Some((serialization_key, format)) = self
             .workspace
-            .read_with(cx, |workspace, _| Self::serialization_key(workspace))
+            .read_with(cx, |workspace, _| {
+                let key = Self::serialization_key(workspace)?;
+                Some((key, PanelLayoutFormat::of(workspace)))
+            })
             .ok()
             .flatten()
         else {
@@ -776,7 +871,7 @@ impl BrowserPanel {
                 .await;
             let panel = panel.upgrade()?;
             let serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
-                root: serialize_pane_group(&panel.center.root, &panel.active_pane, cx),
+                root: serialize_pane_group(&panel.center.root, &panel.active_pane, format, cx),
             });
             cx.background_spawn(
                 async move {
@@ -789,87 +884,6 @@ impl BrowserPanel {
             .await;
             Some(())
         });
-    }
-
-    /// 保存したレイアウトを組み立て直す。1 枚も復元できなければ `false` を返し、
-    /// 呼び出し側がホームのタブを 1 枚開く。
-    fn restore(
-        &mut self,
-        serialized: SerializedBrowserPanel,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some((root, active_pane)) = self.deserialize_pane_group(&serialized.root, window, cx)
-        else {
-            return false;
-        };
-        self.center = PaneGroup::with_root(root);
-        self.active_pane = active_pane.unwrap_or_else(|| self.center.first_pane());
-        self.hide_inactive_surfaces(cx);
-        true
-    }
-
-    fn deserialize_pane_group(
-        &mut self,
-        serialized: &SerializedBrowserPaneGroup,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<(Member, Option<Entity<Pane>>)> {
-        match serialized {
-            SerializedBrowserPaneGroup::Group {
-                axis,
-                flexes,
-                children,
-            } => {
-                let mut active_pane = None;
-                let mut members = Vec::new();
-                for child in children {
-                    if let Some((member, child_active)) =
-                        self.deserialize_pane_group(child, window, cx)
-                    {
-                        members.push(member);
-                        active_pane = active_pane.or(child_active);
-                    }
-                }
-                match members.len() {
-                    0 => None,
-                    1 => Some((members.remove(0), active_pane)),
-                    _ => Some((
-                        Member::Axis(PaneAxis::load(axis.0, members, flexes.clone())),
-                        active_pane,
-                    )),
-                }
-            }
-            SerializedBrowserPaneGroup::Pane(serialized_pane) => {
-                if serialized_pane.urls.is_empty() {
-                    return None;
-                }
-                let pane =
-                    new_browser_pane(self.workspace.clone(), self.project.clone(), window, cx);
-                for url in &serialized_pane.urls {
-                    // 復元直後はどのタブも裏。表に出す 1 枚だけをこの後選ぶので、
-                    // 起動時に作られる WebView2 はペインごとに 1 つで済む。
-                    self.open_tab_in_pane(
-                        &pane,
-                        Some(url.clone()),
-                        NewTabPlacement::Background,
-                        window,
-                        cx,
-                    );
-                }
-                let active_item = serialized_pane
-                    .active_item
-                    .unwrap_or(0)
-                    .min(serialized_pane.urls.len().saturating_sub(1));
-                pane.update(cx, |pane, cx| {
-                    pane.activate_item(active_item, false, false, window, cx);
-                });
-                Some((
-                    Member::Pane(pane.clone()),
-                    serialized_pane.active.then_some(pane),
-                ))
-            }
-        }
     }
 
     // -- エディター領域との行き来 --------------------------------------------
@@ -1127,6 +1141,11 @@ impl Render for BrowserPanel {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(cx.theme().colors().panel_background)
+            // 触ったペインを宛先にする。捕捉フェーズで拾うのは、タブや「+」が
+            // クリックを消費してもここまで届かせるため (何も止めない)。
+            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                this.activate_pane_at(event.position, cx);
+            }))
             .on_action(cx.listener(|this, _: &NewPanelTab, window, cx| {
                 this.open_tab(None, NewTabPlacement::Foreground, window, cx)
             }))
@@ -1143,6 +1162,7 @@ impl Render for BrowserPanel {
             .on_action(cx.listener(|this, _: &FocusNextPaneGroup, window, cx| {
                 this.focus_next_pane(window, cx)
             }))
+            .children(self.render_bookmark_bar(cx))
             .children(center)
     }
 }
@@ -1203,6 +1223,10 @@ impl Panel for BrowserPanel {
         Some(self.active_pane.clone())
     }
 
+    fn panes(&self) -> Vec<Entity<Pane>> {
+        self.center.panes().into_iter().cloned().collect()
+    }
+
     fn is_zoomed(&self, _: &Window, cx: &App) -> bool {
         self.center
             .panes()
@@ -1253,10 +1277,24 @@ impl Panel for BrowserPanel {
 // ---------------------------------------------------------------------------
 
 /// パネルのレイアウトはワークスペースの kvp に置く (ターミナルパネルと同じ流儀)。
-/// タブの中身は URL 1 本で足りるので、アイテムごとの DB 行は持たない。
+/// タブの中身は種類ごとの `SerializableItem` が自分の DB 行に書くので、ここには
+/// 「どの種類のタブがどの順で並んでいたか」だけを残す (ADR-F37)。
 #[derive(Debug, Serialize, Deserialize)]
 struct SerializedBrowserPanel {
     root: SerializedBrowserPaneGroup,
+}
+
+/// パネルのタブ 1 枚。中央の `SerializedItem` と同じ 4 つ組で、種類ごとの復元は
+/// `workspace::deserialize_serializable_item` に投げる。
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct SerializedPanelItem {
+    kind: Arc<str>,
+    item_id: ItemId,
+    active: bool,
+    /// 中央の形式に合わせて書き出すが、戻すのは今のところ中央だけ
+    /// (`Pane::set_preview_item_id` が workspace の外に出ていない)。
+    #[serde(default)]
+    preview: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1272,7 +1310,14 @@ enum SerializedBrowserPaneGroup {
 #[derive(Debug, Serialize, Deserialize)]
 struct SerializedBrowserPane {
     active: bool,
+    #[serde(default)]
+    items: Vec<SerializedPanelItem>,
+    /// 第 12 便の形式。ブラウザーのタブを URL の並びで持っていた。移行のため
+    /// 読むだけ残してある (次の保存で `items` に書き換わる)。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     urls: Vec<String>,
+    /// 同上。`urls` の添字。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     active_item: Option<usize>,
 }
 
@@ -1309,9 +1354,32 @@ impl<'de> Deserialize<'de> for SerializedAxis {
     }
 }
 
+/// どちらの形式で書くか。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PanelLayoutFormat {
+    /// 通常。タブは `(種類, item_id)` で書き、中身は種類ごとの `SerializableItem` が
+    /// ワークスペースの DB に持つ。
+    Items,
+    /// 切り離しウィンドウ (`workspace_id` が無い)。行を書く先が無いので
+    /// (`BrowserItem::serialize` は `database_id` を要る)、第 12 便の形式
+    /// (ブラウザーのタブの URL の並び) で書く。セッション中は今までどおり戻せる。
+    Urls,
+}
+
+impl PanelLayoutFormat {
+    fn of(workspace: &Workspace) -> Self {
+        if workspace.database_id().is_some() {
+            Self::Items
+        } else {
+            Self::Urls
+        }
+    }
+}
+
 fn serialize_pane_group(
     member: &Member,
     active_pane: &Entity<Pane>,
+    format: PanelLayoutFormat,
     cx: &App,
 ) -> SerializedBrowserPaneGroup {
     match member {
@@ -1324,46 +1392,264 @@ fn serialize_pane_group(
             axis: SerializedAxis(*axis),
             children: members
                 .iter()
-                .map(|member| serialize_pane_group(member, active_pane, cx))
+                .map(|member| serialize_pane_group(member, active_pane, format, cx))
                 .collect(),
             flexes: Some(flexes.lock().clone()),
         },
         Member::Pane(pane) => {
-            SerializedBrowserPaneGroup::Pane(serialize_pane(pane, pane == active_pane, cx))
+            SerializedBrowserPaneGroup::Pane(serialize_pane(pane, pane == active_pane, format, cx))
         }
     }
 }
 
-/// ブラウザーのタブだけを書き出す。ドラッグで他の種類のタブ (ターミナルや
-/// エディター) がパネルに載っていても、それらは持ち主の側で復元される。
-fn serialize_pane(pane: &Entity<Pane>, active: bool, cx: &App) -> SerializedBrowserPane {
-    let pane = pane.read(cx);
-    let mut urls = Vec::new();
-    let mut active_item = None;
-    for (index, item) in pane.items().enumerate() {
-        let Some(browser_item) = item.downcast::<BrowserItem>() else {
-            continue;
+/// 種類を問わず、復元できるタブをすべて書き出す。ドラッグでターミナルや
+/// エディターがパネルに載っていても、次の起動でこのペインに戻ってくる (ADR-F37)。
+fn serialize_pane(
+    pane: &Entity<Pane>,
+    active: bool,
+    format: PanelLayoutFormat,
+    cx: &App,
+) -> SerializedBrowserPane {
+    let active_item_index = pane.read(cx).active_item_index();
+    if format == PanelLayoutFormat::Urls {
+        let mut urls = Vec::new();
+        let mut active_item = None;
+        for (index, item) in pane.read(cx).items().enumerate() {
+            let Some(item) = item.downcast::<BrowserItem>() else {
+                continue;
+            };
+            if index == active_item_index {
+                active_item = Some(urls.len());
+            }
+            urls.push(item.read(cx).view().read(cx).current_url().to_string());
+        }
+        return SerializedBrowserPane {
+            active,
+            items: Vec::new(),
+            urls,
+            active_item,
         };
-        let url = browser_item
-            .read(cx)
-            .view()
-            .read(cx)
-            .current_url()
-            .trim()
-            .to_string();
-        if url.is_empty() {
-            continue;
-        }
-        if index == pane.active_item_index() {
-            active_item = Some(urls.len());
-        }
-        urls.push(url);
     }
+
+    let preview_item_id = pane.read(cx).preview_item_id();
+    let items = pane
+        .read(cx)
+        .items()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            let Some(handle) = item.to_serializable_item_handle(cx) else {
+                log::info!(
+                    "browser panel: a tab of a kind that cannot be restored is not being saved"
+                );
+                return None;
+            };
+            Some(SerializedPanelItem {
+                kind: Arc::from(handle.serialized_item_kind()),
+                item_id: item.item_id().as_u64(),
+                active: index == active_item_index,
+                preview: Some(item.item_id()) == preview_item_id,
+            })
+        })
+        .collect();
     SerializedBrowserPane {
         active,
-        urls,
-        active_item,
+        items,
+        urls: Vec::new(),
+        active_item: None,
     }
+}
+
+/// 保存したレイアウトを組み立て直す。1 枚も復元できなければ `false` を返し、
+/// 呼び出し側がホームのタブを 1 枚開く。
+async fn restore(
+    panel: &Entity<BrowserPanel>,
+    serialized: SerializedBrowserPanel,
+    workspace_id: Option<WorkspaceId>,
+    cx: &mut AsyncWindowContext,
+) -> bool {
+    let Some((root, active_pane)) =
+        deserialize_pane_group(panel, &serialized.root, workspace_id, cx).await
+    else {
+        return false;
+    };
+    panel.update(cx, |panel, cx| {
+        panel.center = PaneGroup::with_root(root);
+        panel.active_pane = active_pane.unwrap_or_else(|| panel.center.first_pane());
+        panel.hide_inactive_surfaces(cx);
+    });
+    true
+}
+
+#[async_recursion(?Send)]
+async fn deserialize_pane_group(
+    panel: &Entity<BrowserPanel>,
+    serialized: &SerializedBrowserPaneGroup,
+    workspace_id: Option<WorkspaceId>,
+    cx: &mut AsyncWindowContext,
+) -> Option<(Member, Option<Entity<Pane>>)> {
+    match serialized {
+        SerializedBrowserPaneGroup::Group {
+            axis,
+            flexes,
+            children,
+        } => {
+            let mut active_pane = None;
+            let mut members = Vec::new();
+            for child in children {
+                if let Some((member, child_active)) =
+                    deserialize_pane_group(panel, child, workspace_id, cx).await
+                {
+                    members.push(member);
+                    active_pane = active_pane.or(child_active);
+                }
+            }
+            match members.len() {
+                0 => None,
+                1 => Some((members.remove(0), active_pane)),
+                _ => Some((
+                    Member::Axis(PaneAxis::load(axis.0, members, flexes.clone())),
+                    active_pane,
+                )),
+            }
+        }
+        SerializedBrowserPaneGroup::Pane(serialized_pane) => {
+            if serialized_pane.items.is_empty() && serialized_pane.urls.is_empty() {
+                return None;
+            }
+            let pane = panel
+                .update_in(cx, |panel, window, cx| {
+                    new_browser_pane(panel.workspace.clone(), panel.project.clone(), window, cx)
+                })
+                .log_err()?;
+
+            if serialized_pane.items.is_empty() {
+                restore_urls(panel, &pane, serialized_pane, cx);
+            } else {
+                restore_items(panel, &pane, &serialized_pane.items, workspace_id, cx).await;
+            }
+
+            // 1 枚も戻せなかったペインは畳む (空のペインはタブバーすら描かれない)。
+            if pane.read_with(cx, |pane, _| pane.items_len()) == 0 {
+                return None;
+            }
+            Some((
+                Member::Pane(pane.clone()),
+                serialized_pane.active.then_some(pane),
+            ))
+        }
+    }
+}
+
+/// 第 12 便の形式 (URL の並び) の読み出し。ワークスペース ID を要らないので、
+/// 切り離しウィンドウのセッション鍵で保存されたものもここまでは戻せる。
+fn restore_urls(
+    panel: &Entity<BrowserPanel>,
+    pane: &Entity<Pane>,
+    serialized_pane: &SerializedBrowserPane,
+    cx: &mut AsyncWindowContext,
+) {
+    panel
+        .update_in(cx, |panel, window, cx| {
+            for (index, url) in serialized_pane.urls.iter().enumerate() {
+                // 復元直後はどのタブも裏。表に出す 1 枚だけをこの後選ぶので、
+                // 起動時に作られる WebView2 はペインごとに 1 つで済む。
+                panel.open_tab_in_pane(
+                    pane,
+                    Some(url.clone()),
+                    NewTabPlacement::Background,
+                    window,
+                    cx,
+                );
+                // `Pane` は「表に出ているタブの次」に挿すので、裏で足し続けると
+                // 3 枚目から順序が崩れる。足すたびに末尾を選んで並びを保つ。
+                pane.update(cx, |pane, cx| {
+                    pane.activate_item(index, false, false, window, cx);
+                });
+            }
+            let active_item = serialized_pane
+                .active_item
+                .unwrap_or(0)
+                .min(serialized_pane.urls.len().saturating_sub(1));
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(active_item, false, false, window, cx);
+            });
+        })
+        .log_err();
+}
+
+/// 種類ごとの復元。`workspace` に登録の無い種類は飛ばす (それを知っていた版で
+/// 保存された可能性があるので、失敗ではなく読み飛ばしとして扱う)。
+async fn restore_items(
+    panel: &Entity<BrowserPanel>,
+    pane: &Entity<Pane>,
+    items: &[SerializedPanelItem],
+    workspace_id: Option<WorkspaceId>,
+    cx: &mut AsyncWindowContext,
+) {
+    let Some(workspace_id) = workspace_id else {
+        log::info!(
+            "browser panel: this window has no workspace id, so its tabs cannot be restored"
+        );
+        return;
+    };
+    let (workspace, project) = panel.read_with(cx, |panel, _| {
+        (panel.workspace.clone(), panel.project.clone())
+    });
+
+    let mut tasks = Vec::new();
+    for item in items {
+        let task = pane.update_in(cx, |_, window, cx| {
+            workspace::deserialize_serializable_item(
+                &item.kind,
+                project.clone(),
+                workspace.clone(),
+                workspace_id,
+                item.item_id,
+                window,
+                cx,
+            )
+        });
+        match task {
+            Ok(Some(task)) => tasks.push((item.active, task)),
+            Ok(None) => log::info!(
+                "browser panel: no restore handler for a {:?} tab; skipping it",
+                item.kind
+            ),
+            Err(error) => {
+                log::warn!(
+                    "browser panel: the window went away while restoring its tabs: {error:#}"
+                );
+                return;
+            }
+        }
+    }
+
+    let mut active_index = None;
+    let mut next_index = 0;
+    for (active, task) in tasks {
+        let Some(item) = task.await.log_err() else {
+            continue;
+        };
+        // 表に出すのは最後に選ぶ 1 枚だけ (裏のブラウザータブは WebView2 を
+        // 作らない)。裏で足すときの挿し先は `Pane` に任せると「表のタブの次」に
+        // なって並びが崩れるので、末尾を明示する。
+        let added = pane
+            .update_in(cx, |pane, window, cx| {
+                pane.add_item_inner(item, false, false, false, Some(next_index), window, cx);
+            })
+            .log_err()
+            .is_some();
+        if added {
+            if active {
+                active_index = Some(next_index);
+            }
+            next_index += 1;
+        }
+    }
+    pane.update_in(cx, |pane, window, cx| {
+        pane.activate_item(active_index.unwrap_or(0), false, false, window, cx);
+    })
+    .log_err();
 }
 
 /// Windows 以外でビュー本体を素通しでコンパイルするためのスタブ。
@@ -1438,11 +1724,12 @@ pub(crate) mod webview_unsupported {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{ExternalPaths, TestAppContext, VisualTestContext};
+    use crate::browser_item::BrowserItemDb;
+    use gpui::{AsyncWindowContext, ExternalPaths, TestAppContext, VisualTestContext};
     use project::{FakeFs, Project};
     use settings::SettingsStore;
     use std::path::PathBuf;
-    use workspace::MultiWorkspace;
+    use workspace::{MultiWorkspace, item::test::TestItem};
 
     #[test]
     fn tab_tooltip_keeps_short_urls_and_truncates_long_ones() {
@@ -1568,6 +1855,8 @@ mod tests {
             theme_settings::init(theme::LoadThemes::JustBase, cx);
             editor::init(cx);
             crate::init(cx);
+            // ドラッグでパネルに流れてくる「ブラウザー以外のタブ」の代役。
+            workspace::register_serializable_item::<TestItem>(cx);
         });
     }
 
@@ -1603,6 +1892,87 @@ mod tests {
             .filter_map(|item| item.downcast::<BrowserItem>())
             .map(|item| item.read(cx).view().read(cx).current_url().to_string())
             .collect()
+    }
+
+    fn pane_kinds(pane: &Entity<Pane>, cx: &App) -> Vec<&'static str> {
+        pane.read(cx)
+            .items()
+            .filter_map(|item| item.to_serializable_item_handle(cx))
+            .map(|handle| handle.serialized_item_kind())
+            .collect()
+    }
+
+    fn async_window(cx: &mut VisualTestContext) -> AsyncWindowContext {
+        cx.update(|window, cx| window.to_async(cx))
+    }
+
+    fn new_panel(
+        window_handle: &gpui::WindowHandle<MultiWorkspace>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<BrowserPanel> {
+        window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    cx.new(|cx| BrowserPanel::new(workspace, window, cx))
+                })
+            })
+            .expect("failed to build the browser panel")
+    }
+
+    /// パネルに載っているブラウザーのタブの URL を、`BrowserItem::serialize` が
+    /// 書くのと同じ行に置く。テストのワークスペースは DB の ID を持たないので、
+    /// 保存の側だけ手で代行する。
+    async fn store_browser_urls(
+        panel: &Entity<BrowserPanel>,
+        workspace_id: WorkspaceId,
+        cx: &mut VisualTestContext,
+    ) {
+        let rows = panel.read_with(cx, |panel, cx| {
+            panel
+                .center
+                .panes()
+                .into_iter()
+                .flat_map(|pane| {
+                    pane.read(cx)
+                        .items()
+                        .filter_map(|item| {
+                            let url = item
+                                .downcast::<BrowserItem>()?
+                                .read(cx)
+                                .view()
+                                .read(cx)
+                                .current_url()
+                                .to_string();
+                            Some((item.item_id().as_u64(), url))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        });
+        store_urls(rows, workspace_id, cx).await;
+    }
+
+    /// `browser_items` に行を直接置く。
+    async fn store_urls(
+        rows: Vec<(ItemId, String)>,
+        workspace_id: WorkspaceId,
+        cx: &mut VisualTestContext,
+    ) {
+        let db = cx.update(|_, cx| BrowserItemDb::global(cx));
+        // `browser_items` は `workspaces` を参照するので、先に親の行を作る。
+        db.write(move |connection| {
+            connection.exec(&format!(
+                "INSERT OR IGNORE INTO workspaces (workspace_id) VALUES ({})",
+                i64::from(workspace_id)
+            ))?()
+        })
+        .await
+        .expect("the browser_items rows need a workspace to reference");
+        for (item_id, url) in rows {
+            db.save_url(item_id, workspace_id, url)
+                .await
+                .expect("saving a browser tab's url");
+        }
     }
 
     fn open_tabs(panel: &Entity<BrowserPanel>, urls: &[&str], cx: &mut VisualTestContext) {
@@ -1687,6 +2057,160 @@ mod tests {
                 );
             })
             .expect("failed to read the workspace panes");
+    }
+
+    /// 分割したパネルを 1 枚描いた状態にする。フォーカスのイベント
+    /// (`Pane::focus_in`) は描画の終わりに配られるので、描かないと出ない。
+    fn split_panel(
+        window_handle: &gpui::WindowHandle<MultiWorkspace>,
+        panel: &Entity<BrowserPanel>,
+        cx: &mut VisualTestContext,
+    ) -> (Entity<Pane>, Entity<Pane>) {
+        open_tabs(
+            panel,
+            &["https://example.com/one", "https://example.com/two"],
+            cx,
+        );
+        panel.update_in(cx, |panel, window, cx| {
+            panel.split_active_tab_right(window, cx)
+        });
+        window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    workspace.focus_panel::<BrowserPanel>(window, cx);
+                });
+            })
+            .expect("failed to open the browser panel");
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, _| {
+            let panes = panel.center.panes();
+            assert_eq!(panes.len(), 2);
+            (panes[0].clone(), panes[1].clone())
+        })
+    }
+
+    #[gpui::test]
+    async fn focusing_a_split_pane_makes_it_the_target_of_the_panel(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (first, second) = split_panel(&window_handle, &panel, cx);
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.active_pane, second,
+                "the pane the split created takes over"
+            );
+        });
+
+        // アドレス欄やページをクリックしたときと同じ経路 (ペインの部分木にフォーカスが入る)。
+        panel.update_in(cx, |_, window, cx| {
+            window.focus(&first.focus_handle(cx), cx);
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                panel.active_pane, first,
+                "focus moving into a pane makes it the active one"
+            );
+            let view = panel
+                .active_view(cx)
+                .expect("the focused pane has a browser tab");
+            assert_eq!(view.read(cx).current_url(), "https://example.com/one");
+        });
+
+        // ブックマークのクリック (= アクティブなビューへのナビゲーション) と
+        // 新しいタブは、どちらもそのペインに向く。
+        panel.update_in(cx, |panel, window, cx| {
+            panel.navigate_to("https://example.com/bookmark", window, cx);
+            panel.open_tab(
+                Some("https://example.com/new".to_string()),
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&first, cx),
+                vec![
+                    "https://example.com/bookmark".to_string(),
+                    "https://example.com/new".to_string()
+                ],
+                "both the navigation and the new tab land in the focused pane"
+            );
+            assert_eq!(
+                pane_urls(&second, cx),
+                vec!["https://example.com/two".to_string()],
+                "the other pane is left alone"
+            );
+            assert_eq!(panel.active_pane, first);
+        });
+    }
+
+    #[gpui::test]
+    async fn clicking_a_tab_in_the_other_pane_makes_that_pane_the_target(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (first, second) = split_panel(&window_handle, &panel, cx);
+
+        // タブのクリックそのもの (`Pane::render_tab` の `on_click`)。フォーカスが
+        // 既にそのペインの中にあると `focus_in` は鳴らないので、宛先の切り替えは
+        // `ActivateItem { local: true }` でも拾えていないといけない。
+        first.update_in(cx, |pane, window, cx| {
+            pane.activate_item(0, true, true, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(panel.active_pane, first);
+            assert_eq!(
+                panel
+                    .active_view(cx)
+                    .expect("the clicked pane has a browser tab")
+                    .read(cx)
+                    .current_url(),
+                "https://example.com/one"
+            );
+        });
+
+        // 「+」ボタンはそのペインに足し、そのペインが宛先になる。
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_tab_in_pane(
+                &second,
+                Some("https://example.com/plus".to_string()),
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(panel.active_pane, second);
+            assert_eq!(
+                pane_urls(&second, cx),
+                vec![
+                    "https://example.com/two".to_string(),
+                    "https://example.com/plus".to_string()
+                ]
+            );
+            assert_eq!(
+                pane_urls(&first, cx),
+                vec!["https://example.com/one".to_string()],
+                "the tab must not land in the other pane"
+            );
+        });
     }
 
     #[gpui::test]
@@ -1802,6 +2326,7 @@ mod tests {
         init_test(cx);
         let (window_handle, panel) = init_workspace_with_panel(cx).await;
         let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace_id = WorkspaceId::from_i64(4201);
 
         open_tabs(
             &panel,
@@ -1818,25 +2343,24 @@ mod tests {
             );
         });
         cx.run_until_parked();
+        store_browser_urls(&panel, workspace_id, cx).await;
 
         let serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
-            root: serialize_pane_group(&panel.center.root, &panel.active_pane, cx),
+            root: serialize_pane_group(
+                &panel.center.root,
+                &panel.active_pane,
+                PanelLayoutFormat::Items,
+                cx,
+            ),
         });
         let round_tripped: SerializedBrowserPanel = serde_json::from_str(
             &serde_json::to_string(&serialized).expect("the layout should serialize"),
         )
         .expect("the layout should deserialize");
 
-        let restored = window_handle
-            .update(cx, |multi_workspace, window, cx| {
-                multi_workspace.workspace().update(cx, |workspace, cx| {
-                    cx.new(|cx| BrowserPanel::new(workspace, window, cx))
-                })
-            })
-            .expect("failed to build the restored panel");
-        restored.update_in(cx, |panel, window, cx| {
-            assert!(panel.restore(round_tripped, window, cx));
-        });
+        let restored = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        assert!(restore(&restored, round_tripped, Some(workspace_id), &mut async_cx).await);
         cx.run_until_parked();
 
         restored.read_with(cx, |panel, cx| {
@@ -1854,6 +2378,238 @@ mod tests {
                 ]
             );
             assert_eq!(panes[1].read(cx).active_item_index(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn tabs_of_every_kind_in_the_panel_are_restored(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace_id = WorkspaceId::from_i64(4202);
+
+        open_tabs(&panel, &["https://example.com/one"], cx);
+        // ドラッグでブラウザー以外のタブが載った状態。
+        panel.update_in(cx, |panel, window, cx| {
+            let item = cx.new(TestItem::new);
+            panel.active_pane.update(cx, |pane, cx| {
+                pane.add_item(Box::new(item), false, false, None, window, cx);
+            });
+        });
+        cx.run_until_parked();
+        store_browser_urls(&panel, workspace_id, cx).await;
+
+        let mut serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
+            root: serialize_pane_group(
+                &panel.center.root,
+                &panel.active_pane,
+                PanelLayoutFormat::Items,
+                cx,
+            ),
+        });
+        let SerializedBrowserPaneGroup::Pane(serialized_pane) = &mut serialized.root else {
+            panic!("the panel has a single pane");
+        };
+        assert_eq!(
+            serialized_pane
+                .items
+                .iter()
+                .map(|item| item.kind.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["Browser", "TestItem"],
+            "every restorable tab is written, not just the browser ones"
+        );
+        assert!(
+            serialized_pane.urls.is_empty(),
+            "the url-only format is not written any more"
+        );
+        // 知らない種類 (別の版が保存した) は読み飛ばすだけ。
+        serialized_pane.items.push(SerializedPanelItem {
+            kind: Arc::from("SomethingThisBuildDoesNotKnow"),
+            item_id: 987654,
+            active: false,
+            preview: false,
+        });
+
+        let restored = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        assert!(restore(&restored, serialized, Some(workspace_id), &mut async_cx).await);
+        cx.run_until_parked();
+
+        restored.read_with(cx, |panel, cx| {
+            let panes = panel.center.panes();
+            assert_eq!(panes.len(), 1);
+            assert_eq!(pane_kinds(panes[0], cx), vec!["Browser", "TestItem"]);
+            assert_eq!(
+                pane_urls(panes[0], cx),
+                vec!["https://example.com/one".to_string()]
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn the_url_only_layout_of_the_previous_build_still_restores(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        drop(panel);
+
+        let stored = r#"{"root":{"Pane":{"active":true,"urls":["https://example.com/one","https://example.com/two"],"active_item":1}}}"#;
+        let serialized: SerializedBrowserPanel =
+            serde_json::from_str(stored).expect("the old layout should still deserialize");
+
+        let restored = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        // 旧形式はワークスペース ID を要らない (URL がその場に書いてある)。
+        assert!(restore(&restored, serialized, None, &mut async_cx).await);
+        cx.run_until_parked();
+
+        restored.read_with(cx, |panel, cx| {
+            let panes = panel.center.panes();
+            assert_eq!(panes.len(), 1);
+            assert_eq!(
+                pane_urls(panes[0], cx),
+                vec![
+                    "https://example.com/one".to_string(),
+                    "https://example.com/two".to_string()
+                ]
+            );
+            assert_eq!(panes[0].read(cx).active_item_index(), 1);
+        });
+
+        // 次の保存で新形式に移る。
+        let reserialized = restored.update(cx, |panel, cx| {
+            serialize_pane_group(
+                &panel.center.root,
+                &panel.active_pane,
+                PanelLayoutFormat::Items,
+                cx,
+            )
+        });
+        let SerializedBrowserPaneGroup::Pane(pane) = &reserialized else {
+            panic!("the restored panel has a single pane");
+        };
+        assert!(pane.urls.is_empty());
+        assert_eq!(
+            pane.items
+                .iter()
+                .map(|item| item.kind.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["Browser", "Browser"]
+        );
+        assert!(pane.items[1].active);
+    }
+
+    #[gpui::test]
+    async fn a_window_without_a_workspace_id_writes_the_url_list(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        // テストのワークスペースは DB の ID を持たない = 切り離しウィンドウと同じ。
+        // 種類ごとの行を書く先が無いので、URL の並びで書かないと戻せなくなる。
+        let format = window_handle
+            .read_with(cx, |multi_workspace, cx| {
+                PanelLayoutFormat::of(multi_workspace.workspace().read(cx))
+            })
+            .expect("the window should hold a workspace");
+        assert!(format == PanelLayoutFormat::Urls);
+
+        open_tabs(
+            &panel,
+            &["https://example.com/one", "https://example.com/two"],
+            cx,
+        );
+        let root = panel.update(cx, |panel, cx| {
+            serialize_pane_group(&panel.center.root, &panel.active_pane, format, cx)
+        });
+        let SerializedBrowserPaneGroup::Pane(serialized_pane) = &root else {
+            panic!("the panel has a single pane");
+        };
+        assert!(serialized_pane.items.is_empty());
+        assert_eq!(
+            serialized_pane.urls,
+            vec![
+                "https://example.com/one".to_string(),
+                "https://example.com/two".to_string()
+            ]
+        );
+        assert_eq!(serialized_pane.active_item, Some(1));
+
+        // 同じセッションのうちはそのまま戻る。
+        let restored = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        assert!(
+            restore(
+                &restored,
+                SerializedBrowserPanel { root },
+                None,
+                &mut async_cx
+            )
+            .await
+        );
+        cx.run_until_parked();
+        restored.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&panel.active_pane, cx),
+                vec![
+                    "https://example.com/one".to_string(),
+                    "https://example.com/two".to_string()
+                ]
+            );
+            assert_eq!(panel.active_pane.read(cx).active_item_index(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn the_bookmark_bar_belongs_to_the_panel_not_to_each_pane(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        let fs = panel.read_with(cx, |panel, _| panel.fs.clone());
+        cx.update(|_, cx| {
+            let bookmarks = BookmarkStore::global(fs, cx);
+            bookmarks.update(cx, |bookmarks, cx| {
+                bookmarks
+                    .write(
+                        BookmarksFile {
+                            items: vec![BookmarkNode::bookmark("例", "https://example.com/")],
+                        },
+                        cx,
+                    )
+                    .detach();
+            });
+        });
+
+        open_tabs(
+            &panel,
+            &["https://example.com/one", "https://example.com/two"],
+            cx,
+        );
+        panel.update_in(cx, |panel, window, cx| {
+            panel.split_active_tab_right(window, cx)
+        });
+        cx.run_until_parked();
+
+        panel.update(cx, |panel, cx| {
+            assert_eq!(panel.center.panes().len(), 2);
+            assert!(
+                panel.render_bookmark_bar(cx).is_some(),
+                "a split panel still shows a single bookmark bar"
+            );
+        });
+
+        // ブラウザーでないタブを見ているペインにはバーを出さない。
+        panel.update_in(cx, |panel, window, cx| {
+            let item = cx.new(TestItem::new);
+            panel.active_pane.update(cx, |pane, cx| {
+                pane.add_item(Box::new(item), false, false, None, window, cx);
+            });
+        });
+        cx.run_until_parked();
+        panel.update(cx, |panel, cx| {
+            assert!(panel.render_bookmark_bar(cx).is_none());
         });
     }
 
@@ -1894,5 +2650,139 @@ mod tests {
                 assert_eq!(item.read(cx).view().read(cx).host(), BrowserHost::EditorTab);
             })
             .expect("failed to read the center pane");
+    }
+
+    /// ワークスペースに DB の ID を与えて、掃除が走る状態にする。
+    fn workspace_with_database_id(
+        window_handle: &gpui::WindowHandle<MultiWorkspace>,
+        cx: &mut VisualTestContext,
+    ) -> (Entity<Workspace>, WorkspaceId) {
+        let workspace = window_handle
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the window should hold a workspace");
+        let workspace_id = workspace.update(cx, |workspace, _| {
+            workspace.set_random_database_id();
+            workspace.database_id()
+        });
+        (
+            workspace,
+            workspace_id.expect("the workspace should have a database id now"),
+        )
+    }
+
+    fn browser_item_ids(workspace: &Entity<Workspace>, cx: &mut VisualTestContext) -> Vec<ItemId> {
+        workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .all_panes(cx)
+                .into_iter()
+                .flat_map(|pane| {
+                    pane.read(cx)
+                        .items()
+                        .filter(|item| item.downcast::<BrowserItem>().is_some())
+                        .map(|item| item.item_id().as_u64())
+                        .collect::<Vec<ItemId>>()
+                })
+                .collect::<Vec<_>>()
+        })
+    }
+
+    #[gpui::test]
+    async fn the_cleanup_spares_tabs_that_live_outside_the_panel(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (workspace, workspace_id) = workspace_with_database_id(&window_handle, cx);
+
+        // 同じ種類のタブがパネルと中央に 1 枚ずつ (ADR-F37 の交差する後始末)。
+        open_tabs(&panel, &["https://example.com/panel"], cx);
+        workspace.update_in(cx, |workspace, window, cx| {
+            BrowserItem::open(
+                workspace,
+                Some("https://example.com/center".to_string()),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let alive = browser_item_ids(&workspace, cx);
+        assert_eq!(alive.len(), 2, "one tab in the panel and one in the center");
+        let stale_item_id: ItemId = 987_654_321;
+        let mut rows = alive
+            .iter()
+            .map(|item_id| (*item_id, "https://example.com/saved".to_string()))
+            .collect::<Vec<_>>();
+        rows.push((stale_item_id, "https://example.com/stale".to_string()));
+        store_urls(rows, workspace_id, cx).await;
+
+        // 中央もパネルも復元が終わった状態。
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.begin_item_restore();
+            workspace.end_item_restore(window, cx);
+        });
+        cx.run_until_parked();
+
+        let db = cx.update(|_, cx| BrowserItemDb::global(cx));
+        for item_id in alive {
+            assert!(
+                db.get_url(item_id, workspace_id)
+                    .expect("reading a browser tab's row")
+                    .is_some(),
+                "a tab that is alive anywhere in the window keeps its row"
+            );
+        }
+        assert!(
+            db.get_url(stale_item_id, workspace_id)
+                .expect("reading a browser tab's row")
+                .is_none(),
+            "the row of a tab that no longer exists is dropped"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_cleanup_waits_until_every_restore_has_finished(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (workspace, workspace_id) = workspace_with_database_id(&window_handle, cx);
+
+        open_tabs(&panel, &["https://example.com/panel"], cx);
+        cx.run_until_parked();
+        let stale_item_id: ItemId = 123_456_789;
+        store_urls(
+            vec![(stale_item_id, "https://example.com/stale".to_string())],
+            workspace_id,
+            cx,
+        )
+        .await;
+
+        // 中央とパネル、2 つの復元が走っている。
+        workspace.update(cx, |workspace, _| {
+            workspace.begin_item_restore();
+            workspace.begin_item_restore();
+        });
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.end_item_restore(window, cx);
+        });
+        cx.run_until_parked();
+
+        let db = cx.update(|_, cx| BrowserItemDb::global(cx));
+        assert!(
+            db.get_url(stale_item_id, workspace_id)
+                .expect("reading a browser tab's row")
+                .is_some(),
+            "nothing is deleted while another restore is still running"
+        );
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.end_item_restore(window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            db.get_url(stale_item_id, workspace_id)
+                .expect("reading a browser tab's row")
+                .is_none(),
+            "the last restore to finish runs the cleanup"
+        );
     }
 }

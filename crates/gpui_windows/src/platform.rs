@@ -358,6 +358,13 @@ impl WindowsPlatform {
                         break;
                     };
                     for hwnd in all_windows.read().iter() {
+                        // A destroyed window stays in this list until the main
+                        // thread has processed `WM_GPUI_CLOSE_ONE_WINDOW`;
+                        // invalidating it in the meantime only queues a
+                        // `WM_PAINT` for a window that can no longer draw.
+                        if !unsafe { IsWindow(Some(hwnd.as_raw())) }.as_bool() {
+                            continue;
+                        }
                         unsafe {
                             let _ = RedrawWindow(Some(hwnd.as_raw()), None, None, RDW_INVALIDATE);
                         }
@@ -577,6 +584,39 @@ impl Platform for WindowsPlatform {
         let active_window_hwnd = unsafe { GetActiveWindow() };
         self.window_from_hwnd(active_window_hwnd)
             .map(|inner| inner.handle)
+    }
+
+    fn window_under_cursor(&self) -> Option<(AnyWindowHandle, Point<Pixels>)> {
+        let mut cursor = POINT::default();
+        unsafe { GetCursorPos(&mut cursor) }
+            .context("unable to get cursor position")
+            .log_err()?;
+        // `WindowFromPoint` reports the deepest child window at the point, and
+        // a hosted WebView2 covers most of a browser tab with child windows of
+        // its own, so the top-level window it belongs to is what we want.
+        let hwnd = unsafe { GetAncestor(WindowFromPoint(cursor), GA_ROOT) };
+        if hwnd.is_invalid() {
+            return None;
+        }
+        // A window showing a modal dialog is disabled (`EnableWindow(parent,
+        // false)` in `WindowsWindow::new`) and takes no input, so reporting it
+        // would hand the caller a window that cannot accept a drop. Callers
+        // treat `None` as "no window of ours here" and fall back accordingly.
+        if !unsafe { IsWindowEnabled(hwnd) }.as_bool() {
+            return None;
+        }
+        let inner = self.window_from_hwnd(hwnd)?;
+        let mut client_position = cursor;
+        unsafe { ScreenToClient(hwnd, &mut client_position) }
+            .ok()
+            .context("unable to map the cursor position into the window under it")
+            .log_err()?;
+        let position = logical_point(
+            client_position.x as f32,
+            client_position.y as f32,
+            inner.state.scale_factor.get(),
+        );
+        Some((inner.handle, position))
     }
 
     fn open_window(

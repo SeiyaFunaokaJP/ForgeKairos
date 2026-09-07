@@ -3295,18 +3295,26 @@ impl Pane {
                                 "新しいウィンドウへ移動",
                                 Some(Box::new(MoveItemToNewWindow)),
                                 window.handler_for(&pane, move |pane, window, cx| {
+                                    // A context menu handler runs inside
+                                    // `pane.update`, so this pane is leased for
+                                    // as long as it lasts. Tearing the tab off
+                                    // touches the pane again, so it has to
+                                    // happen once that lease is gone.
                                     let source_pane = cx.entity();
-                                    pane.workspace
-                                        .update(cx, |workspace, cx| {
-                                            workspace.move_item_to_new_window(
-                                                source_pane,
-                                                item_id,
-                                                None,
-                                                window,
-                                                cx,
-                                            );
-                                        })
-                                        .log_err();
+                                    let workspace = pane.workspace.clone();
+                                    window.defer(cx, move |window, cx| {
+                                        workspace
+                                            .update(cx, |workspace, cx| {
+                                                workspace.move_item_to_new_window(
+                                                    source_pane,
+                                                    item_id,
+                                                    None,
+                                                    window,
+                                                    cx,
+                                                );
+                                            })
+                                            .log_err();
+                                    });
                                 }),
                             );
 

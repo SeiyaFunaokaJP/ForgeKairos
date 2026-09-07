@@ -911,13 +911,17 @@ impl PaneAxis {
     }
 
     fn bounding_box_for_pane(&self, pane: &Entity<Pane>) -> Option<Bounds<Pixels>> {
-        debug_assert!(self.members.len() == self.bounding_boxes.lock().len());
-
+        // `insert_pane`/`remove` resize `flexes` but leave `bounding_boxes`
+        // alone until the next paint, so between a split and that paint there
+        // are more members than boxes. Reads outside the paint cycle - the
+        // mouse up of a tab dragged in from another window, say - land in that
+        // gap, hence `get` rather than indexing (and no `debug_assert!` on the
+        // two lengths matching, which a dev build would trip on).
         for (idx, member) in self.members.iter().enumerate() {
             match member {
                 Member::Pane(found) => {
                     if pane == found {
-                        return self.bounding_boxes.lock()[idx];
+                        return self.bounding_boxes.lock().get(idx).copied().flatten();
                     }
                 }
                 Member::Axis(axis) => {
@@ -931,14 +935,14 @@ impl PaneAxis {
     }
 
     fn pane_at_pixel_position(&self, coordinate: Point<Pixels>) -> Option<&Entity<Pane>> {
-        debug_assert!(self.members.len() == self.bounding_boxes.lock().len());
-
         let bounding_boxes = self.bounding_boxes.lock();
 
         for (idx, member) in self.members.iter().enumerate() {
-            if let Some(coordinates) = bounding_boxes[idx]
-                && coordinates.contains(&coordinate)
-            {
+            // See `bounding_box_for_pane`: the boxes can lag the members.
+            let Some(coordinates) = bounding_boxes.get(idx).copied().flatten() else {
+                continue;
+            };
+            if coordinates.contains(&coordinate) {
                 return match member {
                     Member::Pane(found) => Some(found),
                     Member::Axis(axis) => axis.pane_at_pixel_position(coordinate),

@@ -687,6 +687,10 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
             status_bar.add_right_item(image_info, window, cx);
         });
 
+        // パネルの読み込み (= 中に置いたタブの復元) は中央の復元と並行して走る。
+        // 掃除を待たせる登録だけは、どちらのタスクが先に回っても間に合うように
+        // ここで同期的に済ませておく (ADR-F37)。
+        workspace.begin_item_restore();
         let panels_task = initialize_panels(window, cx);
         workspace.set_panels_task(panels_task);
         register_actions(app_state.clone(), workspace, window, cx);
@@ -841,8 +845,15 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             add_panel_when_ready(git_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(browser_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(debug_panel, workspace_handle.clone(), cx.clone()),
-            initialize_agent_panel(workspace_handle, cx.clone()).map(|r| r.log_err()),
+            initialize_agent_panel(workspace_handle.clone(), cx.clone()).map(|r| r.log_err()),
         );
+
+        // 全パネルが載った = 復元しなかったアイテムの行を掃除してよい (ADR-F37)。
+        workspace_handle
+            .update_in(cx, |workspace, window, cx| {
+                workspace.end_item_restore(window, cx);
+            })
+            .log_err();
 
         anyhow::Ok(())
     })
@@ -5960,6 +5971,7 @@ mod tests {
                 "encoding_selector",
                 "feedback",
                 "file_finder",
+                "file_transfer",
                 "git",
                 "git_graph",
                 "git_onboarding",

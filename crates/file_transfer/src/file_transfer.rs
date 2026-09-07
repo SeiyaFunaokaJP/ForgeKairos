@@ -23,8 +23,8 @@ use zed_actions::terminal::OpenFileTransfer;
 
 pub use connection_presets::{ConnectionPreset, PresetGroup, PresetSource, preset_groups};
 pub use file_transfer_modal::{
-    FileTransferModal, LocalSide, PaneSide, RemoteHostOptions, TransferHostOptions,
-    open_file_transfer,
+    FileTransferModal, FocusNextField, FocusPreviousField, LocalSide, PaneSide, RemoteHostOptions,
+    TransferHostOptions, open_file_transfer,
 };
 pub use transfer_backend::{ExecHost, IdeExecHost, RemoteExecHost, RemoteTarget, TransferProtocol};
 
@@ -119,7 +119,7 @@ mod tests {
     use std::path::PathBuf;
 
     use fs::Fs as _;
-    use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext};
+    use gpui::{AppContext as _, Entity, KeyBinding, TestAppContext, VisualTestContext};
     use project::{FakeFs, Project};
     use settings::SettingsStore;
     use util::path;
@@ -342,5 +342,105 @@ mod tests {
             .await
             .expect("the file should have been written");
         assert!(written.contains("新しい機器"), "{written}");
+    }
+
+    /// Tab has to walk the transfer screen's own fields and wrap back into it.
+    ///
+    /// The modal is opened inside a real workspace on purpose: the status bar's
+    /// dock buttons are `tab_index(0isize)` tab stops that paint *after* the
+    /// modal layer, so in a window holding nothing but the modal the bug this
+    /// covers cannot happen at all. The keystroke is dispatched rather than the
+    /// action, so the keymap context that carries it is exercised too.
+    #[gpui::test]
+    async fn tab_cycles_the_transfer_fields_and_wraps_inside_the_modal(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+            init(cx);
+            // The same two contexts assets/keymaps/default-windows.json binds.
+            cx.bind_keys([
+                KeyBinding::new("tab", FocusNextField, Some("FileTransfer")),
+                KeyBinding::new("shift-tab", FocusPreviousField, Some("FileTransfer")),
+                KeyBinding::new("tab", FocusNextField, Some("FileTransfer > Editor")),
+                KeyBinding::new(
+                    "shift-tab",
+                    FocusPreviousField,
+                    Some("FileTransfer > Editor"),
+                ),
+            ]);
+        });
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/project"), serde_json::json!({ "readme.md": "" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace: Entity<workspace::Workspace> = window
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the test window should have a workspace");
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        cx.run_until_parked();
+
+        cx.dispatch_action(OpenFileTransfer {
+            host: Some("10.0.0.1".to_string()),
+            ..OpenFileTransfer::default()
+        });
+        cx.run_until_parked();
+
+        let modal: Entity<FileTransferModal> = workspace
+            .update(cx, |workspace, cx| {
+                workspace.active_modal::<FileTransferModal>(cx)
+            })
+            .expect("the transfer screen should be the active modal");
+
+        let focused_field = |modal: &Entity<FileTransferModal>, cx: &mut VisualTestContext| {
+            modal.update_in(cx, |modal, window, cx| {
+                modal.focused_field_for_test(window, cx)
+            })
+        };
+
+        // `FileTransferModal::new` focuses the host field itself, but this makes
+        // the starting point explicit rather than relying on it.
+        modal.update_in(cx, |modal, window, cx| {
+            modal.focus_host_for_test(window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(focused_field(&modal, cx), Some("host"));
+
+        // The 接続先 pane is closed, so its two fields are not in the order;
+        // the last Tab wraps back to ホスト instead of leaving the modal.
+        for expected in [
+            "port",
+            "user",
+            "password",
+            "local_path",
+            "remote_path",
+            "host",
+        ] {
+            cx.simulate_keystrokes("tab");
+            assert_eq!(
+                focused_field(&modal, cx),
+                Some(expected),
+                "tab should reach {expected}"
+            );
+        }
+
+        for expected in [
+            "remote_path",
+            "local_path",
+            "password",
+            "user",
+            "port",
+            "host",
+        ] {
+            cx.simulate_keystrokes("shift-tab");
+            assert_eq!(
+                focused_field(&modal, cx),
+                Some(expected),
+                "shift-tab should reach {expected}"
+            );
+        }
     }
 }

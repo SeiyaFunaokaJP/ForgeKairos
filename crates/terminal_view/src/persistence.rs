@@ -1,11 +1,10 @@
 use anyhow::Result;
 use async_recursion::async_recursion;
-use collections::HashSet;
 use futures::future::join_all;
 use gpui::{AppContext as _, AsyncWindowContext, Axis, Entity, Task, WeakEntity};
 use project::Project;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use ui::{App, Context, Window};
 use util::ResultExt as _;
 
@@ -57,32 +56,38 @@ fn build_serialized_pane_group(
     }
 }
 
+/// 種類を問わず、復元できるタブをすべて書き出す (ADR-F37)。ドラッグでブラウザーや
+/// エディターがターミナルパネルに載っていても、次の起動でこのペインに戻ってくる。
 fn serialize_pane(pane: &Entity<Pane>, active: bool, cx: &mut App) -> SerializedPane {
-    let mut items_to_serialize = HashSet::default();
+    let preview_item_id = pane.read(cx).preview_item_id();
+    let active_item_index = pane.read(cx).active_item_index();
+    let pinned_count = pane.read(cx).pinned_count();
     let pane = pane.read(cx);
-    let children = pane
+    let items = pane
         .items()
-        .filter_map(|item| {
-            let terminal_view = item.act_as::<TerminalView>(cx)?;
-            if terminal_view.read(cx).terminal().read(cx).task().is_some() {
-                None
-            } else {
-                let id = item.item_id().as_u64();
-                items_to_serialize.insert(id);
-                Some(id)
+        .enumerate()
+        .filter_map(|(index, item)| {
+            // タスクのターミナルは走り終わった実行の残骸なので復元しない。
+            if let Some(terminal_view) = item.act_as::<TerminalView>(cx)
+                && terminal_view.read(cx).terminal().read(cx).task().is_some()
+            {
+                return None;
             }
+            let handle = item.to_serializable_item_handle(cx)?;
+            Some(SerializedPanelItem {
+                kind: Arc::from(handle.serialized_item_kind()),
+                item_id: item.item_id().as_u64(),
+                active: index == active_item_index,
+                preview: Some(item.item_id()) == preview_item_id,
+            })
         })
         .collect::<Vec<_>>();
-    let active_item = pane
-        .active_item()
-        .map(|item| item.item_id().as_u64())
-        .filter(|active_id| items_to_serialize.contains(active_id));
 
-    let pinned_count = pane.pinned_count();
     SerializedPane {
         active,
-        children,
-        active_item,
+        items,
+        children: Vec::new(),
+        active_item: None,
         pinned_count,
     }
 }
@@ -96,8 +101,15 @@ pub(crate) fn deserialize_terminal_panel(
     cx: &mut App,
 ) -> Task<anyhow::Result<Entity<TerminalPanel>>> {
     window.spawn(cx, async move |cx| {
+        // 復元中のペインはまだ `terminal_panel.center` に載っていない。タブが 1 枚
+        // 足されるたびに保存すると、その「まだ空のパネル」が保存済みのレイアウトを
+        // 上書きしてしまう。
         let terminal_panel = workspace.update_in(cx, |workspace, window, cx| {
-            cx.new(|cx| TerminalPanel::new(workspace, window, cx))
+            cx.new(|cx| {
+                let mut terminal_panel = TerminalPanel::new(workspace, window, cx);
+                terminal_panel.restoring = true;
+                terminal_panel
+            })
         })?;
         match &serialized_panel.items {
             SerializedItems::NoSplits(item_ids) => {
@@ -142,6 +154,7 @@ pub(crate) fn deserialize_terminal_panel(
             }
         }
 
+        terminal_panel.update(cx, |terminal_panel, _| terminal_panel.restoring = false);
         Ok(terminal_panel)
     })
 }
@@ -225,41 +238,60 @@ async fn deserialize_pane_group(
                     )
                 })
                 .log_err()?;
-            let active_item = serialized_pane.active_item;
-            let pinned_count = serialized_pane.pinned_count;
-            let new_items = deserialize_terminal_views(
-                workspace_id,
-                project.clone(),
-                workspace.clone(),
-                serialized_pane.children.as_slice(),
-                cx,
-            );
-            cx.spawn({
-                let pane = pane.downgrade();
-                async move |cx| {
-                    let new_items = new_items.await;
 
-                    let items = pane.update_in(cx, |pane, window, cx| {
+            // await をまたぐ更新は弱参照で行う (強い方はこの関数の戻り値のために
+            // 持っているだけで、更新のたびに「まだ生きているか」を確かめられる方が安全)。
+            let weak_pane = pane.downgrade();
+            if serialized_pane.items.is_empty() {
+                // 第 12 便までの形式: ターミナルの item_id だけが並んでいた。
+                let active_item = serialized_pane.active_item;
+                let new_items = deserialize_terminal_views(
+                    workspace_id,
+                    project.clone(),
+                    workspace.clone(),
+                    serialized_pane.children.as_slice(),
+                    cx,
+                )
+                .await;
+                weak_pane
+                    .update_in(cx, |pane, window, cx| {
                         populate_pane_items(pane, new_items, active_item, window, cx);
-                        pane.set_pinned_count(pinned_count.min(pane.items_len()));
-                        pane.items_len()
-                    });
-                    // Avoid blank panes in splits
-                    if items.is_ok_and(|items| items == 0) {
-                        let working_directory = workspace
-                            .update(cx, |workspace, cx| default_working_directory(workspace, cx))
-                            .ok()
-                            .flatten();
-                        let terminal = project
-                            .update(cx, |project, cx| {
-                                project.create_terminal_shell(working_directory, cx)
-                            })
-                            .await
-                            .log_err();
-                        let Some(terminal) = terminal else {
-                            return;
-                        };
-                        pane.update_in(cx, |pane, window, cx| {
+                    })
+                    .log_err();
+            } else {
+                deserialize_pane_items(
+                    workspace.clone(),
+                    project.clone(),
+                    workspace_id,
+                    &pane,
+                    &serialized_pane.items,
+                    cx,
+                )
+                .await;
+            }
+
+            let pinned_count = serialized_pane.pinned_count;
+            let items = weak_pane
+                .update(cx, |pane, _| {
+                    pane.set_pinned_count(pinned_count.min(pane.items_len()));
+                    pane.items_len()
+                })
+                .log_err();
+            // Avoid blank panes in splits
+            if items == Some(0) {
+                let working_directory = workspace
+                    .update(cx, |workspace, cx| default_working_directory(workspace, cx))
+                    .ok()
+                    .flatten();
+                let terminal = project
+                    .update(cx, |project, cx| {
+                        project.create_terminal_shell(working_directory, cx)
+                    })
+                    .await
+                    .log_err();
+                if let Some(terminal) = terminal {
+                    weak_pane
+                        .update_in(cx, |pane, window, cx| {
                             let terminal_view = Box::new(cx.new(|cx| {
                                 TerminalView::new(
                                     terminal,
@@ -272,14 +304,78 @@ async fn deserialize_pane_group(
                             }));
                             pane.add_item(terminal_view, true, false, None, window, cx);
                         })
-                        .ok();
-                    }
+                        .log_err();
                 }
-            })
-            .await;
+            }
             Some((Member::Pane(pane.clone()), active.then_some(pane)))
         }
     }
+}
+
+/// 種類ごとの復元 (ADR-F37)。`workspace` に登録の無い種類は飛ばす (それを知っていた
+/// 版で保存された可能性があるので、失敗ではなく読み飛ばしとして扱う)。
+async fn deserialize_pane_items(
+    workspace: WeakEntity<Workspace>,
+    project: Entity<Project>,
+    workspace_id: WorkspaceId,
+    pane: &Entity<Pane>,
+    items: &[SerializedPanelItem],
+    cx: &mut AsyncWindowContext,
+) {
+    let mut tasks = Vec::new();
+    for item in items {
+        let task = pane.update_in(cx, |_, window, cx| {
+            workspace::deserialize_serializable_item(
+                &item.kind,
+                project.clone(),
+                workspace.clone(),
+                workspace_id,
+                item.item_id,
+                window,
+                cx,
+            )
+        });
+        match task {
+            Ok(Some(task)) => tasks.push((item.active, task)),
+            Ok(None) => log::info!(
+                "terminal panel: no restore handler for a {:?} tab; skipping it",
+                item.kind
+            ),
+            Err(error) => {
+                log::warn!(
+                    "terminal panel: the window went away while restoring its tabs: {error:#}"
+                );
+                return;
+            }
+        }
+    }
+
+    let mut active_index = None;
+    let mut next_index = 0;
+    for (active, task) in tasks {
+        let Some(item) = task.await.log_err() else {
+            continue;
+        };
+        // 表に出すのは最後に選ぶ 1 枚だけ (裏に回ったブラウザータブは WebView2 を
+        // 作らない)。裏で足すときの挿し先は `Pane` に任せると「表のタブの次」に
+        // なって並びが崩れるので、末尾を明示する。
+        let added = pane
+            .update_in(cx, |pane, window, cx| {
+                pane.add_item_inner(item, false, false, false, Some(next_index), window, cx);
+            })
+            .log_err()
+            .is_some();
+        if added {
+            if active {
+                active_index = Some(next_index);
+            }
+            next_index += 1;
+        }
+    }
+    pane.update_in(cx, |pane, window, cx| {
+        pane.activate_item(active_index.unwrap_or(0), false, false, window, cx);
+    })
+    .log_err();
 }
 
 fn deserialize_terminal_views(
@@ -339,10 +435,31 @@ pub(crate) enum SerializedPaneGroup {
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct SerializedPane {
     pub active: bool,
+    /// 種類を問わないタブの並び (ADR-F37)。
+    #[serde(default)]
+    pub items: Vec<SerializedPanelItem>,
+    /// 第 12 便までの形式。ターミナルの item_id だけを並べていた。移行のため
+    /// 読むだけ残してある (次の保存で `items` に書き換わる)。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<u64>,
+    /// 同上。表に出ていたターミナルの item_id。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_item: Option<u64>,
     #[serde(default)]
     pub pinned_count: usize,
+}
+
+/// パネルのタブ 1 枚。中央の `SerializedItem` と同じ 4 つ組で、種類ごとの復元は
+/// `workspace::deserialize_serializable_item` に投げる。
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct SerializedPanelItem {
+    pub kind: Arc<str>,
+    pub item_id: ItemId,
+    pub active: bool,
+    /// 中央の形式に合わせて書き出すが、戻すのは今のところ中央だけ
+    /// (`Pane::set_preview_item_id` が workspace の外に出ていない)。
+    #[serde(default)]
+    pub preview: bool,
 }
 
 #[derive(Debug)]
@@ -552,6 +669,80 @@ impl TerminalDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 第 12 便までに保存されたレイアウトは、そのまま読めなければならない
+    /// (読めたものは次の保存で新形式に移る)。
+    #[test]
+    fn the_terminal_only_layout_of_the_previous_build_still_parses() {
+        let stored = r#"{
+            "items": { "Pane": { "active": true, "children": [7, 9], "active_item": 9, "pinned_count": 1 } },
+            "active_item_id": null
+        }"#;
+        let panel: SerializedTerminalPanel =
+            serde_json::from_str(stored).expect("the old layout should still deserialize");
+        let SerializedItems::WithSplits(SerializedPaneGroup::Pane(pane)) = &panel.items else {
+            panic!("a stored split layout should come back as one");
+        };
+        assert_eq!(pane.children, vec![7, 9]);
+        assert_eq!(pane.active_item, Some(9));
+        assert_eq!(pane.pinned_count, 1);
+        assert!(
+            pane.items.is_empty(),
+            "an old pane has no per-kind items, which is what makes the restore take the old path"
+        );
+    }
+
+    /// 分割が入る前の、さらに古い形式 (item_id の平坦な並び)。
+    #[test]
+    fn the_layout_from_before_splits_still_parses() {
+        let panel: SerializedTerminalPanel =
+            serde_json::from_str(r#"{"items": [1, 2, 3], "active_item_id": 2}"#)
+                .expect("the pre-splits layout should still deserialize");
+        let SerializedItems::NoSplits(item_ids) = &panel.items else {
+            panic!("a flat list of item ids should stay flat");
+        };
+        assert_eq!(item_ids, &vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn the_per_kind_layout_round_trips_without_the_old_fields() {
+        let panel = SerializedTerminalPanel {
+            items: SerializedItems::WithSplits(SerializedPaneGroup::Pane(SerializedPane {
+                active: true,
+                items: vec![SerializedPanelItem {
+                    kind: Arc::from("Browser"),
+                    item_id: 12,
+                    active: true,
+                    preview: false,
+                }],
+                children: Vec::new(),
+                active_item: None,
+                pinned_count: 0,
+            })),
+            active_item_id: None,
+        };
+        let text = serde_json::to_string(&panel).expect("the layout should serialize");
+        assert!(
+            !text.contains("children") && !text.contains("active_item\""),
+            "the migrated-away fields should not be written back: {text}"
+        );
+
+        let round_tripped: SerializedTerminalPanel =
+            serde_json::from_str(&text).expect("the layout should deserialize");
+        let SerializedItems::WithSplits(SerializedPaneGroup::Pane(pane)) = &round_tripped.items
+        else {
+            panic!("a split layout should come back as one");
+        };
+        assert_eq!(
+            pane.items,
+            vec![SerializedPanelItem {
+                kind: Arc::from("Browser"),
+                item_id: 12,
+                active: true,
+                preview: false,
+            }]
+        );
+    }
 
     #[gpui::test]
     async fn test_remote_working_directory_is_stored_beside_the_other_columns() {

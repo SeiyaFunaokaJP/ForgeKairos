@@ -143,6 +143,20 @@ pub trait Platform: 'static {
         None
     }
 
+    /// The window of this application that the mouse cursor is over right now,
+    /// together with the cursor's position in that window's logical
+    /// coordinates.
+    ///
+    /// A drag is delivered to the window that started it for as long as the
+    /// button is held, even once the pointer has left that window, so a drop
+    /// onto another one of this application's windows can only be recognized by
+    /// asking the platform what is under the cursor. Returns `None` when the
+    /// cursor is over something that is not one of this application's windows,
+    /// and on platforms that do not implement this.
+    fn window_under_cursor(&self) -> Option<(AnyWindowHandle, Point<Pixels>)> {
+        None
+    }
+
     fn is_screen_capture_supported(&self) -> bool {
         false
     }

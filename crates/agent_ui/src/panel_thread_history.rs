@@ -14,7 +14,10 @@ use gpui::{
 };
 use itertools::Itertools as _;
 use project::{AgentServerStore, Project};
-use ui::{ScrollAxes, Scrollbars, ThreadItem, Tooltip, WithScrollbar, prelude::*};
+use ui::{
+    ContextMenu, ScrollAxes, Scrollbars, ThreadItem, Tooltip, WithScrollbar, prelude::*,
+    right_click_menu,
+};
 use util::path_list::PathList;
 use workspace::Workspace;
 
@@ -33,6 +36,12 @@ pub(crate) const MIN_THREAD_WIDTH_BESIDE_HISTORY: gpui::Pixels = px(320.);
 pub enum PanelThreadHistoryEvent {
     Activate(ThreadMetadata),
     NewThread,
+    /// ADR-F36: パネルではなくワークスペースのタブとして開く。`split` なら
+    /// 右に分割したペインへ。
+    OpenInTab {
+        thread: ThreadMetadata,
+        split: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -253,30 +262,34 @@ impl PanelThreadHistory {
                     IconName::Sparkle
                 };
 
-                ThreadItem::new(("panel-history-entry", index), self.row_title(&thread, cx))
-                    .icon(icon)
-                    .when_some(icon_from_external_svg, |this, svg| {
-                        this.custom_icon_from_external_svg(svg)
-                    })
-                    .timestamp(format_history_entry_timestamp(thread.updated_at))
-                    .highlight_positions(highlight_positions)
-                    .selected(is_active)
-                    .hovered(is_hovered)
-                    .on_hover(cx.listener(move |this, is_hovered: &bool, _window, cx| {
-                        let previously_hovered = this.hovered_index;
-                        this.hovered_index = if *is_hovered {
-                            Some(index)
-                        } else {
-                            previously_hovered.filter(|hovered| *hovered != index)
-                        };
-                        if this.hovered_index != previously_hovered {
-                            cx.notify();
-                        }
-                    }))
-                    .when(is_hovered && !thread.is_draft(), |this| {
-                        let thread_id = thread.thread_id;
-                        this.action_slot(
-                            IconButton::new(("panel-history-archive", index), IconName::Archive)
+                let row =
+                    ThreadItem::new(("panel-history-entry", index), self.row_title(&thread, cx))
+                        .icon(icon)
+                        .when_some(icon_from_external_svg, |this, svg| {
+                            this.custom_icon_from_external_svg(svg)
+                        })
+                        .timestamp(format_history_entry_timestamp(thread.updated_at))
+                        .highlight_positions(highlight_positions)
+                        .selected(is_active)
+                        .hovered(is_hovered)
+                        .on_hover(cx.listener(move |this, is_hovered: &bool, _window, cx| {
+                            let previously_hovered = this.hovered_index;
+                            this.hovered_index = if *is_hovered {
+                                Some(index)
+                            } else {
+                                previously_hovered.filter(|hovered| *hovered != index)
+                            };
+                            if this.hovered_index != previously_hovered {
+                                cx.notify();
+                            }
+                        }))
+                        .when(is_hovered && !thread.is_draft(), |this| {
+                            let thread_id = thread.thread_id;
+                            this.action_slot(
+                                IconButton::new(
+                                    ("panel-history-archive", index),
+                                    IconName::Archive,
+                                )
                                 .icon_size(IconSize::Small)
                                 .tooltip(move |_window, cx| {
                                     Tooltip::for_action_in(
@@ -286,17 +299,57 @@ impl PanelThreadHistory {
                                         cx,
                                     )
                                 })
-                                .on_click(cx.listener(move |_this, _, _window, cx| {
-                                    ThreadMetadataStore::global(cx).update(cx, |store, cx| {
-                                        store.archive(thread_id, None, cx);
+                                .on_click(cx.listener(
+                                    move |_this, _, _window, cx| {
+                                        ThreadMetadataStore::global(cx).update(cx, |store, cx| {
+                                            store.archive(thread_id, None, cx);
+                                        });
+                                        cx.stop_propagation();
+                                    },
+                                )),
+                            )
+                        })
+                        .on_click(cx.listener({
+                            let thread = thread.clone();
+                            move |_this, _, _window, cx| {
+                                cx.emit(PanelThreadHistoryEvent::Activate(thread.clone()));
+                            }
+                        }))
+                        .into_any_element();
+
+                // ADR-F36: 行から直接タブへ。パネルの表示は変えないので、
+                // 別のスレッドを見ながら並べられる。
+                let history = cx.entity();
+                right_click_menu(("panel-history-entry-menu", index))
+                    .trigger(move |_, _, _| row)
+                    .menu(move |window, cx| {
+                        let history = history.clone();
+                        let thread = thread.clone();
+                        ContextMenu::build(window, cx, move |menu, _window, _cx| {
+                            menu.entry("タブで開く", None, {
+                                let history = history.clone();
+                                let thread = thread.clone();
+                                move |_window, cx| {
+                                    history.update(cx, |_this, cx| {
+                                        cx.emit(PanelThreadHistoryEvent::OpenInTab {
+                                            thread: thread.clone(),
+                                            split: false,
+                                        });
                                     });
-                                    cx.stop_propagation();
-                                })),
-                        )
+                                }
+                            })
+                            .entry("右に分割して開く", None, {
+                                move |_window, cx| {
+                                    history.update(cx, |_this, cx| {
+                                        cx.emit(PanelThreadHistoryEvent::OpenInTab {
+                                            thread: thread.clone(),
+                                            split: true,
+                                        });
+                                    });
+                                }
+                            })
+                        })
                     })
-                    .on_click(cx.listener(move |_this, _, _window, cx| {
-                        cx.emit(PanelThreadHistoryEvent::Activate(thread.clone()));
-                    }))
                     .into_any_element()
             }
         }

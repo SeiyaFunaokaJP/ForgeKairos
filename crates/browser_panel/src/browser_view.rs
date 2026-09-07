@@ -141,6 +141,13 @@ pub struct BrowserView {
     loading: bool,
     page_has_focus: bool,
     applied_dark_mode: Option<bool>,
+    /// The `(red, green, blue)` last handed to WebView2 as its default
+    /// background; see [`Self::sync_appearance`].
+    applied_background_color: Option<(u8, u8, u8)>,
+    /// Whether gpui composites in front of the child window on this host, so
+    /// that overlays and drag previews are visible without hiding the surface
+    /// (ADR-F32). Read once per surface, from the host window's styles.
+    host_is_composited: bool,
     bookmarks: Entity<BookmarkStore>,
     bookmarks_pane_open: bool,
     /// 畳んであるフォルダー。既定は開いた状態なので、木を作り直しても
@@ -196,6 +203,8 @@ impl BrowserView {
             loading: false,
             page_has_focus: false,
             applied_dark_mode: None,
+            applied_background_color: None,
+            host_is_composited: false,
             bookmarks,
             bookmarks_pane_open: false,
             collapsed_folders: HashSet::default(),
@@ -256,10 +265,17 @@ impl BrowserView {
     /// 見せるのは描画からの pull** と向きを分けてある。次に [`Render::render`]
     /// が呼ばれると canvas が矩形を流し直して自動で表示に戻るので、ここで
     /// 「見せる」側の API は要らない。
-    pub fn hide_surface_from_host(&mut self, reason: &'static str) {
+    ///
+    /// [`Context::notify`] が要る: ドックやペインは `.cached()` なので、
+    /// 通知しないと次のフレームは**前のフレームの描画をそのまま流し直す** =
+    /// 透過穴だけが描かれてサーフェスは隠れたまま、という組み合わせになり、
+    /// 穴の下にデスクトップが覗く。通知しておけば次のフレームで必ず
+    /// `render` が走り、まだ画面に出ているなら同じフレームで表示に戻る。
+    pub fn hide_surface_from_host(&mut self, reason: &'static str, cx: &mut Context<Self>) {
         if let Some(webview) = &self.webview {
             webview.hide(reason);
         }
+        cx.notify();
     }
 
     pub fn open_bookmarks_pane(&mut self, cx: &mut Context<Self>) {
@@ -297,6 +313,7 @@ impl BrowserView {
             self.surface = SurfaceState::Idle;
             self.host_hwnd = None;
             self.applied_dark_mode = None;
+            self.applied_background_color = None;
         }
 
         if self.webview.is_some() || !matches!(self.surface, SurfaceState::Idle) {
@@ -316,6 +333,7 @@ impl BrowserView {
             }
             return;
         };
+        self.host_is_composited = host_is_composited(host_hwnd);
 
         let settings = Self::settings(cx);
         let proxy_endpoint = settings
@@ -383,6 +401,7 @@ impl BrowserView {
                 log::info!("browser view: the browsing surface is ready");
                 self.surface = SurfaceState::Ready;
                 self.applied_dark_mode = None;
+                self.applied_background_color = None;
                 self.sync_appearance(cx);
                 if self.current_url.is_empty() {
                     let home = Self::settings(cx).home_url.clone();
@@ -441,13 +460,21 @@ impl BrowserView {
     }
 
     fn sync_appearance(&mut self, cx: &mut Context<Self>) {
-        let dark = !cx.theme().appearance().is_light();
-        if self.applied_dark_mode == Some(dark) {
+        let Some(webview) = self.webview.clone() else {
             return;
-        }
-        if let Some(webview) = &self.webview {
+        };
+        let dark = !cx.theme().appearance().is_light();
+        if self.applied_dark_mode != Some(dark) {
             webview.set_dark_mode(dark);
             self.applied_dark_mode = Some(dark);
+        }
+        // WebView2 が「ページがまだ描いていない部分」に塗る色。既定は白なので、
+        // 暗いテーマでは最初の表示や再表示のたびに白が一瞬出る。エディターの
+        // 背景に合わせておけば、出ても地の色と見分けが付かない (ADR-F32)。
+        let background = surface_background_color(cx);
+        if self.applied_background_color != Some(background) {
+            apply_surface_background(&webview, background);
+            self.applied_background_color = Some(background);
         }
     }
 
@@ -772,19 +799,28 @@ impl BrowserView {
     // -- 表示 ----------------------------------------------------------------
 
     /// 子 HWND は自分の矩形でマウス入力を受け取り続けるので、GPUI 側が
-    /// その上に何かを出している間は隠す (ADR-F19)。DirectComposition が
-    /// 無効なときは描画でも手前に出るため、隠すのは見た目のためでもある。
+    /// その上に何かを出している間は隠す (ADR-F19)。判定そのものは
+    /// [`surface_hidden_reason_for`]。
     ///
     /// **このメソッドが呼ばれている = ビューが描画されている** ので、ホストは
     /// このビューを表示している。はっきり検出できた条件でだけ隠す。
+    /// GPUI がこのホストで子 HWND の**手前**に合成しているか (= 透過穴で見せている)。
+    /// 穴が無いホストでは子 HWND が常に手前なので、隠す判断を遅らせる意味が無い。
+    pub(crate) fn host_is_composited(&self) -> bool {
+        self.host_is_composited
+    }
+
+    /// テストの窓には HWND が無く、実機なら面を作るときに読む旗が立たない。
+    #[cfg(test)]
+    pub(crate) fn set_host_is_composited_for_test(&mut self, composited: bool) {
+        self.host_is_composited = composited;
+    }
+
     fn surface_hidden_reason(&self, window: &mut Window, cx: &mut App) -> Option<&'static str> {
-        if cx.has_active_drag() {
-            return Some("a drag is in progress");
-        }
-        let workspace = self.workspace.upgrade()?;
-        workspace
-            .update(cx, |workspace, cx| workspace.has_active_modal(window, cx))
-            .then_some("a modal is open")
+        let modal_is_open = self.workspace.upgrade().is_some_and(|workspace| {
+            workspace.update(cx, |workspace, cx| workspace.has_active_modal(window, cx))
+        });
+        surface_hidden_reason_for(cx.has_active_drag(), self.host_is_composited, modal_is_open)
     }
 
     fn render_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -938,10 +974,14 @@ impl BrowserView {
             .into_any_element()
     }
 
-    /// ツールバー直下のブックマークバー。最上位の項目だけを並べ、フォルダーは
-    /// サイドペインをそのフォルダーで開くボタンにする (メニューはページに隠れるため)。
+    /// ブックマークバー。最上位の項目だけを並べ、フォルダーはサイドペインを
+    /// そのフォルダーで開くボタンにする (メニューはページに隠れるため)。
     /// 並べ替えはドラッグ＆ドロップ (落とし先はドラッグ中だけ上に敷く)。
-    fn render_bookmarks_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    ///
+    /// 描くのは**パネルが 1 本だけ** (ADR-F33 追記): 分割してもバーは上に 1 本で、
+    /// アクティブなビューのものを [`crate::BrowserPanel`] が引き取って出す。
+    /// エディター領域やターミナルパネルに移したタブにはバーが付かない。
+    pub(crate) fn render_bookmarks_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let items = self.bookmarks_file(cx).items;
         if items.is_empty() {
             return None;
@@ -1463,6 +1503,11 @@ impl BrowserView {
                 // 無い矩形を透明にすると、ウィンドウの背後 (デスクトップ) が
                 // そのまま見えてしまう。
                 let surface_is_up = matches!(self.surface, SurfaceState::Ready);
+                // ドラッグプレビューは毎フレーム動くので、切り抜くと 1 フレームに
+                // 1 回 `SetWindowRgn` を撃つことになり、プレビューの周りに継ぎ目が
+                // 出る。ドラッグ中はウィンドウがマウスをキャプチャしていて子 HWND
+                // にクリックが渡らないので、そもそも切り抜く必要がない。
+                let cut_overlays = !cx.has_active_drag();
                 let webview = self.webview.clone();
                 div()
                     .relative()
@@ -1504,7 +1549,11 @@ impl BrowserView {
                                         height: f32::from(bounds.size.height),
                                         scale_factor: window.scale_factor(),
                                         hidden_reason,
-                                        overlays: overlay_rects(window),
+                                        overlays: if cut_overlays {
+                                            overlay_rects(window)
+                                        } else {
+                                            Vec::new()
+                                        },
                                     },
                                     window,
                                 );
@@ -1608,7 +1657,6 @@ impl Render for BrowserView {
                 }),
             )
             .child(self.render_toolbar(window, cx))
-            .children(self.render_bookmarks_bar(cx))
             .child(
                 h_flex()
                     .w_full()
@@ -1706,6 +1754,56 @@ fn sync_surface_viewport(webview: &Rc<WebView>, viewport: Viewport, _: &mut Wind
     webview.sync_viewport(viewport);
 }
 
+/// 子 HWND を隠す理由。純粋関数にして判定を表で確かめられるようにしてある。
+///
+/// - **モーダル**は deferred draw ではないので [`Window::overlay_bounds`] に載らず、
+///   穴が開かない = 子 HWND がクリックを飲む。隠すしかない (ADR-F32)。
+/// - **ドラッグ**は DirectComposition が効いているなら隠さない。プレビューは穴の
+///   あとに描かれるので手前に出るし、ドラッグ中はウィンドウがマウスをキャプチャ
+///   しているので子 HWND がドロップを横取りすることもない。DComp 無効時だけは
+///   子 HWND が手前に出てプレビューを覆うので従来どおり隠す。
+///   タブは 2px 動かしただけでもドラッグ扱いになるので、ここで隠すと
+///   「タブをクリックしただけでページが一瞬暗くなる」ことになる。
+fn surface_hidden_reason_for(
+    dragging: bool,
+    host_is_composited: bool,
+    modal_is_open: bool,
+) -> Option<&'static str> {
+    if dragging && !host_is_composited {
+        return Some("a drag is in progress");
+    }
+    modal_is_open.then_some("a modal is open")
+}
+
+/// テーマのエディター背景を 8 ビット 3 原色に落とす。WebView2 に渡せるのは
+/// 8 ビットの色だけなので、比較もこの形で持っておく。
+fn surface_background_color(cx: &App) -> (u8, u8, u8) {
+    let color = gpui::Rgba::from(cx.theme().colors().editor_background);
+    let channel = |value: f32| (value.clamp(0., 1.) * 255.).round() as u8;
+    (channel(color.r), channel(color.g), channel(color.b))
+}
+
+#[cfg(windows)]
+fn apply_surface_background(webview: &Rc<WebView>, (red, green, blue): (u8, u8, u8)) {
+    webview.set_background_color(red, green, blue);
+}
+
+#[cfg(not(windows))]
+fn apply_surface_background(_: &Rc<WebView>, _: (u8, u8, u8)) {}
+
+/// GPUI がこのウィンドウを DirectComposition で合成しているか。合成していれば
+/// 子 HWND は GPUI の描画の**後ろ**なので、ツールチップもドラッグプレビューも
+/// サーフェスを隠さずに手前へ出せる (ADR-F32)。
+#[cfg(windows)]
+fn host_is_composited(host_hwnd: isize) -> bool {
+    crate::webview_windows::host_uses_direct_composition(host_hwnd)
+}
+
+#[cfg(not(windows))]
+fn host_is_composited(_: isize) -> bool {
+    false
+}
+
 fn runtime_missing_message() -> SharedString {
     if cfg!(windows) {
         "WebView2 ランタイムが見つかりません。Microsoft Edge WebView2 ランタイムをインストールしてください。".into()
@@ -1755,5 +1853,33 @@ mod tests {
 
         let exact = "い".repeat(MAX_TAB_TITLE_CHARS);
         assert_eq!(tab_label(&exact, ""), SharedString::from(exact.clone()));
+    }
+
+    #[test]
+    fn a_modal_always_hides_the_surface() {
+        assert_eq!(
+            surface_hidden_reason_for(false, true, true),
+            Some("a modal is open")
+        );
+        assert_eq!(
+            surface_hidden_reason_for(false, false, true),
+            Some("a modal is open")
+        );
+    }
+
+    #[test]
+    fn a_drag_only_hides_the_surface_without_direct_composition() {
+        // 合成しているなら、ドラッグプレビューは穴の上に出るので隠さない。
+        assert_eq!(surface_hidden_reason_for(true, true, false), None);
+        assert_eq!(
+            surface_hidden_reason_for(true, false, false),
+            Some("a drag is in progress")
+        );
+    }
+
+    #[test]
+    fn nothing_hides_a_plain_visible_surface() {
+        assert_eq!(surface_hidden_reason_for(false, true, false), None);
+        assert_eq!(surface_hidden_reason_for(false, false, false), None);
     }
 }

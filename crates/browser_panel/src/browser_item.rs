@@ -18,20 +18,27 @@
 //! gpui の `App::notify` は**そのビューがウィンドウに実際に載っているときだけ**
 //! 再描画を起こす (`tracked_entities` で絞っている) ため、載っていなければ
 //! 次の周期まで `render` が呼ばれず、そこで確実に隠せる。
+//!
+//! ただし push で**即座に**隠してよいのは「確実に画面から消えた」経路だけ
+//! ([`Item::deactivated`]・タブを閉じた・裏に回した)。ズーム変化のように
+//! 「隠れたかもしれない」だけの合図は 1 フレーム待って判定する ([`PendingHide`])。
+//! GPUI 側の透過穴は前のフレームのまま流し直されることがあり (ドックもペインも
+//! `.cached()`)、穴だけが残るとその矩形に机上が透けて一瞬暗くなる (ADR-F32 追記)。
 
 use std::{any::Any, path::Path, sync::Arc, time::Duration};
 
+use anyhow::anyhow;
 use fs::Fs;
 use gpui::{
-    App, Context, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable, SharedString,
-    Subscription, Task, WeakEntity, Window,
+    App, Context, Entity, EntityId, EventEmitter, ExternalPaths, FocusHandle, Focusable,
+    SharedString, Subscription, Task, WeakEntity, Window,
 };
-use project::ProjectEntryId;
+use project::{Project, ProjectEntryId};
 use settings::Settings as _;
 use ui::prelude::*;
 use util::ResultExt as _;
 use workspace::{
-    Pane, Workspace,
+    ItemId, Pane, SerializableItem, Workspace, WorkspaceId,
     item::{Item, ItemEvent},
 };
 
@@ -72,6 +79,50 @@ pub(crate) fn visibility_tick(
     }
 }
 
+/// ワークスペースのズーム状態のうち、このタブに影響する部分。
+/// [`workspace::Event::ZoomChanged`] は「何がどう変わったか」を運ばないので、
+/// 受け取るたびに取り直して前回と比べる。`None` = 何もズームしていない
+/// (ズームされていたビューが既に無い場合も画面には出ないので同じ扱い)。
+type ZoomState = Option<EntityId>;
+
+fn workspace_zoom_state(workspace: &Entity<Workspace>, cx: &App) -> ZoomState {
+    workspace
+        .read(cx)
+        .zoomed_item()
+        .and_then(|view| view.upgrade())
+        .map(|view| view.entity_id())
+}
+
+/// 「隠れたかもしれない」と言われてから、実際に隠すかを決めるまでの判定。
+///
+/// 隠すのを 1 フレーム遅らせるのが肝: 子 HWND を隠しても、GPUI 側の透過穴は
+/// 直前のフレームのまま描かれ続けることがある (ドックもペインも `.cached()` なので
+/// 前のフレームをそのまま流し直す)。穴だけが残るとその矩形はウィンドウの背後 =
+/// 机上が透けて「一瞬暗くなる」。**穴が描かれているフレームでは隠さない**という
+/// 不変条件をここで守る。
+///
+/// [`Context::on_next_frame`] のコールバックは**そのフレームを描く前**に走るので、
+/// 「次のフレームで描かれたか」は 1 つ後のフレームでしか分からない。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PendingHide {
+    /// まだ描画の機会が来ていない。もう 1 フレーム待つ。
+    Wait,
+    /// 描画された = まだ画面に出ている。隠さない。
+    Cancel,
+    /// 1 フレームまるごと描かれなかった = 画面から消えた。隠す。
+    Hide,
+}
+
+pub(crate) fn pending_hide(painted_since_request: bool, frames_waited: u32) -> PendingHide {
+    if painted_since_request {
+        PendingHide::Cancel
+    } else if frames_waited == 0 {
+        PendingHide::Wait
+    } else {
+        PendingHide::Hide
+    }
+}
+
 /// ブラウザーのタブとして開けるファイルの拡張子。落とされたパスが**すべて**これなら
 /// エディターではなく `file://` のページとして開く。
 const BROWSABLE_EXTENSIONS: &[&str] = &["html", "htm", "xhtml", "svg", "pdf"];
@@ -87,6 +138,13 @@ pub struct BrowserItem {
     /// 子 HWND を見せているつもりかどうか。隠してある間はウォッチドッグが
     /// 再描画を促さないので、裏に回ったタブは何のコストも掛からない。
     surface_shown: bool,
+    /// 直近に観測したズーム状態。`None` = まだ一度も観測していない
+    /// (最初の 1 回は「変わったかもしれない」として扱う)。
+    observed_zoom: Option<ZoomState>,
+    /// 判定待ちの「隠す」要求とその理由。[`PendingHide`] を参照。
+    hide_request: Option<&'static str>,
+    /// その要求を出してから [`Render::render`] が呼ばれたか。
+    painted_since_hide_request: bool,
     _visibility_watchdog: Task<()>,
     /// ズーム連動の購読。タブを別ウィンドウへ移すとワークスペースごと変わるので、
     /// [`Item::added_to_workspace`] で張り替える。
@@ -140,9 +198,11 @@ impl BrowserItem {
         });
 
         let subscriptions = vec![cx.subscribe_in(&view, window, Self::on_view_event)];
+        // ここで実体を読みに行かない (このワークスペースは更新中のことがある) ので、
+        // ズーム状態の初期値は最初のイベントで埋める。
         let workspace_subscription = workspace
             .upgrade()
-            .map(|workspace| Self::watch_workspace_zoom(&workspace, cx));
+            .map(|workspace| Self::watch_workspace_zoom(&workspace, window, cx));
 
         Self {
             workspace,
@@ -150,20 +210,104 @@ impl BrowserItem {
             view,
             painted_since_last_tick: false,
             surface_shown: false,
+            observed_zoom: None,
+            hide_request: None,
+            painted_since_hide_request: false,
             _visibility_watchdog: Self::start_visibility_watchdog(cx),
             _workspace_subscription: workspace_subscription,
             _subscriptions: subscriptions,
         }
     }
 
-    fn watch_workspace_zoom(workspace: &Entity<Workspace>, cx: &mut Context<Self>) -> Subscription {
-        cx.subscribe(workspace, |this, _, event: &workspace::Event, cx| {
-            if matches!(event, workspace::Event::ZoomChanged) {
-                // ズームで隠れたかどうかは描画されるまで分からない。まず隠して、
-                // まだ見えているなら次の描画で戻す。
-                this.hide_surface(HIDDEN_ZOOM_CHANGED, cx);
+    fn watch_workspace_zoom(
+        workspace: &Entity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        cx.subscribe_in(
+            workspace,
+            window,
+            |this, workspace, event: &workspace::Event, window, cx| {
+                if !matches!(event, workspace::Event::ZoomChanged) {
+                    return;
+                }
+                // ペインにフォーカスが入るだけでもこのイベントは飛んでくる
+                // (`Workspace::handle_pane_focused`)。ズームが動いていない
+                // 巻き添えで隠すと、タブをクリックするたびにページが暗くなる。
+                let zoom = workspace_zoom_state(workspace, cx);
+                if this.observed_zoom == Some(zoom) {
+                    return;
+                }
+                this.observed_zoom = Some(zoom);
+                this.request_hide_if_not_painted(HIDDEN_ZOOM_CHANGED, window, cx);
+            },
+        )
+    }
+
+    /// ズームで隠れたかどうかは描画されるまで分からない。すぐ隠すと、GPUI 側の
+    /// 透過穴だけが残ったフレームが出て一瞬暗くなるので、判定を次のフレームに
+    /// 預ける ([`PendingHide`])。
+    fn request_hide_if_not_painted(
+        &mut self,
+        reason: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.surface_shown || self.hide_request.is_some() {
+            return;
+        }
+        // 遅らせる理由は「穴だけが残るフレームを作らない」こと。DirectComposition が
+        // 無効なホストでは GPUI 側に穴が無く (子 HWND が常に手前)、遅らせるとズームで
+        // 畳んだはずのペインの上にページが数フレーム残るだけなので、すぐ隠す。
+        if !self.view.read(cx).host_is_composited() {
+            self.hide_surface(reason, cx);
+            return;
+        }
+        self.hide_request = Some(reason);
+        self.painted_since_hide_request = false;
+        // 判定に使うフレームを 1 枚起こす。描かれれば取り消し、描かれなければ隠す。
+        cx.notify();
+        self.schedule_hide_decision(0, window, cx);
+    }
+
+    fn schedule_hide_decision(
+        &mut self,
+        frames_waited: u32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // `Context::on_next_frame` はビューを**強参照**で捕まえるので、判定待ちの間
+        // アイテム (と WebView2 のコントローラー) が生き延びてしまう。畳まれていく
+        // ウィンドウでは次のフレームが来ないので、そのまま漏れる。
+        let this = cx.weak_entity();
+        window.on_next_frame(move |window, cx| {
+            // 失敗する = タブが閉じられた。隠す相手ごと消えているので何もしない。
+            this.update(cx, |this, cx| {
+                this.decide_pending_hide(frames_waited, window, cx);
+            })
+            .ok();
+        });
+    }
+
+    /// フレームの境目で 1 回だけ走る判定。`on_next_frame` から呼ぶ (テストは
+    /// プラットフォームのフレーム要求を作れないので、ここを直接叩く)。
+    fn decide_pending_hide(
+        &mut self,
+        frames_waited: u32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(reason) = self.hide_request else {
+            return;
+        };
+        match pending_hide(self.painted_since_hide_request, frames_waited) {
+            PendingHide::Wait => self.schedule_hide_decision(frames_waited + 1, window, cx),
+            PendingHide::Cancel => self.hide_request = None,
+            PendingHide::Hide => {
+                self.hide_request = None;
+                self.hide_surface(reason, cx);
             }
-        })
+        }
     }
 
     fn start_visibility_watchdog(cx: &mut Context<Self>) -> Task<()> {
@@ -204,8 +348,10 @@ impl BrowserItem {
 
     pub(crate) fn hide_surface(&mut self, reason: &'static str, cx: &mut App) {
         self.surface_shown = false;
+        // 判定待ちがあっても、もう隠したので用済み。
+        self.hide_request = None;
         self.view
-            .update(cx, |view, _| view.hide_surface_from_host(reason));
+            .update(cx, |view, cx| view.hide_surface_from_host(reason, cx));
     }
 
     fn open_sibling_tab(&mut self, _: &NewPanelTab, window: &mut Window, cx: &mut Context<Self>) {
@@ -266,7 +412,7 @@ impl BrowserItem {
             }
             // ページの中のクリックは子 HWND が飲むので GPUI には届かない。分割した
             // パネルで「どちらのペインを触ったか」はこの申告でしか分からないので、
-            // ここでそのペインへフォーカスを移す。
+            // ここでそのペインを宛先にする (フォーカスがまだ外にあるなら移す)。
             BrowserViewEvent::Focused => {
                 if self.view.read(cx).host() != BrowserHost::Panel {
                     return;
@@ -301,6 +447,7 @@ impl Render for BrowserItem {
         // 描画された = このタブはペインのアクティブアイテムで、ペインも画面に
         // 出ている。ウォッチドッグはこの 2 つの旗だけを見る。
         self.painted_since_last_tick = true;
+        self.painted_since_hide_request = true;
         self.surface_shown = true;
         div()
             .size_full()
@@ -421,7 +568,7 @@ impl Item for BrowserItem {
     fn added_to_workspace(
         &mut self,
         workspace: &mut Workspace,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         // 既定は中央のタブ。ブラウザーパネルに載ったときだけ、パネルが
@@ -435,13 +582,17 @@ impl Item for BrowserItem {
             return;
         }
         self.workspace = handle.clone();
+        self.observed_zoom = None;
         self.view
             .update(cx, |view, _| view.set_workspace(handle.clone()));
         self._workspace_subscription = handle
             .upgrade()
-            .map(|workspace| Self::watch_workspace_zoom(&workspace, cx));
+            .map(|workspace| Self::watch_workspace_zoom(&workspace, window, cx));
     }
 
+    /// `Pane` がこれを呼ぶのは**自分のペインの**アクティブなアイテムが替わったときと、
+    /// このアイテムを取り除くときだけ (`Pane::activate_item` / `Pane::_remove_item`)。
+    /// 別のペインにフォーカスが移っただけでは呼ばれないので、ここは即座に隠してよい。
     fn deactivated(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         self.hide_surface(HIDDEN_DEACTIVATED, cx);
     }
@@ -449,8 +600,9 @@ impl Item for BrowserItem {
     fn on_removed(&self, cx: &mut Context<Self>) {
         // `&self` なので旗は倒せないが、隠すのは冪等。コントローラー自体は
         // `BrowserView` (と `WebView`) が drop されるときに Close される。
-        self.view
-            .update(cx, |view, _| view.hide_surface_from_host(HIDDEN_REMOVED));
+        self.view.update(cx, |view, cx| {
+            view.hide_surface_from_host(HIDDEN_REMOVED, cx)
+        });
     }
 
     fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
@@ -458,9 +610,133 @@ impl Item for BrowserItem {
     }
 }
 
+/// ブラウザーのタブも中央のタブと同じ流儀で復元できるようにする (ADR-F37)。
+/// これが無いと、パネルの外 (エディター領域 / ターミナルパネル) に置いたページは
+/// 再起動で消える。保存するのは URL 1 本だけで、履歴もセッションも持ち越さない。
+impl SerializableItem for BrowserItem {
+    fn serialized_item_kind() -> &'static str {
+        "Browser"
+    }
+
+    fn cleanup(
+        workspace_id: WorkspaceId,
+        alive_items: Vec<ItemId>,
+        _: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        let db = BrowserItemDb::global(cx);
+        workspace::delete_unloaded_items(alive_items, workspace_id, "browser_items", &db, cx)
+    }
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: ItemId,
+        _closing: bool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let workspace_id = workspace.database_id()?;
+        let url = self.view.read(cx).current_url().trim().to_string();
+        if url.is_empty() {
+            return None;
+        }
+        let db = BrowserItemDb::global(cx);
+        Some(cx.background_spawn(async move { db.save_url(item_id, workspace_id, url).await }))
+    }
+
+    /// URL が変わるたびに `ItemEvent::UpdateTab` が飛ぶ (`BrowserView` の
+    /// `LocationChanged`)。タブのラベル更新と同じ合図をそのまま使う。
+    fn should_serialize(&self, event: &Self::Event) -> bool {
+        matches!(event, ItemEvent::UpdateTab)
+    }
+
+    fn deserialize(
+        _: Entity<Project>,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Self>>> {
+        let db = BrowserItemDb::global(cx);
+        let url = db
+            .get_url(item_id, workspace_id)
+            .log_err()
+            .flatten()
+            .filter(|url| !url.trim().is_empty());
+        let fs = workspace
+            .upgrade()
+            .map(|workspace| workspace.read(cx).app_state().fs.clone());
+        let Some(fs) = fs else {
+            return Task::ready(Err(anyhow!(
+                "the workspace is gone, so the browser tab cannot be restored"
+            )));
+        };
+        // ホストは `Item::added_to_workspace` が既定の「エディター領域のタブ」に
+        // 直し、パネルに載ったならパネルが `AddItem` の直後に上書きする。
+        Task::ready(Ok(cx.new(|cx| {
+            BrowserItem::new(workspace, fs, BrowserHost::EditorTab, url, window, cx)
+        })))
+    }
+}
+
+pub(crate) use persistence::BrowserItemDb;
+
+mod persistence {
+    use db::{
+        query,
+        sqlez::{domain::Domain, thread_safe_connection::ThreadSafeConnection},
+        sqlez_macros::sql,
+    };
+    use workspace::{ItemId, WorkspaceDb, WorkspaceId};
+
+    pub(crate) struct BrowserItemDb(ThreadSafeConnection);
+
+    impl Domain for BrowserItemDb {
+        const NAME: &str = stringify!(BrowserItemDb);
+
+        const MIGRATIONS: &[&str] = &[sql!(
+            CREATE TABLE browser_items (
+                workspace_id INTEGER,
+                item_id INTEGER,
+
+                url TEXT,
+
+                PRIMARY KEY(workspace_id, item_id),
+                FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id)
+                ON DELETE CASCADE
+            ) STRICT;
+        )];
+    }
+
+    db::static_connection!(BrowserItemDb, [WorkspaceDb]);
+
+    impl BrowserItemDb {
+        query! {
+            pub async fn save_url(item_id: ItemId, workspace_id: WorkspaceId, url: String) -> Result<()> {
+                INSERT OR REPLACE INTO browser_items(item_id, workspace_id, url)
+                VALUES (?, ?, ?)
+            }
+        }
+
+        query! {
+            pub fn get_url(item_id: ItemId, workspace_id: WorkspaceId) -> Result<Option<String>> {
+                SELECT url
+                FROM browser_items
+                WHERE item_id = ? AND workspace_id = ?
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::{TestAppContext, VisualTestContext};
+    use project::FakeFs;
+    use settings::SettingsStore;
+    use workspace::MultiWorkspace;
 
     #[test]
     fn a_painted_tab_keeps_asking_for_frames() {
@@ -474,5 +750,197 @@ mod tests {
         assert_eq!(visibility_tick(false, true), VisibilityTick::Hide);
         // 隠したあとは再描画を促さない (裏のタブが電力を食わないように)。
         assert_eq!(visibility_tick(false, false), VisibilityTick::Idle);
+    }
+
+    #[test]
+    fn a_hide_request_waits_one_frame_before_it_decides() {
+        // `on_next_frame` はそのフレームを描く前に走るので、最初の 1 回では
+        // まだ「描かれなかった」と言い切れない。
+        assert_eq!(pending_hide(false, 0), PendingHide::Wait);
+        assert_eq!(pending_hide(false, 1), PendingHide::Hide);
+    }
+
+    #[test]
+    fn a_paint_cancels_a_hide_request_at_any_point() {
+        assert_eq!(pending_hide(true, 0), PendingHide::Cancel);
+        assert_eq!(pending_hide(true, 1), PendingHide::Cancel);
+        assert_eq!(pending_hide(true, 7), PendingHide::Cancel);
+    }
+
+    // -- ウィンドウの要る経路 --------------------------------------------------
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+            crate::init(cx);
+        });
+    }
+
+    async fn init_workspace(
+        cx: &mut TestAppContext,
+    ) -> (gpui::WindowHandle<MultiWorkspace>, Entity<Workspace>) {
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace = window_handle
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("failed to read the workspace out of its window");
+        (window_handle, workspace)
+    }
+
+    /// 透過穴 (DirectComposition) のあるホストに載っているものとして扱う。判定を
+    /// 次のフレームに預けるのはこの場合だけなので、その経路を通すテストで立てる。
+    fn pretend_the_host_is_composited(item: &Entity<BrowserItem>, cx: &mut VisualTestContext) {
+        item.update(cx, |item, cx| {
+            item.view
+                .update(cx, |view, _| view.set_host_is_composited_for_test(true));
+        });
+    }
+
+    fn open_browser_tab(
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<BrowserItem> {
+        workspace.update_in(cx, |workspace, window, cx| {
+            BrowserItem::open(
+                workspace,
+                Some("https://example.com/".to_string()),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        workspace
+            .read_with(cx, |workspace, cx| {
+                workspace
+                    .active_pane()
+                    .read(cx)
+                    .items()
+                    .find_map(|item| item.downcast::<BrowserItem>())
+            })
+            .expect("the browser tab was not added to the active pane")
+    }
+
+    #[gpui::test]
+    async fn a_zoom_event_that_changes_nothing_is_ignored(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, workspace) = init_workspace(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let item = open_browser_tab(&workspace, cx);
+        pretend_the_host_is_composited(&item, cx);
+
+        item.read_with(cx, |item, _| {
+            assert!(item.surface_shown, "the new tab should have been painted");
+        });
+
+        // 初回は「まだ観測していない」ので、変わったかもしれない側に倒す。
+        workspace.update(cx, |_, cx| cx.emit(workspace::Event::ZoomChanged));
+        cx.run_until_parked();
+        item.update(cx, |item, _| {
+            assert_eq!(item.observed_zoom, Some(None));
+            assert!(item.hide_request.is_some());
+            item.hide_request = None;
+        });
+
+        // 2 回目はズームが動いていない。タブをクリックするたびに飛んでくるのが
+        // これで、ここで隠すとページが一瞬暗くなる。
+        workspace.update(cx, |_, cx| cx.emit(workspace::Event::ZoomChanged));
+        cx.run_until_parked();
+        item.read_with(cx, |item, _| {
+            assert!(
+                item.hide_request.is_none(),
+                "a zoom event that changed nothing must not touch the surface"
+            );
+            assert!(item.surface_shown);
+        });
+    }
+
+    #[gpui::test]
+    async fn a_tab_that_is_still_painted_keeps_its_surface(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, workspace) = init_workspace(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let item = open_browser_tab(&workspace, cx);
+        pretend_the_host_is_composited(&item, cx);
+
+        item.update_in(cx, |item, window, cx| {
+            item.request_hide_if_not_painted("a test asked to hide", window, cx);
+        });
+        // 保留を出した側が再描画を促すので、判定のフレームまでに描かれている。
+        cx.run_until_parked();
+        item.update_in(cx, |item, window, cx| {
+            assert!(
+                item.painted_since_hide_request,
+                "requesting a hide must ask for the frame that decides it"
+            );
+            item.decide_pending_hide(0, window, cx);
+            assert!(item.hide_request.is_none());
+            assert!(item.surface_shown, "the tab is still on screen");
+        });
+    }
+
+    #[gpui::test]
+    async fn a_tab_that_is_no_longer_painted_is_hidden_one_frame_later(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, _) = init_workspace(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        // どのペインにも入れないタブ = 描かれない。「見えているつもり」から
+        // 始めて、判定用のフレームで描かれなければ隠れることを確かめる。
+        let item = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                let workspace = multi_workspace.workspace().clone();
+                let fs = workspace.read(cx).app_state().fs.clone();
+                cx.new(|cx| {
+                    BrowserItem::new(
+                        workspace.downgrade(),
+                        fs,
+                        BrowserHost::EditorTab,
+                        Some("https://example.com/".to_string()),
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .expect("failed to build a detached browser tab");
+        cx.run_until_parked();
+        pretend_the_host_is_composited(&item, cx);
+
+        item.update_in(cx, |item, window, cx| {
+            item.surface_shown = true;
+            item.request_hide_if_not_painted("a test asked to hide", window, cx);
+        });
+        cx.run_until_parked();
+        item.update_in(cx, |item, window, cx| {
+            assert!(!item.painted_since_hide_request);
+            // 1 フレーム目はまだ判定できない (`on_next_frame` は描画の前)。
+            item.decide_pending_hide(0, window, cx);
+            assert!(item.hide_request.is_some());
+            assert!(item.surface_shown);
+            item.decide_pending_hide(1, window, cx);
+            assert!(item.hide_request.is_none());
+            assert!(!item.surface_shown, "the tab is off screen and must hide");
+        });
+    }
+
+    #[gpui::test]
+    async fn without_direct_composition_a_hide_takes_effect_at_once(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, workspace) = init_workspace(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let item = open_browser_tab(&workspace, cx);
+
+        // 穴が無いホストでは子 HWND が常に手前なので、遅らせると畳んだペインの
+        // 上にページが残る。判定を待たずに隠す。
+        item.update_in(cx, |item, window, cx| {
+            assert!(!item.view.read(cx).host_is_composited());
+            item.request_hide_if_not_painted("a test asked to hide", window, cx);
+            assert!(item.hide_request.is_none(), "nothing is left pending");
+            assert!(!item.surface_shown, "the surface is hidden right away");
+        });
     }
 }

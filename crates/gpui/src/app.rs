@@ -1231,6 +1231,18 @@ impl App {
         self.platform.window_stack()
     }
 
+    /// Returns the window of this application that the mouse cursor is over,
+    /// together with the cursor's position in that window's logical
+    /// coordinates.
+    ///
+    /// The platform keeps delivering a drag to the window it started in, so
+    /// this is the only way to tell that a drop landed on another one of this
+    /// application's windows. Returns `None` when the cursor is not over one of
+    /// them, and on platforms that do not implement this yet.
+    pub fn window_under_cursor(&self) -> Option<(AnyWindowHandle, Point<Pixels>)> {
+        self.platform.window_under_cursor()
+    }
+
     /// Returns a handle to the window that is currently focused at the platform level, if one exists.
     pub fn active_window(&self) -> Option<AnyWindowHandle> {
         self.platform.active_window()

@@ -185,6 +185,61 @@ const TORN_OFF_TAB_OFFSET: Point<Pixels> = Point {
     y: px(16.),
 };
 
+/// What should become of a tab released outside the window it was dragged from.
+enum TabDropTarget {
+    /// Another window showing the same project: move the item into it, into the
+    /// given pane when the pointer was over one.
+    Merge(WindowHandle<MultiWorkspace>, Option<Entity<Pane>>),
+    /// The window the drag started in. The tab never really left, so it stays.
+    OwnWindow,
+    /// The desktop, another application, or a window on another project: tear
+    /// the tab off into a window of its own.
+    NewWindow,
+}
+
+/// How much of the workspace a dock must leave for the center, unless a fifth
+/// of the workspace is less than this.
+const MIN_CENTER_EXTENT: Pixels = px(200.);
+
+/// The share of the workspace kept for the center in a window too small for
+/// [`MIN_CENTER_EXTENT`], so a narrow window can still be split at all.
+const MIN_CENTER_SHARE: f32 = 0.2;
+
+/// The largest a dock may grow to along its own axis before it starts squeezing
+/// the center out of the window.
+///
+/// `workspace_extent` is the workspace's width for a side dock and its height
+/// for the bottom one, and `opposite_extent` what the dock on the other side
+/// already takes. Without this a drag could hand a dock everything but a resize
+/// handle's width: the center collapsed, the handle ended up under the window
+/// edge and out of reach, and toggling the dock did not bring it back.
+///
+/// The result never drops below [`RESIZE_HANDLE_SIZE`], so even a workspace too
+/// small to honour the reservation leaves the handle something to occupy.
+fn max_dock_extent(workspace_extent: Pixels, opposite_extent: Pixels) -> Pixels {
+    let reserved_center = MIN_CENTER_EXTENT.min(workspace_extent * MIN_CENTER_SHARE);
+    (workspace_extent - opposite_extent - reserved_center).max(RESIZE_HANDLE_SIZE)
+}
+
+/// Which of the open docks a point in window coordinates falls in.
+///
+/// The docks are laid out beside one another, so their rectangles never overlap
+/// and the first match is the only one. That holds for every
+/// [`BottomDockLayout`]: under `Contained` the bottom dock stops where the side
+/// docks begin, so a point in the lower right belongs to the right dock, while
+/// under `Full` the same point belongs to the bottom dock, which spans the whole
+/// width. Empty rectangles are skipped so a dock that has never been laid out
+/// (or was laid out with no extent) cannot swallow a point on its edge.
+fn dock_containing_position(
+    open_docks: &[(DockPosition, Bounds<Pixels>)],
+    position: Point<Pixels>,
+) -> Option<DockPosition> {
+    open_docks
+        .iter()
+        .find(|(_, bounds)| !bounds.is_empty() && bounds.contains(&position))
+        .map(|(dock_position, _)| *dock_position)
+}
+
 static ZED_WINDOW_SIZE: LazyLock<Option<Size<Pixels>>> = LazyLock::new(|| {
     env::var("ZED_WINDOW_SIZE")
         .ok()
@@ -1213,6 +1268,41 @@ impl SerializableItemRegistry {
         let this = cx.try_global::<Self>()?;
         this.descriptors_by_kind.get(item_kind).copied()
     }
+
+    /// 登録されている種類すべて。復元後の後始末はここを回るので、1 つも復元
+    /// されなかった種類 (最後のエディターを閉じたまま終了した等) の行も残らない。
+    fn kinds(cx: &App) -> Vec<Arc<str>> {
+        cx.try_global::<Self>()
+            .map(|this| this.descriptors_by_kind.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
+/// Rebuild one item of `item_kind` that a dock panel saved.
+///
+/// Panels lay their panes out themselves, so they cannot restore through
+/// `SerializedPane::deserialize_to`; all they need from the registry is its
+/// per-kind dispatch. `None` means nothing is registered under that kind (an
+/// item written by a build that knew a kind this one does not), which lets the
+/// caller skip it instead of surfacing an error it cannot act on.
+pub fn deserialize_serializable_item(
+    item_kind: &str,
+    project: Entity<Project>,
+    workspace: WeakEntity<Workspace>,
+    workspace_id: WorkspaceId,
+    item_id: ItemId,
+    window: &mut Window,
+    cx: &mut Context<Pane>,
+) -> Option<Task<Result<Box<dyn ItemHandle>>>> {
+    let descriptor = SerializableItemRegistry::descriptor(item_kind, cx)?;
+    Some((descriptor.deserialize)(
+        project,
+        workspace,
+        workspace_id,
+        item_id,
+        window,
+        cx,
+    ))
 }
 
 pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
@@ -1545,6 +1635,18 @@ pub struct Workspace {
     _schedule_serialize_ssh_paths: Option<Task<()>>,
     pane_history_timestamp: Arc<AtomicUsize>,
     bounds: Bounds<Pixels>,
+    /// Where the center pane group was last laid out, in window coordinates.
+    /// A tab dropped from another window arrives as a bare position, and this
+    /// is what tells the center apart from the docks around it.
+    center_bounds: Bounds<Pixels>,
+    /// Where each open dock was last laid out, in window coordinates, indexed by
+    /// [`Workspace::dock_bounds_index`]. Which dock a dropped tab landed on
+    /// cannot be inferred from the side of the center it is on: under the
+    /// default [`BottomDockLayout::Contained`] the bottom dock stops at the side
+    /// docks, so a point below and to the right of the center belongs to the
+    /// right dock, while under [`BottomDockLayout::Full`] it belongs to the
+    /// bottom one.
+    dock_bounds: [Bounds<Pixels>; 3],
     pub centered_layout: bool,
     bounds_save_task_queued: Option<Task<()>>,
     on_prompt_for_new_path: Option<PromptForNewPath>,
@@ -1571,6 +1673,23 @@ pub struct Workspace {
     active_workspace_id: Option<Rc<Cell<EntityId>>>,
     active_worktree_creation: ActiveWorktreeCreation,
     deferred_save_items: Vec<Box<dyn WeakItemHandle>>,
+    item_cleanup: SerializableItemCleanup,
+}
+
+/// 復元しなかったアイテムの行を落とす後始末の待ち合わせ (ADR-F37)。
+///
+/// 中央 (`Workspace::load_workspace`) とドックのパネルは**別々に非同期で**復元する。
+/// 先に終わった側が自分の見える範囲だけで掃除すると、まだ復元されていない相手側の
+/// タブの行を消してしまう (中央のターミナルが cwd を失う / ブラウザーのタブが
+/// `home_url` に戻る)。そこで復元を始める側が [`Workspace::begin_item_restore`] で
+/// 数え、全部終わってから 1 回だけ、ウィンドウ中のペイン (中央 + 各パネル) を
+/// 見渡して掃除する。
+#[derive(Default)]
+struct SerializableItemCleanup {
+    /// 復元を 1 つでも登録したか。誰も復元しないウィンドウでは掃除もしない。
+    armed: bool,
+    pending: usize,
+    done: bool,
 }
 
 impl EventEmitter<Event> for Workspace {}
@@ -2016,6 +2135,8 @@ impl Workspace {
             workspace_actions: Default::default(),
             // This data will be incorrect, but it will be overwritten by the time it needs to be used.
             bounds: Default::default(),
+            center_bounds: Default::default(),
+            dock_bounds: Default::default(),
             centered_layout: false,
             bounds_save_task_queued: None,
             on_prompt_for_new_path: None,
@@ -2036,6 +2157,7 @@ impl Workspace {
             open_in_dev_container: false,
             _dev_container_task: None,
             deferred_save_items: Vec::new(),
+            item_cleanup: SerializableItemCleanup::default(),
         }
     }
 
@@ -2746,6 +2868,28 @@ impl Workspace {
             let available = (workspace_width - opposite_width).max(RESIZE_HANDLE_SIZE);
             let remaining = (available - size).max(px(1.));
             Some((size * center_column_count / remaining).max(0.0))
+        }
+    }
+
+    /// Caps a stored flex at the one [`max_dock_extent`] allows, so a flexible
+    /// panel cannot squeeze the center out of the window. The resize handle
+    /// clamps what it writes, but a value stored before that clamp existed - or
+    /// by a wider window - would otherwise come back at full size on load.
+    fn clamped_dock_flex(
+        &self,
+        position: DockPosition,
+        flex: f32,
+        window: &Window,
+        cx: &App,
+    ) -> f32 {
+        let workspace_width = self.bounds.size.width;
+        if workspace_width <= Pixels::ZERO {
+            return flex;
+        }
+        let max_extent = max_dock_extent(workspace_width, Pixels::ZERO);
+        match self.dock_flex_for_size(position, max_extent, window, cx) {
+            Some(max_flex) => flex.min(max_flex),
+            None => flex,
         }
     }
 
@@ -5625,10 +5769,11 @@ impl Workspace {
         )
     }
 
-    /// Tears a tab off into its own window when the drag ends past the window's
-    /// edge. Fires for any left mouse up the workspace's own hitbox did not
-    /// take, which includes releases over the multi-workspace sidebar, so the
-    /// position is checked against the viewport rather than trusted.
+    /// Merges a tab into another window of this application when the drag ends
+    /// over one, and tears it off into a window of its own otherwise. Fires for
+    /// any left mouse up the workspace's own hitbox did not take, which includes
+    /// releases over the multi-workspace sidebar, so the position is checked
+    /// against the viewport rather than trusted.
     fn handle_tab_dropped_outside_window(
         &mut self,
         event: &MouseUpEvent,
@@ -5647,6 +5792,22 @@ impl Workspace {
         let viewport = Bounds::new(Point::default(), window.viewport_size());
         if viewport.contains(&event.position) {
             return;
+        }
+
+        match self.tab_drop_target(cx) {
+            TabDropTarget::Merge(target_window, target_pane) => {
+                self.move_item_to_window(
+                    dragged_tab.pane.clone(),
+                    dragged_tab.item.item_id(),
+                    target_window,
+                    target_pane,
+                    window,
+                    cx,
+                );
+                return;
+            }
+            TabDropTarget::OwnWindow => return,
+            TabDropTarget::NewWindow => {}
         }
 
         let screen_origin = window.bounds().origin + event.position - TORN_OFF_TAB_OFFSET;
@@ -5694,14 +5855,6 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if source_pane
-            .read(cx)
-            .items()
-            .all(|item| item.item_id() != item_id)
-        {
-            return;
-        }
-
         let project = self.project.clone();
         let app_state = self.app_state.clone();
         let source_bounds = window.bounds();
@@ -5711,7 +5864,22 @@ impl Workspace {
         });
         let bounds = Bounds::new(origin, source_bounds.size);
 
-        cx.spawn_in(window, async move |_, cx| {
+        cx.spawn_in(window, async move |source_workspace, cx| {
+            // The tab's context menu asks for this from inside `pane.update`,
+            // which leases the source pane for the length of the handler, so
+            // nothing here may touch that pane before the task is polled - by
+            // which time the lease is gone. Reading it synchronously aborts the
+            // process ("cannot read Pane while it is already being updated").
+            let source_holds_item = cx.update(|_, cx| {
+                source_pane
+                    .read(cx)
+                    .items()
+                    .any(|item| item.item_id() == item_id)
+            })?;
+            if !source_holds_item {
+                return anyhow::Ok(());
+            }
+
             let options = cx.update(|_, cx| {
                 let mut options = (app_state.build_window_options)(display_uuid, cx);
                 options.window_bounds = Some(WindowBounds::Windowed(bounds));
@@ -5770,9 +5938,222 @@ impl Workspace {
                 window.activate_window();
             })?;
 
+            // Tearing the last tab out of a window that was itself torn off
+            // would otherwise leave an empty, dock-less shell behind that is
+            // never persisted and can hold nothing.
+            source_workspace.update_in(cx, |workspace, window, cx| {
+                workspace.close_if_emptied_detached_window(window, cx);
+            })?;
+
             anyhow::Ok(())
         })
         .detach_and_log_err(cx);
+    }
+
+    /// What a tab released outside its own window should do, decided by the
+    /// window the pointer ended up over.
+    ///
+    /// The platform delivers the whole drag to the window it started in, so the
+    /// window under the pointer has to be asked for; only another window
+    /// showing the very same [`Project`] can be merged into, because the item
+    /// entity moves as it is rather than being reopened from a path.
+    fn tab_drop_target(&self, cx: &App) -> TabDropTarget {
+        let Some((window_handle, position)) = cx.window_under_cursor() else {
+            return TabDropTarget::NewWindow;
+        };
+        let Some(window_handle) = window_handle.downcast::<MultiWorkspace>() else {
+            return TabDropTarget::NewWindow;
+        };
+        let Some(target) = window_handle
+            .read(cx)
+            .ok()
+            .map(|multi_workspace| multi_workspace.workspace().clone())
+        else {
+            return TabDropTarget::NewWindow;
+        };
+        // The release was outside this window's viewport yet the OS still puts
+        // this window under the pointer, so the pointer is on chrome the
+        // viewport does not cover (the resize border) - a hair's breadth from
+        // where the drag started. Treat that as a slip and keep the tab rather
+        // than tearing off a window nobody asked for.
+        if target.entity_id() == self.weak_self.entity_id() {
+            return TabDropTarget::OwnWindow;
+        }
+        if target.read(cx).project.entity_id() != self.project.entity_id() {
+            return TabDropTarget::NewWindow;
+        }
+        let target_pane = target.read(cx).pane_at_window_position(position, cx);
+        TabDropTarget::Merge(window_handle, target_pane)
+    }
+
+    /// The pane a point in this window's coordinates lands on: the center pane
+    /// it falls in, or the pane of the panel filling the dock it falls in.
+    ///
+    /// `None` when the point is over window chrome (title bar, status bar) or
+    /// over a dock whose panel has no pane of its own, leaving it to the caller
+    /// to pick a fallback.
+    fn pane_at_window_position(&self, position: Point<Pixels>, cx: &App) -> Option<Entity<Pane>> {
+        // A zoomed item is drawn as an overlay covering the whole workspace, so
+        // neither the center's nor the docks' recorded bounds describe what is
+        // actually under the pointer.
+        if self.zoomed.is_some() {
+            return None;
+        }
+        if self.center_bounds.is_empty() {
+            return None;
+        }
+        if self.center_bounds.contains(&position) {
+            return self
+                .center
+                .pane_at_pixel_position(position)
+                .cloned()
+                .or_else(|| Some(self.active_pane.clone()));
+        }
+
+        let open_docks = [
+            DockPosition::Left,
+            DockPosition::Bottom,
+            DockPosition::Right,
+        ]
+        .into_iter()
+        .filter(|dock_position| self.dock_at_position(*dock_position).read(cx).is_open())
+        .map(|dock_position| {
+            (
+                dock_position,
+                self.dock_bounds[Self::dock_bounds_index(dock_position)],
+            )
+        })
+        .collect::<Vec<_>>();
+        let dock_position = dock_containing_position(&open_docks, position)?;
+        self.dock_pane(dock_position, cx)
+    }
+
+    /// The pane of the panel currently filling the given dock, if the dock is
+    /// open and its panel has one (the terminal and browser panels do).
+    fn dock_pane(&self, position: DockPosition, cx: &App) -> Option<Entity<Pane>> {
+        let dock = self.dock_at_position(position).read(cx);
+        if !dock.is_open() {
+            return None;
+        }
+        dock.active_panel()
+            .and_then(|panel| panel.pane(cx))
+            .or_else(|| dock.visible_panels().find_map(|panel| panel.pane(cx)))
+    }
+
+    /// Whether this workspace still shows the given pane, in the center or in
+    /// one of its docks.
+    fn contains_pane(&self, pane: &Entity<Pane>, cx: &App) -> bool {
+        self.panes.contains(pane)
+            || self.all_docks().into_iter().any(|dock| {
+                dock.read(cx)
+                    .visible_panels()
+                    .any(|panel| panel.pane(cx).as_ref() == Some(pane))
+            })
+    }
+
+    /// Moves a single tab into a pane of another window, keeping the item
+    /// entity alive so unsaved buffers and running terminals travel with it.
+    ///
+    /// Both windows must already share a [`Project`]: the item is not reopened,
+    /// the same entity is simply re-parented. `target_pane` is where it should
+    /// land - the pane under the pointer for a drop, `None` for the target
+    /// workspace's active pane. Insertion goes through [`Pane::add_item`] so
+    /// the item hears `added_to_pane`/`added_to_workspace` and can re-register
+    /// what it had bound to the window it left, focus listeners above all.
+    pub fn move_item_to_window(
+        &mut self,
+        source_pane: Entity<Pane>,
+        item_id: EntityId,
+        target_window: WindowHandle<MultiWorkspace>,
+        target_pane: Option<Entity<Pane>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn_in(window, async move |source_workspace, cx| {
+            // See `move_item_to_new_window`: callers may hold a lease on the
+            // source pane, so it must not be read before the task is polled.
+            let source_holds_item = cx.update(|_, cx| {
+                source_pane
+                    .read(cx)
+                    .items()
+                    .any(|item| item.item_id() == item_id)
+            })?;
+            if !source_holds_item {
+                return anyhow::Ok(());
+            }
+
+            let target_workspace = target_window.update(cx, |multi_workspace, _, _| {
+                multi_workspace.workspace().clone()
+            })?;
+
+            // Taking the item out of the old pane has to happen in the old
+            // window: removal activates a neighbouring tab and moves focus.
+            let item = source_pane.update_in(cx, |pane, window, cx| {
+                let item = pane
+                    .items()
+                    .find(|item| item.item_id() == item_id)
+                    .map(|item| item.boxed_clone());
+                if item.is_some() {
+                    pane.remove_item(item_id, false, true, window, cx);
+                }
+                item
+            })?;
+            let Some(item) = item else {
+                return anyhow::Ok(());
+            };
+
+            target_window.update(cx, |_, window, cx| {
+                let pane = target_pane
+                    .filter(|pane| target_workspace.read(cx).contains_pane(pane, cx))
+                    .unwrap_or_else(|| target_workspace.read(cx).active_pane().clone());
+                pane.update(cx, |pane, cx| {
+                    pane.add_item(item, true, true, None, window, cx);
+                });
+                window.activate_window();
+            })?;
+
+            source_workspace.update_in(cx, |workspace, window, cx| {
+                workspace.close_if_emptied_detached_window(window, cx);
+            })?;
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    /// Closes this window once a tab moved to another window has left it empty,
+    /// so dragging a torn-off tab back does not leave the window it came from
+    /// behind as an empty shell.
+    ///
+    /// Only a window torn off by [`Workspace::move_item_to_new_window`]
+    /// qualifies: it has no [`WorkspaceId`], is never persisted, and holds
+    /// nothing but the tab that was dragged out of another window. The window
+    /// is removed on its own, which leaves the [`Project`] it shares with the
+    /// window the tab moved to untouched.
+    fn close_if_emptied_detached_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.database_id.is_some() {
+            return;
+        }
+        if self.panes.iter().any(|pane| pane.read(cx).items_len() > 0) {
+            return;
+        }
+        // A torn-off window opens with every dock collapsed, so an open one
+        // means the user has put work in this window that is not a tab.
+        if self
+            .all_docks()
+            .into_iter()
+            .any(|dock| dock.read(cx).is_open())
+        {
+            return;
+        }
+        let holds_only_this_workspace = window
+            .root::<MultiWorkspace>()
+            .flatten()
+            .is_some_and(|multi_workspace| multi_workspace.read(cx).workspaces().count() == 1);
+        if !holds_only_this_workspace {
+            return;
+        }
+        window.remove_window();
     }
 
     /// Keeps a torn-off tab's window free of docks. Panels are added by an
@@ -6180,13 +6561,19 @@ impl Workspace {
         }
 
         self.dismiss_zoomed_items_to_reveal(dock_to_preserve, window, cx);
-        if pane.read(cx).is_zoomed() {
-            self.zoomed = Some(pane.downgrade().into());
-        } else {
-            self.zoomed = None;
-        }
+        let zoomed: Option<AnyWeakView> =
+            pane.read(cx).is_zoomed().then(|| pane.downgrade().into());
+        // Every pane focus lands here, so announcing a zoom change unconditionally
+        // makes "the user clicked a tab" indistinguishable from "the zoomed view
+        // changed". Subscribers that tear something down on the event (the browser
+        // panel hides its WebView2 child window, ADR-F32) would then flicker on
+        // every click.
+        let zoom_changed = self.zoomed != zoomed || self.zoomed_position.is_some();
+        self.zoomed = zoomed;
         self.zoomed_position = None;
-        cx.emit(Event::ZoomChanged);
+        if zoom_changed {
+            cx.emit(Event::ZoomChanged);
+        }
         self.update_active_view_for_followers(window, cx);
         pane.update(cx, |pane, _| {
             pane.track_alternate_file_items();
@@ -7887,6 +8274,80 @@ impl Workspace {
             .map_err(|err| anyhow!("failed to send serializable item over channel: {err}"))
     }
 
+    /// 保存したアイテムを復元し始める前に呼ぶ (ADR-F37)。中央もドックのパネルも、
+    /// 自分の復元が終わったら必ず [`Workspace::end_item_restore`] を呼ぶこと
+    /// (失敗した場合も。呼ばないとこのウィンドウでは以後 1 度も掃除が走らない)。
+    pub fn begin_item_restore(&mut self) {
+        self.item_cleanup.armed = true;
+        self.item_cleanup.pending += 1;
+    }
+
+    /// 復元が 1 つ終わった。最後の 1 つならここで後始末が走る。
+    ///
+    /// 呼ぶ側は、復元したアイテムが**ワークスペースから見える場所に載ってから**
+    /// 呼ぶこと (載っていないと生きている扱いにならず、行が消える)。ドックのパネルは
+    /// `add_panel` される前に自分の復元を終えるので、zed 側がパネル全体でもう 1 つ
+    /// 数えて、全部載るまで掃除を止めている。
+    pub fn end_item_restore(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.item_cleanup.pending = self.item_cleanup.pending.saturating_sub(1);
+        self.cleanup_serializable_items(window, cx);
+    }
+
+    /// 復元しなかったアイテムの行を落とす。ItemId は起動をまたいで安定しないので、
+    /// 残しておくと DB が太り続ける。
+    ///
+    /// 生きている扱いにするのは**このウィンドウのどこかのペインに載っているタブ全部**
+    /// (中央 + ドックの各パネル。畳んだドックのパネルも含む)。掃除は登録されている
+    /// 種類すべてに対して 1 回だけ走らせるので、1 つも復元されなかった種類の行も残らない。
+    fn cleanup_serializable_items(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.item_cleanup.done || !self.item_cleanup.armed || self.item_cleanup.pending > 0 {
+            return;
+        }
+        self.item_cleanup.done = true;
+        let Some(workspace_id) = self.database_id() else {
+            return;
+        };
+
+        let mut alive_item_ids_by_kind: HashMap<Arc<str>, Vec<ItemId>> = HashMap::default();
+        for pane in self.all_panes(cx) {
+            for item in pane.read(cx).items() {
+                if let Some(handle) = item.to_serializable_item_handle(cx) {
+                    alive_item_ids_by_kind
+                        .entry(Arc::from(handle.serialized_item_kind()))
+                        .or_default()
+                        .push(item.item_id().as_u64() as ItemId);
+                }
+            }
+        }
+
+        let cleanups = SerializableItemRegistry::kinds(cx)
+            .into_iter()
+            .map(|kind| {
+                let alive_item_ids = alive_item_ids_by_kind.remove(&kind).unwrap_or_default();
+                SerializableItemRegistry::cleanup(&kind, workspace_id, alive_item_ids, window, cx)
+                    .log_err()
+            })
+            .collect::<Vec<_>>();
+        // 掃除のタスクはフォアグラウンド (`delete_unloaded_items` が `cx.spawn`) なので
+        // ここで抱えたまま待つ。落とすと DELETE ごと取り消される。
+        cx.spawn(async move |_, _| {
+            futures::future::join_all(cleanups).await;
+        })
+        .detach();
+    }
+
+    /// このウィンドウのワークスペースに載っているペイン全部: 中央の分割と、
+    /// ドックのパネルが自分で抱えているペイン (畳んだドックのものも含む)。
+    pub fn all_panes(&self, cx: &App) -> Vec<Entity<Pane>> {
+        let mut panes = self.panes().to_vec();
+        for dock in self.all_docks() {
+            for panel in dock.read(cx).panels() {
+                panes.extend(panel.panes(cx));
+            }
+        }
+        panes
+    }
+
     pub(crate) fn load_workspace(
         serialized_workspace: SerializedWorkspace,
         paths_to_open: Vec<Option<ProjectPath>>,
@@ -7894,7 +8355,11 @@ impl Workspace {
         cx: &mut Context<Workspace>,
     ) -> Task<Result<Vec<Option<Box<dyn ItemHandle>>>>> {
         cx.spawn_in(window, async move |workspace, cx| {
-            let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
+            let project = workspace.update(cx, |workspace, _| {
+                // 掃除はドックのパネルの復元とここの両方が終わってから (ADR-F37)。
+                workspace.begin_item_restore();
+                workspace.project().clone()
+            })?;
 
             let mut center_group = None;
             let mut center_items = None;
@@ -7910,17 +8375,9 @@ impl Workspace {
             }
 
             let mut items_by_project_path = HashMap::default();
-            let mut item_ids_by_kind = HashMap::default();
             let mut all_deserialized_items = Vec::default();
             cx.update(|_, cx| {
                 for item in center_items.unwrap_or_default().into_iter().flatten() {
-                    if let Some(serializable_item_handle) = item.to_serializable_item_handle(cx) {
-                        item_ids_by_kind
-                            .entry(serializable_item_handle.serialized_item_kind())
-                            .or_insert(Vec::new())
-                            .push(item.item_id().as_u64() as ItemId);
-                    }
-
                     if let Some(project_path) = item.project_path(cx) {
                         items_by_project_path.insert(project_path, item.clone());
                     }
@@ -8005,23 +8462,12 @@ impl Workspace {
             // the database filling up, we delete items that haven't been loaded now.
             //
             // The items that have been loaded, have been saved after they've been added to the workspace.
-            let clean_up_tasks = workspace.update_in(cx, |_, window, cx| {
-                item_ids_by_kind
-                    .into_iter()
-                    .map(|(item_kind, loaded_items)| {
-                        SerializableItemRegistry::cleanup(
-                            item_kind,
-                            serialized_workspace.id,
-                            loaded_items,
-                            window,
-                            cx,
-                        )
-                        .log_err()
-                    })
-                    .collect::<Vec<_>>()
+            //
+            // 実際に消すのはドックのパネルの復元も終わってから (ADR-F37)。中央だけを
+            // 見て消すと、パネルに置いたタブの行が道連れになる。
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.end_item_restore(window, cx);
             })?;
-
-            futures::future::join_all(clean_up_tasks).await;
 
             workspace
                 .update_in(cx, |workspace, window, cx| {
@@ -8724,6 +9170,7 @@ impl Workspace {
                     size_state
                         .and_then(|state| state.flex)
                         .or_else(|| self.default_dock_flex(position))
+                        .map(|flex| self.clamped_dock_flex(position, flex, window, cx))
                 } else {
                     None
                 };
@@ -8756,7 +9203,33 @@ impl Workspace {
             }
         }
 
-        Some(container)
+        // Recorded for `pane_at_window_position`, which has to attribute a tab
+        // dropped from another window to a dock without knowing the layout the
+        // `bottom_dock_layout` setting produced. The canvas is absolutely
+        // positioned so it stays out of the dock's own flex layout, and it
+        // paints nothing, so it takes no mouse events either.
+        Some(
+            container.children(self.weak_self.upgrade().map(|workspace| {
+                canvas(
+                    move |bounds, _, cx| {
+                        workspace.update(cx, |workspace, _| {
+                            workspace.dock_bounds[Self::dock_bounds_index(position)] = bounds;
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full()
+            })),
+        )
+    }
+
+    fn dock_bounds_index(position: DockPosition) -> usize {
+        match position {
+            DockPosition::Left => 0,
+            DockPosition::Bottom => 1,
+            DockPosition::Right => 2,
+        }
     }
 
     /// Returns the currently-visible major window regions ("parts"), in a stable
@@ -8915,6 +9388,7 @@ impl Workspace {
                 this.track_focus(&self.region_focus_handles.editor)
             })
             .size_full()
+            .relative()
             .child(self.center.render(
                 self.zoomed.as_ref(),
                 self.maximized_pane.as_ref(),
@@ -8922,6 +9396,16 @@ impl Workspace {
                 window,
                 cx,
             ))
+            .children(self.weak_self.upgrade().map(|workspace| {
+                canvas(
+                    move |bounds, _, cx| {
+                        workspace.update(cx, |workspace, _| workspace.center_bounds = bounds);
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full()
+            }))
     }
 
     pub fn for_window(window: &Window, cx: &App) -> Option<Entity<Workspace>> {
@@ -9007,16 +9491,12 @@ impl Workspace {
 
     fn resize_left_dock(&mut self, new_size: Pixels, window: &mut Window, cx: &mut App) {
         let workspace_width = self.bounds.size.width;
-        let mut size = new_size.min(workspace_width - RESIZE_HANDLE_SIZE);
-
-        self.right_dock.read_with(cx, |right_dock, cx| {
-            let right_dock_size = right_dock
+        let right_dock_size = self.right_dock.read_with(cx, |right_dock, cx| {
+            right_dock
                 .stored_active_panel_size(window, cx)
-                .unwrap_or(Pixels::ZERO);
-            if right_dock_size + size > workspace_width {
-                size = workspace_width - right_dock_size
-            }
+                .unwrap_or(Pixels::ZERO)
         });
+        let size = new_size.min(max_dock_extent(workspace_width, right_dock_size));
 
         let flex_grow = self.dock_flex_for_size(DockPosition::Left, size, window, cx);
         self.left_dock.update(cx, |left_dock, cx| {
@@ -9026,15 +9506,12 @@ impl Workspace {
 
     fn resize_right_dock(&mut self, new_size: Pixels, window: &mut Window, cx: &mut App) {
         let workspace_width = self.bounds.size.width;
-        let mut size = new_size.min(workspace_width - RESIZE_HANDLE_SIZE);
-        self.left_dock.read_with(cx, |left_dock, cx| {
-            let left_dock_size = left_dock
+        let left_dock_size = self.left_dock.read_with(cx, |left_dock, cx| {
+            left_dock
                 .stored_active_panel_size(window, cx)
-                .unwrap_or(Pixels::ZERO);
-            if left_dock_size + size > workspace_width {
-                size = workspace_width - left_dock_size
-            }
+                .unwrap_or(Pixels::ZERO)
         });
+        let size = new_size.min(max_dock_extent(workspace_width, left_dock_size));
         let flex_grow = self.dock_flex_for_size(DockPosition::Right, size, window, cx);
         self.right_dock.update(cx, |right_dock, cx| {
             right_dock.resize_panel_sizes(Some(size), flex_grow, window, cx);
@@ -9042,7 +9519,7 @@ impl Workspace {
     }
 
     fn resize_bottom_dock(&mut self, new_size: Pixels, window: &mut Window, cx: &mut App) {
-        let size = new_size.min(self.bounds.bottom() - RESIZE_HANDLE_SIZE - self.bounds.top());
+        let size = new_size.min(max_dock_extent(self.bounds.size.height, Pixels::ZERO));
         self.bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.resize_panel_sizes(Some(size), None, window, cx);
         });
@@ -9714,28 +10191,29 @@ impl Render for Workspace {
                                             this.bounds = bounds;
 
                                             if bounds_changed {
+                                                // A size stored by a wider
+                                                // window, or before the resize
+                                                // clamp existed, has to be cut
+                                                // down to one that still leaves
+                                                // the center on screen.
+                                                let max_width = max_dock_extent(
+                                                    bounds.size.width,
+                                                    Pixels::ZERO,
+                                                );
+                                                let max_height = max_dock_extent(
+                                                    bounds.size.height,
+                                                    Pixels::ZERO,
+                                                );
                                                 this.left_dock.update(cx, |dock, cx| {
-                                                    dock.clamp_panel_size(
-                                                        bounds.size.width,
-                                                        window,
-                                                        cx,
-                                                    )
+                                                    dock.clamp_panel_size(max_width, window, cx)
                                                 });
 
                                                 this.right_dock.update(cx, |dock, cx| {
-                                                    dock.clamp_panel_size(
-                                                        bounds.size.width,
-                                                        window,
-                                                        cx,
-                                                    )
+                                                    dock.clamp_panel_size(max_width, window, cx)
                                                 });
 
                                                 this.bottom_dock.update(cx, |dock, cx| {
-                                                    dock.clamp_panel_size(
-                                                        bounds.size.height,
-                                                        window,
-                                                        cx,
-                                                    )
+                                                    dock.clamp_panel_size(max_height, window, cx)
                                                 });
                                             }
                                         })
@@ -19181,6 +19659,67 @@ mod tests {
         });
     }
 
+    /// The tab's context menu runs its handler inside `pane.update`, so the
+    /// source pane is leased while the entry asks the workspace to tear the tab
+    /// off. Reading that pane back there aborts the process ("cannot read Pane
+    /// while it is already being updated"), so nothing in the move may touch it
+    /// before the spawned task runs.
+    #[gpui::test]
+    async fn test_move_item_to_new_window_while_the_source_pane_is_leased(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+
+        let moving = cx.new(|cx| TestItem::new(cx).with_label("moving"));
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item(
+                pane.clone(),
+                Box::new(moving.clone()),
+                None,
+                false,
+                false,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let windows_before = cx.update(|_, cx| cx.windows().len());
+
+        pane.update_in(cx, |pane, window, cx| {
+            let source_pane = cx.entity();
+            pane.workspace
+                .update(cx, |workspace, cx| {
+                    workspace.move_item_to_new_window(
+                        source_pane,
+                        moving.item_id(),
+                        None,
+                        window,
+                        cx,
+                    );
+                })
+                .expect("the workspace outlives its pane");
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            cx.update(|_, cx| cx.windows().len()),
+            windows_before + 1,
+            "the tab was torn off from inside the pane update"
+        );
+        pane.read_with(cx, |pane, _| {
+            assert_eq!(
+                pane.items().count(),
+                0,
+                "the moved tab is gone from the pane it came from"
+            );
+        });
+    }
+
     /// Focus listeners are stored on the `Window` they were registered against
     /// (`Context::on_focus_in` goes through `Window::new_focus_listener`), so an
     /// item torn off into a new window would stop hearing about focus unless
@@ -19301,6 +19840,420 @@ mod tests {
             );
             assert_eq!(workspace.active_pane().read(cx).items().count(), 0);
         });
+    }
+
+    /// Opens a window holding a workspace over `project`, the way the fork's
+    /// windows are built: a `MultiWorkspace` root with one workspace in it.
+    ///
+    /// Windows after the first have to be handed the first one's [`AppState`]:
+    /// `Workspace::test_new` builds a `WorkspaceStore` of its own, and a second
+    /// one over the same client panics registering `proto::Follow` twice.
+    fn add_workspace_window(
+        project: &Entity<Project>,
+        app_state: Option<Arc<AppState>>,
+        cx: &mut TestAppContext,
+    ) -> (
+        WindowHandle<MultiWorkspace>,
+        Entity<Workspace>,
+        Entity<Pane>,
+    ) {
+        let window = cx.add_window(|window, cx| {
+            let workspace = cx.new(|cx| match app_state {
+                Some(app_state) => {
+                    Workspace::new(Default::default(), project.clone(), app_state, window, cx)
+                }
+                None => Workspace::test_new(project.clone(), window, cx),
+            });
+            MultiWorkspace::new(workspace, window, cx)
+        });
+        let (workspace, pane) = window
+            .update(cx, |multi_workspace, _, cx| {
+                let workspace = multi_workspace.workspace().clone();
+                let pane = workspace.read(cx).active_pane().clone();
+                (workspace, pane)
+            })
+            .expect("the window that was just opened is open");
+        (window, workspace, pane)
+    }
+
+    #[gpui::test]
+    async fn test_move_item_to_window_merges_into_the_target_pane(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+
+        let (target_window, target_workspace, target_pane) =
+            add_workspace_window(&project, None, cx);
+        let app_state =
+            target_workspace.read_with(cx, |workspace, _| workspace.app_state().clone());
+        let (source_window, source_workspace, source_pane) =
+            add_workspace_window(&project, Some(app_state), cx);
+
+        let staying = cx.new(|cx| TestItem::new(cx).with_label("staying"));
+        let moving = cx.new(|cx| TestItem::new(cx).with_label("moving"));
+        source_window
+            .update(cx, |_, window, cx| {
+                source_workspace.update(cx, |workspace, cx| {
+                    for item in [staying.clone(), moving.clone()] {
+                        workspace.add_item(
+                            source_pane.clone(),
+                            Box::new(item),
+                            None,
+                            false,
+                            false,
+                            window,
+                            cx,
+                        );
+                    }
+                });
+            })
+            .expect("the source window is open");
+        cx.run_until_parked();
+
+        let windows_before = cx.update(|cx| cx.windows().len());
+
+        source_window
+            .update(cx, |_, window, cx| {
+                source_workspace.update(cx, |workspace, cx| {
+                    workspace.move_item_to_window(
+                        source_pane.clone(),
+                        moving.item_id(),
+                        target_window,
+                        Some(target_pane.clone()),
+                        window,
+                        cx,
+                    );
+                });
+            })
+            .expect("the source window is open");
+        cx.run_until_parked();
+
+        assert_eq!(
+            cx.update(|cx| cx.windows().len()),
+            windows_before,
+            "merging into an existing window opens no window of its own"
+        );
+
+        source_window
+            .update(cx, |_, _, cx| {
+                assert_eq!(
+                    source_pane
+                        .read(cx)
+                        .items()
+                        .map(|item| item.item_id())
+                        .collect::<Vec<_>>(),
+                    vec![staying.item_id()],
+                    "the moved tab is gone from the pane it came from"
+                );
+                assert!(
+                    source_workspace
+                        .read(cx)
+                        .pane_for_item_id(moving.item_id())
+                        .is_none(),
+                    "the source workspace no longer tracks the moved item"
+                );
+            })
+            .expect("the source window is still open, since a tab stayed behind");
+
+        target_window
+            .update(cx, |_, _, cx| {
+                assert_eq!(
+                    target_pane
+                        .read(cx)
+                        .items()
+                        .map(|item| item.item_id())
+                        .collect::<Vec<_>>(),
+                    vec![moving.item_id()],
+                    "the same item entity now lives in the pane it was dropped on"
+                );
+                assert_eq!(
+                    target_workspace
+                        .read(cx)
+                        .pane_for_item_id(moving.item_id())
+                        .as_ref(),
+                    Some(&target_pane),
+                    "the target workspace tracks the item, so `added_to_pane` re-parented it"
+                );
+            })
+            .expect("the target window is open");
+    }
+
+    #[gpui::test]
+    async fn test_merging_the_last_item_closes_only_a_detached_window(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+
+        let (target_window, target_workspace, target_pane) =
+            add_workspace_window(&project, None, cx);
+        let app_state =
+            target_workspace.read_with(cx, |workspace, _| workspace.app_state().clone());
+
+        for detached in [true, false] {
+            let (source_window, source_workspace, source_pane) =
+                add_workspace_window(&project, Some(app_state.clone()), cx);
+            let item = cx.new(|cx| TestItem::new(cx).with_label("only"));
+            source_window
+                .update(cx, |_, window, cx| {
+                    source_workspace.update(cx, |workspace, cx| {
+                        // Only a window torn off by `move_item_to_new_window`
+                        // has no id; every restorable workspace has one.
+                        workspace.database_id = (!detached).then(|| WorkspaceId::from_i64(1));
+                        workspace.add_item(
+                            source_pane.clone(),
+                            Box::new(item.clone()),
+                            None,
+                            false,
+                            false,
+                            window,
+                            cx,
+                        );
+                    });
+                })
+                .expect("the source window is open");
+            cx.run_until_parked();
+
+            let windows_before = cx.update(|cx| cx.windows().len());
+            source_window
+                .update(cx, |_, window, cx| {
+                    source_workspace.update(cx, |workspace, cx| {
+                        workspace.move_item_to_window(
+                            source_pane.clone(),
+                            item.item_id(),
+                            target_window,
+                            Some(target_pane.clone()),
+                            window,
+                            cx,
+                        );
+                    });
+                })
+                .expect("the source window is open");
+            cx.run_until_parked();
+
+            let windows_after = cx.update(|cx| cx.windows().len());
+            if detached {
+                assert_eq!(
+                    windows_after,
+                    windows_before - 1,
+                    "a detached window left empty by a merge closes itself"
+                );
+                assert!(
+                    source_window.update(cx, |_, _, _| ()).is_err(),
+                    "the detached window is the one that closed"
+                );
+            } else {
+                assert_eq!(
+                    windows_after, windows_before,
+                    "a window that can be restored stays open even when emptied"
+                );
+            }
+        }
+    }
+
+    /// Tearing the last tab out of a window that was itself torn off has to
+    /// close it too, or the gesture leaves an empty, dock-less shell that is
+    /// never persisted and can hold nothing.
+    #[gpui::test]
+    async fn test_tearing_off_the_last_item_closes_only_a_detached_window(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+
+        let (_first_window, first_workspace, _first_pane) =
+            add_workspace_window(&project, None, cx);
+        let app_state = first_workspace.read_with(cx, |workspace, _| workspace.app_state().clone());
+
+        for detached in [true, false] {
+            let (source_window, source_workspace, source_pane) =
+                add_workspace_window(&project, Some(app_state.clone()), cx);
+            let item = cx.new(|cx| TestItem::new(cx).with_label("only"));
+            source_window
+                .update(cx, |_, window, cx| {
+                    source_workspace.update(cx, |workspace, cx| {
+                        // Only a window torn off by `move_item_to_new_window`
+                        // has no id; every restorable workspace has one.
+                        workspace.database_id = (!detached).then(|| WorkspaceId::from_i64(1));
+                        workspace.add_item(
+                            source_pane.clone(),
+                            Box::new(item.clone()),
+                            None,
+                            false,
+                            false,
+                            window,
+                            cx,
+                        );
+                    });
+                })
+                .expect("the source window is open");
+            cx.run_until_parked();
+
+            let windows_before = cx.update(|cx| cx.windows().len());
+            source_window
+                .update(cx, |_, window, cx| {
+                    source_workspace.update(cx, |workspace, cx| {
+                        workspace.move_item_to_new_window(
+                            source_pane.clone(),
+                            item.item_id(),
+                            None,
+                            window,
+                            cx,
+                        );
+                    });
+                })
+                .expect("the source window is open");
+            cx.run_until_parked();
+
+            let windows_after = cx.update(|cx| cx.windows().len());
+            if detached {
+                assert_eq!(
+                    windows_after, windows_before,
+                    "the torn-off window takes the place of the detached one it emptied"
+                );
+                assert!(
+                    source_window.update(cx, |_, _, _| ()).is_err(),
+                    "the emptied detached window is the one that closed"
+                );
+            } else {
+                assert_eq!(
+                    windows_after,
+                    windows_before + 1,
+                    "a window that can be restored stays open even when emptied"
+                );
+                source_window
+                    .update(cx, |_, _, cx| {
+                        assert_eq!(source_pane.read(cx).items().count(), 0);
+                    })
+                    .expect("the restorable window is still open");
+            }
+        }
+    }
+
+    /// Dragging a side dock's resize handle used to be allowed to take all but a
+    /// resize handle's width, which collapsed the center, put the handle under
+    /// the window edge where it could not be grabbed again, and survived
+    /// toggling the dock.
+    #[test]
+    fn test_max_dock_extent_keeps_room_for_the_center() {
+        fn assert_extent(actual: Pixels, expected: Pixels) {
+            assert!(
+                (actual - expected).abs() < px(0.01),
+                "expected {expected:?}, got {actual:?}"
+            );
+        }
+
+        // Wide enough that the fixed minimum is what the center keeps.
+        assert_extent(max_dock_extent(px(1600.), Pixels::ZERO), px(1400.));
+        // The dock on the other side comes off the top of that.
+        assert_extent(max_dock_extent(px(1600.), px(300.)), px(1100.));
+        // Too narrow for the fixed minimum, so the center keeps a fifth of the
+        // window instead and the dock can still be dragged wide.
+        assert_extent(max_dock_extent(px(600.), Pixels::ZERO), px(480.));
+        // Never below a resize handle, so the handle always has somewhere to sit.
+        assert_extent(max_dock_extent(px(100.), px(300.)), RESIZE_HANDLE_SIZE);
+        assert_extent(
+            max_dock_extent(Pixels::ZERO, Pixels::ZERO),
+            RESIZE_HANDLE_SIZE,
+        );
+    }
+
+    /// Which dock a tab dropped outside the center landed on cannot be inferred
+    /// from the side of the center the pointer is on: the same lower-right point
+    /// belongs to the right dock under the default `Contained` layout and to the
+    /// bottom dock under `Full`. The hit test therefore works off the rectangles
+    /// the docks were last laid out at.
+    #[test]
+    fn test_dock_containing_position_follows_the_recorded_layout() {
+        fn rect(left: f32, top: f32, right: f32, bottom: f32) -> Bounds<Pixels> {
+            Bounds::from_corners(point(px(left), px(top)), point(px(right), px(bottom)))
+        }
+        fn at(x: f32, y: f32) -> Point<Pixels> {
+            point(px(x), px(y))
+        }
+
+        // A 1000x800 workspace whose center is 200..700 x 0..600.
+        let contained = [
+            (DockPosition::Left, rect(0., 0., 200., 800.)),
+            (DockPosition::Bottom, rect(200., 600., 700., 800.)),
+            (DockPosition::Right, rect(700., 0., 1000., 800.)),
+        ];
+        assert_eq!(
+            dock_containing_position(&contained, at(850., 700.)),
+            Some(DockPosition::Right),
+            "below and right of the center is the right dock when the bottom dock is contained"
+        );
+        assert_eq!(
+            dock_containing_position(&contained, at(400., 700.)),
+            Some(DockPosition::Bottom)
+        );
+        assert_eq!(
+            dock_containing_position(&contained, at(100., 700.)),
+            Some(DockPosition::Left)
+        );
+        assert_eq!(
+            dock_containing_position(&contained, at(400., 300.)),
+            None,
+            "the center itself belongs to no dock"
+        );
+
+        let full = [
+            (DockPosition::Left, rect(0., 0., 200., 600.)),
+            (DockPosition::Bottom, rect(0., 600., 1000., 800.)),
+            (DockPosition::Right, rect(700., 0., 1000., 600.)),
+        ];
+        assert_eq!(
+            dock_containing_position(&full, at(850., 700.)),
+            Some(DockPosition::Bottom),
+            "the same point is the bottom dock when it spans the full width"
+        );
+        assert_eq!(
+            dock_containing_position(&full, at(100., 700.)),
+            Some(DockPosition::Bottom)
+        );
+
+        let left_aligned = [
+            (DockPosition::Left, rect(0., 0., 200., 600.)),
+            (DockPosition::Bottom, rect(0., 600., 700., 800.)),
+            (DockPosition::Right, rect(700., 0., 1000., 800.)),
+        ];
+        assert_eq!(
+            dock_containing_position(&left_aligned, at(850., 700.)),
+            Some(DockPosition::Right)
+        );
+        assert_eq!(
+            dock_containing_position(&left_aligned, at(100., 700.)),
+            Some(DockPosition::Bottom)
+        );
+
+        let right_aligned = [
+            (DockPosition::Left, rect(0., 0., 200., 800.)),
+            (DockPosition::Bottom, rect(200., 600., 1000., 800.)),
+            (DockPosition::Right, rect(700., 0., 1000., 600.)),
+        ];
+        assert_eq!(
+            dock_containing_position(&right_aligned, at(850., 700.)),
+            Some(DockPosition::Bottom)
+        );
+        assert_eq!(
+            dock_containing_position(&right_aligned, at(100., 700.)),
+            Some(DockPosition::Left)
+        );
+
+        assert_eq!(
+            dock_containing_position(&contained[..2], at(850., 700.)),
+            None,
+            "a closed dock is not among the candidates, so its area falls through"
+        );
+        assert_eq!(
+            dock_containing_position(
+                &[(DockPosition::Bottom, rect(400., 700., 400., 700.))],
+                at(400., 700.)
+            ),
+            None,
+            "a dock that was never laid out cannot swallow a point on its edge"
+        );
     }
 
     #[gpui::test]

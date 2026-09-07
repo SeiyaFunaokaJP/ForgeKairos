@@ -30,12 +30,11 @@ use ui::{
 use util::{ResultExt, TryFutureExt};
 use workspace::{
     ActivateNextPane, ActivatePane, ActivatePaneDown, ActivatePaneLeft, ActivatePaneRight,
-    ActivatePaneUp, ActivatePreviousPane, DraggedTab, ItemId, MoveItemToPane,
-    MoveItemToPaneInDirection, MovePaneDown, MovePaneLeft, MovePaneRight, MovePaneUp, Pane,
-    PaneGroup, SplitDirection, SplitDown, SplitLeft, SplitMode, SplitRight, SplitUp, SwapPaneDown,
-    SwapPaneLeft, SwapPaneRight, SwapPaneUp, ToggleZoom, Workspace,
+    ActivatePaneUp, ActivatePreviousPane, DraggedTab, MoveItemToPane, MoveItemToPaneInDirection,
+    MovePaneDown, MovePaneLeft, MovePaneRight, MovePaneUp, Pane, PaneGroup, SplitDirection,
+    SplitDown, SplitLeft, SplitMode, SplitRight, SplitUp, SwapPaneDown, SwapPaneLeft,
+    SwapPaneRight, SwapPaneUp, ToggleZoom, Workspace,
     dock::{DockPosition, Panel, PanelEvent, PanelHandle},
-    item::SerializableItem,
     move_active_item, pane,
 };
 
@@ -367,6 +366,9 @@ pub struct TerminalPanel {
     fs: Arc<dyn Fs>,
     workspace: WeakEntity<Workspace>,
     pending_serialization: Task<Option<()>>,
+    /// 保存したレイアウトを組み立てている最中。この間の保存は「まだ空のパネル」を
+    /// 書いてしまうので止める ([`deserialize_terminal_panel`])。
+    pub(crate) restoring: bool,
     pending_terminals_to_add: usize,
     deferred_tasks: HashMap<TaskId, Task<()>>,
     assistant_enabled: bool,
@@ -388,6 +390,7 @@ impl TerminalPanel {
             fs: workspace.app_state().fs.clone(),
             workspace: workspace.weak_handle(),
             pending_serialization: Task::ready(None),
+            restoring: false,
             pending_terminals_to_add: 0,
             deferred_tasks: HashMap::default(),
             assistant_enabled: false,
@@ -702,7 +705,31 @@ impl TerminalPanel {
             .map(|id| format!("{:?}-{:?}", TERMINAL_PANEL_KEY, id))
     }
 
+    /// 復元しなかったアイテムの行の掃除は、中央とすべてのパネルの復元が揃ってから
+    /// ワークスペースが 1 回だけ走らせる (ADR-F37)。ここでやることは待ち合わせへの
+    /// 参加だけで、失敗しても必ず抜ける (抜けないとそのウィンドウで掃除が止まる)。
+    ///
+    /// このパネルが workspace に載る (`add_panel`) のは `load` が返ってからなので、
+    /// ここで数えを戻した時点ではまだタブが「どのペインにも居ない」ように見える。
+    /// 掃除が実際に走るのは zed の `initialize_panels` が全パネルを載せ終えてから
+    /// (向こうでもう 1 つ数えている) なので、この順序に依存している。
     pub async fn load(
+        workspace: WeakEntity<Workspace>,
+        mut cx: AsyncWindowContext,
+    ) -> Result<Entity<Self>> {
+        workspace
+            .update(&mut cx, |workspace, _| workspace.begin_item_restore())
+            .log_err();
+        let panel = Self::load_inner(workspace.clone(), cx.clone()).await;
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.end_item_restore(window, cx);
+            })
+            .log_err();
+        panel
+    }
+
+    async fn load_inner(
         workspace: WeakEntity<Workspace>,
         mut cx: AsyncWindowContext,
     ) -> Result<Entity<Self>> {
@@ -754,26 +781,6 @@ impl TerminalPanel {
             workspace.update(&mut cx, |workspace, _| {
                 workspace.set_terminal_provider(TerminalProvider(terminal_panel.clone()))
             });
-        }
-
-        // Since panels/docks are loaded outside from the workspace, we cleanup here, instead of through the workspace.
-        if let Some(workspace) = workspace.upgrade() {
-            let cleanup_task = workspace.update_in(&mut cx, |workspace, window, cx| {
-                let alive_item_ids = terminal_panel
-                    .read(cx)
-                    .center
-                    .panes()
-                    .into_iter()
-                    .flat_map(|pane| pane.read(cx).items())
-                    .map(|item| item.item_id().as_u64() as ItemId)
-                    .collect();
-                workspace.database_id().map(|workspace_id| {
-                    TerminalView::cleanup(workspace_id, alive_item_ids, window, cx)
-                })
-            })?;
-            if let Some(task) = cleanup_task {
-                task.await.log_err();
-            }
         }
 
         if let Some(workspace) = workspace.upgrade() {
@@ -1519,6 +1526,9 @@ impl TerminalPanel {
     }
 
     fn serialize(&mut self, cx: &mut Context<Self>) {
+        if self.restoring {
+            return;
+        }
         let Some(serialization_key) = self
             .workspace
             .read_with(cx, |workspace, _| {
@@ -2284,6 +2294,10 @@ impl Panel for TerminalPanel {
         Some(self.active_pane.clone())
     }
 
+    fn panes(&self) -> Vec<Entity<Pane>> {
+        self.center.panes().into_iter().cloned().collect()
+    }
+
     fn activation_priority(&self) -> u32 {
         2
     }
@@ -2358,11 +2372,12 @@ mod tests {
     use std::{num::NonZero, path::Path};
 
     use super::*;
+    use crate::persistence::{SerializedPane, SerializedPaneGroup, SerializedPanelItem};
     use gpui::{Modifiers, TestAppContext, UpdateGlobal as _, VisualTestContext};
     use pretty_assertions::assert_eq;
     use project::FakeFs;
     use settings::SettingsStore;
-    use workspace::MultiWorkspace;
+    use workspace::{MultiWorkspace, item::test::TestItem};
 
     #[test]
     fn test_prepare_empty_task() {
@@ -3759,6 +3774,149 @@ mod tests {
             theme_settings::init(theme::LoadThemes::JustBase, cx);
             editor::init(cx);
             crate::init(cx);
+            // ドラッグでパネルに流れてくる「ターミナル以外のタブ」の代役。
+            workspace::register_serializable_item::<TestItem>(cx);
+        });
+    }
+
+    async fn panel_for_persistence_test(
+        cx: &mut TestAppContext,
+    ) -> (gpui::WindowHandle<MultiWorkspace>, Entity<TerminalPanel>) {
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let panel = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    cx.new(|cx| TerminalPanel::new(workspace, window, cx))
+                })
+            })
+            .expect("failed to build the terminal panel");
+        (window_handle, panel)
+    }
+
+    /// ADR-F37: ドラッグで流れてきたタブも種類ごとに書き出す。
+    #[gpui::test]
+    async fn test_the_panel_serializes_tabs_of_every_kind(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = panel_for_persistence_test(cx).await;
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                panel.update(cx, |panel, cx| {
+                    let pane = panel.active_pane.clone();
+                    pane.update(cx, |pane, cx| {
+                        for _ in 0..2 {
+                            let item = cx.new(TestItem::new);
+                            pane.add_item(Box::new(item), false, false, None, window, cx);
+                        }
+                    });
+                });
+            })
+            .expect("failed to fill the terminal panel's pane");
+        cx.run_until_parked();
+
+        let serialized = panel.update(cx, |panel, cx| {
+            serialize_pane_group(&panel.center, &panel.active_pane, cx)
+        });
+        let SerializedPaneGroup::Pane(pane) = &serialized else {
+            panic!("the terminal panel has a single pane");
+        };
+        assert_eq!(
+            pane.items
+                .iter()
+                .map(|item| item.kind.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["TestItem", "TestItem"]
+        );
+        assert!(pane.items[1].active);
+        assert!(
+            pane.children.is_empty(),
+            "the terminal-only format is not written any more"
+        );
+
+        // 読み書きの往復で形が崩れないこと。
+        let text = serde_json::to_string(&SerializedTerminalPanel {
+            items: SerializedItems::WithSplits(serialized),
+            active_item_id: None,
+        })
+        .expect("the layout should serialize");
+        let round_tripped: SerializedTerminalPanel =
+            serde_json::from_str(&text).expect("the layout should deserialize");
+        let SerializedItems::WithSplits(SerializedPaneGroup::Pane(pane)) = &round_tripped.items
+        else {
+            panic!("the round trip should keep a single pane with splits");
+        };
+        assert_eq!(pane.items.len(), 2);
+    }
+
+    /// ADR-F37: 種類ごとの復元。知らない種類は読み飛ばす。
+    #[gpui::test]
+    async fn test_the_panel_restores_tabs_of_every_kind(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, _panel) = panel_for_persistence_test(cx).await;
+
+        let serialized = SerializedTerminalPanel {
+            items: SerializedItems::WithSplits(SerializedPaneGroup::Pane(SerializedPane {
+                active: true,
+                items: vec![
+                    SerializedPanelItem {
+                        kind: Arc::from("TestItem"),
+                        item_id: 1,
+                        active: false,
+                        preview: false,
+                    },
+                    SerializedPanelItem {
+                        kind: Arc::from("SomethingThisBuildDoesNotKnow"),
+                        item_id: 2,
+                        active: false,
+                        preview: false,
+                    },
+                    SerializedPanelItem {
+                        kind: Arc::from("TestItem"),
+                        item_id: 3,
+                        active: true,
+                        preview: false,
+                    },
+                ],
+                children: Vec::new(),
+                active_item: None,
+                pinned_count: 0,
+            })),
+            active_item_id: None,
+        };
+
+        let restored = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    deserialize_terminal_panel(
+                        workspace.weak_handle(),
+                        workspace.project().clone(),
+                        workspace::WorkspaceId::from_i64(1),
+                        serialized,
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .expect("failed to start the restore")
+            .await
+            .expect("failed to restore the terminal panel");
+        cx.run_until_parked();
+
+        restored.read_with(cx, |panel, cx| {
+            let pane = panel.active_pane.read(cx);
+            assert_eq!(
+                pane.items_len(),
+                2,
+                "the tab of an unknown kind is skipped, the others come back"
+            );
+            assert_eq!(
+                pane.active_item_index(),
+                1,
+                "the tab that was on top is put back on top"
+            );
         });
     }
 }

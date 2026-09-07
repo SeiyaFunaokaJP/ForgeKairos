@@ -672,6 +672,25 @@ impl ThreadView {
             self.active_editor(cx).focus_handle(cx)
         }
     }
+
+    /// ADR-F36: タブごと別のウィンドウへ移されたときに持ち主を張り替える。
+    pub(crate) fn set_workspace(&mut self, workspace: WeakEntity<Workspace>, cx: &mut App) {
+        self.workspace = workspace.clone();
+        self.message_editor.update(cx, |message_editor, _cx| {
+            message_editor.set_workspace(workspace);
+        });
+    }
+
+    /// ADR-F36: フォーカスリスナーは登録先のウィンドウに紐づくので、別
+    /// ウィンドウへ移したタブでは張り直す。
+    pub(crate) fn rebind_window_focus_listeners(&self, window: &mut Window, cx: &mut App) {
+        self.title_editor.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
+        self.message_editor.update(cx, |message_editor, cx| {
+            message_editor.rebind_window_focus_listeners(window, cx);
+        });
+    }
 }
 
 #[derive(Default)]

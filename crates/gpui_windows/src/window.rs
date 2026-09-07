@@ -389,6 +389,28 @@ pub(crate) struct Callbacks {
     pub(crate) appearance_changed: Cell<Option<Box<dyn FnMut()>>>,
 }
 
+impl Callbacks {
+    /// Drops every callback that is still registered.
+    ///
+    /// Each of them owns a handle to a gpui `Window`, so once the window has
+    /// been destroyed calling one can only fail with "window not found".
+    /// Messages do arrive after `WM_DESTROY`: the vsync thread invalidates
+    /// every HWND still in the platform's list, and `WM_ACTIVATE` dispatches
+    /// its callback through the foreground executor rather than inline.
+    pub(crate) fn take_all(&self) {
+        self.request_frame.take();
+        self.input.take();
+        self.active_status_change.take();
+        self.hovered_status_change.take();
+        self.resize.take();
+        self.moved.take();
+        self.should_close.take();
+        self.close.take();
+        self.hit_test_window_control.take();
+        self.appearance_changed.take();
+    }
+}
+
 struct WindowCreateContext {
     inner: Option<Result<Rc<WindowsWindowInner>>>,
     handle: AnyWindowHandle,

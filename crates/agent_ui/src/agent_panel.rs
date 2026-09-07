@@ -46,10 +46,11 @@ use crate::terminal_thread_metadata_store::{
     TerminalThreadMetadata, TerminalThreadMetadataStore, compose_terminal_thread_title,
     terminal_title_without_prefix,
 };
+use crate::thread_item::ThreadItem;
 use crate::thread_metadata_store::{ThreadId, ThreadMetadataStore, ThreadMetadataStoreEvent};
 use crate::{
     Agent, AgentInitialContent, AgentThreadSource, ExternalSourcePrompt, NewExternalAgentThread,
-    NewNativeAgentThreadFromSummary,
+    NewNativeAgentThreadFromSummary, OpenThreadInSplit, OpenThreadInTab,
 };
 use crate::{
     AgentDiffPane, ConversationView, CopyThreadToClipboard, Follow, LoadThreadFromClipboard,
@@ -373,9 +374,21 @@ struct SerializedActiveThread {
 }
 
 pub fn init(cx: &mut App) {
+    workspace::register_serializable_item::<ThreadItem>(cx);
     cx.observe_new(
         |workspace: &mut Workspace, _window, _cx: &mut Context<Workspace>| {
             workspace
+                .register_action(|workspace, _: &OpenThreadInTab, window, cx| {
+                    ThreadItem::open_active_panel_thread(workspace, None, window, cx);
+                })
+                .register_action(|workspace, _: &OpenThreadInSplit, window, cx| {
+                    ThreadItem::open_active_panel_thread(
+                        workspace,
+                        Some(workspace::SplitDirection::Right),
+                        window,
+                        cx,
+                    );
+                })
                 .register_action(|workspace, _: &NewThread, window, cx| {
                     if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
                         panel.update(cx, |panel, cx| {
@@ -1595,6 +1608,28 @@ impl AgentPanel {
                 }
                 PanelThreadHistoryEvent::NewThread => {
                     this.new_thread(&NewThread, window, cx);
+                }
+                PanelThreadHistoryEvent::OpenInTab { thread, split } => {
+                    let agent = Agent::from(thread.agent_id.clone());
+                    let thread_id = thread.thread_id;
+                    let split = *split;
+                    let workspace = this.workspace.clone();
+                    // The panel is mid-update here, and opening the tab has to
+                    // update the panel again to take the thread out of it.
+                    window.defer(cx, move |window, cx| {
+                        workspace
+                            .update(cx, |workspace, cx| {
+                                ThreadItem::open_thread(
+                                    workspace,
+                                    agent,
+                                    thread_id,
+                                    split.then_some(workspace::SplitDirection::Right),
+                                    window,
+                                    cx,
+                                );
+                            })
+                            .log_err();
+                    });
                 }
             },
         );
@@ -4302,6 +4337,138 @@ impl AgentPanel {
         }
     }
 
+    /// パネルの持ち物からこの `ConversationView` を外す (ADR-F36)。タブへ渡す
+    /// 前に必ず通す — どこかに残ったままだと同じスレッドが 2 か所で描かれる。
+    fn release_conversation_view(
+        &mut self,
+        conversation_view: &Entity<ConversationView>,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .draft_thread
+            .as_ref()
+            .is_some_and(|draft| draft.entity_id() == conversation_view.entity_id())
+        {
+            self.draft_thread = None;
+            self._draft_editor_observation = None;
+        }
+        let thread_id = conversation_view.read(cx).thread_id;
+        self.retained_threads.remove(&thread_id);
+    }
+
+    /// いま見せているスレッドをタブへ明け渡す。パネルは新しい下書きに戻る。
+    pub(crate) fn take_active_thread_for_tab(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<ConversationView>> {
+        let BaseView::AgentThread { conversation_view } = &self.base_view else {
+            return None;
+        };
+        let conversation_view = conversation_view.clone();
+        // `retain_running_thread` を通さない = パネルには残さない。
+        self.base_view = BaseView::Uninitialized;
+        self.release_conversation_view(&conversation_view, cx);
+        // 下書きに戻れないとき (開いているプロジェクトが無い) でも、手放した
+        // スレッドの購読が残らないようにここで一度張り替えておく。
+        self.refresh_base_view_subscriptions(window, cx);
+        self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
+        self.serialize(cx);
+        cx.emit(AgentPanelEvent::ActiveViewChanged);
+        cx.notify();
+        Some(conversation_view)
+    }
+
+    /// 指定のスレッドをタブへ明け渡す。パネルが持っていれば取り上げ、持って
+    /// いなければ読み込む。
+    pub(crate) fn detach_thread_for_tab(
+        &mut self,
+        agent: Agent,
+        thread_id: ThreadId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<ConversationView> {
+        let is_active = matches!(
+            &self.base_view,
+            BaseView::AgentThread { conversation_view }
+                if conversation_view.read(cx).thread_id == thread_id
+        );
+        if is_active && let Some(conversation_view) = self.take_active_thread_for_tab(window, cx) {
+            return conversation_view;
+        }
+
+        if let Some(draft) = self.draft_thread.clone()
+            && draft.read(cx).thread_id == thread_id
+        {
+            self.draft_thread = None;
+            self._draft_editor_observation = None;
+            return draft;
+        }
+
+        if let Some(conversation_view) = self.retained_threads.remove(&thread_id) {
+            return conversation_view;
+        }
+
+        let (work_dirs, title) = ThreadMetadataStore::try_global(cx)
+            .and_then(|store| store.read(cx).entry(thread_id).cloned())
+            .map(|metadata| {
+                (
+                    Some(metadata.folder_paths().clone()),
+                    metadata.title.clone(),
+                )
+            })
+            .unwrap_or((None, None));
+
+        // タブへ渡すスレッドはパネルの選択とは無関係なので、パネルが覚えて
+        // いるエージェント (と「最後に使ったエージェント」) を書き換えない。
+        // `create_agent_thread_inner` が副作用で更新するので、
+        // `create_thread_with_options` と同じ流儀で控えて戻す。
+        let saved_selected_agent =
+            (self.selected_agent != agent).then(|| self.selected_agent.clone());
+        let thread = self.create_agent_thread_with_server(
+            agent,
+            None,
+            Some(thread_id),
+            work_dirs,
+            title,
+            None,
+            None,
+            AgentThreadSource::AgentPanel,
+            window,
+            cx,
+        );
+        if let Some(original) = saved_selected_agent {
+            self.set_selected_agent_and_persist(original, cx);
+        }
+        thread.conversation_view
+    }
+
+    /// タブから戻ってきたスレッドをパネルで見せる。
+    pub(crate) fn show_detached_thread(
+        &mut self,
+        conversation_view: Entity<ConversationView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_base_view(
+            BaseView::AgentThread { conversation_view },
+            true,
+            window,
+            cx,
+        );
+        self.serialize(cx);
+    }
+
+    /// タブが閉じられたスレッドを引き取る。生成中ならそのまま裏で走り続け、
+    /// 待機中のものは `cleanup_retained_threads` の上限に従って落ちる。
+    pub(crate) fn reclaim_detached_thread(
+        &mut self,
+        conversation_view: Entity<ConversationView>,
+        cx: &mut Context<Self>,
+    ) {
+        self.retain_running_thread(BaseView::AgentThread { conversation_view }, cx);
+    }
+
     fn set_base_view(
         &mut self,
         new_view: BaseView,
@@ -4474,6 +4641,16 @@ impl AgentPanel {
             store.update(cx, |store, cx| {
                 store.unarchive(thread_id, cx);
             });
+        }
+
+        // ADR-F36: the user moved this thread into a tab. Activate that tab
+        // instead of taking the thread back into the panel — the tab is where
+        // they chose to keep it.
+        if ThreadItem::activate_existing(thread_id, cx) {
+            if matches!(self.base_view, BaseView::Uninitialized) {
+                self.activate_draft(false, source, window, cx);
+            }
+            return;
         }
 
         // Check if the active view already holds this thread.
@@ -5707,6 +5884,17 @@ impl AgentPanel {
                     Some(ContextMenu::build(window, cx, |mut menu, _window, cx| {
                         menu = menu.context(menu_action_context.clone());
 
+                        // ADR-F36: 見ているスレッドをタブへ出す導線。パネルは
+                        // 空の下書きに戻り、以降はタブ機構 (分割 / 別パネルへの
+                        // ドラッグ / 別ウィンドウ) が効く。
+                        if conversation_view.is_some() {
+                            menu = menu
+                                .header("表示")
+                                .action("スレッドをタブで開く", Box::new(OpenThreadInTab))
+                                .action("スレッドを右に分割して開く", Box::new(OpenThreadInSplit))
+                                .separator();
+                        }
+
                         if has_thread_messages {
                             menu = menu.header("現在のスレッド");
 
@@ -6748,6 +6936,16 @@ impl AgentPanel {
     /// deleting its metadata or kvp state. Simulates the post-restart
     pub fn test_unload_retained_thread(&mut self, id: ThreadId) -> bool {
         self.retained_threads.remove(&id).is_some()
+    }
+
+    /// Points the panel at an agent without going through the toolbar's
+    /// draft-rebuilding logic, so tests can pin it to `Agent::Stub`.
+    pub fn test_set_selected_agent(&mut self, agent: Agent) {
+        self.selected_agent = agent;
+    }
+
+    pub fn test_retains_thread(&self, id: ThreadId) -> bool {
+        self.retained_threads.contains_key(&id)
     }
 
     /// Opens an external thread using an arbitrary AgentServer.

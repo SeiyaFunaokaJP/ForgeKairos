@@ -14,7 +14,7 @@ use fs::Fs;
 use futures::channel::oneshot;
 use gpui::{
     AnyElement, AsyncApp, ClickEvent, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    Modifiers, Render, Subscription, Task, Window, uniform_list,
+    Modifiers, Render, Subscription, Task, Window, actions, uniform_list,
 };
 use project::{Project, remote_exec::TransferAskPass};
 use settings::SettingsStore;
@@ -63,6 +63,36 @@ impl PaneSide {
         }
     }
 }
+
+actions!(
+    file_transfer,
+    [
+        /// 次の入力欄へ移動
+        FocusNextField,
+        /// 前の入力欄へ移動
+        FocusPreviousField,
+    ]
+);
+
+/// Tab order of the modal's text fields (ADR-F28 追記). The connection bar
+/// comes first because it is always rendered; the 接続先 pane's two fields
+/// only exist while it is open, and the panes' path fields come last.
+///
+/// These place the fields inside the modal's own tab group for anything that
+/// walks the window's tab stops (a click on the modal frame followed by Tab,
+/// say). Tab itself is served by [`FileTransferModal::focus_adjacent_field`],
+/// which cycles [`FileTransferModal::tab_order_fields`] instead, so that it
+/// wraps back into the modal rather than out to whatever the rest of the
+/// window painted.
+const HOST_FIELD_TAB_INDEX: isize = 0;
+const PORT_FIELD_TAB_INDEX: isize = 1;
+const USER_FIELD_TAB_INDEX: isize = 2;
+const PASSWORD_FIELD_TAB_INDEX: isize = 3;
+const PRESET_NAME_FIELD_TAB_INDEX: isize = 4;
+const PRESET_FOLDER_FIELD_TAB_INDEX: isize = 5;
+const LOCAL_PATH_FIELD_TAB_INDEX: isize = 6;
+const REMOTE_PATH_FIELD_TAB_INDEX: isize = 7;
+const PROMPT_FIELD_TAB_INDEX: isize = 8;
 
 /// Which machine the left-hand pane — and the transfer programs — belong to.
 ///
@@ -1236,6 +1266,65 @@ impl FileTransferModal {
         }
     }
 
+    /// The text fields Tab walks, in the order they are drawn. Fields that are
+    /// not rendered right now (the 接続先 pane's two, the prompt's one) are
+    /// left out, so Tab never lands somewhere the user cannot see.
+    fn tab_order_fields(&self) -> Vec<Entity<Editor>> {
+        let mut fields = vec![
+            self.host.clone(),
+            self.port.clone(),
+            self.user.clone(),
+            self.password.clone(),
+        ];
+        if self.presets_open {
+            fields.push(self.preset_name.clone());
+            fields.push(self.preset_folder.clone());
+        }
+        fields.push(self.local_path.clone());
+        fields.push(self.remote_path.clone());
+        if let Some(editor) = self
+            .prompt
+            .as_ref()
+            .and_then(|prompt| prompt.editor.clone())
+        {
+            fields.push(editor);
+        }
+        fields
+    }
+
+    /// Moves focus one field along [`Self::tab_order_fields`], wrapping at both
+    /// ends.
+    ///
+    /// Deliberately not `window.focus_next`: that walks the *window's* tab-stop
+    /// map, which every `tab_index(0isize)` button in the status bar joins —
+    /// the same index as ホスト. The status bar paints after the modal layer,
+    /// so those buttons sorted between ホスト and ポート, and Tab out of ホスト
+    /// left the modal for a dock button with no visible focus ring where Tab
+    /// was no longer bound at all. The tab group on the root element separates
+    /// the two numberings again, but a window-wide walk still runs off the end
+    /// of the group rather than wrapping back to ホスト, so the modal cycles
+    /// its own fields instead (第 13 便).
+    fn focus_adjacent_field(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let fields = self.tab_order_fields();
+        let last = match fields.len().checked_sub(1) {
+            Some(last) => last,
+            None => return,
+        };
+        let focused = fields
+            .iter()
+            .position(|editor| editor.focus_handle(cx).contains_focused(window, cx));
+        let target = match focused {
+            Some(index) if forward => (index + 1) % fields.len(),
+            Some(index) => (index + last) % fields.len(),
+            None if forward => 0,
+            None => last,
+        };
+        let Some(handle) = fields.get(target).map(|editor| editor.focus_handle(cx)) else {
+            return;
+        };
+        window.focus(&handle, cx);
+    }
+
     fn refresh(&mut self, side: PaneSide, cx: &mut Context<Self>) {
         match side {
             PaneSide::Local => self.refresh_local(cx),
@@ -1850,6 +1939,13 @@ impl FileTransferModal {
                     .child(Divider::vertical())
                     .child(
                         input_frame_sized(InputFrameSize::Compact, host_focused, cx)
+                            .track_focus(
+                                &self
+                                    .host
+                                    .focus_handle(cx)
+                                    .tab_index(HOST_FIELD_TAB_INDEX)
+                                    .tab_stop(true),
+                            )
                             .w(rems(13.))
                             .child(self.host.clone()),
                     )
@@ -1860,11 +1956,25 @@ impl FileTransferModal {
                     )
                     .child(
                         input_frame_sized(InputFrameSize::Compact, port_focused, cx)
+                            .track_focus(
+                                &self
+                                    .port
+                                    .focus_handle(cx)
+                                    .tab_index(PORT_FIELD_TAB_INDEX)
+                                    .tab_stop(true),
+                            )
                             .w(rems(4.))
                             .child(self.port.clone()),
                     )
                     .child(
                         input_frame_sized(InputFrameSize::Compact, user_focused, cx)
+                            .track_focus(
+                                &self
+                                    .user
+                                    .focus_handle(cx)
+                                    .tab_index(USER_FIELD_TAB_INDEX)
+                                    .tab_stop(true),
+                            )
                             .w(rems(8.))
                             .child(self.user.clone()),
                     )
@@ -1874,6 +1984,13 @@ impl FileTransferModal {
                     // (第 12 便).
                     .child(
                         input_frame_sized(InputFrameSize::Compact, password_focused, cx)
+                            .track_focus(
+                                &self
+                                    .password
+                                    .focus_handle(cx)
+                                    .tab_index(PASSWORD_FIELD_TAB_INDEX)
+                                    .tab_stop(true),
+                            )
                             .w(rems(10.))
                             .child(self.password.clone()),
                     )
@@ -2003,11 +2120,25 @@ impl FileTransferModal {
                         )
                         .child(
                             input_frame_sized(InputFrameSize::Compact, name_focused, cx)
+                                .track_focus(
+                                    &self
+                                        .preset_name
+                                        .focus_handle(cx)
+                                        .tab_index(PRESET_NAME_FIELD_TAB_INDEX)
+                                        .tab_stop(true),
+                                )
                                 .w(rems(12.))
                                 .child(self.preset_name.clone()),
                         )
                         .child(
                             input_frame_sized(InputFrameSize::Compact, folder_focused, cx)
+                                .track_focus(
+                                    &self
+                                        .preset_folder
+                                        .focus_handle(cx)
+                                        .tab_index(PRESET_FOLDER_FIELD_TAB_INDEX)
+                                        .tab_stop(true),
+                                )
                                 .w(rems(14.))
                                 .child(self.preset_folder.clone()),
                         )
@@ -2118,9 +2249,17 @@ impl FileTransferModal {
     fn render_pane(&self, side: PaneSide, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let pane = self.pane(side);
         let is_active = self.active_side == side;
-        let (path_editor, list_id) = match side {
-            PaneSide::Local => (self.local_path.clone(), "local-entries"),
-            PaneSide::Remote => (self.remote_path.clone(), "remote-entries"),
+        let (path_editor, list_id, path_tab_index) = match side {
+            PaneSide::Local => (
+                self.local_path.clone(),
+                "local-entries",
+                LOCAL_PATH_FIELD_TAB_INDEX,
+            ),
+            PaneSide::Remote => (
+                self.remote_path.clone(),
+                "remote-entries",
+                REMOTE_PATH_FIELD_TAB_INDEX,
+            ),
         };
         let entry_count = pane.entries.len();
         let loading = pane.loading;
@@ -2145,6 +2284,12 @@ impl FileTransferModal {
                     )
                     .child(
                         input_frame_sized(InputFrameSize::Compact, path_focused, cx)
+                            .track_focus(
+                                &path_editor
+                                    .focus_handle(cx)
+                                    .tab_index(path_tab_index)
+                                    .tab_stop(true),
+                            )
                             .flex_1()
                             .min_w_0()
                             .child(path_editor),
@@ -2343,6 +2488,12 @@ impl FileTransferModal {
         let prompt = self.prompt.as_ref()?;
         let editor = prompt.editor.clone().map(|editor| {
             input_frame(editor.focus_handle(cx).contains_focused(window, cx), cx)
+                .track_focus(
+                    &editor
+                        .focus_handle(cx)
+                        .tab_index(PROMPT_FIELD_TAB_INDEX)
+                        .tab_stop(true),
+                )
                 .w_full()
                 .child(editor)
         });
@@ -2490,6 +2641,11 @@ impl Render for FileTransferModal {
 
         v_flex()
             .key_context("FileTransfer")
+            // A tab group keeps the field indices above in a numbering of their
+            // own. Without it they share the window-wide order with the status
+            // bar's `tab_index(0isize)` buttons, which paint after the modal
+            // layer and so sorted in between ホスト and ポート (第 13 便).
+            .tab_group()
             .track_focus(&self.focus_handle)
             .elevation_3(cx)
             .w(rems(66.))
@@ -2521,6 +2677,16 @@ impl Render for FileTransferModal {
                     let side = this.active_side;
                     this.refresh(side, cx);
                 }
+            }))
+            .on_action(cx.listener(|this, _: &FocusNextField, window, cx| {
+                this.focus_adjacent_field(true, window, cx);
+                cx.stop_propagation();
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &FocusPreviousField, window, cx| {
+                this.focus_adjacent_field(false, window, cx);
+                cx.stop_propagation();
+                cx.notify();
             }))
             .child(
                 h_flex()
@@ -2695,5 +2861,35 @@ impl FileTransferModal {
 
     pub(crate) fn local_directory_for_test(&self, cx: &App) -> String {
         self.local_directory(cx)
+    }
+
+    pub(crate) fn focus_host_for_test(&self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.host.focus_handle(cx), cx);
+    }
+
+    /// Which of the tab-stop fields currently has focus, by name, so a Tab
+    /// navigation test can assert on it without reaching into private fields
+    /// from outside this module.
+    pub(crate) fn focused_field_for_test(&self, window: &Window, cx: &App) -> Option<&'static str> {
+        let is_focused = |editor: &Entity<Editor>| editor.focus_handle(cx).is_focused(window);
+        if is_focused(&self.host) {
+            Some("host")
+        } else if is_focused(&self.port) {
+            Some("port")
+        } else if is_focused(&self.user) {
+            Some("user")
+        } else if is_focused(&self.password) {
+            Some("password")
+        } else if is_focused(&self.preset_name) {
+            Some("preset_name")
+        } else if is_focused(&self.preset_folder) {
+            Some("preset_folder")
+        } else if is_focused(&self.local_path) {
+            Some("local_path")
+        } else if is_focused(&self.remote_path) {
+            Some("remote_path")
+        } else {
+            None
+        }
     }
 }

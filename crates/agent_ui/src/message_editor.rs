@@ -209,6 +209,10 @@ pub struct MessageEditor {
     local_commands: SharedLocalCommands,
     agent_id: AgentId,
     thread_store: Option<Entity<ThreadStore>>,
+    /// ウィンドウに紐づくフォーカス購読。別ウィンドウへ移されたら
+    /// [`MessageEditor::rebind_window_focus_listeners`] で丸ごと張り替えるので、
+    /// `detach()` せずここで持つ。
+    _focus_subscriptions: Vec<Subscription>,
     _subscriptions: Vec<Subscription>,
     _parse_slash_command_task: Task<()>,
 }
@@ -450,6 +454,44 @@ async fn insert_resolved_pasted_context_items(
 }
 
 impl MessageEditor {
+    /// ADR-F36: スレッドのタブが別のウィンドウへ移されたときに持ち主を
+    /// 張り替える。
+    pub(crate) fn set_workspace(&mut self, workspace: WeakEntity<Workspace>) {
+        self.workspace = workspace;
+    }
+
+    /// ADR-F36: フォーカスリスナーは登録先のウィンドウに紐づくので、別
+    /// ウィンドウへ移したタブでは張り直す。エディター本体だけでなく、
+    /// `MessageEditorEvent::Focus` / `LostFocus` を出す自分の購読も張り替える
+    /// (旧ウィンドウのフォーカス出入りを見たままだと、送信ボタンの活性や
+    /// 「入力中」の判定が新しいウィンドウで動かない)。
+    pub(crate) fn rebind_window_focus_listeners(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.editor.update(cx, |editor, cx| {
+            editor.rebind_window_focus_listeners(window, cx);
+        });
+        self._focus_subscriptions = Self::focus_subscriptions(&self.editor, window, cx);
+    }
+
+    fn focus_subscriptions(
+        editor: &Entity<Editor>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<Subscription> {
+        let focus_handle = editor.focus_handle(cx);
+        vec![
+            cx.on_focus_in(&focus_handle, window, |_, _, cx| {
+                cx.emit(MessageEditorEvent::Focus)
+            }),
+            cx.on_focus_out(&focus_handle, window, |_, _, _, cx| {
+                cx.emit(MessageEditorEvent::LostFocus)
+            }),
+        ]
+    }
+
     pub fn new(
         workspace: WeakEntity<Workspace>,
         project: WeakEntity<Project>,
@@ -523,14 +565,7 @@ impl MessageEditor {
             editor.set_completion_provider(Some(completion_provider.clone()))
         });
 
-        cx.on_focus_in(&editor.focus_handle(cx), window, |_, _, cx| {
-            cx.emit(MessageEditorEvent::Focus)
-        })
-        .detach();
-        cx.on_focus_out(&editor.focus_handle(cx), window, |_, _, _, cx| {
-            cx.emit(MessageEditorEvent::LostFocus)
-        })
-        .detach();
+        let focus_subscriptions = Self::focus_subscriptions(&editor, window, cx);
 
         let mut has_hint = false;
         let mut subscriptions = Vec::new();
@@ -611,6 +646,7 @@ impl MessageEditor {
             local_commands,
             agent_id,
             thread_store,
+            _focus_subscriptions: focus_subscriptions,
             _subscriptions: subscriptions,
             _parse_slash_command_task: Task::ready(()),
         }

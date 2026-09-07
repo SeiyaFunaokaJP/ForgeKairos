@@ -787,6 +787,14 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("terminal::QuickConnect", "ターミナル: クイック接続…"),
     ("terminal::OpenFileTransfer", "ターミナル: ファイル転送…"),
     (
+        "file_transfer::FocusNextField",
+        "ファイル転送: 次の入力欄へ",
+    ),
+    (
+        "file_transfer::FocusPreviousField",
+        "ファイル転送: 前の入力欄へ",
+    ),
+    (
         "terminal::InstallClaudeCode",
         "ターミナル: Claude Code をインストール (公式コマンド)",
     ),
@@ -1054,6 +1062,18 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "エージェント: パネルのフォーカス切り替え",
     ),
     ("agent::NewThread", "エージェント: 新規スレッド"),
+    (
+        "agent::OpenThreadInTab",
+        "エージェント: スレッドをタブで開く",
+    ),
+    (
+        "agent::OpenThreadInSplit",
+        "エージェント: スレッドを右に分割して開く",
+    ),
+    (
+        "agent::MoveThreadToPanel",
+        "エージェント: スレッドをパネルに戻す",
+    ),
     (
         "agent::NewTerminalThread",
         "エージェント: 新規ターミナルスレッド",

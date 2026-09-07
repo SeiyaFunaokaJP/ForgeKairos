@@ -124,6 +124,12 @@ pub trait Panel: Focusable + EventEmitter<PanelEvent> + Render + Sized {
     fn pane(&self) -> Option<Entity<Pane>> {
         None
     }
+    /// 葉ペインをすべて返す。分割を持つパネル (ターミナル / ブラウザー) は
+    /// [`Panel::pane`] がアクティブな 1 枚しか返さないので、そこに置かれた
+    /// タブを数え落とさないための入口 (ADR-F37 の後始末が使う)。
+    fn panes(&self) -> Vec<Entity<Pane>> {
+        self.pane().into_iter().collect()
+    }
     fn remote_id() -> Option<proto::PanelId> {
         None
     }
@@ -155,6 +161,7 @@ pub trait PanelHandle: Send + Sync {
     fn set_active(&self, active: bool, window: &mut Window, cx: &mut App);
     fn remote_id(&self) -> Option<proto::PanelId>;
     fn pane(&self, cx: &App) -> Option<Entity<Pane>>;
+    fn panes(&self, cx: &App) -> Vec<Entity<Pane>>;
     fn default_size(&self, window: &Window, cx: &App) -> Pixels;
     fn min_size(&self, window: &Window, cx: &App) -> Option<Pixels>;
     fn initial_size_state(&self, window: &Window, cx: &App) -> PanelSizeState;
@@ -237,6 +244,10 @@ where
 
     fn pane(&self, cx: &App) -> Option<Entity<Pane>> {
         self.read(cx).pane()
+    }
+
+    fn panes(&self, cx: &App) -> Vec<Entity<Pane>> {
+        self.read(cx).panes()
     }
 
     fn remote_id(&self) -> Option<PanelId> {
@@ -557,6 +568,13 @@ impl Dock {
         self.panel_entries
             .iter()
             .find_map(|entry| entry.panel.to_any().downcast().ok())
+    }
+
+    /// このドックが抱えているパネル全部 (開いているかどうかは問わない)。
+    /// 畳んだドックのパネルにもタブは載ったままなので、生死を数えるときは
+    /// [`Dock::visible_panels`] ではなくこちらを使う。
+    pub fn panels(&self) -> impl Iterator<Item = &Arc<dyn PanelHandle>> {
+        self.panel_entries.iter().map(|entry| &entry.panel)
     }
 
     pub fn panel_index_for_type<T: Panel>(&self) -> Option<usize> {

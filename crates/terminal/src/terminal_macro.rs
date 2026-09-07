@@ -110,11 +110,19 @@ fn is_zero(value: &u64) -> bool {
     *value == 0
 }
 
+/// Identity of a macro. Two macros may carry the same name as long as they sit
+/// in different folders (「A-PC用/ls」 and 「B-PC用/ls」 are the case this exists
+/// for), so every lookup, reference and edit takes the pair rather than the
+/// bare name.
+pub type MacroKey = (Option<String>, String);
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalMacro {
     pub name: String,
-    /// `/`-separated grouping path, normalized by [`normalize_folder`]. Purely
-    /// a label: the macros stay a flat array on disk.
+    /// Which [`MacroFolder`] the macro is filed under, by name. `None` is
+    /// 未分類. Normalized by [`normalize_folder`]; a value that names no folder
+    /// in [`TerminalSessionsFile::macro_folders`] is repaired on load by
+    /// [`TerminalSessionsFile::ensure_macro_folders`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -156,12 +164,48 @@ impl TerminalMacro {
         self.folder.as_deref().unwrap_or_default()
     }
 
+    /// What identifies this macro among all saved ones.
+    pub fn key(&self) -> MacroKey {
+        (self.folder.clone(), self.name.clone())
+    }
+
+    pub fn is(&self, folder: Option<&str>, name: &str) -> bool {
+        self.folder.as_deref() == folder && self.name == name
+    }
+
     /// `フォルダー/名前`, which is what both the picker's search and its sort
     /// order work on.
     pub fn qualified_name(&self) -> String {
         match &self.folder {
             Some(folder) => format!("{folder}/{}", self.name),
             None => self.name.clone(),
+        }
+    }
+}
+
+/// A grouping the user made in the macro editor (ADR-F35). Folders are first
+/// class: one exists as soon as it is created, whether or not anything is filed
+/// under it, and the order of [`TerminalSessionsFile::macro_folders`] is the
+/// order the editor tree and the runner picker show — there is no separate
+/// `order` field to keep in step with it.
+///
+/// The name doubles as the key [`TerminalMacro::folder`] and
+/// [`SavedConnection::macro_folder`] point at, which is why renaming one has to
+/// rewrite those too.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MacroFolder {
+    pub name: String,
+    /// Whether the heading is folded shut. Kept in the file so the editor and
+    /// the picker agree, and so the state survives closing the modal.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub collapsed: bool,
+}
+
+impl MacroFolder {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            collapsed: false,
         }
     }
 }
@@ -252,6 +296,13 @@ pub struct SavedConnection {
         alias = "macro_name"
     )]
     pub macro_name: Option<String>,
+    /// Folder half of the reference to that macro (ADR-F35), because the same
+    /// name may exist in several folders. Absent in files written before
+    /// folders became first class, where the name alone is resolved against the
+    /// first macro carrying it — see
+    /// [`TerminalSessionsFile::macro_for_connection`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub macro_folder: Option<String>,
     /// Whether to start a session log for this connection. `None` follows the
     /// `terminal.session_log.auto` setting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -312,15 +363,95 @@ impl SavedConnection {
 pub struct TerminalSessionsFile {
     #[serde(default)]
     pub connections: Vec<SavedConnection>,
+    /// The macro folders, in the order they are shown. Left out of the file
+    /// entirely when there are none, so a file written before ADR-F35 comes
+    /// back byte for byte until the user edits something.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub macro_folders: Vec<MacroFolder>,
     #[serde(default)]
     pub macros: Vec<TerminalMacro>,
 }
 
 impl TerminalSessionsFile {
-    pub fn macro_named(&self, name: &str) -> Option<&TerminalMacro> {
+    pub fn macro_named(&self, folder: Option<&str>, name: &str) -> Option<&TerminalMacro> {
         self.macros
             .iter()
-            .find(|terminal_macro| terminal_macro.name == name)
+            .find(|terminal_macro| terminal_macro.is(folder, name))
+    }
+
+    pub fn macros_in_folder(&self, folder: Option<&str>) -> impl Iterator<Item = &TerminalMacro> {
+        self.macros
+            .iter()
+            .filter(move |terminal_macro| terminal_macro.folder.as_deref() == folder)
+    }
+
+    pub fn folder_index(&self, name: &str) -> Option<usize> {
+        self.macro_folders
+            .iter()
+            .position(|folder| folder.name == name)
+    }
+
+    pub fn has_folder(&self, name: &str) -> bool {
+        self.folder_index(name).is_some()
+    }
+
+    /// Where a macro's folder sits in the display order. 未分類 (and a folder
+    /// that somehow got lost) sorts last, which is where both the tree and the
+    /// picker put it.
+    pub fn folder_rank(&self, folder: Option<&str>) -> usize {
+        folder
+            .and_then(|folder| self.folder_index(folder))
+            .unwrap_or(usize::MAX)
+    }
+
+    /// The macro `connection` runs once it is up. A connection saved after
+    /// ADR-F35 names the folder as well, which is the only way to tell 「ルータ
+    /// 用/ls」 from 「A-PC用/ls」; an older one only has the name.
+    ///
+    /// `macro_folder` is left out of the file when it is `None`, so 「saved
+    /// before folders existed」 and 「explicitly 未分類」 look the same on disk.
+    /// The unfiled macro is therefore tried first: a connection the user made
+    /// against 「(未分類)/reload」 must not end up running 「ルータ用/reload」.
+    /// Only when no unfiled macro carries the name is it read as the older
+    /// form, which gets the first macro carrying it.
+    pub fn macro_for_connection(&self, connection: &SavedConnection) -> Option<&TerminalMacro> {
+        let name = connection.macro_name.as_deref()?;
+        match connection.macro_folder.as_deref() {
+            Some(folder) => self.macro_named(Some(folder), name),
+            None => self.macro_named(None, name).or_else(|| {
+                self.macros
+                    .iter()
+                    .find(|terminal_macro| terminal_macro.name == name)
+            }),
+        }
+    }
+
+    /// Registers a [`MacroFolder`] for every folder name a macro or a
+    /// connection points at that has none, keeping the order they are first
+    /// mentioned in. This is what makes a file written before ADR-F35 open with
+    /// its folders already in the tree; nothing is written back until the user
+    /// saves something.
+    pub fn ensure_macro_folders(&mut self) {
+        let mut missing: Vec<&str> = Vec::new();
+        let referenced = self
+            .macros
+            .iter()
+            .filter_map(|terminal_macro| terminal_macro.folder.as_deref())
+            .chain(
+                self.connections
+                    .iter()
+                    .filter_map(|connection| connection.macro_folder.as_deref()),
+            );
+        for folder in referenced {
+            if !self.has_folder(folder) && !missing.contains(&folder) {
+                missing.push(folder);
+            }
+        }
+        let missing = missing
+            .into_iter()
+            .map(MacroFolder::new)
+            .collect::<Vec<_>>();
+        self.macro_folders.extend(missing);
     }
 }
 
@@ -387,7 +518,11 @@ impl TerminalSessionStore {
             // task is alive, so this task has to keep it alive.
             let _watcher = watcher;
             while let Some(contents) = contents.next().await {
-                let file = parse_sessions_file(&contents);
+                let mut file = parse_sessions_file(&contents);
+                // A file written before ADR-F35 has no `macro_folders`, but the
+                // UI is built on that list, so the folders its macros mention
+                // are put back before anything reads it.
+                file.ensure_macro_folders();
                 if this
                     .update(cx, |this, cx| {
                         // The very first read always notifies, even when it
@@ -434,8 +569,16 @@ impl TerminalSessionStore {
         &self.file.connections
     }
 
-    pub fn macro_named(&self, name: &str) -> Option<&TerminalMacro> {
-        self.file.macro_named(name)
+    pub fn macro_folders(&self) -> &[MacroFolder] {
+        &self.file.macro_folders
+    }
+
+    pub fn macro_named(&self, folder: Option<&str>, name: &str) -> Option<&TerminalMacro> {
+        self.file.macro_named(folder, name)
+    }
+
+    pub fn macro_for_connection(&self, connection: &SavedConnection) -> Option<&TerminalMacro> {
+        self.file.macro_for_connection(connection)
     }
 
     /// Replaces the whole file and writes it back. The in-memory copy is
@@ -446,6 +589,11 @@ impl TerminalSessionStore {
         file: TerminalSessionsFile,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
+        let mut file = file;
+        // Every write is also where the folders a pre-ADR-F35 file only implied
+        // become part of it, and where a folder a hand-edited file forgot to
+        // declare is put back.
+        file.ensure_macro_folders();
         self.file = file;
         self.loaded = true;
         cx.notify();
@@ -857,11 +1005,19 @@ mod tests {
                 port: None,
                 user: None,
                 macro_name: Some("ログイン".to_string()),
+                macro_folder: Some("拠点/本社".to_string()),
                 log: Some(true),
                 remember_password: true,
                 transfer_protocol: Some("ftp".to_string()),
                 transfer_port: Some(2121),
             }],
+            macro_folders: vec![
+                MacroFolder::new("拠点/本社"),
+                MacroFolder {
+                    name: "拠点/大阪".to_string(),
+                    collapsed: true,
+                },
+            ],
             macros: vec![TerminalMacro {
                 name: "ログイン".to_string(),
                 folder: Some("拠点/本社".to_string()),
@@ -885,7 +1041,180 @@ mod tests {
         };
 
         let text = serialize_sessions_file(&file).expect("serializes");
+        assert!(text.contains(r#""collapsed": true"#), "{text}");
         assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn the_same_name_in_two_folders_is_two_macros() {
+        let file = parse_sessions_file(
+            r#"{
+                "macro_folders": [{ "name": "A-PC用" }, { "name": "B-PC用" }],
+                "macros": [
+                    { "name": "ls", "folder": "A-PC用", "description": "A", "steps": [] },
+                    { "name": "ls", "folder": "B-PC用", "description": "B", "steps": [] },
+                    { "name": "ls", "description": "未分類", "steps": [] }
+                ]
+            }"#,
+        );
+
+        assert_eq!(
+            file.macro_named(Some("A-PC用"), "ls")
+                .map(|found| found.description.as_str()),
+            Some("A")
+        );
+        assert_eq!(
+            file.macro_named(Some("B-PC用"), "ls")
+                .map(|found| found.description.as_str()),
+            Some("B")
+        );
+        assert_eq!(
+            file.macro_named(None, "ls")
+                .map(|found| found.description.as_str()),
+            Some("未分類")
+        );
+        assert_eq!(file.macro_named(Some("C-PC用"), "ls"), None);
+        assert_eq!(file.macros_in_folder(Some("A-PC用")).count(), 1);
+        assert_eq!(file.macros_in_folder(None).count(), 1);
+        assert_eq!(
+            file.macros[0].key(),
+            (Some("A-PC用".to_string()), "ls".to_string())
+        );
+    }
+
+    #[test]
+    fn a_connection_resolves_its_macro_by_folder_and_name() {
+        let mut file = parse_sessions_file(
+            r#"{
+                "macro_folders": [{ "name": "ルータ用" }, { "name": "A-PC用" }],
+                "macros": [
+                    { "name": "ls", "folder": "ルータ用", "description": "router", "steps": [] },
+                    { "name": "ls", "folder": "A-PC用", "description": "pc", "steps": [] }
+                ]
+            }"#,
+        );
+        let mut connection = SavedConnection {
+            name: "r1".into(),
+            host: "10.0.0.1".into(),
+            macro_name: Some("ls".to_string()),
+            macro_folder: Some("A-PC用".to_string()),
+            ..SavedConnection::default()
+        };
+        file.connections = vec![connection.clone()];
+        assert_eq!(
+            file.macro_for_connection(&connection)
+                .map(|found| found.description.as_str()),
+            Some("pc")
+        );
+
+        // A file written before ADR-F35 has only the name, and gets the first
+        // macro carrying it.
+        connection.macro_folder = None;
+        assert_eq!(
+            file.macro_for_connection(&connection)
+                .map(|found| found.description.as_str()),
+            Some("router")
+        );
+
+        connection.macro_folder = Some("消えたフォルダー".to_string());
+        assert_eq!(file.macro_for_connection(&connection), None);
+        connection.macro_name = None;
+        assert_eq!(file.macro_for_connection(&connection), None);
+    }
+
+    #[test]
+    fn a_connection_without_a_folder_prefers_the_unfiled_macro() {
+        let file = parse_sessions_file(
+            r#"{
+                "macro_folders": [{ "name": "ルータ用" }],
+                "macros": [
+                    { "name": "reload", "folder": "ルータ用", "description": "router", "steps": [] },
+                    { "name": "reload", "description": "未分類", "steps": [] }
+                ]
+            }"#,
+        );
+        // `macro_folder` is omitted from the file when it is `None`, so this is
+        // both what an explicitly 未分類 reference and a pre-ADR-F35 one look
+        // like. 未分類 wins, because that is the only reading the user can have
+        // asked for.
+        let connection = SavedConnection {
+            name: "r1".into(),
+            host: "10.0.0.1".into(),
+            macro_name: Some("reload".to_string()),
+            macro_folder: None,
+            ..SavedConnection::default()
+        };
+        assert_eq!(
+            file.macro_for_connection(&connection)
+                .map(|found| found.description.as_str()),
+            Some("未分類")
+        );
+
+        // With nothing unfiled by that name it is the older form after all, and
+        // still finds the foldered macro.
+        let file = parse_sessions_file(
+            r#"{
+                "macro_folders": [{ "name": "ルータ用" }],
+                "macros": [
+                    { "name": "reload", "folder": "ルータ用", "description": "router", "steps": [] }
+                ]
+            }"#,
+        );
+        assert_eq!(
+            file.macro_for_connection(&connection)
+                .map(|found| found.description.as_str()),
+            Some("router")
+        );
+    }
+
+    #[test]
+    fn a_legacy_file_gets_its_folders_back_in_first_seen_order() {
+        let text = r#"{
+            "connections": [
+                { "name": "r1", "host": "10.0.0.1", "macro": "ls", "macro_folder": "接続だけ" }
+            ],
+            "macros": [
+                { "name": "ls", "folder": "B-PC用", "steps": [] },
+                { "name": "show run", "folder": "ルータ用", "steps": [] },
+                { "name": "ls", "folder": "B-PC用", "steps": [] },
+                { "name": "メモ", "steps": [] }
+            ]
+        }"#;
+        let file = parse_sessions_file(text);
+        // Parsing on its own changes nothing, so an untouched old file is
+        // rewritten exactly as it was read.
+        assert!(file.macro_folders.is_empty());
+        let resaved = serialize_sessions_file(&file).expect("serializes");
+        assert!(!resaved.contains("macro_folders"), "{resaved}");
+
+        let mut repaired = file;
+        repaired.ensure_macro_folders();
+        assert_eq!(
+            repaired
+                .macro_folders
+                .iter()
+                .map(|folder| folder.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["B-PC用", "ルータ用", "接続だけ"],
+            "macros are seen first, in file order, then the connections"
+        );
+        assert!(
+            repaired
+                .macro_folders
+                .iter()
+                .all(|folder| !folder.collapsed)
+        );
+        assert_eq!(repaired.folder_rank(Some("ルータ用")), 1);
+        assert_eq!(repaired.folder_rank(None), usize::MAX);
+        assert_eq!(repaired.folder_rank(Some("知らない")), usize::MAX);
+
+        // Repairing an already repaired file adds nothing.
+        let twice = {
+            let mut twice = repaired.clone();
+            twice.ensure_macro_folders();
+            twice
+        };
+        assert_eq!(twice, repaired);
     }
 
     #[test]
@@ -898,7 +1227,7 @@ mod tests {
         };
         let file = TerminalSessionsFile {
             connections: vec![connection.clone()],
-            macros: Vec::new(),
+            ..TerminalSessionsFile::default()
         };
         let text = serialize_sessions_file(&file).expect("serializes");
         assert!(text.contains("remember_password"));
@@ -909,7 +1238,7 @@ mod tests {
         connection.remember_password = false;
         let file = TerminalSessionsFile {
             connections: vec![connection],
-            macros: Vec::new(),
+            ..TerminalSessionsFile::default()
         };
         let text = serialize_sessions_file(&file).expect("serializes");
         assert!(!text.contains("remember_password"));
@@ -939,7 +1268,7 @@ mod tests {
         };
         let text = serialize_sessions_file(&TerminalSessionsFile {
             connections: vec![connection.clone()],
-            macros: Vec::new(),
+            ..TerminalSessionsFile::default()
         })
         .expect("serializes");
         assert!(!text.contains("transfer_protocol"), "{text}");
@@ -949,7 +1278,7 @@ mod tests {
         connection.transfer_port = Some(2121);
         let file = TerminalSessionsFile {
             connections: vec![connection],
-            macros: Vec::new(),
+            ..TerminalSessionsFile::default()
         };
         let text = serialize_sessions_file(&file).expect("serializes");
         assert_eq!(parse_sessions_file(&text), file);
@@ -1152,6 +1481,7 @@ mod tests {
             port: Some(2323),
             user: Some("admin".into()),
             macro_name: None,
+            macro_folder: None,
             log: None,
             remember_password: false,
             transfer_protocol: None,
@@ -1173,6 +1503,7 @@ mod tests {
             port: Some(2222),
             user: Some("admin".into()),
             macro_name: None,
+            macro_folder: None,
             log: None,
             remember_password: false,
             transfer_protocol: None,

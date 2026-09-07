@@ -26,12 +26,12 @@ use webview2_com::{
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
     DocumentTitleChangedEventHandler, FocusChangedEventHandler, HistoryChangedEventHandler,
     Microsoft::Web::WebView2::Win32::{
-        COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+        COREWEBVIEW2_COLOR, COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
         COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, COREWEBVIEW2_PREFERRED_COLOR_SCHEME,
         COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
         CreateCoreWebView2EnvironmentWithOptions, ICoreWebView2, ICoreWebView2_13,
-        ICoreWebView2Controller, ICoreWebView2Controller3, ICoreWebView2Environment,
-        ICoreWebView2EnvironmentOptions,
+        ICoreWebView2Controller, ICoreWebView2Controller2, ICoreWebView2Controller3,
+        ICoreWebView2Environment, ICoreWebView2EnvironmentOptions,
     },
     NavigationCompletedEventHandler, NewWindowRequestedEventHandler, SourceChangedEventHandler,
     take_pwstr,
@@ -122,14 +122,15 @@ pub(crate) struct OverlayRect {
 /// Whether the host window was created with `WS_EX_NOREDIRECTIONBITMAP`, which
 /// `gpui_windows` does unless `GPUI_DISABLE_DIRECT_COMPOSITION` is set.
 ///
-/// Only logged, because both cases work but differ in how the page ends up on
-/// screen. With DirectComposition gpui binds its visual tree with
+/// Both cases work but differ in how the page ends up on screen, so the panel
+/// reads it to decide what it has to hide. With DirectComposition gpui binds
+/// its visual tree with
 /// `CreateTargetForHwnd(hwnd, topmost = true)`, so its swap chain composites
 /// *above* this child window and the page is only visible because gpui clears
 /// the rectangle to transparent (`Window::paint_punch_through`). Without it the
 /// swap chain is bound straight to the HWND and the child is in front of
 /// everything gpui draws, which is why the overlay holes below exist.
-fn host_uses_direct_composition(host_hwnd: isize) -> bool {
+pub(crate) fn host_uses_direct_composition(host_hwnd: isize) -> bool {
     let hwnd = HWND(host_hwnd as *mut c_void);
     let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
     (ex_style as u32) & WS_EX_NOREDIRECTIONBITMAP.0 != 0
@@ -316,6 +317,10 @@ pub(crate) struct WebView {
 
 struct Inner {
     host_hwnd: HWND,
+    /// Whether gpui composites its swap chain in front of this child window;
+    /// see [`host_uses_direct_composition`]. Read once, because the flag comes
+    /// from an extended window style that is fixed at window creation.
+    composited: bool,
     events: UnboundedSender<WebViewEvent>,
     state: RefCell<State>,
 }
@@ -329,6 +334,7 @@ struct State {
     /// panel is interactive the whole time.
     pending_url: Option<String>,
     pending_dark_mode: Option<bool>,
+    pending_background_color: Option<COREWEBVIEW2_COLOR>,
     bounds: RECT,
     /// Parts of `bounds` that gpui paints over this frame, in the same
     /// coordinates. Cut out of the child windows so the overlay stays visible.
@@ -366,8 +372,10 @@ impl WebView {
         proxy_endpoint: Option<&str>,
         events: UnboundedSender<WebViewEvent>,
     ) -> Result<Self> {
+        let composited = host_uses_direct_composition(host_hwnd);
         let inner = Rc::new(Inner {
             host_hwnd: HWND(host_hwnd as *mut c_void),
+            composited,
             events,
             state: RefCell::new(State {
                 scale: 1.0,
@@ -377,8 +385,7 @@ impl WebView {
         });
 
         log::info!(
-            "WebView2: requesting a surface (host hwnd {host_hwnd:#x}, direct composition on the host window: {})",
-            host_uses_direct_composition(host_hwnd),
+            "WebView2: requesting a surface (host hwnd {host_hwnd:#x}, direct composition on the host window: {composited})",
         );
 
         let waiter = {
@@ -497,6 +504,27 @@ impl WebView {
         }
     }
 
+    /// The colour WebView2 paints where the page has not drawn yet: before the
+    /// first render of a document, and for the frames between `SetIsVisible`
+    /// and Chromium's next present. Without it that is WebView2's own white,
+    /// which reads as a flash against a dark theme (ADR-F32).
+    ///
+    /// WebView2 only accepts fully opaque or fully transparent, so the alpha is
+    /// forced; a transparent default would show the host window's black class
+    /// brush instead of the theme colour.
+    pub(crate) fn set_background_color(&self, red: u8, green: u8, blue: u8) {
+        let color = COREWEBVIEW2_COLOR {
+            A: u8::MAX,
+            R: red,
+            G: green,
+            B: blue,
+        };
+        match self.inner.controller() {
+            Some(controller) => apply_background_color(&controller, color),
+            None => self.inner.state.borrow_mut().pending_background_color = Some(color),
+        }
+    }
+
     /// Hands the Win32 keyboard focus back to the GPUI window when the page
     /// currently owns it. Windows leaves focus on the child HWND after a click
     /// lands on the parent's client area, so GPUI would stay key-dead until the
@@ -594,7 +622,7 @@ impl Inner {
                 .collect::<Vec<_>>()
         };
 
-        let (pending_url, pending_dark_mode) = {
+        let (pending_url, pending_dark_mode, pending_background_color) = {
             let mut state = self.state.borrow_mut();
             state.controller = Some(controller);
             state.webview = Some(webview.clone());
@@ -604,7 +632,11 @@ impl Inner {
             state.applied_bounds = None;
             state.applied_scale = None;
             state.applied_visible = None;
-            (state.pending_url.take(), state.pending_dark_mode.take())
+            (
+                state.pending_url.take(),
+                state.pending_dark_mode.take(),
+                state.pending_background_color.take(),
+            )
         };
 
         log::info!(
@@ -614,6 +646,13 @@ impl Inner {
 
         if let Some(dark) = pending_dark_mode {
             apply_dark_mode(&webview, dark);
+        }
+        // Before the first `SetIsVisible(true)`, so the surface never shows
+        // WebView2's default white in the frame it appears.
+        if let Some(color) = pending_background_color
+            && let Some(controller) = self.controller()
+        {
+            apply_background_color(&controller, color);
         }
         self.apply_viewport(false);
         // Always take the inventory once, even when the surface stays hidden:
@@ -900,7 +939,7 @@ impl Inner {
             if unsafe { GetParent(child) }.ok() != Some(self.host_hwnd) {
                 continue;
             }
-            clip_child_window(self.host_hwnd, child, &holes, scale);
+            clip_child_window(self.host_hwnd, child, &holes, scale, !self.composited);
         }
 
         self.state.borrow_mut().applied_clip = Some((bounds, holes));
@@ -1093,11 +1132,17 @@ fn intersect_rects(one: RECT, other: RECT) -> Option<RECT> {
 /// Windows keeps a window region across moves and resizes without adjusting it,
 /// so the region is rebuilt from the child's current rectangle whenever either
 /// the holes or the surface bounds change.
-fn clip_child_window(host_hwnd: HWND, child: HWND, holes: &[RECT], scale: f64) {
+///
+/// `redraw` asks Windows to erase and repaint the child. Under
+/// DirectComposition that is pure cost - DWM recomposites the child's visual
+/// from the new region on its own - and it is visible as a dark flash across
+/// the page every time a tooltip appears or goes away. Without
+/// DirectComposition the child owns those pixels, so the repaint is what makes
+/// the change show up.
+fn clip_child_window(host_hwnd: HWND, child: HWND, holes: &[RECT], scale: f64, redraw: bool) {
     if holes.is_empty() {
-        // Passing no region restores the default (the whole window) and
-        // repaints it.
-        if unsafe { SetWindowRgn(child, None, true) } == 0 {
+        // Passing no region restores the default (the whole window).
+        if unsafe { SetWindowRgn(child, None, redraw) } == 0 {
             log::warn!(
                 "WebView2: could not clear the clipping region of child window {:#x}",
                 child.0 as isize
@@ -1167,12 +1212,33 @@ fn clip_child_window(host_hwnd: HWND, child: HWND, holes: &[RECT], scale: f64) {
 
     // On success the window owns the region and must not be deleted here; on
     // failure it is still ours.
-    if unsafe { SetWindowRgn(child, Some(region), true) } == 0 {
+    if unsafe { SetWindowRgn(child, Some(region), redraw) } == 0 {
         log::warn!(
             "WebView2: could not clip child window {:#x} to the gpui overlays",
             child.0 as isize
         );
         unsafe { DeleteObject(region.into()) }.ok().log_err();
+    }
+}
+
+/// `ICoreWebView2Controller2` ships with every runtime we support, so a failed
+/// cast means an unexpectedly old one; the page then keeps WebView2's white
+/// default, which is cosmetic.
+fn apply_background_color(controller: &ICoreWebView2Controller, color: COREWEBVIEW2_COLOR) {
+    let Ok(controller) = controller.cast::<ICoreWebView2Controller2>() else {
+        log::warn!("WebView2: this runtime cannot set a default background colour");
+        return;
+    };
+    if unsafe { controller.SetDefaultBackgroundColor(color) }
+        .log_err()
+        .is_some()
+    {
+        log::info!(
+            "WebView2: default background colour set to #{:02x}{:02x}{:02x}",
+            color.R,
+            color.G,
+            color.B
+        );
     }
 }
 

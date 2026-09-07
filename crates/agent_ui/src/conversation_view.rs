@@ -27,10 +27,10 @@ use file_icons::FileIcons;
 use fs::Fs;
 use futures::FutureExt as _;
 use gpui::{
-    Action, Animation, AnimationExt, App, ClickEvent, ClipboardItem, CursorStyle, ElementId, Empty,
-    Entity, EventEmitter, FocusHandle, Focusable, Hsla, ListOffset, ListState, ObjectFit,
-    PlatformDisplay, ScrollHandle, SharedString, StyledText, Subscription, Task, TextRun,
-    TextStyle, WeakEntity, Window, WindowHandle, div, ease_in_out, img, linear_color_stop,
+    Action, Animation, AnimationExt, AnyWindowHandle, App, ClickEvent, ClipboardItem, CursorStyle,
+    ElementId, Empty, Entity, EventEmitter, FocusHandle, Focusable, Hsla, ListOffset, ListState,
+    ObjectFit, PlatformDisplay, ScrollHandle, SharedString, StyledText, Subscription, Task,
+    TextRun, TextStyle, WeakEntity, Window, WindowHandle, div, ease_in_out, img, linear_color_stop,
     linear_gradient, list, pulsating_between,
 };
 use language::{Buffer, Language, Rope};
@@ -588,6 +588,16 @@ pub enum AcpServerViewEvent {
 
 impl EventEmitter<AcpServerViewEvent> for ConversationView {}
 
+/// 1 つの通知ポップアップに張った購読一式と、それを張り直すのに要る材料。
+/// どの購読も登録先のウィンドウに紐づくので、ADR-F36 でタブが別ウィンドウへ
+/// 移ったときは材料から作り直す。
+struct NotificationBinding {
+    root_thread_id: ThreadId,
+    root_work_dirs: Option<PathList>,
+    root_title: Option<SharedString>,
+    _subscriptions: Vec<Subscription>,
+}
+
 pub struct ConversationView {
     agent: Rc<dyn AgentServer>,
     connection_store: Entity<AgentConnectionStore>,
@@ -601,7 +611,11 @@ pub struct ConversationView {
     server_state: ServerState,
     focus_handle: FocusHandle,
     notifications: Vec<WindowHandle<AgentNotification>>,
-    notification_subscriptions: HashMap<WindowHandle<AgentNotification>, Vec<Subscription>>,
+    notification_subscriptions: HashMap<WindowHandle<AgentNotification>, NotificationBinding>,
+    /// ADR-F36: サーバーがまだ繋がっていない (= [`ThreadView`] がまだ無い)
+    /// うちにタブが別ウィンドウへ移されたときの張り直し予約。接続できた時点で
+    /// [`ConversationView::apply_pending_window_rebind`] が消化する。
+    pending_window_rebind: Option<AnyWindowHandle>,
     auth_task: Option<Task<()>>,
     loading_status: Option<SharedString>,
     /// When settings change, use this to see if the theme has changed (which
@@ -883,6 +897,7 @@ impl ConversationView {
             ),
             notifications: Vec::new(),
             notification_subscriptions: HashMap::default(),
+            pending_window_rebind: None,
             auth_task: None,
             loading_status: None,
             last_theme_id: Some(cx.theme().id.clone()),
@@ -916,6 +931,7 @@ impl ConversationView {
         cx.emit(AcpServerViewEvent::ActiveThreadChanged);
         if matches!(&self.server_state, ServerState::Connected(_)) {
             cx.emit(RootThreadUpdated);
+            self.apply_pending_window_rebind(cx);
         }
         cx.notify();
     }
@@ -2997,126 +3013,180 @@ impl ConversationView {
             .log_err()
             && let Some(pop_up) = screen_window.entity(cx).log_err()
         {
-            self.notification_subscriptions
-                .entry(screen_window)
-                .or_insert_with(Vec::new)
-                .push(cx.subscribe_in(&pop_up, window, {
-                    move |this, _, event, window, cx| match event {
-                        AgentNotificationEvent::Accepted => {
-                            let Some(handle) = window.window_handle().downcast::<MultiWorkspace>()
-                            else {
-                                log::error!("root view should be a MultiWorkspace");
-                                return;
-                            };
-                            cx.activate(true);
+            self.notifications.push(screen_window);
+            self.bind_notification_subscriptions(
+                screen_window,
+                &pop_up,
+                root_thread_id,
+                root_work_dirs,
+                root_title,
+                window,
+                cx,
+            );
+        }
+    }
 
-                            let workspace_handle = this.workspace.clone();
-                            let agent = this.connection_key.clone();
-                            let root_work_dirs = root_work_dirs.clone();
-                            let root_title = root_title.clone();
+    /// 通知ポップアップに張る購読は 4 本ともウィンドウに紐づく (受諾したときに
+    /// 前へ出すウィンドウ / 本体が見えたら消す判定 / パネルのイベント)。タブが
+    /// 別ウィンドウへ移ったら丸ごと張り直せるよう、材料ごとここにまとめる
+    /// (ADR-F36)。
+    fn bind_notification_subscriptions(
+        &mut self,
+        screen_window: WindowHandle<AgentNotification>,
+        pop_up: &Entity<AgentNotification>,
+        root_thread_id: ThreadId,
+        root_work_dirs: Option<PathList>,
+        root_title: Option<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut subscriptions = Vec::new();
 
-                            cx.defer(move |cx| {
-                                handle
-                                    .update(cx, |multi_workspace, window, cx| {
-                                        window.activate_window();
-                                        if let Some(workspace) = workspace_handle.upgrade() {
-                                            multi_workspace.activate(
-                                                workspace.clone(),
-                                                None,
-                                                window,
-                                                cx,
-                                            );
-                                            workspace.update(cx, |workspace, cx| {
-                                                workspace.reveal_panel::<AgentPanel>(window, cx);
-                                                if let Some(panel) =
-                                                    workspace.panel::<AgentPanel>(cx)
-                                                {
-                                                    panel.update(cx, |panel, cx| {
-                                                        panel.load_agent_thread(
-                                                            agent.clone(),
-                                                            root_thread_id,
-                                                            root_work_dirs.clone(),
-                                                            root_title.clone(),
-                                                            true,
-                                                            AgentThreadSource::AgentPanel,
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }
-                                                workspace.focus_panel::<AgentPanel>(window, cx);
+        subscriptions.push(cx.subscribe_in(pop_up, window, {
+            let root_work_dirs = root_work_dirs.clone();
+            let root_title = root_title.clone();
+            move |this, _, event, window, cx| match event {
+                AgentNotificationEvent::Accepted => {
+                    let Some(handle) = window.window_handle().downcast::<MultiWorkspace>() else {
+                        log::error!("root view should be a MultiWorkspace");
+                        return;
+                    };
+                    cx.activate(true);
+
+                    let workspace_handle = this.workspace.clone();
+                    let agent = this.connection_key.clone();
+                    let root_work_dirs = root_work_dirs.clone();
+                    let root_title = root_title.clone();
+
+                    cx.defer(move |cx| {
+                        handle
+                            .update(cx, |multi_workspace, window, cx| {
+                                window.activate_window();
+                                if let Some(workspace) = workspace_handle.upgrade() {
+                                    multi_workspace.activate(workspace.clone(), None, window, cx);
+                                    workspace.update(cx, |workspace, cx| {
+                                        workspace.reveal_panel::<AgentPanel>(window, cx);
+                                        if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
+                                            panel.update(cx, |panel, cx| {
+                                                panel.load_agent_thread(
+                                                    agent.clone(),
+                                                    root_thread_id,
+                                                    root_work_dirs.clone(),
+                                                    root_title.clone(),
+                                                    true,
+                                                    AgentThreadSource::AgentPanel,
+                                                    window,
+                                                    cx,
+                                                );
                                             });
                                         }
-                                    })
-                                    .log_err();
-                            });
+                                        workspace.focus_panel::<AgentPanel>(window, cx);
+                                    });
+                                }
+                            })
+                            .log_err();
+                    });
 
-                            this.dismiss_notifications(cx);
-                        }
-                        AgentNotificationEvent::Dismissed => {
-                            this.dismiss_notifications(cx);
-                        }
-                    }
-                }));
-
-            self.notifications.push(screen_window);
-
-            let dismiss_if_visible = {
-                let pop_up_weak = pop_up.downgrade();
-                move |this: &ConversationView,
-                      window: &mut Window,
-                      cx: &mut Context<ConversationView>| {
-                    if this.agent_status_visible(window, cx)
-                        && let Some(pop_up) = pop_up_weak.upgrade()
-                    {
-                        pop_up.update(cx, |notification, cx| {
-                            notification.dismiss(cx);
-                        });
-                    }
+                    this.dismiss_notifications(cx);
                 }
-            };
+                AgentNotificationEvent::Dismissed => {
+                    this.dismiss_notifications(cx);
+                }
+            }
+        }));
 
-            let subscriptions = self
-                .notification_subscriptions
-                .entry(screen_window)
-                .or_insert_with(Vec::new);
+        let dismiss_if_visible = {
+            let pop_up_weak = pop_up.downgrade();
+            move |this: &ConversationView,
+                  window: &mut Window,
+                  cx: &mut Context<ConversationView>| {
+                if this.agent_status_visible(window, cx)
+                    && let Some(pop_up) = pop_up_weak.upgrade()
+                {
+                    pop_up.update(cx, |notification, cx| {
+                        notification.dismiss(cx);
+                    });
+                }
+            }
+        };
 
-            subscriptions.push({
-                let dismiss_if_visible = dismiss_if_visible.clone();
-                cx.observe_window_activation(window, move |this, window, cx| {
+        subscriptions.push({
+            let dismiss_if_visible = dismiss_if_visible.clone();
+            cx.observe_window_activation(window, move |this, window, cx| {
+                dismiss_if_visible(this, window, cx);
+            })
+        });
+
+        if let Some(multi_workspace) = window.root::<MultiWorkspace>().flatten() {
+            let dismiss_if_visible = dismiss_if_visible.clone();
+            subscriptions.push(cx.observe_in(
+                &multi_workspace,
+                window,
+                move |this, _, window, cx| {
                     dismiss_if_visible(this, window, cx);
-                })
-            });
+                },
+            ));
+        }
 
-            if let Some(multi_workspace) = window.root::<MultiWorkspace>().flatten() {
-                let dismiss_if_visible = dismiss_if_visible.clone();
-                subscriptions.push(cx.observe_in(
-                    &multi_workspace,
-                    window,
-                    move |this, _, window, cx| {
+        if let Some(panel) = self
+            .workspace
+            .upgrade()
+            .and_then(|workspace| workspace.read(cx).panel::<AgentPanel>(cx))
+        {
+            subscriptions.push(cx.subscribe_in(
+                &panel,
+                window,
+                move |this, _, event: &AgentPanelEvent, window, cx| match event {
+                    AgentPanelEvent::ActiveViewChanged | AgentPanelEvent::ActiveViewFocused => {
                         dismiss_if_visible(this, window, cx);
-                    },
-                ));
-            }
+                    }
+                    AgentPanelEvent::EntryChanged
+                    | AgentPanelEvent::TerminalCloseRequested { .. }
+                    | AgentPanelEvent::ThreadInteracted { .. } => {}
+                },
+            ));
+        }
 
-            if let Some(panel) = self
-                .workspace
-                .upgrade()
-                .and_then(|workspace| workspace.read(cx).panel::<AgentPanel>(cx))
-            {
-                subscriptions.push(cx.subscribe_in(
-                    &panel,
-                    window,
-                    move |this, _, event: &AgentPanelEvent, window, cx| match event {
-                        AgentPanelEvent::ActiveViewChanged | AgentPanelEvent::ActiveViewFocused => {
-                            dismiss_if_visible(this, window, cx);
-                        }
-                        AgentPanelEvent::EntryChanged
-                        | AgentPanelEvent::TerminalCloseRequested { .. }
-                        | AgentPanelEvent::ThreadInteracted { .. } => {}
-                    },
-                ));
-            }
+        self.notification_subscriptions.insert(
+            screen_window,
+            NotificationBinding {
+                root_thread_id,
+                root_work_dirs,
+                root_title,
+                _subscriptions: subscriptions,
+            },
+        );
+    }
+
+    /// 開いたままの通知ポップアップの購読を、いまのウィンドウで張り直す
+    /// (ADR-F36)。
+    fn rebind_notification_subscriptions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let bindings = self
+            .notification_subscriptions
+            .iter()
+            .map(|(screen_window, binding)| {
+                (
+                    *screen_window,
+                    binding.root_thread_id,
+                    binding.root_work_dirs.clone(),
+                    binding.root_title.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        for (screen_window, root_thread_id, root_work_dirs, root_title) in bindings {
+            let Some(pop_up) = screen_window.entity(cx).log_err() else {
+                continue;
+            };
+            self.bind_notification_subscriptions(
+                screen_window,
+                &pop_up,
+                root_thread_id,
+                root_work_dirs,
+                root_title,
+                window,
+                cx,
+            );
         }
     }
 
@@ -3346,6 +3416,69 @@ impl ConversationView {
         self.active_thread()
             .map(|thread| thread.read(cx).activation_focus_handle(cx))
             .unwrap_or_else(|| self.focus_handle.clone())
+    }
+
+    /// ADR-F36: このスレッドを載せたタブが別のウィンドウへ移されたときに、
+    /// 持ち主のワークスペースを張り替える。旧ウィンドウのワークスペースを
+    /// 参照したままだと、ファイルを開く導線もモーダルも消えた窓を見に行く。
+    pub(crate) fn set_workspace(&mut self, workspace: WeakEntity<Workspace>, cx: &mut App) {
+        self.workspace = workspace.clone();
+        let Some(connected) = self.as_connected() else {
+            return;
+        };
+        for thread_view in connected.threads.values().cloned().collect::<Vec<_>>() {
+            thread_view.update(cx, |thread_view, cx| {
+                thread_view.set_workspace(workspace.clone(), cx);
+            });
+        }
+    }
+
+    /// フォーカスリスナーは登録先のウィンドウに紐づくので、別ウィンドウへ
+    /// 移したタブは張り直さないと効かなくなる。
+    ///
+    /// エージェントの接続待ちのあいだに移されたときはまだ [`ThreadView`] が
+    /// 無いので張れない。その場合は予約だけ取っておき、接続できた時点で
+    /// [`Self::apply_pending_window_rebind`] がやり直す。
+    pub(crate) fn rebind_window_focus_listeners(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.rebind_notification_subscriptions(window, cx);
+
+        let Some(connected) = self.as_connected() else {
+            self.pending_window_rebind = Some(window.window_handle());
+            return;
+        };
+        for thread_view in connected.threads.values().cloned().collect::<Vec<_>>() {
+            thread_view.update(cx, |thread_view, cx| {
+                thread_view.rebind_window_focus_listeners(window, cx);
+            });
+        }
+    }
+
+    /// 接続が確立して [`ThreadView`] が生えた時点で、接続待ちのあいだに来た
+    /// 「別ウィンドウへ移った」の張り直しを消化する (ADR-F36)。
+    ///
+    /// ここは読み込みタスクの `update_in` の中 = 自分がリース中なので、
+    /// アプリ側の `defer` に逃がしてから対象ウィンドウを開く。
+    fn apply_pending_window_rebind(&mut self, cx: &mut Context<Self>) {
+        let Some(window_handle) = self.pending_window_rebind.take() else {
+            return;
+        };
+        let workspace = self.workspace.clone();
+        let this = cx.weak_entity();
+        cx.defer(move |cx: &mut App| {
+            window_handle
+                .update(cx, |_, window, cx| {
+                    this.update(cx, |this, cx| {
+                        this.set_workspace(workspace, cx);
+                        this.rebind_window_focus_listeners(window, cx);
+                    })
+                    .log_err();
+                })
+                .log_err();
+        });
     }
 }
 
