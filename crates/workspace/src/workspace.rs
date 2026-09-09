@@ -5892,14 +5892,14 @@ impl Workspace {
                 move |window, cx| {
                     let workspace = cx.new(|cx| {
                         let mut workspace = Workspace::new(None, project, app_state, window, cx);
-                        // A torn-off tab should be all the window shows. Both
-                        // passes that fill a fresh window's docks in - the one
-                        // for panels asking to start open and the fork's
-                        // default right dock layout - are skipped here so the
-                        // docks never flash open before `close_new_window_docks`
-                        // gets to them.
+                        // A torn-off tab is all the window shows. Every pass
+                        // that fills a fresh window's docks in is turned off
+                        // here: the startup sweep for panels asking to start
+                        // open, the fork's default right dock layout, and the
+                        // open each panel performs for itself as it is added.
                         workspace.starts_open_pending = false;
                         workspace.default_dock_layout_settled = true;
+                        workspace.suppress_dock_auto_open(cx);
                         workspace
                     });
                     cx.new(|cx| MultiWorkspace::new(workspace, window, cx))
@@ -5931,9 +5931,6 @@ impl Workspace {
                 let target_pane = new_workspace.read(cx).active_pane().clone();
                 target_pane.update(cx, |pane, cx| {
                     pane.add_item(item, true, true, None, window, cx);
-                });
-                new_workspace.update(cx, |workspace, cx| {
-                    workspace.close_new_window_docks(window, cx);
                 });
                 window.activate_window();
             })?;
@@ -6156,27 +6153,17 @@ impl Workspace {
         window.remove_window();
     }
 
-    /// Keeps a torn-off tab's window free of docks. Panels are added by an
-    /// asynchronous task and [`Dock::add_panel`] opens the dock for any panel
-    /// that asks to start open, so the docks are closed again once that task
-    /// has finished rather than only here.
-    fn close_new_window_docks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Keeps a torn-off tab's window free of docks: panels are loaded by an
+    /// asynchronous task and each one opens its dock as it arrives if it asks
+    /// to start open, which would put a terminal (the terminal panel spawns a
+    /// shell and focuses itself the first time it becomes active) in front of
+    /// the very tab the window was opened for. Closing the docks again after
+    /// the fact cannot win that race, so the automatic open is refused instead.
+    /// The user can still open any dock by hand in such a window.
+    fn suppress_dock_auto_open(&mut self, cx: &mut Context<Self>) {
         for dock in self.all_docks() {
-            dock.update(cx, |dock, cx| dock.set_open(false, window, cx));
+            dock.update(cx, |dock, _| dock.suppress_starts_open());
         }
-
-        let panels_task = self.take_panels_task();
-        cx.spawn_in(window, async move |workspace, cx| {
-            if let Some(panels_task) = panels_task {
-                panels_task.await.log_err();
-            }
-            workspace.update_in(cx, |workspace, window, cx| {
-                for dock in workspace.all_docks() {
-                    dock.update(cx, |dock, cx| dock.set_open(false, window, cx));
-                }
-            })
-        })
-        .detach_and_log_err(cx);
     }
 
     pub fn activate_next_pane(&mut self, window: &mut Window, cx: &mut App) {
@@ -19656,6 +19643,84 @@ mod tests {
             for dock in workspace.all_docks() {
                 assert!(!dock.read(cx).is_open(), "docks start collapsed");
             }
+        });
+    }
+
+    /// A torn-off window's panels are loaded asynchronously, well after the tab
+    /// is on screen, and a panel that asks to start open would otherwise pull
+    /// its dock open on arrival - the terminal panel goes on to spawn a shell
+    /// and focus itself, hiding the tab the window exists for.
+    #[gpui::test]
+    async fn test_torn_off_window_refuses_to_open_docks_for_late_panels(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+
+        let moving = cx.new(|cx| TestItem::new(cx).with_label("moving"));
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item(
+                pane.clone(),
+                Box::new(moving.clone()),
+                None,
+                false,
+                false,
+                window,
+                cx,
+            );
+            workspace.move_item_to_new_window(pane.clone(), moving.item_id(), None, window, cx);
+        });
+        cx.run_until_parked();
+
+        // The panels of a torn-off window are added in that window, so the
+        // additions have to run there rather than in this context's window.
+        let torn_off = cx.update(|_, cx| {
+            cx.windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<MultiWorkspace>())
+                .find(|window| {
+                    window.read(cx).is_ok_and(|multi_workspace| {
+                        multi_workspace.workspace().entity_id() != workspace.entity_id()
+                    })
+                })
+        });
+        let Some(torn_off) = torn_off else {
+            panic!("the torn-off tab did not open a workspace window");
+        };
+
+        torn_off
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |torn_off, cx| {
+                    let panel =
+                        cx.new(|cx| TestPanel::new_starts_open(DockPosition::Bottom, 100, cx));
+                    torn_off.add_panel(panel, window, cx);
+                    assert!(
+                        !torn_off.bottom_dock().read(cx).is_open(),
+                        "a panel arriving in a torn-off window must not open its dock"
+                    );
+                    assert!(
+                        !torn_off.apply_starts_open_docks(window, cx),
+                        "and neither must the startup sweep that re-applies `starts_open`"
+                    );
+                    assert!(!torn_off.bottom_dock().read(cx).is_open());
+
+                    // Nothing stops the user from opening the dock by hand.
+                    torn_off.toggle_dock(DockPosition::Bottom, window, cx);
+                    assert!(torn_off.bottom_dock().read(cx).is_open());
+                });
+            })
+            .expect("the torn-off window is still open");
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new_starts_open(DockPosition::Bottom, 100, cx));
+            workspace.add_panel(panel, window, cx);
+            assert!(
+                workspace.bottom_dock().read(cx).is_open(),
+                "an ordinary window still honours `starts_open`"
+            );
         });
     }
 

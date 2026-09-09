@@ -349,6 +349,12 @@ pub struct Dock {
     /// [`Dock::stack_axis`].
     secondary_ratio: f32,
     hidden_stacked_panel: Option<HiddenStackedPanel>,
+    /// Whether a panel asking to start open may pull this dock open on its own.
+    /// A window torn off by [`Workspace::move_item_to_new_window`] shows nothing
+    /// but the tab that was dragged into it, and its panels are added long after
+    /// it is on screen, so the automatic open is refused there. Opening the dock
+    /// by hand still works.
+    starts_open_suppressed: bool,
     focus_handle: FocusHandle,
     focus_follows_mouse: FocusFollowsMouse,
     pub(crate) serialized_dock: Option<DockData>,
@@ -498,6 +504,7 @@ impl Dock {
                 secondary_panel_index: None,
                 secondary_ratio: DEFAULT_SECONDARY_RATIO,
                 hidden_stacked_panel: None,
+                starts_open_suppressed: false,
                 is_open: false,
                 focus_handle: focus_handle.clone(),
                 focus_follows_mouse: WorkspaceSettings::get_global(cx).focus_follows_mouse,
@@ -843,6 +850,12 @@ impl Dock {
         true
     }
 
+    /// Refuses every automatic open of this dock for the rest of its life. See
+    /// [`Dock::starts_open_suppressed`].
+    pub(crate) fn suppress_starts_open(&mut self) {
+        self.starts_open_suppressed = true;
+    }
+
     /// Opens the dock for any panel that asked to start open. `starts_open` is a
     /// user-facing "open this at startup" switch, so it has to survive a persisted
     /// "closed" dock state, which is applied after the panels have been added.
@@ -852,6 +865,9 @@ impl Dock {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.starts_open_suppressed {
+            return false;
+        }
         let Some(index) = self
             .panel_entries
             .iter()
@@ -1145,7 +1161,7 @@ impl Dock {
 
         self.restore_state(window, cx);
 
-        if panel.read(cx).starts_open(window, cx) {
+        if panel.read(cx).starts_open(window, cx) && !self.starts_open_suppressed {
             self.activate_panel(index, window, cx);
             self.set_open(true, window, cx);
         }

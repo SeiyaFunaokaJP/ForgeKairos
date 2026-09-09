@@ -87,7 +87,7 @@ pub struct ThreadItem {
     host: ThreadItemHost,
     /// このアイテムを最初に載せたワークスペース。別ウィンドウへ移されると
     /// `workspace` は移った先を指すが、切り離しウィンドウにはエージェント
-    /// パネルが無い ([`Workspace::close_new_window_docks`] がドックを閉じた
+    /// パネルが無い ([`Workspace::suppress_dock_auto_open`] がドックを閉じた
     /// まま作る) ので、スレッドの返し先はこちらも当たる。
     origin_workspace: WeakEntity<Workspace>,
     /// `origin_workspace` が載っていたウィンドウ。
@@ -505,7 +505,7 @@ impl ThreadItem {
     /// スレッドの返し先になるエージェントパネルを探す。
     ///
     /// 窓外へ引き出したタブのウィンドウにはパネルが無い
-    /// (`close_new_window_docks` がドックを閉じたまま作り、パネルは後から
+    /// (`suppress_dock_auto_open` がドックを閉じたまま作り、パネルは後から
     /// 足される) ので、いまのワークスペース → 最初に載っていたワークスペース →
     /// 同じプロジェクトを開いている他のウィンドウ、の順に当たる。
     /// どこにも無ければ `None` = スレッドを手放してはいけない。

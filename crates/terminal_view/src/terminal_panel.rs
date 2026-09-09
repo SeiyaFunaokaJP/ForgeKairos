@@ -2235,6 +2235,13 @@ impl Panel for TerminalPanel {
             return;
         }
         cx.defer_in(window, |this, window, cx| {
+            // A tab dropped into the panel (or a restored session) can land in
+            // the pane between the activation and this deferred spawn, and a
+            // terminal opened with `RevealStrategy::Always` would take the
+            // active tab away from it.
+            if !this.has_no_terminals(cx) {
+                return;
+            }
             let Ok(kind) = this
                 .workspace
                 .update(cx, |workspace, cx| default_working_directory(workspace, cx))
@@ -3347,6 +3354,54 @@ mod tests {
                 });
             })
             .expect("Failed to read reconfigured terminal panel starts_open");
+    }
+
+    /// 空のパネルが表になったら既定のターミナルを 1 本開くが、開くのは次の
+    /// ティック。同じ効果サイクルでタブが流れてきた (ドラッグでの移動、
+    /// セッション復元) なら、`RevealStrategy::Always` のターミナルがその
+    /// タブから表を奪ってしまうので開かない。
+    #[gpui::test]
+    async fn test_activating_the_panel_skips_the_default_terminal_for_a_dropped_tab(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        // The panel is built without being added to a dock, so nothing has
+        // activated it yet and this test owns the first activation.
+        let (window_handle, panel) = panel_for_persistence_test(cx).await;
+
+        let dropped = window_handle
+            .update(cx, |_, window, cx| {
+                panel.update(cx, |panel, cx| {
+                    panel.set_active(true, window, cx);
+                    let dropped = cx.new(TestItem::new);
+                    panel.active_pane.update(cx, |pane, cx| {
+                        pane.add_item(Box::new(dropped.clone()), true, true, None, window, cx);
+                    });
+                    dropped.entity_id()
+                })
+            })
+            .expect("failed to activate the terminal panel");
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                panel.pending_terminals_to_add, 0,
+                "no default terminal was asked for"
+            );
+            let pane = panel.active_pane.read(cx);
+            assert_eq!(
+                pane.items_len(),
+                1,
+                "the tab that landed in the panel is the only one"
+            );
+            assert_eq!(
+                pane.active_item().map(|item| item.item_id()),
+                Some(dropped),
+                "and it kept the active slot"
+            );
+        });
     }
 
     #[gpui::test]
