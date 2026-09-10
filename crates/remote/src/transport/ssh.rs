@@ -1544,6 +1544,74 @@ impl SshRemoteConnection {
         }
     }
 
+    /// Deletes the server binaries of every release channel *other* than
+    /// `own_binary_prefix`'s from the remote's `~/.zed_server`, returning the
+    /// names it removed.
+    ///
+    /// [`Self::remove_stale_server_files`] deliberately sweeps a single channel:
+    /// a host connected to from both a stable and a dev client wants to keep
+    /// both binaries, and a cross-channel sweep would make those two clients
+    /// take turns re-uploading half a gigabyte each time they alternate. That
+    /// preference is worth exactly as much as the disk it occupies, so this runs
+    /// only once the pre-flight check has found the remote too full for the
+    /// transfer that is about to start — where the alternative is refusing the
+    /// connection outright.
+    ///
+    /// Unlinking a binary that a running `remote_server` of that other channel
+    /// still has open is safe on POSIX, which keeps the inode alive until the
+    /// process exits; on Windows the delete fails and that binary stays.
+    ///
+    /// Best effort, like the stale sweep: the caller re-measures the free space
+    /// and decides on the figure, not on this having worked.
+    async fn remove_other_channel_server_binaries(&self, own_binary_prefix: &str) -> Vec<String> {
+        let dir = remote_server_dir_relative().display(self.path_style());
+        let script = if self.ssh_platform.os.is_windows() {
+            other_channel_server_binaries_cleanup_script_windows(&dir, own_binary_prefix)
+        } else {
+            other_channel_server_binaries_cleanup_script_posix(&dir, own_binary_prefix)
+        };
+        let script = match script {
+            Ok(script) => script,
+            Err(error) => {
+                log::warn!("not reclaiming space from the other channels: {error:#}");
+                return Vec::new();
+            }
+        };
+
+        let (shell_kind, program) = if self.ssh_platform.os.is_windows() {
+            (ShellKind::Pwsh, "powershell")
+        } else {
+            (ShellKind::Posix, "sh")
+        };
+        let args = shell_kind.args_for_shell(false, script);
+        match self
+            .socket
+            .run_command(self.ssh_shell_kind, program, &args, true)
+            .await
+        {
+            Ok(output) => {
+                let removed = output
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                if !removed.is_empty() {
+                    log::info!(
+                        "reclaimed space in {dir} by removing the other channels' server \
+                         binaries: {}",
+                        removed.join(", ")
+                    );
+                }
+                removed
+            }
+            Err(error) => {
+                log::warn!("failed to remove the other channels' server binaries: {error:#}");
+                Vec::new()
+            }
+        }
+    }
+
     async fn download_binary_on_server(
         &self,
         url: &str,
@@ -1682,9 +1750,39 @@ impl SshRemoteConnection {
         let size = src_stat.len();
 
         if let Some(free_space) = self.remote_free_space_bytes().await
-            && let Some(message) = insufficient_free_space_message(size, free_space)
+            && insufficient_free_space_message(size, free_space).is_some()
         {
-            anyhow::bail!(message);
+            // Before refusing the connection over disk, give up the one thing on
+            // the remote that is ours to give up. The channel is read from the
+            // app rather than passed in because it is the same value
+            // `ensure_server_binary` derives its own names from, and this is
+            // also on the path that installs slirp4netns, which has no channel
+            // of its own.
+            let own_binary_prefix =
+                server_binary_name_prefix(cx.update(|cx| ReleaseChannel::global(cx)));
+            let removed = self
+                .remove_other_channel_server_binaries(&own_binary_prefix)
+                .await;
+            let free_space_after = self.remote_free_space_bytes().await.unwrap_or(free_space);
+            if let Some(message) = insufficient_free_space_message(size, free_space_after) {
+                if removed.is_empty() {
+                    anyhow::bail!(message);
+                }
+                anyhow::bail!(
+                    "{message}\n\
+                     他チャンネルのリモートサーバー ({}) は自動削除しましたが、\
+                     まだ足りません。",
+                    removed.join(", ")
+                );
+            }
+            log::info!(
+                "the remote had {} MB free, too little for a {} MB transfer; after removing [{}] \
+                 it has {} MB and the transfer can go ahead",
+                free_space / BYTES_PER_MEGABYTE,
+                size / BYTES_PER_MEGABYTE,
+                removed.join(", "),
+                free_space_after / BYTES_PER_MEGABYTE,
+            );
         }
 
         let t0 = Instant::now();
@@ -2782,12 +2880,26 @@ fn server_binary_names(
         ReleaseChannel::Dev => "build".to_string(),
         _ => version.to_string(),
     };
-    let prefix = format!("zed-remote-server-{}-", release_channel.dev_name());
+    let prefix = server_binary_name_prefix(release_channel);
     let name = format!(
         "{prefix}{version_str}{}",
         if is_windows { ".exe" } else { "" }
     );
     (prefix, name)
+}
+
+/// What every server binary's name begins with, whichever release channel and
+/// version installed it.
+const SERVER_BINARY_NAME_PREFIX: &str = "zed-remote-server-";
+
+/// The part of the server binary's name that is stable across every version of
+/// one release channel — the glob
+/// [`SshRemoteConnection::remove_stale_server_files`] sweeps with.
+fn server_binary_name_prefix(release_channel: ReleaseChannel) -> String {
+    format!(
+        "{SERVER_BINARY_NAME_PREFIX}{}-",
+        release_channel.dev_name()
+    )
 }
 
 /// Renders a byte count for the connection dialog. Binary units, because that is
@@ -2872,6 +2984,57 @@ fn stale_server_files_cleanup_script_windows(
          Where-Object {{ ($_.Name -like {binary_glob} -or $_.Name -like 'download-*') \
          -and $_.Name -ne {keep} }} | \
          Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; exit 0"
+    ))
+}
+
+/// The `sh` one-liner behind
+/// [`SshRemoteConnection::remove_other_channel_server_binaries`]: deletes every
+/// server binary in `dir` whose name does *not* start with `own_binary_prefix`,
+/// printing one removed name per line.
+///
+/// The `case` is what expresses "every channel but mine" — `$stale` is compared
+/// with its directory stripped so that the pattern only has to describe a file
+/// name. Removed names are echoed because the caller has no other way to tell
+/// whether the sweep freed anything, and that decides what it tells the user.
+fn other_channel_server_binaries_cleanup_script_posix(
+    dir: &str,
+    own_binary_prefix: &str,
+) -> Result<String> {
+    anyhow::ensure!(
+        is_inert_glob_fragment(dir) && is_inert_glob_fragment(own_binary_prefix),
+        "refusing to build a cleanup glob out of {dir:?} and {own_binary_prefix:?}"
+    );
+    Ok(format!(
+        "for stale in {dir}/{SERVER_BINARY_NAME_PREFIX}*; \
+         do if [ -e \"$stale\" ]; then \
+         case \"${{stale##*/}}\" in {own_binary_prefix}*) ;; \
+         *) if rm -f -- \"$stale\"; then echo \"${{stale##*/}}\"; fi;; esac; fi; \
+         done; exit 0"
+    ))
+}
+
+/// The PowerShell equivalent of
+/// [`other_channel_server_binaries_cleanup_script_posix`].
+///
+/// `Remove-Item` says nothing on success, so the name is emitted separately —
+/// and only after a delete that did not throw, which is how a binary a running
+/// `remote_server` has mapped (undeletable on Windows) stays out of the count.
+fn other_channel_server_binaries_cleanup_script_windows(
+    dir: &str,
+    own_binary_prefix: &str,
+) -> Result<String> {
+    anyhow::ensure!(
+        is_inert_glob_fragment(dir) && is_inert_glob_fragment(own_binary_prefix),
+        "refusing to build a cleanup glob out of {dir:?} and {own_binary_prefix:?}"
+    );
+    let dir = powershell_single_quoted(dir);
+    let all_channels_glob = powershell_single_quoted(&format!("{SERVER_BINARY_NAME_PREFIX}*"));
+    let own_glob = powershell_single_quoted(&format!("{own_binary_prefix}*"));
+    Ok(format!(
+        "Get-ChildItem -LiteralPath {dir} -Force -ErrorAction SilentlyContinue | \
+         Where-Object {{ $_.Name -like {all_channels_glob} -and -not ($_.Name -like {own_glob}) }} | \
+         ForEach-Object {{ try {{ Remove-Item -LiteralPath $_.FullName -Force -Recurse \
+         -ErrorAction Stop; $_.Name }} catch {{ }} }}; exit 0"
     ))
 }
 
@@ -3553,7 +3716,63 @@ mod tests {
                 stale_server_files_cleanup_script_windows(dir, prefix, "keep").is_err(),
                 "{dir:?} / {prefix:?} should be refused"
             );
+            assert!(
+                other_channel_server_binaries_cleanup_script_posix(dir, prefix).is_err(),
+                "{dir:?} / {prefix:?} should be refused"
+            );
+            assert!(
+                other_channel_server_binaries_cleanup_script_windows(dir, prefix).is_err(),
+                "{dir:?} / {prefix:?} should be refused"
+            );
         }
+    }
+
+    #[test]
+    fn test_other_channel_server_binaries_cleanup_script_posix() -> Result<()> {
+        assert_eq!(
+            other_channel_server_binaries_cleanup_script_posix(
+                ".zed_server",
+                "zed-remote-server-dev-",
+            )?,
+            "for stale in .zed_server/zed-remote-server-*; \
+             do if [ -e \"$stale\" ]; then \
+             case \"${stale##*/}\" in zed-remote-server-dev-*) ;; \
+             *) if rm -f -- \"$stale\"; then echo \"${stale##*/}\"; fi;; esac; fi; \
+             done; exit 0"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_other_channel_server_binaries_cleanup_script_windows() -> Result<()> {
+        assert_eq!(
+            other_channel_server_binaries_cleanup_script_windows(
+                ".zed_server",
+                "zed-remote-server-stable-",
+            )?,
+            "Get-ChildItem -LiteralPath '.zed_server' -Force -ErrorAction SilentlyContinue | \
+             Where-Object { $_.Name -like 'zed-remote-server-*' \
+             -and -not ($_.Name -like 'zed-remote-server-stable-*') } | \
+             ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -Recurse \
+             -ErrorAction Stop; $_.Name } catch { } }; exit 0"
+        );
+        Ok(())
+    }
+
+    /// The sweep has to leave this channel's binary — the one about to be
+    /// installed, or already installed and running — where it is, whichever
+    /// channel is asking.
+    #[test]
+    fn test_other_channel_sweep_keeps_its_own_channel() -> Result<()> {
+        for channel in [ReleaseChannel::Dev, ReleaseChannel::Stable] {
+            let prefix = server_binary_name_prefix(channel);
+            let script = other_channel_server_binaries_cleanup_script_posix(".zed_server", &prefix)?;
+            assert!(
+                script.contains(&format!("in {prefix}*) ;;")),
+                "{channel:?}: {script}"
+            );
+        }
+        Ok(())
     }
 
     #[test]
