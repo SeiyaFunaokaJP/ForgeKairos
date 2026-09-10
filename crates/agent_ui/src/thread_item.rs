@@ -1467,6 +1467,7 @@ mod tests {
                 item_id,
                 target_window,
                 Some(target_pane.clone()),
+                None,
                 window,
                 cx,
             );

@@ -18,11 +18,11 @@ use anyhow::Result;
 use collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use futures::{StreamExt, stream::FuturesUnordered};
 use gpui::{
-    Action, Anchor, AnyElement, App, AsyncWindowContext, ClickEvent, ClipboardItem, Context, Div,
-    DragMoveEvent, Entity, EntityId, EventEmitter, ExternalPaths, FocusHandle, FocusOutEvent,
-    Focusable, KeyContext, MouseButton, NavigationDirection, Pixels, Point, PromptLevel, Render,
-    ScrollHandle, Subscription, Task, TaskExt, WeakEntity, WeakFocusHandle, Window, actions,
-    anchored, deferred, prelude::*,
+    Action, Anchor, AnyElement, App, AsyncWindowContext, Bounds, ClickEvent, ClipboardItem,
+    Context, Div, DragMoveEvent, Entity, EntityId, EventEmitter, ExternalPaths, FocusHandle,
+    FocusOutEvent, Focusable, KeyContext, MouseButton, NavigationDirection, Pixels, Point,
+    PromptLevel, Render, ScrollHandle, Subscription, Task, TaskExt, WeakEntity, WeakFocusHandle,
+    Window, actions, anchored, canvas, deferred, prelude::*,
 };
 use itertools::Itertools;
 use language::{Capability, DiagnosticSeverity};
@@ -407,7 +407,7 @@ pub type TabDropSplitHandler =
 
 /// 端に落としたときの分割先を決める。フックを持つペイン (ドックのパネル) は
 /// その持ち主に割ってもらい、持たないペインは従来どおり中央を割る。
-fn split_pane_for_drop(
+pub(crate) fn split_pane_for_drop(
     workspace: &mut Workspace,
     split_handler: Option<&TabDropSplitHandler>,
     pane: Entity<Pane>,
@@ -444,6 +444,12 @@ pub struct Pane {
     pub(crate) workspace: WeakEntity<Workspace>,
     project: WeakEntity<Project>,
     pub drag_split_direction: Option<SplitDirection>,
+    /// このペインの中身 (タブバーを除く) の矩形。別ウィンドウから落ちてきたタブを
+    /// 「ポインターの下のペイン」に渡すために、ドックのパネルが複数のペインを
+    /// 抱えている場合を解くのに使う ([`Workspace::pane_at_window_position`])。
+    /// 強調とドロップ先が食い違わないよう、`handle_drag_move` が分割方向を計算する
+    /// のと同じ矩形を覚える。
+    content_bounds: Bounds<Pixels>,
     can_drop_predicate: Option<Arc<dyn Fn(&dyn Any, &mut Window, &mut App) -> bool>>,
     can_split_predicate:
         Option<Arc<dyn Fn(&mut Self, &dyn Any, &mut Window, &mut Context<Self>) -> bool>>,
@@ -634,6 +640,7 @@ impl Pane {
             tab_bar_scroll_handle: ScrollHandle::new(),
             suppress_scroll: false,
             drag_split_direction: None,
+            content_bounds: Bounds::default(),
             workspace,
             project: project.downgrade(),
             can_drop_predicate,
@@ -909,6 +916,13 @@ impl Pane {
     /// ([`TabDropSplitHandler`])。設定しないと中央の `PaneGroup` が割られる。
     pub fn set_tab_drop_split_handler(&mut self, handler: Option<TabDropSplitHandler>) {
         self.tab_drop_split_handler = handler;
+    }
+
+    /// このペインを端に落として分割するときの割り方。別ウィンドウから引きずって
+    /// きたタブを合流させる側 (`Workspace::move_item_to_window`) が、落ちた先の
+    /// ペインの持ち主に分割を委ねるために借りる。
+    pub fn tab_drop_split_handler(&self) -> Option<TabDropSplitHandler> {
+        self.tab_drop_split_handler.clone()
     }
 
     pub fn set_can_toggle_zoom(&mut self, can_toggle_zoom: bool, cx: &mut Context<Self>) {
@@ -4359,6 +4373,20 @@ impl Pane {
         self.drag_split_direction
     }
 
+    /// 最後に描いたときの中身の矩形 (ウィンドウ座標)。
+    pub fn content_bounds(&self) -> Bounds<Pixels> {
+        self.content_bounds
+    }
+
+    /// 別ウィンドウから来たドラッグを見せるために合成マウス移動で入れた分割方向を
+    /// 畳む。ドラッグの終わりは相手のウィンドウには届かないので、出した側
+    /// (`Workspace::clear_external_drag_hint`) から消してやる必要がある。
+    pub fn clear_drag_split_direction(&mut self, cx: &mut Context<Self>) {
+        if self.drag_split_direction.take().is_some() {
+            cx.notify();
+        }
+    }
+
     pub fn set_zoom_out_on_close(&mut self, zoom_out_on_close: bool) {
         self.zoom_out_on_close = zoom_out_on_close;
     }
@@ -4738,6 +4766,24 @@ impl Render for Pane {
                             }
                         }
                         .focus_follows_mouse(self.focus_follows_mouse, cx)
+                    })
+                    .child({
+                        // Recorded so a tab dropped from another window can be
+                        // handed to the pane the pointer is actually over, even
+                        // when the panel it is in holds several
+                        // (`Workspace::pane_at_window_position`). Absolutely
+                        // positioned to stay out of the flex layout, and it
+                        // paints nothing, so it takes no mouse events either.
+                        let pane = cx.entity().downgrade();
+                        canvas(
+                            move |bounds, _, cx| {
+                                pane.update(cx, |pane, _| pane.content_bounds = bounds)
+                                    .log_err();
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .size_full()
                     })
                     .child(
                         // drag target

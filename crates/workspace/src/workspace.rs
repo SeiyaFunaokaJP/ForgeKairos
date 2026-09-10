@@ -63,10 +63,10 @@ use gpui::{
     Action, AnyEntity, AnyView, AnyWeakView, App, AsyncApp, AsyncWindowContext, Axis, Bounds,
     Context, CursorStyle, Decorations, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle,
     Focusable, Global, HitboxBehavior, Hsla, KeyContext, Keystroke, ManagedView, MouseButton,
-    MouseUpEvent, PathPromptOptions, Point, PromptLevel, Render, ResizeEdge, Size, Stateful,
-    Subscription, SystemWindowTabController, Task, TaskExt, Tiling, WeakEntity, WindowBounds,
-    WindowHandle, WindowId, WindowOptions, actions, canvas, deferred, point, px, relative, size,
-    transparent_black,
+    MouseMoveEvent, MouseUpEvent, PathPromptOptions, PlatformInput, Point, PromptLevel, Render,
+    ResizeEdge, Size, Stateful, Subscription, SystemWindowTabController, Task, TaskExt, Tiling,
+    WeakEntity, WindowBounds, WindowHandle, WindowId, WindowOptions, actions, canvas, deferred,
+    point, px, relative, size, transparent_black,
 };
 pub use history_manager::*;
 pub use item::{
@@ -81,6 +81,7 @@ use notifications::{
     DetachAndPromptErr, Notifications, dismiss_app_notification,
     simple_message_notification::MessageNotification,
 };
+use pane::split_pane_for_drop;
 pub use pane::*;
 pub use pane_group::{
     ActivePaneDecorator, HANDLE_HITBOX_SIZE, Member, PaneAxis, PaneGroup, PaneRenderContext,
@@ -177,6 +178,19 @@ pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 /// caller has no drop point to place it at.
 const NEW_WINDOW_CASCADE: Pixels = px(48.);
 
+/// Where a window is told the pointer went when a drag that was crossing it
+/// moves on: far enough outside any viewport that nothing is hovered and the
+/// dragged tab's ghost is clipped away. See
+/// [`Workspace::clear_external_drag_hint`].
+///
+/// A move outside the viewport is also where gpui would hand a drag to the
+/// platform, but only for a drag carrying an external payload, which a dragged
+/// tab never does.
+const POINTER_OUTSIDE_WINDOW: Point<Pixels> = Point {
+    x: px(-10000.),
+    y: px(-10000.),
+};
+
 /// How far above and to the left of the drop point the torn-off window's client
 /// area starts, so the dragged tab lands roughly under the cursor rather than
 /// the window's top-left corner.
@@ -188,8 +202,14 @@ const TORN_OFF_TAB_OFFSET: Point<Pixels> = Point {
 /// What should become of a tab released outside the window it was dragged from.
 enum TabDropTarget {
     /// Another window showing the same project: move the item into it, into the
-    /// given pane when the pointer was over one.
-    Merge(WindowHandle<MultiWorkspace>, Option<Entity<Pane>>),
+    /// given pane when the pointer was over one. `position` is the pointer in
+    /// that window's coordinates, which is what the hint painted there while the
+    /// drag is still running needs (ADR-F34 追記).
+    Merge {
+        window: WindowHandle<MultiWorkspace>,
+        position: Point<Pixels>,
+        pane: Option<Entity<Pane>>,
+    },
     /// The window the drag started in. The tab never really left, so it stays.
     OwnWindow,
     /// The desktop, another application, or a window on another project: tear
@@ -1708,6 +1728,11 @@ pub struct Workspace {
     /// on every mouse up, so a stale tab can never be torn off by a later drag
     /// of some other kind.
     dragged_tab: Option<DraggedTab>,
+    /// 別ウィンドウへ引きずり出しているタブが、今どのウィンドウの上にあるか。
+    /// そのウィンドウには合成マウス移動でドロップ先の強調を出しているので
+    /// ([`Workspace::update_external_drag_hint`])、ポインターが別の窓へ移った /
+    /// ドラッグが終わったときに畳む相手を覚えておく。
+    external_drag_hint: Option<WindowHandle<MultiWorkspace>>,
     panes: Vec<Entity<Pane>>,
     panes_by_item: HashMap<EntityId, WeakEntity<Pane>>,
     active_pane: Entity<Pane>,
@@ -2207,6 +2232,7 @@ impl Workspace {
             default_dock_layout_settled: false,
             center,
             dragged_tab: None,
+            external_drag_hint: None,
             panes: vec![center_pane.clone()],
             panes_by_item: Default::default(),
             active_pane: center_pane.clone(),
@@ -6245,27 +6271,45 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(dragged_tab) = self.dragged_tab.take() else {
-            return;
-        };
+        let dragged_tab = self.dragged_tab.take();
         // A drag cancelled mid-gesture (a modal opening, say) leaves the last
         // dragged tab behind until the button is released, so the release only
-        // counts while the drag is still the one carrying it.
-        if !cx.has_active_drag() {
-            return;
-        }
+        // counts while the drag is still the one carrying it. A release inside
+        // the viewport is the panes' own business.
         let viewport = Bounds::new(Point::default(), window.viewport_size());
-        if viewport.contains(&event.position) {
+        let target =
+            if dragged_tab.is_some() && cx.has_active_drag() && !viewport.contains(&event.position)
+            {
+                self.tab_drop_target(cx)
+            } else {
+                TabDropTarget::OwnWindow
+            };
+        // 端に落ちたときの分割方向は、相手のウィンドウのペインが合成マウス移動で
+        // 計算してくれたもの (`update_external_drag_hint`)。強調を畳むと消えるので
+        // 先に読む。
+        let split_direction = match &target {
+            TabDropTarget::Merge { pane, .. } => pane
+                .as_ref()
+                .and_then(|pane| pane.read(cx).drag_split_direction()),
+            TabDropTarget::OwnWindow | TabDropTarget::NewWindow => None,
+        };
+        self.clear_external_drag_hint(cx);
+        let Some(dragged_tab) = dragged_tab else {
             return;
-        }
+        };
 
-        match self.tab_drop_target(cx) {
-            TabDropTarget::Merge(target_window, target_pane) => {
+        match target {
+            TabDropTarget::Merge {
+                window: target_window,
+                pane: target_pane,
+                ..
+            } => {
                 self.move_item_to_window(
                     dragged_tab.pane.clone(),
                     dragged_tab.item.item_id(),
                     target_window,
                     target_pane,
+                    split_direction,
                     window,
                     cx,
                 );
@@ -6445,7 +6489,11 @@ impl Workspace {
             return TabDropTarget::NewWindow;
         }
         let target_pane = target.read(cx).pane_at_window_position(position, cx);
-        TabDropTarget::Merge(window_handle, target_pane)
+        TabDropTarget::Merge {
+            window: window_handle,
+            position,
+            pane: target_pane,
+        }
     }
 
     /// The pane a point in this window's coordinates lands on: the center pane
@@ -6487,7 +6535,16 @@ impl Workspace {
         })
         .collect::<Vec<_>>();
         let dock_position = dock_containing_position(&open_docks, position)?;
-        self.dock_pane(dock_position, cx)
+        // 分割を持つパネル (ターミナル / ブラウザー) や 2 枚並べたドック (ADR-F30)
+        // では、ドックの矩形だけではどのペインの上かが決まらない。ペインは自分の
+        // 矩形を覚えているので、そこから当てる (当たらなければ従来どおりパネルの
+        // アクティブなペイン)。
+        self.dock_at_position(dock_position)
+            .read(cx)
+            .visible_panels()
+            .flat_map(|panel| panel.panes(cx))
+            .find(|pane| pane.read(cx).content_bounds().contains(&position))
+            .or_else(|| self.dock_pane(dock_position, cx))
     }
 
     /// The pane of the panel currently filling the given dock, if the dock is
@@ -6513,6 +6570,109 @@ impl Workspace {
             })
     }
 
+    /// Lets the window under the pointer show the tab being dragged out of this
+    /// one, so docking across windows looks like docking inside one: the pane
+    /// under the pointer lights up, and its edges offer the split previews.
+    ///
+    /// The platform hands the whole drag to the window it started in (the mouse
+    /// is captured there), so the window being dragged over never hears that a
+    /// drag is crossing it and paints nothing. `cx.active_drag` is application
+    /// wide, though, so one synthetic mouse move is all it takes: from there the
+    /// target window runs the same hit testing, `drag_over` styling and
+    /// [`Pane::handle_drag_move`] an in-window drag runs, down to carrying the
+    /// dragged tab's ghost.
+    fn update_external_drag_hint(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let viewport = Bounds::new(Point::default(), window.viewport_size());
+        let hovered = if viewport.contains(&position) {
+            None
+        } else {
+            match self.tab_drop_target(cx) {
+                TabDropTarget::Merge {
+                    window, position, ..
+                } => Some((window, position)),
+                // 合流できない先 (自窓 / 別プロジェクトのウィンドウ / デスクトップ)
+                // を光らせるとタブがそこへ入るように見えてしまう。実際には新しい
+                // ウィンドウが開くので、何も出さない。
+                TabDropTarget::OwnWindow | TabDropTarget::NewWindow => None,
+            }
+        };
+
+        let target = hovered.as_ref().map(|(window, _)| *window);
+        if self.external_drag_hint.is_some() && self.external_drag_hint != target {
+            self.clear_external_drag_hint(cx);
+        }
+        let Some((target_window, target_position)) = hovered else {
+            return;
+        };
+        self.external_drag_hint = Some(target_window);
+
+        let modifiers = window.modifiers();
+        // 相手に配るのは今のディスパッチが終わってから: `cx.propagate_event` は
+        // アプリにひとつしかないので、入れ子で配ると元ウィンドウの伝播判定を
+        // 相手のディスパッチの結果で上書きしてしまう。
+        cx.defer(move |cx| {
+            target_window
+                .update(cx, |_, window, cx| {
+                    window.dispatch_event(
+                        PlatformInput::MouseMove(MouseMoveEvent {
+                            position: target_position,
+                            pressed_button: Some(MouseButton::Left),
+                            modifiers,
+                        }),
+                        cx,
+                    );
+                })
+                .log_err();
+        });
+    }
+
+    /// Takes down the hint [`Workspace::update_external_drag_hint`] left in
+    /// another window, whether the pointer moved on to somewhere else or the
+    /// drag ended. Neither reaches that window - the mouse up goes to the window
+    /// holding the capture - so it has to be told from here.
+    ///
+    /// Telling it is again a synthetic mouse move, this time to a point outside
+    /// its viewport: that is what makes it stop treating any of its hitboxes as
+    /// hovered, and it also puts the dragged tab's ghost out of sight. (Every
+    /// window that repaints while a drag is running draws that ghost at its own
+    /// last known pointer position, so merely asking for a repaint would leave
+    /// one stuck to the window's edge.) The split directions the earlier moves
+    /// left in its panes are cleared afterwards, since the parting move computes
+    /// them one last time.
+    fn clear_external_drag_hint(&mut self, cx: &mut Context<Self>) {
+        let Some(target_window) = self.external_drag_hint.take() else {
+            return;
+        };
+        cx.defer(move |cx| {
+            target_window
+                .update(cx, |multi_workspace, window, cx| {
+                    let modifiers = window.modifiers();
+                    window.dispatch_event(
+                        PlatformInput::MouseMove(MouseMoveEvent {
+                            position: POINTER_OUTSIDE_WINDOW,
+                            pressed_button: Some(MouseButton::Left),
+                            modifiers,
+                        }),
+                        cx,
+                    );
+                    let workspace = multi_workspace.workspace().clone();
+                    workspace.update(cx, |workspace, cx| {
+                        workspace.dragged_tab = None;
+                        for pane in workspace.all_panes(cx) {
+                            pane.update(cx, |pane, cx| pane.clear_drag_split_direction(cx));
+                        }
+                    });
+                    window.refresh();
+                })
+                .log_err();
+        });
+    }
+
     /// Moves a single tab into a pane of another window, keeping the item
     /// entity alive so unsaved buffers and running terminals travel with it.
     ///
@@ -6528,6 +6688,7 @@ impl Workspace {
         item_id: EntityId,
         target_window: WindowHandle<MultiWorkspace>,
         target_pane: Option<Entity<Pane>>,
+        split_direction: Option<SplitDirection>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -6568,6 +6729,24 @@ impl Workspace {
                 let pane = target_pane
                     .filter(|pane| target_workspace.read(cx).contains_pane(pane, cx))
                     .unwrap_or_else(|| target_workspace.read(cx).active_pane().clone());
+                // 端に落ちたぶんは落ちた先のペインの持ち主に割らせる: パネルの中の
+                // 分割はワークスペース中央の `PaneGroup` ではなくパネルが持っている。
+                let pane = match split_direction {
+                    Some(direction) => {
+                        let split_handler = pane.read(cx).tab_drop_split_handler();
+                        target_workspace.update(cx, |workspace, cx| {
+                            split_pane_for_drop(
+                                workspace,
+                                split_handler.as_ref(),
+                                pane,
+                                direction,
+                                window,
+                                cx,
+                            )
+                        })
+                    }
+                    None => pane,
+                };
                 pane.update(cx, |pane, cx| {
                     pane.add_item(item, true, true, None, window, cx);
                 });
@@ -10559,15 +10738,17 @@ impl Render for Workspace {
             // of its own. `on_drag_move` is the only listener that keeps
             // reporting once the pointer leaves the window, so it is what keeps
             // the dragged tab on hand for the mouse up that ends the gesture.
-            .on_drag_move(
-                cx.listener(|workspace, event: &DragMoveEvent<DraggedTab>, _, _| {
+            .on_drag_move(cx.listener(
+                |workspace, event: &DragMoveEvent<DraggedTab>, window, cx| {
                     if let Some(dragged_tab) = event.dragged_item().downcast_ref::<DraggedTab>() {
                         workspace.dragged_tab = Some(dragged_tab.clone());
                     }
-                }),
-            )
-            .capture_any_mouse_up(cx.listener(|workspace, _: &MouseUpEvent, _, _| {
+                    workspace.update_external_drag_hint(event.event.position, window, cx);
+                },
+            ))
+            .capture_any_mouse_up(cx.listener(|workspace, _: &MouseUpEvent, _, cx| {
                 workspace.dragged_tab = None;
+                workspace.clear_external_drag_hint(cx);
             }))
             .on_mouse_up_out(
                 MouseButton::Left,
@@ -13216,8 +13397,8 @@ mod tests {
     };
     use fs::FakeFs;
     use gpui::{
-        DismissEvent, Empty, EventEmitter, FocusHandle, Focusable, Render, TestAppContext,
-        UpdateGlobal, VisualTestContext, px,
+        DismissEvent, Empty, EventEmitter, FocusHandle, Focusable, Modifiers, MouseDownEvent,
+        Render, TestAppContext, UpdateGlobal, VisualTestContext, px,
     };
     use project::{Project, ProjectEntryId, WorktreeId};
     use serde_json::json;
@@ -20456,6 +20637,7 @@ mod tests {
                         moving.item_id(),
                         target_window,
                         Some(target_pane.clone()),
+                        None,
                         window,
                         cx,
                     );
@@ -20514,6 +20696,229 @@ mod tests {
             .expect("the target window is open");
     }
 
+    /// 端に落として合流させたぶんは、落ちた先のペインをその向きに割ってから入れる
+    /// (窓の中のタブ D&D と同じ扱い)。
+    #[gpui::test]
+    async fn test_move_item_to_window_splits_the_pane_it_landed_on(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+
+        let (target_window, target_workspace, target_pane) =
+            add_workspace_window(&project, None, cx);
+        let app_state =
+            target_workspace.read_with(cx, |workspace, _| workspace.app_state().clone());
+        let (source_window, source_workspace, source_pane) =
+            add_workspace_window(&project, Some(app_state), cx);
+
+        let already_open = cx.new(|cx| TestItem::new(cx).with_label("already open"));
+        target_window
+            .update(cx, |_, window, cx| {
+                target_workspace.update(cx, |workspace, cx| {
+                    workspace.add_item(
+                        target_pane.clone(),
+                        Box::new(already_open.clone()),
+                        None,
+                        false,
+                        false,
+                        window,
+                        cx,
+                    );
+                });
+            })
+            .expect("the target window is open");
+
+        let staying = cx.new(|cx| TestItem::new(cx).with_label("staying"));
+        let moving = cx.new(|cx| TestItem::new(cx).with_label("moving"));
+        source_window
+            .update(cx, |_, window, cx| {
+                source_workspace.update(cx, |workspace, cx| {
+                    for item in [staying.clone(), moving.clone()] {
+                        workspace.add_item(
+                            source_pane.clone(),
+                            Box::new(item),
+                            None,
+                            false,
+                            false,
+                            window,
+                            cx,
+                        );
+                    }
+                });
+            })
+            .expect("the source window is open");
+        cx.run_until_parked();
+
+        source_window
+            .update(cx, |_, window, cx| {
+                source_workspace.update(cx, |workspace, cx| {
+                    workspace.move_item_to_window(
+                        source_pane.clone(),
+                        moving.item_id(),
+                        target_window,
+                        Some(target_pane.clone()),
+                        Some(SplitDirection::Right),
+                        window,
+                        cx,
+                    );
+                });
+            })
+            .expect("the source window is open");
+        cx.run_until_parked();
+
+        target_window
+            .update(cx, |_, _, cx| {
+                let panes = target_workspace.read(cx).panes().to_vec();
+                assert_eq!(
+                    panes.len(),
+                    2,
+                    "dropping on the pane's edge split it instead of adding a tab"
+                );
+                assert_eq!(
+                    target_pane
+                        .read(cx)
+                        .items()
+                        .map(|item| item.item_id())
+                        .collect::<Vec<_>>(),
+                    vec![already_open.item_id()],
+                    "what the target pane already held stayed where it was"
+                );
+                let new_pane = panes.last().expect("the split added a pane");
+                assert_ne!(
+                    new_pane, &target_pane,
+                    "the item went to the pane the split created"
+                );
+                assert_eq!(
+                    new_pane
+                        .read(cx)
+                        .items()
+                        .map(|item| item.item_id())
+                        .collect::<Vec<_>>(),
+                    vec![moving.item_id()],
+                    "the moved tab is alone in the new pane"
+                );
+                assert_eq!(
+                    target_workspace
+                        .read(cx)
+                        .pane_for_item_id(moving.item_id())
+                        .as_ref(),
+                    Some(new_pane),
+                    "the target workspace tracks the item in its new pane"
+                );
+            })
+            .expect("the target window is open");
+    }
+
+    /// A drag crossing another window is shown there by handing that window a
+    /// single synthetic mouse move: from there its panes run the same
+    /// `handle_drag_move` an in-window drag runs, so the pane under the pointer
+    /// lights up and its edges offer the split previews. This covers the half
+    /// that receives the move - which window the pointer is over is answered by
+    /// the platform (`window_under_cursor`), and the test platform has no
+    /// windows on a screen to answer with.
+    #[gpui::test]
+    async fn test_a_synthetic_move_lets_another_window_show_the_drop(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+
+        let (target_window, target_workspace, target_pane) =
+            add_workspace_window(&project, None, cx);
+        let app_state =
+            target_workspace.read_with(cx, |workspace, _| workspace.app_state().clone());
+        let (source_window, source_workspace, source_pane) =
+            add_workspace_window(&project, Some(app_state), cx);
+
+        let dragged = cx.new(|cx| TestItem::new(cx).with_label("dragged"));
+        source_window
+            .update(cx, |_, window, cx| {
+                source_workspace.update(cx, |workspace, cx| {
+                    workspace.add_item(
+                        source_pane.clone(),
+                        Box::new(dragged.clone()),
+                        None,
+                        false,
+                        false,
+                        window,
+                        cx,
+                    );
+                });
+            })
+            .expect("the source window is open");
+        cx.run_until_parked();
+
+        let source_cx = &mut VisualTestContext::from_window(source_window.into(), cx);
+        let tab_bounds = source_cx
+            .debug_bounds("TAB-0")
+            .expect("the tab to drag is on screen");
+        source_cx.simulate_event(MouseDownEvent {
+            position: tab_bounds.center(),
+            button: MouseButton::Left,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+            first_mouse: false,
+        });
+        source_cx.simulate_event(MouseMoveEvent {
+            position: tab_bounds.center() + point(px(0.), px(96.)),
+            pressed_button: Some(MouseButton::Left),
+            modifiers: Modifiers::default(),
+        });
+        assert!(
+            cx.update(|cx| cx.has_active_drag()),
+            "pressing a tab and moving starts the drag the hint rides on"
+        );
+        assert_eq!(
+            target_pane.read_with(cx, |pane, _| pane.drag_split_direction()),
+            None,
+            "the other window knows nothing of the drag until it is told"
+        );
+        assert!(
+            !target_pane
+                .read_with(cx, |pane, _| pane.content_bounds())
+                .is_empty(),
+            "the other window has been drawn, so its panes know where they are"
+        );
+
+        let viewport = target_window
+            .update(cx, |_, window, _| window.viewport_size())
+            .expect("the target window is open");
+        target_window
+            .update(cx, |_, window, cx| {
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position: point(viewport.width - px(4.), viewport.height / 2.),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Modifiers::default(),
+                    }),
+                    cx,
+                );
+            })
+            .expect("the target window is open");
+        cx.run_until_parked();
+
+        assert_eq!(
+            target_pane.read_with(cx, |pane, _| pane.drag_split_direction()),
+            Some(SplitDirection::Right),
+            "the pane under the pointer offers the split its right edge stands for"
+        );
+
+        target_pane.update(cx, |pane, cx| pane.clear_drag_split_direction(cx));
+        assert_eq!(
+            target_pane.read_with(cx, |pane, _| pane.drag_split_direction()),
+            None,
+            "the drag ending in the window that holds the capture takes the hint down"
+        );
+
+        source_cx.simulate_event(MouseUpEvent {
+            position: tab_bounds.center() + point(px(0.), px(96.)),
+            button: MouseButton::Left,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+        });
+    }
+
     #[gpui::test]
     async fn test_merging_the_last_item_closes_only_a_detached_window(cx: &mut TestAppContext) {
         init_test(cx);
@@ -20559,6 +20964,7 @@ mod tests {
                             item.item_id(),
                             target_window,
                             Some(target_pane.clone()),
+                            None,
                             window,
                             cx,
                         );
