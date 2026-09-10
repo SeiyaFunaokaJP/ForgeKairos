@@ -31,7 +31,6 @@ httparse.workspace = true
 language.workspace = true
 log.workspace = true
 lsp.workspace = true
-multi_buffer.workspace = true
 project.workspace = true
 serde.workspace = true
 serde_json.workspace = true

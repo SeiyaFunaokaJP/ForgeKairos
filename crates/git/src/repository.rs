@@ -838,7 +838,7 @@ pub enum PatchSource {
 impl PatchSource {
     pub fn args(self) -> Vec<String> {
         match self {
-            // `--binary` keeps the patch appliable when a binary file changed;
+            // `--binary` keeps the patch applicable when a binary file changed;
             // without it `git apply` rejects the hunk with "no binary data".
             Self::Worktree => vec!["diff".into(), "--binary".into()],
             Self::Index => vec!["diff".into(), "--binary".into(), "--cached".into()],

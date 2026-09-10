@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn the_entrys_transfer_protocol_wins_over_the_terminal_one() {
+    fn the_entry_transfer_protocol_wins_over_the_terminal_one() {
         let mut ssh = connection("r1", None);
         ssh.port = Some(2222);
         assert_eq!(preset_target(&ssh).protocol, TransferProtocol::Sftp);

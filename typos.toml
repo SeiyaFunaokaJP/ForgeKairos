@@ -116,3 +116,11 @@ check-filename = true
 [default.extend-words]
 scap = "scap"
 writeable = "writeable"
+# "ANDed" (two decisions combined with a logical AND) splits into a token the
+# dictionary reads as a misspelling of "Dead". Used by the egress policy and the
+# HTTP proxy, where the wording matters (ADR-F11 / ADR-F38).
+Ded = "Ded"
+# Byte-level test data: the backspace test asserts that a backspace byte
+# deletes the character before it, so the expected output cannot be spelled
+# differently (crates/terminal/src/session_log.rs).
+abd = "abd"
