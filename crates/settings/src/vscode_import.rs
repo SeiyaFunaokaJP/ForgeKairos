@@ -1088,7 +1088,9 @@ impl VsCodeSettings {
             }),
             zoomed_padding: None,
             focus_follows_mouse: None,
-            right_dock_secondary_panel: None,
+            default_stacked_dock: None,
+            default_stacked_panel: None,
+            default_stacked_secondary_panel: None,
         }
     }
 

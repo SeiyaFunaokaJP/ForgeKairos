@@ -2508,6 +2508,22 @@ impl App {
         self.active_drag.is_some()
     }
 
+    /// Is the value currently being dragged a `T`? Elements that only make
+    /// sense while a particular drag is in flight - a drop target drawn over
+    /// the whole window, say - can only be left out of the tree entirely when
+    /// they can ask what is being dragged, since `drag_over` needs a hitbox
+    /// that is already there.
+    pub fn active_drag_is<T: 'static>(&self) -> bool {
+        self.active_drag_value::<T>().is_some()
+    }
+
+    /// The value currently being dragged, if it is a `T`.
+    pub fn active_drag_value<T: 'static>(&self) -> Option<&T> {
+        self.active_drag
+            .as_ref()
+            .and_then(|drag| drag.value.downcast_ref::<T>())
+    }
+
     /// Gets the cursor style of the currently active drag operation.
     pub fn active_drag_cursor_style(&self) -> Option<CursorStyle> {
         self.active_drag.as_ref().and_then(|drag| drag.cursor_style)

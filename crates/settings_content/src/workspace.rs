@@ -144,15 +144,24 @@ pub struct WorkspaceSettingsContent {
     /// Whether the focused panel follows the mouse location
     /// Default: false
     pub focus_follows_mouse: Option<FocusFollowsMouse>,
-    /// Which panel the right dock stacks below the agent panel the first time a
-    /// project is opened. Once a project has a saved dock layout, that layout is
-    /// restored instead and this setting no longer applies to it.
+    /// Which dock shows a pair of panels the first time a project is opened.
+    /// Once a project has a saved dock layout, that layout is restored instead
+    /// and this setting no longer applies to it.
+    ///
+    /// Default: right
+    pub default_stacked_dock: Option<DockPosition>,
+    /// Panel that fills that dock, or `none` to leave the dock as it was.
+    ///
+    /// Default: agent
+    pub default_stacked_panel: Option<DefaultDockPanel>,
+    /// Panel stacked beside it, or `none` for a single panel as upstream Zed
+    /// shows.
     ///
     /// Default: browser
-    pub right_dock_secondary_panel: Option<RightDockSecondaryPanel>,
+    pub default_stacked_secondary_panel: Option<DefaultDockPanel>,
 }
 
-/// Second panel the right dock shows by default, stacked below the main one.
+/// A panel the default dock layout can name.
 #[derive(
     Copy,
     Clone,
@@ -167,14 +176,43 @@ pub struct WorkspaceSettingsContent {
     strum::VariantNames,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum RightDockSecondaryPanel {
-    /// Show a single panel, as upstream Zed does.
+pub enum DefaultDockPanel {
+    /// Leave the slot empty: the dock shows a single panel, as upstream Zed
+    /// does, or none at all.
+    #[default]
     #[strum(serialize = "並べない")]
     None,
-    /// Stack the browser panel below the agent panel.
-    #[default]
+    #[strum(serialize = "エージェントパネル")]
+    Agent,
     #[strum(serialize = "ブラウザーパネル")]
     Browser,
+    #[strum(serialize = "ターミナルパネル")]
+    Terminal,
+    #[strum(serialize = "プロジェクトパネル")]
+    Project,
+    #[strum(serialize = "Git パネル")]
+    Git,
+    #[strum(serialize = "アウトラインパネル")]
+    Outline,
+    #[strum(serialize = "デバッグパネル")]
+    Debug,
+}
+
+impl DefaultDockPanel {
+    /// The name the panel is persisted under, which is how a dock refers to a
+    /// panel it may not have been given yet (`Panel::persistent_name`).
+    pub fn persistent_name(self) -> Option<&'static str> {
+        match self {
+            Self::None => None,
+            Self::Agent => Some("AgentPanel"),
+            Self::Browser => Some("BrowserPanel"),
+            Self::Terminal => Some("TerminalPanel"),
+            Self::Project => Some("Project Panel"),
+            Self::Git => Some("GitPanel"),
+            Self::Outline => Some("Outline Panel"),
+            Self::Debug => Some("DebugPanel"),
+        }
+    }
 }
 
 #[with_fallible_options]

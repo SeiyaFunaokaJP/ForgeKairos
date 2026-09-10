@@ -29,16 +29,6 @@ pub const DEFAULT_SECONDARY_RATIO: f32 = 0.5;
 const MIN_SECONDARY_RATIO: f32 = 0.15;
 const MAX_SECONDARY_RATIO: f32 = 0.85;
 
-/// Panel stacked below the agent panel by default in this fork's right dock.
-/// Matches `browser_panel::BrowserPanel::persistent_name`; an unknown name is
-/// simply ignored when the dock state is restored.
-pub(crate) const DEFAULT_STACKED_SECONDARY_PANEL: &str = "BrowserPanel";
-
-/// Panel the fork's default right dock layout shows above
-/// [`DEFAULT_STACKED_SECONDARY_PANEL`]. Matches
-/// `agent_ui::AgentPanel::persistent_name`.
-pub(crate) const DEFAULT_STACKED_PRIMARY_PANEL: &str = "AgentPanel";
-
 fn clamp_secondary_ratio(ratio: f32) -> f32 {
     ratio.clamp(MIN_SECONDARY_RATIO, MAX_SECONDARY_RATIO)
 }
@@ -60,6 +50,37 @@ pub(crate) struct DraggedDockSplit(DockPosition);
 impl Render for DraggedDockSplit {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         gpui::Empty
+    }
+}
+
+/// A whole panel dragged by its status bar button, so it can be dropped on
+/// another dock or released outside the window to be torn off into one of its
+/// own (ADR-F40). The icon and label travel with the drag because the preview
+/// keeps rendering after the panel's own dock has let go of it.
+#[derive(Clone)]
+pub struct DraggedPanel {
+    pub panel: Arc<dyn PanelHandle>,
+    icon: IconName,
+    label: SharedString,
+}
+
+impl Render for DraggedPanel {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .px_1p5()
+            .py_1()
+            .rounded_sm()
+            .border_1()
+            .border_color(cx.theme().colors().border)
+            .bg(cx.theme().colors().elevated_surface_background)
+            .shadow_md()
+            .child(
+                Icon::new(self.icon)
+                    .size(IconSize::Small)
+                    .color(Color::Muted),
+            )
+            .child(Label::new(self.label.clone()).size(LabelSize::Small))
     }
 }
 
@@ -407,7 +428,7 @@ impl From<TerminalDockPosition> for DockPosition {
 }
 
 impl DockPosition {
-    fn label(&self) -> &'static str {
+    pub(crate) fn label(&self) -> &'static str {
         match self {
             Self::Left => "左",
             Self::Bottom => "下",
@@ -1846,9 +1867,13 @@ impl Render for PanelButtons {
             format!("右クリック / Shift+クリックで{stack_entry_label}").into();
         let is_open = dock.is_open;
         let dock_position = dock.position;
-        // Arranging the right dock by hand answers the question the fork's
-        // default pairing exists to answer, so it must not be applied later.
-        let settles_default_layout = dock_position == DockPosition::Right;
+        // Arranging by hand the dock the fork pairs panels in answers the
+        // question that default exists to answer, so it must not be applied
+        // later.
+        let settles_default_layout = dock_position
+            == WorkspaceSettings::get_global(cx)
+                .default_stacked_dock
+                .into();
 
         let (menu_anchor, menu_attach) = match dock.position {
             DockPosition::Left => (Anchor::BottomLeft, Anchor::TopLeft),
@@ -1918,13 +1943,18 @@ impl Render for PanelButtons {
                         Some(stack_hint_meta.clone()),
                     )
                 } else {
-                    (tooltip, Some(action.boxed_clone()), None)
+                    (
+                        tooltip,
+                        Some(action.boxed_clone()),
+                        Some(SharedString::new_static("ドラッグで別のドックへ移動")),
+                    )
                 };
 
                 let focus_handle = dock.focus_handle(cx);
                 let dock_for_click = dock_entity.clone();
                 let workspace_for_click = workspace.clone();
                 let icon_label = entry.panel.icon_label(window, cx);
+                let panel_for_drag = panel.clone();
 
                 Some(
                     right_click_menu(name)
@@ -2051,6 +2081,24 @@ impl Render for PanelButtons {
                                         },
                                     );
                                 }
+                                {
+                                    let panel_for_window = panel.clone();
+                                    let workspace_for_window = workspace_for_menu.clone();
+                                    menu = menu.separator().entry(
+                                        "新しいウィンドウへ切り出す",
+                                        None,
+                                        move |window, cx| {
+                                            let panel = panel_for_window.clone();
+                                            workspace_for_window
+                                                .update(cx, |workspace, cx| {
+                                                    workspace.move_panel_to_new_window(
+                                                        panel, None, window, cx,
+                                                    );
+                                                })
+                                                .ok();
+                                        },
+                                    );
+                                }
                                 if let Some(hide) = panel_hide {
                                     menu = crate::status_bar::add_hide_button_entry(
                                         menu.separator(),
@@ -2129,13 +2177,29 @@ impl Render for PanelButtons {
                                     })
                                 });
 
-                            div().relative().child(button).when_some(
-                                icon_label
-                                    .clone()
-                                    .filter(|_| !is_active_button)
-                                    .and_then(|label| label.parse::<usize>().ok()),
-                                |this, count| this.child(CountBadge::new(count)),
-                            )
+                            div()
+                                .id(SharedString::from(format!("{name}-drag")))
+                                .relative()
+                                // Dragging the button moves the whole panel: the
+                                // workspace draws the docks it can land on and
+                                // tears it off into its own window when the drag
+                                // ends outside this one (ADR-F40).
+                                .on_drag(
+                                    DraggedPanel {
+                                        panel: panel_for_drag.clone(),
+                                        icon,
+                                        label: icon_tooltip.into(),
+                                    },
+                                    |dragged, _, _, cx| cx.new(|_| dragged.clone()),
+                                )
+                                .child(button)
+                                .when_some(
+                                    icon_label
+                                        .clone()
+                                        .filter(|_| !is_active_button)
+                                        .and_then(|label| label.parse::<usize>().ok()),
+                                    |this, count| this.child(CountBadge::new(count)),
+                                )
                         }),
                 )
             })

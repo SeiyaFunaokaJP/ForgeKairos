@@ -42,7 +42,9 @@ pub struct WorkspaceSettings {
     pub zoomed_padding: bool,
     pub window_decorations: settings::WindowDecorations,
     pub focus_follows_mouse: FocusFollowsMouse,
-    pub right_dock_secondary_panel: settings::RightDockSecondaryPanel,
+    pub default_stacked_dock: settings::DockPosition,
+    pub default_stacked_panel: settings::DefaultDockPanel,
+    pub default_stacked_secondary_panel: settings::DefaultDockPanel,
 }
 
 #[derive(Copy, Clone, Deserialize)]
@@ -146,8 +148,18 @@ impl Settings for WorkspaceSettings {
                         .unwrap_or(250),
                 ),
             },
-            // Fork addition, so it tolerates a `default.json` that predates it.
-            right_dock_secondary_panel: workspace.right_dock_secondary_panel.unwrap_or_default(),
+            // Fork additions, so they tolerate a `default.json` that predates
+            // them. The defaults are the pairing the fork ships: the agent
+            // panel in the right dock with the browser panel below it.
+            default_stacked_dock: workspace
+                .default_stacked_dock
+                .unwrap_or(settings::DockPosition::Right),
+            default_stacked_panel: workspace
+                .default_stacked_panel
+                .unwrap_or(settings::DefaultDockPanel::Agent),
+            default_stacked_secondary_panel: workspace
+                .default_stacked_secondary_panel
+                .unwrap_or(settings::DefaultDockPanel::Browser),
         }
     }
 }

@@ -8,9 +8,9 @@
 //!
 //! 開き方は 2 つある:
 //!
-//! - 右ドックの [`BrowserPanel`] — ワークスペースに 1 つ。エージェントパネルと
-//!   同じドックなので、同時に出せるのはどちらか一方。パネルの中は**タブバー**で、
-//!   ここでもページは何枚でも開ける
+//! - ドックの [`BrowserPanel`] — ワークスペースに 1 つ。左・右・下のどこにでも
+//!   置ける (既定は右)。エージェントパネルと同じドックなので、同時に出せるのは
+//!   どちらか一方。パネルの中は**タブバー**で、ここでもページは何枚でも開ける
 //! - エディター領域のタブ [`BrowserItem`] — **いくつでも開ける** (`browser_panel::NewBrowserTab`)
 //!
 //! どちらも中身は [`BrowserView`] で、WebView2 の環境 (`ICoreWebView2Environment`) は
@@ -127,6 +127,7 @@ pub struct BrowserSettings {
     pub button: bool,
     pub dock: DockPosition,
     pub default_width: Pixels,
+    pub default_height: Pixels,
     pub home_url: String,
     pub search_url: String,
     pub copilot_url: String,
@@ -147,6 +148,10 @@ impl Settings for BrowserSettings {
                 .default_width
                 .map(|width| width.into_gpui())
                 .unwrap_or(px(480.)),
+            default_height: browser
+                .default_height
+                .map(|height| height.into_gpui())
+                .unwrap_or(px(320.)),
             home_url: browser
                 .home_url
                 .unwrap_or_else(|| DEFAULT_HOME_URL.to_string()),
@@ -274,7 +279,7 @@ pub(crate) enum NewTabPlacement {
     Background,
 }
 
-/// 右ドックの内蔵ブラウザー。中身はワークスペースと同じ [`PaneGroup`] + [`Pane`] で、
+/// ドックの内蔵ブラウザー。中身はワークスペースと同じ [`PaneGroup`] + [`Pane`] で、
 /// タブ 1 枚 = [`BrowserItem`] 1 つ = WebView2 コントローラー 1 つ。
 ///
 /// ターミナルパネルと同じ作りにしてあるのは、**IDE 内のどのタブ列にもドラッグで
@@ -1197,8 +1202,8 @@ impl Panel for BrowserPanel {
         BrowserSettings::get_global(cx).dock
     }
 
-    fn position_is_valid(&self, position: DockPosition) -> bool {
-        matches!(position, DockPosition::Left | DockPosition::Right)
+    fn position_is_valid(&self, _position: DockPosition) -> bool {
+        true
     }
 
     fn set_position(&mut self, position: DockPosition, _: &mut Window, cx: &mut Context<Self>) {
@@ -1207,8 +1212,12 @@ impl Panel for BrowserPanel {
         });
     }
 
-    fn default_size(&self, _: &Window, cx: &App) -> Pixels {
-        BrowserSettings::get_global(cx).default_width
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels {
+        let settings = BrowserSettings::get_global(cx);
+        match self.position(window, cx) {
+            DockPosition::Left | DockPosition::Right => settings.default_width,
+            DockPosition::Bottom => settings.default_height,
+        }
     }
 
     fn icon(&self, _: &Window, cx: &App) -> Option<IconName> {

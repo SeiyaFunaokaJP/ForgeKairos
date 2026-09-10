@@ -49,7 +49,7 @@ use client::{
     proto::{self, ErrorCode, PanelId, PeerId},
 };
 use collections::{HashMap, HashSet, TypeIdHashMap, hash_map};
-use dock::{Dock, DockPosition, PanelButtons, PanelHandle, RESIZE_HANDLE_SIZE};
+use dock::{Dock, DockPosition, DraggedPanel, PanelButtons, PanelHandle, RESIZE_HANDLE_SIZE};
 use fs::Fs;
 use futures::{
     Future, FutureExt, StreamExt,
@@ -65,7 +65,7 @@ use gpui::{
     Focusable, Global, HitboxBehavior, Hsla, KeyContext, Keystroke, ManagedView, MouseButton,
     MouseUpEvent, PathPromptOptions, Point, PromptLevel, Render, ResizeEdge, Size, Stateful,
     Subscription, SystemWindowTabController, Task, TaskExt, Tiling, WeakEntity, WindowBounds,
-    WindowHandle, WindowId, WindowOptions, actions, canvas, point, px, relative, size,
+    WindowHandle, WindowId, WindowOptions, actions, canvas, deferred, point, px, relative, size,
     transparent_black,
 };
 pub use history_manager::*;
@@ -238,6 +238,112 @@ fn dock_containing_position(
         .iter()
         .find(|(_, bounds)| !bounds.is_empty() && bounds.contains(&position))
         .map(|(dock_position, _)| *dock_position)
+}
+
+/// Share of the workspace given to the band along each dock edge that a
+/// dragged panel can be dropped on.
+const PANEL_DROP_BAND_RATIO: f32 = 0.2;
+
+/// Smallest such band, so a narrow window still leaves something to aim at.
+const MIN_PANEL_DROP_BAND: Pixels = px(96.);
+
+/// Where a panel dragged by its status bar button would land.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PanelDropZone {
+    position: DockPosition,
+    /// What to draw as the drop target, in window coordinates.
+    bounds: Bounds<Pixels>,
+}
+
+/// Which dock a panel released at `position` should move to (ADR-F40).
+///
+/// An open dock takes any point inside it, so dropping a panel onto the one it
+/// should join is exact. Everything else is decided by bands along the
+/// workspace's three dock edges, which is what lets a panel be dropped on a
+/// dock that is currently closed and therefore has no rectangle of its own. A
+/// release over the middle is not a target: the center is not a dock, so a
+/// drag that ends there leaves the panel where it was.
+fn panel_drop_zone(
+    area: Bounds<Pixels>,
+    open_docks: &[(DockPosition, Bounds<Pixels>)],
+    position: Point<Pixels>,
+) -> Option<PanelDropZone> {
+    if area.is_empty() || !area.contains(&position) {
+        return None;
+    }
+
+    if let Some(dock_position) = dock_containing_position(open_docks, position) {
+        let bounds = open_docks
+            .iter()
+            .find(|(candidate, _)| *candidate == dock_position)
+            .map_or(area, |(_, bounds)| *bounds);
+        return Some(PanelDropZone {
+            position: dock_position,
+            bounds,
+        });
+    }
+
+    let band = |extent: Pixels| {
+        (extent * PANEL_DROP_BAND_RATIO)
+            .max(MIN_PANEL_DROP_BAND)
+            .min(extent * (1. / 3.))
+    };
+    let width = band(area.size.width);
+    let height = band(area.size.height);
+    // A corner belongs to whichever edge the pointer is nearer, measured as a
+    // share of that edge's own band so a shallow bottom band still wins the
+    // corners of a tall window.
+    let (dock_position, _) = [
+        (DockPosition::Left, (position.x - area.left()) / width),
+        (DockPosition::Right, (area.right() - position.x) / width),
+        (DockPosition::Bottom, (area.bottom() - position.y) / height),
+    ]
+    .into_iter()
+    .filter(|(_, share)| *share < 1.)
+    .min_by(|(_, left), (_, right)| left.total_cmp(right))?;
+
+    let bounds = match dock_position {
+        DockPosition::Left => Bounds::new(area.origin, size(width, area.size.height)),
+        DockPosition::Right => Bounds::new(
+            point(area.right() - width, area.top()),
+            size(width, area.size.height),
+        ),
+        DockPosition::Bottom => Bounds::new(
+            point(area.left(), area.bottom() - height),
+            size(area.size.width, height),
+        ),
+    };
+    Some(PanelDropZone {
+        position: dock_position,
+        bounds,
+    })
+}
+
+/// Shows `panel_id` in `dock` - stacked beside the panel already there when
+/// `stack` - if the panel has reached that dock. Reports whether it had.
+fn show_panel_in_dock(
+    dock: &Entity<Dock>,
+    panel_id: EntityId,
+    stack: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> bool {
+    let index = {
+        let dock = dock.read(cx);
+        dock.panels().position(|panel| panel.panel_id() == panel_id)
+    };
+    let Some(index) = index else {
+        return false;
+    };
+    dock.update(cx, |dock, cx| {
+        if stack {
+            dock.stack_panel_beside_primary(index, window, cx);
+        } else {
+            dock.activate_panel(index, window, cx);
+            dock.set_open(true, window, cx);
+        }
+    });
+    true
 }
 
 static ZED_WINDOW_SIZE: LazyLock<Option<Size<Pixels>>> = LazyLock::new(|| {
@@ -1674,6 +1780,11 @@ pub struct Workspace {
     active_worktree_creation: ActiveWorktreeCreation,
     deferred_save_items: Vec<Box<dyn WeakItemHandle>>,
     item_cleanup: SerializableItemCleanup,
+    /// Waits for a panel dropped on a dock to reach it. `Panel::set_position`
+    /// only writes the setting, and the panel does not change docks until that
+    /// write comes back through the store, so the slot the drop asked for
+    /// (shown, or stacked beside what is already there) is given then (ADR-F40).
+    dropped_panel_placement: Option<Subscription>,
 }
 
 /// 復元しなかったアイテムの行を落とす後始末の待ち合わせ (ADR-F37)。
@@ -2158,6 +2269,7 @@ impl Workspace {
             _dev_container_task: None,
             deferred_save_items: Vec::new(),
             item_cleanup: SerializableItemCleanup::default(),
+            dropped_panel_placement: None,
         }
     }
 
@@ -2393,16 +2505,21 @@ impl Workspace {
                         .update(cx, |_, window, cx| {
                             workspace.update(cx, |workspace, cx| {
                                 let mut default_docks = default_docks;
-                                // Fork default: pair the browser panel with
-                                // whatever the user has active in the right dock
-                                // instead of hiding it behind a panel switch.
-                                // Never forces the dock open, and an unknown panel
-                                // name is ignored when the state is restored.
-                                if let Some(secondary_panel) =
-                                    Self::default_secondary_panel_name(cx)
+                                // Fork default: pair the second panel with
+                                // whatever the user has active in the dock the
+                                // pairing is configured for, instead of hiding
+                                // it behind a panel switch. Never forces the
+                                // dock open, and an unknown panel name is
+                                // ignored when the state is restored.
+                                if let Some((position, _, secondary_panel)) =
+                                    Self::default_stacked_layout(cx)
                                 {
-                                    default_docks
-                                        .right
+                                    let dock_data = match position {
+                                        DockPosition::Left => &mut default_docks.left,
+                                        DockPosition::Bottom => &mut default_docks.bottom,
+                                        DockPosition::Right => &mut default_docks.right,
+                                    };
+                                    dock_data
                                         .secondary_panel
                                         .get_or_insert_with(|| secondary_panel.to_string());
                                 }
@@ -2541,47 +2658,49 @@ impl Workspace {
         found
     }
 
-    /// The panel the fork stacks below the right dock's main one by default, or
-    /// `None` when the user turned that pairing off.
-    fn default_secondary_panel_name(cx: &App) -> Option<&'static str> {
-        match WorkspaceSettings::get_global(cx).right_dock_secondary_panel {
-            settings::RightDockSecondaryPanel::None => None,
-            settings::RightDockSecondaryPanel::Browser => {
-                Some(dock::DEFAULT_STACKED_SECONDARY_PANEL)
-            }
+    /// The pair of panels the fork stacks in one dock by default, and where.
+    /// `None` when the user turned the pairing off (ADR-F40 generalized this
+    /// from "the browser panel below the right dock's agent panel" to any dock
+    /// and any two panels).
+    fn default_stacked_layout(cx: &App) -> Option<(DockPosition, &'static str, &'static str)> {
+        let settings = WorkspaceSettings::get_global(cx);
+        let panel = settings.default_stacked_panel.persistent_name()?;
+        let secondary_panel = settings.default_stacked_secondary_panel.persistent_name()?;
+        // One panel cannot be paired with itself, and reporting a layout that
+        // can never be applied would keep the startup pass retrying for it.
+        if panel == secondary_panel {
+            return None;
         }
+        Some((settings.default_stacked_dock.into(), panel, secondary_panel))
     }
 
-    /// Fork default: the right dock shows the agent panel with a second panel
-    /// stacked below it, so both are reachable without knowing about the
-    /// stacking commands. This is applied once per workspace - to a project
-    /// opened for the first time, and to one saved before the pairing existed
-    /// (`DockStructure::default_layout_applied`) - and never again, so a user
-    /// who takes the pair apart keeps it apart. Returns whether it was applied.
+    /// Fork default: one dock shows a pair of panels - out of the box the agent
+    /// panel with the browser panel stacked below it - so both are reachable
+    /// without knowing about the stacking commands. This is applied once per
+    /// workspace - to a project opened for the first time, and to one saved
+    /// before the pairing existed (`DockStructure::default_layout_applied`) -
+    /// and never again, so a user who takes the pair apart keeps it apart.
+    /// Returns whether it was applied.
     fn apply_default_dock_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.default_dock_layout_settled {
             return false;
         }
 
-        let Some(secondary_panel) = Self::default_secondary_panel_name(cx) else {
+        let Some((position, panel, secondary_panel)) = Self::default_stacked_layout(cx) else {
             self.settle_default_dock_layout(window, cx);
             return false;
         };
+        let dock = self.dock_at_position(position).clone();
 
         // A dock that already shows a pair was arranged by the user (or by an
         // earlier run of this), so there is nothing left to decide.
-        if self.right_dock.read(cx).secondary_panel_index().is_some() {
+        if dock.read(cx).secondary_panel_index().is_some() {
             self.settle_default_dock_layout(window, cx);
             return false;
         }
 
-        let applied = self.right_dock.update(cx, |dock, cx| {
-            dock.apply_default_stacked_layout(
-                dock::DEFAULT_STACKED_PRIMARY_PANEL,
-                secondary_panel,
-                window,
-                cx,
-            )
+        let applied = dock.update(cx, |dock, cx| {
+            dock.apply_default_stacked_layout(panel, secondary_panel, window, cx)
         });
         if applied {
             self.settle_default_dock_layout(window, cx);
@@ -2590,7 +2709,7 @@ impl Workspace {
         applied
     }
 
-    /// Records that the fork's default right dock pairing is decided for this
+    /// Records that the fork's default dock pairing is decided for this
     /// workspace, so later launches restore what the user has rather than
     /// applying the default again.
     pub(crate) fn settle_default_dock_layout(
@@ -2648,6 +2767,352 @@ impl Workspace {
             dock.read(cx).is_open() && dock.focus_handle(cx).contains_focused(window, cx)
         })
         .map(|(position, _)| position)
+    }
+
+    /// Where each open dock was last laid out, for hit tests against a drag.
+    fn open_dock_bounds(&self, cx: &App) -> Vec<(DockPosition, Bounds<Pixels>)> {
+        [
+            DockPosition::Left,
+            DockPosition::Bottom,
+            DockPosition::Right,
+        ]
+        .into_iter()
+        .filter(|position| self.dock_at_position(*position).read(cx).is_open())
+        .map(|position| {
+            (
+                position,
+                self.dock_bounds[Self::dock_bounds_index(position)],
+            )
+        })
+        .collect()
+    }
+
+    /// The panel of the given kind, wherever it is docked.
+    fn panel_for_persistent_name(
+        &self,
+        name: &str,
+        cx: &App,
+    ) -> Option<(DockPosition, Arc<dyn PanelHandle>)> {
+        self.all_docks().into_iter().find_map(|dock| {
+            let dock = dock.read(cx);
+            let index = dock.panel_index_for_persistent_name(name, cx)?;
+            Some((dock.position(), dock.panel_at(index)?.clone()))
+        })
+    }
+
+    /// The drop target drawn while a panel is dragged by its status bar button
+    /// (ADR-F40).
+    ///
+    /// It is only in the element tree during such a drag, so it takes no mouse
+    /// events the rest of the time; that is also why it can be `occlude`d,
+    /// which is what keeps the panes underneath from swallowing the drop. The
+    /// pointer is read straight from the window on every frame because the
+    /// drag's own preview already forces a redraw as it moves.
+    fn render_panel_drop_overlay(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        // A zoomed view covers the whole workspace, so none of the docks a
+        // panel could be dropped on are on screen to aim at.
+        if self.zoomed.is_some() {
+            return None;
+        }
+        let dragged = cx.active_drag_value::<DraggedPanel>()?.clone();
+        let zone = panel_drop_zone(
+            self.bounds,
+            &self.open_dock_bounds(cx),
+            window.mouse_position(),
+        )
+        .filter(|zone| dragged.panel.position_is_valid(zone.position, cx));
+        let stacking = window.modifiers().shift;
+        let background = cx.theme().colors().drop_target_background;
+        let border = cx.theme().colors().drop_target_border;
+        let origin = self.bounds.origin;
+
+        // Deferred, and above the docks' own resize handles, which are
+        // deferred too: a release over one of those 6px strips would otherwise
+        // be swallowed by a hitbox that has nothing to do with the drag.
+        Some(
+            deferred(
+                div()
+                    .id("panel-drop-overlay")
+                    .absolute()
+                    .inset_0()
+                    .occlude()
+                    .on_drop(
+                        cx.listener(|workspace, dragged: &DraggedPanel, window, cx| {
+                            workspace.drop_dragged_panel(dragged, window, cx);
+                        }),
+                    )
+                    .children(zone.map(|zone| {
+                        let label = if stacking {
+                            format!("{}ドックに並べて表示", zone.position.label())
+                        } else {
+                            format!("{}ドックへ移動", zone.position.label())
+                        };
+                        div()
+                            .absolute()
+                            .left(zone.bounds.left() - origin.x)
+                            .top(zone.bounds.top() - origin.y)
+                            .w(zone.bounds.size.width)
+                            .h(zone.bounds.size.height)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(background)
+                            .border_2()
+                            .border_color(border)
+                            .child(Label::new(label).size(LabelSize::Small))
+                    })),
+            )
+            .with_priority(1)
+            .into_any_element(),
+        )
+    }
+
+    /// Moves a panel released over a dock's drop target into that dock. Shift
+    /// stacks it beside the panel already there instead of taking the dock
+    /// over, the same as Shift+clicking its button (ADR-F30).
+    fn drop_dragged_panel(
+        &mut self,
+        dragged: &DraggedPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(zone) = panel_drop_zone(
+            self.bounds,
+            &self.open_dock_bounds(cx),
+            window.mouse_position(),
+        ) else {
+            return;
+        };
+        let panel = dragged.panel.clone();
+        if !panel.position_is_valid(zone.position, cx) {
+            return;
+        }
+        let stack = window.modifiers().shift;
+        // Dropping a panel on the dock it is already in still means "show it
+        // here", which is what a panel whose dock was closed is dropped for.
+        if panel.position(window, cx) != zone.position {
+            panel.set_position(zone.position, window, cx);
+        }
+        self.place_dropped_panel(panel, zone.position, stack, window, cx);
+    }
+
+    /// Gives a dropped panel the slot it was dropped on, once it is actually in
+    /// that dock. [`Panel::set_position`] only writes the setting and the move
+    /// itself is done by the observer `Dock::add_panel` installs, so waiting
+    /// for the dock to change is what says the slot exists. Without this a
+    /// panel dropped while its own dock was closed would land out of sight.
+    fn place_dropped_panel(
+        &mut self,
+        panel: Arc<dyn PanelHandle>,
+        position: DockPosition,
+        stack: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let dock = self.dock_at_position(position).clone();
+        let panel_id = panel.panel_id();
+        if show_panel_in_dock(&dock, panel_id, stack, window, cx) {
+            self.dropped_panel_placement = None;
+            self.serialize_workspace(window, cx);
+            return;
+        }
+        self.dropped_panel_placement =
+            Some(
+                cx.observe_in(&dock, window, move |workspace, dock, window, cx| {
+                    if show_panel_in_dock(&dock, panel_id, stack, window, cx) {
+                        workspace.dropped_panel_placement = None;
+                        workspace.serialize_workspace(window, cx);
+                    }
+                }),
+            );
+    }
+
+    /// Tears a panel off into a window of its own when its drag ends outside
+    /// this one, mirroring the tab gesture (ADR-F34). A release over this
+    /// window's own frame - the resize edges are outside the viewport but
+    /// still this window - is not a tear-off, so a pointer that slipped a
+    /// pixel past the edge leaves the panel alone.
+    fn handle_panel_dropped_outside_window(
+        &mut self,
+        event: &MouseUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(dragged) = cx.active_drag_value::<DraggedPanel>().cloned() else {
+            return;
+        };
+        let viewport = Bounds::new(Point::default(), window.viewport_size());
+        if viewport.contains(&event.position) {
+            return;
+        }
+        if let Some((window_under_cursor, _)) = cx.window_under_cursor()
+            && window_under_cursor.window_id() == window.window_handle().window_id()
+        {
+            return;
+        }
+        let screen_origin = window.bounds().origin + event.position - TORN_OFF_TAB_OFFSET;
+        self.move_panel_to_new_window(dragged.panel, Some(screen_origin), window, cx);
+    }
+
+    /// Opens a window that shows nothing but this panel, moving what the panel
+    /// holds - browser tabs, agent threads - into it (ADR-F40).
+    ///
+    /// The panel entity itself cannot travel: its focus handles belong to this
+    /// window and every workspace builds its own panels. So the new window's
+    /// panel of the same kind is what gets zoomed there, and the items move
+    /// across the way a torn-off tab does, which keeps them alive rather than
+    /// reopening them from a path.
+    pub fn move_panel_to_new_window(
+        &mut self,
+        panel: Arc<dyn PanelHandle>,
+        screen_origin: Option<Point<Pixels>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let project = self.project.clone();
+        let app_state = self.app_state.clone();
+        let source_bounds = window.bounds();
+        let display_uuid = window.display(cx).and_then(|display| display.uuid().ok());
+        let origin = screen_origin.unwrap_or_else(|| {
+            source_bounds.origin + point(NEW_WINDOW_CASCADE, NEW_WINDOW_CASCADE)
+        });
+        let bounds = Bounds::new(origin, source_bounds.size);
+        let persistent_name = panel.persistent_name();
+        let source_position = panel.position(window, cx);
+        let source_panes = panel.panes(cx);
+        let panel_id = panel.panel_id();
+
+        cx.spawn_in(window, async move |source_workspace, cx| {
+            let options = cx.update(|_, cx| {
+                let mut options = (app_state.build_window_options)(display_uuid, cx);
+                options.window_bounds = Some(WindowBounds::Windowed(bounds));
+                options
+            })?;
+
+            let new_window = cx.open_window(options, {
+                let project = project.clone();
+                let app_state = app_state.clone();
+                move |window, cx| {
+                    let workspace = cx.new(|cx| {
+                        let mut workspace = Workspace::new(None, project, app_state, window, cx);
+                        // The torn-off panel is all the window shows, so every
+                        // pass that would fill the docks in is turned off: the
+                        // startup sweep for panels asking to start open, the
+                        // fork's default right dock layout, and the open each
+                        // panel performs for itself as it is added.
+                        workspace.starts_open_pending = false;
+                        workspace.default_dock_layout_settled = true;
+                        workspace.suppress_dock_auto_open(cx);
+                        workspace
+                    });
+                    cx.new(|cx| MultiWorkspace::new(workspace, window, cx))
+                }
+            })?;
+
+            let new_workspace = new_window.update(cx, |multi_workspace, _, _| {
+                multi_workspace.workspace().clone()
+            })?;
+
+            // The new window builds its own panels, and the one this gesture is
+            // about only exists once that pass has run.
+            let panels_task = new_workspace.update(cx, |workspace, _| workspace.take_panels_task());
+            if let Some(panels_task) = panels_task {
+                panels_task.await.log_err();
+            }
+
+            let target = new_workspace.update(cx, |workspace, cx| {
+                workspace.panel_for_persistent_name(persistent_name, cx)
+            });
+            let Some((position, target)) = target else {
+                // A window without the panel this gesture is about has nothing
+                // to show; the items stay where they are.
+                log::warn!(
+                    "no {persistent_name} in the new window to move the panel's contents into"
+                );
+                new_window.update(cx, |_, window, _| window.remove_window())?;
+                return anyhow::Ok(());
+            };
+
+            // Taking the items out has to happen in the source window: removal
+            // activates a neighbouring tab and moves focus there.
+            let mut items = Vec::new();
+            for pane in source_panes {
+                let taken = pane.update_in(cx, |pane, window, cx| {
+                    let taken = pane
+                        .items()
+                        .map(|item| item.boxed_clone())
+                        .collect::<Vec<_>>();
+                    for item in &taken {
+                        pane.remove_item(item.item_id(), false, false, window, cx);
+                    }
+                    taken
+                })?;
+                items.extend(taken);
+            }
+
+            // The panel is filled before it is shown: a panel that is activated
+            // with nothing in it opens something of its own (the browser panel
+            // its home page, the terminal panel a shell), which would sit in
+            // front of what was just moved over.
+            new_window.update(cx, |_, window, cx| {
+                if let Some(target_pane) = target.pane(cx) {
+                    target_pane.update(cx, |pane, cx| {
+                        for item in items {
+                            pane.add_item(item, true, true, None, window, cx);
+                        }
+                    });
+                }
+                new_workspace.update(cx, |workspace, cx| {
+                    let dock = workspace.dock_at_position(position).clone();
+                    show_panel_in_dock(&dock, target.panel_id(), false, window, cx);
+                    // The window is the panel, so it takes the whole frame; the
+                    // empty center behind it is not worth showing.
+                    let view = target.to_any();
+                    dock.update(cx, |dock, cx| {
+                        dock.set_panel_zoomed(&view, true, window, cx)
+                    });
+                });
+                window.activate_window();
+            })?;
+
+            source_workspace.update_in(cx, |workspace, window, cx| {
+                workspace.fold_away_panel(panel_id, source_position, window, cx);
+            })?;
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    /// Folds away the panel a tear-off emptied: the half of a stacked pair goes
+    /// back to a single panel, and a dock left showing nothing else closes.
+    fn fold_away_panel(
+        &mut self,
+        panel_id: EntityId,
+        position: DockPosition,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let dock = self.dock_at_position(position).clone();
+        let index = {
+            let dock = dock.read(cx);
+            dock.panels().position(|panel| panel.panel_id() == panel_id)
+        };
+        let Some(index) = index else {
+            return;
+        };
+        dock.update(cx, |dock, cx| {
+            if !dock.hide_stacked_panel(index, window, cx)
+                && dock.active_panel_index() == Some(index)
+            {
+                dock.set_open(false, window, cx);
+            }
+        });
+        self.serialize_workspace(window, cx);
     }
 
     pub fn active_worktree_creation(&self) -> &ActiveWorktreeCreation {
@@ -10108,6 +10573,10 @@ impl Render for Workspace {
                 MouseButton::Left,
                 cx.listener(Self::handle_tab_dropped_outside_window),
             )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(Self::handle_panel_dropped_outside_window),
+            )
             // Expose the title bar as an ARIA toolbar so region navigation
             // (FocusNextPart) can reach the top bar's controls and assistive
             // technology announces it as a toolbar. The contained controls form
@@ -10510,6 +10979,7 @@ impl Render for Workspace {
                                     None => div.top_2().bottom_2().left_2().right_2().border_1(),
                                 })
                             }))
+                            .children(self.render_panel_drop_overlay(window, cx))
                             .children(self.render_notifications(window, cx)),
                     )
                     .when(self.status_bar_visible(cx), |parent| {
@@ -17321,8 +17791,8 @@ mod tests {
         cx.update(|cx| {
             SettingsStore::update_global(cx, |store, cx| {
                 store.update_user_settings(cx, |settings| {
-                    settings.workspace.right_dock_secondary_panel =
-                        Some(settings::RightDockSecondaryPanel::None);
+                    settings.workspace.default_stacked_secondary_panel =
+                        Some(settings::DefaultDockPanel::None);
                 })
             });
         });
@@ -20319,6 +20789,185 @@ mod tests {
             None,
             "a dock that was never laid out cannot swallow a point on its edge"
         );
+    }
+
+    /// A panel dragged by its status bar button is dropped on a dock, and the
+    /// dock it lands in has to be decided for closed docks too - those have no
+    /// rectangle - which is what the edge bands are for (ADR-F40).
+    #[test]
+    fn test_panel_drop_zone_prefers_the_dock_under_the_pointer() {
+        fn rect(left: f32, top: f32, right: f32, bottom: f32) -> Bounds<Pixels> {
+            Bounds::from_corners(point(px(left), px(top)), point(px(right), px(bottom)))
+        }
+        fn at(x: f32, y: f32) -> Point<Pixels> {
+            point(px(x), px(y))
+        }
+
+        // A 1000x800 workspace: 200px wide bands on the sides, 160px along the
+        // bottom.
+        let area = rect(0., 0., 1000., 800.);
+
+        assert_eq!(
+            panel_drop_zone(area, &[], at(500., 400.)),
+            None,
+            "the center is not a dock, so a drop there leaves the panel alone"
+        );
+        assert_eq!(
+            panel_drop_zone(area, &[], at(1200., 400.)),
+            None,
+            "a release outside the workspace is not a drop on any dock"
+        );
+
+        assert_eq!(
+            panel_drop_zone(area, &[], at(50., 400.)),
+            Some(PanelDropZone {
+                position: DockPosition::Left,
+                bounds: rect(0., 0., 200., 800.),
+            })
+        );
+        assert_eq!(
+            panel_drop_zone(area, &[], at(950., 400.)),
+            Some(PanelDropZone {
+                position: DockPosition::Right,
+                bounds: rect(800., 0., 1000., 800.),
+            })
+        );
+        assert_eq!(
+            panel_drop_zone(area, &[], at(500., 700.)),
+            Some(PanelDropZone {
+                position: DockPosition::Bottom,
+                bounds: rect(0., 640., 1000., 800.),
+            })
+        );
+
+        assert_eq!(
+            panel_drop_zone(area, &[], at(50., 780.)).map(|zone| zone.position),
+            Some(DockPosition::Bottom),
+            "a corner goes to the edge the pointer is nearer as a share of that edge's band"
+        );
+        assert_eq!(
+            panel_drop_zone(area, &[], at(20., 700.)).map(|zone| zone.position),
+            Some(DockPosition::Left)
+        );
+
+        // An open dock takes any point inside it, however wide it has been
+        // dragged, so dropping a panel onto the dock it should share is exact.
+        let open_left = [(DockPosition::Left, rect(0., 0., 400., 800.))];
+        assert_eq!(
+            panel_drop_zone(area, &open_left, at(350., 400.)),
+            Some(PanelDropZone {
+                position: DockPosition::Left,
+                bounds: rect(0., 0., 400., 800.),
+            }),
+            "past the band but still on the dock"
+        );
+
+        // The workspace does not start at the window's origin: the title bar is
+        // above it, and the drop rectangle is in window coordinates.
+        let offset = rect(0., 40., 1000., 840.);
+        assert_eq!(
+            panel_drop_zone(offset, &[], at(500., 800.)),
+            Some(PanelDropZone {
+                position: DockPosition::Bottom,
+                bounds: rect(0., 680., 1000., 840.),
+            })
+        );
+
+        // A window too narrow for the fixed minimum keeps a third of itself
+        // aimable per side rather than covering the whole thing.
+        let narrow = rect(0., 0., 200., 200.);
+        let narrow_zone =
+            panel_drop_zone(narrow, &[], at(50., 100.)).expect("the left edge is still aimable");
+        assert_eq!(narrow_zone.position, DockPosition::Left);
+        assert_eq!(
+            narrow_zone.bounds.size.width,
+            px(200.) * (1. / 3.),
+            "the band is a third of the extent when the minimum will not fit"
+        );
+        assert_eq!(
+            panel_drop_zone(Bounds::default(), &[], at(0., 0.)),
+            None,
+            "a workspace that was never laid out has nothing to drop on"
+        );
+    }
+
+    /// A dropped panel has to end up visible in the dock it was dropped on: the
+    /// drop is an instruction, unlike the move `Panel::set_position` performs on
+    /// its own, which only carries over the visibility the panel already had
+    /// (ADR-F40).
+    #[gpui::test]
+    async fn test_dropped_panel_takes_the_slot_it_was_dropped_on(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (panel, stacked_panel) = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new(DockPosition::Left, 100, cx));
+            let stacked_panel = cx.new(|cx| TestPanel::new(DockPosition::Left, 101, cx));
+            workspace.add_panel(panel.clone(), window, cx);
+            workspace.add_panel(stacked_panel.clone(), window, cx);
+            (panel, stacked_panel)
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.place_dropped_panel(
+                Arc::new(panel.clone()),
+                DockPosition::Left,
+                false,
+                window,
+                cx,
+            );
+            let dock = workspace.left_dock.read(cx);
+            assert!(dock.is_open(), "a drop opens the dock it landed on");
+            assert_eq!(
+                dock.visible_panel().map(|panel| panel.panel_id()),
+                Some(panel.entity_id())
+            );
+            assert_eq!(dock.secondary_panel_index(), None);
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.place_dropped_panel(
+                Arc::new(stacked_panel.clone()),
+                DockPosition::Left,
+                true,
+                window,
+                cx,
+            );
+            let dock = workspace.left_dock.read(cx);
+            assert_eq!(
+                dock.visible_panel().map(|panel| panel.panel_id()),
+                Some(panel.entity_id()),
+                "a Shift drop stacks beside what the dock shows rather than replacing it"
+            );
+            assert_eq!(
+                dock.secondary_panel().map(|panel| panel.panel_id()),
+                Some(stacked_panel.entity_id())
+            );
+        });
+
+        // Tearing one half of a pair off into its own window leaves the other
+        // half showing on its own.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.fold_away_panel(stacked_panel.entity_id(), DockPosition::Left, window, cx);
+            let dock = workspace.left_dock.read(cx);
+            assert!(dock.is_open());
+            assert_eq!(dock.secondary_panel_index(), None);
+            assert_eq!(
+                dock.visible_panel().map(|panel| panel.panel_id()),
+                Some(panel.entity_id())
+            );
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.fold_away_panel(panel.entity_id(), DockPosition::Left, window, cx);
+            assert!(
+                !workspace.left_dock.read(cx).is_open(),
+                "a dock left with nothing to show closes"
+            );
+        });
     }
 
     #[gpui::test]

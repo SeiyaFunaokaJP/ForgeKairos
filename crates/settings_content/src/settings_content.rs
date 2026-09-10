@@ -736,15 +736,20 @@ pub struct BrowserSettingsContent {
     /// Default: true
     pub button: Option<bool>,
 
-    /// Where to dock the browser panel. Can be 'left' or 'right'.
+    /// Where to dock the browser panel. Can be 'left', 'right' or 'bottom'.
     ///
     /// Default: right
     pub dock: Option<DockPosition>,
 
-    /// Default width of the browser panel in pixels.
+    /// Default width in pixels when the browser panel is docked to the left or right.
     ///
     /// Default: 480
     pub default_width: Option<PixelSetting>,
+
+    /// Default height in pixels when the browser panel is docked to the bottom.
+    ///
+    /// Default: 320
+    pub default_height: Option<PixelSetting>,
 
     /// The page opened when a built-in browser panel or tab first loads.
     ///

@@ -831,6 +831,11 @@ impl BrowserView {
             .contains_focused(window, cx);
         h_flex()
             .w_full()
+            // 下ドックの低いパネルでは縦の余りが負になる。既定の flex-shrink の
+            // ままだと、伸縮しない内容領域 (flex-basis 0) の代わりにこの行が潰れ、
+            // アドレス欄がボタンの下敷きになる。削るのは内容領域だけに限る
+            // (それでも足りなければドック側の overflow で切られる)。
+            .flex_shrink_0()
             .gap_1()
             .p_1()
             .border_b_1()
@@ -1004,6 +1009,8 @@ impl BrowserView {
         Some(
             h_flex()
                 .w_full()
+                // ツールバーと同じ理由 (低いパネルでも潰さない)。
+                .flex_shrink_0()
                 .flex_wrap()
                 .gap_1()
                 .px_1()

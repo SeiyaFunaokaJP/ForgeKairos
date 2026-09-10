@@ -4888,23 +4888,58 @@ fn window_and_layout_page() -> SettingsPage {
         ]
     }
 
-    fn layout_section() -> [SettingsPageItem; 7] {
+    fn layout_section() -> [SettingsPageItem; 9] {
         [
             SettingsPageItem::SectionHeader("レイアウト"),
             SettingsPageItem::SettingItem(SettingItem {
-                title: "右ドックに並べる 2 枚目のパネル",
-                description: "プロジェクトを初めて開いたときに、右ドックのエージェントパネルの下へ並べて表示するパネルです。以降はプロジェクトごとに保存されたレイアウトが優先されます。",
+                title: "既定でパネルを 2 枚並べるドック",
+                description: "プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べて表示するドックです。以降はプロジェクトごとに保存されたレイアウトが優先されます。",
                 field: Box::new(SettingField {
                     organization_override: None,
-                    json_path: Some("right_dock_secondary_panel"),
+                    json_path: Some("default_stacked_dock"),
+                    pick: |settings_content| {
+                        settings_content.workspace.default_stacked_dock.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.workspace.default_stacked_dock = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "既定で並べる 1 枚目のパネル",
+                description: "そのドックを埋めるパネルです。「並べない」にすると、初回のレイアウトを組みません。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("default_stacked_panel"),
+                    pick: |settings_content| {
+                        settings_content.workspace.default_stacked_panel.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.workspace.default_stacked_panel = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    should_do_titlecase: Some(false),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "既定で並べる 2 枚目のパネル",
+                description: "1 枚目の隣に並べて表示するパネルです。「並べない」にすると、上流の Zed と同じく 1 枚だけを表示します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("default_stacked_secondary_panel"),
                     pick: |settings_content| {
                         settings_content
                             .workspace
-                            .right_dock_secondary_panel
+                            .default_stacked_secondary_panel
                             .as_ref()
                     },
                     write: |settings_content, value, _| {
-                        settings_content.workspace.right_dock_secondary_panel = value;
+                        settings_content.workspace.default_stacked_secondary_panel = value;
                     },
                 }),
                 metadata: Some(Box::new(SettingsFieldMetadata {
@@ -11393,7 +11428,7 @@ fn browser_page() -> SettingsPage {
         ]
     }
 
-    fn panel_section() -> [SettingsPageItem; 4] {
+    fn panel_section() -> [SettingsPageItem; 5] {
         [
             SettingsPageItem::SectionHeader("ブラウザーパネル"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -11426,7 +11461,7 @@ fn browser_page() -> SettingsPage {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "ブラウザーパネルの既定の幅",
-                description: "ブラウザーパネルの既定の幅 (ピクセル) です。",
+                description: "ブラウザーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("browser.default_width"),
@@ -11438,6 +11473,25 @@ fn browser_page() -> SettingsPage {
                             .browser
                             .get_or_insert_default()
                             .default_width = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "ブラウザーパネルの既定の高さ",
+                description: "ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.default_height"),
+                    pick: |settings_content| {
+                        settings_content.browser.as_ref()?.default_height.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .browser
+                            .get_or_insert_default()
+                            .default_height = value;
                     },
                 }),
                 metadata: None,
