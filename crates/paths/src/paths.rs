@@ -480,6 +480,20 @@ pub fn debug_adapters_dir() -> &'static PathBuf {
     DEBUG_ADAPTERS_DIR.get_or_init(|| data_dir().join("debug_adapters"))
 }
 
+/// Returns the path to the directory holding developer tools this application
+/// installed on the user's behalf (ADR-F39), such as a `clang-format` fetched
+/// for a remote host that cannot reach the network itself.
+///
+/// It lives under the user's own data directory so that installing a tool never
+/// needs root and never touches anything shared with other accounts on the
+/// machine: deleting this directory undoes every such install. On a remote
+/// connection this resolves inside `remote_server`'s process, i.e. to the
+/// remote user's home, which is the machine the tool actually has to run on.
+pub fn managed_tools_dir() -> &'static PathBuf {
+    static MANAGED_TOOLS_DIR: OnceLock<PathBuf> = OnceLock::new();
+    MANAGED_TOOLS_DIR.get_or_init(|| data_dir().join("tools").join("bin"))
+}
+
 /// Returns the path to the external agents directory
 ///
 /// This is where agent servers are downloaded to

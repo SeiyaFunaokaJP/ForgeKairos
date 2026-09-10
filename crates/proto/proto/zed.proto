@@ -521,7 +521,11 @@ message Envelope {
     TransferAskPassResponse transfer_ask_pass_response = 489;
     ListTransferDirectory list_transfer_directory = 490;
     ListTransferDirectoryResponse list_transfer_directory_response = 491;
-    TransferFileOperation transfer_file_operation = 492; // current max
+    TransferFileOperation transfer_file_operation = 492;
+    CheckDevTools check_dev_tools = 493;
+    CheckDevToolsResponse check_dev_tools_response = 494;
+    InstallDevTool install_dev_tool = 495;
+    InstallDevToolResponse install_dev_tool_response = 496; // current max
   }
 
   reserved 87 to 88;

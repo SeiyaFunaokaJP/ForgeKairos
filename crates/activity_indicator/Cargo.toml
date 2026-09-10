@@ -32,6 +32,7 @@ paths.workspace = true
 project.workspace = true
 proto.workspace = true
 remote.workspace = true
+settings.workspace = true
 smallvec.workspace = true
 ui.workspace = true
 util.workspace = true

@@ -11,6 +11,7 @@
 //! Most of the interesting work happens at the local layer, as bulk of the complexity is with managing the lifecycle of language servers. The actual implementation of the LSP protocol is handled by [`lsp`] crate.
 pub mod clangd_ext;
 pub mod code_lens;
+pub mod dev_tools;
 mod document_colors;
 mod document_links;
 mod document_symbols;
@@ -2733,7 +2734,10 @@ impl LocalLspStore {
         // shipped `clang-format.exe`) over whatever is on `PATH`, without
         // changing behavior for absolute/relative paths or when nothing is
         // bundled (see `resolve_command_next_to_current_exe`).
-        let bundled_command = util::command::resolve_command_next_to_current_exe(command);
+        let bundled_command = util::command::resolve_command_next_to_current_exe(command)
+            // Then a copy this application installed on the user's behalf
+            // (ADR-F39), which on a remote host is the only one there is.
+            .or_else(|| dev_tools::resolve_managed_tool(command));
         if let Some(bundled_command) = &bundled_command {
             log::debug!(
                 "Using bundled external formatter at {bundled_command:?} instead of resolving `{command}` from PATH"
@@ -2789,6 +2793,7 @@ impl LocalLspStore {
                     searched: util::command::command_search_dirs_next_to_current_exe()
                         .iter()
                         .map(|dir| dir.display().to_string())
+                        .chain([paths::managed_tools_dir().display().to_string()])
                         .collect(),
                 }
                 .into_error());
@@ -4764,6 +4769,133 @@ impl LspStore {
         client.add_entity_request_handler(
             Self::handle_lsp_command::<lsp_ext_command::SwitchSourceHeader>,
         );
+
+        client.add_entity_request_handler(Self::handle_check_dev_tools);
+        client.add_entity_request_handler(Self::handle_install_dev_tool);
+    }
+
+    /// ADR-F39: which of a language's tools exist on the machine that owns the
+    /// files. Answers with an empty list when there is nobody to ask (a collab
+    /// guest), which reads as "nothing to offer" rather than as a failure.
+    pub fn check_dev_tools(
+        &mut self,
+        language: LanguageName,
+        worktree_id: WorktreeId,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<dev_tools::DevToolState>>> {
+        if let Some((client, project_id)) = self.upstream_client() {
+            let request = client.request(proto::CheckDevTools {
+                project_id,
+                language: language.as_ref().to_string(),
+                worktree_id: worktree_id.to_proto(),
+            });
+            return cx.background_spawn(async move {
+                Ok(request
+                    .await?
+                    .tools
+                    .into_iter()
+                    .map(|tool| dev_tools::DevToolState {
+                        id: tool.id,
+                        present: tool.present,
+                        path: tool.path,
+                    })
+                    .collect())
+            });
+        }
+
+        let Some(local) = self.as_local() else {
+            return Task::ready(Ok(Vec::new()));
+        };
+        let Some(worktree) = self
+            .worktree_store
+            .read(cx)
+            .worktree_for_id(worktree_id, cx)
+        else {
+            return Task::ready(Ok(Vec::new()));
+        };
+        let worktree_root = worktree.read(cx).abs_path().to_path_buf();
+        let environment = local.environment.update(cx, |environment, cx| {
+            environment.worktree_environment(worktree, cx)
+        });
+        cx.background_spawn(async move {
+            let path_env = environment
+                .await
+                .and_then(|environment| environment.get("PATH").cloned());
+            Ok(dev_tools::check_tools(language.as_ref(), path_env, worktree_root).await)
+        })
+    }
+
+    /// Installs one catalogued tool on the machine that owns the files. Only
+    /// for tools this application downloads itself; a language server is
+    /// installed by letting Zed's own fetch run again.
+    pub fn install_dev_tool(
+        &mut self,
+        tool_id: String,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<PathBuf>> {
+        if let Some((client, project_id)) = self.upstream_client() {
+            let request = client.request(proto::InstallDevTool {
+                project_id,
+                id: tool_id,
+            });
+            return cx.background_spawn(async move { Ok(PathBuf::from(request.await?.path)) });
+        }
+
+        let Some(tool) = dev_tools::tool_by_id(&tool_id) else {
+            return Task::ready(Err(anyhow!(
+                "{tool_id} は導入できるツールの一覧にありません"
+            )));
+        };
+        let Some(local) = self.as_local() else {
+            return Task::ready(Err(anyhow!(
+                "{} を導入できるのは、ファイルを持っているマシンだけです",
+                tool.display_name
+            )));
+        };
+        let http_client = local.http_client.clone();
+        cx.background_spawn(async move { dev_tools::install_tool(tool, http_client).await })
+    }
+
+    async fn handle_check_dev_tools(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::CheckDevTools>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::CheckDevToolsResponse> {
+        let language = LanguageName::new(&envelope.payload.language);
+        let worktree_id = WorktreeId::from_proto(envelope.payload.worktree_id);
+        let tools = this
+            .update(&mut cx, |this, cx| {
+                this.check_dev_tools(language, worktree_id, cx)
+            })
+            .await?;
+        Ok(proto::CheckDevToolsResponse {
+            tools: tools
+                .into_iter()
+                .map(|tool| proto::DevToolState {
+                    id: tool.id,
+                    present: tool.present,
+                    path: tool.path,
+                })
+                .collect(),
+        })
+    }
+
+    async fn handle_install_dev_tool(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::InstallDevTool>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::InstallDevToolResponse> {
+        let install = this.update(&mut cx, |this, cx| {
+            this.install_dev_tool(envelope.payload.id, cx)
+        });
+        match install.await {
+            Ok(path) => Ok(proto::InstallDevToolResponse {
+                path: path.to_string_lossy().into_owned(),
+            }),
+            // The client is the side that owns the allowlist, so a refusal has
+            // to survive the flattening the RPC boundary does to error chains.
+            Err(error) => Err(dev_tools::tag_egress_denial(error)),
+        }
     }
 
     pub fn as_remote(&self) -> Option<&RemoteLspStore> {
@@ -15030,7 +15162,27 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
 
     async fn shell_env(&self) -> HashMap<String, String> {
         let task = self.load_shell_env_task.clone();
-        task.await.unwrap_or_default()
+        let mut env = task.await.unwrap_or_default();
+        // ADR-F39: tools this application installed for the user come before
+        // `PATH`, so a language server it fetched is found by `which` and by
+        // anything the server itself spawns, without a settings entry that
+        // would outlive the tool if it were removed.
+        let tools_dir = paths::managed_tools_dir();
+        if tools_dir.is_dir() {
+            let path = env.entry("PATH".to_string()).or_default();
+            let separator = if cfg!(target_os = "windows") {
+                ";"
+            } else {
+                ":"
+            };
+            let existing = std::mem::take(path);
+            *path = if existing.is_empty() {
+                tools_dir.display().to_string()
+            } else {
+                format!("{}{separator}{existing}", tools_dir.display())
+            };
+        }
+        env
     }
 
     async fn npm_package_installed_version(

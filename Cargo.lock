@@ -209,6 +209,7 @@ dependencies = [
  "project",
  "proto",
  "remote",
+ "settings",
  "smallvec",
  "ui",
  "util",

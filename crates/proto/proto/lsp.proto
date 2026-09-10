@@ -1127,3 +1127,34 @@ message GetFoldingRangesResponse {
   repeated VectorClockEntry version = 2;
   repeated string collapsed_texts = 3;
 }
+
+// ADR-F39: which of a language's tools exist on the machine that owns the
+// files. Asked over the wire because on a remote project that machine is the
+// only one whose `PATH` and installs matter.
+message CheckDevTools {
+  uint64 project_id = 1;
+  string language = 2;
+  uint64 worktree_id = 3;
+}
+
+message CheckDevToolsResponse {
+  repeated DevToolState tools = 1;
+}
+
+message DevToolState {
+  string id = 1;
+  bool present = 2;
+  optional string path = 3;
+}
+
+// Downloads one catalogued tool into the owning machine's user data directory.
+// The download runs there, which for a remote host means it goes back out
+// through the client's relay (ADR-F27) and its allowlist.
+message InstallDevTool {
+  uint64 project_id = 1;
+  string id = 2;
+}
+
+message InstallDevToolResponse {
+  string path = 1;
+}

@@ -8,14 +8,17 @@ use gpui::{
 };
 use http_client::RequestHost;
 use language::{
-    BinaryStatus, LanguageRegistry, LanguageServerId, LanguageServerName,
-    LanguageServerStatusUpdate, ServerHealth,
+    BinaryStatus, LanguageName, LanguageRegistry, LanguageServerId, LanguageServerName,
+    LanguageServerStatusUpdate, ServerHealth, language_settings::all_language_settings,
 };
 use lsp::LanguageServerSelector;
 use project::{
     LanguageServerProgress, LspStoreEvent, ProgressToken, Project, ProjectEnvironmentEvent,
     git_store::{GitStoreEvent, Repository},
+    lsp_store::dev_tools::{self, DevToolState},
+    project_settings::ProjectSettings,
 };
+use settings::Settings as _;
 use smallvec::SmallVec;
 use std::{
     cmp::Reverse,
@@ -41,6 +44,12 @@ pub const DEFERRED_SCAN_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 /// costs a retry, not correctness.
 const ALLOWLIST_RELOAD_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const ALLOWLIST_RELOAD_ATTEMPTS: usize = 50;
+
+/// How long the ADR-F39 check waits after a file is opened. Long enough for the
+/// language servers that file starts to register, so that one Zed is already
+/// fetching is not reported as missing; short enough to still be about the file
+/// the user just opened.
+const DEV_TOOLS_CHECK_DELAY: Duration = Duration::from_secs(3);
 
 actions!(
     activity_indicator,
@@ -77,6 +86,19 @@ pub struct ActivityIndicator {
     /// on a download that never produced a binary sends the user looking at the
     /// wrong thing.
     fetch_failures: HashSet<LanguageServerName>,
+    /// Languages whose tools have already been looked for (ADR-F39). Opening a
+    /// second file of the same language must not re-ask: the answer cannot have
+    /// changed on its own, and the notification is interrupting.
+    dev_tools_checked: HashSet<SharedString>,
+    dev_tools_check_task: Option<Task<()>>,
+    /// The install running right now, shown in the status bar because it is a
+    /// download the user asked for and can take a while over a relayed link.
+    dev_tools_install: Option<DevToolInstall>,
+}
+
+struct DevToolInstall {
+    message: SharedString,
+    _task: Task<()>,
 }
 
 #[derive(Default)]
@@ -117,6 +139,37 @@ struct Content {
 
 /// Names the ADR-F22 consent notification, one per language server.
 struct LspEgressConsent;
+
+/// Names the ADR-F39 notification, one per language.
+struct DevToolsMissing;
+
+/// Names the ADR-F39 failure notification, one per tool.
+struct DevToolsInstallFailed;
+
+/// Waits for the allowlist file watch to install hosts that were just written.
+/// A retry judged against the old list would be refused again, and the watch is
+/// the only thing that installs the new one (ADR-F22 / ADR-F16).
+async fn wait_for_allowlist(
+    policy: Option<http_client::EgressPolicyHandle>,
+    hosts: &[String],
+    cx: &mut gpui::AsyncApp,
+) {
+    let Some(policy) = policy else {
+        return;
+    };
+    for _ in 0..ALLOWLIST_RELOAD_ATTEMPTS {
+        let snapshot = policy.snapshot();
+        if hosts
+            .iter()
+            .all(|host| RequestHost::parse(host).is_some_and(|host| snapshot.allows(&host)))
+        {
+            return;
+        }
+        cx.background_executor()
+            .timer(ALLOWLIST_RELOAD_POLL_INTERVAL)
+            .await;
+    }
+}
 
 /// Of `hosts`, the ones the running allowlist still refuses, in the order the
 /// denial reported them and without repeats.
@@ -363,6 +416,9 @@ impl ActivityIndicator {
                 egress_consent_offered: HashMap::default(),
                 egress_consent_task: None,
                 fetch_failures: HashSet::default(),
+                dev_tools_checked: HashSet::default(),
+                dev_tools_check_task: None,
+                dev_tools_install: None,
             };
             this.update_deferred_scan_status(cx);
             this
@@ -629,6 +685,463 @@ impl ActivityIndicator {
         }));
     }
 
+    /// ADR-F39: looks for the tools the active buffer's language needs on the
+    /// machine that owns the files, once per language.
+    fn check_dev_tools(&mut self, editor: &Entity<Editor>, cx: &mut Context<Self>) {
+        if !ProjectSettings::get_global(cx).dev_tools.suggest_missing {
+            return;
+        }
+
+        let Some((language, worktree_id)) = editor.read(cx).active_buffer(cx).and_then(|buffer| {
+            let buffer = buffer.read(cx);
+            let language = buffer.language()?.name();
+            let worktree_id = buffer.file()?.worktree_id(cx);
+            Some((language, worktree_id))
+        }) else {
+            return;
+        };
+        if !self.dev_tools_checked.insert(language.as_ref().into()) {
+            return;
+        }
+
+        self.dev_tools_check_task = Some(cx.spawn(async move |this, cx| {
+            // Opening a file also starts the language servers for it, and a
+            // server Zed is in the middle of downloading is not missing. Give
+            // that a moment to show up before asking anyone anything.
+            cx.background_executor().timer(DEV_TOOLS_CHECK_DELAY).await;
+            let Ok(check) = this.update(cx, |this, cx| {
+                this.project.update(cx, |project, cx| {
+                    project.check_dev_tools(language.clone(), worktree_id, cx)
+                })
+            }) else {
+                return;
+            };
+            match check.await {
+                Ok(states) => {
+                    this.update(cx, |this, cx| {
+                        this.prompt_missing_dev_tools(&language, states, cx)
+                    })
+                    .log_err();
+                }
+                // Not being able to look is not worth a notification: the
+                // language still works as well as it did before.
+                Err(error) => log::warn!("failed to look for {language} tools: {error:#}"),
+            }
+        }));
+    }
+
+    fn prompt_missing_dev_tools(
+        &mut self,
+        language: &LanguageName,
+        states: Vec<DevToolState>,
+        cx: &mut Context<Self>,
+    ) {
+        let settings = ProjectSettings::get_global(cx).dev_tools.clone();
+        // A server the project already knows about is being handled by Zed
+        // itself — it is starting, downloading, or running — and a failure of
+        // its own has its own notification (ADR-F22).
+        let known_servers = self
+            .project
+            .read(cx)
+            .language_server_statuses(cx)
+            .map(|(_, status)| status.name.0.to_string())
+            .collect::<HashSet<_>>();
+        // A formatter is only worth mentioning if this language is actually
+        // configured to run it: someone who pointed the setting somewhere else
+        // is not missing anything.
+        let configured_formatters = all_language_settings(None, cx)
+            .language(None, Some(language), cx)
+            .formatter
+            .as_ref()
+            .iter()
+            .filter_map(|formatter| match formatter {
+                settings::Formatter::External { command, .. } => Some(
+                    std::path::Path::new(command)
+                        .file_stem()
+                        .map(|stem| stem.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| command.clone()),
+                ),
+                _ => None,
+            })
+            .collect::<HashSet<_>>();
+        let missing = states
+            .iter()
+            .filter(|state| !state.present)
+            .filter_map(|state| dev_tools::tool_by_id(&state.id))
+            .filter(|tool| settings.should_suggest(tool.id))
+            .filter(|tool| {
+                tool.language_server_name()
+                    .is_none_or(|server| !known_servers.contains(server))
+            })
+            .filter(|tool| {
+                tool.purpose != dev_tools::DevToolPurpose::Formatting
+                    || configured_formatters.contains(tool.command)
+            })
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            return;
+        }
+
+        let remote_host = self
+            .project
+            .read(cx)
+            .remote_connection_options(cx)
+            .map(|options| options.display_name());
+        let installable = missing
+            .iter()
+            .copied()
+            .filter(|tool| tool.can_install())
+            .collect::<Vec<_>>();
+        let title = match &remote_host {
+            Some(host) => format!("{language} のツールが接続先 ({host}) にありません"),
+            None => format!("{language} のツールが見つかりません"),
+        };
+        let tool_labels = missing
+            .iter()
+            .map(|tool| format!("{} ({})", tool.display_name, tool.purpose.label()))
+            .collect::<Vec<_>>();
+        let guidance = missing
+            .iter()
+            .filter_map(|tool| match tool.acquisition {
+                dev_tools::DevToolAcquisition::Guidance(guidance) => {
+                    Some(format!("{}: {guidance}", tool.display_name))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let install_label = if remote_host.is_some() {
+            "リモートにインストール"
+        } else {
+            "インストール"
+        };
+        // Where the bytes come from is the part that is not obvious, and it is
+        // the reassuring part on a host with no route to the internet. Left out
+        // when there is nothing to install, so it cannot read as an offer.
+        let install_hint = match (&remote_host, installable.is_empty()) {
+            (_, true) => String::new(),
+            (Some(host), false) => format!(
+                "取得はこの PC のネットワークで行い、{host} のホームディレクトリ内にだけ置きます \
+                 (管理者権限は不要、他のユーザーには影響しません)。"
+            ),
+            (None, false) => "このユーザーのデータディレクトリ内にだけ置きます。".to_string(),
+        };
+        let secondary_content = match (install_hint.is_empty(), guidance.is_empty()) {
+            (false, false) => format!("{install_hint}\n{guidance}"),
+            (false, true) => install_hint,
+            (true, false) => guidance,
+            (true, true) => String::new(),
+        };
+
+        let indicator = cx.entity().downgrade();
+        let ignore_ids = missing
+            .iter()
+            .map(|tool| tool.id.to_string())
+            .collect::<Vec<_>>();
+        let language_for_install = language.clone();
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_notification(
+                NotificationId::composite::<DevToolsMissing>(language.as_ref().to_string()),
+                cx,
+                move |cx| {
+                    let title = title.clone();
+                    let tool_labels = tool_labels.clone();
+                    let secondary_content = secondary_content.clone();
+                    let indicator = indicator.clone();
+                    let installable = installable.clone();
+                    let ignore_ids = ignore_ids.clone();
+                    let language = language_for_install.clone();
+                    cx.new(move |cx| {
+                        let mut notification =
+                            MessageNotification::new_from_builder(cx, move |_, _| {
+                                v_flex()
+                                    .gap_1()
+                                    .children(tool_labels.iter().map(|label| {
+                                        Label::new(format!("・{label}"))
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted)
+                                    }))
+                                    .into_any_element()
+                            })
+                            .with_title(title)
+                            .content_icon(IconName::Warning, Color::Warning);
+                        if !secondary_content.is_empty() {
+                            notification =
+                                notification.secondary_content(secondary_content.clone());
+                        }
+                        let notification = notification
+                            .secondary_message("今後表示しない")
+                            .secondary_on_click({
+                                let indicator = indicator.clone();
+                                let ignore_ids = ignore_ids.clone();
+                                move |_, cx| {
+                                    indicator
+                                        .update(cx, |indicator, cx| {
+                                            indicator.ignore_dev_tools(ignore_ids.clone(), cx);
+                                        })
+                                        .log_err();
+                                }
+                            });
+                        if installable.is_empty() {
+                            notification
+                        } else {
+                            notification
+                                .primary_message(install_label)
+                                .primary_icon(IconName::Download)
+                                .primary_on_click(move |_, cx| {
+                                    indicator
+                                        .update(cx, |indicator, cx| {
+                                            indicator.install_dev_tools(
+                                                language.clone(),
+                                                installable.clone(),
+                                                cx,
+                                            );
+                                        })
+                                        .log_err();
+                                })
+                        }
+                    })
+                },
+            );
+        });
+    }
+
+    /// Installs the tools the user accepted, then restarts that language's
+    /// servers so the buffers already open pick them up.
+    fn install_dev_tools(
+        &mut self,
+        language: LanguageName,
+        tools: Vec<&'static dev_tools::DevTool>,
+        cx: &mut Context<Self>,
+    ) {
+        let downloads = tools
+            .iter()
+            .filter(|tool| tool.language_server_name().is_none())
+            .map(|tool| (tool.id, tool.display_name))
+            .collect::<Vec<_>>();
+        let servers = tools
+            .iter()
+            .filter_map(|tool| tool.language_server_name())
+            .map(LanguageServerName::new_static)
+            .collect::<Vec<_>>();
+        let message = match downloads.first() {
+            Some((_, display_name)) => format!("{display_name} を導入しています"),
+            None => format!("{language} の言語サーバーを取得しています"),
+        };
+
+        let project = self.project.clone();
+        let workspace = self.workspace.clone();
+        let task = cx.spawn(async move |this, cx| {
+            let mut installed = Vec::new();
+            for (id, display_name) in downloads {
+                let install = project.update(cx, |project, cx| {
+                    project.install_dev_tool(id.to_string(), cx)
+                });
+                match install.await {
+                    Ok(_) => installed.push(display_name),
+                    Err(error) => {
+                        this.update(cx, |this, cx| {
+                            this.report_dev_tool_failure(id, display_name, error, cx)
+                        })
+                        .log_err();
+                        return;
+                    }
+                }
+            }
+
+            // A language server is installed by letting Zed's own download run
+            // again; the restart is also what makes a freshly installed
+            // formatter or linter visible to the buffers already open.
+            if !servers.is_empty() {
+                project.update(cx, |project, cx| {
+                    let buffers = project.opened_buffers(cx);
+                    project.restart_language_servers_for_buffers(
+                        buffers,
+                        servers
+                            .iter()
+                            .cloned()
+                            .map(LanguageServerSelector::Name)
+                            .collect(),
+                        true,
+                        cx,
+                    );
+                });
+            }
+
+            this.update(cx, |this, cx| {
+                this.dev_tools_install = None;
+                cx.notify();
+            })
+            .log_err();
+
+            if !installed.is_empty() {
+                workspace
+                    .update(cx, |workspace, cx| {
+                        struct DevToolsInstalled;
+                        workspace.show_notification(
+                            NotificationId::unique::<DevToolsInstalled>(),
+                            cx,
+                            |cx| {
+                                cx.new(|cx| {
+                                    MessageNotification::new(
+                                        format!("{} を導入しました", installed.join(" / ")),
+                                        cx,
+                                    )
+                                    .content_icon(IconName::Check, Color::Success)
+                                })
+                            },
+                        );
+                    })
+                    .log_err();
+            }
+        });
+        self.dev_tools_install = Some(DevToolInstall {
+            message: message.into(),
+            _task: task,
+        });
+        cx.notify();
+    }
+
+    /// Explains why an install did not happen. An allowlist refusal gets the
+    /// hosts and a way to accept them, the same shape as ADR-F22, because that
+    /// is the one failure the user can act on from here.
+    fn report_dev_tool_failure(
+        &mut self,
+        tool_id: &'static str,
+        display_name: &'static str,
+        error: anyhow::Error,
+        cx: &mut Context<Self>,
+    ) {
+        self.dev_tools_install = None;
+        cx.notify();
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let hosts = dev_tools::egress_denied_hosts(&error);
+        let indicator = cx.entity().downgrade();
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_notification(
+                NotificationId::composite::<DevToolsInstallFailed>(tool_id),
+                cx,
+                move |cx| {
+                    let hosts = hosts.clone();
+                    let indicator = indicator.clone();
+                    cx.new(move |cx| {
+                        let notification = match &hosts {
+                            Some(hosts) => MessageNotification::new(
+                                format!(
+                                    "{display_name} の取得に必要な次のホストが、ネットワーク許可リストで拒否されました:\n{}",
+                                    hosts
+                                        .iter()
+                                        .map(|host| format!("・{host}"))
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                ),
+                                cx,
+                            ),
+                            None => MessageNotification::new(
+                                format!("{display_name} を導入できませんでした: {error:#}"),
+                                cx,
+                            ),
+                        }
+                        .content_icon(IconName::Warning, Color::Warning);
+                        match hosts {
+                            Some(hosts) => notification
+                                .primary_message("許可リストに追加して再試行")
+                                .primary_icon(IconName::Check)
+                                .primary_on_click(move |_, cx| {
+                                    indicator
+                                        .update(cx, |indicator, cx| {
+                                            indicator.allow_hosts_and_install(
+                                                tool_id,
+                                                display_name,
+                                                hosts.clone(),
+                                                cx,
+                                            );
+                                        })
+                                        .log_err();
+                                }),
+                            None => notification,
+                        }
+                    })
+                },
+            );
+        });
+    }
+
+    /// Accepts the hosts a tool download needs and runs it again.
+    fn allow_hosts_and_install(
+        &mut self,
+        tool_id: &'static str,
+        display_name: &'static str,
+        hosts: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let fs = self.project.read(cx).fs().clone();
+        let path = paths::network_allowlist_file().clone();
+        let policy = cx
+            .try_global::<egress_policy::EgressAllowlistGlobal>()
+            .map(|global| global.0.clone());
+        let project = self.project.clone();
+        let task = cx.spawn(async move |this, cx| {
+            if let Err(error) = egress_policy::add_allowed_hosts(&fs, &path, &hosts).await {
+                this.update(cx, |this, cx| {
+                    this.report_dev_tool_failure(tool_id, display_name, error, cx)
+                })
+                .log_err();
+                return;
+            }
+            wait_for_allowlist(policy, &hosts, cx).await;
+            // The download runs on the remote host, so it is judged against the
+            // list that host holds; push it before retrying, as ADR-F22 does.
+            let install = project.update(cx, |project, cx| {
+                if let Some(remote_client) = project.remote_client() {
+                    remote_client.read(cx).push_egress_allowlist(cx);
+                }
+                project.install_dev_tool(tool_id.to_string(), cx)
+            });
+            match install.await {
+                Ok(_) => {
+                    this.update(cx, |this, cx| {
+                        this.dev_tools_install = None;
+                        cx.notify();
+                    })
+                    .log_err();
+                }
+                Err(error) => {
+                    this.update(cx, |this, cx| {
+                        this.report_dev_tool_failure(tool_id, display_name, error, cx)
+                    })
+                    .log_err();
+                }
+            }
+        });
+        self.dev_tools_install = Some(DevToolInstall {
+            message: format!("{display_name} を導入しています").into(),
+            _task: task,
+        });
+        cx.notify();
+    }
+
+    fn ignore_dev_tools(&mut self, tool_ids: Vec<String>, cx: &mut Context<Self>) {
+        let fs = self.project.read(cx).fs().clone();
+        settings::update_settings_file(fs, cx, move |content, _| {
+            let dev_tools = content
+                .project
+                .dev_tools
+                .get_or_insert_with(Default::default);
+            let ignored = dev_tools.ignored.get_or_insert_with(Vec::new);
+            for tool_id in tool_ids {
+                if !ignored.contains(&tool_id) {
+                    ignored.push(tool_id);
+                }
+            }
+        });
+    }
+
     fn show_error_message(&mut self, _: &ShowErrorMessage, _: &mut Window, cx: &mut Context<Self>) {
         let mut status_message_shown = false;
         self.statuses.retain(|status| match &status.status {
@@ -811,6 +1324,17 @@ impl ActivityIndicator {
                     tooltip_message: None,
                 });
             }
+        }
+
+        // ADR-F39: a download the user pressed a button for, which over a
+        // relayed link is slow enough that silence looks like nothing happened.
+        if let Some(install) = &self.dev_tools_install {
+            return Some(Content {
+                icon: ActivityIcon::LoadingSpinner,
+                message: install.message.to_string(),
+                on_click: None,
+                tooltip_message: None,
+            });
         }
 
         if let Some(session) = self
@@ -1295,10 +1819,15 @@ impl Render for ActivityIndicator {
 impl StatusItemView for ActivityIndicator {
     fn set_active_pane_item(
         &mut self,
-        _: Option<&dyn ItemHandle>,
+        active_pane_item: Option<&dyn ItemHandle>,
         _window: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
+        // ADR-F39: opening a file is the moment its language's tools are about
+        // to matter, and the only moment the user is thinking about them.
+        if let Some(editor) = active_pane_item.and_then(|item| item.downcast::<Editor>()) {
+            self.check_dev_tools(&editor, cx);
+        }
     }
 
     fn hide_setting(&self, _: &App) -> Option<workspace::HideStatusItem> {

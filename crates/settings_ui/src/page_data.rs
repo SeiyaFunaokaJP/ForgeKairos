@@ -9363,6 +9363,40 @@ fn network_page() -> SettingsPage {
         ]
     }
 
+    /// ADR-F39. On this page because what makes it worth having is the remote
+    /// case: the tool is installed on the host, with the bytes coming through
+    /// this PC's network.
+    fn dev_tools_section() -> [SettingsPageItem; 2] {
+        [
+            SettingsPageItem::SectionHeader("開発ツール"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "足りない開発ツールを知らせる",
+                description: "オンにすると、開いたファイルの言語に必要な言語サーバーやフォーマッタ (C なら clangd と clang-format、Python なら Ruff) が見つからないときに通知を出し、その場で導入できます。導入先はユーザーのデータディレクトリ内だけで、管理者権限は要らず、他のユーザーにも影響しません。リモート接続中は接続先を調べて接続先に導入し、取得はこの PC のネットワーク経由で行うので、接続先がインターネットに出られなくても入ります。個別に知らせないツールは settings.json の `dev_tools.ignored` に ID を並べます (通知の「今後表示しない」でも追加されます)。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("dev_tools.suggest_missing"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .dev_tools
+                            .as_ref()?
+                            .suggest_missing
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .dev_tools
+                            .get_or_insert_default()
+                            .suggest_missing = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
     fn egress_section() -> [SettingsPageItem; 2] {
         [
             SettingsPageItem::SectionHeader("外部通信の統制"),
@@ -9391,7 +9425,12 @@ fn network_page() -> SettingsPage {
 
     SettingsPage {
         title: "ネットワーク",
-        items: concat_sections![network_section(), egress_section(), remote_section()],
+        items: concat_sections![
+            network_section(),
+            egress_section(),
+            remote_section(),
+            dev_tools_section()
+        ],
     }
 }
 

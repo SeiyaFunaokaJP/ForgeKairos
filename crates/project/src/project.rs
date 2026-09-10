@@ -104,7 +104,7 @@ use lsp::{
 };
 pub use lsp_command::EditPredictionDefinition;
 use lsp_command::*;
-use lsp_store::{CompletionDocumentation, LspFormatTarget, OpenLspBufferHandle};
+use lsp_store::{CompletionDocumentation, LspFormatTarget, OpenLspBufferHandle, dev_tools};
 pub use manifest_tree::ManifestProvidersStore;
 use node_runtime::NodeRuntime;
 use parking_lot::Mutex;
@@ -4331,6 +4331,25 @@ impl Project {
     pub fn reset_last_formatting_failure(&self, cx: &mut App) {
         self.lsp_store
             .update(cx, |store, _| store.reset_last_formatting_failure());
+    }
+
+    /// ADR-F39: which tools this language needs are missing on the machine that
+    /// owns the files — the remote host when there is one.
+    pub fn check_dev_tools(
+        &self,
+        language: LanguageName,
+        worktree_id: WorktreeId,
+        cx: &mut App,
+    ) -> Task<Result<Vec<dev_tools::DevToolState>>> {
+        self.lsp_store.update(cx, |lsp_store, cx| {
+            lsp_store.check_dev_tools(language, worktree_id, cx)
+        })
+    }
+
+    /// Installs one of those tools there, into the user's own data directory.
+    pub fn install_dev_tool(&self, tool_id: String, cx: &mut App) -> Task<Result<PathBuf>> {
+        self.lsp_store
+            .update(cx, |lsp_store, cx| lsp_store.install_dev_tool(tool_id, cx))
     }
 
     pub fn reload_buffers(

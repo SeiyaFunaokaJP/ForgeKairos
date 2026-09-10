@@ -79,6 +79,21 @@ pub struct ProjectSettings {
 
     /// Configuration for session-related features
     pub session: SessionSettings,
+
+    /// ADR-F39: 足りない開発ツールの案内と導入
+    pub dev_tools: DevToolsSettings,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DevToolsSettings {
+    pub suggest_missing: bool,
+    pub ignored: Vec<String>,
+}
+
+impl DevToolsSettings {
+    pub fn should_suggest(&self, tool_id: &str) -> bool {
+        self.suggest_missing && !self.ignored.iter().any(|ignored| ignored == tool_id)
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -808,6 +823,17 @@ impl Settings for ProjectSettings {
             session: SessionSettings {
                 restore_unsaved_buffers: content.session.unwrap().restore_unsaved_buffers.unwrap(),
                 trust_all_worktrees: content.session.unwrap().trust_all_worktrees.unwrap(),
+            },
+            dev_tools: {
+                let dev_tools = project.dev_tools.as_ref();
+                DevToolsSettings {
+                    suggest_missing: dev_tools
+                        .and_then(|dev_tools| dev_tools.suggest_missing)
+                        .unwrap_or(true),
+                    ignored: dev_tools
+                        .and_then(|dev_tools| dev_tools.ignored.clone())
+                        .unwrap_or_default(),
+                }
             },
         }
     }

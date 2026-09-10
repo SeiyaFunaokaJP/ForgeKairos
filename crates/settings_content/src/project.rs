@@ -85,6 +85,27 @@ pub struct ProjectSettingsContent {
     ///
     /// Default: false
     pub disable_ai: Option<SaturatingBool>,
+
+    /// 開いたファイルの言語に必要な開発ツール (言語サーバー・フォーマッタ) が
+    /// 見つからないときの案内 (ADR-F39)。
+    pub dev_tools: Option<DevToolsSettingsContent>,
+}
+
+/// ADR-F39: 足りない開発ツールの案内と導入。
+#[with_fallible_options]
+#[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct DevToolsSettingsContent {
+    /// 足りない開発ツールを通知で知らせ、その場で導入できるようにするかどうか。
+    /// リモート接続中は接続先のホストを調べ、導入もそちらへ行われます。
+    ///
+    /// Default: true
+    pub suggest_missing: Option<bool>,
+
+    /// 案内しないツールの ID (`clangd` / `clang-format` / `ruff` など)。
+    /// 通知の「今後表示しない」を押すとここに追加されます。
+    ///
+    /// Default: []
+    pub ignored: Option<Vec<String>>,
 }
 
 /// When to scan content of linked directories.

@@ -2733,6 +2733,18 @@
     // Default: false
     "trust_all_worktrees": false,
   },
+  // ADR-F39: 開いたファイルの言語に必要な開発ツール (言語サーバー・フォーマッタ) が
+  // 見つからないときに、通知から導入できるようにする設定。
+  // 導入先はユーザーのデータディレクトリ内だけで、管理者権限は要りません。
+  // リモート接続中は接続先のホストを調べ、導入もそちらへ行われます
+  // (取得はこの PC のネットワーク経由なので、接続先がオフラインでも入ります)。
+  "dev_tools": {
+    // 足りない開発ツールを通知で知らせるかどうか。
+    "suggest_missing": true,
+    // 案内しないツールの ID (例: "clangd" / "clang-format" / "ruff")。
+    // 通知の「今後表示しない」を押すとここに追加されます。
+    "ignored": [],
+  },
   // Zed's Prettier integration settings.
   // Allows to enable/disable formatting with Prettier
   // and configure default Prettier, used when no project-level Prettier installation is found.

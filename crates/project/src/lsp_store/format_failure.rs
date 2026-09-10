@@ -150,11 +150,24 @@ impl FormatFailure {
                 let mut message = format!("フォーマッタ `{command}` が見つかりません。");
                 match remote_host {
                     Some(host) => {
-                        message.push_str(&format!(
-                            "接続先 ({host}) にインストールされていません。\
-                             接続先で `{command}` をインストールしてください \
-                             (Ubuntu/Debian なら `sudo apt install {command}`)。"
-                        ));
+                        message
+                            .push_str(&format!("接続先 ({host}) にインストールされていません。"));
+                        // ADR-F39: `sudo apt install` is the wrong advice for
+                        // the hosts this fork is aimed at — it needs root (so
+                        // it affects every other account) and it needs the
+                        // remote to be online, which is exactly what it is not.
+                        if crate::lsp_store::dev_tools::tool_by_command(command)
+                            .is_some_and(|tool| tool.can_install())
+                        {
+                            message.push_str(
+                                "通知の「リモートにインストール」から、\
+                                 管理者権限なしで接続先のホームディレクトリに導入できます。",
+                            );
+                        } else {
+                            message.push_str(&format!(
+                                "接続先で `{command}` を PATH の通った場所に置いてください。"
+                            ));
+                        }
                     }
                     None => {
                         if searched.is_empty() {
@@ -297,7 +310,11 @@ mod tests {
 
         let remote = not_found().user_message(Some("192.168.100.150"));
         assert!(remote.contains("192.168.100.150"), "{remote}");
-        assert!(remote.contains("sudo apt install clang-format"), "{remote}");
+        // ADR-F39: a catalogued tool is offered as a one-button install rather
+        // than as a `sudo` command that needs root and a network the host may
+        // not have.
+        assert!(remote.contains("リモートにインストール"), "{remote}");
+        assert!(!remote.contains("sudo"), "{remote}");
         // The local search paths are meaningless for a project on another
         // machine, so they must not be offered as somewhere to look.
         assert!(!remote.contains("C:\\Zed"), "{remote}");
