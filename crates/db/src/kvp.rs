@@ -5,7 +5,7 @@ use util::ResultExt as _;
 
 use crate::{
     query,
-    sqlez::{domain::Domain, thread_safe_connection::ThreadSafeConnection},
+    sqlez::{domain::Domain, statement::Statement, thread_safe_connection::ThreadSafeConnection},
     write_and_log,
 };
 
@@ -131,6 +131,35 @@ impl ScopedKeyValueStore<'_> {
             .await
     }
 
+    /// Deletes every row in this namespace except the given keys.
+    ///
+    /// Callers that keep one row per live object used to `delete_all` and write
+    /// the survivors back, which raced with any [`Self::write`] running at the
+    /// same time: a row written between the read and the `delete_all` was lost.
+    /// A single statement cannot lose a concurrent write - it either runs
+    /// before it (and the row is written afterwards) or after it (and the key
+    /// is in `keys`).
+    pub async fn retain(&self, keys: Vec<String>) -> anyhow::Result<()> {
+        let namespace = self.namespace.to_owned();
+        self.store
+            .write(move |connection| {
+                let placeholders = keys.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let mut statement = Statement::prepare(
+                    connection,
+                    format!(
+                        "DELETE FROM scoped_kv_store WHERE namespace = (?) AND key NOT IN ({placeholders})"
+                    ),
+                )?;
+                let mut next_index = statement.bind(&namespace, 1)?;
+                for key in &keys {
+                    next_index = statement.bind(key, next_index)?;
+                }
+                statement.exec()
+            })
+            .await
+            .context("Failed to retain in scoped_kv_store")
+    }
+
     pub async fn delete_all(&self) -> anyhow::Result<()> {
         let namespace = self.namespace.to_owned();
         self.store
@@ -209,14 +238,31 @@ mod tests {
         assert_eq!(scope_a.read("key-2").unwrap(), Some("value-a2".to_string()));
         assert_eq!(scope_b.read("key-1").unwrap(), Some("value-b1".to_string()));
 
-        // delete_all removes all keys in a namespace without affecting other namespaces
+        // retain keeps the listed keys and drops the rest of the namespace
         scope_a
             .write("key-3".to_string(), "value-a3".to_string())
             .await
             .unwrap();
-        scope_a.delete_all().await.unwrap();
+        scope_a
+            .retain(vec!["key-3".to_string(), "key-4".to_string()])
+            .await
+            .unwrap();
         assert_eq!(scope_a.read("key-2").unwrap(), None);
+        assert_eq!(scope_a.read("key-3").unwrap(), Some("value-a3".to_string()));
+        assert_eq!(scope_b.read("key-1").unwrap(), Some("value-b1".to_string()));
+
+        // retain with no keys empties just this namespace
+        scope_a.retain(Vec::new()).await.unwrap();
         assert_eq!(scope_a.read("key-3").unwrap(), None);
+        assert_eq!(scope_b.read("key-1").unwrap(), Some("value-b1".to_string()));
+
+        // delete_all removes all keys in a namespace without affecting other namespaces
+        scope_a
+            .write("key-5".to_string(), "value-a5".to_string())
+            .await
+            .unwrap();
+        scope_a.delete_all().await.unwrap();
+        assert_eq!(scope_a.read("key-5").unwrap(), None);
         assert_eq!(scope_b.read("key-1").unwrap(), Some("value-b1".to_string()));
     }
 }

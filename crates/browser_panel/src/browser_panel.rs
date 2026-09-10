@@ -1625,7 +1625,7 @@ async fn restore_items(
             )
         });
         match task {
-            Ok(Some(task)) => tasks.push((item.active, task)),
+            Ok(Some(task)) => tasks.push((item.kind.clone(), item.active, task)),
             Ok(None) => log::info!(
                 "browser panel: no restore handler for a {:?} tab; skipping it",
                 item.kind
@@ -1641,9 +1641,18 @@ async fn restore_items(
 
     let mut active_index = None;
     let mut next_index = 0;
-    for (active, task) in tasks {
-        let Some(item) = task.await.log_err() else {
-            continue;
+    for (kind, active, task) in tasks {
+        // 復元できないタブは飛ばすだけ。中身の記録が (終了間際に足したタブの
+        // ように) 書かれていなかった、というのが主な理由なので、警告ではなく
+        // 記録として残す。
+        let item = match task.await {
+            Ok(item) => item,
+            Err(error) => {
+                log::info!(
+                    "browser panel: skipping a {kind:?} tab that could not be restored: {error:#}"
+                );
+                continue;
+            }
         };
         // 表に出すのは最後に選ぶ 1 枚だけ (裏のブラウザータブは WebView2 を
         // 作らない)。裏で足すときの挿し先は `Pane` に任せると「表のタブの次」に

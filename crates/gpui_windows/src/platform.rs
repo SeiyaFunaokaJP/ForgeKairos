@@ -239,6 +239,15 @@ impl WindowsPlatform {
             .read()
             .iter()
             .for_each(|handle| unsafe {
+                // A destroyed window stays in this list until the main thread
+                // has processed `WM_GPUI_CLOSE_ONE_WINDOW`. Both that removal
+                // and this broadcast run on the main thread, so a window that
+                // is still alive here cannot go away before the post; one that
+                // is already gone would only fail with
+                // `ERROR_INVALID_WINDOW_HANDLE`.
+                if !IsWindow(Some(handle.as_raw())).as_bool() {
+                    return;
+                }
                 PostMessageW(Some(handle.as_raw()), message, wparam, lparam).log_err();
             });
     }

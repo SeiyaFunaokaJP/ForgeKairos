@@ -9,7 +9,7 @@ use std::{
 use anyhow::Context;
 use gpui_util::ResultExt;
 use windows::Win32::{
-    Foundation::{FILETIME, LPARAM, WPARAM},
+    Foundation::{ERROR_INVALID_WINDOW_HANDLE, FILETIME, LPARAM, WPARAM},
     Media::{timeBeginPeriod, timeEndPeriod},
     System::Threading::{
         CloseThreadpoolTimer, CreateThreadpoolTimer, GetCurrentThread, PTP_CALLBACK_INSTANCE,
@@ -119,14 +119,23 @@ impl PlatformDispatcher for WindowsDispatcher {
         match self.main_sender.send(priority, runnable) {
             Ok(_) => {
                 if !self.wake_posted.swap(true, Ordering::AcqRel) {
-                    unsafe {
+                    let posted = unsafe {
                         PostMessageW(
                             Some(self.platform_window_handle.as_raw()),
                             WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD,
                             WPARAM(self.validation_number),
                             LPARAM(0),
                         )
-                        .log_err();
+                    };
+                    // The platform window is destroyed while background threads
+                    // can still be dispatching, so at quit this loses the race
+                    // and the runnable simply waits in a queue no main thread
+                    // reads any more. `IsWindow` would not help: it is the same
+                    // race one instruction earlier.
+                    if let Err(error) = posted
+                        && error.code() != ERROR_INVALID_WINDOW_HANDLE.to_hresult()
+                    {
+                        log::error!("failed to wake the main thread: {error}");
                     }
                 }
             }

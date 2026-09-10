@@ -649,6 +649,14 @@ impl Drop for WindowsWindow {
             .executor
             .spawn(async move {
                 let handle = this.hwnd;
+                // The window the user closed is already gone by now:
+                // `DefWindowProcW` destroys it while handling `WM_CLOSE`, and
+                // the drop target goes with it. Only a window gpui itself took
+                // out of the app (the last one at quit, a merged-away window)
+                // still needs this.
+                if !unsafe { IsWindow(Some(handle)) }.as_bool() {
+                    return;
+                }
                 unsafe {
                     RevokeDragDrop(handle).log_err();
                     DestroyWindow(handle).log_err();

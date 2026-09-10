@@ -256,6 +256,33 @@ impl ThreadItem {
         item
     }
 
+    /// このタブが見ているスレッドを 1 行書く。
+    ///
+    /// ワークスペースの直列化キューからも呼ばれる ([`SerializableItem::serialize`])
+    /// が、そちらは 200 ms 刻みで流れるのに対し、このタブを名指しする側 (中央の
+    /// ペインの保存、パネルのレイアウト) はもっと早く書かれる。その間に終了すると
+    /// 「レイアウトが指すタブのレコードが無い」状態が残るので、ペインに載った
+    /// 時点でも 1 回書く ([`Item::added_to_workspace`])。中身はタブの一生を通じて
+    /// 変わらないので、何度書いても同じ。
+    fn write_record(
+        &self,
+        workspace_id: WorkspaceId,
+        item_id: workspace::ItemId,
+        cx: &App,
+    ) -> Task<Result<()>> {
+        let entry = SerializedThreadItem {
+            thread_id: self.thread_id,
+            agent: self.conversation_view.read(cx).agent_key().clone(),
+        };
+        let kvp = KeyValueStore::global(cx);
+        cx.background_spawn(async move {
+            let payload = serde_json::to_string(&entry)?;
+            kvp.scoped(&thread_item_namespace(workspace_id))
+                .write(item_id.to_string(), payload)
+                .await
+        })
+    }
+
     fn register(
         thread_id: ThreadId,
         item: WeakEntity<Self>,
@@ -958,6 +985,11 @@ impl Item for ThreadItem {
 
         let weak_self = cx.weak_entity();
         Self::register(self.thread_id, weak_self, self.window, cx);
+
+        if let Some(workspace_id) = workspace.database_id() {
+            self.write_record(workspace_id, cx.entity_id().as_u64(), cx)
+                .detach_and_log_err(cx);
+        }
     }
 
     fn pane_changed(&mut self, _new_pane_id: gpui::EntityId, _cx: &mut Context<Self>) {
@@ -1053,6 +1085,10 @@ impl workspace::SerializableItem for ThreadItem {
         "AgentThread"
     }
 
+    /// 掃除は復元の直後 = このワークスペースのタブがまだ自分のレコードを書いて
+    /// いる最中にも走る。「読んで、名前空間ごと消して、書き戻す」だと読んだ後に
+    /// 着いた書き込みを巻き込んで消してしまい、そのタブは次の起動で復元できなく
+    /// なる ([`ScopedKeyValueStore::retain`] のコメント)。
     fn cleanup(
         workspace_id: WorkspaceId,
         alive_items: Vec<workspace::ItemId>,
@@ -1061,27 +1097,9 @@ impl workspace::SerializableItem for ThreadItem {
     ) -> Task<Result<()>> {
         let kvp = KeyValueStore::global(cx);
         cx.background_spawn(async move {
-            let namespace = thread_item_namespace(workspace_id);
-            let scope = kvp.scoped(&namespace);
-            let alive: Vec<(String, String)> = alive_items
-                .iter()
-                .filter_map(|item_id| {
-                    let key = item_id.to_string();
-                    scope
-                        .read(&key)
-                        .log_err()
-                        .flatten()
-                        .map(|value| (key, value))
-                })
-                .collect();
-            // `ScopedKeyValueStore` に鍵の一覧を取る手立てが無いので、閉じた
-            // タブの行を名指しでは消せない。名前空間ごと消してから、生きて
-            // いる分を書き戻す。
-            scope.delete_all().await?;
-            for (key, value) in alive {
-                scope.write(key, value).await?;
-            }
-            Ok(())
+            kvp.scoped(&thread_item_namespace(workspace_id))
+                .retain(alive_items.iter().map(|id| id.to_string()).collect())
+                .await
         })
     }
 
@@ -1096,19 +1114,7 @@ impl workspace::SerializableItem for ThreadItem {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<Result<()>>> {
-        let workspace_id = workspace.database_id()?;
-
-        let entry = SerializedThreadItem {
-            thread_id: self.thread_id,
-            agent: self.conversation_view.read(cx).agent_key().clone(),
-        };
-        let kvp = KeyValueStore::global(cx);
-        Some(cx.background_spawn(async move {
-            let payload = serde_json::to_string(&entry)?;
-            kvp.scoped(&thread_item_namespace(workspace_id))
-                .write(item_id.to_string(), payload)
-                .await
-        }))
+        Some(self.write_record(workspace.database_id()?, item_id, cx))
     }
 
     /// 保存する中身 (スレッド id とエージェント) はタブの一生を通じて変わら
