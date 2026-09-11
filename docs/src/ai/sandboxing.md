@@ -138,7 +138,9 @@ Depending on what the tool requested, the prompt can ask you to allow:
 - network access to any host
 - write access to specific filesystem paths
 - unrestricted filesystem writes, except protected Git metadata
-- running a terminal command without the sandbox
+
+The agent cannot ask to run a command outside the sandbox. A command only runs without one if you turn sandboxing off
+(`allow_unsandboxed`), or if the sandbox cannot be created on your machine and you choose to continue without it.
 
 You can grant a sandbox request for:
 
@@ -181,7 +183,8 @@ Prefer narrow grants, such as a specific host or write path, over `allow_all_hos
 
 Git metadata writes are not grantable while a terminal command is sandboxed. This includes writes to `.git` directories,
 linked worktree metadata, refs, the index, hooks, local Git config, and other Git-controlled metadata files. Approving a
-specific writable path or `allow_fs_write_all` does not make Git metadata writable.
+specific writable path or `allow_fs_write_all` does not make Git metadata writable. Because the agent cannot run commands
+outside the sandbox, it leaves commands that write Git metadata (such as `git commit`) for you to run.
 
 ## Platform Support {#platform-support}
 
@@ -388,7 +391,6 @@ When reviewing a sandbox prompt, prefer the narrowest permission that lets the t
 
 - approve a specific host instead of all hosts when the destination is known
 - approve a specific write path instead of unrestricted filesystem writes
-- approve unsandboxed execution only when the command cannot work inside the sandbox
 - use one-time approvals for unfamiliar commands
 - use thread or always approvals only for access you expect to reuse
 

@@ -55,9 +55,10 @@ fn normalize_url(url: &str) -> Cow<'_, str> {
 /// HTTP redirects are followed one hop at a time, and each hop's host must be
 /// granted the same way, so a granted host can't redirect the request to a host
 /// that hasn't been approved.
-/// When unsandboxed access has been granted, these restrictions are lifted
-/// entirely, matching the terminal, which is also how loopback and IP-literal
-/// hosts (which can't be granted individually) become reachable.
+/// When the terminal runs without a sandbox (the user turned it off, or chose
+/// to continue without one after it could not be created), these restrictions
+/// are lifted entirely, matching the terminal. Only then are loopback and
+/// IP-literal hosts, which can't be granted individually, reachable.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FetchToolInput {
     /// The URL to fetch.
@@ -204,8 +205,8 @@ fn host_pattern_for_url(url: &str) -> Result<http_proxy::HostPattern> {
     http_proxy::HostPattern::parse(host).map_err(|error| match error {
         http_proxy::HostPatternError::IpLiteral(_) => anyhow::anyhow!(
             "cannot fetch {host:?}: loopback and IP-literal hosts can't be granted network \
-             access individually. They are only reachable once unsandboxed access has been \
-             granted (for example, via a terminal command that requests it)."
+             access individually. They are only reachable once the user turns the terminal \
+             sandbox off (the `allow_unsandboxed` setting); the agent cannot request that."
         ),
         error => anyhow::anyhow!("cannot authorize network access to {host:?}: {error}"),
     })

@@ -180,8 +180,6 @@ pub struct SandboxAuthorizationDetails {
     #[serde(default)]
     pub allow_fs_write_all: bool,
     #[serde(default)]
-    pub unsandboxed: bool,
-    #[serde(default)]
     pub write_paths: Vec<settings::GrantedWritePath>,
     /// Windows/WSL only: the command will write to a path on a Windows drive
     /// (DrvFs), whose sandbox-integrity guarantees are weaker. Drives the

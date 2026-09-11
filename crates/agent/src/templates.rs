@@ -287,10 +287,12 @@ mod tests {
         assert!(rendered.contains("allow_all_hosts: true"));
         assert!(rendered.contains("fs_write_paths"));
         assert!(rendered.contains("allow_fs_write_all: true"));
-        assert!(rendered.contains("unsandboxed: true"));
+        // ADR-F41: running outside the sandbox is not something the model can
+        // request, so the prompt must not offer it.
+        assert!(!rendered.contains("unsandboxed"));
         assert!(rendered.contains("`.git` directories remain protected"));
         assert!(rendered.contains("Git metadata writes are never grantable inside the sandbox"));
-        assert!(rendered.contains("request `unsandboxed: true` with a reason"));
+        assert!(rendered.contains("tell the user the exact command and ask them to run it"));
         assert!(rendered.contains("git --no-optional-locks status"));
         assert!(rendered.contains("for the rest of the thread"));
         // macOS tolerates granting a not-yet-existing path, so the

@@ -8942,12 +8942,7 @@ impl ThreadView {
         // visible even after the "Don't show again" checkbox flips the setting
         // avoids the card disappearing out from under the user mid-decision.
         let has_windows_fs_warning = details.warn_windows_fs;
-        if !has_network
-            && !has_write
-            && !details.unsandboxed
-            && details.reason.is_empty()
-            && !has_windows_fs_warning
-        {
+        if !has_network && !has_write && details.reason.is_empty() && !has_windows_fs_warning {
             return Empty.into_any_element();
         }
 
@@ -9128,23 +9123,6 @@ impl ThreadView {
                 })
         });
 
-        let unsandboxed_section = details.unsandboxed.then(|| {
-            h_flex()
-                .px_2()
-                .py_1()
-                .gap_1p5()
-                .child(
-                    Icon::new(IconName::Warning)
-                        .color(Color::Warning)
-                        .size(IconSize::Small),
-                )
-                .child(
-                    Label::new("OS サンドボックスなしで実行されます")
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
-                )
-        });
-
         let reason_section = (!details.reason.is_empty()).then(|| {
             v_flex()
                 .px_2()
@@ -9176,7 +9154,6 @@ impl ThreadView {
             })
             .children(network_section)
             .children(write_section)
-            .children(unsandboxed_section)
             .children(reason_section)
             .when(!has_windows_fs_warning, |this| {
                 // The Windows-drive warning banner carries its own docs link, so

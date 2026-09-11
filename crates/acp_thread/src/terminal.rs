@@ -333,10 +333,8 @@ impl SandboxWrap {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SandboxNotAppliedReason {
     /// The user disabled the sandbox for the rest of this thread, so the command
-    /// ran without one. This happens either when the user approved a
-    /// model-requested `unsandboxed: true` escape "for this thread", or when
-    /// they chose to run unsandboxed for the thread after a sandbox-creation
-    /// failure (in which case a preceding tool call's reason is
+    /// ran without one: they chose to run unsandboxed for the thread after a
+    /// sandbox-creation failure (so a preceding tool call's reason is
     /// [`SandboxNotAppliedReason::ErrorLinuxWsl`]).
     DisabledForThisThread,
     /// The Linux/WSL (Bubblewrap) sandbox could not be created for this command.

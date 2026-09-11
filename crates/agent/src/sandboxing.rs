@@ -12,9 +12,12 @@
 //! persistently turns sandboxing off for the model-facing surface entirely:
 //! the plain (non-sandboxed) `terminal` tool is exposed and the system prompt
 //! omits the sandbox section, since every command would run without a wrap
-//! anyway. The model-requested `unsandboxed: true` escape approved "once" or
-//! "for this thread" does NOT change the prompt/tool set — the sandboxed tool
-//! stays exposed and only the individual command runs without a wrap. See
+//! anyway.
+//!
+//! The model cannot ask to run a command outside the sandbox (ADR-F41). Short
+//! of that setting, a command only runs without one when the sandbox could not
+//! be created and the user chose to go ahead in the fallback prompt; choosing
+//! that "for this thread" does NOT change the prompt/tool set. See
 //! `sandboxing_enabled_for_project` and `ThreadSandboxGrants`.
 //!
 //! macOS (Seatbelt), Linux (Bubblewrap), and Windows (Bubblewrap via WSL)
@@ -196,10 +199,10 @@ pub fn settings_sandbox_policy(persistent: &SandboxPermissions) -> SandboxPolicy
 /// model-facing surface: when it's set we expose the plain `terminal` tool and
 /// omit the sandbox section from the system prompt, because every command would
 /// run without a wrap regardless. This is deliberately keyed off the
-/// *persistent* setting only. A model-requested `unsandboxed: true` escape that
-/// the user approves "once" or "for this thread" keeps the sandboxed tool and
-/// prompt in place, since the model is still operating in the sandbox model and
-/// only escaping individual commands (tracked in `ThreadSandboxGrants`).
+/// *persistent* setting only. Running a thread's commands without a sandbox
+/// after it could not be created (tracked in `ThreadSandboxGrants`) keeps the
+/// sandboxed tool and prompt in place; each such command's result tells the
+/// model it ran without one.
 pub(crate) fn sandboxing_enabled_for_project(project: &Project, cx: &App) -> bool {
     sandboxing_available_for_project(project, cx)
         && !AgentSettings::get_global(cx)
@@ -285,8 +288,6 @@ pub(crate) struct SandboxRequest {
 
     /// Allow unrestricted filesystem writes (the broad escape hatch).
     pub allow_fs_write_all: bool,
-    /// Run the command fully outside the sandbox.
-    pub unsandboxed: bool,
     /// Concrete paths the command needs to write to, each paired with the
     /// canonical target resolved at approval time. Each grants its whole
     /// subtree. These are never globs — write access is always a concrete path subtree
@@ -297,10 +298,7 @@ impl SandboxRequest {
     /// Whether this request asks for anything beyond the default sandbox
     /// scope, and therefore needs user approval.
     pub fn needs_escalation(&self) -> bool {
-        self.network.is_requested()
-            || self.allow_fs_write_all
-            || self.unsandboxed
-            || !self.write_paths.is_empty()
+        self.network.is_requested() || self.allow_fs_write_all || !self.write_paths.is_empty()
     }
 }
 
@@ -319,12 +317,11 @@ pub(crate) struct ThreadSandboxGrants {
     /// whole subdomain space; redundant entries are pruned on insert.
     network_hosts: Vec<HostPattern>,
     allow_fs_write_all: bool,
-    unsandboxed: bool,
     /// Whether the user approved running commands *without* a sandbox for the
     /// rest of the thread when the OS sandbox could not be created (the
-    /// fallback prompt's "Allow for this thread"). Distinct from
-    /// `unsandboxed`, which records a model-requested escape; this is a
-    /// user-acknowledged degradation because the sandbox is unavailable.
+    /// fallback prompt's "Allow for this thread"). This is a user-acknowledged
+    /// degradation because the sandbox is unavailable; the model has no way to
+    /// request it (ADR-F41).
     sandbox_fallback: bool,
     /// Paths granted write access for the thread, each paired with the canonical
     /// target resolved at approval time. Each covers its whole subtree; redundant
@@ -346,16 +343,6 @@ impl ThreadSandboxGrants {
         request: &SandboxRequest,
         persistent: &SandboxPermissions,
     ) -> bool {
-        if request.unsandboxed {
-            // The persistent `allow_unsandboxed` setting is intentionally not
-            // consulted here: when it's set, sandboxing is removed from the
-            // model-facing surface (the plain `terminal` tool is exposed
-            // instead of the sandboxed one), so the model can't issue an
-            // `unsandboxed: true` request at all. Only a "for this thread"
-            // grant suppresses the re-prompt while the sandboxed tool is
-            // active — see `sandboxing_enabled_for_project`.
-            return self.unsandboxed;
-        }
         if !self.network_covered(&request.network, persistent) {
             return false;
         }
@@ -409,14 +396,6 @@ impl ThreadSandboxGrants {
         self.sandbox_fallback
     }
 
-    /// Whether the user approved running model-requested `unsandboxed: true`
-    /// commands for the rest of the thread. Once granted, every command in the
-    /// thread runs without a sandbox (the model can no longer scope access),
-    /// mirroring the `sandbox_fallback` grant.
-    pub fn unsandboxed_granted(&self) -> bool {
-        self.unsandboxed
-    }
-
     /// Record that the user approved running commands unsandboxed for the rest
     /// of the thread when the sandbox can't be created. Only the Bubblewrap
     /// sandboxes (Linux directly, Windows via WSL) can fail to create a
@@ -427,13 +406,12 @@ impl ThreadSandboxGrants {
     }
 
     /// The sandbox this thread's grants establish on top of the settings, as a
-    /// [`ThreadSandbox`]. A standing "run unsandboxed" grant (a model-requested
-    /// escape approved for the thread, or the sandbox-creation fallback) removes
-    /// the sandbox entirely; otherwise the granted writable paths and hosts form
-    /// its scope. This is the "overridden in this thread" half of the sandbox
+    /// [`ThreadSandbox`]. A standing sandbox-creation fallback grant removes the
+    /// sandbox entirely; otherwise the granted writable paths and hosts form its
+    /// scope. This is the "overridden in this thread" half of the sandbox
     /// status surface; the persistent half comes from [`settings_thread_sandbox`].
     pub fn thread_sandbox(&self) -> ThreadSandbox {
-        if self.unsandboxed || self.sandbox_fallback {
+        if self.sandbox_fallback {
             ThreadSandbox::Unsandboxed
         } else {
             ThreadSandbox::Sandboxed(self.to_policy())
@@ -494,7 +472,6 @@ impl ThreadSandboxGrants {
                 .collect(),
             network_any_host: self.network_any_host,
             allow_fs_write_all: self.allow_fs_write_all,
-            unsandboxed: self.unsandboxed,
             sandbox_fallback: self.sandbox_fallback,
         }
     }
@@ -516,7 +493,6 @@ impl ThreadSandboxGrants {
             network_any_host: db.network_any_host,
             network_hosts,
             allow_fs_write_all: db.allow_fs_write_all,
-            unsandboxed: db.unsandboxed,
             sandbox_fallback: db.sandbox_fallback,
             write_paths: db.write_paths.clone(),
         }
@@ -535,7 +511,6 @@ impl ThreadSandboxGrants {
             }
         }
         self.allow_fs_write_all |= request.allow_fs_write_all;
-        self.unsandboxed |= request.unsandboxed;
         for granted in &request.write_paths {
             insert_granted_subtree(&mut self.write_paths, granted.clone());
         }
@@ -588,7 +563,6 @@ impl ThreadSandboxGrants {
             allow_fs_write_all: persistent.allow_fs_write_all
                 || self.allow_fs_write_all
                 || request.allow_fs_write_all,
-            unsandboxed: request.unsandboxed,
             write_paths,
         }
     }
@@ -684,7 +658,6 @@ mod tests {
         SandboxRequest {
             network,
             allow_fs_write_all: all,
-            unsandboxed: false,
             write_paths: granted(paths),
         }
     }
@@ -705,15 +678,6 @@ mod tests {
             dir.to_path_buf(),
             sandbox::resolve_canonical(dir).expect("resolve canonical temp dir"),
         )
-    }
-
-    fn unsandboxed_request() -> SandboxRequest {
-        SandboxRequest {
-            network: NetworkRequest::None,
-            allow_fs_write_all: false,
-            unsandboxed: true,
-            write_paths: Vec::new(),
-        }
     }
 
     #[test]
@@ -775,15 +739,21 @@ mod tests {
         ));
     }
 
+    /// Threads saved before ADR-F41 can carry `unsandboxed: true` (the model
+    /// asked to run outside the sandbox and the user allowed it for the
+    /// thread). That request no longer exists, so resuming such a thread must
+    /// bring the sandbox back rather than keep honoring the old grant.
     #[test]
-    fn thread_grants_sandbox_reflects_unsandboxed_grant() {
-        let mut grants = ThreadSandboxGrants::default();
+    fn legacy_unsandboxed_thread_grant_is_not_restored() {
+        let db: crate::db::DbSandboxGrants =
+            serde_json::from_value(serde_json::json!({ "unsandboxed": true }))
+                .expect("a legacy grant row should still deserialize");
+        let restored = ThreadSandboxGrants::from_db(&db);
+        assert!(!restored.fallback_granted_for_thread());
         assert!(matches!(
-            grants.thread_sandbox(),
+            restored.thread_sandbox(),
             ThreadSandbox::Sandboxed(_)
         ));
-        grants.record(&unsandboxed_request());
-        assert!(grants.thread_sandbox().is_unsandboxed());
     }
 
     #[test]
@@ -794,7 +764,6 @@ mod tests {
             false,
             &["/tmp/build"],
         ));
-        grants.record(&unsandboxed_request());
 
         let restored = ThreadSandboxGrants::from_db(&grants.to_db());
 
@@ -803,10 +772,8 @@ mod tests {
             &restored,
             &request(hosts(&["api.npmjs.org"]), false, &["/tmp/build/cache"])
         ));
-        assert!(covers(&restored, &unsandboxed_request()));
         assert_eq!(restored.network_hosts, grants.network_hosts);
         assert_eq!(restored.write_paths, grants.write_paths);
-        assert_eq!(restored.unsandboxed, grants.unsandboxed);
     }
 
     #[test]
@@ -835,7 +802,6 @@ mod tests {
         grants.record(&SandboxRequest {
             network: hosts(&["github.com"]),
             allow_fs_write_all: false,
-            unsandboxed: false,
             write_paths: vec![resolved_grant(build_dir.path())],
         });
         let policy = grants.to_policy();
@@ -946,15 +912,17 @@ mod tests {
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[test]
-    fn fallback_granted_for_thread_tracks_record_fallback() {
+    fn fallback_grant_drops_the_thread_sandbox() {
         let mut grants = ThreadSandboxGrants::default();
         assert!(!grants.fallback_granted_for_thread());
+        assert!(matches!(
+            grants.thread_sandbox(),
+            ThreadSandbox::Sandboxed(_)
+        ));
 
-        // The thread-scoped fallback grant is independent of the
-        // model-requested `unsandboxed` grant.
         grants.record_fallback();
         assert!(grants.fallback_granted_for_thread());
-        assert!(!covers(&grants, &unsandboxed_request()));
+        assert!(grants.thread_sandbox().is_unsandboxed());
     }
 
     #[test]
@@ -969,7 +937,6 @@ mod tests {
             &request(hosts(&["github.com"]), false, &[])
         ));
         assert!(!covers(&grants, &request(NetworkRequest::None, true, &[])));
-        assert!(!covers(&grants, &unsandboxed_request()));
         assert!(!covers(
             &grants,
             &request(NetworkRequest::None, false, &["/tmp/build"])
@@ -1093,18 +1060,6 @@ mod tests {
     }
 
     #[test]
-    fn unsandboxed_grant_tracked_independently() {
-        let mut grants = ThreadSandboxGrants::default();
-        grants.record(&unsandboxed_request());
-        assert!(covers(&grants, &unsandboxed_request()));
-        assert!(!covers(
-            &grants,
-            &request(NetworkRequest::AnyHost, false, &[])
-        ));
-        assert!(!covers(&grants, &request(NetworkRequest::None, true, &[])));
-    }
-
-    #[test]
     fn persistent_grants_combine_with_thread_grants() {
         let mut grants = ThreadSandboxGrants::default();
         grants.record(&request(hosts(&["github.com"]), false, &[]));
@@ -1160,37 +1115,6 @@ mod tests {
             !grants
                 .covers_with_persistent(&request(NetworkRequest::AnyHost, false, &[]), &persistent)
         );
-    }
-
-    #[test]
-    fn thread_grant_covers_unsandboxed_requests() {
-        // A "for this thread" grant suppresses the re-prompt for later
-        // `unsandboxed: true` requests within the same thread.
-        let mut grants = ThreadSandboxGrants::default();
-        assert!(!covers(&grants, &unsandboxed_request()));
-        grants.record(&unsandboxed_request());
-        assert!(covers(&grants, &unsandboxed_request()));
-
-        // A thread-wide unsandboxed grant only covers unsandboxed requests; it
-        // does not widen network or filesystem scope.
-        assert!(!covers(
-            &grants,
-            &request(NetworkRequest::AnyHost, false, &[])
-        ));
-        assert!(!covers(&grants, &request(NetworkRequest::None, true, &[])));
-    }
-
-    #[test]
-    fn persistent_allow_unsandboxed_does_not_cover_here() {
-        // The persistent setting is handled by removing the sandboxed tool (see
-        // `sandboxing_enabled_for_project`), not by covering requests, so on
-        // its own it never makes an `unsandboxed: true` request "covered".
-        let grants = ThreadSandboxGrants::default();
-        let persistent = SandboxPermissions {
-            allow_unsandboxed: true,
-            ..Default::default()
-        };
-        assert!(!grants.covers_with_persistent(&unsandboxed_request(), &persistent));
     }
 
     #[test]

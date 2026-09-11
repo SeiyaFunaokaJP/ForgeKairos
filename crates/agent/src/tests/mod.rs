@@ -7661,8 +7661,9 @@ async fn test_fetch_tool_granted_host_skips_prompt(cx: &mut TestAppContext) {
     );
 }
 
-/// Loopback / IP-literal hosts can't be granted individually, so without
-/// unsandboxed access a fetch to them is refused with guidance to grant it.
+/// Loopback / IP-literal hosts can't be granted individually, so while the
+/// sandbox is on a fetch to them is refused, saying that only the user can
+/// turn the sandbox off.
 #[gpui::test]
 async fn test_fetch_tool_refuses_loopback_without_unsandboxed(cx: &mut TestAppContext) {
     init_test(cx);
@@ -7693,11 +7694,12 @@ async fn test_fetch_tool_refuses_loopback_without_unsandboxed(cx: &mut TestAppCo
         serde_json::from_value(json!({"url": "http://localhost:3000/api"})).unwrap();
 
     let task = cx.update(|cx| tool.run(ToolInput::resolved(input), event_stream, cx));
-    let result = task.await;
-    assert!(result.is_err(), "expected a loopback fetch to be refused");
+    let error = task
+        .await
+        .expect_err("expected a loopback fetch to be refused");
     assert!(
-        result.unwrap_err().contains("unsandboxed"),
-        "error should point at unsandboxed access as the way to reach loopback hosts"
+        error.contains("allow_unsandboxed") && error.contains("cannot request"),
+        "error should say only the user can lift the restriction: {error}"
     );
 }
 
@@ -7796,14 +7798,12 @@ async fn test_fetch_tool_refuses_redirect_to_loopback(cx: &mut TestAppContext) {
         serde_json::from_value(json!({"url": "https://example.com/start"})).unwrap();
 
     let task = cx.update(|cx| tool.run(ToolInput::resolved(input), event_stream, cx));
-    let result = task.await;
+    let error = task
+        .await
+        .expect_err("expected a redirect to a loopback host to be refused");
     assert!(
-        result.is_err(),
-        "expected a redirect to a loopback host to be refused"
-    );
-    assert!(
-        result.unwrap_err().contains("unsandboxed"),
-        "error should point at unsandboxed access as the way to reach loopback hosts"
+        error.contains("allow_unsandboxed") && error.contains("cannot request"),
+        "error should say only the user can lift the restriction: {error}"
     );
 }
 

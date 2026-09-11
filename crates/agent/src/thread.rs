@@ -5964,7 +5964,6 @@ impl ToolCallEventStream {
             network_hosts,
             network_all_hosts,
             allow_fs_write_all: request.allow_fs_write_all,
-            unsandboxed: request.unsandboxed,
             write_paths: request.write_paths.clone(),
             // The Windows-drive warning is a separate pre-prompt
             // (`authorize_windows_fs_warning`), never part of the escalation
@@ -6101,7 +6100,6 @@ impl ToolCallEventStream {
             network_hosts: Vec::new(),
             network_all_hosts: false,
             allow_fs_write_all: false,
-            unsandboxed: false,
             write_paths: Vec::new(),
             warn_windows_fs: true,
             reason: String::new(),
@@ -6259,9 +6257,6 @@ impl ToolCallEventStream {
                 if request.allow_fs_write_all {
                     agent.allow_sandbox_fs_write_all();
                 }
-                if request.unsandboxed {
-                    agent.allow_sandbox_unsandboxed();
-                }
                 for granted in request.write_paths {
                     // Persist the full (requested, resolved-canonical) pair so a
                     // persistent grant is rebuilt from the vetted canonical
@@ -6299,22 +6294,13 @@ impl ToolCallEventStream {
         self.sandbox_grants.borrow().fallback_granted_for_thread()
     }
 
-    /// Whether the user approved a model-requested `unsandboxed: true` escape
-    /// for the rest of this thread. Like the fallback grant, this makes every
-    /// command in the thread run without a sandbox.
-    pub(crate) fn unsandboxed_granted_for_thread(&self) -> bool {
-        self.sandbox_grants.borrow().unsandboxed_granted()
-    }
-
     /// Whether unsandboxed access is currently in effect: granted for this
-    /// thread (a model-requested `unsandboxed` escape or a sandbox-creation
-    /// fallback) or configured persistently via `allow_unsandboxed`. When true,
-    /// commands already run without any OS sandbox, so per-host network grants
-    /// no longer provide isolation and callers may skip host authorization
-    /// entirely.
+    /// thread by the sandbox-creation fallback or configured persistently via
+    /// `allow_unsandboxed`. When true, commands already run without any OS
+    /// sandbox, so per-host network grants no longer provide isolation and
+    /// callers may skip host authorization entirely.
     pub(crate) fn unsandboxed_access_granted(&self, cx: &App) -> bool {
-        self.unsandboxed_granted_for_thread()
-            || self.sandbox_fallback_granted_for_thread()
+        self.sandbox_fallback_granted_for_thread()
             || AgentSettings::get_global(cx)
                 .sandbox_permissions
                 .allow_unsandboxed
@@ -8259,7 +8245,6 @@ mod tests {
         let request = SandboxRequest {
             network: crate::sandboxing::NetworkRequest::None,
             allow_fs_write_all: false,
-            unsandboxed: false,
             write_paths: vec![
                 settings::GrantedWritePath::from_requested(PathBuf::from("/tmp/build")),
                 settings::GrantedWritePath::from_requested(PathBuf::from("/tmp/cache")),
@@ -8282,7 +8267,6 @@ mod tests {
         assert!(details.network_hosts.is_empty());
         assert!(!details.network_all_hosts);
         assert_eq!(details.allow_fs_write_all, request.allow_fs_write_all);
-        assert_eq!(details.unsandboxed, request.unsandboxed);
         assert_eq!(details.write_paths, request.write_paths);
         assert!(authorization.tool_call.fields.content.is_none());
 

@@ -91,6 +91,10 @@ pub struct DbThread {
 /// Serialized form of the sandbox permissions the user granted "for the rest of
 /// this thread" (the "Allow for this thread" prompt option). Stored inside the
 /// thread blob; round-trips with [`crate::sandboxing::ThreadSandboxGrants`].
+///
+/// Rows saved before ADR-F41 can also hold `unsandboxed: true` (the model asked
+/// to run outside the sandbox and the user allowed it for the thread). That
+/// field is deliberately no longer read, so such a thread resumes sandboxed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DbSandboxGrants {
     /// Paths granted write access, each paired with the canonical
@@ -111,10 +115,6 @@ pub struct DbSandboxGrants {
     /// granted.
     #[serde(default)]
     pub allow_fs_write_all: bool,
-
-    /// Whether the model-requested fully-unsandboxed escape was granted.
-    #[serde(default)]
-    pub unsandboxed: bool,
     /// Whether running commands unsandboxed was allowed because the OS sandbox
     /// could not be created (the fallback prompt's "for this thread" option).
     #[serde(default)]
@@ -964,7 +964,6 @@ mod tests {
             network_hosts: vec!["github.com".to_string(), "*.npmjs.org".to_string()],
             network_any_host: false,
             allow_fs_write_all: false,
-            unsandboxed: true,
             sandbox_fallback: true,
         };
         thread.sandbox_grants = grants.clone();

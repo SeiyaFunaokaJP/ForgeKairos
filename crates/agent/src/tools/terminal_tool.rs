@@ -189,28 +189,16 @@ pub struct SandboxedTerminalToolInput {
     #[serde(default, alias = "allow_fs_write")]
     pub allow_fs_write_all: Option<bool>,
 
-    /// Set to `true` only as a last resort, to run the command fully outside
-    /// the sandbox.
-    ///
-    /// First try the narrower options (`allow_hosts`, `fs_write_paths`, or
-    /// `allow_fs_write_all`); use this only when the command
-    /// needs behavior the sandbox can't grant on a per-permission basis,
-    /// including commands that must write Git metadata.
-    /// Requesting it triggers a user approval prompt.
-    #[cfg_attr(
-        target_os = "windows",
-        doc = "\nOn Windows, running unsandboxed also switches the shell. Sandboxed \
-        commands run under WSL's Linux bash; an unsandboxed command instead runs in the \
-        host's default shell — Git Bash (or scoop's bash) when one is installed, otherwise \
-        PowerShell/cmd. Path conventions change accordingly (e.g. `C:\\...` or `/c/...` \
-        rather than WSL's `/mnt/c/...`), so a command written for the sandboxed shell may \
-        behave differently here."
-    )]
-    #[serde(default)]
-    pub unsandboxed: Option<bool>,
+    // Deliberately absent from the schema: the model cannot ask to run a command
+    // outside the sandbox (ADR-F41). Still deserialized so that a call sending
+    // it anyway (e.g. imitating tool calls saved by an older build) is refused
+    // with an explanation instead of silently running inside the sandbox.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(skip)]
+    unsandboxed: Option<bool>,
     /// A short justification for why this command needs the sandbox
     /// permission(s) it requests (`allow_hosts`, `allow_all_hosts`,
-    /// `fs_write_paths`, `allow_fs_write_all`, or `unsandboxed`).
+    /// `fs_write_paths`, or `allow_fs_write_all`).
     ///
     /// Required whenever you request any of those permissions; omit it for
     /// ordinary commands that request none. Write it in your own voice — it
@@ -226,7 +214,6 @@ struct TerminalSandboxInput {
     allow_all_hosts: Option<bool>,
     fs_write_paths: Vec<String>,
     allow_fs_write_all: Option<bool>,
-    unsandboxed: Option<bool>,
     reason: Option<String>,
 }
 
@@ -268,7 +255,6 @@ impl From<SandboxedTerminalToolInput> for TerminalToolRequest {
                 allow_all_hosts: input.allow_all_hosts,
                 fs_write_paths: input.fs_write_paths,
                 allow_fs_write_all: input.allow_fs_write_all,
-                unsandboxed: input.unsandboxed,
                 reason: input.reason,
             }),
         }
@@ -375,6 +361,9 @@ impl AgentTool for SandboxedTerminalTool {
     ) -> Task<Result<Self::Output, Self::Output>> {
         cx.spawn(async move |cx| {
             let input = input.recv().await.map_err(|e| e.to_string())?;
+            if input.unsandboxed == Some(true) {
+                return Err(UNSANDBOXED_REQUEST_REFUSED.to_string());
+            }
             run_terminal_tool(
                 self.project.clone(),
                 self.environment.clone(),
@@ -386,6 +375,14 @@ impl AgentTool for SandboxedTerminalTool {
         })
     }
 }
+
+/// Returned to the model when a `terminal` call still sets `unsandboxed: true`
+/// (see the field on [`SandboxedTerminalToolInput`]); the command is not run.
+const UNSANDBOXED_REQUEST_REFUSED: &str = "The command was not run: running a command outside \
+the sandbox cannot be requested, so `unsandboxed` is not a supported field. Remove it and run the \
+command inside the sandbox, requesting the network or write access it needs if any. If it cannot \
+work inside the sandbox (for example, it has to write Git metadata), don't try to work around the \
+sandbox: tell the user the exact command and ask them to run it.";
 
 fn terminal_initial_title(input: Result<String, serde_json::Value>) -> SharedString {
     match input {
@@ -434,6 +431,23 @@ fn wsl_zed_release(_cx: &App) -> Option<(String, String)> {
     None
 }
 
+/// Whether a failure to create the Linux sandbox may be offered to the user as
+/// "run without a sandbox". Only a missing or unusable Bubblewrap qualifies:
+/// that is the machine's environment, which the model can't change. `Other`
+/// comes from building the policy, for example an approved write grant that no
+/// longer re-verifies because its directory was removed or swapped for a
+/// symlink. A sandboxed command can bring that about on purpose, so it fails
+/// closed, as on the other platforms (ADR-F41).
+#[cfg(any(target_os = "linux", test))]
+fn linux_sandbox_error_allows_fallback(error: &acp_thread::LinuxWslSandboxError) -> bool {
+    match error {
+        acp_thread::LinuxWslSandboxError::BwrapNotFound
+        | acp_thread::LinuxWslSandboxError::SetuidRejected
+        | acp_thread::LinuxWslSandboxError::SandboxProbeFailed => true,
+        acp_thread::LinuxWslSandboxError::Other(_) => false,
+    }
+}
+
 async fn run_terminal_tool(
     project: Entity<Project>,
     environment: Rc<dyn ThreadEnvironment>,
@@ -478,7 +492,6 @@ async fn run_terminal_tool(
     authorize.await.map_err(|e| e.to_string())?;
 
     let want_fs_write_all = sandboxing && sandbox_input.allow_fs_write_all == Some(true);
-    let want_unsandboxed = sandboxing && sandbox_input.unsandboxed == Some(true);
     let want_all_hosts = sandboxing && sandbox_input.allow_all_hosts == Some(true);
 
     let persistent = cx.update(|cx| {
@@ -495,17 +508,16 @@ async fn run_terminal_tool(
     // Reject such requests with an explanation instead of running them.
     let floor = event_stream
         .effective_sandbox_request(&crate::sandboxing::SandboxRequest::default(), &persistent);
-    let unsandboxed_floor = sandboxing
-        && (event_stream.unsandboxed_granted_for_thread()
-            || event_stream.sandbox_fallback_granted_for_thread());
+    let unsandboxed_floor = sandboxing && event_stream.sandbox_fallback_granted_for_thread();
     let fs_unrestricted_floor = sandboxing && floor.allow_fs_write_all;
     let net_unrestricted_floor = sandboxing && matches!(floor.network, NetworkRequest::AnyHost);
 
-    if sandboxing && !want_unsandboxed {
+    if sandboxing {
         if unsandboxed_floor {
-            // The user turned the sandbox off for this thread, so every command
-            // runs without one and no sandbox-scoping field can take effect.
-            // Name exactly which ones the model set so it can drop them.
+            // The sandbox could not be created and the user chose to run this
+            // thread's commands without one, so no sandbox-scoping field can
+            // take effect. Name exactly which ones the model set so it can drop
+            // them.
             let mut ineffective = Vec::new();
             if !sandbox_input.allow_hosts.is_empty() {
                 ineffective.push("`allow_hosts`");
@@ -523,8 +535,7 @@ async fn run_terminal_tool(
                 return Err(format!(
                     "Sandboxing is disabled for this thread, so every command runs without an OS \
                      sandbox and these fields have no effect: {}. Remove them and rerun the \
-                     command (it will run unsandboxed), or pass `unsandboxed: true` to acknowledge \
-                     it runs without a sandbox.",
+                     command (it will run unsandboxed).",
                     ineffective.join(", "),
                 ));
             }
@@ -554,7 +565,7 @@ async fn run_terminal_tool(
     // the model's responsibility, so surface it back as a tool-call error
     // (the model retries) rather than letting the user approve a request that
     // then fails.
-    let network = if sandboxing && !want_unsandboxed {
+    let network = if sandboxing {
         build_network_request(&sandbox_input)?
     } else {
         NetworkRequest::None
@@ -576,7 +587,7 @@ async fn run_terminal_tool(
         );
     }
 
-    let write_paths: Vec<PathBuf> = if sandboxing && !want_unsandboxed {
+    let write_paths: Vec<PathBuf> = if sandboxing {
         cx.update(|cx| {
             resolve_write_paths(
                 &sandbox_input.fs_write_paths,
@@ -670,8 +681,7 @@ async fn run_terminal_tool(
 
     let request = crate::sandboxing::SandboxRequest {
         network,
-        allow_fs_write_all: !want_unsandboxed && want_fs_write_all,
-        unsandboxed: want_unsandboxed,
+        allow_fs_write_all: want_fs_write_all,
         write_paths,
     };
 
@@ -690,7 +700,6 @@ async fn run_terminal_tool(
     // sandbox creation is guaranteed to fail, and the creation-failure
     // fallback prompt handles that conversation instead).
     if sandboxing
-        && !want_unsandboxed
         && !unsandboxed_floor
         // ADR-F18: the DrvFs warning is about the client's WSL filesystem and is
         // meaningless for a remote Linux project (which has no WSL layer).
@@ -741,11 +750,6 @@ async fn run_terminal_tool(
         let approve =
             cx.update(|cx| event_stream.authorize_sandbox(request.clone(), reason.to_string(), cx));
         if let Err(error) = approve.await {
-            if want_unsandboxed {
-                return Ok(format!(
-                    "Command cancelled: user denied permission to run outside the sandbox ({error})."
-                ));
-            }
             return Ok(format!(
                 "Command cancelled: user denied the requested sandbox permissions ({error})."
             ));
@@ -759,7 +763,7 @@ async fn run_terminal_tool(
     // create the sandbox it aborts. As the consumer we may still run the command
     // without a sandbox (when the user has opted into that), but we record
     // *why* in `sandbox_not_applied` so we can warn the user and tell the agent.
-    // A standing "run unsandboxed for this thread" grant (any platform) and the
+    // A standing "run unsandboxed for this thread" fallback grant and the
     // Linux/Windows sandbox-creation fallbacks reassign this; on platforms
     // without a sandbox integration the binding stays `None` and wouldn't need
     // `mut`.
@@ -769,11 +773,10 @@ async fn run_terminal_tool(
     )]
     let mut sandbox_not_applied: Option<acp_thread::SandboxNotAppliedReason> = None;
 
-    let sandbox_wrap = if sandboxing && !want_unsandboxed {
+    let sandbox_wrap = if sandboxing {
         if unsandboxed_floor {
             // Every command in this thread runs unsandboxed because the user
-            // approved it — a model-requested "run unsandboxed" escape granted
-            // for the thread, or the sandbox-creation fallback after a failure.
+            // chose that for the thread after the sandbox could not be created.
             // Record why so the model is told it ran without isolation.
             sandbox_not_applied = Some(acp_thread::SandboxNotAppliedReason::DisabledForThisThread);
             None
@@ -836,6 +839,12 @@ async fn run_terminal_tool(
                         log::warn!(
                             "Failed to create a sandbox for an agent terminal command: {error:?}"
                         );
+                        if !linux_sandbox_error_allows_fallback(&error) {
+                            return Err(format!(
+                                "Cannot create a sandbox for this command: {}",
+                                error.user_facing_message()
+                            ));
+                        }
 
                         let decision = cx
                             .update(|cx| {
@@ -997,10 +1006,10 @@ async fn run_terminal_tool(
         .await
         .map_err(|e| format!("{e:#}"))?;
 
-    // When sandboxing was active but the command ran without a sandbox (a
-    // settings opt-out, a thread grant, or a sandbox-creation failure the user
-    // chose to run through), tell the agent so it can account for the weaker
-    // isolation. Computed here — after the Windows fallback above may have set
+    // When sandboxing was active but the command ran without a sandbox (the
+    // sandbox could not be created and the user chose to run through, for this
+    // command or for the thread), tell the agent so it can account for the
+    // weaker isolation. Computed here — after the Windows fallback above may have set
     // the reason — so every affected command communicates the state.
     let sandbox_note = sandbox_not_applied.as_ref().map(|reason| {
         // Only the Windows-specific block below mutates this; on other
@@ -1293,8 +1302,9 @@ fn select_terminal_output_lines(output: &str, selection: TerminalOutputSelection
 const WSL_INTEROP_BLOCKED_NOTE: &str = "This command tried to launch a Windows \
 executable, which the sandbox blocks: WSL Windows interop is disabled so \
 sandboxed commands can't escape to the Windows host. The noisy `WSL ... ERROR` \
-lines below are from that blocked attempt, not a bug in the command. If you \
-genuinely need to run a Windows program, re-run with `unsandboxed: true`.";
+lines below are from that blocked attempt, not a bug in the command. Commands \
+cannot run outside the sandbox, so if the task genuinely needs a Windows program, \
+tell the user the exact command and ask them to run it.";
 
 /// Whether terminal output contains the kernel-style diagnostics WSL prints
 /// when a Windows executable is launched inside our pid-namespaced sandbox
@@ -3570,10 +3580,47 @@ mod tests {
             schema.contains("allow_fs_write_all"),
             "schema should advertise allow_fs_write_all: {schema}"
         );
-        assert!(
-            schema.contains("unsandboxed"),
-            "schema should advertise unsandboxed: {schema}"
-        );
+    }
+
+    #[test]
+    fn test_input_schema_does_not_offer_unsandboxed() {
+        // ADR-F41: the model must not be offered a way to run a command outside
+        // the sandbox, in either schema flavor a provider may receive.
+        for format in [
+            language_model::LanguageModelToolSchemaFormat::JsonSchema,
+            language_model::LanguageModelToolSchemaFormat::JsonSchemaSubset,
+        ] {
+            let schema = serde_json::to_string(&SandboxedTerminalTool::input_schema(format))
+                .expect("input schema should serialize");
+            assert!(
+                !schema.contains("unsandboxed"),
+                "schema must not advertise unsandboxed: {schema}"
+            );
+        }
+    }
+
+    /// ADR-F41: on Linux only a missing or unusable Bubblewrap may open the
+    /// "run without a sandbox" prompt. A policy that can't be built, which a
+    /// sandboxed command can bring about by deleting an approved write
+    /// directory, must fail closed instead.
+    #[test]
+    fn test_only_environment_failures_offer_the_linux_fallback() {
+        use acp_thread::LinuxWslSandboxError;
+
+        assert!(linux_sandbox_error_allows_fallback(
+            &LinuxWslSandboxError::BwrapNotFound
+        ));
+        assert!(linux_sandbox_error_allows_fallback(
+            &LinuxWslSandboxError::SetuidRejected
+        ));
+        assert!(linux_sandbox_error_allows_fallback(
+            &LinuxWslSandboxError::SandboxProbeFailed
+        ));
+        assert!(!linux_sandbox_error_allows_fallback(
+            &LinuxWslSandboxError::Other(
+                "cannot re-verify approved sandbox write grant `build`".to_string()
+            )
+        ));
     }
 
     #[test]
@@ -3591,7 +3638,6 @@ mod tests {
         assert_eq!(input.allow_all_hosts, None);
         assert!(input.fs_write_paths.is_empty());
         assert_eq!(input.allow_fs_write_all, None);
-        assert_eq!(input.unsandboxed, None);
     }
 
     #[test]
@@ -3645,13 +3691,15 @@ mod tests {
         let task = cx.update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx));
 
         let authorization = receiver.expect_authorization().await;
+        // The sandbox approval deliberately leaves the tool-call title untouched
+        // so the card keeps showing the command being approved.
+        assert_eq!(authorization.tool_call.fields.title, None);
         let details =
             acp_thread::sandbox_authorization_details_from_meta(&authorization.tool_call.meta)
                 .expect("legacy allow_fs_write should request sandbox authorization details");
         assert!(details.network_hosts.is_empty());
         assert!(!details.network_all_hosts);
         assert!(details.allow_fs_write_all);
-        assert!(!details.unsandboxed);
         assert!(details.write_paths.is_empty());
 
         let acp_thread::PermissionOptions::Flat(options) = &authorization.options else {
@@ -3700,9 +3748,12 @@ mod tests {
         assert_eq!(environment.terminal_creation_count(), 0);
     }
 
-    #[cfg(target_os = "macos")]
+    /// ADR-F41: a call that still sends `unsandboxed: true` (no longer in the
+    /// schema, but a model may imitate calls saved in an older thread) is
+    /// refused before anything is prompted for or run: no event reaches the
+    /// thread and no terminal is created.
     #[gpui::test]
-    async fn test_unsandboxed_uses_sandbox_permission_options(cx: &mut gpui::TestAppContext) {
+    async fn test_unsandboxed_request_is_refused(cx: &mut gpui::TestAppContext) {
         use feature_flags::FeatureFlagAppExt as _;
 
         crate::tests::init_test(cx);
@@ -3727,73 +3778,25 @@ mod tests {
         let tool = std::sync::Arc::new(SandboxedTerminalTool::new(project, environment.clone()));
         let (event_stream, mut receiver) = crate::ToolCallEventStream::test();
         let input: SandboxedTerminalToolInput = serde_json::from_value(serde_json::json!({
-            "command": "echo hi",
+            "command": "GIT_EDITOR=true git commit -am wip",
             "cd": "root",
-            "allow_all_hosts": true,
-            "allow_fs_write_all": true,
             "unsandboxed": true,
-            "reason": "needs full access for this task",
+            "reason": "needs to write Git metadata",
         }))
-        .expect("unsandboxed input should deserialize");
+        .expect("a call that still sends unsandboxed should deserialize");
 
-        let task = cx.update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx));
-
-        let authorization = receiver.expect_authorization().await;
-        // The sandbox approval deliberately leaves the tool-call title untouched
-        // so the card keeps showing the command being approved.
-        assert_eq!(authorization.tool_call.fields.title, None);
-        let details =
-            acp_thread::sandbox_authorization_details_from_meta(&authorization.tool_call.meta)
-                .expect("unsandboxed should request sandbox authorization details");
-        assert!(details.network_hosts.is_empty());
-        assert!(!details.network_all_hosts);
-        assert!(!details.allow_fs_write_all);
-        assert!(details.unsandboxed);
-        assert!(details.write_paths.is_empty());
-
-        let acp_thread::PermissionOptions::Flat(options) = &authorization.options else {
-            panic!("expected flat sandbox permission options");
-        };
-        let options = options
-            .iter()
-            .map(|option| {
-                (
-                    option.option_id.0.as_ref(),
-                    option.name.as_ref(),
-                    option.kind,
-                )
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            options,
-            vec![
-                ("allow", "Allow once", acp::PermissionOptionKind::AllowOnce),
-                (
-                    "allow_thread",
-                    "Allow for this thread",
-                    acp::PermissionOptionKind::AllowAlways,
-                ),
-                (
-                    "allow_always",
-                    "Allow always",
-                    acp::PermissionOptionKind::AllowAlways,
-                ),
-                ("deny", "Deny", acp::PermissionOptionKind::RejectOnce),
-            ]
-        );
-
-        authorization
-            .response
-            .send(acp_thread::SelectedPermissionOutcome::new(
-                acp::PermissionOptionId::new("deny"),
-                acp::PermissionOptionKind::RejectOnce,
-            ))
-            .expect("authorization response should send");
-
-        let result = task
+        let error = cx
+            .update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx))
             .await
-            .expect("denied sandbox request returns model-readable output");
-        assert!(result.contains("user denied permission to run outside the sandbox"));
+            .expect_err("an unsandboxed request must be refused");
+        assert!(
+            error.contains("cannot be requested"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            receiver.try_recv().is_err(),
+            "the refusal must not send any event, let alone a permission prompt"
+        );
         assert_eq!(environment.terminal_creation_count(), 0);
     }
 
@@ -3962,20 +3965,31 @@ mod tests {
         (tool, event_stream, receiver, environment)
     }
 
-    /// A standing "run unsandboxed for this thread" grant makes an ordinary
-    /// command (one that requests no escalation) run without a sandbox, and the
-    /// model is told so in the output.
+    /// A thread in which the user chose to run commands without a sandbox after
+    /// it could not be created. Built from the persisted form so the tests below
+    /// also run on macOS, where the sandbox can't fail and `record_fallback`
+    /// doesn't exist.
+    fn fallback_thread_grants() -> crate::sandboxing::ThreadSandboxGrants {
+        crate::sandboxing::ThreadSandboxGrants::from_db(&crate::db::DbSandboxGrants {
+            sandbox_fallback: true,
+            ..Default::default()
+        })
+    }
+
+    /// A standing "run unsandboxed for this thread" grant (chosen after the
+    /// sandbox could not be created) makes an ordinary command (one that
+    /// requests no escalation) run without a sandbox, and the model is told so
+    /// in the output.
     #[gpui::test]
-    async fn test_unsandboxed_thread_grant_runs_bare_command_unsandboxed(
+    async fn test_fallback_thread_grant_runs_bare_command_unsandboxed(
         cx: &mut gpui::TestAppContext,
     ) {
-        let mut grants = crate::sandboxing::ThreadSandboxGrants::default();
-        grants.record(&crate::sandboxing::SandboxRequest {
-            unsandboxed: true,
-            ..Default::default()
-        });
-        let (tool, event_stream, _receiver, environment) =
-            floor_test_tool(cx, agent_settings::SandboxPermissions::default(), grants).await;
+        let (tool, event_stream, _receiver, environment) = floor_test_tool(
+            cx,
+            agent_settings::SandboxPermissions::default(),
+            fallback_thread_grants(),
+        )
+        .await;
 
         let input: SandboxedTerminalToolInput = serde_json::from_value(serde_json::json!({
             "command": "echo hi",
@@ -3995,14 +4009,13 @@ mod tests {
     /// scoped sandbox (it would silently run unsandboxed instead) — the call is
     /// rejected so the model fixes its request.
     #[gpui::test]
-    async fn test_unsandboxed_thread_grant_rejects_scoping_request(cx: &mut gpui::TestAppContext) {
-        let mut grants = crate::sandboxing::ThreadSandboxGrants::default();
-        grants.record(&crate::sandboxing::SandboxRequest {
-            unsandboxed: true,
-            ..Default::default()
-        });
-        let (tool, event_stream, _receiver, environment) =
-            floor_test_tool(cx, agent_settings::SandboxPermissions::default(), grants).await;
+    async fn test_fallback_thread_grant_rejects_scoping_request(cx: &mut gpui::TestAppContext) {
+        let (tool, event_stream, _receiver, environment) = floor_test_tool(
+            cx,
+            agent_settings::SandboxPermissions::default(),
+            fallback_thread_grants(),
+        )
+        .await;
 
         let input: SandboxedTerminalToolInput = serde_json::from_value(serde_json::json!({
             "command": "touch build/out",

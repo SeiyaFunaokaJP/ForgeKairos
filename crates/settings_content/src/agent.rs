@@ -963,8 +963,8 @@ pub struct SandboxPermissionsContent {
     /// sandbox. This is the model-facing "off switch": when true, the sandboxed
     /// terminal tool is not exposed and the system prompt omits the sandbox
     /// section, so the model uses the plain `terminal` tool. On Windows, WSL
-    /// sandbox setup is skipped. Distinct from the model-requested
-    /// `unsandboxed: true` escape approved "once" or "for this thread".
+    /// sandbox setup is skipped. The agent itself has no way to ask for a
+    /// command to run outside the sandbox.
     /// Default: false
     pub allow_unsandboxed: Option<bool>,
 
