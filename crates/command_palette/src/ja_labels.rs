@@ -612,6 +612,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "プロジェクトパネル: すべて展開",
     ),
     (
+        "project_panel::Refresh",
+        "プロジェクトパネル: 最新の情報に更新",
+    ),
+    (
         "project_panel::RevealInFileManager",
         "プロジェクトパネル: ファイルマネージャーで表示",
     ),

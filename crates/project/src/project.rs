@@ -2814,6 +2814,20 @@ impl Project {
         }))
     }
 
+    /// Re-reads every visible worktree from disk to pick up changes that the
+    /// file system watcher missed.
+    pub fn rescan_worktrees(&self, cx: &mut Context<Self>) -> Task<Result<()>> {
+        let worktrees = self.visible_worktrees(cx).collect::<Vec<_>>();
+        let rescans = worktrees
+            .into_iter()
+            .map(|worktree| worktree.update(cx, |worktree, cx| worktree.rescan(cx)))
+            .collect::<Vec<_>>();
+        cx.background_spawn(async move {
+            try_join_all(rescans).await?;
+            Ok(())
+        })
+    }
+
     pub fn shared(&mut self, project_id: u64, cx: &mut Context<Self>) -> Result<()> {
         anyhow::ensure!(
             matches!(self.client_state, ProjectClientState::Local),

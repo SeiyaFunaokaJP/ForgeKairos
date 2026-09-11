@@ -345,6 +345,8 @@ actions!(
         CollapseAllEntries,
         /// Expands all entries in the project tree.
         ExpandAllEntries,
+        /// Re-reads the project's folders from disk to pick up changes made outside of Zed.
+        Refresh,
         /// Creates a new directory.
         NewDirectory,
         /// Creates a new file.
@@ -509,6 +511,14 @@ pub fn init(cx: &mut App) {
             if let Some(panel) = workspace.panel::<ProjectPanel>(cx) {
                 panel.update(cx, |panel, cx| {
                     panel.expand_all_entries(action, window, cx);
+                });
+            }
+        });
+
+        workspace.register_action(|workspace, action: &Refresh, window, cx| {
+            if let Some(panel) = workspace.panel::<ProjectPanel>(cx) {
+                panel.update(cx, |panel, cx| {
+                    panel.refresh(action, window, cx);
                 });
             }
         });
@@ -1246,6 +1256,11 @@ impl ProjectPanel {
                                     .action("すべて展開", Box::new(ExpandAllEntries))
                                     .action("すべて折りたたむ", Box::new(CollapseAllEntries))
                             })
+                            // Collab hosts don't forward rescan requests, so it would always fail.
+                            .when(!is_collab, |menu| {
+                                menu.when(!is_dir, |menu| menu.separator())
+                                    .action("最新の情報に更新", Box::new(Refresh))
+                            })
                     }
                 })
             });
@@ -1501,6 +1516,17 @@ impl ProjectPanel {
     ) {
         let roots = self.all_worktree_roots(cx);
         self.expand_worktree_roots(roots, window, cx);
+    }
+
+    fn refresh(&mut self, _: &Refresh, window: &mut Window, cx: &mut Context<Self>) {
+        self.project
+            .update(cx, |project, cx| project.rescan_worktrees(cx))
+            .detach_and_prompt_err(
+                "最新の情報に更新できませんでした",
+                window,
+                cx,
+                |_, _, _| None,
+            );
     }
 
     fn expand_all_for_entry_and_refresh(
@@ -7103,6 +7129,7 @@ impl Render for ProjectPanel {
                 .on_action(cx.listener(Self::collapse_selected_entry))
                 .on_action(cx.listener(Self::collapse_all_entries))
                 .on_action(cx.listener(Self::expand_all_entries))
+                .on_action(cx.listener(Self::refresh))
                 .on_action(cx.listener(Self::collapse_selected_entry_and_children))
                 .on_action(cx.listener(Self::expand_selected_entry_and_children))
                 .on_action(cx.listener(Self::open))

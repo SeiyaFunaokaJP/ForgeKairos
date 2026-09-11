@@ -8820,6 +8820,94 @@ async fn test_expand_all_entries_via_window_dispatch(cx: &mut gpui::TestAppConte
 }
 
 #[gpui::test]
+async fn test_refresh_shows_entries_the_watcher_missed(cx: &mut gpui::TestAppContext) {
+    init_test_with_editor(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/project_root"),
+        json!({
+            "dir_1": {
+                "file_1.py": "# File contents",
+            },
+            "file_2.py": "# File contents",
+        }),
+    )
+    .await;
+
+    let project = Project::test(fs.clone(), [path!("/project_root").as_ref()], cx).await;
+    let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace = window
+        .read_with(cx, |mw, _| mw.workspace().clone())
+        .unwrap();
+    let cx = &mut VisualTestContext::from_window(window.into(), cx);
+    let panel = workspace.update_in(cx, |workspace, window, cx| {
+        let panel = ProjectPanel::new(workspace, window, cx);
+        workspace.add_panel(panel.clone(), window, cx);
+        panel
+    });
+    cx.run_until_parked();
+    toggle_expand_dir(&panel, "project_root/dir_1", cx);
+
+    fs.pause_events();
+    fs.insert_file(path!("/project_root/dir_1/created.py"), Vec::new())
+        .await;
+    // The watcher never reports the new file.
+    fs.clear_buffered_events();
+    fs.unpause_events_and_flush();
+    cx.run_until_parked();
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &[
+            "v project_root",
+            "    v dir_1  <== selected",
+            "          file_1.py",
+            "      file_2.py",
+        ]
+    );
+
+    // From the command palette, while the panel isn't focused.
+    workspace.update_in(cx, |workspace, window, cx| {
+        let pane_focus_handle = workspace.active_pane().focus_handle(cx);
+        window.focus(&pane_focus_handle, cx);
+    });
+    cx.dispatch_action(Refresh);
+    cx.run_until_parked();
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &[
+            "v project_root",
+            "    v dir_1  <== selected",
+            "          created.py",
+            "          file_1.py",
+            "      file_2.py",
+        ]
+    );
+
+    fs.pause_events();
+    fs.insert_file(path!("/project_root/created_at_root.py"), Vec::new())
+        .await;
+    fs.clear_buffered_events();
+    fs.unpause_events_and_flush();
+    panel.update_in(cx, |panel, window, cx| {
+        panel.focus_handle(cx).focus(window, cx);
+    });
+    cx.dispatch_action(Refresh);
+    cx.run_until_parked();
+    assert_eq!(
+        visible_entries_as_strings(&panel, 0..10, cx),
+        &[
+            "v project_root",
+            "    v dir_1  <== selected",
+            "          created.py",
+            "          file_1.py",
+            "      created_at_root.py",
+            "      file_2.py",
+        ]
+    );
+}
+
+#[gpui::test]
 async fn test_expand_all_for_entry_single_worktree(cx: &mut gpui::TestAppContext) {
     init_test_with_editor(cx);
 

@@ -1681,6 +1681,218 @@ async fn test_subtree_rescan_reports_unchanged_descendants_as_updated(cx: &mut T
 }
 
 #[gpui::test]
+async fn test_rescan_picks_up_missed_changes_and_keeps_loaded_directories(cx: &mut TestAppContext) {
+    init_test(cx);
+    set_file_scan_depth(cx, Some(2));
+    let fs = FakeFs::new(cx.background_executor.clone());
+    fs.insert_tree(
+        path!("/plain"),
+        json!({
+            "top.txt": "",
+            "removed.txt": "",
+            "sub": { "existing.txt": "" },
+            "a": { "b": { "c": { "deep.txt": "" } } },
+        }),
+    )
+    .await;
+    fs.insert_tree(
+        path!("/repo"),
+        json!({
+            ".git": {},
+            ".gitignore": "ignored/\n",
+            "src": { "main.txt": "" },
+            "ignored": { "existing.txt": "" },
+        }),
+    )
+    .await;
+
+    let plain_tree = build_worktree(fs.clone(), path!("/plain"), cx).await;
+    let repo_tree = build_worktree(fs.clone(), path!("/repo"), cx).await;
+
+    // These are deferred, by depth and by `.gitignore`, until they're expanded
+    // in the project panel.
+    for (tree, path) in [(&plain_tree, "a/b"), (&repo_tree, "ignored")] {
+        let entry_id = tree.read_with(cx, |tree, _| {
+            let entry = tree.entry_for_path(rel_path(path)).unwrap();
+            assert_eq!(entry.kind, EntryKind::UnloadedDir, "{path}");
+            entry.id
+        });
+        tree.update(cx, |tree, cx| tree.expand_entry(entry_id, cx))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+
+    let entry_ids = |tree: &Entity<Worktree>, cx: &mut TestAppContext| {
+        tree.read_with(cx, |tree, _| {
+            tree.entries(true, 0)
+                .map(|entry| (entry.path.clone(), entry.id))
+                .collect::<Vec<_>>()
+        })
+    };
+    let plain_ids_before = entry_ids(&plain_tree, cx);
+    let repo_ids_before = entry_ids(&repo_tree, cx);
+
+    fs.pause_events();
+    fs.insert_file(path!("/plain/created-at-root.txt"), Vec::new())
+        .await;
+    fs.insert_file(path!("/plain/a/b/created.txt"), Vec::new())
+        .await;
+    fs.remove_file(
+        Path::new(path!("/plain/removed.txt")),
+        RemoveOptions::default(),
+    )
+    .await
+    .unwrap();
+    fs.insert_file(path!("/repo/src/created.txt"), Vec::new())
+        .await;
+    fs.insert_file(path!("/repo/ignored/created.txt"), Vec::new())
+        .await;
+    // The watcher never reports these changes.
+    fs.clear_buffered_events();
+    fs.unpause_events_and_flush();
+    cx.run_until_parked();
+
+    plain_tree.read_with(cx, |tree, _| {
+        assert!(
+            tree.entry_for_path(rel_path("created-at-root.txt"))
+                .is_none()
+        );
+        assert!(tree.entry_for_path(rel_path("a/b/created.txt")).is_none());
+        assert!(tree.entry_for_path(rel_path("removed.txt")).is_some());
+    });
+    repo_tree.read_with(cx, |tree, _| {
+        assert!(tree.entry_for_path(rel_path("src/created.txt")).is_none());
+        assert!(
+            tree.entry_for_path(rel_path("ignored/created.txt"))
+                .is_none()
+        );
+    });
+
+    plain_tree
+        .update(cx, |tree, cx| tree.rescan(cx))
+        .await
+        .unwrap();
+    repo_tree
+        .update(cx, |tree, cx| tree.rescan(cx))
+        .await
+        .unwrap();
+
+    // Checked without running the executor any further, because the rescan's
+    // task must only resolve once the worktree holds the rescanned snapshot.
+    plain_tree.read_with(cx, |tree, _| {
+        assert!(
+            tree.entry_for_path(rel_path("created-at-root.txt"))
+                .is_some()
+        );
+        assert!(tree.entry_for_path(rel_path("a/b/created.txt")).is_some());
+        assert!(tree.entry_for_path(rel_path("removed.txt")).is_none());
+        assert_eq!(
+            tree.entry_for_path(rel_path("a/b")).unwrap().kind,
+            EntryKind::Dir
+        );
+        assert_eq!(
+            tree.entry_for_path(rel_path("a/b/c")).unwrap().kind,
+            EntryKind::UnloadedDir
+        );
+    });
+    repo_tree.read_with(cx, |tree, _| {
+        assert!(tree.entry_for_path(rel_path("src/created.txt")).is_some());
+        assert!(
+            tree.entry_for_path(rel_path("ignored/created.txt"))
+                .is_some()
+        );
+        assert_eq!(
+            tree.entry_for_path(rel_path("ignored")).unwrap().kind,
+            EntryKind::Dir
+        );
+    });
+
+    // The project panel keys its expanded directories by entry id.
+    for (tree, ids_before) in [
+        (&plain_tree, &plain_ids_before),
+        (&repo_tree, &repo_ids_before),
+    ] {
+        tree.read_with(cx, |tree, _| {
+            for (path, id) in ids_before {
+                if path.as_ref() == rel_path("removed.txt") {
+                    continue;
+                }
+                assert_eq!(
+                    tree.entry_for_path(path).map(|entry| entry.id),
+                    Some(*id),
+                    "{path:?}"
+                );
+            }
+        });
+    }
+}
+
+#[gpui::test]
+async fn test_rescan_requested_during_initial_scan(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.background_executor.clone());
+    fs.insert_tree(path!("/root"), json!({ "dir": { "file.txt": "" } }))
+        .await;
+
+    let tree = Worktree::local(
+        Path::new(path!("/root")),
+        true,
+        fs.clone(),
+        Default::default(),
+        true,
+        WorktreeId::from_proto(0),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+
+    // The scanner hasn't started yet, so the request has to wait for the
+    // initial scan rather than run inside it.
+    tree.update(cx, |tree, cx| tree.rescan(cx)).await.unwrap();
+
+    tree.read_with(cx, |tree, _| {
+        assert!(tree.entry_for_path(rel_path("dir/file.txt")).is_some());
+    });
+}
+
+#[gpui::test]
+async fn test_rescan_does_nothing_when_scanning_is_disabled(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.background_executor.clone());
+    fs.insert_tree(path!("/root"), json!({ "file.txt": "" }))
+        .await;
+
+    let tree = Worktree::local(
+        Path::new(path!("/root")),
+        true,
+        fs.clone(),
+        Default::default(),
+        false,
+        WorktreeId::from_proto(0),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+    tree.read_with(cx, |tree, _| {
+        tree.as_local()
+            .unwrap()
+            .refresh_entries_for_paths(vec![rel_path("file.txt").into()])
+    })
+    .recv()
+    .await;
+
+    fs.insert_file(path!("/root/created.txt"), Vec::new()).await;
+    tree.update(cx, |tree, cx| tree.rescan(cx)).await.unwrap();
+    cx.run_until_parked();
+
+    tree.read_with(cx, |tree, _| {
+        assert!(tree.entry_for_path(rel_path("file.txt")).is_some());
+        assert!(tree.entry_for_path(rel_path("created.txt")).is_none());
+    });
+}
+
+#[gpui::test]
 async fn test_open_gitignored_files(cx: &mut TestAppContext) {
     init_test(cx);
     let fs = FakeFs::new(cx.background_executor.clone());
@@ -6918,6 +7130,100 @@ async fn test_file_scan_depth_fs_event_below_horizon(cx: &mut TestAppContext) {
                 (rel_path("junk"), EntryKind::UnloadedDir),
                 (rel_path("top.txt"), EntryKind::File),
             ]
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_real_fs_external_creations_show_up_in_loaded_directories(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.executor().allow_parking();
+    set_file_scan_depth(cx, Some(2));
+
+    let plain_dir = TempTree::new(json!({
+        "top.txt": "",
+        "sub": { "existing.txt": "" },
+        "a": { "b": { "c": { "deep.txt": "" } } },
+    }));
+    let repo_dir = TempTree::new(json!({
+        ".git": {},
+        ".gitignore": "ignored/\n",
+        "src": { "main.txt": "" },
+        "ignored": { "existing.txt": "" },
+    }));
+
+    #[cfg(not(target_os = "macos"))]
+    fs::fs_watcher::global(|_| {}).unwrap();
+
+    let fs = Arc::new(RealFs::new(None, cx.executor()));
+    let plain_tree = build_real_worktree(fs.clone(), plain_dir.path(), cx).await;
+    let repo_tree = build_real_worktree(fs, repo_dir.path(), cx).await;
+
+    // Expanding in the project panel goes through `expand_entry`, which is
+    // what loads a directory that was deferred by depth or by `.gitignore`.
+    expand_real_entry(&plain_tree, "a/b", cx).await;
+    expand_real_entry(&repo_tree, "ignored", cx).await;
+
+    std::fs::write(plain_dir.path().join("created-at-root.txt"), "").unwrap();
+    std::fs::write(plain_dir.path().join("sub").join("created.txt"), "").unwrap();
+    std::fs::write(plain_dir.path().join("a").join("b").join("created.txt"), "").unwrap();
+    std::fs::write(repo_dir.path().join("src").join("created.txt"), "").unwrap();
+    std::fs::write(repo_dir.path().join("ignored").join("created.txt"), "").unwrap();
+    plain_tree.flush_fs_events(cx).await;
+    repo_tree.flush_fs_events(cx).await;
+
+    plain_tree.read_with(cx, |tree, _| {
+        for path in ["created-at-root.txt", "sub/created.txt", "a/b/created.txt"] {
+            assert!(
+                tree.entry_for_path(rel_path(path)).is_some(),
+                "{path} was created on disk but is missing from the worktree"
+            );
+        }
+    });
+    repo_tree.read_with(cx, |tree, _| {
+        for path in ["src/created.txt", "ignored/created.txt"] {
+            assert!(
+                tree.entry_for_path(rel_path(path)).is_some(),
+                "{path} was created on disk but is missing from the worktree"
+            );
+        }
+    });
+}
+
+async fn build_real_worktree(
+    fs: Arc<RealFs>,
+    root: &Path,
+    cx: &mut TestAppContext,
+) -> Entity<Worktree> {
+    let tree = Worktree::local(
+        root,
+        true,
+        fs,
+        Arc::default(),
+        true,
+        WorktreeId::from_proto(0),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+    cx.read(|cx| tree.read(cx).as_local().unwrap().scan_complete())
+        .await;
+    tree.flush_fs_events(cx).await;
+    tree
+}
+
+async fn expand_real_entry(tree: &Entity<Worktree>, path: &str, cx: &mut TestAppContext) {
+    let entry_id = tree.read_with(cx, |tree, _| {
+        tree.entry_for_path(rel_path(path)).unwrap().id
+    });
+    tree.update(cx, |tree, cx| tree.expand_entry(entry_id, cx))
+        .unwrap()
+        .await
+        .unwrap();
+    tree.read_with(cx, |tree, _| {
+        assert_eq!(
+            tree.entry_for_path(rel_path(path)).unwrap().kind,
+            EntryKind::Dir
         );
     });
 }

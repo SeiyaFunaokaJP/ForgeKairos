@@ -2657,6 +2657,59 @@ async fn test_remote_rename_entry(cx: &mut TestAppContext, server_cx: &mut TestA
 }
 
 #[gpui::test]
+async fn test_remote_rescan_worktrees(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                "README.md": "# project 1",
+                "removed.txt": "",
+            },
+        }),
+    )
+    .await;
+
+    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    fs.pause_events();
+    fs.insert_file(path!("/code/project1/created.txt"), Vec::new())
+        .await;
+    fs.remove_file(
+        Path::new(path!("/code/project1/removed.txt")),
+        Default::default(),
+    )
+    .await
+    .unwrap();
+    // The server's watcher never reports these changes.
+    fs.clear_buffered_events();
+    fs.unpause_events_and_flush();
+    cx.run_until_parked();
+
+    worktree.read_with(cx, |worktree, _| {
+        assert!(worktree.entry_for_path(rel_path("created.txt")).is_none());
+        assert!(worktree.entry_for_path(rel_path("removed.txt")).is_some());
+    });
+
+    project
+        .update(cx, |project, cx| project.rescan_worktrees(cx))
+        .await
+        .unwrap();
+
+    worktree.read_with(cx, |worktree, _| {
+        assert!(worktree.entry_for_path(rel_path("created.txt")).is_some());
+        assert!(worktree.entry_for_path(rel_path("removed.txt")).is_none());
+    });
+}
+
+#[gpui::test]
 async fn test_copy_file_into_remote_project(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,
