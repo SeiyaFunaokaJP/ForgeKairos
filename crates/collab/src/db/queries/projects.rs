@@ -898,6 +898,7 @@ impl Database {
                         branch_list: Vec::new(),
                         branch_list_unchanged: false,
                         branch_list_error: None,
+                        status_error: None,
                         scan_id: db_repository_entry.scan_id as u64,
                         is_last_update: true,
                         merge_message: db_repository_entry.merge_message,

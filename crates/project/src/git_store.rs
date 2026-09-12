@@ -546,6 +546,10 @@ pub struct RepositorySnapshot {
     pub branch: Option<Branch>,
     pub branch_list: Arc<[Branch]>,
     pub branch_list_error: Option<SharedString>,
+    /// Why the file statuses could not be read: a failed status refresh, or a
+    /// repository that could not be opened. While set, `statuses_by_path` may
+    /// be empty or stale. Only the next successful full status scan clears it.
+    pub status_error: Option<SharedString>,
     pub head_commit: Option<CommitDetails>,
     pub scan_id: u64,
     pub merge: MergeDetails,
@@ -5988,6 +5992,7 @@ impl RepositorySnapshot {
             branch: None,
             branch_list: Arc::from([]),
             branch_list_error: None,
+            status_error: None,
             head_commit: None,
             scan_id: 0,
             merge: Default::default(),
@@ -6009,6 +6014,7 @@ impl RepositorySnapshot {
                 .as_ref()
                 .map(|error| error.to_string()),
             head_commit_details: self.head_commit.as_ref().map(commit_details_to_proto),
+            status_error: self.status_error.as_ref().map(|error| error.to_string()),
             updated_statuses: self
                 .statuses_by_path
                 .iter()
@@ -6115,6 +6121,7 @@ impl RepositorySnapshot {
                     .map(|error| error.to_string())
             },
             head_commit_details: self.head_commit.as_ref().map(commit_details_to_proto),
+            status_error: self.status_error.as_ref().map(|error| error.to_string()),
             updated_statuses,
             removed_statuses,
             current_merge_conflicts: self
@@ -6378,7 +6385,9 @@ impl Repository {
                     cx,
                 )
                 .await
-                .map_err(|err| err.to_string())
+                // `{:#}` keeps the cause (e.g. "no git binary available"), which
+                // the git panel shows when the repository cannot be opened.
+                .map_err(|err| format!("{err:#}"))
             })
             .shared();
         self.job_sender.close_channel();
@@ -9956,7 +9965,14 @@ impl Repository {
                     }),
             )
             .collect::<Vec<_>>();
-        if conflicts_changed || !edits.is_empty() {
+        // Intermediate chunks of a split update never carry the error.
+        let mut status_error_changed = false;
+        if update.is_last_update {
+            let status_error = update.status_error.map(SharedString::from);
+            status_error_changed = self.snapshot.status_error != status_error;
+            self.snapshot.status_error = status_error;
+        }
+        if conflicts_changed || !edits.is_empty() || status_error_changed {
             cx.emit(RepositoryEvent::StatusesChanged);
         }
         self.snapshot.statuses_by_path.edit(edits, ());
@@ -10112,8 +10128,25 @@ impl Repository {
         let (job_tx, mut job_rx) = mpsc::unbounded::<GitJob>();
 
         let worker_task = cx.spawn(async move |this, cx| {
-            let Some(state) = state.await.log_err() else {
-                return;
+            let state = match state.await {
+                Ok(state) => state,
+                Err(error) => {
+                    log::error!("{error}");
+                    // No job runs without a backend, including the status scans
+                    // that would otherwise report why the repository is empty.
+                    this.update(cx, |repository, cx| {
+                        repository.set_status_error(Some(error.into()), cx);
+                        if let Some(updates_tx) = repository.downstream_updates_tx(cx) {
+                            updates_tx
+                                .unbounded_send(DownstreamUpdate::UpdateRepository(
+                                    repository.snapshot(),
+                                ))
+                                .ok();
+                        }
+                    })
+                    .ok();
+                    return;
+                }
             };
             if let Some(git_hosting_provider_registry) =
                 cx.update(|cx| GitHostingProviderRegistry::try_global(cx))
@@ -10397,6 +10430,22 @@ impl Repository {
         cx.spawn(|_: &mut AsyncApp| async move { rx.await? })
     }
 
+    fn set_status_error(&mut self, status_error: Option<SharedString>, cx: &mut Context<Self>) {
+        if self.snapshot.status_error != status_error {
+            self.snapshot.status_error = status_error;
+            cx.emit(RepositoryEvent::StatusesChanged);
+        }
+    }
+
+    fn downstream_updates_tx(&self, cx: &App) -> Option<mpsc::UnboundedSender<DownstreamUpdate>> {
+        match &self.git_store.upgrade()?.read(cx).state {
+            GitStoreState::Local { downstream, .. } => downstream
+                .as_ref()
+                .map(|downstream| downstream.updates_tx.clone()),
+            GitStoreState::Remote { .. } => None,
+        }
+    }
+
     fn paths_changed(
         &mut self,
         paths: Vec<RepoPath>,
@@ -10523,7 +10572,27 @@ impl Repository {
                         }
                         anyhow::Ok(changed_path_statuses)
                     })
-                    .await?;
+                    .await;
+                let changed_path_statuses = match changed_path_statuses {
+                    Ok(changed_path_statuses) => changed_path_statuses,
+                    Err(error) => {
+                        log::error!("failed to refresh git statuses of changed paths: {error:#}");
+                        // The paths taken for this refresh are dropped, so a later
+                        // successful refresh of other paths cannot clear this; only
+                        // the next full status scan can.
+                        this.update(&mut cx, |this, cx| {
+                            this.set_status_error(Some(format!("{error:#}").into()), cx);
+                            if let Some(updates_tx) = updates_tx {
+                                updates_tx
+                                    .unbounded_send(DownstreamUpdate::UpdateRepository(
+                                        this.snapshot.clone(),
+                                    ))
+                                    .ok();
+                            }
+                        })?;
+                        return Err(error);
+                    }
+                };
 
                 this.update(&mut cx, |this, cx| {
                     if !changed_path_statuses.is_empty() {
@@ -12482,8 +12551,6 @@ async fn compute_snapshot(
                     untracked_files,
                 )
                 .await
-                .log_err()
-                .unwrap_or_default()
         }
     };
     let diff_stats_future = {
@@ -12513,6 +12580,19 @@ async fn compute_snapshot(
 
     let (statuses, diff_stats, stash_entries) =
         futures::future::join3(statuses_future, diff_stats_future, stash_entries_future).await;
+    let (statuses, status_error) = match statuses {
+        Ok(statuses) => (statuses, None),
+        Err(error) => {
+            log::error!(
+                "failed to read git statuses in {:?}: {error:#}",
+                snapshot.work_directory_abs_path
+            );
+            (
+                status::GitStatus::default(),
+                Some(SharedString::from(format!("{error:#}"))),
+            )
+        }
+    };
     let (diff_stats, staged_diff_stats, unstaged_diff_stats) = diff_stats;
     let diff_stats = diff_stats.log_err().unwrap_or_default();
     let staged_diff_stats = staged_diff_stats.log_err().unwrap_or_default();
@@ -12561,7 +12641,10 @@ async fn compute_snapshot(
     log::debug!("new merge details: {merge_details:?}");
 
     this.update(cx, |this, cx| {
-        if conflicts_changed || statuses_by_path != this.snapshot.statuses_by_path {
+        if conflicts_changed
+            || statuses_by_path != this.snapshot.statuses_by_path
+            || status_error != this.snapshot.status_error
+        {
             cx.emit(RepositoryEvent::StatusesChanged);
         }
         if stash_entries != this.snapshot.stash_entries {
@@ -12572,6 +12655,7 @@ async fn compute_snapshot(
         this.snapshot.merge = merge_details;
         this.snapshot.statuses_by_path = statuses_by_path;
         this.snapshot.stash_entries = stash_entries;
+        this.snapshot.status_error = status_error;
 
         this.snapshot.clone()
     })

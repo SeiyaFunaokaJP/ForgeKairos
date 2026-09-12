@@ -3638,6 +3638,91 @@ async fn test_remote_git_branches(cx: &mut TestAppContext, server_cx: &mut TestA
 }
 
 #[gpui::test]
+async fn test_remote_git_status_error_reaches_client(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "README.md": "# project 1",
+            },
+        }),
+    )
+    .await;
+    let dot_git = Path::new(path!("/code/project1/.git"));
+    let status_error =
+        "git status failed: error: unknown option `no-renames'\nusage: git status [<options>]";
+    fs.set_status_error(dot_git, Some(status_error.to_owned()));
+
+    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let repository = project.update(cx, |project, cx| project.active_repository(cx).unwrap());
+    repository.read_with(cx, |repository, _| {
+        assert_eq!(repository.status_error.as_deref(), Some(status_error));
+        assert!(repository.statuses_by_path.is_empty());
+    });
+
+    fs.set_status_error(dot_git, None);
+    cx.run_until_parked();
+
+    repository.read_with(cx, |repository, _| {
+        assert_eq!(repository.status_error, None);
+        assert!(!repository.statuses_by_path.is_empty());
+    });
+}
+
+#[gpui::test]
+async fn test_remote_git_open_error_reaches_client(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "README.md": "# project 1",
+            },
+        }),
+    )
+    .await;
+    fs.with_git_state(Path::new(path!("/code/project1/.git")), false, |state| {
+        state.simulated_open_error = Some("no git binary available".to_owned());
+    })
+    .unwrap();
+
+    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let repository = project.update(cx, |project, cx| project.active_repository(cx).unwrap());
+    let status_error = repository
+        .read_with(cx, |repository, _| repository.status_error.clone())
+        .expect("the server's open failure should reach the client");
+    assert!(
+        status_error.contains("no git binary available"),
+        "unexpected error: {status_error}"
+    );
+}
+
+#[gpui::test]
 async fn test_remote_git_checkpoints(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
     let fs = FakeFs::new(server_cx.executor());
     fs.insert_tree(

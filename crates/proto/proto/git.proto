@@ -140,6 +140,10 @@ message UpdateRepository {
   // When set on the last update of a repository, `branch_list` was omitted
   // because it is identical to the one the receiver already has.
   bool branch_list_unchanged = 22;
+  // Why the repository's file statuses could not be read (a failed `git
+  // status`, or a repository that could not be opened). Only the last update
+  // of a repository carries it; absent means the statuses are current.
+  optional string status_error = 23;
 }
 
 message RemoveRepository {

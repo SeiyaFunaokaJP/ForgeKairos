@@ -1041,6 +1041,7 @@ pub fn split_repository_update(
     let branch_list = mem::take(&mut update.branch_list);
     let branch_list_error = update.branch_list_error.take();
     let branch_list_unchanged = mem::take(&mut update.branch_list_unchanged);
+    let status_error = update.status_error.take();
     std::iter::from_fn({
         let update = update.clone();
         move || {
@@ -1061,6 +1062,7 @@ pub fn split_repository_update(
                 branch_list: Vec::new(),
                 branch_list_error: None,
                 branch_list_unchanged: false,
+                status_error: None,
                 is_last_update: false,
                 ..update.clone()
             })
@@ -1072,6 +1074,7 @@ pub fn split_repository_update(
         branch_list,
         branch_list_error,
         branch_list_unchanged,
+        status_error,
         is_last_update: true,
         ..update
     }])
@@ -1305,5 +1308,27 @@ mod tests {
         let decoded =
             UpdateRepository::decode(without_flag.as_slice()).expect("the message should decode");
         assert!(!decoded.branch_list_unchanged);
+    }
+
+    #[test]
+    fn test_split_repository_update_keeps_status_error_on_final_chunk() {
+        let update = UpdateRepository {
+            updated_statuses: vec![StatusEntry::default(), StatusEntry::default()],
+            status_error: Some("git status failed".into()),
+            ..Default::default()
+        };
+
+        let chunks = split_repository_update(update).collect::<Vec<_>>();
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].status_error, None);
+        assert_eq!(chunks[1].status_error.as_deref(), Some("git status failed"));
+        assert!(chunks[1].is_last_update);
+
+        // An older peer never sets the field, which must read as "no error".
+        let without_error = UpdateRepository::default().encode_to_vec();
+        let decoded =
+            UpdateRepository::decode(without_error.as_slice()).expect("the message should decode");
+        assert_eq!(decoded.status_error, None);
     }
 }

@@ -88,10 +88,10 @@ use strum::{IntoEnumIterator, VariantNames};
 use theme_settings::ThemeSettings;
 use time::OffsetDateTime;
 use ui::{
-    ButtonLike, Checkbox, Chip, ContextMenu, ContextMenuEntry, Divider, DocumentationSide,
-    ElevationIndex, IndentGuideColors, KeyBinding, PopoverMenu, PopoverMenuHandle,
-    ProjectEmptyState, ScrollAxes, Scrollbars, SplitButton, Tab, TintColor, Tooltip, WithScrollbar,
-    prelude::*,
+    ButtonLike, Callout, CalloutBorderPosition, Checkbox, Chip, ContextMenu, ContextMenuEntry,
+    CopyButton, Divider, DocumentationSide, ElevationIndex, IndentGuideColors, KeyBinding,
+    PopoverMenu, PopoverMenuHandle, ProjectEmptyState, ScrollAxes, Scrollbars, SplitButton, Tab,
+    TintColor, Tooltip, WithScrollbar, prelude::*,
 };
 use util::paths::PathStyle;
 use util::{ResultExt, TryFutureExt, markdown::MarkdownInlineCode, maybe, rel_path::RelPath};
@@ -1357,6 +1357,14 @@ impl GitPanel {
                                 workspace.show_error(format!("{error}"), cx);
                             })
                             .ok();
+                    }
+                    // Only the branch list error shown above the entries depends on it.
+                    GitStoreEvent::RepositoryUpdated(
+                        _,
+                        RepositoryEvent::BranchListChanged,
+                        true,
+                    ) => {
+                        cx.notify();
                     }
                     GitStoreEvent::RepositoryUpdated(_, _, _) => {}
                     GitStoreEvent::JobsUpdated
@@ -5579,18 +5587,14 @@ impl GitPanel {
                 let access = active_repo.update(cx, |active_repo, cx| active_repo.access(cx));
 
                 cx.spawn_in(window, async move |git_panel, cx| {
-                    // When the user does not own the `.git` folder, the
-                    // `GitStore.spawn_local_git_worker` will fail to create the
-                    // receiver for Git jobs, so this access check will be
-                    // cancelled.
-                    //
-                    // We assume `GitAccess::No` on cancellation. I believe this is
-                    // imprecise, other failures could also cause cancellation, but
-                    // the consequence is just showing the "unsafe repo" UI, which
-                    // seems acceptable for this edge case.
+                    // The check is cancelled when the repository's git worker
+                    // stops before running it: the repository could not be
+                    // opened (reported through its `status_error`), or the
+                    // worker was restarted. Neither means the user does not own
+                    // `.git`, which `check_access` reports as `GitAccess::No`.
                     let access = match access.await {
                         Ok(access) => access,
-                        Err(Canceled) => GitAccess::No,
+                        Err(Canceled) => GitAccess::Yes,
                     };
 
                     git_panel.update(cx, |this, _cx| {
@@ -7846,10 +7850,45 @@ impl GitPanel {
         )
     }
 
+    fn render_git_error(&self, cx: &App) -> Option<impl IntoElement> {
+        // The "unsafe repo" UI already explains a failed access check.
+        if matches!(self.git_access, Some(GitAccess::No)) {
+            return None;
+        }
+        let repository = self.active_repository.as_ref()?.read(cx);
+        let GitErrorCallout {
+            title,
+            description,
+            full_text,
+        } = git_error_callout(
+            repository.status_error.as_deref(),
+            repository.branch_list_error.as_deref(),
+        )?;
+        Some(
+            div().debug_selector(|| "git-error".into()).child(
+                Callout::new()
+                    .severity(Severity::Warning)
+                    .icon(IconName::Warning)
+                    .border_position(CalloutBorderPosition::Bottom)
+                    .title(title)
+                    .description(description)
+                    .actions_slot(
+                        CopyButton::new("copy-git-error", full_text)
+                            .tooltip_label("エラーの全文をコピー"),
+                    ),
+            ),
+        )
+    }
+
     fn render_empty_state(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let content = match (self.git_access, &self.active_repository) {
             (Some(GitAccess::No), Some(repository)) => self.render_unsafe_repo_ui(repository, cx),
             (_, None) => self.render_uninitialized_ui(cx),
+            // The warning above the list says why nothing is listed; claiming
+            // there is nothing to commit would be wrong.
+            (_, Some(repository)) if repository.read(cx).status_error.is_some() => {
+                Empty.into_any_element()
+            }
             (_, Some(_)) => self.render_no_changes_ui(cx),
         };
 
@@ -9258,6 +9297,9 @@ impl Render for GitPanel {
                         GitPanelTab::Changes => this
                             .children(self.render_changes_header(window, cx))
                             .when(!self.commit_editor_expanded, |this| {
+                                this.children(self.render_git_error(cx))
+                            })
+                            .when(!self.commit_editor_expanded, |this| {
                                 this.map(|this| {
                                     if let Some(repo) = self.active_repository.clone()
                                         && has_entries
@@ -9925,6 +9967,57 @@ impl Component for PanelRepoFooter {
 
 pub(crate) fn commit_title_exceeds_limit(title: &str, max_length: usize) -> bool {
     max_length > 0 && title.chars().count() > max_length
+}
+
+struct GitErrorCallout {
+    title: &'static str,
+    description: String,
+    full_text: String,
+}
+
+/// Unreadable statuses hide every change, so they outrank a partial branch
+/// list, which is then mentioned on a second line.
+fn git_error_callout(
+    status_error: Option<&str>,
+    branch_list_error: Option<&str>,
+) -> Option<GitErrorCallout> {
+    const BRANCH_LIST_ERROR_TITLE: &str = "一部のブランチを読み込めませんでした";
+    let Some(status_error) = status_error else {
+        let branch_list_error = branch_list_error?;
+        return Some(GitErrorCallout {
+            title: BRANCH_LIST_ERROR_TITLE,
+            description: first_error_line(branch_list_error).to_owned(),
+            full_text: branch_list_error.to_owned(),
+        });
+    };
+    let (description, full_text) = match branch_list_error {
+        Some(branch_list_error) => (
+            format!(
+                "{}\n{BRANCH_LIST_ERROR_TITLE}: {}",
+                first_error_line(status_error),
+                first_error_line(branch_list_error)
+            ),
+            format!("{status_error}\n\n{branch_list_error}"),
+        ),
+        None => (
+            first_error_line(status_error).to_owned(),
+            status_error.to_owned(),
+        ),
+    };
+    Some(GitErrorCallout {
+        title: "Git の状態を取得できませんでした",
+        description,
+        full_text,
+    })
+}
+
+/// git prints the failure itself first; usage text or hints follow it.
+fn first_error_line(error: &str) -> &str {
+    error
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -10836,6 +10929,148 @@ mod tests {
         panel.read_with(cx, |panel, _| {
             assert_eq!(panel.commit_history, CommitHistory::Loading);
         });
+    }
+
+    #[test]
+    fn test_git_error_callout() {
+        let status_error =
+            "git status failed: error: unknown option `no-renames'\nusage: git status [<options>]";
+        let branch_list_error = "fatal: unknown date format unix";
+
+        assert!(git_error_callout(None, None).is_none());
+
+        let callout = git_error_callout(Some(status_error), None).unwrap();
+        assert_eq!(callout.title, "Git の状態を取得できませんでした");
+        assert_eq!(
+            callout.description,
+            "git status failed: error: unknown option `no-renames'"
+        );
+        assert_eq!(callout.full_text, status_error);
+
+        let callout = git_error_callout(None, Some(branch_list_error)).unwrap();
+        assert_eq!(callout.title, "一部のブランチを読み込めませんでした");
+        assert_eq!(callout.description, branch_list_error);
+        assert_eq!(callout.full_text, branch_list_error);
+
+        let callout = git_error_callout(Some(status_error), Some(branch_list_error)).unwrap();
+        assert_eq!(callout.title, "Git の状態を取得できませんでした");
+        assert_eq!(
+            callout.description,
+            "git status failed: error: unknown option `no-renames'\n\
+             一部のブランチを読み込めませんでした: fatal: unknown date format unix"
+        );
+        assert_eq!(
+            callout.full_text,
+            format!("{status_error}\n\n{branch_list_error}")
+        );
+
+        assert_eq!(
+            first_error_line("\n  fatal: not a git repository  \nhint: run git init"),
+            "fatal: not a git repository"
+        );
+        assert_eq!(first_error_line(""), "");
+    }
+
+    #[gpui::test]
+    async fn test_status_error_replaces_no_changes_state(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(
+            path!("/root"),
+            json!({ "project": { ".git": {}, "a.txt": "a" } }),
+        )
+        .await;
+        let dot_git = Path::new(path!("/root/project/.git"));
+        fs.set_status_error(
+            dot_git,
+            Some("git status failed: error: unknown option `no-renames'\nusage: git status".into()),
+        );
+
+        let (panel, mut cx) = changes_panel_for_project(fs.clone(), cx).await;
+        panel.read_with(&mut cx, |panel, cx| {
+            assert!(panel.entries.is_empty());
+            assert!(!matches!(panel.git_access, Some(GitAccess::No)));
+            let repository = panel
+                .active_repository
+                .as_ref()
+                .expect("the project has a repository")
+                .read(cx);
+            assert!(repository.status_error.is_some());
+        });
+        assert!(
+            git_error_is_rendered(&panel, &mut cx),
+            "the status error should be shown"
+        );
+
+        fs.set_status_error(dot_git, None);
+        cx.run_until_parked();
+        cx.executor().advance_clock(2 * UPDATE_DEBOUNCE);
+        cx.run_until_parked();
+
+        panel.read_with(&mut cx, |panel, _| assert!(!panel.entries.is_empty()));
+        assert!(
+            !git_error_is_rendered(&panel, &mut cx),
+            "a successful status should clear the error"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_repository_open_error_is_not_shown_as_unsafe_repository(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(
+            path!("/root"),
+            json!({ "project": { ".git": {}, "a.txt": "a" } }),
+        )
+        .await;
+        fs.with_git_state(Path::new(path!("/root/project/.git")), false, |state| {
+            state.simulated_open_error = Some("no git binary available".into());
+        })
+        .unwrap();
+
+        let (panel, mut cx) = changes_panel_for_project(fs, cx).await;
+        panel.read_with(&mut cx, |panel, _| {
+            assert!(!matches!(panel.git_access, Some(GitAccess::No)));
+        });
+        assert!(
+            git_error_is_rendered(&panel, &mut cx),
+            "the open failure should be shown"
+        );
+    }
+
+    async fn changes_panel_for_project(
+        fs: Arc<FakeFs>,
+        cx: &mut TestAppContext,
+    ) -> (Entity<GitPanel>, VisualTestContext) {
+        let project = Project::test(fs, [Path::new(path!("/root/project"))], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window_handle
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .unwrap();
+        let mut cx = VisualTestContext::from_window(window_handle.into(), cx);
+        cx.run_until_parked();
+
+        let panel = workspace.update_in(&mut cx, |workspace, window, cx| {
+            let panel = GitPanel::new(workspace, window, cx);
+            workspace.add_panel(panel.clone(), window, cx);
+            workspace.focus_panel::<GitPanel>(window, cx);
+            panel
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(2 * UPDATE_DEBOUNCE);
+        cx.run_until_parked();
+        (panel, cx)
+    }
+
+    // A frame that reuses the panel's cached view does not carry its debug
+    // bounds, so render the panel afresh before looking.
+    fn git_error_is_rendered(panel: &Entity<GitPanel>, cx: &mut VisualTestContext) -> bool {
+        panel.update(cx, |_, cx| cx.notify());
+        cx.run_until_parked();
+        cx.debug_bounds("git-error").is_some()
     }
 
     #[test]

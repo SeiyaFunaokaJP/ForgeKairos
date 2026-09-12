@@ -2527,6 +2527,13 @@ impl FakeFs {
         .unwrap();
     }
 
+    pub fn set_status_error(&self, dot_git: &Path, message: Option<String>) {
+        self.with_git_state(dot_git, true, |state| {
+            state.simulated_status_error = message;
+        })
+        .unwrap();
+    }
+
     /// Makes subsequent `remove_dir` calls for `path` fail with `message`.
     pub fn set_remove_dir_error(&self, path: impl AsRef<Path>, message: String) {
         self.state
@@ -3325,8 +3332,11 @@ impl Fs for FakeFs {
         self.with_git_state_and_paths(
             abs_dot_git,
             false,
-            |_, repository_dir_path, common_dir_path| {
-                Arc::new(fake_git_repo::FakeGitRepository {
+            |state, repository_dir_path, common_dir_path| {
+                if let Some(message) = &state.simulated_open_error {
+                    anyhow::bail!("{message}");
+                }
+                Ok(Arc::new(fake_git_repo::FakeGitRepository {
                     fs: self.this.upgrade().unwrap(),
                     executor: self.executor.clone(),
                     dot_git_path: abs_dot_git.to_path_buf(),
@@ -3334,9 +3344,9 @@ impl Fs for FakeFs {
                     common_dir_path: common_dir_path.to_owned(),
                     checkpoints: Arc::default(),
                     is_trusted: Arc::default(),
-                }) as _
+                }) as Arc<dyn GitRepository>)
             },
-        )
+        )?
     }
 
     async fn git_init(

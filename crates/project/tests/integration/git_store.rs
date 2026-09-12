@@ -2409,3 +2409,133 @@ mod repository_activation_tests {
         });
     }
 }
+
+mod status_error_tests {
+    use std::{path::Path, sync::Arc};
+
+    use fs::FakeFs;
+    use gpui::{Entity, TestAppContext};
+    use project::git_store::Repository;
+    use serde_json::json;
+    use settings::SettingsStore;
+    use util::path;
+
+    use crate::Project;
+
+    const STATUS_ERROR: &str =
+        "git status failed: error: unknown option `no-renames'\nusage: git status [<options>]";
+
+    #[gpui::test]
+    async fn test_status_error_is_kept_until_the_next_successful_status(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(path!("/project"), json!({ ".git": {}, "a.txt": "a" }))
+            .await;
+        let dot_git = Path::new(path!("/project/.git"));
+        fs.set_status_error(dot_git, Some(STATUS_ERROR.to_owned()));
+
+        let (_project, repository) = open_project(&fs, cx).await;
+        assert_eq!(status_error(&repository, cx).as_deref(), Some(STATUS_ERROR));
+        assert_eq!(status_paths(&repository, cx), Vec::<String>::new());
+
+        fs.set_status_error(dot_git, None);
+        cx.executor().run_until_parked();
+        assert_eq!(status_error(&repository, cx), None);
+        assert_eq!(status_paths(&repository, cx), ["a.txt"]);
+    }
+
+    #[gpui::test]
+    async fn test_failed_refresh_of_changed_paths_waits_for_a_full_status(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(path!("/project"), json!({ ".git": {}, "a.txt": "a" }))
+            .await;
+        let dot_git = Path::new(path!("/project/.git"));
+
+        let (_project, repository) = open_project(&fs, cx).await;
+        assert_eq!(status_error(&repository, cx), None);
+        assert_eq!(status_paths(&repository, cx), ["a.txt"]);
+
+        // Without a git event only the changed path is refreshed.
+        set_status_error_without_git_event(&fs, dot_git, Some(STATUS_ERROR));
+        fs.insert_file(path!("/project/b.txt"), b"b".to_vec()).await;
+        cx.executor().run_until_parked();
+        assert_eq!(status_error(&repository, cx).as_deref(), Some(STATUS_ERROR));
+        assert_eq!(status_paths(&repository, cx), ["a.txt"]);
+
+        // Refreshing another path cannot vouch for the one that was dropped.
+        set_status_error_without_git_event(&fs, dot_git, None);
+        fs.insert_file(path!("/project/c.txt"), b"c".to_vec()).await;
+        cx.executor().run_until_parked();
+        assert_eq!(status_error(&repository, cx).as_deref(), Some(STATUS_ERROR));
+        assert_eq!(status_paths(&repository, cx), ["a.txt", "c.txt"]);
+
+        fs.set_status_error(dot_git, None);
+        cx.executor().run_until_parked();
+        assert_eq!(status_error(&repository, cx), None);
+        assert_eq!(status_paths(&repository, cx), ["a.txt", "b.txt", "c.txt"]);
+    }
+
+    #[gpui::test]
+    async fn test_repository_open_error_is_reported_as_status_error(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(path!("/project"), json!({ ".git": {}, "a.txt": "a" }))
+            .await;
+        fs.with_git_state(Path::new(path!("/project/.git")), false, |state| {
+            state.simulated_open_error = Some("no git binary available".to_owned());
+        })
+        .unwrap();
+
+        let (_project, repository) = open_project(&fs, cx).await;
+        let error = status_error(&repository, cx).expect("the open failure should be reported");
+        assert!(
+            error.contains("no git binary available"),
+            "unexpected error: {error}"
+        );
+    }
+
+    fn init_test(cx: &mut TestAppContext) {
+        zlog::init_test();
+
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+    }
+
+    async fn open_project(
+        fs: &Arc<FakeFs>,
+        cx: &mut TestAppContext,
+    ) -> (Entity<Project>, Entity<Repository>) {
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project.repositories(cx).values().next().unwrap().clone()
+        });
+        (project, repository)
+    }
+
+    fn set_status_error_without_git_event(fs: &FakeFs, dot_git: &Path, message: Option<&str>) {
+        fs.with_git_state(dot_git, false, |state| {
+            state.simulated_status_error = message.map(ToOwned::to_owned);
+        })
+        .unwrap();
+    }
+
+    fn status_error(repository: &Entity<Repository>, cx: &mut TestAppContext) -> Option<String> {
+        repository.read_with(cx, |repository, _| {
+            repository.status_error.as_ref().map(ToString::to_string)
+        })
+    }
+
+    fn status_paths(repository: &Entity<Repository>, cx: &mut TestAppContext) -> Vec<String> {
+        repository.read_with(cx, |repository, _| {
+            repository
+                .statuses_by_path
+                .iter()
+                .map(|entry| entry.repo_path.as_unix_str().to_owned())
+                .collect()
+        })
+    }
+}
