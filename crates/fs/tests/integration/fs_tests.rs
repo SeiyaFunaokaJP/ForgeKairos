@@ -458,6 +458,45 @@ async fn test_realfs_atomic_write_non_existing_file(executor: BackgroundExecutor
 }
 
 #[gpui::test]
+#[allow(clippy::disallowed_methods)]
+async fn test_realfs_git_init_sets_initial_branch(executor: BackgroundExecutor) {
+    executor.allow_parking();
+    let fs = RealFs::new(None, executor);
+    let temp_dir = TempDir::new().unwrap();
+    let repository_path = temp_dir.path().join("repository");
+    std::fs::create_dir(&repository_path).unwrap();
+
+    // `git_init` prefers the user's `init.defaultBranch`, so expect whatever this machine has.
+    let configured_default_branch = std::process::Command::new("git")
+        .args(["config", "--global", "--get", "init.defaultBranch"])
+        .output()
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|branch| !branch.is_empty());
+    let expected_head = format!(
+        "ref: refs/heads/{}",
+        configured_default_branch.unwrap_or_else(|| "zed-fallback".to_string())
+    );
+    let read_head = || {
+        std::fs::read_to_string(repository_path.join(".git").join("HEAD"))
+            .unwrap()
+            .trim()
+            .to_string()
+    };
+
+    fs.git_init(&repository_path, "zed-fallback".to_string())
+        .await
+        .unwrap();
+    assert_eq!(read_head(), expected_head);
+
+    // Like `git init -b`, re-initializing must not switch an existing repository's branch.
+    fs.git_init(&repository_path, "another-fallback".to_string())
+        .await
+        .unwrap();
+    assert_eq!(read_head(), expected_head);
+}
+
+#[gpui::test]
 #[cfg(target_os = "windows")]
 async fn test_realfs_canonicalize(executor: BackgroundExecutor) {
     use util::paths::SanitizedPath;

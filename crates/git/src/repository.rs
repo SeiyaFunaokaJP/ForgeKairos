@@ -27,7 +27,7 @@ use std::sync::atomic::AtomicBool;
 
 use std::process::{ExitStatus, Output};
 use std::str::FromStr;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 use std::{
     cmp::Ordering,
     path::{Path, PathBuf},
@@ -51,6 +51,10 @@ pub const REMOTE_CANCELLED_BY_USER: &str = "Operation cancelled by user";
 /// %D - Ref names
 /// %x00 - Null byte separator, used to split up commit data
 static GRAPH_COMMIT_FORMAT: &str = "--format=%H%x00%P%x00%D";
+
+/// [`GRAPH_COMMIT_FORMAT`] for git before 2.2, which lacks `%D`; `%d` gives the same ref names
+/// wrapped as ` (HEAD, main)`.
+static LEGACY_GRAPH_COMMIT_FORMAT: &str = "--format=%H%x00%P%x00%d";
 
 /// Used to get commits that match with a search
 /// %H - Full commit hash
@@ -614,9 +618,12 @@ async fn read_commit_blob<R: smol::io::AsyncBufRead + Unpin>(
     info_line.clear();
     stdout.read_line(info_line).await?;
 
+    // `--batch=%(objectsize)` prints just the size, while the plain `--batch` that git before
+    // 1.8.4 is limited to prints `<object> <type> <size>`.
     let len = info_line
-        .trim_end()
-        .parse()
+        .split_whitespace()
+        .last()
+        .and_then(|size| size.parse().ok())
         .with_context(|| format!("invalid object size output from cat-file {info_line}"))?;
 
     let mut bytes = vec![0; len];
@@ -1487,13 +1494,15 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
         self.executor
             .spawn(async move {
+                let suppress_diff = suppress_diff_argument(git.version().await);
                 let output = git
                     .build_command(&[
                         "show",
-                        "--no-patch",
+                        suppress_diff,
                         "--format=%H%x00%B%x00%at%x00%ae%x00%an%x00",
                         &commit,
                     ])
+                    .await
                     .output()
                     .await?;
                 let output = std::str::from_utf8(&output.stdout)?;
@@ -1520,16 +1529,10 @@ impl GitRepository for RealGitRepository {
     fn load_commit(&self, commit: String, cx: AsyncApp) -> BoxFuture<'_, Result<CommitDiff>> {
         let git = self.git_binary();
         cx.background_spawn(async move {
+            let version = git.version().await;
             let show_output = git
-                .build_command(&[
-                    "show",
-                    "--format=",
-                    "-z",
-                    "--no-renames",
-                    "--raw",
-                    "--no-abbrev",
-                    "--first-parent",
-                ])
+                .build_command(commit_diff_args(version))
+                .await
                 .arg(&commit)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
@@ -1547,7 +1550,8 @@ impl GitRepository for RealGitRepository {
             let changes = parse_git_diff_raw(&show_stdout);
 
             let mut cat_file_process = git
-                .build_command(&["cat-file", "--batch=%(objectsize)"])
+                .build_command(&["cat-file", cat_file_blob_batch_argument(version)])
+                .await
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1629,6 +1633,7 @@ impl GitRepository for RealGitRepository {
 
             let output = git
                 .build_command(&["reset", mode_flag, &commit])
+                .await
                 .envs(env.iter())
                 .output()
                 .await?;
@@ -1654,9 +1659,12 @@ impl GitRepository for RealGitRepository {
             if paths.is_empty() {
                 return Ok(());
             }
+            git.ensure_hooks_are_disabled_if_untrusted("ファイルの復元")
+                .await?;
 
             let output = git
                 .build_command(&["checkout", &commit, "--"])
+                .await
                 .envs(env.iter())
                 .args(paths.iter().map(|path| path.as_unix_str()))
                 .output()
@@ -1676,7 +1684,9 @@ impl GitRepository for RealGitRepository {
         let oid_str = oid.to_string();
         self.executor
             .spawn(async move {
-                let mut command = git_binary.build_command(&["cat-file", "blob", &oid_str]);
+                let mut command = git_binary
+                    .build_command(&["cat-file", "blob", &oid_str])
+                    .await;
                 let output = command.output().await?;
                 anyhow::ensure!(
                     output.status.success(),
@@ -1701,6 +1711,7 @@ impl GitRepository for RealGitRepository {
                 let git_binary = git_binary?;
                 let output = git_binary
                     .build_command(&["config", "--get", "commit.template"])
+                    .await
                     .output()
                     .await
                     .context("failed to run git config --get commit.template")?;
@@ -1754,6 +1765,7 @@ impl GitRepository for RealGitRepository {
                             "--path",
                             path.as_unix_str(),
                         ])
+                        .await
                         .envs(env.iter())
                         .stdin(Stdio::piped())
                         .stdout(Stdio::piped())
@@ -1778,6 +1790,7 @@ impl GitRepository for RealGitRepository {
 
                     let output = git
                         .build_command(&["update-index", "--add", "--cacheinfo", mode, sha])
+                        .await
                         .envs(env.iter())
                         .arg(path.as_unix_str())
                         .output()
@@ -1792,6 +1805,7 @@ impl GitRepository for RealGitRepository {
                     log::debug!("removing path {path:?} from the index");
                     let output = git
                         .build_command(&["update-index", "--force-remove", "--"])
+                        .await
                         .envs(env.iter())
                         .arg(path.as_unix_str())
                         .output()
@@ -1831,8 +1845,16 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
         self.executor
             .spawn(async move {
+                let has_object_name_format =
+                    GitFeature::CatFileBatchFormat.is_supported_by(git.version().await);
+                let batch_check = if has_object_name_format {
+                    "--batch-check=%(objectname)"
+                } else {
+                    "--batch-check"
+                };
                 let mut process = git
-                    .build_command(&["cat-file", "--batch-check=%(objectname)"])
+                    .build_command(&["cat-file", batch_check])
+                    .await
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
@@ -1857,8 +1879,11 @@ impl GitRepository for RealGitRepository {
                     .map(|line| {
                         if line.ends_with("missing") {
                             None
-                        } else {
+                        } else if has_object_name_format {
                             Some(line.to_string())
+                        } else {
+                            // The default format is `<object> <type> <size>`.
+                            line.split(' ').next().map(str::to_string)
                         }
                     })
                     .collect::<Vec<_>>();
@@ -1891,6 +1916,7 @@ impl GitRepository for RealGitRepository {
 
                 let mut process = git
                     .build_command(&["cat-file", "--batch"])
+                    .await
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
@@ -1961,7 +1987,7 @@ impl GitRepository for RealGitRepository {
         self.executor.spawn(async move {
             let git = git?;
             let args = git_status_args(&path_prefixes, untracked_files, git.version().await);
-            let output = git.build_command(&args).output().await?;
+            let output = git.build_command(&args).await.output().await?;
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 stdout.parse()
@@ -1990,47 +2016,25 @@ impl GitRepository for RealGitRepository {
             DiffTreeType::MergeBase { .. } | DiffTreeType::Since { .. } => None,
         };
 
-        let args = match request {
-            DiffTreeType::MergeBase { base, head } => [
-                "diff-tree",
-                "-r",
-                "-z",
-                "--abbrev=64",
-                "--no-renames",
-                "--merge-base",
-                base.as_str(),
-                head.as_str(),
-            ]
-            .map(OsString::from)
-            .to_vec(),
-            DiffTreeType::MergeBaseWithWorktree { base } => [
-                "diff",
-                "--raw",
-                "-z",
-                "--abbrev=64",
-                "--no-renames",
-                "--merge-base",
-                base.as_str(),
-            ]
-            .map(OsString::from)
-            .to_vec(),
-            DiffTreeType::Since { base, head } => [
-                "diff-tree",
-                "-r",
-                "-z",
-                "--abbrev=64",
-                "--no-renames",
-                base.as_str(),
-                head.as_str(),
-            ]
-            .map(OsString::from)
-            .to_vec(),
-        };
-
         self.executor
             .spawn(async move {
                 let git = git?;
-                let output = git.build_command(&args).output().await?;
+                let resolved_merge_base =
+                    if GitFeature::DiffMergeBase.is_supported_by(git.version().await) {
+                        None
+                    } else {
+                        match &request {
+                            DiffTreeType::MergeBase { base, head } => {
+                                Some(resolve_merge_base(&git, base, head).await?)
+                            }
+                            DiffTreeType::MergeBaseWithWorktree { base } => {
+                                Some(resolve_merge_base(&git, base, "HEAD").await?)
+                            }
+                            DiffTreeType::Since { .. } => None,
+                        }
+                    };
+                let args = diff_tree_args(&request, resolved_merge_base.as_deref());
+                let output = git.build_command(&args).await.output().await?;
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     anyhow::bail!("git diff-tree failed: {stderr}");
@@ -2058,7 +2062,7 @@ impl GitRepository for RealGitRepository {
                 // untracked directory would otherwise go unreported.
                 let status_args =
                     git_status_args(&[], StatusUntrackedFiles::All, git.version().await);
-                let status_output = git.build_command(&status_args).output().await?;
+                let status_output = git.build_command(&status_args).await.output().await?;
                 if !status_output.status.success() {
                     let stderr = String::from_utf8_lossy(&status_output.stderr);
                     anyhow::bail!("git status failed: {stderr}");
@@ -2090,16 +2094,11 @@ impl GitRepository for RealGitRepository {
                     return Ok(tree_diff);
                 }
 
-                let merge_base_output = git
-                    .build_command(&["merge-base", merge_base_ref.as_ref(), "HEAD"])
-                    .output()
-                    .await?;
-                if !merge_base_output.status.success() {
-                    let stderr = String::from_utf8_lossy(&merge_base_output.stderr);
-                    anyhow::bail!("git merge-base failed: {stderr}");
-                }
-                let merge_base = String::from_utf8_lossy(&merge_base_output.stdout);
-                let merge_base = merge_base.trim();
+                let merge_base = match resolved_merge_base {
+                    Some(merge_base) => merge_base,
+                    None => resolve_merge_base(&git, merge_base_ref.as_ref(), "HEAD").await?,
+                };
+                let merge_base = merge_base.as_str();
 
                 for (path, old) in recreated {
                     let full_path = working_directory.join(path.as_std_path());
@@ -2111,6 +2110,7 @@ impl GitRepository for RealGitRepository {
                         .build_command(
                             &["ls-tree", merge_base, "--", path.as_unix_str()].map(OsString::from),
                         )
+                        .await
                         .output()
                         .await?;
                     if !base_entry.status.success() {
@@ -2148,6 +2148,7 @@ impl GitRepository for RealGitRepository {
                         let target = smol::fs::read_link(&full_path).await?;
                         let mut child = git
                             .build_command(&["hash-object", "--stdin"])
+                            .await
                             .stdin(Stdio::piped())
                             .stdout(Stdio::piped())
                             .spawn()?;
@@ -2165,6 +2166,7 @@ impl GitRepository for RealGitRepository {
                             OsString::from("--"),
                             full_path.into_os_string(),
                         ])
+                        .await
                         .output()
                         .await?
                     };
@@ -2192,6 +2194,7 @@ impl GitRepository for RealGitRepository {
                 let git = git?;
                 let output = git
                     .build_command(&["stash", "list", "--pretty=format:%gd%x00%H%x00%ct%x00%s"])
+                    .await
                     .output()
                     .await?;
                 if output.status.success() {
@@ -2209,26 +2212,12 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
         self.executor
             .spawn(async move {
-                let fields = [
-                    "%(HEAD)",
-                    "%(objectname)",
-                    "%(parent)",
-                    "%(refname)",
-                    "%(upstream)",
-                    "%(upstream:track)",
-                    "%(committerdate:unix)",
-                    "%(authorname)",
-                    "%(contents:subject)",
-                ]
-                .join("%00");
-                let args = vec![
-                    "for-each-ref",
-                    "refs/heads/**/*",
-                    "refs/remotes/**/*",
-                    "--format",
-                    &fields,
-                ];
-                let output = git.build_command(&args).output().await?;
+                let version = git.version().await;
+                let output = git
+                    .build_command(&branch_list_args(version))
+                    .await
+                    .output()
+                    .await?;
 
                 let error = if output.status.success() {
                     None
@@ -2239,11 +2228,18 @@ impl GitRepository for RealGitRepository {
                 };
 
                 let input = String::from_utf8_lossy(&output.stdout);
-                let mut branches = parse_branch_input(&input)?;
+                let mut branches = parse_branch_input(&input, version)?;
+                // Partial output would make listed upstreams look deleted.
+                if output.status.success() && !GitFeature::UpstreamGone.is_supported_by(version) {
+                    mark_missing_upstreams_gone(&mut branches);
+                }
+                if !GitFeature::BranchListAtoms.is_supported_by(version) {
+                    complete_branches_without_head_and_track_atoms(&git, &mut branches).await;
+                }
                 if branches.is_empty() {
                     let args = vec!["symbolic-ref", "--quiet", "HEAD"];
 
-                    let output = git.build_command(&args).output().await?;
+                    let output = git.build_command(&args).await.output().await?;
 
                     // git symbolic-ref returns a non-0 exit code if HEAD points
                     // to something other than a branch
@@ -2266,11 +2262,16 @@ impl GitRepository for RealGitRepository {
 
     fn worktrees(&self) -> BoxFuture<'_, Result<Vec<Worktree>>> {
         let git = self.git_binary();
+        let common_dir = self.common_dir.clone();
         let main_worktree_path = original_repo_path_from_common_dir(&self.common_dir);
         self.executor
             .spawn(async move {
+                if !GitFeature::WorktreeList.is_supported_by(git.version().await) {
+                    return list_main_worktree(&git, &common_dir, main_worktree_path).await;
+                }
                 let output = git
                     .build_command(&["worktree", "list", "--porcelain"])
+                    .await
                     .output()
                     .await?;
                 if output.status.success() {
@@ -2351,8 +2352,13 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
+                GitFeature::WorktreeAdd.require(git.version().await, "ワークツリーの作成")?;
+                // `git worktree add` checks the new worktree out, which runs the post-checkout
+                // hook.
+                git.ensure_hooks_are_disabled_if_untrusted("ワークツリーの作成")
+                    .await?;
                 std::fs::create_dir_all(path.parent().unwrap_or(&path))?;
-                let output = git.build_command(&args).output().await?;
+                let output = git.build_command(&args).await.output().await?;
                 if output.status.success() {
                     Ok(())
                 } else {
@@ -2368,6 +2374,7 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
+                GitFeature::WorktreeRemove.require(git.version().await, "ワークツリーの削除")?;
                 let mut args: Vec<OsString> = vec!["worktree".into(), "remove".into()];
                 if force {
                     args.push("--force".into());
@@ -2385,6 +2392,7 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
+                GitFeature::WorktreeRemove.require(git.version().await, "ワークツリーの移動")?;
                 let args: Vec<OsString> = vec![
                     "worktree".into(),
                     "move".into(),
@@ -2414,6 +2422,9 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
+                git_binary
+                    .ensure_hooks_are_disabled_if_untrusted("ブランチの切り替え")
+                    .await?;
                 if create {
                     git_binary.run(&["checkout", "-b", &branch_name]).await?;
                 } else {
@@ -2429,6 +2440,9 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 let git_binary = git_binary?;
+                git_binary
+                    .ensure_hooks_are_disabled_if_untrusted("ブランチの切り替え")
+                    .await?;
                 let local_ref = format!("refs/heads/{name}");
                 if git_binary
                     .run(&["show-ref", "--verify", "--quiet", &local_ref])
@@ -2460,9 +2474,16 @@ impl GitRepository for RealGitRepository {
                         .await
                         .is_ok()
                     {
-                        git_binary
-                            .run(&["branch", "--set-upstream-to", &name, branch_name])
-                            .await?;
+                        let set_upstream_args = if GitFeature::SetUpstreamTo
+                            .is_supported_by(git_binary.version().await)
+                        {
+                            ["branch", "--set-upstream-to", name.as_str(), branch_name]
+                        } else {
+                            // Before git 1.8 only `--set-upstream` exists, and it takes the
+                            // branch first.
+                            ["branch", "--set-upstream", branch_name, name.as_str()]
+                        };
+                        git_binary.run(&set_upstream_args).await?;
                     } else {
                         git_binary
                             .run(&["branch", "--track", branch_name, &name])
@@ -2488,11 +2509,17 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 let git_binary = git_binary?;
-                let mut args = vec!["switch", "-c", &name];
-                let base_branch_str;
-                if let Some(ref base) = base_branch {
-                    base_branch_str = base.clone();
-                    args.push(&base_branch_str);
+                git_binary
+                    .ensure_hooks_are_disabled_if_untrusted("ブランチの作成")
+                    .await?;
+                let mut args =
+                    if GitFeature::SwitchAndRestore.is_supported_by(git_binary.version().await) {
+                        vec!["switch", "-c", &name]
+                    } else {
+                        vec!["checkout", "-b", &name]
+                    };
+                if let Some(base) = base_branch.as_deref() {
+                    args.push(base);
                 }
 
                 git_binary.run(&args).await?;
@@ -2571,13 +2598,26 @@ impl GitRepository for RealGitRepository {
                 let git = git?;
                 let output = match diff {
                     DiffType::HeadToIndex => {
-                        git.build_command(&["diff", "--staged"]).output().await?
-                    }
-                    DiffType::HeadToWorktree => git.build_command(&["diff"]).output().await?,
-                    DiffType::MergeBase { base_ref } => {
-                        git.build_command(&["diff", "--merge-base", base_ref.as_ref()])
+                        git.build_command(&["diff", "--staged"])
+                            .await
                             .output()
                             .await?
+                    }
+                    DiffType::HeadToWorktree => git.build_command(&["diff"]).await.output().await?,
+                    DiffType::MergeBase { base_ref } => {
+                        if GitFeature::DiffMergeBase.is_supported_by(git.version().await) {
+                            git.build_command(&["diff", "--merge-base", base_ref.as_ref()])
+                                .await
+                                .output()
+                                .await?
+                        } else {
+                            let merge_base =
+                                resolve_merge_base(&git, base_ref.as_ref(), "HEAD").await?;
+                            git.build_command(&["diff", merge_base.as_str()])
+                                .await
+                                .output()
+                                .await?
+                        }
                     }
                 };
 
@@ -2607,7 +2647,10 @@ impl GitRepository for RealGitRepository {
                 );
 
                 let git = git?;
-                let mut command = git.build_command(&args);
+                if subcommand.as_str() == "merge" {
+                    git.ensure_hooks_are_disabled_if_untrusted("マージ").await?;
+                }
+                let mut command = git.build_command(&args).await;
                 command.envs(env.iter());
 
                 let output = if let Some(stdin_contents) = stdin {
@@ -2678,6 +2721,7 @@ impl GitRepository for RealGitRepository {
                 if !paths.is_empty() {
                     let output = git
                         .build_command(&["update-index", "--add", "--remove", "--"])
+                        .await
                         .envs(env.iter())
                         .args(paths.iter().map(|p| p.as_unix_str()))
                         .output()
@@ -2706,6 +2750,7 @@ impl GitRepository for RealGitRepository {
                 if !paths.is_empty() {
                     let output = git
                         .build_command(&["reset", "--quiet", "--"])
+                        .await
                         .envs(env.iter())
                         .args(paths.iter().map(|p| p.as_std_path()))
                         .output()
@@ -2732,17 +2777,35 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 let git = git?;
-                let mut args = vec!["stash", "push", "--quiet", "--include-untracked"];
-                if let Some(message) = message.as_deref() {
-                    args.extend_from_slice(&["--message", message]);
+                let version = git.version().await;
+                let stash = if GitFeature::StashPushWithUntrackedPaths.is_supported_by(version) {
+                    let mut args = vec!["stash", "push", "--quiet", "--include-untracked"];
+                    if let Some(message) = message.as_deref() {
+                        args.extend_from_slice(&["--message", message]);
+                    }
+                    args.push("--");
+                    StashCommand {
+                        args: args.into_iter().map(String::from).collect(),
+                        with_requested_paths: true,
+                    }
+                } else {
+                    let status_args = git_status_args(&[], StatusUntrackedFiles::All, version);
+                    let status_output = git.build_command(&status_args).await.output().await?;
+                    anyhow::ensure!(
+                        status_output.status.success(),
+                        "git status failed: {}",
+                        String::from_utf8_lossy(&status_output.stderr)
+                    );
+                    let status =
+                        String::from_utf8_lossy(&status_output.stdout).parse::<GitStatus>()?;
+                    legacy_stash_command(&paths, &status, message.as_deref(), version)?
+                };
+                let mut command = git.build_command(&stash.args).await;
+                command.envs(env.iter());
+                if stash.with_requested_paths {
+                    command.args(paths.iter().map(|p| p.as_unix_str()));
                 }
-                args.push("--");
-                let output = git
-                    .build_command(&args)
-                    .envs(env.iter())
-                    .args(paths.iter().map(|p| p.as_unix_str()))
-                    .output()
-                    .await?;
+                let output = command.output().await?;
 
                 anyhow::ensure!(
                     output.status.success(),
@@ -2763,13 +2826,20 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 let git = git?;
+                GitFeature::StashStaged
+                    .require(git.version().await, "ステージ済みの変更のスタッシュ")?;
                 // `--staged` cannot be expressed as a pathspec: a partially staged
                 // file would otherwise have its unstaged hunks stashed too.
                 let mut args = vec!["stash", "push", "--quiet", "--staged"];
                 if let Some(message) = message.as_deref() {
                     args.extend_from_slice(&["--message", message]);
                 }
-                let output = git.build_command(&args).envs(env.iter()).output().await?;
+                let output = git
+                    .build_command(&args)
+                    .await
+                    .envs(env.iter())
+                    .output()
+                    .await?;
 
                 anyhow::ensure!(
                     output.status.success(),
@@ -2794,7 +2864,12 @@ impl GitRepository for RealGitRepository {
                 if let Some(index) = index {
                     args.push(format!("stash@{{{}}}", index));
                 }
-                let output = git.build_command(&args).envs(env.iter()).output().await?;
+                let output = git
+                    .build_command(&args)
+                    .await
+                    .envs(env.iter())
+                    .output()
+                    .await?;
 
                 anyhow::ensure!(
                     output.status.success(),
@@ -2819,7 +2894,12 @@ impl GitRepository for RealGitRepository {
                 if let Some(index) = index {
                     args.push(format!("stash@{{{}}}", index));
                 }
-                let output = git.build_command(&args).envs(env.iter()).output().await?;
+                let output = git
+                    .build_command(&args)
+                    .await
+                    .envs(env.iter())
+                    .output()
+                    .await?;
 
                 anyhow::ensure!(
                     output.status.success(),
@@ -2844,7 +2924,12 @@ impl GitRepository for RealGitRepository {
                 if let Some(index) = index {
                     args.push(format!("stash@{{{}}}", index));
                 }
-                let output = git.build_command(&args).envs(env.iter()).output().await?;
+                let output = git
+                    .build_command(&args)
+                    .await
+                    .envs(env.iter())
+                    .output()
+                    .await?;
 
                 anyhow::ensure!(
                     output.status.success(),
@@ -2870,7 +2955,9 @@ impl GitRepository for RealGitRepository {
         // which we want to block on.
         async move {
             let git = git?;
-            let mut cmd = git.build_command(&["commit", "--quiet", "-m"]);
+            git.ensure_hooks_are_disabled_if_untrusted("コミット")
+                .await?;
+            let mut cmd = git.build_command(&["commit", "--quiet", "-m"]).await;
             cmd.envs(env.iter())
                 .arg(&message.to_string())
                 .arg("--cleanup=strip")
@@ -2916,6 +3003,7 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
         self.executor
             .spawn(async move {
+                GitFeature::WorktreeRepair.require(git.version().await, "ワークツリーの修復")?;
                 let args: Vec<OsString> = vec!["worktree".into(), "repair".into()];
                 git.run(&args).await?;
                 Ok(())
@@ -2949,7 +3037,13 @@ impl GitRepository for RealGitRepository {
                 executor.clone(),
                 is_trusted,
             );
-            let mut command = git.build_command(&["push"]);
+            git.ensure_transports_are_restricted_if_untrusted("プッシュ")
+                .await?;
+            if options == Some(PushOptions::Force) {
+                GitFeature::ForceWithLease
+                    .require(git.version().await, "強制プッシュ (--force-with-lease)")?;
+            }
+            let mut command = git.build_command(&["push"]).await;
             command
                 .envs(env.iter())
                 .args(options.map(|option| match option {
@@ -2992,7 +3086,9 @@ impl GitRepository for RealGitRepository {
                 executor.clone(),
                 is_trusted,
             );
-            let mut command = git.build_command(&["pull"]);
+            git.ensure_transports_are_restricted_if_untrusted("プル")
+                .await?;
+            let mut command = git.build_command(&["pull"]).await;
             command.envs(env.iter());
 
             if rebase {
@@ -3034,7 +3130,9 @@ impl GitRepository for RealGitRepository {
                 executor.clone(),
                 is_trusted,
             );
-            let mut command = git.build_command(&["fetch", &remote_name]);
+            git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+                .await?;
+            let mut command = git.build_command(&["fetch", &remote_name]).await;
             command
                 .envs(env.iter())
                 .stdout(Stdio::piped())
@@ -3051,6 +3149,7 @@ impl GitRepository for RealGitRepository {
             .spawn(async move {
                 let output = git
                     .build_command(&["rev-parse", "--abbrev-ref"])
+                    .await
                     .arg(format!("{branch}@{{push}}"))
                     .output()
                     .await?;
@@ -3075,6 +3174,7 @@ impl GitRepository for RealGitRepository {
             .spawn(async move {
                 let output = git
                     .build_command(&["config", "--get"])
+                    .await
                     .arg(format!("branch.{branch}.remote"))
                     .output()
                     .await?;
@@ -3094,7 +3194,7 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
         self.executor
             .spawn(async move {
-                let output = git.build_command(&["remote", "-v"]).output().await?;
+                let output = git.build_command(&["remote", "-v"]).await.output().await?;
 
                 anyhow::ensure!(
                     output.status.success(),
@@ -3123,7 +3223,13 @@ impl GitRepository for RealGitRepository {
         let git_binary = self.git_binary();
         self.executor
             .spawn(async move {
-                git_binary.run(&["remote", "remove", &name]).await?;
+                let subcommand =
+                    if GitFeature::RemoteRemove.is_supported_by(git_binary.version().await) {
+                        "remove"
+                    } else {
+                        "rm"
+                    };
+                git_binary.run(&["remote", subcommand, &name]).await?;
                 Ok(())
             })
             .boxed()
@@ -3146,7 +3252,18 @@ impl GitRepository for RealGitRepository {
                 // This command outputs a list of remote tracking refs, e.g.:
                 // refs/remotes/origin/HEAD
                 // refs/remotes/origin/main
-                let Ok(output) = git?
+                let git = git?;
+                if !GitFeature::ForEachRefContains.is_supported_by(git.version().await) {
+                    let Some(output) = git
+                        .run(&["branch", "-r", "--no-color", "--contains", "HEAD"])
+                        .await
+                        .log_err()
+                    else {
+                        return Ok(Vec::new());
+                    };
+                    return Ok(parse_remote_branches_containing(&output));
+                }
+                let Ok(output) = git
                     .run(&[
                         "for-each-ref",
                         "--format=%(refname)",
@@ -3202,15 +3319,16 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary_in_worktree();
         self.executor
             .spawn(async move {
-                let git = git?;
-                git.run(&[
-                    "restore",
-                    "--source",
-                    &checkpoint.commit_sha.to_string(),
-                    "--worktree",
-                    ".",
-                ])
-                .await?;
+                let mut git = git?;
+                git.ensure_hooks_are_disabled_if_untrusted("チェックポイントの復元")
+                    .await?;
+                let commit_sha = checkpoint.commit_sha.to_string();
+                if GitFeature::SwitchAndRestore.is_supported_by(git.version().await) {
+                    git.run(&["restore", "--source", &commit_sha, "--worktree", "."])
+                        .await?;
+                } else {
+                    restore_worktree_without_git_restore(&mut git, &commit_sha).await?;
+                }
 
                 // TODO: We don't track binary and large files anymore,
                 //       so the following call would delete them.
@@ -3491,10 +3609,17 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
 
         async move {
+            let version = git.version().await;
+            let ref_names_are_wrapped = !GitFeature::EmptyLogFormat.is_supported_by(version);
+            let format = if ref_names_are_wrapped {
+                LEGACY_GRAPH_COMMIT_FORMAT
+            } else {
+                GRAPH_COMMIT_FORMAT
+            };
             let log_source_args = log_source.get_args();
-            let mut git_log_command = vec!["log", GRAPH_COMMIT_FORMAT, log_order.as_arg()];
+            let mut git_log_command = vec!["log", format, log_order_argument(log_order, version)];
             git_log_command.extend(log_source_args.iter().map(|arg| arg.as_ref()));
-            let mut command = git.build_command(&git_log_command);
+            let mut command = git.build_command(&git_log_command).await;
             command.stdout(Stdio::piped());
             command.stderr(Stdio::piped());
 
@@ -3512,7 +3637,10 @@ impl GitRepository for RealGitRepository {
 
                 if bytes_read == 0 {
                     if !lines.is_empty() {
-                        let commits = parse_initial_graph_output(lines.iter().map(|s| s.as_str()));
+                        let commits = parse_initial_graph_output(
+                            lines.iter().map(|s| s.as_str()),
+                            ref_names_are_wrapped,
+                        );
                         if request_tx.send(commits).await.is_err() {
                             log::warn!(
                                 "initial_graph_data: receiver dropped while sending commits"
@@ -3526,7 +3654,10 @@ impl GitRepository for RealGitRepository {
                 lines.push(line);
 
                 if lines.len() >= GRAPH_CHUNK_SIZE {
-                    let commits = parse_initial_graph_output(lines.iter().map(|s| s.as_str()));
+                    let commits = parse_initial_graph_output(
+                        lines.iter().map(|s| s.as_str()),
+                        ref_names_are_wrapped,
+                    );
                     if request_tx.send(commits).await.is_err() {
                         log::warn!("initial_graph_data: receiver dropped while streaming commits");
                         break;
@@ -3580,7 +3711,7 @@ impl GitRepository for RealGitRepository {
             }
 
             args.extend(log_source_args.iter().map(|arg| arg.as_ref()));
-            let mut command = git.build_command(&args);
+            let mut command = git.build_command(&args).await;
             command.stdout(Stdio::piped());
             command.stderr(Stdio::null());
 
@@ -3649,7 +3780,7 @@ impl GitRepository for RealGitRepository {
             .to_vec();
             args.extend(paths.iter().map(|path| OsString::from(path.as_unix_str())));
 
-            let output = git.build_command(&args).output().await?;
+            let output = git.build_command(&args).await.output().await?;
             anyhow::ensure!(
                 output.status.success(),
                 "git log failed:\n{}",
@@ -3695,6 +3826,7 @@ async fn run_commit_data_reader(
 ) -> Result<()> {
     let mut process = git
         .build_command(&["cat-file", "--batch"])
+        .await
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -3804,8 +3936,10 @@ fn parse_file_history_changed_files_output(
     histories
 }
 
+/// `ref_names_are_wrapped` is for [`LEGACY_GRAPH_COMMIT_FORMAT`]'s ` (HEAD, main)`.
 fn parse_initial_graph_output<'a>(
     lines: impl Iterator<Item = &'a str>,
+    ref_names_are_wrapped: bool,
 ) -> Vec<Arc<InitialGraphCommitData>> {
     lines
         .filter(|line| !line.is_empty())
@@ -3821,6 +3955,15 @@ fn parse_initial_graph_output<'a>(
                 .collect();
 
             let ref_names_str = parts.next().unwrap_or("");
+            let ref_names_str = if ref_names_are_wrapped {
+                ref_names_str
+                    .trim()
+                    .strip_prefix('(')
+                    .and_then(|ref_names| ref_names.strip_suffix(')'))
+                    .unwrap_or("")
+            } else {
+                ref_names_str
+            };
             let ref_names = if ref_names_str.is_empty() {
                 Vec::new()
             } else {
@@ -3847,11 +3990,13 @@ struct GitVersion {
 }
 
 impl GitVersion {
-    const STATUS_NO_RENAMES: Self = Self {
-        major: 2,
-        minor: 18,
-        patch: 0,
-    };
+    const fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
 
     /// Parses `git --version` output such as `git version 2.45.1.windows.1`
     /// or `git version 2.39.3 (Apple Git-146)`.
@@ -3877,10 +4022,186 @@ impl GitVersion {
     }
 }
 
+impl std::fmt::Display for GitVersion {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+/// Git features that Zed relies on and that older git releases lack, each tied to the release
+/// that introduced it (see git's `Documentation/RelNotes`). Git rejects a whole command line over
+/// one option it doesn't know, so each of these needs a fallback or a clear error on older git.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GitFeature {
+    /// `git remote remove`; older releases only know `git remote rm`.
+    RemoteRemove,
+    /// `git branch --set-upstream-to`; older releases only know `--set-upstream`.
+    SetUpstreamTo,
+    /// `git show --no-patch`; older releases only know `-s`.
+    ShowNoPatch,
+    /// `git cat-file --batch=<format>` and `--batch-check=<format>`.
+    CatFileBatchFormat,
+    /// `git log --author-date-order`.
+    AuthorDateOrder,
+    /// `git push --force-with-lease`.
+    ForceWithLease,
+    /// The `%(HEAD)` and `%(upstream:track)` atoms of `git for-each-ref`, and `**` in its ref
+    /// patterns matching any number of directories.
+    BranchListAtoms,
+    /// An empty `--format=` printing no commit header rather than the default format, and the
+    /// `%D` placeholder.
+    EmptyLogFormat,
+    /// `git -c <name>=` giving an empty value; older git takes it for a missing one, which fails
+    /// every command that reads the setting.
+    EmptyConfigValue,
+    /// `git --no-pager worktree`, which segfaults on git 2.7.4.
+    NoPagerWorktree,
+    /// `git stash push --include-untracked` with a pathspec naming untracked files. Before git
+    /// 2.18 those files are cleaned away first, after which the tracked changes are silently left
+    /// in place.
+    StashPushWithUntrackedPaths,
+    /// `git status --porcelain=<version>`; before it plain `--porcelain` is version 1.
+    PorcelainVersion,
+    /// `git clean -d`, which `git stash save --include-untracked` runs, leaving the ignored files
+    /// inside untracked directories alone. Before git 2.14 it deletes them, and the stash doesn't
+    /// have them either.
+    CleanKeepsIgnoredFiles,
+    /// `git worktree add`.
+    WorktreeAdd,
+    /// `git worktree list`.
+    WorktreeList,
+    /// `git for-each-ref --contains`.
+    ForEachRefContains,
+    /// The `core.hooksPath` setting, with which `build_command` disables an untrusted
+    /// repository's hooks.
+    HooksPath,
+    /// The `unix` date format.
+    UnixDateFormat,
+    /// The `protocol.<name>.allow` settings, with which `build_command` forbids the `ext`
+    /// transport in an untrusted repository.
+    ProtocolAllow,
+    /// `%(upstream:track)` reporting `[gone]` for an upstream that no longer exists.
+    UpstreamGone,
+    /// `git stash push`, the only form of `git stash` that takes a pathspec.
+    StashPush,
+    /// `git --no-optional-locks`.
+    NoOptionalLocks,
+    /// `git worktree remove` and `git worktree move`.
+    WorktreeRemove,
+    /// `git status --no-renames`.
+    StatusNoRenames,
+    /// `git switch` and `git restore`.
+    SwitchAndRestore,
+    /// `git worktree repair`.
+    WorktreeRepair,
+    /// `git diff --merge-base` and `git diff-tree --merge-base`.
+    DiffMergeBase,
+    /// `git stash push --staged`.
+    StashStaged,
+}
+
+impl GitFeature {
+    const fn minimum_version(self) -> GitVersion {
+        match self {
+            Self::RemoteRemove => GitVersion::new(1, 7, 12),
+            Self::SetUpstreamTo => GitVersion::new(1, 8, 0),
+            Self::ShowNoPatch | Self::CatFileBatchFormat | Self::AuthorDateOrder => {
+                GitVersion::new(1, 8, 4)
+            }
+            Self::ForceWithLease => GitVersion::new(1, 8, 5),
+            Self::BranchListAtoms => GitVersion::new(1, 9, 0),
+            Self::EmptyLogFormat => GitVersion::new(2, 2, 0),
+            // Fixed by 2.2.0 and backported to 2.1.1.
+            Self::EmptyConfigValue => GitVersion::new(2, 1, 1),
+            // The oldest release seen working; 2.7.4 is the newest seen crashing.
+            Self::NoPagerWorktree => GitVersion::new(2, 11, 0),
+            Self::WorktreeAdd => GitVersion::new(2, 5, 0),
+            Self::PorcelainVersion => GitVersion::new(2, 11, 0),
+            // Fixed by 2.14.0 and backported to 2.13.2.
+            Self::CleanKeepsIgnoredFiles => GitVersion::new(2, 14, 0),
+            Self::WorktreeList | Self::ForEachRefContains => GitVersion::new(2, 7, 0),
+            Self::HooksPath => GitVersion::new(2, 9, 0),
+            // Introduced by 2.10.0 and backported to 2.9.4.
+            Self::UnixDateFormat => GitVersion::new(2, 9, 4),
+            Self::ProtocolAllow => GitVersion::new(2, 12, 0),
+            Self::UpstreamGone | Self::StashPush => GitVersion::new(2, 13, 0),
+            Self::NoOptionalLocks => GitVersion::new(2, 15, 0),
+            Self::WorktreeRemove => GitVersion::new(2, 17, 0),
+            Self::StatusNoRenames | Self::StashPushWithUntrackedPaths => GitVersion::new(2, 18, 0),
+            Self::SwitchAndRestore => GitVersion::new(2, 23, 0),
+            Self::WorktreeRepair => GitVersion::new(2, 29, 0),
+            Self::DiffMergeBase => GitVersion::new(2, 30, 0),
+            Self::StashStaged => GitVersion::new(2, 35, 0),
+        }
+    }
+
+    /// An unknown version counts as supporting everything, so that an unrecognized version
+    /// string can't change how a modern git is driven.
+    fn is_supported_by(self, version: Option<GitVersion>) -> bool {
+        version.is_none_or(|version| version >= self.minimum_version())
+    }
+
+    /// Fails with an explanation when `version` is known to predate this feature.
+    fn require(self, version: Option<GitVersion>, what: &str) -> Result<()> {
+        match version {
+            Some(version) if !self.is_supported_by(Some(version)) => bail!(
+                "{what}には git {} 以上が必要です (いまの git は {version})。",
+                self.minimum_version()
+            ),
+            _ => Ok(()),
+        }
+    }
+}
+
+#[derive(Default)]
+struct GitVersionProbe {
+    /// Set once probed; `Some(None)` is a version string that wasn't recognized.
+    version: Option<Option<GitVersion>>,
+    /// When the probe last failed to run.
+    last_failure: Option<Instant>,
+}
+
+/// Every git command waits for the probe, so a git that fails to run is probed again only after
+/// this long rather than before each command.
+const GIT_VERSION_PROBE_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Keyed by binary path so that every repository using the same git shares one probe.
 static GIT_BINARY_VERSIONS: LazyLock<
-    Mutex<HashMap<PathBuf, Arc<smol::lock::OnceCell<Option<GitVersion>>>>>,
+    Mutex<HashMap<PathBuf, Arc<smol::lock::Mutex<GitVersionProbe>>>>,
 > = LazyLock::new(|| Mutex::new(HashMap::default()));
+
+/// Options that precede the subcommand of every git command Zed runs.
+fn git_global_args(version: Option<GitVersion>, is_trusted: bool) -> Vec<&'static str> {
+    // Disabled to stop malicious actors from running arbitrary commands via fsmonitor hooks
+    let mut args = vec!["-c", "core.fsmonitor=false"];
+    // Prepended signature lines would corrupt our --format parsers.
+    args.extend(["-c", "log.showSignature=false"]);
+    if GitFeature::NoOptionalLocks.is_supported_by(version) {
+        args.push("--no-optional-locks");
+    }
+    // Internal commands must be non-interactive so background tasks never block on user input.
+    args.push("--no-pager");
+    if !is_trusted {
+        // Without empty `-c` values these two overrides would fail every command reading the
+        // setting. Such a git is refused remote operations in untrusted repositories anyway,
+        // and `build_command` gives `git diff` `--no-ext-diff`.
+        let has_empty_config_values = GitFeature::EmptyConfigValue.is_supported_by(version);
+        args.extend([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.sshCommand=ssh",
+        ]);
+        if has_empty_config_values {
+            args.extend(["-c", "credential.helper="]);
+        }
+        args.extend(["-c", "protocol.ext.allow=never"]);
+        if has_empty_config_values {
+            args.extend(["-c", "diff.external="]);
+        }
+    }
+    args
+}
 
 fn git_status_args(
     path_prefixes: &[RepoPath],
@@ -3889,13 +4210,18 @@ fn git_status_args(
 ) -> Vec<OsString> {
     let mut args = vec![
         OsString::from("status"),
-        OsString::from("--porcelain=v1"),
+        OsString::from(
+            if GitFeature::PorcelainVersion.is_supported_by(git_version) {
+                "--porcelain=v1"
+            } else {
+                "--porcelain"
+            },
+        ),
         OsString::from(untracked_files.as_git_argument()),
     ];
     // Before git 2.18 `git status` fails outright on `--no-renames`; `GitStatus` parsing folds
-    // the rename pairs those versions report instead. An unknown version keeps the flag so that
-    // an unrecognized version string can't change the behavior of a modern git.
-    if git_version.is_none_or(|version| version >= GitVersion::STATUS_NO_RENAMES) {
+    // the rename pairs those versions report instead.
+    if GitFeature::StatusNoRenames.is_supported_by(git_version) {
         args.push(OsString::from("--no-renames"));
     }
     args.extend([OsString::from("-z"), OsString::from("--")]);
@@ -3907,6 +4233,413 @@ fn git_status_args(
         }
     }));
     args
+}
+
+fn suppress_diff_argument(version: Option<GitVersion>) -> &'static str {
+    if GitFeature::ShowNoPatch.is_supported_by(version) {
+        "--no-patch"
+    } else {
+        "-s"
+    }
+}
+
+/// Arguments that, followed by a commit, print the commit's raw diff against its first parent.
+fn commit_diff_args(version: Option<GitVersion>) -> &'static [&'static str] {
+    if GitFeature::EmptyLogFormat.is_supported_by(version) {
+        &[
+            "show",
+            "--format=",
+            "-z",
+            "--no-renames",
+            "--raw",
+            "--no-abbrev",
+            "--first-parent",
+        ]
+    } else {
+        // Before git 2.2 an empty `--format=` prints the default commit header ahead of the diff.
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "-r",
+            "-z",
+            "--raw",
+            "--no-abbrev",
+            "--no-renames",
+            "--root",
+            "-m",
+            "--first-parent",
+        ]
+    }
+}
+
+fn cat_file_blob_batch_argument(version: Option<GitVersion>) -> &'static str {
+    if GitFeature::CatFileBatchFormat.is_supported_by(version) {
+        "--batch=%(objectsize)"
+    } else {
+        "--batch"
+    }
+}
+
+/// The args of [`GitRepository::diff_tree`]. With `merge_base` already resolved they diff from
+/// it, since git only accepts `--merge-base` since 2.30.
+fn diff_tree_args(request: &DiffTreeType, merge_base: Option<&str>) -> Vec<OsString> {
+    let mut args = match request {
+        DiffTreeType::MergeBase { .. } | DiffTreeType::Since { .. } => {
+            vec!["diff-tree", "-r", "-z", "--abbrev=64", "--no-renames"]
+        }
+        DiffTreeType::MergeBaseWithWorktree { .. } => {
+            vec!["diff", "--raw", "-z", "--abbrev=64", "--no-renames"]
+        }
+    };
+    match (request, merge_base) {
+        (DiffTreeType::MergeBase { head, .. }, Some(merge_base)) => {
+            args.extend([merge_base, head.as_str()])
+        }
+        (DiffTreeType::MergeBase { base, head }, None) => {
+            args.extend(["--merge-base", base.as_str(), head.as_str()])
+        }
+        (DiffTreeType::MergeBaseWithWorktree { .. }, Some(merge_base)) => args.push(merge_base),
+        (DiffTreeType::MergeBaseWithWorktree { base }, None) => {
+            args.extend(["--merge-base", base.as_str()])
+        }
+        (DiffTreeType::Since { base, head }, _) => args.extend([base.as_str(), head.as_str()]),
+    }
+    args.into_iter().map(OsString::from).collect()
+}
+
+async fn resolve_merge_base(git: &GitBinary, base: &str, head: &str) -> Result<String> {
+    let output = git
+        .build_command(&["merge-base", base, head])
+        .await
+        .output()
+        .await?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git merge-base failed: {stderr}");
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn log_order_argument(order: LogOrder, version: Option<GitVersion>) -> &'static str {
+    if order == LogOrder::AuthorDateOrder && !GitFeature::AuthorDateOrder.is_supported_by(version) {
+        // Commit dates are the closest order that git before 1.8.4 can sort by.
+        return LogOrder::DateOrder.as_arg();
+    }
+    order.as_arg()
+}
+
+fn branch_list_args(version: Option<GitVersion>) -> Vec<String> {
+    let has_branch_list_atoms = GitFeature::BranchListAtoms.is_supported_by(version);
+    // Empty fields keep the layout `parse_branch_input` expects;
+    // `complete_branches_without_head_and_track_atoms` makes up for them.
+    let (head, upstream_track) = if has_branch_list_atoms {
+        ("%(HEAD)", "%(upstream:track)")
+    } else {
+        ("", "")
+    };
+    let committer_date = if GitFeature::UnixDateFormat.is_supported_by(version) {
+        "%(committerdate:unix)"
+    } else {
+        "%(committerdate:raw)"
+    };
+    let fields = [
+        head,
+        "%(objectname)",
+        "%(parent)",
+        "%(refname)",
+        "%(upstream)",
+        upstream_track,
+        committer_date,
+        "%(authorname)",
+        "%(contents:subject)",
+    ]
+    .join("%00");
+    // Without wildmatch, `**/*` only matches refs nested in a directory (such as
+    // `refs/heads/a/b`, but not `refs/heads/main`), while a prefix matches every ref below it.
+    let [heads_pattern, remotes_pattern] = if has_branch_list_atoms {
+        ["refs/heads/**/*", "refs/remotes/**/*"]
+    } else {
+        ["refs/heads/", "refs/remotes/"]
+    };
+    vec![
+        "for-each-ref".to_string(),
+        heads_pattern.to_string(),
+        remotes_pattern.to_string(),
+        "--format".to_string(),
+        fields,
+    ]
+}
+
+/// Before git 2.13 `%(upstream:track)` has no `[gone]`: for an upstream that no longer exists
+/// (as after `git fetch --prune`) it reports nothing, or on git 1.9 a bogus count.
+fn mark_missing_upstreams_gone(branches: &mut [Branch]) {
+    let listed_refs = branches
+        .iter()
+        .map(|branch| branch.ref_name.clone())
+        .collect::<HashSet<_>>();
+    for branch in branches.iter_mut() {
+        if let Some(upstream) = branch.upstream.as_mut()
+            && (upstream.ref_name.starts_with("refs/remotes/")
+                || upstream.ref_name.starts_with("refs/heads/"))
+            && !listed_refs.contains(&upstream.ref_name)
+        {
+            upstream.tracking = UpstreamTracking::Gone;
+        }
+    }
+}
+
+/// Git before 1.9 has neither `%(HEAD)` nor `%(upstream:track)`, so this marks the current
+/// branch and counts its commits relative to its upstream separately. Other branches keep zero
+/// counts, since counting them would cost a process per branch.
+async fn complete_branches_without_head_and_track_atoms(git: &GitBinary, branches: &mut [Branch]) {
+    let output = match git
+        .build_command(&["symbolic-ref", "--quiet", "HEAD"])
+        .await
+        .output()
+        .await
+    {
+        Ok(output) => output,
+        Err(error) => {
+            log::warn!("failed to read the current branch: {error:#}");
+            return;
+        }
+    };
+    // Fails when HEAD is detached, in which case no branch is current.
+    if !output.status.success() {
+        return;
+    }
+    let head = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let Some(branch) = branches
+        .iter_mut()
+        .find(|branch| branch.ref_name.as_ref() == head)
+    else {
+        return;
+    };
+    branch.is_head = true;
+    let Some(upstream) = branch.upstream.as_mut() else {
+        return;
+    };
+    if upstream.tracking.is_gone() {
+        return;
+    }
+    let range = format!("{}...{}", upstream.ref_name, branch.ref_name);
+    match git
+        .run(&["rev-list", "--left-right", "--count", &range])
+        .await
+    {
+        Ok(counts) => match parse_left_right_counts(&counts) {
+            Some((behind, ahead)) => {
+                upstream.tracking =
+                    UpstreamTracking::Tracked(UpstreamTrackingStatus { ahead, behind });
+            }
+            None => log::warn!("unexpected `git rev-list --left-right --count` output {counts:?}"),
+        },
+        Err(error) => log::warn!("failed to count the commits in {range}: {error:#}"),
+    }
+}
+
+/// Parses the `<left>\t<right>` counts of `git rev-list --left-right --count`.
+fn parse_left_right_counts(output: &str) -> Option<(u32, u32)> {
+    let mut counts = output.split_whitespace();
+    let left = counts.next()?.parse().ok()?;
+    let right = counts.next()?.parse().ok()?;
+    Some((left, right))
+}
+
+/// Stands in for `git worktree list` before git 2.7. Linked worktrees can't be created before
+/// git 2.5, so this reports the main worktree the way `git worktree list` would; for a bare
+/// repository that entry has no HEAD, which `parse_worktrees_from_str` skips too.
+async fn list_main_worktree(
+    git: &GitBinary,
+    common_dir: &Path,
+    main_worktree_path: Option<PathBuf>,
+) -> Result<Vec<Worktree>> {
+    let Some(main_worktree_path) = main_worktree_path else {
+        return Ok(Vec::new());
+    };
+    // The main worktree's HEAD is the one in the common directory, even for a linked worktree.
+    let mut git_dir_argument = OsString::from("--git-dir=");
+    git_dir_argument.push(common_dir);
+    let head_output = git
+        .build_command(&[
+            git_dir_argument.as_os_str(),
+            OsStr::new("rev-parse"),
+            OsStr::new("--verify"),
+            OsStr::new("--quiet"),
+            OsStr::new("HEAD"),
+        ])
+        .await
+        .output()
+        .await?;
+    // `git worktree list` shows the null object ID for an unborn branch.
+    let sha = if head_output.status.success() {
+        String::from_utf8_lossy(&head_output.stdout)
+            .trim()
+            .to_string()
+    } else {
+        "0".repeat(40)
+    };
+    let ref_output = git
+        .build_command(&[
+            git_dir_argument.as_os_str(),
+            OsStr::new("symbolic-ref"),
+            OsStr::new("--quiet"),
+            OsStr::new("HEAD"),
+        ])
+        .await
+        .output()
+        .await?;
+    let ref_name = ref_output.status.success().then(|| {
+        String::from_utf8_lossy(&ref_output.stdout)
+            .trim()
+            .to_string()
+            .into()
+    });
+    Ok(vec![Worktree {
+        path: main_worktree_path,
+        ref_name,
+        sha: sha.into(),
+        is_main: true,
+        is_bare: false,
+    }])
+}
+
+/// The message of `git stash save`. Only the scripted `git stash` of git before 2.22, the one
+/// that runs `git stash save` here for real, reads a `--` before the message as the end of the
+/// options; later ones keep it in the message, so it's added only where it's needed.
+fn stash_save_message_args(message: &str) -> Vec<String> {
+    if message.starts_with('-') {
+        vec!["--".to_string(), message.to_string()]
+    } else {
+        vec![message.to_string()]
+    }
+}
+
+/// A `git stash` command line, optionally followed by the paths asked to be stashed.
+struct StashCommand {
+    args: Vec<String>,
+    with_requested_paths: bool,
+}
+
+/// The `git stash` command for [`GitRepository::stash_paths`] before git 2.18, which stashes
+/// untracked files given by pathspec wrongly (and before 2.13 takes no pathspec at all). The Git
+/// panel only asks for every change (`git::StashAll`) or every change but the untracked files
+/// (`git::StashTracked`), so the request is told apart by whether it names untracked files
+/// rather than matched path by path, which also stashes what changed since the panel's last scan.
+fn legacy_stash_command(
+    requested_paths: &[RepoPath],
+    status: &GitStatus,
+    message: Option<&str>,
+    version: Option<GitVersion>,
+) -> Result<StashCommand> {
+    let mut args = vec!["stash".to_string()];
+    if requests_untracked_files(requested_paths, status) {
+        GitFeature::CleanKeepsIgnoredFiles
+            .require(version, "追跡されていないファイルを含むスタッシュ")?;
+        args.extend(["save", "--quiet", "--include-untracked"].map(String::from));
+        if let Some(message) = message {
+            args.extend(stash_save_message_args(message));
+        }
+        return Ok(StashCommand {
+            args,
+            with_requested_paths: false,
+        });
+    }
+    if GitFeature::StashPush.is_supported_by(version) {
+        args.extend(["push", "--quiet"].map(String::from));
+        if let Some(message) = message {
+            args.extend(["--message".to_string(), message.to_string()]);
+        }
+        args.push("--".to_string());
+        return Ok(StashCommand {
+            args,
+            with_requested_paths: true,
+        });
+    }
+    // `git stash save` also takes the staged new files that `git::StashTracked` leaves alone.
+    let requested_paths = requested_paths.iter().collect::<HashSet<_>>();
+    let takes_unrequested_new_files = status.entries.iter().any(|(path, status)| {
+        matches!(
+            status,
+            FileStatus::Tracked(TrackedStatus {
+                index_status: StatusCode::Added,
+                ..
+            })
+        ) && !requested_paths.contains(path)
+    });
+    if takes_unrequested_new_files {
+        GitFeature::StashPush.require(
+            version,
+            "新しくステージしたファイルを残したままのスタッシュ",
+        )?;
+    }
+    args.extend(["save", "--quiet"].map(String::from));
+    if let Some(message) = message {
+        args.extend(stash_save_message_args(message));
+    }
+    Ok(StashCommand {
+        args,
+        with_requested_paths: false,
+    })
+}
+
+fn requests_untracked_files(requested_paths: &[RepoPath], status: &GitStatus) -> bool {
+    let requested_paths = requested_paths.iter().collect::<HashSet<_>>();
+    status
+        .entries
+        .iter()
+        .any(|(path, status)| status.is_untracked() && requested_paths.contains(path))
+}
+
+/// Parses `git branch -r --contains` output such as `  origin/HEAD -> origin/main` and
+/// `  origin/main` into what `for-each-ref --contains` yields once `refs/remotes/` is stripped.
+fn parse_remote_branches_containing(output: &str) -> Vec<SharedString> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.contains(" -> ") && !line.ends_with("/HEAD"))
+        .map(|line| SharedString::from(line.to_string()))
+        .collect()
+}
+
+/// Stands in for `git restore --source <commit> --worktree .` before git 2.23: writes the
+/// commit's files over the working tree without touching the index, and deletes the tracked
+/// files that the commit lacks.
+async fn restore_worktree_without_git_restore(git: &mut GitBinary, commit_sha: &str) -> Result<()> {
+    let working_directory = git.working_directory.clone();
+    git.with_temp_index(async |git| {
+        // Read from the copy of the index before `checkout` changes it.
+        let missing_from_commit = git
+            .run_raw(&[
+                "diff-index",
+                "--cached",
+                "--name-only",
+                "--diff-filter=A",
+                "-z",
+                commit_sha,
+                "--",
+            ])
+            .await?;
+        // Removed before `checkout`: afterwards, removing a file that differs from a restored one
+        // only in case would take the restored file with it on a case-insensitive file system.
+        for path in missing_from_commit
+            .split('\0')
+            .filter(|path| !path.is_empty())
+        {
+            let full_path = working_directory.join(path);
+            match smol::fs::remove_file(&full_path).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error)
+                        .with_context(|| format!("failed to remove {}", full_path.display()));
+                }
+            }
+        }
+        git.run(&["checkout", commit_sha, "--", "."]).await?;
+        Ok(())
+    })
+    .await
 }
 
 /// Lists untracked files that should be included in a checkpoint, skipping
@@ -3984,6 +4717,7 @@ async fn add_files_to_index(git: &GitBinary, files: &[String]) -> Result<()> {
 
     let mut process = git
         .build_command(&["update-index", "--add", "-z", "--stdin"])
+        .await
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -4050,27 +4784,99 @@ impl GitBinary {
 
     /// The version of this git binary, probed once per binary path for the whole process.
     async fn version(&self) -> Option<GitVersion> {
-        let version = GIT_BINARY_VERSIONS
+        let probe = GIT_BINARY_VERSIONS
             .lock()
             .entry(self.git_binary_path.clone())
             .or_default()
             .clone();
-        // A probe that fails to run isn't cached, so a transient failure is retried by the next
-        // caller instead of pinning the fallback for the rest of the process.
-        version
-            .get_or_try_init(|| async {
-                let output = self.run(&["--version"]).await?;
-                let version = GitVersion::parse(&output);
-                if version.is_none() {
-                    log::warn!("unrecognized `git --version` output: {output:?}");
+        let mut probe = probe.lock().await;
+        if let Some(version) = probe.version {
+            return version;
+        }
+        if probe
+            .last_failure
+            .is_some_and(|failed_at| failed_at.elapsed() < GIT_VERSION_PROBE_RETRY_INTERVAL)
+        {
+            return None;
+        }
+        match self.probe_version().await {
+            Ok(version) => {
+                probe.version = Some(version);
+                version
+            }
+            Err(error) => {
+                if probe.last_failure.is_none() {
+                    log::error!(
+                        "probing the version of {:?}: {error:#}",
+                        self.git_binary_path
+                    );
                 }
-                anyhow::Ok(version)
-            })
+                probe.last_failure = Some(Instant::now());
+                None
+            }
+        }
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    async fn probe_version(&self) -> Result<Option<GitVersion>> {
+        // Not `build_command`: the options it adds depend on this very version.
+        let output = new_command(&self.git_binary_path)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .output()
+            .await?;
+        anyhow::ensure!(
+            output.status.success(),
+            GitBinaryCommandError {
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                status: output.status,
+            }
+        );
+        let output = String::from_utf8_lossy(&output.stdout);
+        let version = GitVersion::parse(&output);
+        if version.is_none() {
+            log::warn!("unrecognized `git --version` output: {output:?}");
+        }
+        Ok(version)
+    }
+
+    /// `build_command` disables an untrusted repository's hooks through `core.hooksPath`, which
+    /// git ignores before 2.9, so with such a git the operations that run hooks wait for the
+    /// project to be trusted.
+    async fn ensure_hooks_are_disabled_if_untrusted(&self, operation: &str) -> Result<()> {
+        self.ensure_untrusted_protection(GitFeature::HooksPath, operation, "フックを止められず")
             .await
-            .with_context(|| format!("probing the version of {:?}", self.git_binary_path))
-            .log_err()
-            .copied()
-            .flatten()
+    }
+
+    /// In an untrusted repository, remote operations rely on `protocol.ext.allow` (git 2.12)
+    /// and on resetting `credential.helper` (git 2.9) to keep the repository's configuration
+    /// from running programs; older git ignores both.
+    async fn ensure_transports_are_restricted_if_untrusted(&self, operation: &str) -> Result<()> {
+        self.ensure_untrusted_protection(
+            GitFeature::ProtocolAllow,
+            operation,
+            "リポジトリの設定からプログラムが実行されるのを止められず",
+        )
+        .await
+    }
+
+    async fn ensure_untrusted_protection(
+        &self,
+        feature: GitFeature,
+        operation: &str,
+        protection: &str,
+    ) -> Result<()> {
+        if self.is_trusted {
+            return Ok(());
+        }
+        match self.version().await {
+            Some(version) if !feature.is_supported_by(Some(version)) => bail!(
+                "このプロジェクトは信頼されていないため、古い git ({} 未満。いまの git は {version}) では{protection}、{operation}を実行できません。プロジェクトを信頼すると実行できます。",
+                feature.minimum_version()
+            ),
+            _ => Ok(()),
+        }
     }
 
     pub async fn with_temp_index<R>(
@@ -4128,7 +4934,7 @@ impl GitBinary {
     where
         S: AsRef<OsStr>,
     {
-        let mut command = self.build_command(args);
+        let mut command = self.build_command(args).await;
         let output = command.output().await?;
         anyhow::ensure!(
             output.status.success(),
@@ -4142,27 +4948,23 @@ impl GitBinary {
     }
 
     #[allow(clippy::disallowed_methods)]
-    pub(crate) fn build_command<S>(&self, args: &[S]) -> util::command::Command
+    pub(crate) async fn build_command<S>(&self, args: &[S]) -> util::command::Command
     where
         S: AsRef<OsStr>,
     {
+        let version = self.version().await;
         let mut command = new_command(&self.git_binary_path);
         command.current_dir(&self.working_directory);
-        // Disabled to stop malicious actors from running arbitrary commands via fsmonitor hooks
-        command.args(["-c", "core.fsmonitor=false"]);
-        // Prepended signature lines would corrupt our --format parsers.
-        command.args(["-c", "log.showSignature=false"]);
-        command.arg("--no-optional-locks");
-        // Internal commands must be non-interactive so background tasks never block on user input.
-        command.arg("--no-pager");
-
-        if !self.is_trusted {
-            command.args(["-c", "core.hooksPath=/dev/null"]);
-            command.args(["-c", "core.sshCommand=ssh"]);
-            command.args(["-c", "credential.helper="]);
-            command.args(["-c", "protocol.ext.allow=never"]);
-            command.args(["-c", "diff.external="]);
+        let mut global_args = git_global_args(version, self.is_trusted);
+        // The output is always piped, so git wouldn't start a pager without `--no-pager` either.
+        if args
+            .first()
+            .is_some_and(|argument| argument.as_ref() == "worktree")
+            && !GitFeature::NoPagerWorktree.is_supported_by(version)
+        {
+            global_args.retain(|argument| *argument != "--no-pager");
         }
+        command.args(global_args);
         command.args(args);
 
         // If the `diff` command is being used, we'll want to add the
@@ -4333,7 +5135,13 @@ impl MapSeekTarget<RepoPath> for RepoPathDescendants<'_> {
     }
 }
 
-fn parse_branch_input(input: &str) -> Result<Vec<Branch>> {
+/// Skips the rows that don't parse, except for git without `%(committerdate:unix)` or reliable
+/// `%(upstream:track)` output, whose rows are kept rather than lost.
+fn parse_branch_input(input: &str, version: Option<GitVersion>) -> Result<Vec<Branch>> {
+    let has_unix_dates = GitFeature::UnixDateFormat.is_supported_by(version);
+    // Before git 2.13 `%(upstream:track)` can print uninitialized counts for a deleted upstream,
+    // which `mark_missing_upstreams_gone` then corrects.
+    let has_reliable_tracking = GitFeature::UpstreamGone.is_supported_by(version);
     let mut branches = Vec::new();
     for line in input.split('\n') {
         if line.is_empty() {
@@ -4349,18 +5157,50 @@ fn parse_branch_input(input: &str) -> Result<Vec<Branch>> {
         let Some(parent_sha) = fields.next().map(|f| f.to_string()) else {
             continue;
         };
-        let Some(ref_name) = fields.next().map(|f| f.to_string().into()) else {
+        let Some(ref_name): Option<SharedString> = fields.next().map(|f| f.to_string().into())
+        else {
             continue;
         };
         let Some(upstream_name) = fields.next().map(|f| f.to_string()) else {
             continue;
         };
-        let Some(upstream_tracking) = fields.next().and_then(|f| parse_upstream_track(f).ok())
-        else {
+        let Some(upstream_track) = fields.next() else {
             continue;
         };
-        let Some(commiterdate) = fields.next().and_then(|f| f.parse::<i64>().ok()) else {
+        let upstream_tracking = match parse_upstream_track(upstream_track) {
+            Ok(upstream_tracking) => upstream_tracking,
+            Err(_) if has_reliable_tracking => continue,
+            Err(error) => {
+                log::warn!(
+                    "unrecognized upstream tracking {upstream_track:?} of {ref_name}: {error:#}"
+                );
+                UpstreamTracking::Tracked(UpstreamTrackingStatus {
+                    ahead: 0,
+                    behind: 0,
+                })
+            }
+        };
+        let Some(committer_date) = fields.next() else {
             continue;
+        };
+        let commit_timestamp = if has_unix_dates {
+            let Ok(commit_timestamp) = committer_date.parse::<i64>() else {
+                continue;
+            };
+            commit_timestamp
+        } else {
+            // `%(committerdate:raw)` follows the timestamp with a time zone.
+            match committer_date
+                .split_whitespace()
+                .next()
+                .and_then(|timestamp| timestamp.parse::<i64>().ok())
+            {
+                Some(commit_timestamp) => commit_timestamp,
+                None => {
+                    log::warn!("unrecognized committer date {committer_date:?} of {ref_name}");
+                    0
+                }
+            }
         };
         let Some(author_name) = fields.next().map(|f| f.to_string().into()) else {
             continue;
@@ -4375,7 +5215,7 @@ fn parse_branch_input(input: &str) -> Result<Vec<Branch>> {
             most_recent_commit: Some(CommitSummary {
                 sha: head_sha,
                 subject,
-                commit_timestamp: commiterdate,
+                commit_timestamp,
                 author_name: author_name,
                 has_parent: !parent_sha.is_empty(),
             }),
@@ -4457,6 +5297,50 @@ mod tests {
             std::env::set_var("GIT_CONFIG_GLOBAL", "");
             std::env::set_var("GIT_CONFIG_SYSTEM", "");
         }
+    }
+
+    fn installed_git_version() -> GitVersion {
+        GitVersion::parse(&git_command_output(Path::new("."), ["--version"]))
+            .expect("the installed git's version should be recognized")
+    }
+
+    fn installed_git_supports(feature: GitFeature) -> bool {
+        feature.is_supported_by(Some(installed_git_version()))
+    }
+
+    /// Operations that run hooks wait for trust when git can't disable hooks, so tests that
+    /// aren't about trust run trusted on such a git.
+    fn trust_if_hooks_cannot_be_disabled(repository: &RealGitRepository) {
+        if !installed_git_supports(GitFeature::HooksPath) {
+            repository.set_trusted(true);
+        }
+    }
+
+    /// Makes `GitBinary::version` report `version` for `git_binary_path` without running it.
+    fn pretend_git_version(git_binary_path: impl Into<PathBuf>, version: GitVersion) {
+        GIT_BINARY_VERSIONS.lock().insert(
+            git_binary_path.into(),
+            Arc::new(smol::lock::Mutex::new(GitVersionProbe {
+                version: Some(Some(version)),
+                last_failure: None,
+            })),
+        );
+    }
+
+    fn pretend_git_binary(
+        git_binary_path: &str,
+        version: GitVersion,
+        is_trusted: bool,
+        cx: &TestAppContext,
+    ) -> GitBinary {
+        pretend_git_version(git_binary_path, version);
+        GitBinary::new(
+            PathBuf::from(git_binary_path),
+            PathBuf::from("/"),
+            PathBuf::from("/.git"),
+            cx.executor(),
+            is_trusted,
+        )
     }
 
     #[test]
@@ -4560,6 +5444,10 @@ mod tests {
         };
 
         assert_eq!(
+            args(version(2, 10, 5)),
+            ["status", "--porcelain", "--untracked-files=all", "-z", "--"]
+        );
+        assert_eq!(
             args(version(2, 17, 1)),
             [
                 "status",
@@ -4580,6 +5468,7 @@ mod tests {
                 "--"
             ]
         );
+        assert_eq!(args(None), args(version(2, 18, 0)));
         assert!(!args(version(2, 17, 99)).contains(&"--no-renames".to_string()));
         for git_version in [version(2, 45, 1), version(3, 0, 0), None] {
             assert!(
@@ -4591,6 +5480,10 @@ mod tests {
 
     #[test]
     fn test_status_rename_pairs_match_no_renames_output() {
+        // The expected entries come from `--no-renames` itself.
+        if !installed_git_supports(GitFeature::StatusNoRenames) {
+            return;
+        }
         let temp_dir = tempfile::tempdir().unwrap();
         let repo_dir = temp_dir.path().join("repo");
         git_init_repo(&repo_dir);
@@ -4746,7 +5639,9 @@ mod tests {
 
     fn git_init_repo(path: &Path) {
         fs::create_dir_all(path).expect("failed to create repo directory");
-        git_command(path, ["init", "-b", "main"]);
+        // `git init -b` only exists since git 2.28.
+        git_command(path, ["init"]);
+        git_command(path, ["symbolic-ref", "HEAD", "refs/heads/main"]);
     }
 
     fn clone_remote_repository_with_main_and_feature(temp_dir: &Path) -> (PathBuf, PathBuf) {
@@ -4759,16 +5654,18 @@ mod tests {
             [
                 OsString::from("init"),
                 OsString::from("--bare"),
-                OsString::from("-b"),
-                OsString::from("main"),
                 remote_directory.as_os_str().into(),
             ],
+        );
+        git_command(
+            &remote_directory,
+            ["symbolic-ref", "HEAD", "refs/heads/main"],
         );
         git_init_repo(&seed_directory);
         fs::write(seed_directory.join("file.txt"), "main").unwrap();
         git_command(&seed_directory, ["add", "file.txt"]);
         git_command(&seed_directory, ["commit", "-m", "initial"]);
-        git_command(&seed_directory, ["switch", "-c", "feature"]);
+        git_command(&seed_directory, ["checkout", "-b", "feature"]);
         fs::write(seed_directory.join("feature.txt"), "feature").unwrap();
         git_command(&seed_directory, ["add", "feature.txt"]);
         git_command(&seed_directory, ["commit", "-m", "feature"]);
@@ -5198,6 +6095,9 @@ mod tests {
 
     #[gpui::test]
     async fn test_real_git_repository_new_resolves_linked_worktree_paths(cx: &mut TestAppContext) {
+        if !installed_git_supports(GitFeature::WorktreeAdd) {
+            return;
+        }
         disable_git_global_config();
         cx.executor().allow_parking();
 
@@ -5287,6 +6187,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repository);
         let git = repository.git_binary_in_worktree().unwrap();
         assert!(
             git.run(&[
@@ -5311,7 +6212,9 @@ mod tests {
 
         let git = repository.git_binary_in_worktree().unwrap();
         assert_eq!(
-            git.run(&["branch", "--show-current"]).await.unwrap(),
+            git.run(&["rev-parse", "--abbrev-ref", "HEAD"])
+                .await
+                .unwrap(),
             "feature"
         );
         assert_eq!(
@@ -5322,7 +6225,11 @@ mod tests {
         );
 
         git.run(&["checkout", "main"]).await.unwrap();
-        git.run(&["branch", "--unset-upstream", "feature"])
+        // `git branch --unset-upstream` only exists since git 1.8.
+        git.run(&["config", "--unset", "branch.feature.remote"])
+            .await
+            .unwrap();
+        git.run(&["config", "--unset", "branch.feature.merge"])
             .await
             .unwrap();
 
@@ -5333,7 +6240,9 @@ mod tests {
 
         let git = repository.git_binary_in_worktree().unwrap();
         assert_eq!(
-            git.run(&["branch", "--show-current"]).await.unwrap(),
+            git.run(&["rev-parse", "--abbrev-ref", "HEAD"])
+                .await
+                .unwrap(),
             "feature"
         );
         assert_eq!(
@@ -5360,6 +6269,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repository);
         let git = repository.git_binary_in_worktree().unwrap();
         git.run(&[
             "symbolic-ref",
@@ -5387,7 +6297,9 @@ mod tests {
 
         let git = repository.git_binary_in_worktree().unwrap();
         assert_eq!(
-            git.run(&["branch", "--show-current"]).await.unwrap(),
+            git.run(&["rev-parse", "--abbrev-ref", "HEAD"])
+                .await
+                .unwrap(),
             "feature"
         );
         assert_eq!(
@@ -5425,6 +6337,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repository);
         let git = repository.git_binary_in_worktree().unwrap();
         git.run(&[
             "symbolic-ref",
@@ -5442,7 +6355,9 @@ mod tests {
 
         let git = repository.git_binary_in_worktree().unwrap();
         assert_eq!(
-            git.run(&["branch", "--show-current"]).await.unwrap(),
+            git.run(&["rev-parse", "--abbrev-ref", "HEAD"])
+                .await
+                .unwrap(),
             "main"
         );
         assert_eq!(
@@ -5481,13 +6396,15 @@ mod tests {
     }
 
     fn open_repository(dot_git_parent: &Path, cx: &mut TestAppContext) -> RealGitRepository {
-        RealGitRepository::new(
+        let repository = RealGitRepository::new(
             &dot_git_parent.join(".git"),
             None,
             Some("git".into()),
             cx.executor(),
         )
-        .expect("failed to open repository")
+        .expect("failed to open repository");
+        trust_if_hooks_cannot_be_disabled(&repository);
+        repository
     }
 
     #[gpui::test]
@@ -5585,11 +6502,11 @@ mod tests {
         fs::write(repo_dir.path().join("file.txt"), "base\n").unwrap();
         git_command(repo_dir.path(), ["add", "file.txt"]);
         git_command(repo_dir.path(), ["commit", "-m", "initial"]);
-        git_command(repo_dir.path(), ["switch", "-c", "feature"]);
+        git_command(repo_dir.path(), ["checkout", "-b", "feature"]);
         fs::write(repo_dir.path().join("feature.txt"), "feature\n").unwrap();
         git_command(repo_dir.path(), ["add", "feature.txt"]);
         git_command(repo_dir.path(), ["commit", "-m", "feature"]);
-        git_command(repo_dir.path(), ["switch", "main"]);
+        git_command(repo_dir.path(), ["checkout", "main"]);
 
         let repository = open_repository(repo_dir.path(), cx);
         let output = repository
@@ -5619,10 +6536,10 @@ mod tests {
         fs::write(repo_dir.path().join("file.txt"), "base\n").unwrap();
         git_command(repo_dir.path(), ["add", "file.txt"]);
         git_command(repo_dir.path(), ["commit", "-m", "initial"]);
-        git_command(repo_dir.path(), ["switch", "-c", "feature"]);
+        git_command(repo_dir.path(), ["checkout", "-b", "feature"]);
         fs::write(repo_dir.path().join("file.txt"), "feature\n").unwrap();
         git_command(repo_dir.path(), ["commit", "-am", "feature"]);
-        git_command(repo_dir.path(), ["switch", "main"]);
+        git_command(repo_dir.path(), ["checkout", "main"]);
         fs::write(repo_dir.path().join("file.txt"), "main\n").unwrap();
         git_command(repo_dir.path(), ["commit", "-am", "main"]);
 
@@ -5828,6 +6745,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         let (request_tx, request_rx) = async_channel::unbounded();
 
@@ -5853,6 +6771,7 @@ mod tests {
         );
         let output = git
             .build_command(&["version"])
+            .await
             .output()
             .await
             .expect("git version should succeed");
@@ -5867,6 +6786,7 @@ mod tests {
         );
         let output = git
             .build_command(&["config", "--get", "core.fsmonitor"])
+            .await
             .output()
             .await
             .expect("git config should run");
@@ -5887,6 +6807,7 @@ mod tests {
         );
         let output = git
             .build_command(&["config", "--get", "core.hooksPath"])
+            .await
             .output()
             .await
             .expect("git config should run");
@@ -5913,6 +6834,7 @@ mod tests {
         );
         let output = git
             .build_command(&["config", "--get", "core.fsmonitor"])
+            .await
             .output()
             .await
             .expect("git config should run");
@@ -5932,6 +6854,7 @@ mod tests {
         );
         let output = git
             .build_command(&["config", "--get", "core.hooksPath"])
+            .await
             .output()
             .await
             .expect("git config should run");
@@ -5956,6 +6879,7 @@ mod tests {
         );
         let output = git
             .build_command(&["config", "--get", "log.showSignature"])
+            .await
             .output()
             .await
             .expect("git config should run");
@@ -5975,6 +6899,7 @@ mod tests {
         );
         let output = git
             .build_command(&["config", "--get", "log.showSignature"])
+            .await
             .output()
             .await
             .expect("git config should run");
@@ -6026,6 +6951,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         repo.stage_paths(vec![repo_path("file")], Arc::new(HashMap::default()))
             .await
@@ -6131,15 +7057,27 @@ mod tests {
             .unwrap();
 
         // Hooks must not run for untrusted repositories.
-        repo.commit(
-            "Commit in untrusted repo".into(),
-            None,
-            CommitOptions::default(),
-            AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
-            Arc::new(test_commit_envs()),
-        )
-        .await
-        .expect("failing pre-commit hook should be skipped in untrusted repos");
+        let untrusted_commit = repo
+            .commit(
+                "Commit in untrusted repo".into(),
+                None,
+                CommitOptions::default(),
+                AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
+                Arc::new(test_commit_envs()),
+            )
+            .await;
+        if installed_git_supports(GitFeature::HooksPath) {
+            untrusted_commit.expect("failing pre-commit hook should be skipped in untrusted repos");
+        } else {
+            let error = untrusted_commit
+                .expect_err("a git that can't skip hooks must not commit in untrusted repos");
+            assert!(
+                error
+                    .to_string()
+                    .contains("プロジェクトを信頼すると実行できます"),
+                "unexpected error: {error:#}"
+            );
+        }
 
         repo.set_trusted(true);
 
@@ -6229,6 +7167,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         // Stage files and commit
         repo.stage_paths(
@@ -6311,6 +7250,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         let file_name = "ürlich file1";
         fs::write(repo_dir.path().join(file_name), "line one\n").unwrap();
@@ -6380,6 +7320,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         smol::fs::write(repo_dir.path().join("foo"), "foo")
             .await
@@ -6428,6 +7369,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         smol::fs::write(repo_dir.path().join("file.txt"), "content")
             .await
@@ -6484,6 +7426,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         smol::fs::write(repo_dir.path().join("file1"), "content1")
             .await
@@ -6535,6 +7478,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         // initial commit
         repo.stage_paths(vec![repo_path("main.rs")], Arc::new(HashMap::default()))
@@ -6580,7 +7524,7 @@ mod tests {
         #[allow(clippy::octal_escapes)]
         let input = "*\0060964da10574cd9bf06463a53bf6e0769c5c45e\0\0refs/heads/zed-patches\0refs/remotes/origin/zed-patches\0\01733187470\0John Doe\0generated protobuf\n";
         assert_eq!(
-            parse_branch_input(input).unwrap(),
+            parse_branch_input(input, None).unwrap(),
             vec![Branch {
                 is_head: true,
                 ref_name: "refs/heads/zed-patches".into(),
@@ -6607,7 +7551,7 @@ mod tests {
         #[allow(clippy::octal_escapes)]
         let input = " \090012116c03db04344ab10d50348553aa94f1ea0\0refs/heads/broken\n \0eb0cae33272689bd11030822939dd2701c52f81e\0895951d681e5561478c0acdd6905e8aacdfd2249\0refs/heads/dev\0\0\01762948725\0Zed\0Add feature\n*\0895951d681e5561478c0acdd6905e8aacdfd2249\0\0refs/heads/main\0\0\01762948695\0Zed\0Initial commit\n";
 
-        let branches = parse_branch_input(input).unwrap();
+        let branches = parse_branch_input(input, None).unwrap();
         assert_eq!(branches.len(), 2);
         assert_eq!(
             branches,
@@ -6779,6 +7723,10 @@ mod tests {
 
     #[gpui::test]
     async fn test_create_and_list_worktrees(cx: &mut TestAppContext) {
+        // Older git is covered by `test_worktrees_on_installed_git`.
+        if !installed_git_supports(GitFeature::WorktreeList) {
+            return;
+        }
         disable_git_global_config();
         cx.executor().allow_parking();
 
@@ -6798,6 +7746,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         // Create an initial commit (required for worktrees)
         smol::fs::write(repo_dir.join("file.txt"), "content")
@@ -6871,6 +7820,9 @@ mod tests {
 
     #[gpui::test]
     async fn test_remove_worktree(cx: &mut TestAppContext) {
+        if !installed_git_supports(GitFeature::WorktreeRemove) {
+            return;
+        }
         disable_git_global_config();
         cx.executor().allow_parking();
 
@@ -6886,6 +7838,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         // Create an initial commit
         smol::fs::write(repo_dir.join("file.txt"), "content")
@@ -6968,6 +7921,9 @@ mod tests {
 
     #[gpui::test]
     async fn test_rename_worktree(cx: &mut TestAppContext) {
+        if !installed_git_supports(GitFeature::WorktreeRemove) {
+            return;
+        }
         disable_git_global_config();
         cx.executor().allow_parking();
 
@@ -6984,6 +7940,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         // Create an initial commit
         smol::fs::write(repo_dir.join("file.txt"), "content")
@@ -7054,6 +8011,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
         let git = repo.git_binary();
 
         let graph_commits = async || {
@@ -7091,6 +8049,7 @@ mod tests {
         assert!(!graph.contains(&hidden_sha));
 
         git.build_command(&["update-ref", "--no-deref", "HEAD", &hidden_sha.to_string()])
+            .await
             .output()
             .await
             .unwrap();
@@ -7116,6 +8075,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         // New repo doesn't have any commits yet
         assert!(repo.check_for_pushed_commit().await.unwrap().is_empty());
@@ -7146,7 +8106,7 @@ mod tests {
         );
 
         // Switch to a new branch, commit but do not push
-        git_command(&repo_dir, ["switch", "-c", "local-feature"]);
+        git_command(&repo_dir, ["checkout", "-b", "local-feature"]);
         git_command(&repo_dir, ["commit", "--allow-empty", "-m", "Local commit"]);
 
         // New commit has not been pushed
@@ -7196,6 +8156,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         assert_eq!(repo.default_branch(false).await.unwrap(), None);
 
@@ -7274,6 +8235,7 @@ mod tests {
             cx.executor(),
         )
         .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
 
         let git = repo.git_binary();
         git.run(&[
@@ -7302,6 +8264,1256 @@ mod tests {
         assert_eq!(
             remote_urls.get("upstream").unwrap(),
             "/Users/user/My Projects/upstream.git"
+        );
+    }
+
+    fn version(major: u32, minor: u32, patch: u32) -> Option<GitVersion> {
+        Some(GitVersion::new(major, minor, patch))
+    }
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn test_git_feature_requirements() {
+        assert!(GitFeature::StashStaged.is_supported_by(None));
+        assert!(GitFeature::StashStaged.is_supported_by(version(2, 35, 0)));
+        assert!(!GitFeature::StashStaged.is_supported_by(version(2, 34, 9)));
+        assert!(GitFeature::UnixDateFormat.is_supported_by(version(2, 9, 4)));
+        assert!(!GitFeature::UnixDateFormat.is_supported_by(version(2, 9, 3)));
+
+        let error = GitFeature::WorktreeRemove
+            .require(version(2, 7, 4), "ワークツリーの削除")
+            .expect_err("git 2.7 has no `git worktree remove`");
+        assert_eq!(
+            error.to_string(),
+            "ワークツリーの削除には git 2.17.0 以上が必要です (いまの git は 2.7.4)。"
+        );
+        GitFeature::WorktreeRemove
+            .require(version(2, 17, 0), "ワークツリーの削除")
+            .unwrap();
+        GitFeature::WorktreeRemove
+            .require(None, "ワークツリーの削除")
+            .unwrap();
+    }
+
+    #[test]
+    fn test_git_global_args_follow_git_version() {
+        assert!(!git_global_args(version(2, 14, 9), true).contains(&"--no-optional-locks"));
+        for git_version in [version(2, 15, 0), version(2, 45, 1), None] {
+            assert!(
+                git_global_args(git_version, true).contains(&"--no-optional-locks"),
+                "{git_version:?} should get --no-optional-locks"
+            );
+        }
+        assert_eq!(
+            git_global_args(None, true),
+            [
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "log.showSignature=false",
+                "--no-optional-locks",
+                "--no-pager",
+            ]
+        );
+        assert_eq!(
+            git_global_args(None, false),
+            [
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "log.showSignature=false",
+                "--no-optional-locks",
+                "--no-pager",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.sshCommand=ssh",
+                "-c",
+                "credential.helper=",
+                "-c",
+                "protocol.ext.allow=never",
+                "-c",
+                "diff.external=",
+            ]
+        );
+        assert_eq!(
+            git_global_args(version(2, 1, 1), false),
+            git_global_args(None, false)
+                .into_iter()
+                .filter(|argument| *argument != "--no-optional-locks")
+                .collect::<Vec<_>>()
+        );
+        // Git before 2.1.1 fails commands over an empty `-c` value.
+        assert_eq!(
+            git_global_args(version(1, 9, 1), false),
+            [
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "log.showSignature=false",
+                "--no-pager",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.sshCommand=ssh",
+                "-c",
+                "protocol.ext.allow=never",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_build_command_omits_options_the_git_version_lacks(cx: &mut TestAppContext) {
+        let git = pretend_git_binary(
+            "git-1.8.3-for-build-command",
+            GitVersion::new(1, 8, 3),
+            true,
+            cx,
+        );
+        let command = git.build_command(&["status"]).await;
+        assert_eq!(
+            command
+                .get_args()
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            [
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "log.showSignature=false",
+                "--no-pager",
+                "status",
+            ]
+        );
+    }
+
+    async fn command_arguments(git: &GitBinary, args: &[&str]) -> Vec<String> {
+        git.build_command(args)
+            .await
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[gpui::test]
+    async fn test_build_command_keeps_git_2_7_worktree_from_crashing(cx: &mut TestAppContext) {
+        let no_pager = "--no-pager".to_string();
+        let git = pretend_git_binary("git-2.7.4-for-worktree", GitVersion::new(2, 7, 4), true, cx);
+        assert!(
+            !command_arguments(&git, &["worktree", "list", "--porcelain"])
+                .await
+                .contains(&no_pager)
+        );
+        assert!(
+            command_arguments(&git, &["status"])
+                .await
+                .contains(&no_pager)
+        );
+
+        let git = pretend_git_binary(
+            "git-2.11.0-for-worktree",
+            GitVersion::new(2, 11, 0),
+            true,
+            cx,
+        );
+        assert!(
+            command_arguments(&git, &["worktree", "list", "--porcelain"])
+                .await
+                .contains(&no_pager)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_untrusted_operations_wait_for_trust_when_git_cannot_protect_them(
+        cx: &mut TestAppContext,
+    ) {
+        let git = pretend_git_binary("git-2.8.6-for-trust", GitVersion::new(2, 8, 6), false, cx);
+        let error = git
+            .ensure_hooks_are_disabled_if_untrusted("コミット")
+            .await
+            .expect_err("git 2.8 ignores core.hooksPath");
+        assert_eq!(
+            error.to_string(),
+            "このプロジェクトは信頼されていないため、古い git (2.9.0 未満。いまの git は 2.8.6) ではフックを止められず、コミットを実行できません。プロジェクトを信頼すると実行できます。"
+        );
+        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+            .await
+            .expect_err("git 2.8 ignores protocol.ext.allow");
+
+        let git = pretend_git_binary("git-2.8.6-for-trust", GitVersion::new(2, 8, 6), true, cx);
+        git.ensure_hooks_are_disabled_if_untrusted("コミット")
+            .await
+            .unwrap();
+        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+            .await
+            .unwrap();
+
+        let git = pretend_git_binary("git-2.10.0-for-trust", GitVersion::new(2, 10, 0), false, cx);
+        git.ensure_hooks_are_disabled_if_untrusted("コミット")
+            .await
+            .unwrap();
+        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+            .await
+            .expect_err("git 2.10 ignores protocol.ext.allow");
+
+        let git = pretend_git_binary("git-2.12.0-for-trust", GitVersion::new(2, 12, 0), false, cx);
+        git.ensure_hooks_are_disabled_if_untrusted("コミット")
+            .await
+            .unwrap();
+        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn test_commit_args_follow_git_version() {
+        assert_eq!(suppress_diff_argument(version(1, 8, 3)), "-s");
+        assert_eq!(suppress_diff_argument(version(1, 8, 4)), "--no-patch");
+        assert_eq!(suppress_diff_argument(None), "--no-patch");
+
+        assert_eq!(cat_file_blob_batch_argument(version(1, 8, 3)), "--batch");
+        assert_eq!(cat_file_blob_batch_argument(None), "--batch=%(objectsize)");
+
+        let show = [
+            "show",
+            "--format=",
+            "-z",
+            "--no-renames",
+            "--raw",
+            "--no-abbrev",
+            "--first-parent",
+        ];
+        assert_eq!(commit_diff_args(None), show);
+        assert_eq!(commit_diff_args(version(2, 2, 0)), show);
+        assert_eq!(
+            commit_diff_args(version(2, 1, 4)),
+            [
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "-z",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-m",
+                "--first-parent",
+            ]
+        );
+
+        assert_eq!(
+            log_order_argument(LogOrder::AuthorDateOrder, version(1, 8, 3)),
+            "--date-order"
+        );
+        assert_eq!(
+            log_order_argument(LogOrder::AuthorDateOrder, version(1, 8, 4)),
+            "--author-date-order"
+        );
+        assert_eq!(
+            log_order_argument(LogOrder::TopoOrder, version(1, 7, 9)),
+            "--topo-order"
+        );
+    }
+
+    #[test]
+    fn test_diff_tree_args() {
+        let args = |request: DiffTreeType, merge_base: Option<&str>| {
+            diff_tree_args(&request, merge_base)
+                .into_iter()
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        let merge_base = || DiffTreeType::MergeBase {
+            base: "main".into(),
+            head: "feature".into(),
+        };
+        let merge_base_with_worktree = || DiffTreeType::MergeBaseWithWorktree {
+            base: "main".into(),
+        };
+
+        assert_eq!(
+            args(merge_base(), None),
+            [
+                "diff-tree",
+                "-r",
+                "-z",
+                "--abbrev=64",
+                "--no-renames",
+                "--merge-base",
+                "main",
+                "feature"
+            ]
+        );
+        assert_eq!(
+            args(merge_base(), Some("abc123")),
+            [
+                "diff-tree",
+                "-r",
+                "-z",
+                "--abbrev=64",
+                "--no-renames",
+                "abc123",
+                "feature"
+            ]
+        );
+        assert_eq!(
+            args(merge_base_with_worktree(), None),
+            [
+                "diff",
+                "--raw",
+                "-z",
+                "--abbrev=64",
+                "--no-renames",
+                "--merge-base",
+                "main"
+            ]
+        );
+        assert_eq!(
+            args(merge_base_with_worktree(), Some("abc123")),
+            [
+                "diff",
+                "--raw",
+                "-z",
+                "--abbrev=64",
+                "--no-renames",
+                "abc123"
+            ]
+        );
+        assert_eq!(
+            args(
+                DiffTreeType::Since {
+                    base: "a".into(),
+                    head: "b".into(),
+                },
+                None
+            ),
+            [
+                "diff-tree",
+                "-r",
+                "-z",
+                "--abbrev=64",
+                "--no-renames",
+                "a",
+                "b"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_branch_list_args_follow_git_version() {
+        let modern_fields = "%(HEAD)%00%(objectname)%00%(parent)%00%(refname)%00%(upstream)%00%(upstream:track)%00%(committerdate:unix)%00%(authorname)%00%(contents:subject)";
+        let modern = strings(&[
+            "for-each-ref",
+            "refs/heads/**/*",
+            "refs/remotes/**/*",
+            "--format",
+            modern_fields,
+        ]);
+        assert_eq!(branch_list_args(None), modern);
+        assert_eq!(branch_list_args(version(2, 9, 4)), modern);
+        assert_eq!(
+            branch_list_args(version(2, 7, 4)),
+            strings(&[
+                "for-each-ref",
+                "refs/heads/**/*",
+                "refs/remotes/**/*",
+                "--format",
+                &modern_fields.replace("committerdate:unix", "committerdate:raw"),
+            ])
+        );
+        assert_eq!(
+            branch_list_args(version(1, 8, 3)),
+            strings(&[
+                "for-each-ref",
+                "refs/heads/",
+                "refs/remotes/",
+                "--format",
+                "%00%(objectname)%00%(parent)%00%(refname)%00%(upstream)%00%00%(committerdate:raw)%00%(authorname)%00%(contents:subject)",
+            ])
+        );
+    }
+
+    #[test]
+    fn test_branches_parsing_of_older_git_output() {
+        // Verbatim row of git 1.9.1, whose `%(committerdate:raw)` carries a time zone.
+        #[allow(clippy::octal_escapes)]
+        let input = "*\0060964da10574cd9bf06463a53bf6e0769c5c45e\0895951d681e5561478c0acdd6905e8aacdfd2249\0refs/heads/main\0\0\01789181244 +0000\0alice\0third\n";
+        assert_eq!(
+            parse_branch_input(input, version(1, 9, 1)).unwrap(),
+            vec![Branch {
+                is_head: true,
+                ref_name: "refs/heads/main".into(),
+                upstream: None,
+                most_recent_commit: Some(CommitSummary {
+                    sha: "060964da10574cd9bf06463a53bf6e0769c5c45e".into(),
+                    subject: "third".into(),
+                    commit_timestamp: 1789181244,
+                    author_name: "alice".into(),
+                    has_parent: true,
+                })
+            }]
+        );
+
+        // Git before 1.9 gets empty `%(HEAD)` and `%(upstream:track)` fields.
+        #[allow(clippy::octal_escapes)]
+        let input = "\0060964da10574cd9bf06463a53bf6e0769c5c45e\0\0refs/heads/main\0refs/remotes/origin/main\0\01789181244 +0900\0alice\0first\n";
+        assert_eq!(
+            parse_branch_input(input, version(1, 8, 3)).unwrap(),
+            vec![Branch {
+                is_head: false,
+                ref_name: "refs/heads/main".into(),
+                upstream: Some(Upstream {
+                    ref_name: "refs/remotes/origin/main".into(),
+                    tracking: UpstreamTracking::Tracked(UpstreamTrackingStatus {
+                        ahead: 0,
+                        behind: 0
+                    }),
+                }),
+                most_recent_commit: Some(CommitSummary {
+                    sha: "060964da10574cd9bf06463a53bf6e0769c5c45e".into(),
+                    subject: "first".into(),
+                    commit_timestamp: 1789181244,
+                    author_name: "alice".into(),
+                    has_parent: false,
+                })
+            }]
+        );
+    }
+
+    #[test]
+    fn test_branches_parsing_of_unrecognized_fields() {
+        #[allow(clippy::octal_escapes)]
+        let input = " \0060964da10574cd9bf06463a53bf6e0769c5c45e\0\0refs/heads/odd\0refs/remotes/origin/odd\0[ahead many]\0yesterday\0alice\0odd\n";
+        // As before, such a row is skipped on git whose output for it is reliable.
+        assert_eq!(parse_branch_input(input, None).unwrap(), Vec::new());
+        assert_eq!(
+            parse_branch_input(input, version(2, 13, 0)).unwrap(),
+            Vec::new()
+        );
+        assert_eq!(
+            parse_branch_input(input, version(1, 9, 1)).unwrap().len(),
+            1
+        );
+        let branches = parse_branch_input(input, version(1, 8, 3)).unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(
+            branches[0].tracking_status(),
+            Some(UpstreamTrackingStatus {
+                ahead: 0,
+                behind: 0
+            })
+        );
+        assert_eq!(
+            branches[0]
+                .most_recent_commit
+                .as_ref()
+                .map(|commit| commit.commit_timestamp),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn test_mark_missing_upstreams_gone() {
+        let branch = |ref_name: &str, upstream: Option<&str>| Branch {
+            is_head: false,
+            ref_name: ref_name.to_string().into(),
+            upstream: upstream.map(|upstream| Upstream {
+                ref_name: upstream.to_string().into(),
+                tracking: UpstreamTracking::Tracked(UpstreamTrackingStatus {
+                    ahead: 0,
+                    behind: 110,
+                }),
+            }),
+            most_recent_commit: None,
+        };
+        let mut branches = vec![
+            branch("refs/heads/main", Some("refs/remotes/origin/main")),
+            branch("refs/heads/pruned", Some("refs/remotes/origin/pruned")),
+            branch("refs/heads/local", Some("refs/heads/main")),
+            branch("refs/heads/custom", Some("refs/custom/elsewhere")),
+            branch("refs/remotes/origin/main", None),
+        ];
+        mark_missing_upstreams_gone(&mut branches);
+        let tracking = branches
+            .iter()
+            .map(|branch| {
+                branch
+                    .upstream
+                    .as_ref()
+                    .map(|upstream| upstream.tracking.is_gone())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            tracking,
+            [Some(false), Some(true), Some(false), Some(false), None]
+        );
+    }
+
+    #[test]
+    fn test_parse_left_right_counts() {
+        assert_eq!(parse_left_right_counts("2\t5\n"), Some((2, 5)));
+        assert_eq!(parse_left_right_counts("2\n"), None);
+        assert_eq!(parse_left_right_counts("two\t5\n"), None);
+    }
+
+    #[test]
+    fn test_legacy_stash_command() {
+        let command = |requested: &[&str],
+                       status: &GitStatus,
+                       message: Option<&str>,
+                       git_version: Option<GitVersion>| {
+            let requested = requested
+                .iter()
+                .map(|path| RepoPath::new(path).unwrap())
+                .collect::<Vec<_>>();
+            legacy_stash_command(&requested, status, message, git_version)
+                .map(|command| (command.args, command.with_requested_paths))
+        };
+        let status: GitStatus = " M tracked\0A  added\0?? untracked\0".parse().unwrap();
+
+        // Every change, as `git::StashAll` asks.
+        assert_eq!(
+            command(
+                &["tracked", "added", "untracked"],
+                &status,
+                Some("-wip"),
+                version(2, 14, 0)
+            )
+            .unwrap(),
+            (
+                strings(&[
+                    "stash",
+                    "save",
+                    "--quiet",
+                    "--include-untracked",
+                    "--",
+                    "-wip"
+                ]),
+                false
+            )
+        );
+        let error = command(
+            &["tracked", "added", "untracked"],
+            &status,
+            None,
+            version(2, 13, 4),
+        )
+        .expect_err("git before 2.14 deletes the ignored files in untracked directories");
+        assert_eq!(
+            error.to_string(),
+            "追跡されていないファイルを含むスタッシュには git 2.14.0 以上が必要です (いまの git は 2.13.4)。"
+        );
+        // A change the panel hasn't seen yet doesn't make the request a partial one.
+        assert_eq!(
+            command(
+                &["tracked", "untracked"],
+                &status,
+                Some("wip"),
+                version(2, 17, 1)
+            )
+            .unwrap(),
+            (
+                strings(&["stash", "save", "--quiet", "--include-untracked", "wip"]),
+                false
+            )
+        );
+
+        // Every change but the untracked and staged new files, as `git::StashTracked` asks.
+        assert_eq!(
+            command(&["tracked"], &status, Some("wip"), version(2, 13, 0)).unwrap(),
+            (
+                strings(&["stash", "push", "--quiet", "--message", "wip", "--"]),
+                true
+            )
+        );
+        let error = command(&["tracked"], &status, None, version(1, 8, 3))
+            .expect_err("`git stash save` would take the staged new file too");
+        assert_eq!(
+            error.to_string(),
+            "新しくステージしたファイルを残したままのスタッシュには git 2.13.0 以上が必要です (いまの git は 1.8.3)。"
+        );
+        assert_eq!(
+            command(&["tracked", "added"], &status, None, version(1, 8, 3)).unwrap(),
+            (strings(&["stash", "save", "--quiet"]), false)
+        );
+
+        // Without untracked files to stash there's no `--include-untracked`, whose cleanup
+        // deletes ignored files before git 2.14.
+        let status: GitStatus = " M tracked\0".parse().unwrap();
+        assert_eq!(
+            command(&["tracked"], &status, None, version(1, 8, 3)).unwrap(),
+            (strings(&["stash", "save", "--quiet"]), false)
+        );
+        assert_eq!(
+            command(&["tracked"], &status, None, version(2, 13, 0)).unwrap(),
+            (strings(&["stash", "push", "--quiet", "--"]), true)
+        );
+    }
+
+    #[test]
+    fn test_requests_untracked_files() {
+        let paths = |paths: &[&str]| {
+            paths
+                .iter()
+                .map(|path| RepoPath::new(path).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let status: GitStatus = " M tracked\0?? untracked\0".parse().unwrap();
+        assert!(requests_untracked_files(
+            &paths(&["tracked", "untracked"]),
+            &status
+        ));
+        assert!(!requests_untracked_files(&paths(&["tracked"]), &status));
+        assert!(!requests_untracked_files(&paths(&["stale"]), &status));
+    }
+
+    #[test]
+    fn test_parse_remote_branches_containing() {
+        assert_eq!(
+            parse_remote_branches_containing(
+                "  origin/HEAD -> origin/main\n  origin/feature/nested\n  origin/main\n"
+            ),
+            vec![
+                SharedString::from("origin/feature/nested"),
+                SharedString::from("origin/main")
+            ]
+        );
+        assert!(parse_remote_branches_containing("").is_empty());
+    }
+
+    #[test]
+    fn test_parse_initial_graph_output_with_wrapped_ref_names() {
+        let sha = "1111111111111111111111111111111111111111";
+        let parent = "2222222222222222222222222222222222222222";
+        // `%d` of git before 2.2.
+        let decorated = format!("{sha}\0{parent}\0 (HEAD, main, tag: v1)");
+        let undecorated = format!("{parent}\0\0");
+        let commits = parse_initial_graph_output(
+            [decorated.as_str(), undecorated.as_str()].into_iter(),
+            true,
+        );
+        assert_eq!(
+            commits[0].ref_names,
+            [
+                SharedString::from("HEAD"),
+                SharedString::from("main"),
+                SharedString::from("tag: v1")
+            ]
+        );
+        assert_eq!(commits[0].tag_names(), ["v1"]);
+        assert!(commits[1].ref_names.is_empty());
+
+        let unwrapped = format!("{sha}\0{parent}\0HEAD -> main, tag: v1");
+        let commits = parse_initial_graph_output([unwrapped.as_str()].into_iter(), false);
+        assert_eq!(
+            commits[0].ref_names,
+            [
+                SharedString::from("HEAD -> main"),
+                SharedString::from("tag: v1")
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_failing_version_probe_is_not_rerun_before_every_command(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        let directory = tempfile::tempdir().unwrap();
+        let git_binary_path = directory.path().join("missing-git");
+        let git = GitBinary::new(
+            git_binary_path.clone(),
+            directory.path().to_path_buf(),
+            directory.path().join(".git"),
+            cx.executor(),
+            true,
+        );
+        let last_failure = || {
+            GIT_BINARY_VERSIONS
+                .lock()
+                .get(&git_binary_path)
+                .and_then(|probe| probe.try_lock().and_then(|probe| probe.last_failure))
+        };
+
+        assert_eq!(git.version().await, None);
+        let first_failure = last_failure().expect("the failed probe should be remembered");
+        assert_eq!(git.version().await, None);
+        assert_eq!(
+            last_failure(),
+            Some(first_failure),
+            "the probe shouldn't run again right away"
+        );
+    }
+
+    fn installed_git_absolute_path() -> Option<PathBuf> {
+        let file_name = if cfg!(windows) { "git.exe" } else { "git" };
+        std::env::split_paths(&std::env::var_os("PATH")?)
+            .map(|directory| directory.join(file_name))
+            .find(|path| path.is_absolute() && path.is_file())
+    }
+
+    fn open_repository_with(
+        dot_git_parent: &Path,
+        git_binary_path: PathBuf,
+        version: GitVersion,
+        cx: &mut TestAppContext,
+    ) -> RealGitRepository {
+        let repository = RealGitRepository::new(
+            &dot_git_parent.join(".git"),
+            None,
+            Some(git_binary_path),
+            cx.executor(),
+        )
+        .expect("failed to open repository");
+        if !GitFeature::HooksPath.is_supported_by(Some(version)) {
+            repository.set_trusted(true);
+        }
+        repository
+    }
+
+    /// Runs the fallbacks for older git on the installed git by making it look older under its
+    /// absolute path, which gets its own entry in the version cache. None of the versions is
+    /// below 1.8, whose `git branch --set-upstream` modern git no longer has.
+    #[gpui::test]
+    async fn test_old_git_fallbacks_on_installed_git(cx: &mut TestAppContext) {
+        let Some(git_binary_path) = installed_git_absolute_path() else {
+            return;
+        };
+        let installed_version = installed_git_version();
+        for version in [
+            GitVersion::new(1, 8, 3),
+            GitVersion::new(2, 7, 4),
+            GitVersion::new(2, 14, 0),
+        ] {
+            if version > installed_version {
+                continue;
+            }
+            pretend_git_version(git_binary_path.clone(), version);
+            check_branches(git_binary_path.clone(), version, cx).await;
+            check_worktrees(git_binary_path.clone(), version, cx).await;
+            check_repository_operations(git_binary_path.clone(), version, cx).await;
+            check_stash_keeps_ignored_files(git_binary_path.clone(), version, cx).await;
+        }
+    }
+
+    #[gpui::test]
+    async fn test_branches_on_installed_git(cx: &mut TestAppContext) {
+        check_branches(PathBuf::from("git"), installed_git_version(), cx).await;
+    }
+
+    async fn check_branches(
+        git_binary_path: PathBuf,
+        version: GitVersion,
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let (_remote_directory, clone_directory) =
+            clone_remote_repository_with_main_and_feature(temp_dir.path());
+        git_command(
+            &clone_directory,
+            ["branch", "--track", "feature", "origin/feature"],
+        );
+        git_command(&clone_directory, ["branch", "nested/topic"]);
+        fs::write(clone_directory.join("file.txt"), "ahead\n").unwrap();
+        git_command(&clone_directory, ["commit", "-am", "ahead of origin"]);
+        // What `git fetch --prune` leaves behind once `feature` is deleted on the remote.
+        git_command(
+            &clone_directory,
+            ["update-ref", "-d", "refs/remotes/origin/feature"],
+        );
+
+        let repository = open_repository_with(&clone_directory, git_binary_path, version, cx);
+        let scan = repository.branches().await.unwrap();
+        assert_eq!(scan.error, None);
+        let branch = |ref_name: &str| {
+            scan.branches
+                .iter()
+                .find(|branch| branch.ref_name.as_ref() == ref_name)
+                .unwrap_or_else(|| panic!("{ref_name} is missing from {:?}", scan.branches))
+        };
+
+        let main = branch("refs/heads/main");
+        assert!(main.is_head);
+        assert_eq!(
+            main.upstream
+                .as_ref()
+                .map(|upstream| upstream.ref_name.as_ref()),
+            Some("refs/remotes/origin/main")
+        );
+        assert_eq!(
+            main.tracking_status(),
+            Some(UpstreamTrackingStatus {
+                ahead: 1,
+                behind: 0
+            })
+        );
+        let most_recent_commit = main.most_recent_commit.as_ref().unwrap();
+        assert_eq!(most_recent_commit.subject.as_ref(), "ahead of origin");
+        assert_eq!(most_recent_commit.author_name.as_ref(), "test");
+        assert!(most_recent_commit.commit_timestamp > 0);
+        assert!(most_recent_commit.has_parent);
+
+        let feature = branch("refs/heads/feature");
+        assert!(!feature.is_head);
+        assert_eq!(
+            feature.upstream.as_ref().map(|upstream| upstream.tracking),
+            Some(UpstreamTracking::Gone)
+        );
+        assert!(!branch("refs/heads/nested/topic").is_head);
+        assert!(branch("refs/remotes/origin/main").is_remote());
+        assert_eq!(
+            scan.branches.iter().filter(|branch| branch.is_head).count(),
+            1
+        );
+    }
+
+    #[gpui::test]
+    async fn test_worktrees_on_installed_git(cx: &mut TestAppContext) {
+        check_worktrees(PathBuf::from("git"), installed_git_version(), cx).await;
+    }
+
+    async fn check_worktrees(
+        git_binary_path: PathBuf,
+        version: GitVersion,
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        let repository = open_repository_with(&repo_dir, git_binary_path, version, cx);
+
+        let worktrees = repository.worktrees().await.unwrap();
+        assert_eq!(worktrees.len(), 1, "{worktrees:?}");
+        assert!(worktrees[0].is_main);
+        assert!(
+            worktrees[0].sha.chars().all(|character| character == '0'),
+            "an unborn branch should show the null object ID: {worktrees:?}"
+        );
+        assert_eq!(worktrees[0].branch_name(), Some("main"));
+
+        git_command(&repo_dir, ["commit", "--allow-empty", "-m", "initial"]);
+        let head = git_command_output(&repo_dir, ["rev-parse", "HEAD"]);
+        let worktrees = repository.worktrees().await.unwrap();
+        assert_eq!(worktrees.len(), 1, "{worktrees:?}");
+        assert!(worktrees[0].is_main);
+        assert_same_path(&worktrees[0].path, &repo_dir);
+        assert_eq!(worktrees[0].sha.as_ref(), head);
+        assert_eq!(worktrees[0].branch_name(), Some("main"));
+
+        let installed_version = Some(version);
+        let worktree_path = temp_dir.path().join("linked");
+        let created = repository
+            .create_worktree(
+                CreateWorktreeTarget::Detached { base_sha: None },
+                worktree_path.clone(),
+            )
+            .await;
+        if GitFeature::WorktreeAdd.is_supported_by(installed_version) {
+            created.unwrap();
+            if GitFeature::WorktreeList.is_supported_by(installed_version) {
+                assert_eq!(repository.worktrees().await.unwrap().len(), 2);
+            }
+        } else {
+            let error = created.expect_err("git before 2.5 has no linked worktrees");
+            assert!(
+                error.to_string().contains("git 2.5.0 以上が必要です"),
+                "unexpected error: {error:#}"
+            );
+        }
+
+        let removed = repository.remove_worktree(worktree_path, true).await;
+        if GitFeature::WorktreeRemove.is_supported_by(installed_version) {
+            removed.unwrap();
+        } else {
+            let error = removed.expect_err("git before 2.17 has no `git worktree remove`");
+            assert!(
+                error.to_string().contains("git 2.17.0 以上が必要です"),
+                "unexpected error: {error:#}"
+            );
+        }
+
+        let repaired = repository.repair_worktrees().await;
+        if GitFeature::WorktreeRepair.is_supported_by(installed_version) {
+            repaired.unwrap();
+        } else {
+            let error = repaired.expect_err("git before 2.29 has no `git worktree repair`");
+            assert!(
+                error.to_string().contains("git 2.29.0 以上が必要です"),
+                "unexpected error: {error:#}"
+            );
+        }
+    }
+
+    #[gpui::test]
+    async fn test_repository_operations_on_installed_git(cx: &mut TestAppContext) {
+        check_repository_operations(PathBuf::from("git"), installed_git_version(), cx).await;
+    }
+
+    async fn check_repository_operations(
+        git_binary_path: PathBuf,
+        version: GitVersion,
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let (_remote_directory, clone_directory) =
+            clone_remote_repository_with_main_and_feature(temp_dir.path());
+        let repository = open_repository_with(&clone_directory, git_binary_path, version, cx);
+        let env = Arc::new(test_commit_envs());
+        let head = git_command_output(&clone_directory, ["rev-parse", "HEAD"]);
+        let feature_head = git_command_output(&clone_directory, ["rev-parse", "origin/feature"]);
+
+        let details = repository.show("HEAD".to_string()).await.unwrap();
+        assert_eq!(details.sha.as_ref(), head);
+        assert_eq!(details.message.trim(), "initial");
+        assert_eq!(details.author_email.as_ref(), "test@zed.dev");
+
+        let commit_diff = repository
+            .load_commit(head.clone(), cx.to_async())
+            .await
+            .unwrap();
+        let [file] = commit_diff.files.as_slice() else {
+            panic!("expected the initial commit to add one file");
+        };
+        assert_eq!(file.path.as_unix_str(), "file.txt");
+        assert_eq!(file.old_content, None);
+        assert_eq!(file.new_content.as_deref(), Some(b"main".as_slice()));
+
+        assert_eq!(
+            repository
+                .revparse_batch(vec!["HEAD".to_string(), "refs/heads/missing".to_string()])
+                .await
+                .unwrap(),
+            vec![Some(head.clone()), None]
+        );
+
+        assert_eq!(
+            repository
+                .diff_tree(DiffTreeType::MergeBase {
+                    base: "HEAD".into(),
+                    head: "origin/feature".into(),
+                })
+                .await
+                .unwrap(),
+            TreeDiff {
+                entries: HashMap::from_iter([(
+                    RepoPath::new("feature.txt").unwrap(),
+                    TreeDiffStatus::Added
+                )]),
+            }
+        );
+
+        let (graph_tx, graph_rx) = async_channel::unbounded();
+        repository
+            .initial_graph_data(LogSource::All, LogOrder::AuthorDateOrder, graph_tx)
+            .await
+            .unwrap();
+        let mut graph = Vec::new();
+        while let Ok(chunk) = graph_rx.try_recv() {
+            graph.extend(chunk);
+        }
+        let feature_commit = graph
+            .iter()
+            .find(|commit| commit.sha.to_string() == feature_head)
+            .expect("the graph should include the feature branch");
+        assert!(
+            feature_commit
+                .ref_names
+                .iter()
+                .any(|ref_name| ref_name.as_ref() == "origin/feature"),
+            "unexpected ref names {:?}",
+            feature_commit.ref_names
+        );
+
+        let (search_tx, search_rx) = async_channel::unbounded();
+        repository
+            .search_commits(
+                LogSource::All,
+                SearchCommitArgs {
+                    query: "FEATURE".into(),
+                    case_sensitive: false,
+                },
+                search_tx,
+            )
+            .await
+            .unwrap();
+        let mut found = Vec::new();
+        while let Ok(sha) = search_rx.try_recv() {
+            found.push(sha.to_string());
+        }
+        assert_eq!(found, [feature_head.as_str()]);
+
+        repository
+            .create_branch("topic".to_string(), Some("origin/feature".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            git_command_output(&clone_directory, ["rev-parse", "HEAD"]),
+            feature_head
+        );
+        repository.change_branch("main".to_string()).await.unwrap();
+        repository
+            .rename_branch("topic".to_string(), "renamed".to_string())
+            .await
+            .unwrap();
+        repository
+            .delete_branch(false, "renamed".to_string(), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            repository
+                .branches()
+                .await
+                .unwrap()
+                .branches
+                .iter()
+                .filter(|branch| !branch.is_remote())
+                .map(|branch| branch.ref_name.to_string())
+                .collect::<Vec<_>>(),
+            ["refs/heads/main"]
+        );
+
+        assert_eq!(
+            repository.check_for_pushed_commit().await.unwrap(),
+            [
+                SharedString::from("origin/feature"),
+                SharedString::from("origin/main")
+            ]
+        );
+
+        let blame = repository
+            .blame(
+                RepoPath::new("file.txt").unwrap(),
+                Rope::from("main"),
+                LineEnding::Unix,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            blame
+                .entries
+                .iter()
+                .map(|entry| entry.sha.to_string())
+                .collect::<Vec<_>>(),
+            [head.as_str()]
+        );
+
+        fs::write(clone_directory.join("file.txt"), "changed\n").unwrap();
+        let diff = repository
+            .diff(DiffType::MergeBase {
+                base_ref: "origin/feature".into(),
+            })
+            .await
+            .unwrap();
+        assert!(diff.contains("+changed"), "unexpected diff {diff:?}");
+
+        fs::write(clone_directory.join("untracked.txt"), "new\n").unwrap();
+        let stash_everything = repository
+            .stash_paths(
+                vec![
+                    RepoPath::new("file.txt").unwrap(),
+                    RepoPath::new("untracked.txt").unwrap(),
+                ],
+                Some("everything".to_string()),
+                env.clone(),
+            )
+            .await;
+        if GitFeature::CleanKeepsIgnoredFiles.is_supported_by(Some(version)) {
+            stash_everything.unwrap();
+            assert!(!clone_directory.join("untracked.txt").exists());
+            assert_eq!(
+                fs::read_to_string(clone_directory.join("file.txt")).unwrap(),
+                "main"
+            );
+            let stash = repository.stash_entries().await.unwrap();
+            assert_eq!(stash.entries.len(), 1);
+            assert_eq!(stash.entries[0].message, "everything");
+            repository.stash_pop(None, env.clone()).await.unwrap();
+        } else {
+            let error = stash_everything.expect_err("git before 2.14 would lose ignored files");
+            assert!(
+                error.to_string().contains("git 2.14.0 以上が必要です"),
+                "unexpected error: {error:#}"
+            );
+            assert!(repository.stash_entries().await.unwrap().entries.is_empty());
+        }
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("untracked.txt")).unwrap(),
+            "new\n"
+        );
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("file.txt")).unwrap(),
+            "changed\n"
+        );
+
+        // Every tracked change but no untracked file, as `git::StashTracked` asks.
+        repository
+            .stash_paths(vec![RepoPath::new("file.txt").unwrap()], None, env.clone())
+            .await
+            .unwrap();
+        assert!(clone_directory.join("untracked.txt").exists());
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("file.txt")).unwrap(),
+            "main"
+        );
+        repository.stash_pop(None, env.clone()).await.unwrap();
+
+        // Only some of the tracked changes.
+        fs::write(clone_directory.join("added.txt"), "added\n").unwrap();
+        repository
+            .stage_paths(vec![RepoPath::new("added.txt").unwrap()], env.clone())
+            .await
+            .unwrap();
+        let partial_stash = repository
+            .stash_paths(vec![RepoPath::new("file.txt").unwrap()], None, env.clone())
+            .await;
+        if GitFeature::StashPush.is_supported_by(Some(version)) {
+            partial_stash.unwrap();
+            assert!(clone_directory.join("added.txt").exists());
+            repository.stash_pop(None, env.clone()).await.unwrap();
+        } else {
+            let error = partial_stash.expect_err("git before 2.13 can't stash only some changes");
+            assert!(
+                error.to_string().contains("git 2.13.0 以上が必要です"),
+                "unexpected error: {error:#}"
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("file.txt")).unwrap(),
+            "changed\n"
+        );
+
+        let checkpoint = repository.checkpoint().await.unwrap();
+        fs::write(clone_directory.join("file.txt"), "after checkpoint\n").unwrap();
+        fs::write(
+            clone_directory.join("untracked-later.txt"),
+            "untracked later\n",
+        )
+        .unwrap();
+        fs::write(clone_directory.join("later.txt"), "later\n").unwrap();
+        repository
+            .stage_paths(vec![RepoPath::new("later.txt").unwrap()], env.clone())
+            .await
+            .unwrap();
+        repository.restore_checkpoint(checkpoint).await.unwrap();
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("file.txt")).unwrap(),
+            "changed\n"
+        );
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("untracked.txt")).unwrap(),
+            "new\n"
+        );
+        assert!(
+            !clone_directory.join("later.txt").exists(),
+            "a tracked file missing from the checkpoint should be removed"
+        );
+        assert_eq!(
+            fs::read_to_string(clone_directory.join("untracked-later.txt")).unwrap(),
+            "untracked later\n",
+            "an untracked file created after the checkpoint should survive restoring it"
+        );
+        // Restoring a checkpoint leaves the index alone.
+        assert!(git_command_output(&clone_directory, ["ls-files", "later.txt"]) == "later.txt");
+    }
+
+    #[gpui::test]
+    async fn test_stash_keeps_ignored_files_on_installed_git(cx: &mut TestAppContext) {
+        check_stash_keeps_ignored_files(PathBuf::from("git"), installed_git_version(), cx).await;
+    }
+
+    /// Stashing untracked files runs `git clean -d`, which before git 2.14 also deletes the
+    /// ignored files inside untracked directories, and the stash doesn't keep them.
+    async fn check_stash_keeps_ignored_files(
+        git_binary_path: PathBuf,
+        version: GitVersion,
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        fs::write(repo_dir.join(".gitignore"), "*.log\n").unwrap();
+        fs::write(repo_dir.join("file.txt"), "committed\n").unwrap();
+        git_command(&repo_dir, ["add", ".gitignore", "file.txt"]);
+        git_command(&repo_dir, ["commit", "-m", "initial"]);
+        let repository = open_repository_with(&repo_dir, git_binary_path, version, cx);
+        let env = Arc::new(test_commit_envs());
+
+        fs::write(repo_dir.join("file.txt"), "changed\n").unwrap();
+        fs::create_dir_all(repo_dir.join("build")).unwrap();
+        fs::write(repo_dir.join("build/output.log"), "ignored\n").unwrap();
+        fs::write(repo_dir.join("build/new.txt"), "untracked\n").unwrap();
+        // An untracked directory holding only ignored files doesn't show up in `git status`.
+        fs::create_dir_all(repo_dir.join("cache")).unwrap();
+        fs::write(repo_dir.join("cache/data.log"), "ignored\n").unwrap();
+        let assert_ignored_files_survive = || {
+            assert_eq!(
+                fs::read_to_string(repo_dir.join("build/output.log")).unwrap(),
+                "ignored\n"
+            );
+            assert_eq!(
+                fs::read_to_string(repo_dir.join("cache/data.log")).unwrap(),
+                "ignored\n"
+            );
+        };
+
+        // Every tracked change, as `git::StashTracked` asks.
+        repository
+            .stash_paths(vec![RepoPath::new("file.txt").unwrap()], None, env.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(repo_dir.join("file.txt")).unwrap(),
+            "committed\n"
+        );
+        assert!(repo_dir.join("build/new.txt").exists());
+        assert_ignored_files_survive();
+        repository.stash_pop(None, env.clone()).await.unwrap();
+
+        // Every change, as `git::StashAll` asks.
+        let stash_everything = repository
+            .stash_paths(
+                vec![
+                    RepoPath::new("file.txt").unwrap(),
+                    RepoPath::new("build/new.txt").unwrap(),
+                ],
+                None,
+                env.clone(),
+            )
+            .await;
+        if GitFeature::CleanKeepsIgnoredFiles.is_supported_by(Some(version)) {
+            stash_everything.unwrap();
+            assert!(!repo_dir.join("build/new.txt").exists());
+            assert_ignored_files_survive();
+            repository.stash_pop(None, env.clone()).await.unwrap();
+        } else {
+            let error = stash_everything.expect_err("git before 2.14 would delete ignored files");
+            assert!(
+                error.to_string().contains("git 2.14.0 以上が必要です"),
+                "unexpected error: {error:#}"
+            );
+            assert!(repository.stash_entries().await.unwrap().entries.is_empty());
+            assert_ignored_files_survive();
+        }
+        assert_eq!(
+            fs::read_to_string(repo_dir.join("build/new.txt")).unwrap(),
+            "untracked\n"
+        );
+        assert_eq!(
+            fs::read_to_string(repo_dir.join("file.txt")).unwrap(),
+            "changed\n"
         );
     }
 }

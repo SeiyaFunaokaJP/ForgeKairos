@@ -1224,13 +1224,41 @@ impl Fs for RealFs {
             _ => fallback_branch_name,
         };
 
-        new_command("git")
-            .current_dir(abs_work_directory_path)
-            .args(&["init", "-b"])
-            .arg(branch_name.trim())
-            .output()
-            .await?;
+        async fn run_git_init_step(
+            working_directory: &Path,
+            args: &[&str],
+            step_description: &str,
+        ) -> Result<()> {
+            let output = new_command("git")
+                .current_dir(working_directory)
+                .args(args)
+                .output()
+                .await
+                .with_context(|| format!("{step_description}に失敗しました"))?;
+            anyhow::ensure!(
+                output.status.success(),
+                "{step_description}に失敗しました: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            Ok(())
+        }
 
+        // `git init -b` needs git 2.28, so the initial branch is named with `symbolic-ref`
+        // instead. Like `git init -b`, re-initializing leaves an existing repository's branch alone.
+        let already_initialized = matches!(
+            self.metadata(&abs_work_directory_path.join(".git")).await,
+            Ok(Some(_))
+        );
+        run_git_init_step(abs_work_directory_path, &["init"], "リポジトリの初期化").await?;
+        if !already_initialized {
+            let head = format!("refs/heads/{}", branch_name.trim());
+            run_git_init_step(
+                abs_work_directory_path,
+                &["symbolic-ref", "HEAD", &head],
+                "初期ブランチの設定",
+            )
+            .await?;
+        }
         Ok(())
     }
 

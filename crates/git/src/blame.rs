@@ -86,20 +86,21 @@ async fn run_git_blame(
     path: &RepoPath,
     source: BlameSource<'_>,
 ) -> Result<Vec<BlameEntry>> {
+    let mut args = vec!["blame", "--incremental"];
+    let revision_string;
+    match source {
+        BlameSource::Contents(..) => args.extend(["--contents", "-"]),
+        BlameSource::Revision(revision) => {
+            revision_string = revision.to_string();
+            args.push(&revision_string);
+        }
+    }
+    args.push("--");
+    let mut command = git.build_command(&args).await;
     let mut child = {
         let span = ztracing::debug_span!("spawning git-blame command", path = path.as_unix_str());
         let _enter = span.enter();
-        let mut args = vec!["blame", "--incremental"];
-        let revision_string;
-        match source {
-            BlameSource::Contents(..) => args.extend(["--contents", "-"]),
-            BlameSource::Revision(revision) => {
-                revision_string = revision.to_string();
-                args.push(&revision_string);
-            }
-        }
-        args.push("--");
-        git.build_command(&args)
+        command
             .arg(path.as_unix_str())
             .stdin(if matches!(source, BlameSource::Contents(..)) {
                 Stdio::piped()

@@ -93,6 +93,7 @@ pub(crate) async fn get_tag_names(
             "--sort=-creatordate",
             "--format=%(objectname)%00%(*objectname)%00%(refname:short)",
         ])
+        .await
         .output()
         .await
         .context("starting git for-each-ref process")?;
@@ -136,6 +137,7 @@ async fn get_messages_impl(git: &GitBinary, shas: &[Oid]) -> Result<Vec<String>>
     const MARKER: &str = "<MARKER>";
     let output = git
         .build_command(&["show"])
+        .await
         .arg("-s")
         .arg(format!("--format=%B{}", MARKER))
         .args(shas.iter().map(ToString::to_string))
