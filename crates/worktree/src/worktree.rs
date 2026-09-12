@@ -5933,7 +5933,14 @@ impl BackgroundScanner {
         }
 
         for (path, metadata, removed_descendant_abs_paths) in paths_to_process {
-            let abs_path: Arc<Path> = root_abs_path.join(path.as_std_path()).into();
+            // Joining an empty path appends a separator, and the watcher would
+            // take that spelling of the root for a new directory and watch the
+            // whole tree a second time.
+            let abs_path: Arc<Path> = if path.is_empty() {
+                root_abs_path.as_path().into()
+            } else {
+                root_abs_path.join(path.as_std_path()).into()
+            };
             match metadata {
                 Ok(Some((metadata, canonical_path))) => {
                     let ignore_stack = state
