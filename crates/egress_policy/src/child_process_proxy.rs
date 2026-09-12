@@ -31,9 +31,11 @@ use http_proxy::{
 /// In the IDE that policy is `network_allowlist.json`, and this is held by the
 /// task watching it, so the listener's lifetime is that task's. In
 /// `remote_server` the policy arrives over the wire instead (ADR-F14) and this
-/// is held by the `HeadlessProject` that receives it; the listener binds the
-/// *remote* host's loopback, since that is the only address the child processes
-/// spawned over there can reach.
+/// is held by the process-wide host that every project of that process shares
+/// (ADR-F45) — not by any one project, since closing one project must not take
+/// the endpoint away from the others. The listener binds the *remote* host's
+/// loopback, since that is the only address the child processes spawned over
+/// there can reach.
 pub struct Supervisor {
     /// The user's own HTTP proxy, if they have one. The fork's proxy chains
     /// through it rather than around it, so a machine that only reaches the

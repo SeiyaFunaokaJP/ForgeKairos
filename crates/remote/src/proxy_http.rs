@@ -53,6 +53,11 @@ const FRAME_QUEUE_DEPTH: usize = 2;
 /// only arrives once the IDE has response headers from the origin server.
 const FRAME_STALL_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// How long a relayed request waits for the IDE to take it. The IDE answers
+/// as soon as it has, so this only runs out on a connection that has died
+/// without anyone noticing yet.
+const RELAY_ACCEPT_TIMEOUT: Duration = Duration::from_secs(30);
+
 // -------------------------------------------------------------------------
 // Encoding, shared by both ends.
 // -------------------------------------------------------------------------
@@ -346,24 +351,56 @@ struct GlobalProxyHttpRelay(#[allow(dead_code)] Entity<ProxyHttpRelay>);
 
 impl Global for GlobalProxyHttpRelay {}
 
+/// Picks the connection a relayed request goes out on. Called per request,
+/// because on a host that serves several sessions (ADR-F45) the one to use is
+/// whichever is connected when the request is made.
+pub type ProxyHttpSessionSource = Arc<dyn Fn() -> Option<AnyProtoClient> + Send + Sync>;
+
 impl ProxyHttpRelay {
     /// Wires the relay onto `session` and returns the transport that
     /// `http_client::RemoteProxyHttpClient` sends through.
-    ///
-    /// The entity the response handler is bound to is kept in a global: it has
-    /// no owner otherwise, and the handler must outlive every request.
     pub fn new(session: &AnyProtoClient, cx: &mut App) -> Arc<dyn ProxyHttpTransport> {
+        let (relay, transport) = Self::new_with_session_source(
+            {
+                let session = session.clone();
+                Arc::new(move || Some(session.clone()))
+            },
+            cx,
+        );
+        Self::attach(&relay, session);
+        transport
+    }
+
+    /// Builds a relay whose requests go out on whatever `sessions` picks, for a
+    /// remote host that serves several IDE sessions from one process
+    /// (ADR-F45). Each of those sessions has to be [`attach`]ed as well, so
+    /// that the IDE's response frames reach the relay whichever connection
+    /// they come back on.
+    ///
+    /// The entity the response handlers are bound to is kept in a global: it
+    /// has no owner otherwise, and the handlers must outlive every request.
+    ///
+    /// [`attach`]: Self::attach
+    pub fn new_with_session_source(
+        sessions: ProxyHttpSessionSource,
+        cx: &mut App,
+    ) -> (Entity<Self>, Arc<dyn ProxyHttpTransport>) {
         let state = Arc::new(RelayState::default());
         let relay = cx.new(|_| ProxyHttpRelay {
             state: state.clone(),
         });
-        session.add_request_handler(relay.downgrade(), Self::handle_proxy_http_response);
-        cx.set_global(GlobalProxyHttpRelay(relay));
-        Arc::new(ProxyHttpRelayTransport {
-            session: session.clone(),
+        cx.set_global(GlobalProxyHttpRelay(relay.clone()));
+        let transport = Arc::new(ProxyHttpRelayTransport {
+            sessions,
             state,
             executor: cx.background_executor().clone(),
-        })
+        });
+        (relay, transport)
+    }
+
+    /// Lets `session` deliver the IDE's response frames to `relay`.
+    pub fn attach(relay: &Entity<Self>, session: &AnyProtoClient) {
+        session.add_request_handler(relay.downgrade(), Self::handle_proxy_http_response);
     }
 
     async fn handle_proxy_http_response(
@@ -420,13 +457,21 @@ impl ProxyHttpRelay {
 }
 
 struct ProxyHttpRelayTransport {
-    session: AnyProtoClient,
+    sessions: ProxyHttpSessionSource,
     state: Arc<RelayState>,
     executor: BackgroundExecutor,
 }
 
 impl ProxyHttpTransport for ProxyHttpRelayTransport {
     fn send(&self, request: ProxyHttpRelayRequest) -> BoxFuture<'static, Result<ProxyHttpFrames>> {
+        let Some(session) = (self.sessions)() else {
+            let url = request.url;
+            return futures::future::ready(Err(ProxyHttpRelayError::Network {
+                message: format!("no IDE is connected to this host to relay {url} through"),
+            }
+            .into_anyhow()))
+            .boxed();
+        };
         let request_id = self.state.next_request_id.fetch_add(1, Ordering::Relaxed);
         // Registered before the request goes out: the IDE may answer with a
         // frame before this function's caller ever polls the future.
@@ -438,7 +483,7 @@ impl ProxyHttpTransport for ProxyHttpRelayTransport {
         };
 
         let url = request.url.clone();
-        let accepted = self.session.request(proto::ProxyHttpRequest {
+        let accepted = session.request(proto::ProxyHttpRequest {
             request_id,
             method: request.method,
             url: request.url,
@@ -455,9 +500,26 @@ impl ProxyHttpTransport for ProxyHttpRelayTransport {
             // One round trip. The IDE answers as soon as it has taken the
             // request, so a peer with no handler for this — an older client, a
             // test double — fails here instead of leaving the caller waiting.
-            accepted
-                .await
-                .with_context(|| format!("the connected IDE would not relay {url}"))?;
+            match futures::future::select(
+                Box::pin(accepted),
+                executor.timer(RELAY_ACCEPT_TIMEOUT),
+            )
+            .await
+            {
+                futures::future::Either::Left((accepted, _)) => {
+                    accepted
+                        .with_context(|| format!("the connected IDE would not relay {url}"))?;
+                }
+                futures::future::Either::Right(_) => {
+                    return Err(ProxyHttpRelayError::Network {
+                        message: format!(
+                            "the connected IDE did not take the request for {url} within {} seconds",
+                            RELAY_ACCEPT_TIMEOUT.as_secs()
+                        ),
+                    }
+                    .into_anyhow());
+                }
+            }
 
             let (outgoing_tx, outgoing_rx) = mpsc::channel(FRAME_QUEUE_DEPTH);
             executor
@@ -703,6 +765,123 @@ mod tests {
                 "objects.githubusercontent.com".to_string(),
             ]),
         );
+    }
+
+    /// ADR-F45: a remote host serving several IDE sessions sends each request on
+    /// whichever session is picked when it is made, and the answer has to find
+    /// its way back even though the relay is shared.
+    #[gpui::test]
+    async fn a_shared_relay_sends_on_the_session_it_is_given(cx: &mut TestAppContext) {
+        let (_first_to_server, first_to_server_rx) = mpsc::unbounded::<Envelope>();
+        let (first_from_server_tx, mut first_from_server) = mpsc::unbounded::<Envelope>();
+        let (second_to_server, second_to_server_rx) = mpsc::unbounded::<Envelope>();
+        let (second_from_server_tx, mut second_from_server) = mpsc::unbounded::<Envelope>();
+        let first_session = cx.update(|cx| {
+            RemoteClient::proto_client_from_channels(
+                first_to_server_rx,
+                first_from_server_tx,
+                cx,
+                "test-server-first",
+                false,
+            )
+        });
+        let second_session = cx.update(|cx| {
+            RemoteClient::proto_client_from_channels(
+                second_to_server_rx,
+                second_from_server_tx,
+                cx,
+                "test-server-second",
+                false,
+            )
+        });
+
+        let chosen = Arc::new(Mutex::new(Some(second_session.clone())));
+        let (relay, transport) = cx.update(|cx| {
+            ProxyHttpRelay::new_with_session_source(
+                {
+                    let chosen = chosen.clone();
+                    Arc::new(move || chosen.lock().clone())
+                },
+                cx,
+            )
+        });
+        ProxyHttpRelay::attach(&relay, &first_session);
+        ProxyHttpRelay::attach(&relay, &second_session);
+        let http_client = RemoteProxyHttpClient::new(transport, None);
+
+        let request = Request::builder()
+            .uri("https://registry.npmjs.org/pyright")
+            .body(AsyncBody::empty())
+            .expect("the request should build");
+        let response = http_client.send(request);
+        let served = answer_one_request(&mut second_from_server, &second_to_server, |request_id| {
+            vec![proto::ProxyHttpResponse {
+                request_id,
+                status: 200,
+                chunk: b"{}".to_vec(),
+                is_last: true,
+                ..Default::default()
+            }]
+        });
+        let (response, served) = futures::future::join(response, served).await;
+        assert_eq!(served.url, "https://registry.npmjs.org/pyright");
+        let mut response = response.expect("the relayed request should succeed");
+        let mut body = Vec::new();
+        response
+            .body_mut()
+            .read_to_end(&mut body)
+            .await
+            .expect("the body should read to the end");
+        assert_eq!(body, b"{}");
+
+        // The first session only ever announced itself; the request did not go
+        // out on it.
+        cx.run_until_parked();
+        while let Some(Some(envelope)) = first_from_server.next().now_or_never() {
+            assert!(
+                proto::ProxyHttpRequest::from_envelope(envelope).is_none(),
+                "the request must go out on the session the source picked"
+            );
+        }
+
+        *chosen.lock() = None;
+        let request = Request::builder()
+            .uri("https://registry.npmjs.org/pyright")
+            .body(AsyncBody::empty())
+            .expect("the request should build");
+        assert!(
+            http_client.send(request).await.is_err(),
+            "with no IDE connected there is nothing to relay through"
+        );
+    }
+
+    /// ADR-F45: a session whose connection died quietly would otherwise hold a
+    /// download that picked it forever.
+    #[gpui::test]
+    async fn a_request_nobody_takes_fails_instead_of_hanging(cx: &mut TestAppContext) {
+        let (_to_server, to_server_rx) = mpsc::unbounded::<Envelope>();
+        let (from_server_tx, _from_server) = mpsc::unbounded::<Envelope>();
+        let session = cx.update(|cx| {
+            RemoteClient::proto_client_from_channels(
+                to_server_rx,
+                from_server_tx,
+                cx,
+                "test-server",
+                false,
+            )
+        });
+        let transport = cx.update(|cx| ProxyHttpRelay::new(&session, cx));
+        let http_client = RemoteProxyHttpClient::new(transport, None);
+
+        let request = Request::builder()
+            .uri("https://registry.npmjs.org/pyright")
+            .body(AsyncBody::empty())
+            .expect("the request should build");
+        let response = cx.executor().spawn(http_client.send(request));
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(RELAY_ACCEPT_TIMEOUT + Duration::from_secs(1));
+        assert!(response.await.is_err());
     }
 
     #[test]

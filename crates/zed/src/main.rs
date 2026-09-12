@@ -628,6 +628,19 @@ fn main() {
             session.id().to_owned(),
             cx,
         );
+        // ADR-F45: picks this installation's daemon on remote hosts. Only a
+        // hash of the id goes to them, and nowhere else. An installation with
+        // no id of its own would share daemons with any other in the same spot.
+        let remote_client_instance_id = match &installation_id {
+            Some(installation_id) => installation_id.to_string(),
+            None => {
+                log::warn!(
+                    "no installation id could be read or stored; remote hosts get a new one for this run"
+                );
+                Uuid::new_v4().to_string()
+            }
+        };
+        remote::set_client_instance_id(&remote_client_instance_id, cx);
         cx.subscribe(&user_store, {
             let telemetry = telemetry.clone();
             move |_, evt: &client::user::Event, cx| match evt {

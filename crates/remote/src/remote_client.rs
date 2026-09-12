@@ -37,6 +37,7 @@ use rpc::{
     proto::{self, Envelope, EnvelopedMessage, PeerId, RequestMessage, build_typed_envelope},
 };
 use semver::Version;
+use sha2::{Digest as _, Sha256};
 use std::{
     collections::VecDeque,
     fmt,
@@ -423,7 +424,7 @@ pub enum RemoteClientEvent {
 
 impl EventEmitter<RemoteClientEvent> for RemoteClient {}
 
-/// Identifies the socket on the remote server so that reconnects
+/// Identifies the session on the remote server so that reconnects
 /// can re-join the same project.
 pub enum ConnectionIdentifier {
     Setup(u64),
@@ -432,27 +433,50 @@ pub enum ConnectionIdentifier {
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Tells this installation's sessions apart from another machine's on a
+/// remote host (ADR-F45): the remote server runs one daemon per client, so two
+/// machines whose workspaces happen to share a database id no longer take each
+/// other's session over.
+struct ClientInstanceId(Arc<str>);
+
+impl Global for ClientInstanceId {}
+
+/// Registers the id that picks this installation's daemon on remote hosts.
+///
+/// Hashed rather than used as is: it is visible in the remote host's process
+/// list, and there is no reason for the installation id itself to be.
+pub fn set_client_instance_id(installation_id: &str, cx: &mut App) {
+    let digest = Sha256::digest(format!("zed-remote-client-instance:{installation_id}"));
+    cx.set_global(ClientInstanceId(hex::encode(&digest[..4]).into()));
+}
+
 impl ConnectionIdentifier {
     pub fn setup() -> Self {
         Self::Setup(NEXT_ID.fetch_add(1, SeqCst))
     }
 
-    // This string gets used in a socket name, and so must be relatively short.
-    // The total length of:
-    //   /home/{username}/.local/share/zed/server_state/{name}/stdout.sock
-    // Must be less than about 100 characters
-    //   https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
-    // So our strings should be at most 20 characters or so.
+    // Kept short because it shows up in the remote host's process list; it no
+    // longer names a socket (ADR-F45), so the path-length limit no longer
+    // applies to it.
     fn to_string(&self, cx: &App) -> String {
         let identifier_prefix = match ReleaseChannel::global(cx) {
             ReleaseChannel::Stable => "".to_string(),
             release_channel => format!("{}-", release_channel.dev_name()),
         };
-        match self {
+        let session = match self {
             Self::Setup(setup_id) => format!("{identifier_prefix}setup-{setup_id}"),
             Self::Workspace(workspace_id) => {
                 format!("{identifier_prefix}workspace-{workspace_id}",)
             }
+        };
+        match cx.try_global::<ClientInstanceId>() {
+            Some(ClientInstanceId(client_id)) => {
+                format!(
+                    "{client_id}{}{session}",
+                    crate::protocol::CLIENT_ID_SEPARATOR
+                )
+            }
+            None => session,
         }
     }
 }
@@ -852,6 +876,11 @@ impl RemoteClient {
             if let Err(error) = client.resync(HEARTBEAT_TIMEOUT).await {
                 failed!(error, attempts, remote_connection, delegate);
             };
+
+            // Nothing pushes the allowlist while the connection is down, and
+            // the replay above only repeats what went out before it went down,
+            // so the host may be holding an outdated list (ADR-F22).
+            cx.update(|cx| send_egress_allowlist(&client, cx));
 
             State::Connected {
                 remote_connection,
@@ -1683,6 +1712,46 @@ mod tests {
             })
             .connection_type(),
             "podman"
+        );
+    }
+
+    /// ADR-F45: the remote server picks its daemon by the client instance id at
+    /// the front of the identifier, so it has to be there once it is known — and
+    /// only in hashed form, since the identifier is visible in the remote's
+    /// process list.
+    #[gpui::test]
+    fn test_connection_identifier_carries_the_client_instance_id(cx: &mut TestAppContext) {
+        cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+
+        let without_client_id = cx.update(|cx| ConnectionIdentifier::Workspace(5).to_string(cx));
+        assert!(without_client_id.ends_with("workspace-5"));
+        assert_eq!(
+            crate::protocol::client_id_of_identifier(&without_client_id),
+            ""
+        );
+
+        let installation_id = "5f0c1d2e-aaaa-bbbb-cccc-0123456789ab";
+        cx.update(|cx| set_client_instance_id(installation_id, cx));
+        let with_client_id = cx.update(|cx| ConnectionIdentifier::Workspace(5).to_string(cx));
+        let client_id = crate::protocol::client_id_of_identifier(&with_client_id);
+        assert_eq!(client_id.len(), 8);
+        assert!(
+            client_id
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+        );
+        assert!(!with_client_id.contains(installation_id));
+        assert_eq!(
+            with_client_id,
+            format!("{client_id}.{without_client_id}"),
+            "the session part of the identifier must not change"
+        );
+
+        cx.update(|cx| set_client_instance_id(installation_id, cx));
+        assert_eq!(
+            cx.update(|cx| ConnectionIdentifier::Workspace(5).to_string(cx)),
+            with_client_id,
+            "the same installation must always get the same daemon"
         );
     }
 

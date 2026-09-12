@@ -668,6 +668,16 @@ impl TrustedWorktreesStore {
                 upstream_client,
             },
         );
+        // The clients in there must not outlive the store: a remote server
+        // serving several sessions from one process (ADR-F45) would otherwise
+        // keep a closed session's connection until some other store came along.
+        cx.observe_release(&worktree_store, {
+            let weak_worktree_store = weak_worktree_store.clone();
+            move |this, _, _| {
+                this.worktree_stores.remove(&weak_worktree_store);
+            }
+        })
+        .detach();
 
         let mut new_trusted_paths = HashSet::default();
         if let Some(db_trusted_paths) = self.db_trusted_paths.get(&remote_host) {

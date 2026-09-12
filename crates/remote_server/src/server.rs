@@ -1,3 +1,4 @@
+mod daemon;
 mod headless_project;
 
 #[cfg(test)]
@@ -6,25 +7,27 @@ mod remote_editing_tests;
 #[cfg(windows)]
 pub mod windows;
 
-pub use headless_project::{HeadlessAppState, HeadlessProject};
+pub use headless_project::{
+    HeadlessAppState, HeadlessHost, HeadlessHostState, HeadlessProject, HeadlessProjectEvent,
+};
 
 use anyhow::{Context as _, Result, anyhow};
 use clap::Subcommand;
 use client::ProxySettings;
 use collections::HashMap;
+use daemon::{SessionRegistry, SessionRegistryOptions, SessionRouter};
 use extension::ExtensionHostProxy;
 use fs::{Fs, RealFs};
 use futures::{
-    AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt, SinkExt,
+    AsyncRead, AsyncWrite, AsyncWriteExt, FutureExt,
     channel::{mpsc, oneshot},
-    select, select_biased,
 };
 use git::GitHostingProviderRegistry;
-use gpui::{App, AppContext as _, Context, Entity, TaskExt as _, UpdateGlobal as _};
+use gpui::{App, AppContext as _, Entity, Global, TaskExt as _, UpdateGlobal as _};
 use gpui_tokio::Tokio;
 use http_client::{
-    AllowlistedHttpClient, AsyncBody, EgressPolicyHandle, HttpClient, RemoteProxyHttpClient,
-    Request, Response, Url, read_proxy_from_env,
+    AllowlistedHttpClient, AsyncBody, BlockedHttpClient, EgressPolicyHandle, HttpClient,
+    RemoteProxyHttpClient, Request, Response, Url, read_proxy_from_env,
 };
 use language::LanguageRegistry;
 use net::async_net::{UnixListener, UnixStream};
@@ -34,50 +37,50 @@ use project::{project_settings::ProjectSettings, trusted_worktrees};
 use proto::CrashReport;
 use release_channel::{AppCommitSha, AppVersion, RELEASE_CHANNEL, ReleaseChannel};
 use remote::{
-    ProxyHttpRelay, RemoteClient,
+    ProxyHttpRelay,
     json_log::LogRecord,
-    protocol::{read_message, write_message},
+    protocol::{
+        DAEMON_PROTOCOL_VERSION, DaemonFrameKind, DaemonHello, DaemonHelloOutcome,
+        DaemonHelloReply, DaemonKeyParts, client_id_of_identifier, daemon_key, read_daemon_frame,
+        read_json_message, read_message_raw, write_daemon_frame, write_json_message,
+        write_size_prefixed_buffer,
+    },
     proxy::ProxyLaunchError,
 };
 use reqwest_client::ReqwestClient;
-use rpc::proto::{self, Envelope, REMOTE_SERVER_PROJECT_ID};
+use rpc::proto::{self, REMOTE_SERVER_PROJECT_ID};
 use rpc::{AnyProtoClient, TypedEnvelope};
 use settings::{RegisterSetting, Settings, SettingsStore, watch_config_file};
 use smol::{
     Timer,
     channel::{Receiver, Sender},
-    io::AsyncReadExt,
     stream::StreamExt as _,
 };
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     fs::File,
     io::Write,
-    mem,
     path::{Path, PathBuf},
+    rc::Rc,
     str::FromStr,
     sync::{
         Arc, LazyLock,
         atomic::{AtomicBool, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant, UNIX_EPOCH},
 };
 use thiserror::Error;
-use util::{ResultExt, command::new_command};
+use util::ResultExt;
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Run {
+    /// Serves every session one client has on this host (ADR-F45). Started by
+    /// `proxy`, which says where the daemon keeps its socket and its log.
+    Daemon {
         #[arg(long)]
         log_file: PathBuf,
         #[arg(long)]
-        pid_file: PathBuf,
-        #[arg(long)]
-        stdin_socket: PathBuf,
-        #[arg(long)]
-        stdout_socket: PathBuf,
-        #[arg(long)]
-        stderr_socket: PathBuf,
+        state_dir: PathBuf,
     },
     Proxy {
         #[arg(long)]
@@ -93,19 +96,10 @@ pub fn run(command: Commands) -> anyhow::Result<()> {
     use release_channel::{RELEASE_CHANNEL, ReleaseChannel};
 
     match command {
-        Commands::Run {
+        Commands::Daemon {
             log_file,
-            pid_file,
-            stdin_socket,
-            stdout_socket,
-            stderr_socket,
-        } => execute_run(
-            log_file,
-            pid_file,
-            stdin_socket,
-            stdout_socket,
-            stderr_socket,
-        ),
+            state_dir,
+        } => execute_daemon(log_file, state_dir),
         Commands::Proxy {
             identifier,
             reconnect,
@@ -317,12 +311,18 @@ fn init_logging_server(log_file_path: &Path) -> Result<Receiver<Vec<u8>>> {
 /// `telemetry::event!` calls are silently dropped. The client attributes these
 /// events to the remote host using the platform it already detected during
 /// connection setup, so no OS metadata needs to be sent here.
-fn init_telemetry_forwarding(session: AnyProtoClient, cx: &mut App) {
+///
+/// Every session of the daemon belongs to the same IDE (ADR-F45), so each event
+/// goes out once, on whichever session `router` prefers.
+fn init_telemetry_forwarding(router: SessionRouter, cx: &mut App) {
     let (tx, mut rx) = mpsc::unbounded::<telemetry::Event>();
     telemetry::init(tx);
 
     cx.background_spawn(async move {
         while let Some(event) = rx.next().await {
+            let Some(session) = router.preferred_client() else {
+                continue;
+            };
             let Some(event_json) = serde_json::to_string(&event).log_err() else {
                 continue;
             };
@@ -337,7 +337,10 @@ fn init_telemetry_forwarding(session: AnyProtoClient, cx: &mut App) {
     .detach();
 }
 
-fn handle_crash_files_requests(project: &Entity<HeadlessProject>, client: &AnyProtoClient) {
+pub(crate) fn handle_crash_files_requests(
+    project: &Entity<HeadlessProject>,
+    client: &AnyProtoClient,
+) {
     client.add_request_handler(
         project.downgrade(),
         |_, _: TypedEnvelope<proto::GetCrashFiles>, _cx| async move {
@@ -390,215 +393,6 @@ fn handle_crash_files_requests(project: &Entity<HeadlessProject>, client: &AnyPr
     );
 }
 
-struct ServerListeners {
-    stdin: UnixListener,
-    stdout: UnixListener,
-    stderr: UnixListener,
-}
-
-impl ServerListeners {
-    pub fn new(stdin_path: PathBuf, stdout_path: PathBuf, stderr_path: PathBuf) -> Result<Self> {
-        Ok(Self {
-            stdin: UnixListener::bind(stdin_path).context("failed to bind stdin socket")?,
-            stdout: UnixListener::bind(stdout_path).context("failed to bind stdout socket")?,
-            stderr: UnixListener::bind(stderr_path).context("failed to bind stderr socket")?,
-        })
-    }
-}
-
-fn start_server(
-    listeners: ServerListeners,
-    log_rx: Receiver<Vec<u8>>,
-    cx: &mut App,
-    is_wsl_interop: bool,
-) -> AnyProtoClient {
-    // This is the server idle timeout. If no connection comes in this timeout, the server will shut down.
-    const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-
-    let (incoming_tx, incoming_rx) = mpsc::unbounded::<Envelope>();
-    let (outgoing_tx, mut outgoing_rx) = mpsc::unbounded::<Envelope>();
-    let (app_quit_tx, mut app_quit_rx) = mpsc::unbounded::<()>();
-
-    cx.on_app_quit(move |_| {
-        let mut app_quit_tx = app_quit_tx.clone();
-        async move {
-            log::info!("app quitting. sending signal to server main loop");
-            app_quit_tx.send(()).await.ok();
-        }
-    })
-    .detach();
-
-    cx.spawn(async move |cx| {
-        // A proxy whose ssh session died without sshd noticing (the client machine suspended and
-        // its IP or NAT mapping changed; `ClientAliveInterval` is usually 0 and TCP keepalive
-        // defaults to hours) keeps its unix streams open, so they never reach EOF. Serve the
-        // newest connection instead of waiting for the current one to end, otherwise a
-        // reconnecting client sits unanswered in the listen backlog until the stale ssh session
-        // eventually dies. The accept future is kept alive across iterations and only recreated
-        // once it has resolved, so that a connection arriving while we are busy is never missed.
-        let mut next_stdin_accept = Box::pin(listeners.stdin.accept()).fuse();
-        let mut preempting_stdin_stream: Option<UnixStream> = None;
-
-        loop {
-            let mut stdin_stream = match preempting_stdin_stream.take() {
-                Some(stdin_stream) => stdin_stream,
-                None => {
-                    log::info!("accepting new connections");
-                    let accepted = select! {
-                        accepted = next_stdin_accept => accepted,
-                        _ = futures::FutureExt::fuse(cx.background_executor().timer(IDLE_TIMEOUT)) => {
-                            log::warn!("timed out waiting for new connections after {:?}. exiting.", IDLE_TIMEOUT);
-                            cx.update(|cx| {
-                                // TODO: This is a hack, because in a headless project, shutdown isn't executed
-                                // when calling quit, but it should be.
-                                cx.shutdown();
-                                cx.quit();
-                            });
-                            break;
-                        }
-                        _ = app_quit_rx.next().fuse() => {
-                            log::info!("app quit requested");
-                            break;
-                        }
-                    };
-                    next_stdin_accept = Box::pin(listeners.stdin.accept()).fuse();
-                    match accepted {
-                        Ok((stdin_stream, _)) => stdin_stream,
-                        Err(error) => {
-                            log::error!("failed to accept a new connection: {error:?}");
-                            break;
-                        }
-                    }
-                }
-            };
-
-            let streams =
-                futures::future::join(listeners.stdout.accept(), listeners.stderr.accept());
-            let streams = select! {
-                streams = streams.fuse() => streams,
-                _ = futures::FutureExt::fuse(cx.background_executor().timer(IDLE_TIMEOUT)) => {
-                    log::warn!("timed out waiting for the remaining connections after {:?}. exiting.", IDLE_TIMEOUT);
-                    cx.update(|cx| {
-                        // TODO: This is a hack, because in a headless project, shutdown isn't executed
-                        // when calling quit, but it should be.
-                        cx.shutdown();
-                        cx.quit();
-                    });
-                    break;
-                }
-                _ = app_quit_rx.next().fuse() => {
-                    log::info!("app quit requested");
-                    break;
-                }
-            };
-            let (Ok((mut stdout_stream, _)), Ok((mut stderr_stream, _))) = streams else {
-                log::error!("failed to accept new connections");
-                break;
-            };
-            log::info!("accepted new connections");
-
-            let mut input_buffer = Vec::new();
-            let mut output_buffer = Vec::new();
-
-            let (mut stdin_msg_tx, mut stdin_msg_rx) = mpsc::unbounded::<Envelope>();
-            // Held instead of detached so that dropping it cancels the reader as soon as this
-            // connection ends or is replaced, rather than leaving it on a socket that may never
-            // report an error.
-            let _stdin_reader_task = cx.background_spawn(async move {
-                loop {
-                    match read_message(&mut stdin_stream, &mut input_buffer).await {
-                        Ok(msg) => {
-                            if (stdin_msg_tx.send(msg).await).is_err() {
-                                log::info!("stdin message channel closed, stopping stdin reader");
-                                break;
-                            }
-                        }
-                        Err(error) => {
-                            log::warn!("stdin read failed: {error:?}");
-                            break;
-                        }
-                    }
-                }
-            });
-
-            let preemption = loop {
-                select_biased! {
-                    _ = app_quit_rx.next().fuse() => {
-                        return anyhow::Ok(());
-                    }
-
-                    accepted = next_stdin_accept => {
-                        break Some(accepted);
-                    }
-
-                    stdin_message = stdin_msg_rx.next().fuse() => {
-                        let Some(message) = stdin_message else {
-                            log::warn!("error reading message on stdin, dropping connection.");
-                            break None;
-                        };
-                        if let Err(error) = incoming_tx.unbounded_send(message) {
-                            log::error!("failed to send message to application: {error:?}. exiting.");
-                            return Err(anyhow!(error));
-                        }
-                    }
-
-                    outgoing_message  = outgoing_rx.next().fuse() => {
-                        let Some(message) = outgoing_message else {
-                            log::error!("stdout handler, no message");
-                            break None;
-                        };
-
-                        if let Err(error) =
-                            write_message(&mut stdout_stream, &mut output_buffer, message).await
-                        {
-                            log::error!("failed to write stdout message: {:?}", error);
-                            break None;
-                        }
-                        if let Err(error) = stdout_stream.flush().await {
-                            log::error!("failed to flush stdout message: {:?}", error);
-                            break None;
-                        }
-                    }
-
-                    log_message = log_rx.recv().fuse() => {
-                        if let Ok(log_message) = log_message {
-                            if let Err(error) = stderr_stream.write_all(&log_message).await {
-                                log::error!("failed to write log message to stderr: {:?}", error);
-                                break None;
-                            }
-                            if let Err(error) = stderr_stream.flush().await {
-                                log::error!("failed to flush stderr stream: {:?}", error);
-                                break None;
-                            }
-                        }
-                    }
-                }
-            };
-
-            // Without a preemption the accept future is still pending and must be kept as is, so
-            // that a connection arriving in the meantime is not lost.
-            let Some(accepted) = preemption else {
-                continue;
-            };
-            next_stdin_accept = Box::pin(listeners.stdin.accept()).fuse();
-            match accepted {
-                Ok((stdin_stream, _)) => {
-                    log::info!("replacing stale connection with a newly accepted one");
-                    preempting_stdin_stream = Some(stdin_stream);
-                }
-                Err(error) => {
-                    log::error!("failed to accept a new connection: {error:?}");
-                    break;
-                }
-            }
-        }
-        anyhow::Ok(())
-    })
-    .detach();
-
-    RemoteClient::proto_client_from_channels(incoming_rx, outgoing_tx, cx, "server", is_wsl_interop)
-}
-
 fn init_paths() -> anyhow::Result<()> {
     for path in [
         paths::config_dir(),
@@ -617,15 +411,15 @@ fn init_paths() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn execute_run(
-    log_file: PathBuf,
-    pid_file: PathBuf,
-    stdin_socket: PathBuf,
-    stdout_socket: PathBuf,
-    stderr_socket: PathBuf,
-) -> Result<()> {
+/// Keeps the daemon's sessions alive for as long as the process runs.
+struct DaemonSessions(#[allow(dead_code)] Entity<SessionRegistry>);
+
+impl Global for DaemonSessions {}
+
+pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
     init_paths()?;
 
+    let daemon_paths = DaemonPaths::new(state_dir, log_file);
     let startup_time = Instant::now();
     let app = gpui_platform::headless();
     let pid = std::process::id();
@@ -657,28 +451,25 @@ pub fn execute_run(
         crashes::force_backtrace();
         None
     };
-    let log_rx = init_logging_server(&log_file)?;
+    let log_rx = init_logging_server(&daemon_paths.log_file)?;
     log::info!(
-        "starting up with PID {}:\npid_file: {:?}, log_file: {:?}, stdin_socket: {:?}, stdout_socket: {:?}, stderr_socket: {:?}",
+        "starting up the daemon with PID {}:\nstate_dir: {:?}, log_file: {:?}",
         pid,
-        pid_file,
-        log_file,
-        stdin_socket,
-        stdout_socket,
-        stderr_socket
+        daemon_paths.state_dir,
+        daemon_paths.log_file
     );
 
-    write_pid_file(&pid_file, pid)
-        .with_context(|| format!("failed to write pid file: {pid_file:?}"))?;
+    #[cfg(unix)]
+    raise_open_file_limit();
 
-    let listeners = ServerListeners::new(stdin_socket, stdout_socket, stderr_socket)?;
-
-    rayon::ThreadPoolBuilder::new()
+    if let Err(error) = rayon::ThreadPoolBuilder::new()
         .num_threads(std::thread::available_parallelism().map_or(1, |n| n.get().div_ceil(2)))
         .stack_size(10 * 1024 * 1024)
         .thread_name(|ix| format!("RayonWorker{}", ix))
         .build_global()
-        .unwrap();
+    {
+        log::warn!("could not size the rayon thread pool, using its defaults: {error}");
+    }
 
     #[cfg(unix)]
     let shell_env_loaded_rx = {
@@ -722,9 +513,7 @@ pub fn execute_run(
             false
         };
 
-        log::info!("gpui app started, initializing server");
-        let session = start_server(listeners, log_rx, cx, is_wsl_interop);
-        init_telemetry_forwarding(session.clone(), cx);
+        log::info!("gpui app started, initializing the daemon");
         trusted_worktrees::init(HashMap::default(), cx);
 
         GitHostingProviderRegistry::set_global(git_hosting_provider_registry, cx);
@@ -736,70 +525,89 @@ pub fn execute_run(
 
         json_schema_store::init(cx);
 
-        // ADR-F27 (DESIGN.md §4.27). Built before the project because the
-        // response handler has to be registered on the session before this
-        // host's HTTP client can make its first request.
-        let proxy_http_transport = ProxyHttpRelay::new(&session, cx);
+        let router = SessionRouter::default();
+        init_telemetry_forwarding(router.clone(), cx);
+
+        // ADR-F27 (DESIGN.md §4.27). Built before any session exists, because
+        // this host's HTTP client is. Each request goes out on a session that
+        // is connected when it is made (ADR-F45), and fails at once when none
+        // is, rather than waiting for a client that may not come back.
+        let (proxy_http_relay, proxy_http_transport) = ProxyHttpRelay::new_with_session_source(
+            {
+                let router = router.clone();
+                Arc::new(move || router.connected_client())
+            },
+            cx,
+        );
         let relay_http_through_client = watch_relay_http_setting(cx);
 
-        let project = cx.new(|cx| {
-            let fs = Arc::new(RealFs::new(None, cx.background_executor().clone()));
-            let node_settings_rx = initialize_settings(session.clone(), fs.clone(), cx);
+        let fs = Arc::new(RealFs::new(None, cx.background_executor().clone()));
+        let node_settings_rx = initialize_settings(router.clone(), fs.clone(), cx);
 
-            let proxy_url = read_proxy_settings(cx);
+        let proxy_url = read_proxy_settings(cx);
 
-            // DESIGN.md §4 (ADR-F03) gates the IDE's own HTTP client behind
-            // `AllowlistedHttpClient`; ADR-F11 extends that to this binary too,
-            // since it makes its own outgoing requests (LSP/node downloads,
-            // extensions) on the remote host. The policy starts out empty
-            // (loopback only, deny-by-default) and is filled in once the
-            // connecting client pushes its allowlist — see
-            // `HeadlessProject::handle_set_egress_allowlist`.
-            let http_client: Arc<dyn HttpClient> = {
-                let _guard = Tokio::handle(cx).enter();
-                let user_agent = format!(
-                    "Zed-Server/{} ({}; {})",
-                    env!("CARGO_PKG_VERSION"),
-                    std::env::consts::OS,
-                    std::env::consts::ARCH
-                );
-                let direct = Arc::new(
-                    ReqwestClient::proxy_and_user_agent(proxy_url, &user_agent)
-                        .expect("Could not start HTTP client"),
-                );
-                // ADR-F27: this host may have no route to the internet at all,
-                // in which case its downloads only work by going through the
-                // IDE. The allowlist check stays on the outside either way, so
-                // a request refused here never leaves this machine.
-                Arc::new(AllowlistedHttpClient::new(
-                    Arc::new(RemoteHttpClient {
-                        relay: RemoteProxyHttpClient::new(
-                            proxy_http_transport,
-                            direct.user_agent().cloned(),
-                        ),
-                        direct,
-                        relay_enabled: relay_http_through_client,
-                    }),
-                    EgressPolicyHandle::default(),
-                ))
-            };
-
-            // ADR-F38: node/npm on this host serves language servers and
-            // extensions, so it takes the IDE lane, exactly as it does in the
-            // app itself.
-            let node_runtime = NodeRuntime::new(
-                http_client::ide_lane(http_client.clone()),
-                shell_env_loaded_rx,
-                node_settings_rx,
+        // DESIGN.md §4 (ADR-F03) gates the IDE's own HTTP client behind
+        // `AllowlistedHttpClient`; ADR-F11 extends that to this binary too,
+        // since it makes its own outgoing requests (LSP/node downloads,
+        // extensions) on the remote host. The policy starts out empty
+        // (loopback only, deny-by-default) and is filled in once the
+        // connecting client pushes its allowlist — see
+        // `HeadlessProject::handle_set_egress_allowlist`.
+        let http_client: Arc<dyn HttpClient> = {
+            let _guard = Tokio::handle(cx).enter();
+            let user_agent = format!(
+                "Zed-Server/{} ({}; {})",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH
             );
+            let direct: Arc<dyn HttpClient> = match ReqwestClient::proxy_and_user_agent(
+                proxy_url,
+                &user_agent,
+            ) {
+                Ok(client) => Arc::new(client),
+                Err(error) => {
+                    // Editing does not need it; only what this host
+                    // downloads without going through the IDE does.
+                    log::error!(
+                        "could not start this host's HTTP client, so only requests relayed through the IDE can succeed: {error:#}"
+                    );
+                    Arc::new(BlockedHttpClient)
+                }
+            };
+            // ADR-F27: this host may have no route to the internet at all,
+            // in which case its downloads only work by going through the
+            // IDE. The allowlist check stays on the outside either way, so
+            // a request refused here never leaves this machine.
+            Arc::new(AllowlistedHttpClient::new(
+                Arc::new(RemoteHttpClient {
+                    relay: RemoteProxyHttpClient::new(
+                        proxy_http_transport,
+                        direct.user_agent().cloned(),
+                    ),
+                    direct,
+                    relay_enabled: relay_http_through_client,
+                }),
+                EgressPolicyHandle::default(),
+            ))
+        };
 
-            let mut languages = LanguageRegistry::new(cx.background_executor().clone());
-            languages.set_language_server_download_dir(paths::languages_dir().clone());
-            let languages = Arc::new(languages);
+        // ADR-F38: node/npm on this host serves language servers and
+        // extensions, so it takes the IDE lane, exactly as it does in the
+        // app itself.
+        let node_runtime = NodeRuntime::new(
+            http_client::ide_lane(http_client.clone()),
+            shell_env_loaded_rx,
+            node_settings_rx,
+        );
 
-            HeadlessProject::new(
-                HeadlessAppState {
-                    session: session.clone(),
+        let mut languages = LanguageRegistry::new(cx.background_executor().clone());
+        languages.set_language_server_download_dir(paths::languages_dir().clone());
+        let languages = Arc::new(languages);
+
+        let host = cx.new(|cx| {
+            HeadlessHost::new(
+                HeadlessHostState {
                     fs,
                     http_client,
                     node_runtime,
@@ -807,20 +615,56 @@ pub fn execute_run(
                     extension_host_proxy,
                     startup_time,
                 },
-                true,
+                cx,
+            )
+        });
+        let registry = cx.new(|cx| {
+            SessionRegistry::new(
+                SessionRegistryOptions {
+                    host,
+                    router,
+                    proxy_http_relay,
+                    is_wsl_interop,
+                    init_worktree_trust: true,
+                    on_idle: Rc::new({
+                        let daemon_paths = daemon_paths.clone();
+                        move |cx: &mut App| {
+                            // Taken down before exiting, so that a proxy
+                            // arriving now starts a new daemon instead of
+                            // reaching one that is on its way out.
+                            daemon_paths.remove_if_owned_by(std::process::id());
+                            // TODO: This is a hack, because in a headless project, shutdown isn't executed
+                            // when calling quit, but it should be.
+                            cx.shutdown();
+                            cx.quit();
+                        }
+                    }),
+                },
+                log_rx,
                 cx,
             )
         });
 
-        handle_crash_files_requests(&project, &session);
+        // Bound only now that everything a session needs is in place, so that
+        // a proxy that reaches the socket is answered straight away: a proxy
+        // left waiting long enough takes the daemon for hung and replaces it.
+        let listener = match bind_daemon_socket(&daemon_paths) {
+            Ok(listener) => listener,
+            Err(error) => {
+                log::error!("{error:#}; exiting");
+                cx.shutdown();
+                cx.quit();
+                return;
+            }
+        };
+        daemon::serve(listener, registry.downgrade(), cx);
+        cx.set_global(DaemonSessions(registry));
 
         cx.background_spawn(async move {
             cleanup_old_binaries_wsl();
             cleanup_old_binaries()
         })
         .detach_and_log_err(cx);
-
-        mem::forget(project);
     };
     // We do not reuse any of the state after unwinding, so we don't run risk of observing broken invariants.
     let app = std::panic::AssertUnwindSafe(app);
@@ -832,6 +676,63 @@ pub fn execute_run(
     } else {
         log::info!("gpui app is shut down. quitting.");
         Ok(())
+    }
+}
+
+fn bind_daemon_socket(paths: &DaemonPaths) -> Result<UnixListener> {
+    // The proxy that started this process holds the daemon lock, so a socket
+    // still here belongs to a daemon that is gone.
+    remove_file_if_present(&paths.socket).context("failed to remove a stale daemon socket")?;
+    let listener = UnixListener::bind(&paths.socket).context("failed to bind the daemon socket")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&paths.socket, std::fs::Permissions::from_mode(0o600))
+            .context("failed to restrict the daemon socket to this user")?;
+    }
+    write_pid_file(&paths.pid_file, std::process::id())
+        .with_context(|| format!("failed to write pid file: {:?}", paths.pid_file))?;
+    Ok(listener)
+}
+
+/// Every session of the daemon draws on one process's file descriptors —
+/// its connections, its worktrees' watches, its language servers' pipes —
+/// where each project used to have a process, and a limit, of its own.
+#[cfg(unix)]
+fn raise_open_file_limit() {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: `getrlimit` only writes to `limit`, which outlives the call.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) } != 0 {
+        log::warn!(
+            "could not read the open file limit: {}",
+            std::io::Error::last_os_error()
+        );
+        return;
+    }
+    if limit.rlim_cur >= limit.rlim_max {
+        return;
+    }
+    let raised = libc::rlimit {
+        rlim_cur: limit.rlim_max,
+        rlim_max: limit.rlim_max,
+    };
+    // SAFETY: `setrlimit` only reads `raised`, which outlives the call.
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raised) } == 0 {
+        log::info!(
+            "raised the open file limit from {} to {}",
+            limit.rlim_cur,
+            limit.rlim_max
+        );
+    } else {
+        log::warn!(
+            "could not raise the open file limit from {} to {}: {}",
+            limit.rlim_cur,
+            limit.rlim_max,
+            std::io::Error::last_os_error()
+        );
     }
 }
 
@@ -851,43 +752,122 @@ pub enum ServerPathError {
     },
 }
 
+/// Where a daemon keeps its socket, pid, lock and log (ADR-F45).
 #[derive(Clone, Debug)]
-struct ServerPaths {
-    log_file: PathBuf,
+struct DaemonPaths {
+    state_dir: PathBuf,
+    socket: PathBuf,
     pid_file: PathBuf,
-    stdin_socket: PathBuf,
-    stdout_socket: PathBuf,
-    stderr_socket: PathBuf,
+    lock_file: PathBuf,
+    log_file: PathBuf,
 }
 
-impl ServerPaths {
-    fn new(identifier: &str) -> Result<Self, ServerPathError> {
-        let server_dir = paths::remote_server_state_dir().join(identifier);
-        std::fs::create_dir_all(&server_dir).map_err(|source| {
-            ServerPathError::CreateServerDir {
-                source,
-                path: server_dir.clone(),
-            }
-        })?;
+impl DaemonPaths {
+    fn new(state_dir: PathBuf, log_file: PathBuf) -> Self {
+        Self {
+            socket: state_dir.join("daemon.sock"),
+            pid_file: state_dir.join("daemon.pid"),
+            lock_file: state_dir.join("daemon.lock"),
+            state_dir,
+            log_file,
+        }
+    }
+
+    /// The daemon a proxy for `identifier` hands its session to: the one this
+    /// very binary runs for the same client on this machine.
+    fn for_identifier(identifier: &str) -> Result<Self, ServerPathError> {
+        let (executable_size, executable_modified) = this_executable_identity();
+        let host = this_host_identity();
+        let key = daemon_key(&DaemonKeyParts {
+            release_channel: RELEASE_CHANNEL.dev_name(),
+            version: VERSION.as_str(),
+            executable_size,
+            executable_modified,
+            client_id: client_id_of_identifier(identifier),
+            host: &host,
+        });
+        let state_dir = paths::remote_server_state_dir().join(format!("d-{key}"));
+        let create_error = |source| ServerPathError::CreateServerDir {
+            source,
+            path: state_dir.clone(),
+        };
+        std::fs::create_dir_all(&state_dir).map_err(create_error)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            // Only this user's proxies have any business with the socket in
+            // here.
+            std::fs::set_permissions(&state_dir, std::fs::Permissions::from_mode(0o700))
+                .map_err(create_error)?;
+        }
         let log_dir = logs_dir();
         std::fs::create_dir_all(log_dir).map_err(|source| ServerPathError::CreateLogsDir {
             source,
             path: log_dir.clone(),
         })?;
+        Ok(Self::new(
+            state_dir,
+            log_dir.join(format!("server-d-{key}.log")),
+        ))
+    }
 
-        let pid_file = server_dir.join("server.pid");
-        let stdin_socket = server_dir.join("stdin.sock");
-        let stdout_socket = server_dir.join("stdout.sock");
-        let stderr_socket = server_dir.join("stderr.sock");
-        let log_file = logs_dir().join(format!("server-{}.log", identifier));
+    /// Removes the socket and the pid file, provided the pid file still names
+    /// `pid`: once a newer daemon has taken the directory over, they are its.
+    fn remove_if_owned_by(&self, pid: u32) {
+        if read_pid(&self.pid_file) != Some(pid) {
+            return;
+        }
+        for path in [&self.socket, &self.pid_file] {
+            remove_file_if_present(path).log_err();
+        }
+    }
+}
 
-        Ok(Self {
-            pid_file,
-            stdin_socket,
-            stdout_socket,
-            stderr_socket,
-            log_file,
-        })
+/// The size and modification time of this binary, which tell two builds of
+/// one version apart (see [`DaemonKeyParts`]).
+fn this_executable_identity() -> (u64, Option<Duration>) {
+    match std::env::current_exe().and_then(std::fs::metadata) {
+        Ok(metadata) => (
+            metadata.len(),
+            metadata
+                .modified()
+                .ok()
+                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok()),
+        ),
+        Err(error) => {
+            log::warn!(
+                "could not read this binary's size and modification time ({error}); \
+                 builds that share a version will share a daemon"
+            );
+            (0, None)
+        }
+    }
+}
+
+/// Tells apart hosts that share a home directory (see [`DaemonKeyParts`]).
+/// The machine id catches hosts that were given the same name; the name
+/// catches hosts cloned from one image, which share a machine id.
+fn this_host_identity() -> String {
+    let host_name = sysinfo::System::host_name().unwrap_or_default();
+    let machine_id = ["/etc/machine-id", "/var/lib/dbus/machine-id"]
+        .iter()
+        .find_map(|path| std::fs::read_to_string(path).ok())
+        .map(|machine_id| machine_id.trim().to_string())
+        .unwrap_or_default();
+    format!("{host_name}\n{machine_id}")
+}
+
+fn read_pid(path: &Path) -> Option<u32> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|contents| contents.trim().parse().ok())
+}
+
+fn remove_file_if_present(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
     }
 }
 
@@ -909,15 +889,26 @@ pub enum ExecuteProxyError {
     #[error("Failed to kill existing server with pid '{pid}'")]
     KillRunningServer { pid: u32 },
 
+    #[error("failed to take the daemon lock '{path}'")]
+    DaemonLock {
+        #[source]
+        source: std::io::Error,
+        path: PathBuf,
+    },
+
     #[error("failed to spawn server")]
     SpawnServer(#[source] SpawnServerError),
+
+    #[error("failed to introduce this proxy to the daemon: {0:#}")]
+    Handshake(#[source] anyhow::Error),
+
+    #[error("the daemon refused this proxy: {0}")]
+    DaemonRejected(String),
 
     #[error("stdin_task failed: {0:#}")]
     StdinTask(#[source] anyhow::Error),
     #[error("stdout_task failed: {0:#}")]
     StdoutTask(#[source] anyhow::Error),
-    #[error("stderr_task failed: {0:#}")]
-    StderrTask(#[source] anyhow::Error),
 }
 
 impl ExecuteProxyError {
@@ -931,13 +922,17 @@ impl ExecuteProxyError {
     }
 }
 
+fn server_not_running() -> ExecuteProxyError {
+    ExecuteProxyError::ServerNotRunning(ProxyLaunchError::ServerNotRunning)
+}
+
 pub(crate) fn execute_proxy(
     identifier: String,
     is_reconnecting: bool,
 ) -> Result<(), ExecuteProxyError> {
     init_logging_proxy();
 
-    let server_paths = ServerPaths::new(&identifier)?;
+    let daemon_paths = DaemonPaths::for_identifier(&identifier)?;
 
     let id = std::process::id().to_string();
     let should_install_crash_handler =
@@ -962,144 +957,366 @@ pub(crate) fn execute_proxy(
         ))
         .detach();
     };
-    log::info!("starting proxy process. PID: {}", std::process::id());
-    let server_pid = {
-        let server_pid = check_pid_file(&server_paths.pid_file).map_err(|source| {
-            ExecuteProxyError::CheckPidFile {
-                source,
-                path: server_paths.pid_file.clone(),
-            }
-        })?;
-        if is_reconnecting {
-            match server_pid {
-                None => {
-                    log::error!("attempted to reconnect, but no server running");
-                    return Err(ExecuteProxyError::ServerNotRunning(
-                        ProxyLaunchError::ServerNotRunning,
-                    ));
-                }
-                Some(server_pid) => server_pid,
-            }
-        } else {
-            if let Some(pid) = server_pid {
-                log::info!(
-                    "proxy found server already running with PID {}. Killing process and cleaning up files...",
-                    pid
-                );
-                kill_running_server(pid, &server_paths)?;
-            }
-            gpui::block_on(spawn_server(&server_paths)).map_err(ExecuteProxyError::SpawnServer)?;
-            std::fs::read_to_string(&server_paths.pid_file)
-                .and_then(|contents| {
-                    contents.parse::<u32>().map_err(|_| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "Invalid PID file contents",
-                        )
-                    })
-                })
-                .map_err(SpawnServerError::ProcessStatus)
-                .map_err(ExecuteProxyError::SpawnServer)?
-        }
+    log::info!(
+        "starting proxy process. PID: {}, daemon: {:?}",
+        std::process::id(),
+        daemon_paths.state_dir
+    );
+
+    let hello = DaemonHello {
+        protocol_version: DAEMON_PROTOCOL_VERSION,
+        identifier,
+        reconnect: is_reconnecting,
+        ssh_auth_sock: std::env::var("SSH_AUTH_SOCK").ok(),
     };
+    let connector = DaemonConnector::new(daemon_paths.clone());
+    let connection = gpui::block_on(connector.connect(&hello))?;
 
-    let stdin_task = smol::spawn(async move {
-        let stdin = smol::Unblock::new(std::io::stdin());
-        let stream = UnixStream::connect(&server_paths.stdin_socket)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to connect to stdin socket {}",
-                    server_paths.stdin_socket.display()
-                )
-            })?;
-        handle_io(stdin, stream, "stdin").await
-    });
-
-    let stdout_task: smol::Task<Result<()>> = smol::spawn(async move {
-        let stdout = smol::Unblock::new(std::io::stdout());
-        let stream = UnixStream::connect(&server_paths.stdout_socket)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to connect to stdout socket {}",
-                    server_paths.stdout_socket.display()
-                )
-            })?;
-        handle_io(stream, stdout, "stdout").await
-    });
-
-    let stderr_task: smol::Task<Result<()>> = smol::spawn(async move {
-        let mut stderr = smol::Unblock::new(std::io::stderr());
-        let mut stream = UnixStream::connect(&server_paths.stderr_socket)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to connect to stderr socket {}",
-                    server_paths.stderr_socket.display()
-                )
-            })?;
-        let mut stderr_buffer = vec![0; 2048];
-        loop {
-            match stream
-                .read(&mut stderr_buffer)
-                .await
-                .context("reading stderr")?
-            {
-                0 => {
-                    let error =
-                        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stderr closed");
-                    Err(anyhow!(error))?;
-                }
-                n => {
-                    stderr.write_all(&stderr_buffer[..n]).await?;
-                    stderr.flush().await?;
-                }
-            }
+    if let Err(forwarding_error) = gpui::block_on(forward_stdio(connection)) {
+        log::error!("encountered error while forwarding messages: {forwarding_error:#}",);
+        if !daemon_is_running(&daemon_paths) {
+            log::error!("the daemon exited unexpectedly");
+            return Err(server_not_running());
         }
-    });
-
-    if let Err(forwarding_result) = gpui::block_on(async move {
-        futures::select! {
-            result = stdin_task.fuse() => result.map_err(ExecuteProxyError::StdinTask),
-            result = stdout_task.fuse() => result.map_err(ExecuteProxyError::StdoutTask),
-            result = stderr_task.fuse() => result.map_err(ExecuteProxyError::StderrTask),
-        }
-    }) {
-        log::error!("encountered error while forwarding messages: {forwarding_result:#}",);
-        if !matches!(gpui::block_on(check_server_running(server_pid)), Ok(true)) {
-            log::error!("server exited unexpectedly");
-            return Err(ExecuteProxyError::ServerNotRunning(
-                ProxyLaunchError::ServerNotRunning,
-            ));
-        }
-        return Err(forwarding_result);
+        return Err(forwarding_error);
     }
 
     Ok(())
 }
 
-fn kill_running_server(pid: u32, paths: &ServerPaths) -> Result<(), ExecuteProxyError> {
-    log::info!("killing existing server with PID {}", pid);
-    let system = sysinfo::System::new_with_specifics(
-        sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::nothing()),
-    );
+/// How long a daemon may take to answer an introduction before a proxy takes
+/// it for hung and replaces it. Long, because replacing a daemon ends every
+/// session it serves: an answer that is merely slow — a loaded host, a daemon
+/// busy opening a session — must not be mistaken for a hung process.
+const UNRESPONSIVE_DAEMON_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long a freshly spawned daemon has to start accepting connections. It
+/// binds its socket only once it is ready to serve.
+const DAEMON_START_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long a proxy waits for another one to finish starting the daemon. Has
+/// to outlast [`DAEMON_START_TIMEOUT`], which the other proxy may spend in
+/// full while holding the lock.
+const DAEMON_LOCK_TIMEOUT: Duration = Duration::from_secs(90);
+const DAEMON_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// A daemon that closes the connection is usually on its way out, which is
+/// over within moments; a few attempts see it gone and a new one started.
+const CONNECT_ATTEMPTS: usize = 3;
 
-    if let Some(process) = system.process(sysinfo::Pid::from_u32(pid)) {
-        let killed = process.kill();
-        if !killed {
-            return Err(ExecuteProxyError::KillRunningServer { pid });
+/// Waits without an executor to ask for a timer, which the proxy does not
+/// have.
+async fn sleep(duration: Duration) {
+    #[allow(clippy::disallowed_methods, reason = "the proxy runs outside gpui")]
+    let timer = Timer::after(duration);
+    timer.await;
+}
+
+/// What tells one daemon from its successor: its pid and its socket file.
+/// Both are read before connecting, so that a daemon found hung is only
+/// replaced if it is still the one that was found hung.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DaemonIdentity {
+    pid: Option<u32>,
+    socket: Option<(u64, u64)>,
+}
+
+impl DaemonIdentity {
+    fn of(paths: &DaemonPaths) -> Self {
+        Self {
+            pid: read_pid(&paths.pid_file),
+            socket: socket_identity(&paths.socket),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn socket_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt as _;
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    Some((metadata.dev(), metadata.ino()))
+}
+
+/// Windows has no inode number to read here; the file's creation time tells a
+/// socket from its successor just as well.
+#[cfg(windows)]
+fn socket_identity(path: &Path) -> Option<(u64, u64)> {
+    let created = std::fs::symlink_metadata(path)
+        .ok()?
+        .created()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()?;
+    Some((created.as_secs(), u64::from(created.subsec_nanos())))
+}
+
+/// What became of a proxy's introduction to the daemon.
+enum Introduction {
+    Accepted(UnixStream),
+    SessionNotFound,
+    /// The daemon closed the connection: it was most likely on its way out.
+    Closed(anyhow::Error),
+    /// The daemon kept the connection but did not answer.
+    TimedOut,
+}
+
+/// Starts this binary as the daemon for `paths`.
+type SpawnDaemon = Box<dyn Fn(&DaemonPaths) -> Result<(), SpawnServerError>>;
+
+/// How a proxy reaches — and when it has to, starts or replaces — the daemon
+/// for its client (ADR-F45).
+struct DaemonConnector {
+    paths: DaemonPaths,
+    /// A seam for tests, which cannot start this binary as a daemon.
+    spawn: SpawnDaemon,
+    reply_timeout: Duration,
+    start_timeout: Duration,
+    lock_timeout: Duration,
+}
+
+impl DaemonConnector {
+    fn new(paths: DaemonPaths) -> Self {
+        Self {
+            paths,
+            spawn: Box::new(spawn_daemon),
+            reply_timeout: UNRESPONSIVE_DAEMON_TIMEOUT,
+            start_timeout: DAEMON_START_TIMEOUT,
+            lock_timeout: DAEMON_LOCK_TIMEOUT,
         }
     }
 
-    for file in [
-        &paths.pid_file,
-        &paths.stdin_socket,
-        &paths.stdout_socket,
-        &paths.stderr_socket,
-    ] {
-        log::debug!("cleaning up file {:?} before starting new server", file);
-        std::fs::remove_file(file).ok();
+    async fn connect(&self, hello: &DaemonHello) -> Result<UnixStream, ExecuteProxyError> {
+        if hello.reconnect {
+            let Ok(connection) = UnixStream::connect(&self.paths.socket).await else {
+                log::error!("attempted to reconnect, but no daemon is running");
+                return Err(server_not_running());
+            };
+            return match self.introduce(connection, hello).await? {
+                Introduction::Accepted(connection) => Ok(connection),
+                Introduction::SessionNotFound => {
+                    log::error!(
+                        "attempted to reconnect, but the daemon no longer has this session"
+                    );
+                    Err(server_not_running())
+                }
+                Introduction::Closed(error) => {
+                    log::error!(
+                        "attempted to reconnect, but the daemon closed the connection: {error:#}"
+                    );
+                    Err(server_not_running())
+                }
+                // Not "server not running": for a daemon that is merely slow
+                // that would cost the client its session. A plain failure
+                // lets the client try again.
+                Introduction::TimedOut => Err(ExecuteProxyError::Handshake(anyhow!(
+                    "the daemon did not answer within {:?}",
+                    self.reply_timeout
+                ))),
+            };
+        }
+
+        for _ in 0..CONNECT_ATTEMPTS {
+            let (connection, identity) = self.ensure_running().await?;
+            match self.introduce(connection, hello).await? {
+                Introduction::Accepted(connection) => return Ok(connection),
+                Introduction::SessionNotFound => {
+                    return Err(ExecuteProxyError::Handshake(anyhow!(
+                        "the daemon found no session to start, which a fresh connection never asks it for"
+                    )));
+                }
+                Introduction::Closed(error) => {
+                    log::info!("the daemon closed the connection ({error:#}); trying again");
+                    sleep(DAEMON_POLL_INTERVAL).await;
+                }
+                Introduction::TimedOut => {
+                    log::warn!(
+                        "the daemon did not answer within {:?}; replacing it",
+                        self.reply_timeout
+                    );
+                    self.restart(identity).await?;
+                }
+            }
+        }
+        Err(ExecuteProxyError::Handshake(anyhow!(
+            "no daemon answered in {CONNECT_ATTEMPTS} attempts"
+        )))
+    }
+
+    async fn introduce(
+        &self,
+        mut connection: UnixStream,
+        hello: &DaemonHello,
+    ) -> Result<Introduction, ExecuteProxyError> {
+        if let Err(error) = write_json_message(&mut connection, hello).await {
+            return Ok(Introduction::Closed(error));
+        }
+        let reply = {
+            let reply = read_json_message::<_, DaemonHelloReply>(&mut connection);
+            let deadline = sleep(self.reply_timeout);
+            smol::future::or(async { Some(reply.await) }, async {
+                deadline.await;
+                None
+            })
+            .await
+        };
+        let reply = match reply {
+            None => return Ok(Introduction::TimedOut),
+            Some(Err(error)) => return Ok(Introduction::Closed(error)),
+            Some(Ok(reply)) => reply,
+        };
+        match reply.outcome {
+            DaemonHelloOutcome::Accepted => Ok(Introduction::Accepted(connection)),
+            DaemonHelloOutcome::SessionNotFound => Ok(Introduction::SessionNotFound),
+            DaemonHelloOutcome::Rejected => Err(ExecuteProxyError::DaemonRejected(
+                reply.message.unwrap_or_default(),
+            )),
+        }
+    }
+
+    async fn ensure_running(&self) -> Result<(UnixStream, DaemonIdentity), ExecuteProxyError> {
+        let identity = DaemonIdentity::of(&self.paths);
+        if let Ok(connection) = UnixStream::connect(&self.paths.socket).await {
+            return Ok((connection, identity));
+        }
+        let _lock = DaemonLock::acquire(&self.paths.lock_file, self.lock_timeout).await?;
+        // Another proxy may have started one while this one waited for the
+        // lock.
+        let identity = DaemonIdentity::of(&self.paths);
+        if let Ok(connection) = UnixStream::connect(&self.paths.socket).await {
+            return Ok((connection, identity));
+        }
+        self.start_locked().await
+    }
+
+    /// Replaces the daemon that did not answer, `unanswered`. If another
+    /// proxy has replaced it in the meantime, its successor is left alone.
+    async fn restart(&self, unanswered: DaemonIdentity) -> Result<(), ExecuteProxyError> {
+        let _lock = DaemonLock::acquire(&self.paths.lock_file, self.lock_timeout).await?;
+        if DaemonIdentity::of(&self.paths) != unanswered {
+            log::info!("another proxy has replaced the daemon already");
+            return Ok(());
+        }
+        self.start_locked().await.map(drop)
+    }
+
+    /// Starts a daemon in place of whatever `paths` records. The caller holds
+    /// the daemon lock, and has found the recorded daemon refusing
+    /// connections or hung.
+    async fn start_locked(&self) -> Result<(UnixStream, DaemonIdentity), ExecuteProxyError> {
+        let recorded = check_pid_file(&self.paths.pid_file).map_err(|source| {
+            ExecuteProxyError::CheckPidFile {
+                source,
+                path: self.paths.pid_file.clone(),
+            }
+        })?;
+        if let Some(pid) = recorded {
+            kill_daemon(pid, &self.paths)?;
+        }
+        remove_file_if_present(&self.paths.socket).map_err(|error| {
+            ExecuteProxyError::SpawnServer(SpawnServerError::RemoveSocket(error))
+        })?;
+        (self.spawn)(&self.paths).map_err(ExecuteProxyError::SpawnServer)?;
+        let connection = wait_for_daemon(&self.paths, self.start_timeout)
+            .await
+            .map_err(ExecuteProxyError::SpawnServer)?;
+        Ok((connection, DaemonIdentity::of(&self.paths)))
+    }
+}
+
+/// Serializes starting the daemon, so that proxies started together — a client
+/// restoring several windows at once — end up with one daemon between them.
+///
+/// The operating system releases the lock when the file is closed, which
+/// includes the process dying: a crashed proxy never keeps the next one out.
+struct DaemonLock {
+    _file: File,
+}
+
+impl DaemonLock {
+    async fn acquire(path: &Path, timeout: Duration) -> Result<Self, ExecuteProxyError> {
+        let lock_error = |source: std::io::Error| ExecuteProxyError::DaemonLock {
+            source,
+            path: path.to_path_buf(),
+        };
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(path)
+            .map_err(lock_error)?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Self { _file: file }),
+                Err(std::fs::TryLockError::WouldBlock) => {}
+                Err(std::fs::TryLockError::Error(error)) => return Err(lock_error(error)),
+            }
+            if Instant::now() >= deadline {
+                return Err(lock_error(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "another proxy held the daemon lock for too long",
+                )));
+            }
+            sleep(DAEMON_POLL_INTERVAL).await;
+        }
+    }
+}
+
+/// The command line of the process with `pid`, if it is running.
+fn command_line_of(pid: u32) -> Option<Vec<OsString>> {
+    let system =
+        sysinfo::System::new_with_specifics(sysinfo::RefreshKind::nothing().with_processes(
+            sysinfo::ProcessRefreshKind::nothing().with_cmd(sysinfo::UpdateKind::Always),
+        ));
+    system
+        .process(sysinfo::Pid::from_u32(pid))
+        .map(|process| process.cmd().to_vec())
+}
+
+/// Whether `arguments` start the daemon that serves `state_dir`. Checked
+/// before a pid read from a file is trusted with anything: the file can
+/// outlive its process, and the pid can by then belong to anything. The
+/// command line, unlike the executable's path, also survives the binary being
+/// replaced under a running daemon.
+fn is_daemon_command_line(arguments: &[OsString], state_dir: &Path) -> bool {
+    let has_subcommand = arguments
+        .iter()
+        .skip(1)
+        .any(|argument| argument == "daemon");
+    let serves_state_dir = arguments.windows(2).any(|pair| {
+        matches!(pair, [flag, value] if flag == "--state-dir" && Path::new(value) == state_dir)
+    });
+    has_subcommand && serves_state_dir
+}
+
+fn daemon_is_running(paths: &DaemonPaths) -> bool {
+    read_pid(&paths.pid_file)
+        .and_then(command_line_of)
+        .is_some_and(|arguments| is_daemon_command_line(&arguments, &paths.state_dir))
+}
+
+/// Stops the daemon recorded in `paths`, provided `pid` really is it.
+fn kill_daemon(pid: u32, paths: &DaemonPaths) -> Result<(), ExecuteProxyError> {
+    let system =
+        sysinfo::System::new_with_specifics(sysinfo::RefreshKind::nothing().with_processes(
+            sysinfo::ProcessRefreshKind::nothing().with_cmd(sysinfo::UpdateKind::Always),
+        ));
+
+    if let Some(process) = system.process(sysinfo::Pid::from_u32(pid)) {
+        if is_daemon_command_line(process.cmd(), &paths.state_dir) {
+            log::info!("killing the daemon with PID {pid}");
+            if !process.kill() {
+                return Err(ExecuteProxyError::KillRunningServer { pid });
+            }
+        } else {
+            log::warn!(
+                "PID {pid} in {:?} is not the daemon of {:?}; leaving it alone",
+                paths.pid_file,
+                paths.state_dir
+            );
+        }
+    }
+
+    for path in [&paths.pid_file, &paths.socket] {
+        log::debug!("cleaning up {path:?} before starting a new daemon");
+        remove_file_if_present(path).log_err();
     }
 
     Ok(())
@@ -1107,14 +1324,8 @@ fn kill_running_server(pid: u32, paths: &ServerPaths) -> Result<(), ExecuteProxy
 
 #[derive(Debug, Error)]
 pub enum SpawnServerError {
-    #[error("failed to remove stdin socket")]
-    RemoveStdinSocket(#[source] std::io::Error),
-
-    #[error("failed to remove stdout socket")]
-    RemoveStdoutSocket(#[source] std::io::Error),
-
-    #[error("failed to remove stderr socket")]
-    RemoveStderrSocket(#[source] std::io::Error),
+    #[error("failed to remove the stale daemon socket")]
+    RemoveSocket(#[source] std::io::Error),
 
     #[error("failed to get current_exe")]
     CurrentExe(#[source] std::io::Error),
@@ -1126,62 +1337,53 @@ pub enum SpawnServerError {
     Timeout,
 }
 
-async fn spawn_server(paths: &ServerPaths) -> Result<(), SpawnServerError> {
-    log::info!("spawning server process",);
-    if paths.stdin_socket.exists() {
-        std::fs::remove_file(&paths.stdin_socket).map_err(SpawnServerError::RemoveStdinSocket)?;
-    }
-    if paths.stdout_socket.exists() {
-        std::fs::remove_file(&paths.stdout_socket).map_err(SpawnServerError::RemoveStdoutSocket)?;
-    }
-    if paths.stderr_socket.exists() {
-        std::fs::remove_file(&paths.stderr_socket).map_err(SpawnServerError::RemoveStderrSocket)?;
-    }
-
+fn spawn_daemon(paths: &DaemonPaths) -> Result<(), SpawnServerError> {
+    log::info!("spawning the daemon");
     let binary_name = std::env::current_exe().map_err(SpawnServerError::CurrentExe)?;
 
     #[cfg(windows)]
     {
-        spawn_server_windows(&binary_name, paths)?;
+        spawn_daemon_windows(&binary_name, paths)?;
     }
 
     #[cfg(not(windows))]
     {
-        spawn_server_normal(&binary_name, paths)?;
+        spawn_daemon_normal(&binary_name, paths)?;
     }
-
-    let mut total_time_waited = std::time::Duration::from_secs(0);
-    let wait_duration = std::time::Duration::from_millis(20);
-    while !paths.stdout_socket.exists()
-        || !paths.stdin_socket.exists()
-        || !paths.stderr_socket.exists()
-    {
-        log::debug!("waiting for server to be ready to accept connections...");
-        std::thread::sleep(wait_duration);
-        total_time_waited += wait_duration;
-        if total_time_waited > std::time::Duration::from_secs(10) {
-            return Err(SpawnServerError::Timeout);
-        }
-    }
-
-    log::info!(
-        "server ready to accept connections. total time waited: {:?}",
-        total_time_waited
-    );
 
     Ok(())
 }
 
+async fn wait_for_daemon(
+    paths: &DaemonPaths,
+    timeout: Duration,
+) -> Result<UnixStream, SpawnServerError> {
+    let started = Instant::now();
+    loop {
+        if paths.socket.exists()
+            && let Ok(connection) = UnixStream::connect(&paths.socket).await
+        {
+            log::info!(
+                "the daemon is accepting connections. total time waited: {:?}",
+                started.elapsed()
+            );
+            return Ok(connection);
+        }
+        if started.elapsed() > timeout {
+            return Err(SpawnServerError::Timeout);
+        }
+        log::debug!("waiting for the daemon to accept connections...");
+        sleep(DAEMON_POLL_INTERVAL).await;
+    }
+}
+
 #[cfg(windows)]
-fn spawn_server_windows(binary_name: &Path, paths: &ServerPaths) -> Result<(), SpawnServerError> {
+fn spawn_daemon_windows(binary_name: &Path, paths: &DaemonPaths) -> Result<(), SpawnServerError> {
     let binary_path = binary_name.to_string_lossy().to_string();
     let parameters = format!(
-        "run --log-file \"{}\" --pid-file \"{}\" --stdin-socket \"{}\" --stdout-socket \"{}\" --stderr-socket \"{}\"",
+        "daemon --log-file \"{}\" --state-dir \"{}\"",
         paths.log_file.to_string_lossy(),
-        paths.pid_file.to_string_lossy(),
-        paths.stdin_socket.to_string_lossy(),
-        paths.stdout_socket.to_string_lossy(),
-        paths.stderr_socket.to_string_lossy()
+        paths.state_dir.to_string_lossy()
     );
 
     let directory = binary_name
@@ -1196,23 +1398,17 @@ fn spawn_server_windows(binary_name: &Path, paths: &ServerPaths) -> Result<(), S
 }
 
 #[cfg(not(windows))]
-fn spawn_server_normal(binary_name: &Path, paths: &ServerPaths) -> Result<(), SpawnServerError> {
-    let mut server_process = new_command(binary_name);
+fn spawn_daemon_normal(binary_name: &Path, paths: &DaemonPaths) -> Result<(), SpawnServerError> {
+    let mut server_process = util::command::new_command(binary_name);
     server_process
         .stdin(util::command::Stdio::null())
         .stdout(util::command::Stdio::null())
         .stderr(util::command::Stdio::null())
-        .arg("run")
+        .arg("daemon")
         .arg("--log-file")
         .arg(&paths.log_file)
-        .arg("--pid-file")
-        .arg(&paths.pid_file)
-        .arg("--stdin-socket")
-        .arg(&paths.stdin_socket)
-        .arg("--stdout-socket")
-        .arg(&paths.stdout_socket)
-        .arg("--stderr-socket")
-        .arg(&paths.stderr_socket);
+        .arg("--state-dir")
+        .arg(&paths.state_dir);
 
     server_process
         .spawn()
@@ -1227,14 +1423,6 @@ pub struct CheckPidError {
     #[source]
     source: std::io::Error,
     pid: u32,
-}
-async fn check_server_running(pid: u32) -> std::io::Result<bool> {
-    new_command("kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .output()
-        .await
-        .map(|output| output.status.success())
 }
 
 fn check_pid_file(path: &Path) -> Result<Option<u32>, CheckPidError> {
@@ -1252,10 +1440,7 @@ fn check_pid_file(path: &Path) -> Result<Option<u32>, CheckPidError> {
     );
 
     if system.process(sysinfo::Pid::from_u32(pid)).is_some() {
-        log::debug!(
-            "Process with PID {} exists. NOT spawning new server, but attaching to existing one.",
-            pid
-        );
+        log::debug!("Process with PID {} exists.", pid);
         Ok(Some(pid))
     } else {
         log::debug!("Found PID file, but process with that PID does not exist. Removing PID file.");
@@ -1272,28 +1457,76 @@ fn write_pid_file(path: &Path, pid: u32) -> Result<()> {
     std::fs::write(path, pid.to_string()).context("Failed to write PID file")
 }
 
-async fn handle_io<R, W>(mut reader: R, mut writer: W, socket_name: &str) -> Result<()>
-where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
-{
-    use remote::protocol::{read_message_raw, write_size_prefixed_buffer};
+async fn forward_stdio(connection: UnixStream) -> Result<(), ExecuteProxyError> {
+    forward(
+        connection,
+        smol::Unblock::new(std::io::stdin()),
+        smol::Unblock::new(std::io::stdout()),
+        smol::Unblock::new(std::io::stderr()),
+    )
+    .await
+}
 
-    let mut buffer = Vec::new();
-    loop {
-        read_message_raw(&mut reader, &mut buffer)
-            .await
-            .with_context(|| format!("failed to read message from {}", socket_name))?;
-        write_size_prefixed_buffer(&mut writer, &mut buffer)
-            .await
-            .with_context(|| format!("failed to write message to {}", socket_name))?;
-        writer.flush().await?;
-        buffer.clear();
+/// Relays between this proxy's stdio, which the client's ssh (or wsl, or
+/// docker) process is attached to, and the daemon. The client's side is the
+/// same length-prefixed envelopes on stdin and stdout, plus the server's log on
+/// stderr, that a per-project server used to serve directly.
+async fn forward<C, I, O, E>(
+    connection: C,
+    mut stdin: I,
+    mut stdout: O,
+    mut stderr: E,
+) -> Result<(), ExecuteProxyError>
+where
+    C: AsyncRead + AsyncWrite + Send + 'static,
+    I: AsyncRead + Unpin + Send + 'static,
+    O: AsyncWrite + Unpin + Send + 'static,
+    E: AsyncWrite + Unpin + Send + 'static,
+{
+    let (mut from_daemon, mut to_daemon) = futures::io::AsyncReadExt::split(connection);
+
+    let stdin_task: smol::Task<Result<()>> = smol::spawn(async move {
+        let mut buffer = Vec::new();
+        loop {
+            read_message_raw(&mut stdin, &mut buffer)
+                .await
+                .context("failed to read message from stdin")?;
+            write_daemon_frame(&mut to_daemon, DaemonFrameKind::Envelope, &buffer)
+                .await
+                .context("failed to write message to the daemon")?;
+            to_daemon.flush().await?;
+        }
+    });
+
+    let stdout_task: smol::Task<Result<()>> = smol::spawn(async move {
+        let mut buffer = Vec::new();
+        loop {
+            match read_daemon_frame(&mut from_daemon, &mut buffer)
+                .await
+                .context("failed to read from the daemon")?
+            {
+                DaemonFrameKind::Envelope => {
+                    write_size_prefixed_buffer(&mut stdout, &mut buffer)
+                        .await
+                        .context("failed to write message to stdout")?;
+                    stdout.flush().await?;
+                }
+                DaemonFrameKind::Log => {
+                    stderr.write_all(&buffer).await?;
+                    stderr.flush().await?;
+                }
+            }
+        }
+    });
+
+    futures::select! {
+        result = stdin_task.fuse() => result.map_err(ExecuteProxyError::StdinTask),
+        result = stdout_task.fuse() => result.map_err(ExecuteProxyError::StdoutTask),
     }
 }
 
 fn initialize_settings(
-    session: AnyProtoClient,
+    router: SessionRouter,
     fs: Arc<dyn Fs>,
     cx: &mut App,
 ) -> watch::Receiver<Option<NodeBinaryOptions>> {
@@ -1302,27 +1535,31 @@ fn initialize_settings(
 
     handle_settings_file_changes(user_settings_file_rx, watcher_task, cx, {
         move |err, _cx| {
-            if let Some(e) = err {
+            if let Some(e) = &err {
                 log::info!("Server settings failed to change: {}", e);
-
-                session
-                    .send(proto::Toast {
-                        project_id: REMOTE_SERVER_PROJECT_ID,
-                        notification_id: "server-settings-failed".to_string(),
-                        message: format!(
-                            "Error in settings on remote host {:?}: {}",
-                            paths::settings_file(),
-                            e
-                        ),
-                    })
-                    .log_err();
-            } else {
-                session
-                    .send(proto::HideToast {
-                        project_id: REMOTE_SERVER_PROJECT_ID,
-                        notification_id: "server-settings-failed".to_string(),
-                    })
-                    .log_err();
+            }
+            // Every session has a window of its own that should say so.
+            for session in router.all_clients() {
+                if let Some(e) = &err {
+                    session
+                        .send(proto::Toast {
+                            project_id: REMOTE_SERVER_PROJECT_ID,
+                            notification_id: "server-settings-failed".to_string(),
+                            message: format!(
+                                "Error in settings on remote host {:?}: {}",
+                                paths::settings_file(),
+                                e
+                            ),
+                        })
+                        .log_err();
+                } else {
+                    session
+                        .send(proto::HideToast {
+                            project_id: REMOTE_SERVER_PROJECT_ID,
+                            notification_id: "server-settings-failed".to_string(),
+                        })
+                        .log_err();
+                }
             }
         }
     });
@@ -1367,10 +1604,15 @@ pub fn handle_settings_file_changes(
     cx: &mut App,
     settings_changed: impl Fn(Option<anyhow::Error>, &mut App) + 'static,
 ) {
-    let server_settings_content = cx
+    let Some(server_settings_content) = cx
         .foreground_executor()
         .block_on(server_settings_file.next())
-        .unwrap();
+    else {
+        log::error!(
+            "the settings file watcher stopped before reporting anything; this host's settings file is not applied"
+        );
+        return;
+    };
     SettingsStore::update_global(cx, |store, cx| {
         store
             .set_server_settings(&server_settings_content, cx)
@@ -1468,7 +1710,7 @@ fn watch_relay_http_setting(cx: &mut App) -> Arc<AtomicBool> {
     enabled
 }
 
-fn read_proxy_settings(cx: &mut Context<HeadlessProject>) -> Option<Url> {
+fn read_proxy_settings(cx: &App) -> Option<Url> {
     let proxy_str = ProxySettings::get_global(cx).proxy.to_owned();
 
     proxy_str
@@ -1541,6 +1783,10 @@ fn is_file_in_use(file_name: &OsStr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::daemon::test_support::memory_stream_pair;
+    use remote::protocol::{decode_envelope, read_message, write_envelope_frame, write_message};
+    use rpc::proto::EnvelopedMessage as _;
+    use std::cell::RefCell;
 
     #[test]
     fn rotated_remote_log_path_uses_numbered_log_suffix() {
@@ -1595,5 +1841,350 @@ mod tests {
             std::fs::read(&log_path).expect("read active log"),
             new_contents
         );
+    }
+
+    /// ADR-F45: several proxies started together have to agree on one daemon,
+    /// which is what the lock around starting it is for.
+    #[test]
+    fn a_second_proxy_waits_for_the_daemon_lock() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let lock_path = temp_dir.path().join("daemon.lock");
+        let first = smol::block_on(DaemonLock::acquire(&lock_path, Duration::from_secs(5)))
+            .expect("the first proxy should get the lock");
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            drop(first);
+        });
+
+        let started = Instant::now();
+        let second = smol::block_on(DaemonLock::acquire(&lock_path, Duration::from_secs(5)))
+            .expect("the second proxy should get the lock once it is released");
+        assert!(
+            started.elapsed() >= Duration::from_millis(100),
+            "the second proxy must not get the lock while the first holds it"
+        );
+        releaser.join().expect("the releasing thread should finish");
+        drop(second);
+    }
+
+    #[test]
+    fn a_held_daemon_lock_keeps_the_next_proxy_out_until_it_gives_up() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let lock_path = temp_dir.path().join("daemon.lock");
+        let _held = smol::block_on(DaemonLock::acquire(&lock_path, Duration::from_secs(5)))
+            .expect("the first proxy should get the lock");
+        let second = smol::block_on(DaemonLock::acquire(&lock_path, Duration::from_millis(200)));
+        assert!(matches!(second, Err(ExecuteProxyError::DaemonLock { .. })));
+    }
+
+    #[test]
+    fn a_lock_file_left_behind_keeps_no_one_out() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let lock_path = temp_dir.path().join("daemon.lock");
+        // What a proxy that died leaves: the file, but no one holding it.
+        std::fs::write(&lock_path, "").expect("write a leftover lock file");
+
+        let started = Instant::now();
+        let lock = smol::block_on(DaemonLock::acquire(&lock_path, Duration::from_secs(5)))
+            .expect("a leftover lock file should not keep the next proxy out");
+        assert!(started.elapsed() < Duration::from_secs(2));
+        drop(lock);
+    }
+
+    #[test]
+    fn a_daemon_only_removes_the_files_that_are_still_its_own() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let paths = DaemonPaths::new(
+            temp_dir.path().to_path_buf(),
+            temp_dir.path().join("daemon.log"),
+        );
+        std::fs::write(&paths.socket, "").expect("write the socket stand-in");
+        std::fs::write(&paths.pid_file, "4242").expect("write the pid file");
+
+        paths.remove_if_owned_by(4243);
+        assert!(paths.socket.exists() && paths.pid_file.exists());
+
+        paths.remove_if_owned_by(4242);
+        assert!(!paths.socket.exists() && !paths.pid_file.exists());
+    }
+
+    #[test]
+    fn only_the_daemon_of_this_directory_counts_as_the_daemon() {
+        let state_dir = Path::new("/home/user/.local/share/zed/server_state/d-0123abcd");
+        let command_line =
+            |arguments: &[&str]| arguments.iter().map(OsString::from).collect::<Vec<_>>();
+        let state_dir_argument = state_dir.to_string_lossy().into_owned();
+
+        assert!(is_daemon_command_line(
+            &command_line(&[
+                "/home/user/.zed_server/zed-remote-server-dev-abc",
+                "daemon",
+                "--log-file",
+                "/home/user/.local/share/zed/logs/server-d-0123abcd.log",
+                "--state-dir",
+                &state_dir_argument,
+            ]),
+            state_dir
+        ));
+        assert!(!is_daemon_command_line(
+            &command_line(&[
+                "/home/user/.zed_server/zed-remote-server-dev-abc",
+                "daemon",
+                "--state-dir",
+                "/home/user/.local/share/zed/server_state/d-ffffffff",
+            ]),
+            state_dir
+        ));
+        assert!(!is_daemon_command_line(
+            &command_line(&[
+                "/home/user/.zed_server/zed-remote-server-dev-abc",
+                "proxy",
+                "--identifier",
+                "0a1b2c3d.workspace-5",
+            ]),
+            state_dir
+        ));
+        assert!(!is_daemon_command_line(
+            &command_line(&["/usr/bin/sleep", "--state-dir", &state_dir_argument]),
+            state_dir
+        ));
+    }
+
+    #[test]
+    fn a_pid_that_is_not_this_daemon_is_left_alone() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let paths = DaemonPaths::new(
+            temp_dir.path().to_path_buf(),
+            temp_dir.path().join("daemon.log"),
+        );
+        std::fs::write(&paths.pid_file, std::process::id().to_string())
+            .expect("write the pid file");
+
+        kill_daemon(std::process::id(), &paths).expect("killing should succeed or skip");
+        assert!(
+            !daemon_is_running(&paths),
+            "this test process is not a daemon"
+        );
+        assert!(
+            !paths.pid_file.exists(),
+            "the stale pid file should still be cleaned up"
+        );
+    }
+
+    fn test_paths(temp_dir: &tempfile::TempDir) -> DaemonPaths {
+        DaemonPaths::new(
+            temp_dir.path().to_path_buf(),
+            temp_dir.path().join("daemon.log"),
+        )
+    }
+
+    fn hello(reconnect: bool) -> DaemonHello {
+        DaemonHello {
+            protocol_version: DAEMON_PROTOCOL_VERSION,
+            identifier: "0a1b2c3d.workspace-5".to_string(),
+            reconnect,
+            ssh_auth_sock: None,
+        }
+    }
+
+    /// A stand-in daemon that answers every introduction with `outcome` and
+    /// keeps the connections it took.
+    fn start_answering_daemon(socket: &Path, outcome: DaemonHelloOutcome) -> smol::Task<()> {
+        let listener = UnixListener::bind(socket).expect("bind a stand-in daemon");
+        smol::spawn(async move {
+            let mut connections = Vec::new();
+            while let Ok((mut connection, _)) = listener.accept().await {
+                if read_json_message::<_, DaemonHello>(&mut connection)
+                    .await
+                    .is_ok()
+                {
+                    write_json_message(
+                        &mut connection,
+                        &DaemonHelloReply {
+                            outcome,
+                            message: None,
+                        },
+                    )
+                    .await
+                    .ok();
+                }
+                connections.push(connection);
+            }
+        })
+    }
+
+    /// A stand-in for a hung daemon: takes one connection and never answers.
+    /// It lets go of its socket once it has the connection, so that a
+    /// successor can be bound at the same path — Windows will not remove a
+    /// socket file that is still bound.
+    fn start_silent_daemon(socket: &Path) -> smol::Task<()> {
+        let listener = UnixListener::bind(socket).expect("bind a stand-in daemon");
+        smol::spawn(async move {
+            let Ok((connection, _)) = listener.accept().await else {
+                return;
+            };
+            drop(listener);
+            let _connection = connection;
+            futures::future::pending::<()>().await;
+        })
+    }
+
+    /// A connector whose "spawning a daemon" starts an answering stand-in, and
+    /// that counts how often it had to.
+    fn test_connector(
+        paths: DaemonPaths,
+        spawned: Rc<RefCell<Vec<smol::Task<()>>>>,
+    ) -> DaemonConnector {
+        DaemonConnector {
+            paths,
+            spawn: Box::new(move |paths| {
+                spawned.borrow_mut().push(start_answering_daemon(
+                    &paths.socket,
+                    DaemonHelloOutcome::Accepted,
+                ));
+                Ok(())
+            }),
+            reply_timeout: Duration::from_millis(300),
+            start_timeout: Duration::from_secs(5),
+            lock_timeout: Duration::from_secs(5),
+        }
+    }
+
+    #[test]
+    fn a_reconnect_with_no_daemon_reports_the_server_gone() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let spawned = Rc::new(RefCell::new(Vec::new()));
+        let connector = test_connector(test_paths(&temp_dir), spawned.clone());
+
+        let Err(error) = smol::block_on(connector.connect(&hello(true))) else {
+            panic!("there is no daemon to reconnect to");
+        };
+        assert_eq!(error.to_exit_code(), 90);
+        assert!(
+            spawned.borrow().is_empty(),
+            "a reconnect never starts a daemon"
+        );
+    }
+
+    #[test]
+    fn a_reconnect_to_a_daemon_without_the_session_reports_the_server_gone() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let paths = test_paths(&temp_dir);
+        let _daemon = start_answering_daemon(&paths.socket, DaemonHelloOutcome::SessionNotFound);
+        let connector = test_connector(paths, Rc::new(RefCell::new(Vec::new())));
+
+        let Err(error) = smol::block_on(connector.connect(&hello(true))) else {
+            panic!("the daemon has no such session");
+        };
+        assert_eq!(error.to_exit_code(), 90);
+    }
+
+    #[test]
+    fn a_fresh_connection_starts_the_daemon_when_none_runs() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let spawned = Rc::new(RefCell::new(Vec::new()));
+        let connector = test_connector(test_paths(&temp_dir), spawned.clone());
+
+        smol::block_on(connector.connect(&hello(false)))
+            .expect("the proxy should start a daemon and be accepted by it");
+        assert_eq!(spawned.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_daemon_that_does_not_answer_is_replaced() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let paths = test_paths(&temp_dir);
+        let _hung = start_silent_daemon(&paths.socket);
+        // The pid file names a live process that is not a daemon, which the
+        // replacement must not kill.
+        std::fs::write(&paths.pid_file, std::process::id().to_string())
+            .expect("write the pid file");
+        let spawned = Rc::new(RefCell::new(Vec::new()));
+        let connector = test_connector(paths, spawned.clone());
+
+        smol::block_on(connector.connect(&hello(false)))
+            .expect("the proxy should replace the hung daemon and be accepted");
+        assert_eq!(spawned.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_daemon_another_proxy_has_already_replaced_is_left_running() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let paths = test_paths(&temp_dir);
+        let _successor = start_answering_daemon(&paths.socket, DaemonHelloOutcome::Accepted);
+        std::fs::write(&paths.pid_file, std::process::id().to_string())
+            .expect("write the pid file");
+        let spawned = Rc::new(RefCell::new(Vec::new()));
+        let connector = test_connector(paths.clone(), spawned.clone());
+
+        let found_hung = DaemonIdentity {
+            pid: Some(u32::MAX - 1),
+            socket: None,
+        };
+        smol::block_on(connector.restart(found_hung))
+            .expect("finding a successor is not a failure");
+        assert!(spawned.borrow().is_empty(), "the successor must be kept");
+        assert!(paths.pid_file.exists() && paths.socket.exists());
+        smol::block_on(connector.connect(&hello(false)))
+            .expect("the successor should still answer");
+    }
+
+    #[test]
+    fn the_proxy_turns_stdio_into_frames_and_frames_back_into_stdio() {
+        smol::block_on(async {
+            let (mut daemon_end, proxy_connection) = memory_stream_pair();
+            let (mut client_stdin, proxy_stdin) = memory_stream_pair();
+            let (proxy_stdout, mut client_stdout) = memory_stream_pair();
+            let (proxy_stderr, mut client_stderr) = memory_stream_pair();
+            let forwarding = smol::spawn(forward(
+                proxy_connection,
+                proxy_stdin,
+                proxy_stdout,
+                proxy_stderr,
+            ));
+
+            let mut buffer = Vec::new();
+            let ping = proto::Ping {}.into_envelope(1, None, None);
+            write_message(&mut client_stdin, &mut buffer, ping.clone())
+                .await
+                .expect("the client writes to the proxy's stdin");
+            client_stdin.flush().await.expect("flush stdin");
+            assert_eq!(
+                read_daemon_frame(&mut daemon_end, &mut buffer)
+                    .await
+                    .expect("the daemon should receive a frame"),
+                DaemonFrameKind::Envelope
+            );
+            assert_eq!(
+                decode_envelope(&buffer).expect("the frame carries the envelope"),
+                ping
+            );
+
+            let ack = proto::Ack {}.into_envelope(2, Some(1), None);
+            write_envelope_frame(&mut daemon_end, &mut buffer, ack.clone())
+                .await
+                .expect("the daemon answers");
+            write_daemon_frame(&mut daemon_end, DaemonFrameKind::Log, b"log line\n")
+                .await
+                .expect("the daemon logs");
+            daemon_end.flush().await.expect("flush the daemon's end");
+            assert_eq!(
+                read_message(&mut client_stdout, &mut buffer)
+                    .await
+                    .expect("the client should read the answer from stdout"),
+                ack
+            );
+            let mut log = vec![0u8; b"log line\n".len()];
+            futures::io::AsyncReadExt::read_exact(&mut client_stderr, &mut log)
+                .await
+                .expect("the client should read the log from stderr");
+            assert_eq!(log, b"log line\n");
+
+            drop(client_stdin);
+            assert!(matches!(
+                forwarding.await,
+                Err(ExecuteProxyError::StdinTask(_))
+            ));
+        });
     }
 }

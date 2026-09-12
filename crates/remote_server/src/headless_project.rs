@@ -13,7 +13,10 @@ use extension::ExtensionHostProxy;
 use extension_host::headless_host::HeadlessExtensionStore;
 use fs::{Fs, RemoveOptions, RenameOptions};
 use futures::channel::oneshot;
-use gpui::{App, AppContext as _, AsyncApp, Context, Entity, PromptLevel, TaskExt};
+use gpui::{
+    App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, PromptLevel, Task, TaskExt,
+    WeakEntity,
+};
 use http_client::{EgressPolicy, EgressPolicyHandle, HttpClient};
 use language::{Buffer, BufferEvent, LanguageRegistry, proto::serialize_operation};
 use node_runtime::NodeRuntime;
@@ -42,8 +45,10 @@ use smol::process::Child;
 
 use settings::initial_server_settings_content;
 use std::{
+    cell::RefCell,
     num::NonZeroU64,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -78,9 +83,11 @@ pub struct HeadlessProject {
     /// their traffic too (ADR-F14, the remote half of ADR-F13). It listens on
     /// *this* host's loopback: the IDE's endpoint would mean a different
     /// machine's port here. Started when the client pushes its allowlist,
-    /// since until then this process's policy denies everything anyway, and
-    /// stopped when this project is released.
-    pub(crate) child_process_proxy: Option<ChildProcessProxySupervisor>,
+    /// since until then this process's policy denies everything anyway.
+    ///
+    /// Shared with the [`HeadlessHost`] rather than owned: the endpoint is
+    /// process-wide, so it has to outlive any one project (ADR-F45).
+    pub(crate) child_process_proxy: Option<Rc<RefCell<ChildProcessProxySupervisor>>>,
     pub next_entry_id: Arc<AtomicUsize>,
     pub languages: Arc<LanguageRegistry>,
     pub extensions: Entity<HeadlessExtensionStore>,
@@ -96,6 +103,10 @@ pub struct HeadlessProject {
     /// makes the handler drop its child, which `kill_on_drop` then kills — the
     /// child itself cannot live here, because awaiting its output consumes it.
     transfer_commands: HashMap<u64, oneshot::Sender<()>>,
+    pub host: Entity<HeadlessHost>,
+    /// Whether `ShutdownRemoteServer` ends the whole process, which is only
+    /// right when this project is the only thing the process serves.
+    quit_app_on_shutdown: bool,
 }
 
 pub struct HeadlessAppState {
@@ -108,23 +119,47 @@ pub struct HeadlessAppState {
     pub startup_time: Instant,
 }
 
-impl HeadlessProject {
-    pub fn init(cx: &mut App) {
-        settings::init(cx);
-        log_store::init(true, cx);
-    }
+pub struct HeadlessHostState {
+    pub fs: Arc<dyn Fs>,
+    pub http_client: Arc<dyn HttpClient>,
+    pub node_runtime: NodeRuntime,
+    pub languages: Arc<LanguageRegistry>,
+    pub extension_host_proxy: Arc<ExtensionHostProxy>,
+    pub startup_time: Instant,
+}
 
+/// What one `remote_server` process has once, however many projects it serves
+/// (ADR-F45).
+///
+/// Everything here is either process-wide already (the extension proxies, the
+/// agent registry global, the child-process proxy endpoint) or has to be
+/// shared for the process-wide pieces to stay consistent: language server ids
+/// come from the language registry and key the global LSP log store, so two
+/// registries in one process would hand out the same id twice.
+pub struct HeadlessHost {
+    pub fs: Arc<dyn Fs>,
+    pub http_client: Arc<dyn HttpClient>,
+    pub node_runtime: NodeRuntime,
+    pub languages: Arc<LanguageRegistry>,
+    pub extensions: Entity<HeadlessExtensionStore>,
+    /// The allowlist gating this process's own `HttpClient` (ADR-F11); see
+    /// [`HeadlessProject::egress_policy`].
+    pub egress_policy: Option<EgressPolicyHandle>,
+    child_process_proxy: Option<Rc<RefCell<ChildProcessProxySupervisor>>>,
+    startup_time: Instant,
+    projects: Vec<WeakEntity<HeadlessProject>>,
+}
+
+impl HeadlessHost {
     pub fn new(
-        HeadlessAppState {
-            session,
+        HeadlessHostState {
             fs,
             http_client,
             node_runtime,
             languages,
             extension_host_proxy: proxy,
             startup_time,
-        }: HeadlessAppState,
-        init_worktree_trust: bool,
+        }: HeadlessHostState,
         cx: &mut Context<Self>,
     ) -> Self {
         let egress_policy = http_client.egress_policy().cloned();
@@ -138,11 +173,160 @@ impl HeadlessProject {
             // chaining through the user's proxy is a convenience that must not
             // cost the process its ability to start.
             let upstream_proxy = ProxySettings::try_get(cx).and_then(ProxySettings::proxy_url);
-            ChildProcessProxySupervisor::new(upstream_proxy.as_ref())
+            Rc::new(RefCell::new(ChildProcessProxySupervisor::new(
+                upstream_proxy.as_ref(),
+            )))
         });
 
         debug_adapter_extension::init(proxy.clone(), cx);
         languages::init(languages.clone(), fs.clone(), node_runtime.clone(), cx);
+
+        // Deliberately *not* on the IDE lane (ADR-F38): the ACP registry and
+        // the agent binaries it points at are AI infrastructure, and the local
+        // side keeps them gated too. The allowlist the IDE pushed (ADR-F11) is
+        // what they are judged against.
+        AgentRegistryStore::init_global(cx, fs.clone(), http_client.clone());
+
+        // The extension proxies are process-wide slots, so they have to reach
+        // every project's language servers, not the last project's.
+        let host = cx.weak_entity();
+        language_extension::init(
+            language_extension::LspAccess::ViaWorkspaces(Arc::new(move |cx: &mut App| {
+                let host = host
+                    .upgrade()
+                    .context("the remote server's shared state has been released")?;
+                Ok(host.read(cx).live_lsp_stores(cx))
+            })),
+            proxy.clone(),
+            languages.clone(),
+        );
+
+        let extensions = HeadlessExtensionStore::new(
+            fs.clone(),
+            // ADR-F38: extensions are how most language servers arrive.
+            http_client::ide_lane(http_client.clone()),
+            paths::remote_extensions_dir().to_path_buf(),
+            proxy,
+            node_runtime.clone(),
+            cx,
+        );
+
+        Self {
+            fs,
+            http_client,
+            node_runtime,
+            languages,
+            extensions,
+            egress_policy,
+            child_process_proxy,
+            startup_time,
+            projects: Vec::new(),
+        }
+    }
+
+    fn register_project(&mut self, project: WeakEntity<HeadlessProject>) {
+        self.projects.retain(|project| project.upgrade().is_some());
+        self.projects.push(project);
+    }
+
+    /// The language servers of every project this process still serves.
+    pub fn live_lsp_stores(&self, cx: &App) -> Vec<Entity<LspStore>> {
+        self.projects
+            .iter()
+            .filter_map(WeakEntity::upgrade)
+            .map(|project| project.read(cx).lsp_store.clone())
+            .collect()
+    }
+
+    /// Whether this process runs the child-process egress proxy's supervisor.
+    pub fn has_child_process_proxy_supervisor(&self) -> bool {
+        self.child_process_proxy.is_some()
+    }
+}
+
+/// What a project tells whoever owns it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeadlessProjectEvent {
+    /// The client closed this project (`ShutdownRemoteServer`). The process
+    /// serves other projects too (ADR-F45), so this ends the project, not the
+    /// process.
+    ShutdownRequested,
+}
+
+impl EventEmitter<HeadlessProjectEvent> for HeadlessProject {}
+
+impl HeadlessProject {
+    pub fn init(cx: &mut App) {
+        settings::init(cx);
+        log_store::init(true, cx);
+    }
+
+    /// A project that is the only thing its process serves: it brings its own
+    /// [`HeadlessHost`], and closing it ends the process.
+    pub fn new(
+        HeadlessAppState {
+            session,
+            fs,
+            http_client,
+            node_runtime,
+            languages,
+            extension_host_proxy,
+            startup_time,
+        }: HeadlessAppState,
+        init_worktree_trust: bool,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let host = cx.new(|cx| {
+            HeadlessHost::new(
+                HeadlessHostState {
+                    fs,
+                    http_client,
+                    node_runtime,
+                    languages,
+                    extension_host_proxy,
+                    startup_time,
+                },
+                cx,
+            )
+        });
+        let mut project = Self::new_in_host(host, session, init_worktree_trust, cx);
+        project.quit_app_on_shutdown = true;
+        project
+    }
+
+    /// A project that shares its process with others (ADR-F45). Closing it
+    /// emits [`HeadlessProjectEvent::ShutdownRequested`] for the owner to act
+    /// on, instead of ending the process.
+    pub fn new_in_host(
+        host: Entity<HeadlessHost>,
+        session: AnyProtoClient,
+        init_worktree_trust: bool,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let (
+            fs,
+            http_client,
+            node_runtime,
+            languages,
+            extensions,
+            egress_policy,
+            child_process_proxy,
+            startup_time,
+        ) = {
+            let host = host.read(cx);
+            (
+                host.fs.clone(),
+                host.http_client.clone(),
+                host.node_runtime.clone(),
+                host.languages.clone(),
+                host.extensions.clone(),
+                host.egress_policy.clone(),
+                host.child_process_proxy.clone(),
+                host.startup_time,
+            )
+        };
+        let this = cx.weak_entity();
+        host.update(cx, |host, _| host.register_project(this));
 
         let worktree_store = cx.new(|cx| {
             let mut store = WorktreeStore::local(true, fs.clone(), WorktreeIdCounter::get(cx));
@@ -274,12 +458,6 @@ impl HeadlessProject {
             lsp_store
         });
 
-        // Deliberately *not* on the IDE lane (ADR-F38): the ACP registry and
-        // the agent binaries it points at are AI infrastructure, and the local
-        // side keeps them gated too. The allowlist the IDE pushed (ADR-F11) is
-        // what they are judged against.
-        AgentRegistryStore::init_global(cx, fs.clone(), http_client.clone());
-
         let agent_server_store = cx.new(|cx| {
             let mut agent_server_store = AgentServerStore::local(
                 node_runtime.clone(),
@@ -300,11 +478,6 @@ impl HeadlessProject {
         });
 
         cx.subscribe(&lsp_store, Self::on_lsp_store_event).detach();
-        language_extension::init(
-            language_extension::LspAccess::ViaLspStore(lsp_store.downgrade()),
-            proxy.clone(),
-            languages.clone(),
-        );
 
         cx.subscribe(&buffer_store, |_this, _buffer_store, event, cx| {
             if let BufferStoreEvent::BufferAdded(buffer) = event {
@@ -312,16 +485,6 @@ impl HeadlessProject {
             }
         })
         .detach();
-
-        let extensions = HeadlessExtensionStore::new(
-            fs.clone(),
-            // ADR-F38: extensions are how most language servers arrive.
-            http_client::ide_lane(http_client.clone()),
-            paths::remote_extensions_dir().to_path_buf(),
-            proxy,
-            node_runtime,
-            cx,
-        );
 
         // local_machine -> ssh handlers
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &worktree_store);
@@ -418,7 +581,61 @@ impl HeadlessProject {
             _toolchain_store: toolchain_store,
             kernels: Default::default(),
             transfer_commands: Default::default(),
+            host,
+            quit_app_on_shutdown: false,
         }
+    }
+
+    /// Stops what this project runs on the host, for when its session is
+    /// closed while the process lives on (ADR-F45). Before that, the process
+    /// exiting took care of it.
+    pub fn shutdown(&mut self, cx: &mut Context<Self>) -> Task<()> {
+        // Dropping a transfer command's cancellation sender is what makes its
+        // handler drop — and so kill — the child.
+        self.transfer_commands.clear();
+        for (kernel_id, mut kernel) in self.kernels.drain() {
+            if let Err(error) = kernel.kill() {
+                log::warn!("failed to stop kernel {kernel_id}: {error}");
+            }
+        }
+
+        let running_context_servers = self
+            .context_server_store
+            .read(cx)
+            .running_servers()
+            .into_iter()
+            .map(|server| server.id())
+            .collect::<Vec<_>>();
+        self.context_server_store
+            .update(cx, |context_server_store, cx| {
+                for id in running_context_servers {
+                    context_server_store.stop_server(&id, cx).log_err();
+                }
+            });
+        let debug_sessions = self
+            .dap_store
+            .update(cx, |dap_store, cx| dap_store.shutdown_sessions(cx));
+        let language_servers = self.lsp_store.update(cx, |lsp_store, cx| {
+            lsp_store.shutdown_all_language_servers(cx)
+        });
+
+        // Removed rather than left for the last reference to drop, so that
+        // their file watches go now even if something still holds on to one.
+        let worktree_ids = self
+            .worktree_store
+            .read(cx)
+            .worktrees()
+            .map(|worktree| worktree.read(cx).id())
+            .collect::<Vec<_>>();
+        self.worktree_store.update(cx, |worktree_store, cx| {
+            for worktree_id in worktree_ids {
+                worktree_store.remove_worktree(worktree_id, cx);
+            }
+        });
+
+        cx.spawn(async move |_, _| {
+            futures::future::join(debug_sessions, language_servers).await;
+        })
     }
 
     fn on_buffer_event(
@@ -1477,17 +1694,24 @@ impl HeadlessProject {
     }
 
     async fn handle_shutdown_remote_server(
-        _this: Entity<Self>,
+        this: Entity<Self>,
         _envelope: TypedEnvelope<proto::ShutdownRemoteServer>,
         cx: AsyncApp,
     ) -> Result<proto::Ack> {
+        let quit_app = this.read_with(&cx, |this, _| this.quit_app_on_shutdown);
+        // Deferred so that the acknowledgement goes out before anything is
+        // torn down.
         cx.spawn(async move |cx| {
-            cx.update(|cx| {
-                // TODO: This is a hack, because in a headless project, shutdown isn't executed
-                // when calling quit, but it should be.
-                cx.shutdown();
-                cx.quit();
-            })
+            if quit_app {
+                cx.update(|cx| {
+                    // TODO: This is a hack, because in a headless project, shutdown isn't executed
+                    // when calling quit, but it should be.
+                    cx.shutdown();
+                    cx.quit();
+                })
+            } else {
+                this.update(cx, |_, cx| cx.emit(HeadlessProjectEvent::ShutdownRequested))
+            }
         })
         .detach();
 
@@ -1547,8 +1771,8 @@ impl HeadlessProject {
         // what an absent value in the policy file means on the IDE's own side.
         let enabled = envelope.payload.proxy_child_processes.unwrap_or(true);
         this.update(&mut cx, |this, _| {
-            if let Some(supervisor) = this.child_process_proxy.as_mut() {
-                supervisor.apply(enabled, &egress_policy);
+            if let Some(supervisor) = this.child_process_proxy.as_ref() {
+                supervisor.borrow_mut().apply(enabled, &egress_policy);
             }
         });
         match http_client::child_process_proxy() {
