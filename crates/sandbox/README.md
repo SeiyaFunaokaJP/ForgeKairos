@@ -40,7 +40,7 @@ The implementations are highly platform-specific:
 - Mac support comes from Seatbelt
 - Linux support comes from [bubblewrap], implemented via Linux [namespaces].
 - Windows:
-  - WSL: same as Linux
+  - WSL: the SSH-remote helper (`linux_remote_helper`) run inside WSL, see below
   - non-WSL: not supported
 
 Note that WSL shells can be used on all Windows projects, regardless of whether
@@ -317,17 +317,31 @@ escape is already closed there without a seccomp filter.
 
 ### Windows
 
-> [!NOTE] The Windows implementation depends heavily on the details of the Linux
-  implementation. 
+Windows does not use Bubblewrap (ADR-F46). It runs the same helper that isolates
+agent commands on an SSH host (ADR-F18, `linux_remote_helper`): the Linux
+`remote_server` shipped next to `Zed.exe`, invoked inside WSL as
+`--remote-sandbox-helper --wsl …`. The zed host code runs on Windows and holds
+no Linux file descriptors, so everything that needs them — pinning inodes,
+Landlock rules, the network namespace — happens inside WSL, in the helper.
 
-The Linux approach works perfectly on WSL in theory (WSL uses a "regular linux
-kernel"), but there is one practical thorn: the zed host code that creates the
-FD is now running on Windows, but we need Linux file descriptors.
+`windows_wsl` copies the helper and `slirp4netns` from Zed's install directory
+into `~/.cache/zed-jp-enhance/sandbox/<key>/` in the distro (`<key>` is derived
+from the artifacts' contents; the copy is verified and renamed into place), so
+nothing is downloaded and a build only ever runs its own helper. `--wsl` changes
+the helper in these ways:
 
-To work around this, we launch `zed --wsl-sandbox-helper` in WSL, which is a
-shim that captures the FDs and sets up the socket. We download this to
-`~/.local/libexec/zed`, so that it does not conflict with the Windows `zed.exe`
-binary that WSL will inject into the Linux `$PATH` (yes the `.exe` is stripped).
+- Landlock is required (the mount-jail fallback cannot make the `/mnt/<drive>`
+  submounts read-only).
+- Protected paths inside a writable root get read-only binds in a private mount
+  namespace instead of carving the root, so new files at a worktree root still
+  work; the command gets no capabilities, so it cannot undo the binds.
+- Writable roots must still be the canonical paths approved on the Windows side
+  (a swapped-in symlink fails closed).
+- Signals to processes outside the sandbox are refused (Landlock ABI 6).
+- Failures print `zed-wsl-sandbox:` instead of `zed-remote-sandbox:`.
+
+WSL's Windows interop needs an `AF_UNIX` / `AF_VSOCK` socket, which the seccomp
+filter refuses, so a sandboxed command cannot start Windows programs.
 
 ### MacOS
 

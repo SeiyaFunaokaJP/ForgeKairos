@@ -72,7 +72,74 @@ pub fn provided_terminal_environment(
         .collect()
 }
 
+/// The variables every Zed terminal gets (`TERM`, `ZED_TERM`, ...), for a
+/// sandboxed remote agent command to receive inside its sandbox (ADR-F46).
+pub fn zed_terminal_environment(cx: &App) -> HashMap<String, String> {
+    let mut environment = HashMap::default();
+    insert_zed_terminal_env(&mut environment, &release_channel::AppVersion::global(cx));
+    environment
+}
+
+/// What a task terminal adds of its own around the task it spawns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TaskSpawnEnvironment {
+    /// Everything, as upstream: the directory environment, `terminal.env`,
+    /// registered providers and toolchain activation.
+    Full,
+    /// Nothing: an agent command already wrapped in a sandbox (ADR-F46), whose
+    /// wrapper process all of that would reach before the sandbox exists.
+    SandboxWrapped,
+}
+
+impl TaskSpawnEnvironment {
+    fn activates_toolchain(self, detect_venv: bool) -> bool {
+        self == Self::Full && detect_venv
+    }
+}
+
+/// The environment a task terminal's process starts with, before the task's
+/// own `env` is laid over it.
+fn terminal_process_environment(
+    spawn_environment: TaskSpawnEnvironment,
+    directory_environment: HashMap<String, String>,
+    provided_environment: Vec<(String, String)>,
+    settings_environment: impl IntoIterator<Item = (String, String)>,
+) -> HashMap<String, String> {
+    match spawn_environment {
+        TaskSpawnEnvironment::Full => {
+            let mut environment = directory_environment;
+            environment.extend(provided_environment);
+            // 設定の `terminal.env` が明示した値のほうが強い。
+            environment.extend(settings_environment);
+            environment
+        }
+        TaskSpawnEnvironment::SandboxWrapped => HashMap::default(),
+    }
+}
+
 impl Project {
+    /// ADR-F46: the `terminal.env` from settings that applies in `directory`,
+    /// for a sandboxed agent command to set inside its sandbox, since
+    /// [`Self::create_sandboxed_terminal_task`] puts nothing on the process it
+    /// starts.
+    pub fn terminal_settings_environment(
+        &self,
+        directory: Option<&Path>,
+        cx: &App,
+    ) -> HashMap<String, String> {
+        let settings_location = directory
+            .and_then(|directory| self.find_worktree(directory, cx))
+            .map(|(worktree, _)| SettingsLocation {
+                worktree_id: worktree.read(cx).id(),
+                path: RelPath::empty(),
+            });
+        TerminalSettings::get(settings_location, cx)
+            .env
+            .clone()
+            .into_iter()
+            .collect()
+    }
+
     pub fn active_entry_directory(&self, cx: &App) -> Option<PathBuf> {
         let entry_id = self.active_entry()?;
         let worktree = self.worktree_for_entry(entry_id, cx)?;
@@ -110,6 +177,62 @@ impl Project {
         spawn_task: SpawnInTerminal,
         cx: &mut Context<Self>,
     ) -> Task<Result<Entity<Terminal>>> {
+        self.spawn_terminal_task(spawn_task, TaskSpawnEnvironment::Full, cx)
+    }
+
+    /// ADR-F46: spawns an agent command that is already wrapped in a sandbox.
+    ///
+    /// Nothing of the terminal's own goes onto the process it starts — no
+    /// directory environment, no `terminal.env`, no registered providers, no
+    /// toolchain activation — because all of that runs before the wrapper,
+    /// outside the sandbox: an activation script the sandboxed command can
+    /// rewrite, or an `LD_PRELOAD` from the project's `.zed/settings.json`,
+    /// would execute with the editor's own privileges. The caller applies what
+    /// the command should see inside the sandbox instead (see
+    /// [`Self::terminal_settings_environment`]). On a remote, a task without a
+    /// `cwd` starts in the remote home directory, which the sandbox helper's
+    /// path is relative to.
+    pub fn create_sandboxed_terminal_task(
+        &mut self,
+        spawn_task: SpawnInTerminal,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Entity<Terminal>>> {
+        self.spawn_terminal_task(spawn_task, TaskSpawnEnvironment::SandboxWrapped, cx)
+    }
+
+    /// The environment a task terminal starts from before its task's own `env`:
+    /// the directory environment, which runs the user's login shell to capture,
+    /// and what registered providers add. A sandbox-wrapped spawn asks for
+    /// neither.
+    fn terminal_environment_sources(
+        &mut self,
+        spawn_environment: TaskSpawnEnvironment,
+        shell: &str,
+        path: Option<Arc<Path>>,
+        remote_client: Option<Entity<RemoteClient>>,
+        cx: &mut Context<Self>,
+    ) -> (
+        Shared<Task<Option<HashMap<String, String>>>>,
+        Vec<(String, String)>,
+    ) {
+        match spawn_environment {
+            TaskSpawnEnvironment::Full => {
+                let is_via_remote = remote_client.is_some();
+                (
+                    self.resolve_directory_environment(shell, path, remote_client, cx),
+                    provided_terminal_environment(&cx.entity(), is_via_remote, cx),
+                )
+            }
+            TaskSpawnEnvironment::SandboxWrapped => (Task::ready(None).shared(), Vec::new()),
+        }
+    }
+
+    fn spawn_terminal_task(
+        &mut self,
+        spawn_task: SpawnInTerminal,
+        spawn_environment: TaskSpawnEnvironment,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Entity<Terminal>>> {
         let is_via_remote = self.remote_client.is_some();
 
         let path: Option<Arc<Path>> = if let Some(cwd) = &spawn_task.cwd {
@@ -120,6 +243,8 @@ impl Project {
                 let tilde_substituted = shellexpand::tilde(&cwd);
                 Some(Arc::from(Path::new(tilde_substituted.as_ref())))
             }
+        } else if is_via_remote && spawn_environment == TaskSpawnEnvironment::SandboxWrapped {
+            None
         } else {
             self.active_project_directory(cx)
         };
@@ -134,7 +259,8 @@ impl Project {
             });
         }
         let settings = TerminalSettings::get(settings_location, cx).clone();
-        let detect_venv = settings.detect_venv.as_option().is_some();
+        let detect_venv =
+            spawn_environment.activates_toolchain(settings.detect_venv.as_option().is_some());
 
         let (completion_tx, completion_rx) = bounded(1);
 
@@ -156,8 +282,13 @@ impl Project {
         let shell_kind = ShellKind::new(&shell, path_style.is_windows());
 
         // Prepare a task for resolving the environment
-        let env_task =
-            self.resolve_directory_environment(&shell, path.clone(), remote_client.clone(), cx);
+        let (env_task, provided_environment) = self.terminal_environment_sources(
+            spawn_environment,
+            &shell,
+            path.clone(),
+            remote_client.clone(),
+            cx,
+        );
 
         // Scope the toolchain lookup to the worktree the terminal is being
         // spawned in. Previously this iterated the active editor's worktree
@@ -180,12 +311,13 @@ impl Project {
             .map(|p| self.active_toolchain(p, LanguageName::new_static("Python"), cx))
             .collect::<Vec<_>>();
         let lang_registry = self.languages.clone();
-        let provided_environment = provided_terminal_environment(&cx.entity(), is_via_remote, cx);
         cx.spawn(async move |project, cx| {
-            let mut env = env_task.await.unwrap_or_default();
-            // 設定の `terminal.env` が明示した値のほうが強い。
-            env.extend(provided_environment);
-            env.extend(settings.env);
+            let mut env = terminal_process_environment(
+                spawn_environment,
+                env_task.await.unwrap_or_default(),
+                provided_environment,
+                settings.env,
+            );
 
             let activation_script = maybe!(async {
                 for toolchain in toolchains {
@@ -244,7 +376,7 @@ impl Project {
                                         cx,
                                     )?
                                 }
-                                _ => create_remote_shell(
+                                _ => spawn_remote_command(
                                     spawn_task
                                         .command
                                         .as_ref()
@@ -252,6 +384,7 @@ impl Project {
                                     env,
                                     path,
                                     remote_client,
+                                    spawn_environment,
                                     cx,
                                 )?,
                             },
@@ -679,12 +812,32 @@ impl Project {
 
 fn create_remote_shell(
     spawn_command: Option<(&String, &Vec<String>)>,
-    mut env: HashMap<String, String>,
-    mut working_directory: Option<Arc<Path>>,
+    env: HashMap<String, String>,
+    working_directory: Option<Arc<Path>>,
     remote_client: Entity<RemoteClient>,
     cx: &mut App,
 ) -> Result<(Shell, HashMap<String, String>)> {
-    insert_zed_terminal_env(&mut env, &release_channel::AppVersion::global(cx));
+    spawn_remote_command(
+        spawn_command,
+        env,
+        working_directory,
+        remote_client,
+        TaskSpawnEnvironment::Full,
+        cx,
+    )
+}
+
+fn spawn_remote_command(
+    spawn_command: Option<(&String, &Vec<String>)>,
+    mut env: HashMap<String, String>,
+    mut working_directory: Option<Arc<Path>>,
+    remote_client: Entity<RemoteClient>,
+    spawn_environment: TaskSpawnEnvironment,
+    cx: &mut App,
+) -> Result<(Shell, HashMap<String, String>)> {
+    if spawn_environment == TaskSpawnEnvironment::Full {
+        insert_zed_terminal_env(&mut env, &release_channel::AppVersion::global(cx));
+    }
 
     let (program, args) = match spawn_command {
         Some((program, args)) => (Some(program.clone()), args.clone()),
@@ -888,5 +1041,122 @@ mod tests {
             format_task_for_activation(&task, ShellKind::PowerShell, "powershell.exe", true),
             "&cargo test 'some test'"
         );
+    }
+
+    #[test]
+    fn sandboxed_agent_commands_get_nothing_from_the_terminal() {
+        let directory_environment = HashMap::from_iter([
+            ("PATH".to_string(), "/usr/bin".to_string()),
+            ("HOME".to_string(), "/home/user".to_string()),
+        ]);
+        let provided_environment = vec![("CLAUDE_CODE_SSE_PORT".to_string(), "4000".to_string())];
+        let settings_environment = HashMap::from_iter([
+            ("LD_PRELOAD".to_string(), "/project/evil.so".to_string()),
+            ("PATH".to_string(), "/opt/bin".to_string()),
+        ]);
+
+        assert_eq!(
+            terminal_process_environment(
+                TaskSpawnEnvironment::SandboxWrapped,
+                directory_environment.clone(),
+                provided_environment.clone(),
+                settings_environment.clone(),
+            ),
+            HashMap::default(),
+            "the process that starts a sandbox wrapper must not see the project's environment"
+        );
+
+        let full = terminal_process_environment(
+            TaskSpawnEnvironment::Full,
+            directory_environment,
+            provided_environment,
+            settings_environment,
+        );
+        assert_eq!(
+            full.get("LD_PRELOAD").map(String::as_str),
+            Some("/project/evil.so")
+        );
+        assert_eq!(
+            full.get("PATH").map(String::as_str),
+            Some("/opt/bin"),
+            "`terminal.env` still wins over the directory environment elsewhere"
+        );
+        assert_eq!(full.get("HOME").map(String::as_str), Some("/home/user"));
+        assert_eq!(
+            full.get("CLAUDE_CODE_SSE_PORT").map(String::as_str),
+            Some("4000")
+        );
+    }
+
+    #[test]
+    fn toolchain_activation_is_never_prepended_to_a_sandboxed_command() {
+        assert!(TaskSpawnEnvironment::Full.activates_toolchain(true));
+        assert!(!TaskSpawnEnvironment::Full.activates_toolchain(false));
+        assert!(!TaskSpawnEnvironment::SandboxWrapped.activates_toolchain(true));
+        assert!(!TaskSpawnEnvironment::SandboxWrapped.activates_toolchain(false));
+    }
+
+    #[gpui::test]
+    async fn sandboxed_spawns_neither_capture_nor_ask_providers(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/root"), serde_json::json!({ "main.rs": "" }))
+            .await;
+        let project = Project::test(fs, [util::path!("/root").as_ref()], cx).await;
+        let asked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        cx.update(|cx| {
+            register_terminal_environment_provider(
+                {
+                    let asked = asked.clone();
+                    move |_, _| {
+                        asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        vec![("PROVIDED".to_string(), "1".to_string())]
+                    }
+                },
+                cx,
+            );
+        });
+        let root: Arc<Path> = Path::new(util::path!("/root")).into();
+
+        let (directory_environment, provided_environment) = project.update(cx, |project, cx| {
+            project.terminal_environment_sources(
+                TaskSpawnEnvironment::SandboxWrapped,
+                "sh",
+                Some(root.clone()),
+                None,
+                cx,
+            )
+        });
+        assert_eq!(
+            directory_environment.await,
+            None,
+            "a sandboxed spawn captures no directory environment"
+        );
+        assert!(provided_environment.is_empty());
+        assert_eq!(
+            asked.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "and asks no provider"
+        );
+
+        let (directory_environment, provided_environment) = project.update(cx, |project, cx| {
+            project.terminal_environment_sources(
+                TaskSpawnEnvironment::Full,
+                "sh",
+                Some(root),
+                None,
+                cx,
+            )
+        });
+        assert!(directory_environment.await.is_some());
+        assert_eq!(
+            provided_environment,
+            vec![("PROVIDED".to_string(), "1".to_string())]
+        );
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

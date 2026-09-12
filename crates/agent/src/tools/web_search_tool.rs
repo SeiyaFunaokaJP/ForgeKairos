@@ -85,7 +85,7 @@ impl AgentTool for WebSearchTool {
                 let context =
                     crate::ToolPermissionContext::new(Self::NAME, vec![input.query.clone()]);
                 event_stream.authorize(
-                    format!("Search the web for {}", MarkdownInlineCode(&input.query)),
+                    format!("Web で {} を検索", MarkdownInlineCode(&input.query)),
                     context,
                     cx,
                 )
@@ -109,7 +109,7 @@ impl AgentTool for WebSearchTool {
                         Ok(response) => response,
                         Err(err) => {
                             event_stream
-                                .update_fields(acp::ToolCallUpdateFields::new().title("Web Search Failed"));
+                                .update_fields(acp::ToolCallUpdateFields::new().title("Web 検索に失敗しました"));
                             return Err(WebSearchToolOutput::Error { error: err.to_string() });
                         }
                     }
@@ -139,14 +139,9 @@ impl AgentTool for WebSearchTool {
 }
 
 fn emit_update(response: &WebSearchResponse, event_stream: &ToolCallEventStream) {
-    let result_text = if response.results.len() == 1 {
-        "1 result".to_string()
-    } else {
-        format!("{} results", response.results.len())
-    };
     event_stream.update_fields(
         acp::ToolCallUpdateFields::new()
-            .title(format!("Searched the web: {result_text}"))
+            .title(format!("Web を検索しました: {} 件", response.results.len()))
             .content(
                 response
                     .results

@@ -482,7 +482,7 @@ pub fn authorize_symlink_access(
     cx: &mut App,
 ) -> Task<Result<()>> {
     let title = format!(
-        "`{}` points outside the project (symlink to `{}`)",
+        "`{}` はプロジェクトの外を指しています (シンボリックリンク → `{}`)",
         display_path,
         canonical_target.display(),
     );
@@ -503,14 +503,16 @@ pub fn authorize_with_sensitive_settings(
     cx: &mut App,
 ) -> Task<Result<()>> {
     match kind {
-        Some(SensitiveSettingsKind::Local) => {
-            event_stream.authorize_always_prompt(format!("{title} (local settings)"), context, cx)
-        }
+        Some(SensitiveSettingsKind::Local) => event_stream.authorize_always_prompt(
+            format!("{title} (プロジェクトの設定)"),
+            context,
+            cx,
+        ),
         Some(SensitiveSettingsKind::Global) => {
-            event_stream.authorize_always_prompt(format!("{title} (settings)"), context, cx)
+            event_stream.authorize_always_prompt(format!("{title} (設定)"), context, cx)
         }
         Some(SensitiveSettingsKind::AgentSkills) => event_stream.authorize_always_prompt(
-            format!("{title} (agent skills)"),
+            format!("{title} (エージェントのスキル)"),
             context.for_agent_skills(),
             cx,
         ),
@@ -540,8 +542,8 @@ pub fn authorize_symlink_escapes(
         .iter()
         .map(|(path, target)| format!("`{}` → `{}`", path, target.display()))
         .collect::<Vec<_>>()
-        .join(" and ");
-    let title = format!("{} (symlinks outside project)", targets);
+        .join("、");
+    let title = format!("{} (プロジェクト外へのシンボリックリンク)", targets);
 
     let context = ToolPermissionContext::symlink_target(
         tool_name,
@@ -641,7 +643,7 @@ pub fn authorize_file_edit(
     }
 
     let path_owned = path.to_path_buf();
-    let title = format!("Edit {}", util::markdown::MarkdownInlineCode(&path_str));
+    let title = format!("{} を編集", util::markdown::MarkdownInlineCode(&path_str));
     let tool_name = tool_name.to_string();
     let thread = thread.clone();
     let event_stream = event_stream.clone();
@@ -741,7 +743,7 @@ pub fn authorize_file_edit(
                         vec![path_owned.to_string_lossy().to_string()],
                     );
                     event_stream.authorize_always_prompt(
-                        format!("{title} (local settings)"),
+                        format!("{title} (プロジェクトの設定)"),
                         context,
                         cx,
                     )
@@ -754,7 +756,7 @@ pub fn authorize_file_edit(
                         &tool_name,
                         vec![path_owned.to_string_lossy().to_string()],
                     );
-                    event_stream.authorize_always_prompt(format!("{title} (settings)"), context, cx)
+                    event_stream.authorize_always_prompt(format!("{title} (設定)"), context, cx)
                 });
                 return authorize.await;
             }
@@ -766,7 +768,7 @@ pub fn authorize_file_edit(
                     )
                     .for_agent_skills();
                     event_stream.authorize_always_prompt(
-                        format!("{title} (agent skills)"),
+                        format!("{title} (エージェントのスキル)"),
                         context,
                         cx,
                     )

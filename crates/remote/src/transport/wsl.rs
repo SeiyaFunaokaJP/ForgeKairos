@@ -115,6 +115,9 @@ impl WslRemoteConnection {
                 .await
                 .context("failed ensuring server binary")?,
         );
+        if let Err(error) = this.ensure_slirp4netns_binary(&delegate, cx).await {
+            super::warn_slirp4netns_not_installed(&error);
+        }
         log::debug!("Detected WSL environment: {this:#?}");
 
         Ok(this)
@@ -222,31 +225,78 @@ impl WslRemoteConnection {
             .is_ok();
 
         #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
-        if let Some(remote_server_path) = super::build_remote_server_from_source(
+        let locally_built = match super::build_remote_server_from_source(
             &self.platform,
             delegate.as_ref(),
             binary_exists_on_server,
             cx,
         )
-        .await?
+        .await
         {
-            let tmp_path = paths::remote_server_dir_relative().join(
-                &RelPath::from_unix_str(&format!(
-                    "download-{}-{}",
-                    std::process::id(),
-                    remote_server_path.file_name().unwrap().to_string_lossy()
-                ))
-                .unwrap(),
-            );
-            self.upload_file(&remote_server_path, &tmp_path, delegate, cx)
-                .await?;
-            self.extract_and_install(&tmp_path, &dst_path, delegate, cx)
-                .await?;
-            return Ok(dst_path.into());
-        }
+            Ok(locally_built) => locally_built,
+            // A missing cross-compilation toolchain (zig, cargo-zigbuild,
+            // cmake) must not be fatal: the bundled artifact is the fallback for
+            // exactly that case.
+            Err(error) => {
+                log::warn!(
+                    "failed to build the remote server from source, \
+                     falling back to a bundled or downloaded binary: {error:#}"
+                );
+                None
+            }
+        };
+        #[cfg(not(any(debug_assertions, feature = "build-remote-server-binary")))]
+        let locally_built = None;
 
-        if binary_exists_on_server {
-            return Ok(dst_path.into());
+        let bundled_path = super::find_bundled_server_artifact(self.platform);
+        let install_key = format!(
+            "wsl:{}:{}|{}",
+            self.connection_options.distro_name,
+            self.connection_options.user.as_deref().unwrap_or_default(),
+            dst_path.display(PathStyle::Unix)
+        );
+        // With nothing bundled to compare against, a binary that runs is all
+        // there is to go on.
+        let reusable_binary_on_server = binary_exists_on_server
+            && (locally_built.is_some()
+                || match &bundled_path {
+                    None => true,
+                    Some(bundled_path) => {
+                        let installed = self.remote_file_digest(&dst_path).await;
+                        super::installed_server_binary_is_verified(
+                            &install_key,
+                            bundled_path,
+                            installed.as_ref(),
+                        )
+                        .await
+                    }
+                });
+
+        match super::choose_server_binary_source(
+            locally_built,
+            reusable_binary_on_server,
+            bundled_path,
+        ) {
+            super::ServerBinarySource::LocallyBuilt(remote_server_path) => {
+                self.install_local_binary(&remote_server_path, &dst_path, delegate, cx)
+                    .await
+                    .context("installing locally built server binary")?;
+                return Ok(dst_path.into());
+            }
+            super::ServerBinarySource::AlreadyInstalled => return Ok(dst_path.into()),
+            super::ServerBinarySource::Bundled(bundled_path) => {
+                log::info!(
+                    "remote server binary source: artifact bundled with this app, {}",
+                    bundled_path.display()
+                );
+                self.install_local_binary(&bundled_path, &dst_path, delegate, cx)
+                    .await
+                    .context("installing bundled server binary")?;
+                let installed = self.remote_file_digest(&dst_path).await;
+                super::record_verified_server_binary(&install_key, &bundled_path, installed).await;
+                return Ok(dst_path.into());
+            }
+            super::ServerBinarySource::Download => {}
         }
 
         let wanted_version = match release_channel {
@@ -270,6 +320,135 @@ impl WslRemoteConnection {
             .await?;
 
         Ok(dst_path.into())
+    }
+
+    /// ADR-F18: puts the bundled `slirp4netns` beside the server binary, where
+    /// the sandbox helper looks for it. The helper runs it outside the sandbox,
+    /// so a copy already there is kept only if it is byte for byte the bundled
+    /// one (ADR-F46) — or, with nothing bundled to compare it against, if it
+    /// runs at all.
+    async fn ensure_slirp4netns_binary(
+        &self,
+        delegate: &Arc<dyn RemoteClientDelegate>,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        let dst_path = super::remote_slirp4netns_path()?;
+        let bundled_path = super::find_bundled_slirp4netns(self.platform);
+        let installed_runs = self
+            .run_wsl_command(&dst_path.display(PathStyle::Unix), &["--version"])
+            .await
+            .is_ok();
+        if installed_runs {
+            match &bundled_path {
+                None => return Ok(()),
+                Some(bundled_path) => {
+                    if self.installed_file_matches(&dst_path, bundled_path).await {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        let Some(bundled_path) = bundled_path else {
+            bail!("no slirp4netns bundled next to this executable");
+        };
+        log::info!(
+            "installing bundled slirp4netns for the WSL sandbox: {}",
+            bundled_path.display()
+        );
+        self.install_local_binary(&bundled_path, &dst_path, delegate, cx)
+            .await
+            .context("installing bundled slirp4netns")
+    }
+
+    /// The temporary upload keeps the source's file name, whose `.gz` extension
+    /// is what `extract_and_install` decides to decompress on.
+    async fn install_local_binary(
+        &self,
+        src_path: &Path,
+        dst_path: &RelPath,
+        delegate: &Arc<dyn RemoteClientDelegate>,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        let tmp_path = super::remote_upload_temp_path(src_path)?;
+        self.upload_file(src_path, &tmp_path, delegate, cx).await?;
+        self.extract_and_install(&tmp_path, dst_path, delegate, cx)
+            .await
+    }
+
+    /// Whether the distro's `path` holds exactly the bytes of the local `source`.
+    async fn installed_file_matches(&self, path: &RelPath, source: &Path) -> bool {
+        let local = match super::sha256_of_file(source).await {
+            Ok(digest) => digest,
+            Err(error) => {
+                log::warn!("could not hash {}: {error:#}", source.display());
+                return false;
+            }
+        };
+        self.remote_file_digest(path)
+            .await
+            .is_some_and(|remote| remote.sha256 == local)
+    }
+
+    async fn remote_file_digest(&self, path: &RelPath) -> Option<super::RemoteFileDigest> {
+        let path = path.display(PathStyle::Unix);
+        match self
+            .run_wsl_command_with_output(
+                "sh",
+                &["-c", super::REMOTE_FILE_DIGEST_SCRIPT, "zed-digest", &*path],
+            )
+            .await
+        {
+            Ok(output) => super::parse_remote_file_digest(&output),
+            Err(error) => {
+                log::debug!("could not hash {path} in WSL: {error:#}");
+                None
+            }
+        }
+    }
+
+    /// Whether `program` is this connection's own server binary, which a
+    /// terminal only ever runs as the ADR-F18 sandbox helper.
+    fn is_sandbox_helper(&self, program: &str) -> bool {
+        self.remote_binary_path
+            .as_ref()
+            .is_some_and(|path| path.display(PathStyle::Unix) == program)
+    }
+
+    /// ADR-F46: `wsl.exe --exec` starts the static helper itself, in the home
+    /// directory its path is relative to, with no shell or `env` in front of it
+    /// and none of the caller's environment: a dynamically linked program started
+    /// first would load a project-controlled `LD_PRELOAD` outside the sandbox,
+    /// and the helper reads `HOME` and `PATH` itself. The command's environment
+    /// travels in its argv, as `--setenv`.
+    fn build_sandbox_helper_command(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &HashMap<String, String>,
+    ) -> Result<CommandTemplate> {
+        anyhow::ensure!(
+            env.is_empty(),
+            "the sandbox helper takes the command's environment through --setenv"
+        );
+        let mut wsl_args = vec![
+            "--distribution".to_string(),
+            self.connection_options.distro_name.clone(),
+        ];
+        if let Some(user) = &self.connection_options.user {
+            wsl_args.extend(["--user".to_string(), user.clone()]);
+        }
+        wsl_args.extend([
+            "--cd".to_string(),
+            "~".to_string(),
+            "--exec".to_string(),
+            program.to_string(),
+        ]);
+        wsl_args.extend(args.iter().cloned());
+        Ok(CommandTemplate {
+            program: "wsl.exe".to_string(),
+            args: wsl_args,
+            env: HashMap::default(),
+        })
     }
 
     async fn upload_file(
@@ -536,6 +715,12 @@ impl RemoteConnection for WslRemoteConnection {
             bail!("WSL shares the network interface with the host system");
         }
 
+        if let Some(program) = &program
+            && self.is_sandbox_helper(program)
+        {
+            return self.build_sandbox_helper_command(program, args, env);
+        }
+
         let shell_kind = self.shell_kind;
         let working_dir = working_dir
             .map(|working_dir| RemotePathBuf::new(working_dir, PathStyle::Unix).to_string())
@@ -630,6 +815,13 @@ impl RemoteConnection for WslRemoteConnection {
 
     fn has_wsl_interop(&self) -> bool {
         self.has_wsl_interop
+    }
+
+    // ADR-F46: only a connection that names its server binary gets agent
+    // commands wrapped by the ADR-F18 helper; without this they ran in the
+    // distro unwrapped.
+    fn remote_server_binary_path(&self) -> Option<Arc<RelPath>> {
+        self.remote_binary_path.clone()
     }
 }
 
@@ -753,4 +945,116 @@ fn wsl_command_impl(
 
     log::debug!("wsl {:?}", command);
     command
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn connection_with_server_binary(
+        remote_binary_path: Option<Arc<RelPath>>,
+    ) -> WslRemoteConnection {
+        WslRemoteConnection {
+            remote_binary_path,
+            platform: RemotePlatform {
+                os: RemoteOs::Linux,
+                arch: RemoteArch::X86_64,
+            },
+            os_version: None,
+            shell: "/bin/bash".to_string(),
+            shell_kind: ShellKind::Posix,
+            default_system_shell: "/bin/sh".to_string(),
+            has_wsl_interop: false,
+            connection_options: WslConnectionOptions {
+                distro_name: "Ubuntu".to_string(),
+                user: None,
+            },
+        }
+    }
+
+    #[test]
+    fn test_remote_server_binary_path_is_exposed_for_the_sandbox_helper() {
+        assert_eq!(
+            connection_with_server_binary(None).remote_server_binary_path(),
+            None
+        );
+
+        let installed: Arc<RelPath> = paths::remote_server_dir_relative()
+            .join(RelPath::from_unix_str("zed-remote-server-stable-1.17.2").unwrap())
+            .into();
+        assert_eq!(
+            connection_with_server_binary(Some(installed.clone())).remote_server_binary_path(),
+            Some(installed)
+        );
+    }
+
+    #[test]
+    fn test_sandbox_helper_is_executed_directly() {
+        let helper = ".zed_server/zed-remote-server-stable-1.17.2";
+        let installed: Arc<RelPath> = RelPath::from_unix_str(helper).unwrap().into();
+        let connection = connection_with_server_binary(Some(installed));
+        let args = vec![
+            "--remote-sandbox-helper".to_string(),
+            "--".to_string(),
+            "/bin/sh".to_string(),
+        ];
+
+        let command = connection
+            .build_command(
+                Some(helper.to_string()),
+                &args,
+                &HashMap::default(),
+                None,
+                None,
+                Interactive::Yes,
+            )
+            .unwrap();
+        assert_eq!(command.program, "wsl.exe");
+        assert_eq!(
+            command.args,
+            [
+                "--distribution",
+                "Ubuntu",
+                "--cd",
+                "~",
+                "--exec",
+                helper,
+                "--remote-sandbox-helper",
+                "--",
+                "/bin/sh"
+            ]
+        );
+        assert!(command.env.is_empty());
+
+        // On the helper's own process an environment would act before the
+        // sandbox exists; it has to come through `--setenv` instead.
+        let environment = HashMap::from_iter([("LD_PRELOAD".to_string(), "x.so".to_string())]);
+        assert!(
+            connection
+                .build_command(
+                    Some(helper.to_string()),
+                    &args,
+                    &environment,
+                    None,
+                    None,
+                    Interactive::Yes
+                )
+                .is_err()
+        );
+
+        let command = connection
+            .build_command(
+                Some("ls".to_string()),
+                &[],
+                &HashMap::default(),
+                None,
+                None,
+                Interactive::Yes,
+            )
+            .unwrap();
+        assert!(
+            !command.args.iter().any(|arg| arg == "--exec"),
+            "any other program still goes through the user's shell"
+        );
+    }
 }

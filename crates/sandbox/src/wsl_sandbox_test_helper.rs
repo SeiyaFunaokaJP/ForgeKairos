@@ -1,5 +1,11 @@
-//! Behavior test helper for the Windows WSL Bubblewrap sandbox — the Windows
-//! analog of `bwrap_test_helper`.
+//! Behavior test helper for the Windows WSL sandbox (ADR-F46: the sandbox
+//! helper bundled with Zed, run inside WSL) — the Windows analog of
+//! `bwrap_test_helper`.
+//!
+//! It finds the helper artifacts the way Zed does, so put a Linux
+//! `remote_server` build (`zed-remote-server-linux-x86_64[.gz]`) and
+//! `slirp4netns-linux-x86_64` next to this executable, or set
+//! `ZED_WSL_SANDBOX_HELPER`.
 //!
 //! Where the Linux helper is the sandboxed process itself (it re-execs under
 //! the launcher), here the sandboxed process is a *Linux* program inside WSL
@@ -45,8 +51,10 @@ mod imp {
     use std::os::windows::process::CommandExt as _;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
+    use std::sync::Arc;
 
     use anyhow::{Context as _, Result, bail, ensure};
+    use http_proxy::{DestinationPolicy, PolicyDecision};
     use sandbox::{
         CommandAndArgs, HostFilesystemLocation, Sandbox, SandboxError, SandboxFsPolicy,
         SandboxNetPolicy, SandboxPolicy,
@@ -90,9 +98,9 @@ mod imp {
         let wsl = Wsl::detect();
         println!("{RESULT_TAG} starting (require_enforced={require_enforced})");
 
-        // `wrap_invocation` performs the real environment probe (locate `bwrap`,
-        // reject setuid-root, smoke-test the exact namespaces) before it builds
-        // any command. So a default-permissions run of `true` doubles as our
+        // `wrap_invocation` checks the WSL registration, installs the helper and
+        // runs its probe (Landlock, user namespaces) before it builds any
+        // command. So a default-permissions run of `true` doubles as our
         // enforcement probe: `Ok` means the sandbox is enforceable here, an
         // `Unavailable` error means it is not.
         let probe = run_in_sandbox("true", &[], SandboxPermissions::default())?;
@@ -123,25 +131,21 @@ mod imp {
                  enforced: {reason}"
             );
         }
-        println!(
-            "{RESULT_TAG} SKIP: this environment cannot enforce a WSL bwrap sandbox: {reason}"
-        );
+        println!("{RESULT_TAG} SKIP: this environment cannot enforce a WSL sandbox: {reason}");
         Ok(())
     }
 
-    /// Enforced scenario: `bwrap` is present and a sandbox can be set up, so the
-    /// sandbox must actually be enforced. Assert every grant and every
-    /// restriction end-to-end against the real WSL distro.
+    /// Enforced scenario: a sandbox can be set up, so it must actually be
+    /// enforced. Assert every grant and every restriction end-to-end against the
+    /// real WSL distro.
     fn run_enforced(wsl: &Wsl) -> Result<()> {
         let mut checks = Checks::new();
         let pid = std::process::id();
 
         // The core filesystem checks use a scratch tree on the WSL distro's own
-        // rootfs (under `/var/tmp`, which the sandbox leaves read-only rather
-        // than overlaying like `/tmp`). This mirrors the Linux helper and is
-        // robust: it doesn't depend on how drvfs `/mnt/<drive>` submounts behave
-        // under bwrap's recursive root bind. The Windows-drive translation path
-        // (the realistic Zed-on-`C:` case) gets its own dedicated check below.
+        // rootfs (under `/var/tmp`, which the sandbox leaves read-only). The
+        // Windows-drive translation path (the realistic Zed-on-`C:` case) gets
+        // its own dedicated check below.
         let root_base = format!("/var/tmp/zed-wsl-sandbox-test-{pid}");
         let writable_wsl = format!("{root_base}/writable");
         let forbidden_wsl = format!("{root_base}/forbidden");
@@ -159,7 +163,7 @@ mod imp {
         );
         let _root_cleanup = WslCleanup {
             exe: wsl.exe.clone(),
-            path: root_base,
+            path: root_base.clone(),
         };
 
         let default = SandboxPermissions::default();
@@ -224,24 +228,154 @@ mod imp {
             &read_host,
         );
 
-        // GRANT + RESTRICT: `/tmp` is a writable tmpfs, but ephemeral — it must
-        // not leak to the WSL distro's real `/tmp`.
-        let tmp_path = format!("/tmp/zed-sandbox-ephemeral-{pid}");
-        let write_tmp = run_in_sandbox(
-            &format!("echo zed > {}", shell_quote(&tmp_path)),
+        // GRANT + RESTRICT: the command gets a `/tmp` and `/dev/shm` of its own
+        // (`$TMPDIR` points at `/tmp`); what it writes there never reaches the
+        // distro's.
+        let write_tmpdir = run_in_sandbox(
+            "echo zed > \"$TMPDIR/probe\" && cat \"$TMPDIR/probe\" && [ \"$TMPDIR\" = /tmp ]",
             &[],
             default,
         )?;
-        checks.expect_succeeded("GRANT: writing to /tmp succeeds", &write_tmp);
+        checks.expect_succeeded("GRANT: $TMPDIR is writable and is /tmp", &write_tmpdir);
+        let tmp_path = format!("/tmp/zed-sandbox-direct-{pid}");
+        let shm_path = format!("/dev/shm/zed-sandbox-direct-{pid}");
+        let write_tmp = run_in_sandbox(
+            &format!(
+                "echo zed > {} && echo zed > {}",
+                shell_quote(&tmp_path),
+                shell_quote(&shm_path)
+            ),
+            &[],
+            default,
+        )?;
+        checks.expect_succeeded("GRANT: /tmp and /dev/shm are writable", &write_tmp);
+        let leaked = wsl.exists(&tmp_path)? || wsl.exists(&shm_path)?;
         checks.expect(
-            "RESTRICT: /tmp writes are ephemeral (do not leak to the WSL host /tmp)",
-            !wsl.exists(&tmp_path)?,
+            "RESTRICT: the /tmp and /dev/shm writes stayed private to the command",
+            !leaked,
+        );
+        if leaked {
+            wsl.run_sh(&format!(
+                "rm -f {} {}",
+                shell_quote(&tmp_path),
+                shell_quote(&shm_path)
+            ))?;
+        }
+
+        // GRANT + RESTRICT: a writable root that holds a protected `.git` still
+        // takes new files and directories, while `.git` stays read-only.
+        let repo_wsl = format!("{root_base}/repo");
+        let git_wsl = format!("{repo_wsl}/.git");
+        let seed_repo = wsl.run_sh(&format!(
+            "mkdir -p {} && echo '[core]' > {}/config",
+            shell_quote(&git_wsl),
+            shell_quote(&git_wsl)
+        ))?;
+        ensure!(
+            seed_repo.status.success(),
+            "failed to create the scratch repository{}",
+            failure_details(&seed_repo)
+        );
+        let repo = [PathBuf::from(&repo_wsl)];
+        let git = [PathBuf::from(&git_wsl)];
+        let new_at_root = drive_sandbox(
+            "/bin/sh",
+            &[
+                "-c",
+                &format!(
+                    "echo zed > {} && mkdir {}",
+                    shell_quote(&format!("{repo_wsl}/new-file")),
+                    shell_quote(&format!("{repo_wsl}/new-dir"))
+                ),
+            ],
+            &repo,
+            &git,
+            default,
+            &HashMap::new(),
+        )?;
+        checks.expect_succeeded(
+            "GRANT: new files and directories at a writable root that holds .git",
+            &new_at_root,
+        );
+        let into_git = drive_sandbox(
+            "/bin/sh",
+            &[
+                "-c",
+                &format!("echo zed > {}", shell_quote(&format!("{git_wsl}/pwned"))),
+            ],
+            &repo,
+            &git,
+            default,
+            &HashMap::new(),
+        )?;
+        checks.expect_blocked("RESTRICT: the protected .git stays read-only", &into_git);
+        checks.expect(
+            "RESTRICT: nothing was written into .git",
+            !wsl.exists(&format!("{git_wsl}/pwned"))?,
         );
 
-        // RESTRICT + GRANT: outbound TCP is denied by the network namespace, but
-        // works when network access is explicitly granted. We discover a peer
-        // reachable from WSL first; that same reachability check proves the
-        // denial below is the sandbox's doing.
+        // RESTRICT: a protected entry deep inside a writable root cannot be
+        // moved out of the way by renaming a directory above it (and then
+        // recreated with other contents), and one that does not exist yet
+        // cannot be created.
+        let home_wsl = format!("{root_base}/home");
+        let install_wsl = format!("{home_wsl}/.cache/zed-jp-enhance/sandbox");
+        let login_wsl = format!("{home_wsl}/.bash_login");
+        let seed_home = wsl.run_sh(&format!(
+            "mkdir -p {install}/key && echo helper > {install}/key/zed-remote-server",
+            install = shell_quote(&install_wsl)
+        ))?;
+        ensure!(
+            seed_home.status.success(),
+            "failed to create the scratch home{}",
+            failure_details(&seed_home)
+        );
+        let home = [PathBuf::from(&home_wsl)];
+        let home_protected = [PathBuf::from(&install_wsl), PathBuf::from(&login_wsl)];
+        let rename_ancestor = drive_sandbox(
+            "/bin/sh",
+            &[
+                "-c",
+                &format!("cd {} && mv .cache .cache-moved", shell_quote(&home_wsl)),
+            ],
+            &home,
+            &home_protected,
+            default,
+            &HashMap::new(),
+        )?;
+        checks.expect_blocked(
+            "RESTRICT: a directory above a protected entry cannot be renamed away",
+            &rename_ancestor,
+        );
+        checks.expect(
+            "RESTRICT: the protected entry is still where it was",
+            wsl.exists(&format!("{install_wsl}/key/zed-remote-server"))?
+                && !wsl.exists(&format!("{home_wsl}/.cache-moved"))?,
+        );
+        let create_missing = drive_sandbox(
+            "/bin/sh",
+            &[
+                "-c",
+                &format!("echo 'echo pwned' > {}", shell_quote(&login_wsl)),
+            ],
+            &home,
+            &home_protected,
+            default,
+            &HashMap::new(),
+        )?;
+        checks.expect_blocked(
+            "RESTRICT: a protected entry that does not exist yet cannot be created",
+            &create_missing,
+        );
+        checks.expect(
+            "RESTRICT: nothing was created in its place",
+            !wsl.exists(&login_wsl)?,
+        );
+
+        // RESTRICT + GRANT: outbound TCP is denied by the network namespace;
+        // granted network goes through the sandbox's HTTP proxy only. We
+        // discover a peer reachable from WSL first; that same reachability check
+        // proves the denials below are the sandbox's doing.
         match discover_peer(wsl)? {
             Some(peer) => {
                 let connect = connect_script(&peer);
@@ -250,10 +384,80 @@ mod imp {
                     "RESTRICT: outbound TCP is blocked when network is denied",
                     &net_denied,
                 );
-                let net_allowed = run_in_sandbox(&connect, &[], network_allowed)?;
+                let direct = run_in_sandbox(&connect, &[], network_allowed)?;
+                checks.expect_blocked(
+                    "RESTRICT: direct TCP bypassing the proxy is blocked even when network is allowed",
+                    &direct,
+                );
+                // The peer is the Windows host, at a local or private address,
+                // which an any-host grant reaches only when the editor-wide
+                // allowlist names it (ADR-F17): publish one for these runs.
+                let peer_host = peer
+                    .rsplit_once(':')
+                    .map(|(host, _)| host.to_string())
+                    .unwrap_or_default();
+                let proxied_connect = [
+                    "10",
+                    "bash",
+                    "-c",
+                    PROXY_CONNECT_SCRIPT,
+                    "zed-connect",
+                    peer.as_str(),
+                ];
+                sandbox::set_network_ceiling(Some(Arc::new(PublishedAllowlist)));
+                let proxied = drive_sandbox_with(
+                    "timeout",
+                    &proxied_connect,
+                    &[],
+                    &[],
+                    network_allowed,
+                    &HashMap::new(),
+                    &DriveExtras {
+                        editor_allowlist: Some(vec![peer_host.clone()]),
+                        ..DriveExtras::default()
+                    },
+                );
+                let unlisted = drive_sandbox_with(
+                    "timeout",
+                    &proxied_connect,
+                    &[],
+                    &[],
+                    network_allowed,
+                    &HashMap::new(),
+                    &DriveExtras {
+                        editor_allowlist: Some(Vec::new()),
+                        ..DriveExtras::default()
+                    },
+                );
+                sandbox::set_network_ceiling(None);
                 checks.expect_succeeded(
-                    "GRANT: outbound TCP works when network is allowed",
-                    &net_allowed,
+                    "GRANT: any-host access reaches a peer the editor-wide allowlist names, \
+                     through the sandbox proxy",
+                    &proxied?,
+                );
+                if is_loopback_host(&peer_host) {
+                    println!(
+                        "{RESULT_TAG} SKIP: the peer is on loopback, which the editor-wide \
+                         allowlist always permits; skipping the unlisted-peer check"
+                    );
+                } else {
+                    checks.expect_blocked(
+                        "RESTRICT: a peer the editor-wide allowlist does not name is refused",
+                        &unlisted?,
+                    );
+                }
+                let uncapped = drive_sandbox(
+                    "timeout",
+                    &proxied_connect,
+                    &[],
+                    &[],
+                    network_allowed,
+                    &HashMap::new(),
+                )?;
+                checks.expect_blocked(
+                    "RESTRICT: without an editor-wide allowlist, any-host access refuses \
+                     local and private addresses",
+                    &uncapped,
                 );
                 // RESTRICT: permissions are independent — granting filesystem
                 // writes must not also grant network access.
@@ -268,20 +472,24 @@ mod imp {
             ),
         }
 
-        // GRANT: local AF_UNIX IPC keeps working even while IP networking is
-        // denied. Needs python3 to create the socket; skip if it isn't present.
+        // RESTRICT + GRANT: no `AF_UNIX` socket can be created (session IPC and
+        // the WSL interop socket stay out of reach), but a process-local
+        // socketpair still works. Needs python3; skip if it isn't present.
         if wsl.has_program("python3")? {
-            let unix_ok = run_in_sandbox(
-                "python3 -c 'import socket; socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)'",
+            let unix_socket = run_in_sandbox(
+                "python3 -c 'import socket; socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)'",
                 &[],
                 default,
             )?;
-            checks.expect_succeeded(
-                "GRANT: AF_UNIX sockets still work while network is denied",
-                &unix_ok,
-            );
+            checks.expect_blocked("RESTRICT: AF_UNIX sockets cannot be created", &unix_socket);
+            let socketpair = run_in_sandbox(
+                "python3 -c 'import socket; socket.socketpair()'",
+                &[],
+                default,
+            )?;
+            checks.expect_succeeded("GRANT: an AF_UNIX socketpair still works", &socketpair);
         } else {
-            println!("{RESULT_TAG} SKIP: no python3 in WSL; skipping AF_UNIX check");
+            println!("{RESULT_TAG} SKIP: no python3 in WSL; skipping AF_UNIX checks");
         }
 
         // GRANT (escape hatch): `allow_fs_write` lets the command write
@@ -313,7 +521,7 @@ mod imp {
         // GRANT + RESTRICT: the caller's environment is forwarded into the
         // command, but Windows-specific values like PATH are not (which would
         // otherwise shadow WSL's PATH and break the shell).
-        check_env_forwarding(&mut checks)?;
+        check_env_forwarding(wsl, &mut checks)?;
 
         // Degraded (bad request): a non-existent writable path is the model's
         // mistake, not a broken sandbox environment, so it must be reported
@@ -324,6 +532,7 @@ mod imp {
             "true",
             &[],
             std::slice::from_ref(&missing),
+            &[],
             default,
             &HashMap::new(),
         )?;
@@ -335,7 +544,81 @@ mod imp {
             println!("{RESULT_TAG}   (got {bad_request:?})");
         }
 
+        // RESTRICT: a helper replaced after installation is never started.
+        // Last, because it leaves this run's installation unusable until it is
+        // removed (which the check does).
+        check_replaced_helper_refused(wsl, &mut checks)?;
+
         checks.finish()
+    }
+
+    /// Replace the installed helper behind Zed's back (one byte appended, as a
+    /// command able to write the install directory could) and check that the
+    /// next command is refused rather than run through it.
+    fn check_replaced_helper_refused(wsl: &Wsl, checks: &mut Checks) -> Result<()> {
+        let find = wsl.run_sh("ls -dt \"$HOME\"/.cache/zed-jp-enhance/sandbox/*/ | head -n 1")?;
+        let install_dir = String::from_utf8_lossy(&find.stdout)
+            .trim()
+            .trim_end_matches('/')
+            .to_string();
+        if !find.status.success() || install_dir.is_empty() {
+            println!(
+                "{RESULT_TAG} SKIP: no installed helper found (a `ZED_WSL_SANDBOX_HELPER` \
+                 override?); skipping the replaced-helper check"
+            );
+            return Ok(());
+        }
+        // Removed afterwards, so the next run installs a fresh copy.
+        let _reinstall = WslCleanup {
+            exe: wsl.exe.clone(),
+            path: install_dir.clone(),
+        };
+        let tamper = wsl.run_sh(&format!(
+            "printf x >> {}",
+            shell_quote(&format!("{install_dir}/zed-remote-server"))
+        ))?;
+        ensure!(
+            tamper.status.success(),
+            "failed to modify the installed helper{}",
+            failure_details(&tamper)
+        );
+        let outcome = run_in_sandbox("true", &[], SandboxPermissions::default())?;
+        let refused = matches!(
+            &outcome,
+            Outcome::Ran {
+                command_succeeded: false,
+                stderr,
+                ..
+            } if stderr.contains("zed-wsl-sandbox: helper-mismatch:")
+        );
+        checks.report(
+            "RESTRICT: a helper replaced after installation is never started",
+            refused,
+            &outcome,
+        );
+        Ok(())
+    }
+
+    /// Stands in for the editor's egress policy. On Windows only its presence
+    /// matters: the entries reach WSL separately (see
+    /// `Sandbox::set_editor_network_allowlist`).
+    struct PublishedAllowlist;
+
+    impl DestinationPolicy for PublishedAllowlist {
+        fn evaluate(&self, _host: &str, _port: u16) -> PolicyDecision {
+            PolicyDecision::Allow {
+                permit_local_addresses: true,
+            }
+        }
+    }
+
+    fn is_loopback_host(host: &str) -> bool {
+        host == "localhost"
+            || host
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
     }
 
     /// Windows-specific GRANT: a writable directory passed as a native `C:\`
@@ -374,13 +657,61 @@ mod imp {
             "GRANT: write into a writable C:\\ dir lands on the Windows host",
             writable.join("from-sandbox.txt").exists(),
         );
+
+        // RESTRICT: a directory Windows created accepts any capitalization of a
+        // name, so `.GIT` reaches `.git`; its protection must not depend on how
+        // the name is spelled.
+        let git = writable.join(".git");
+        std::fs::create_dir_all(&git)
+            .with_context(|| format!("failed to create `{}`", git.display()))?;
+        std::fs::write(git.join("config"), "[core]\n")
+            .with_context(|| format!("failed to write `{}`", git.join("config").display()))?;
+        let repo = [writable];
+        let git_protected = [git.clone()];
+        let alias_write = drive_sandbox(
+            "/bin/sh",
+            &[
+                "-c",
+                &format!(
+                    "cd {} && echo evil >> .GIT/config",
+                    shell_quote(&writable_wsl)
+                ),
+            ],
+            &repo,
+            &git_protected,
+            SandboxPermissions::default(),
+            &HashMap::new(),
+        )?;
+        checks.expect_blocked(
+            "RESTRICT: .git on a Windows drive cannot be written as .GIT",
+            &alias_write,
+        );
+        let alias_rename = drive_sandbox(
+            "/bin/sh",
+            &[
+                "-c",
+                &format!("cd {} && mv .GIT moved", shell_quote(&writable_wsl)),
+            ],
+            &repo,
+            &git_protected,
+            SandboxPermissions::default(),
+            &HashMap::new(),
+        )?;
+        checks.expect_blocked(
+            "RESTRICT: .git on a Windows drive cannot be renamed away as .GIT",
+            &alias_rename,
+        );
+        checks.expect(
+            "RESTRICT: .git is untouched on the Windows host",
+            std::fs::read_to_string(git.join("config")).is_ok_and(|config| config == "[core]\n"),
+        );
         Ok(())
     }
 
     /// Assert that a sandboxed process cannot reach the Windows host through WSL
     /// interop. Without the sandbox's interop block, a command could exec a
     /// Windows binary (e.g. `cmd.exe`), which the WSL binfmt handler runs on the
-    /// host — fully outside bwrap.
+    /// host — fully outside the sandbox.
     fn check_interop_blocked(wsl: &Wsl, checks: &mut Checks) -> Result<()> {
         // `$WSL_INTEROP` must be unset inside the sandbox (the variable `/init`
         // uses to find the interop socket).
@@ -436,7 +767,44 @@ mod imp {
     /// Assert the caller's environment is forwarded into the sandbox, while
     /// Windows-specific values like PATH are dropped rather than overriding
     /// WSL's own.
-    fn check_env_forwarding(checks: &mut Checks) -> Result<()> {
+    fn check_env_forwarding(wsl: &Wsl, checks: &mut Checks) -> Result<()> {
+        // `wsl.exe` forwards the variables `WSLENV` names into WSL. The sandbox
+        // starts it with `WSLENV` emptied, so nothing Zed itself inherited
+        // reaches the helper or the command that way.
+        let control = Command::new(&wsl.exe)
+            .args(["--exec", "/bin/sh", "-c", "[ \"$ZED_TEST_LEAK\" = leaked ]"])
+            .env("WSLENV", "ZED_TEST_LEAK/u")
+            .env("ZED_TEST_LEAK", "leaked")
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+            .context("failed to run the WSLENV control")?;
+        if control.success() {
+            let leak = drive_sandbox_with(
+                "/bin/sh",
+                &["-c", "[ -z \"${ZED_TEST_LEAK:-}\" ]"],
+                &[],
+                &[],
+                SandboxPermissions::default(),
+                &HashMap::new(),
+                &DriveExtras {
+                    inherited_env: vec![
+                        ("WSLENV".to_string(), "ZED_TEST_LEAK/u".to_string()),
+                        ("ZED_TEST_LEAK".to_string(), "leaked".to_string()),
+                    ],
+                    ..DriveExtras::default()
+                },
+            )?;
+            checks.expect_succeeded(
+                "RESTRICT: variables wsl.exe inherits are not forwarded into WSL (WSLENV emptied)",
+                &leak,
+            );
+        } else {
+            println!(
+                "{RESULT_TAG} SKIP: WSLENV forwarding does not work here even unsandboxed; \
+                 skipping the WSLENV check"
+            );
+        }
+
         let mut env = HashMap::new();
         env.insert("ZED_TEST_FORWARDED".to_string(), "yes".to_string());
         // If PATH were forwarded it would replace WSL's PATH with this bogus
@@ -451,6 +819,7 @@ mod imp {
                 "-c",
                 "[ \"$ZED_TEST_FORWARDED\" = yes ] && [ \"$PATH\" != /zed-sentinel-should-not-win ]",
             ],
+            &[],
             &[],
             SandboxPermissions::default(),
             &env,
@@ -491,10 +860,20 @@ mod imp {
             "/bin/sh",
             &["-c", script],
             writable_paths,
+            &[],
             permissions,
             &HashMap::new(),
         )
     }
+
+    /// Connects to the `host:port` in `$1` through the sandbox's HTTP proxy
+    /// with a `CONNECT` request, succeeding only on a `200` reply. Uses bash's
+    /// `/dev/tcp`, so nothing has to be installed in the distro.
+    const PROXY_CONNECT_SCRIPT: &str = "port=${HTTPS_PROXY##*:}; \
+        exec 3<>/dev/tcp/127.0.0.1/$port || exit 1; \
+        printf 'CONNECT %s HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n' \"$1\" \"$1\" >&3; \
+        read -r status_line <&3; \
+        case \"$status_line\" in *' 200'*) exit 0 ;; esac; exit 1";
 
     /// Drive the real sandbox the way Zed's terminal integration does: wrap the
     /// invocation, then spawn the resulting `wsl.exe` command and collect its
@@ -505,14 +884,47 @@ mod imp {
         program: &str,
         args: &[&str],
         writable_paths: &[PathBuf],
+        protected_paths: &[PathBuf],
         permissions: SandboxPermissions,
         env: &HashMap<String, String>,
     ) -> Result<Outcome> {
+        drive_sandbox_with(
+            program,
+            args,
+            writable_paths,
+            protected_paths,
+            permissions,
+            env,
+            &DriveExtras::default(),
+        )
+    }
+
+    /// What some checks add to a [`drive_sandbox`] run.
+    #[derive(Default)]
+    struct DriveExtras {
+        /// The editor-wide network allowlist, as Zed hands it over.
+        editor_allowlist: Option<Vec<String>>,
+        /// Set in `wsl.exe`'s environment before the wrapped command's own, the
+        /// way Zed's process environment is.
+        inherited_env: Vec<(String, String)>,
+    }
+
+    fn drive_sandbox_with(
+        program: &str,
+        args: &[&str],
+        writable_paths: &[PathBuf],
+        protected_paths: &[PathBuf],
+        permissions: SandboxPermissions,
+        env: &HashMap<String, String>,
+        extras: &DriveExtras,
+    ) -> Result<Outcome> {
+        let protected_paths: Vec<HostFilesystemLocation> = protected_paths
+            .iter()
+            .filter_map(|path| HostFilesystemLocation::capture(path).ok())
+            .collect();
         let policy = SandboxPolicy {
             fs: if permissions.allow_fs_write {
-                SandboxFsPolicy::Unrestricted {
-                    protected_paths: Vec::new(),
-                }
+                SandboxFsPolicy::Unrestricted { protected_paths }
             } else {
                 SandboxFsPolicy::Restricted {
                     // On Windows the location only records the requested path;
@@ -521,7 +933,7 @@ mod imp {
                         .iter()
                         .filter_map(|path| HostFilesystemLocation::capture(path).ok())
                         .collect(),
-                    protected_paths: Vec::new(),
+                    protected_paths,
                 }
             },
             network: match permissions.network {
@@ -535,8 +947,12 @@ mod imp {
             env: env.clone(),
             cwd: None,
         };
-        let prepared =
-            Sandbox::new(policy).and_then(|mut sandbox| smol::block_on(sandbox.wrap(&command)));
+        let prepared = Sandbox::new(policy).and_then(|mut sandbox| {
+            if let Some(entries) = &extras.editor_allowlist {
+                sandbox.set_editor_network_allowlist(entries.clone());
+            }
+            smol::block_on(sandbox.wrap(&command))
+        });
 
         let prepared = match prepared {
             Ok(prepared) => prepared,
@@ -549,8 +965,18 @@ mod imp {
             }
         };
 
+        if env_flag("ZED_TEST_SANDBOX_VERBOSE") {
+            println!("{RESULT_TAG}   wsl.exe {:?}", prepared.args);
+        }
         let output = Command::new(&prepared.program)
             .args(&prepared.args)
+            .envs(
+                extras
+                    .inherited_env
+                    .iter()
+                    .map(|(name, value)| (name, value)),
+            )
+            .envs(&prepared.env)
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .context("failed to spawn the wrapped wsl.exe sandbox command")?;

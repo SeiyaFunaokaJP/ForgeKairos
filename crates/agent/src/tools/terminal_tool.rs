@@ -13,11 +13,9 @@ use std::{
     time::Duration,
 };
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use crate::SandboxFallbackDecision;
 use crate::sandboxing::{
     NetworkRequest, sandbox_git_dirs, sandbox_worktree_writable_paths,
-    sandboxing_enabled_for_project,
+    sandboxing_enabled_for_project, unsandboxed_execution_reason,
 };
 use crate::{AgentTool, ThreadEnvironment, ToolCallEventStream, ToolInput};
 
@@ -121,16 +119,9 @@ pub struct SandboxedTerminalToolInput {
     /// rejected. Requesting network access triggers a user approval prompt, so
     /// only list hosts you expect the command to need.
     #[cfg_attr(
-        any(target_os = "macos", target_os = "linux"),
+        any(target_os = "macos", target_os = "linux", target_os = "windows"),
         doc = "\nHost-specific access is enforced by an HTTP/HTTPS proxy, so use \
         `https://` URLs rather than `git@`/`ssh://`."
-    )]
-    #[cfg_attr(
-        target_os = "windows",
-        doc = "\nNOTE: on Windows the sandbox cannot currently restrict network \
-        access to specific hosts. Do not set `allow_hosts` on Windows; request \
-        `allow_all_hosts: true` if the command needs network access, or omit \
-        network permissions entirely."
     )]
     #[serde(default)]
     pub allow_hosts: Vec<String>,
@@ -144,7 +135,7 @@ pub struct SandboxedTerminalToolInput {
     /// hostnames whenever possible, so the user knows what's being approved.
     /// Requesting it triggers a user approval prompt.
     #[cfg_attr(
-        any(target_os = "macos", target_os = "linux"),
+        any(target_os = "macos", target_os = "linux", target_os = "windows"),
         doc = "\nThat cap is enforced by the same HTTP/HTTPS proxy `allow_hosts` \
         uses, so use `https://` URLs rather than `git@`/`ssh://` here too."
     )]
@@ -400,51 +391,106 @@ fn terminal_initial_title(input: Result<String, serde_json::Value>) -> SharedStr
     }
 }
 
-/// Windows only: resolve the `(release channel, version)` of the Linux `zed` to
-/// provision inside WSL as the sandbox helper. Dev (source) builds have no
-/// matching release, so they pull the latest nightly. Nightly builds also track
-/// `latest`: nightly assets are keyed by their full build metadata
-/// (`X.Y.Z+nightly.<n>.<sha>`), which `AppVersion` strips, so a bare `X.Y.Z`
-/// never resolves on the nightly host. Preview and stable pin their exact
-/// running version (stripped of pre-release/build metadata, which the release
-/// API doesn't key on).
-#[cfg(target_os = "windows")]
-fn wsl_zed_release(cx: &App) -> Option<(String, String)> {
-    use release_channel::{AppVersion, ReleaseChannel};
-    match *release_channel::RELEASE_CHANNEL {
-        ReleaseChannel::Dev | ReleaseChannel::Nightly => {
-            Some(("nightly".to_string(), "latest".to_string()))
-        }
-        channel => {
-            let version = AppVersion::global(cx);
-            Some((
-                channel.dev_name().to_string(),
-                format!("{}.{}.{}", version.major, version.minor, version.patch),
-            ))
-        }
-    }
-}
-
-/// Non-Windows platforms don't route through WSL, so there's no helper to fetch.
-#[cfg(not(target_os = "windows"))]
-fn wsl_zed_release(_cx: &App) -> Option<(String, String)> {
-    None
-}
-
 /// Whether a failure to create the Linux sandbox may be offered to the user as
-/// "run without a sandbox". Only a missing or unusable Bubblewrap qualifies:
-/// that is the machine's environment, which the model can't change. `Other`
-/// comes from building the policy, for example an approved write grant that no
-/// longer re-verifies because its directory was removed or swapped for a
-/// symlink. A sandboxed command can bring that about on purpose, so it fails
-/// closed, as on the other platforms (ADR-F41).
+/// "fix it and retry". Only a missing or unusable Bubblewrap qualifies: that is
+/// the machine's environment, which the user can fix. `Other` comes from
+/// building the policy, for example an approved write grant that no longer
+/// re-verifies because its directory was removed or swapped for a symlink. A
+/// sandboxed command can bring that about on purpose, so it fails closed
+/// without a card, as on the other platforms (ADR-F41, ADR-F46).
 #[cfg(any(target_os = "linux", test))]
-fn linux_sandbox_error_allows_fallback(error: &acp_thread::LinuxWslSandboxError) -> bool {
+fn linux_sandbox_error_offers_retry(error: &acp_thread::LinuxWslSandboxError) -> bool {
     match error {
         acp_thread::LinuxWslSandboxError::BwrapNotFound
         | acp_thread::LinuxWslSandboxError::SetuidRejected
         | acp_thread::LinuxWslSandboxError::SandboxProbeFailed => true,
         acp_thread::LinuxWslSandboxError::Other(_) => false,
+    }
+}
+
+/// ADR-F46: after the sandbox could not be created, ask the user to fix the
+/// environment and retry. There is no way to run the command without a
+/// sandbox, so `Err` (cancelled, or the card could not be shown) is the tool
+/// result that tells the model the command did not run.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+async fn retry_or_cancel_after_sandbox_failure(
+    event_stream: &ToolCallEventStream,
+    command: &str,
+    error: &acp_thread::LinuxWslSandboxError,
+    retries: usize,
+    cx: &mut AsyncApp,
+) -> Result<(), String> {
+    let decision = cx
+        .update(|cx| {
+            event_stream.ask_to_retry_sandbox_creation(
+                Some(command.to_string()),
+                error.user_facing_message(),
+                Some(error.docs_section().to_string()),
+                retries,
+                cx,
+            )
+        })
+        .await;
+    match decision {
+        Ok(crate::SandboxRetryDecision::Retry) => Ok(()),
+        Ok(crate::SandboxRetryDecision::Cancel) => Err(sandbox_unavailable_message(error)),
+        Err(prompt_error) => {
+            log::warn!("Could not ask to retry creating the sandbox: {prompt_error:#}");
+            Err(sandbox_unavailable_message(error))
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn sandbox_unavailable_message(error: &acp_thread::LinuxWslSandboxError) -> String {
+    format!(
+        "The command was not run: the sandbox for terminal commands could not be created on \
+         this machine ({}). Commands only run inside the sandbox, so the user has to fix the \
+         environment before any command can run. Tell the user what failed instead of running \
+         the command again.",
+        error.user_facing_message()
+    )
+}
+
+/// Windows: create the terminal, and when the WSL sandbox reports that its
+/// environment is unavailable, ask the user to fix it and retry (ADR-F46).
+/// The WSL sandbox only finds out once `wsl.exe` actually runs, so the retry
+/// wraps terminal creation itself (`create_terminal` makes one attempt).
+///
+/// Only `WslUnavailable` is an environment problem the user can act on. A bad
+/// request (a missing writable path, mixed distros), and any failure of a
+/// command that isn't sandboxed, goes straight back to the model.
+#[cfg(target_os = "windows")]
+async fn create_terminal_retrying_sandbox_creation(
+    event_stream: &ToolCallEventStream,
+    command: &str,
+    sandboxed: bool,
+    cx: &mut AsyncApp,
+    mut create_terminal: impl FnMut(&mut AsyncApp) -> Task<Result<Rc<dyn crate::TerminalHandle>>>,
+) -> Result<Rc<dyn crate::TerminalHandle>, String> {
+    let mut retries = 0usize;
+    loop {
+        let error = match create_terminal(cx).await {
+            Ok(terminal) => return Ok(terminal),
+            Err(error) => error,
+        };
+
+        let wsl_unavailable = error
+            .downcast_ref::<sandbox::SandboxError>()
+            .and_then(|error| match error {
+                sandbox::SandboxError::WslUnavailable(message) => Some(message.clone()),
+                _ => None,
+            });
+        let Some(message) = wsl_unavailable.filter(|_| sandboxed) else {
+            return Err(format!("{error:#}"));
+        };
+        let sandbox_error = acp_thread::LinuxWslSandboxError::Other(message);
+        log::warn!("Failed to create a WSL sandbox for an agent terminal command: {error:?}");
+        // WSL probe failures aren't cached, so each retry probes the current
+        // environment again.
+        retry_or_cancel_after_sandbox_failure(event_stream, command, &sandbox_error, retries, cx)
+            .await?;
+        retries += 1;
     }
 }
 
@@ -458,36 +504,50 @@ async fn run_terminal_tool(
     let selection = input.selection;
     let sandbox_input = input.sandbox.clone().unwrap_or_default();
 
-    let (
-        working_dir,
-        authorize,
-        sandboxing,
-        is_local_project,
-        is_remote_linux_project,
-        wsl_zed_release,
-    ) = cx.update(|cx| {
-        let working_dir = working_dir(&input.cd, &project, cx).map_err(|err| err.to_string())?;
-        let context =
-            crate::ToolPermissionContext::new(TerminalTool::NAME, vec![input.command.clone()]);
-        let authorize =
-            event_stream.authorize(SharedString::new(input.command.clone()), context, cx);
-        let sandboxing =
-            input.sandbox.is_some() && sandboxing_enabled_for_project(project.read(cx), cx);
-        let is_local_project = project.read(cx).is_local();
-        // ADR-F18: on an SSH-remote Linux project the sandbox is enforced on the
-        // remote host by the helper, so every client-side path/probe step below
-        // is skipped (the client filesystem is not the command's filesystem).
-        let is_remote_linux_project = project.read(cx).remote_supports_agent_sandbox(cx);
-        let wsl_zed_release = wsl_zed_release(cx);
-        Result::<_, String>::Ok((
-            working_dir,
-            authorize,
-            sandboxing,
-            is_local_project,
-            is_remote_linux_project,
-            wsl_zed_release,
-        ))
-    })?;
+    let (working_dir, authorize, sandboxing, is_local_project, is_remote_linux_project) = cx
+        .update(|cx| {
+            let working_dir =
+                working_dir(&input.cd, &project, cx).map_err(|err| err.to_string())?;
+            let sandboxing =
+                input.sandbox.is_some() && sandboxing_enabled_for_project(project.read(cx), cx);
+            // ADR-F46: auto-approval only applies inside the sandbox, and a
+            // sandbox that may write anywhere but the protected paths (the
+            // settings switch) counts as outside it.
+            let unrestricted_writes = sandboxing
+                && agent_settings::AgentSettings::get_global(cx)
+                    .sandbox_permissions
+                    .allow_fs_write_all;
+            let authorize = if unrestricted_writes {
+                event_stream.authorize_unsandboxed_command(
+                    input.command.clone(),
+                    "設定でファイルシステムへの書き込みがすべて許可されています".to_string(),
+                    true,
+                    cx,
+                )
+            } else if sandboxing {
+                let context = crate::ToolPermissionContext::new(
+                    TerminalTool::NAME,
+                    vec![input.command.clone()],
+                );
+                event_stream.authorize(SharedString::new(input.command.clone()), context, cx)
+            } else {
+                let reason = unsandboxed_execution_reason(project.read(cx), cx);
+                event_stream.authorize_unsandboxed_command(input.command.clone(), reason, false, cx)
+            };
+            let is_local_project = project.read(cx).is_local();
+            // ADR-F18: on a remote Linux project (SSH, WSL or Docker) the sandbox is
+            // enforced on the remote host by the helper, so every client-side
+            // path/probe step below is skipped (the client filesystem is not the
+            // command's filesystem).
+            let is_remote_linux_project = project.read(cx).remote_supports_agent_sandbox(cx);
+            Result::<_, String>::Ok((
+                working_dir,
+                authorize,
+                sandboxing,
+                is_local_project,
+                is_remote_linux_project,
+            ))
+        })?;
 
     authorize.await.map_err(|e| e.to_string())?;
 
@@ -508,57 +568,23 @@ async fn run_terminal_tool(
     // Reject such requests with an explanation instead of running them.
     let floor = event_stream
         .effective_sandbox_request(&crate::sandboxing::SandboxRequest::default(), &persistent);
-    let unsandboxed_floor = sandboxing && event_stream.sandbox_fallback_granted_for_thread();
     let fs_unrestricted_floor = sandboxing && floor.allow_fs_write_all;
     let net_unrestricted_floor = sandboxing && matches!(floor.network, NetworkRequest::AnyHost);
 
-    if sandboxing {
-        if unsandboxed_floor {
-            // The sandbox could not be created and the user chose to run this
-            // thread's commands without one, so no sandbox-scoping field can
-            // take effect. Name exactly which ones the model set so it can drop
-            // them.
-            let mut ineffective = Vec::new();
-            if !sandbox_input.allow_hosts.is_empty() {
-                ineffective.push("`allow_hosts`");
-            }
-            if sandbox_input.allow_all_hosts == Some(true) {
-                ineffective.push("`allow_all_hosts`");
-            }
-            if !sandbox_input.fs_write_paths.is_empty() {
-                ineffective.push("`fs_write_paths`");
-            }
-            if sandbox_input.allow_fs_write_all == Some(true) {
-                ineffective.push("`allow_fs_write_all`");
-            }
-            if !ineffective.is_empty() {
-                return Err(format!(
-                    "Sandboxing is disabled for this thread, so every command runs without an OS \
-                     sandbox and these fields have no effect: {}. Remove them and rerun the \
-                     command (it will run unsandboxed).",
-                    ineffective.join(", "),
-                ));
-            }
-        } else {
-            if fs_unrestricted_floor
-                && !want_fs_write_all
-                && !sandbox_input.fs_write_paths.is_empty()
-            {
-                return Err(
-                    "Unrestricted filesystem writes are enabled for this thread, so every command \
-                     can already write anywhere except protected Git metadata; `fs_write_paths` \
-                     cannot narrow that. Remove `fs_write_paths`."
-                        .to_string(),
-                );
-            }
-            if net_unrestricted_floor && !want_all_hosts && !sandbox_input.allow_hosts.is_empty() {
-                return Err(
-                    "Unrestricted network access is enabled for this thread, so every command can \
-                     already reach any host; `allow_hosts` cannot narrow that. Remove `allow_hosts`."
-                        .to_string(),
-                );
-            }
-        }
+    if fs_unrestricted_floor && !want_fs_write_all && !sandbox_input.fs_write_paths.is_empty() {
+        return Err(
+            "Unrestricted filesystem writes are enabled for this thread, so every command can \
+             already write anywhere except protected Git metadata; `fs_write_paths` cannot \
+             narrow that. Remove `fs_write_paths`."
+                .to_string(),
+        );
+    }
+    if net_unrestricted_floor && !want_all_hosts && !sandbox_input.allow_hosts.is_empty() {
+        return Err(
+            "Unrestricted network access is enabled for this thread, so every command can \
+             already reach any host; `allow_hosts` cannot narrow that. Remove `allow_hosts`."
+                .to_string(),
+        );
     }
 
     // Validate the model-supplied host patterns up front. Malformed input is
@@ -571,14 +597,17 @@ async fn run_terminal_tool(
         NetworkRequest::None
     };
 
-    // Host-specific network access is enforced by a loopback proxy that
-    // confines the sandbox to its port. A non-local project's terminal can't
-    // reach the proxy, and Windows does not support this path yet. Reject the
-    // narrower request rather than silently widening it to all-host access.
-    let can_restrict_to_hosts = ((cfg!(target_os = "macos") || cfg!(target_os = "linux"))
+    // Host-specific network access is enforced by a proxy that confines the
+    // sandbox (on Windows, the sandbox helper's own proxy inside WSL). A
+    // non-local project's terminal can't reach it. Reject the narrower request
+    // rather than silently widening it to all-host access.
+    let can_restrict_to_hosts = ((cfg!(target_os = "macos")
+        || cfg!(target_os = "linux")
+        || cfg!(target_os = "windows"))
         && is_local_project)
-        // ADR-F18: an SSH-remote Linux host runs its own enforcing proxy, so
-        // host-scoped network grants are supported there regardless of client OS.
+        // ADR-F18: a remote Linux host (SSH, WSL or Docker) runs its own
+        // enforcing proxy, so host-scoped network grants are supported there
+        // regardless of client OS.
         || is_remote_linux_project;
     if !can_restrict_to_hosts && matches!(network, NetworkRequest::Hosts(_)) {
         return Err(
@@ -600,10 +629,11 @@ async fn run_terminal_tool(
         Vec::new()
     };
 
-    // ADR-F18: for an SSH-remote Linux project the requested paths name files on
-    // the *remote* host; the client must not touch its own filesystem (no
-    // `is_dir`, no canonicalize, no WSL resolution). Pass them through raw — the
-    // on-host helper canonicalizes and inode-pins them where they actually live.
+    // ADR-F18: for a remote Linux project (SSH, WSL or Docker) the requested
+    // paths name files on the *remote* host; the client must not touch its own
+    // filesystem (no `is_dir`, no canonicalize, no WSL resolution). Pass them
+    // through raw: the on-host helper canonicalizes and inode-pins them where
+    // they actually live.
     let write_paths: Vec<settings::GrantedWritePath> = if is_remote_linux_project {
         write_paths
             .into_iter()
@@ -653,13 +683,9 @@ async fn run_terminal_tool(
         }
         #[cfg(target_os = "windows")]
         {
-            let Some(release) = wsl_zed_release.clone() else {
-                return Err("Could not select a Linux Zed release for WSL sandboxing".to_string());
-            };
             let mut resolved_paths = Vec::with_capacity(write_paths.len());
             for requested in write_paths {
-                match sandbox::resolve_canonical_for_grant(requested.clone(), release.clone()).await
-                {
+                match sandbox::resolve_canonical_for_grant(requested.clone()).await {
                     Ok(resolved) => {
                         resolved_paths.push(settings::GrantedWritePath::resolved_on_fs(
                             requested,
@@ -689,18 +715,15 @@ async fn run_terminal_tool(
     // path on a Windows drive (DrvFs) — from an explicit grant, a standing
     // grant, or the default project directory — its integrity guarantees are
     // weaker. When the warning is enabled, confirm with the user first. This
-    // gate is transient (never persisted): on "Continue" the normal flow
-    // (including any escalation prompt) proceeds; on "Abort" the command is
+    // gate is transient (never persisted): on 「続行」 the normal flow
+    // (including any escalation prompt) proceeds; on 「中止」 the command is
     // cancelled. It recurs until the warning is disabled in settings.
     //
     // The warning only makes sense when a WSL sandbox will actually wrap the
-    // command, so it is skipped when the command is guaranteed to run without
-    // one (`unsandboxed_floor`: the user already turned the sandbox off for
-    // this thread) and when WSL is structurally absent (no registered distro —
-    // sandbox creation is guaranteed to fail, and the creation-failure
-    // fallback prompt handles that conversation instead).
+    // command, so it is skipped when WSL is structurally absent (no registered
+    // distro: sandbox creation is guaranteed to fail, and the retry card for
+    // that failure handles the conversation instead).
     if sandboxing
-        && !unsandboxed_floor
         // ADR-F18: the DrvFs warning is about the client's WSL filesystem and is
         // meaningless for a remote Linux project (which has no WSL layer).
         && !is_remote_linux_project
@@ -758,149 +781,103 @@ async fn run_terminal_tool(
 
     let extra_env = Vec::new();
 
-    // Build the sandbox request, then decide whether we can actually sandbox.
-    // The sandbox itself never silently runs a command unsandboxed: if it can't
-    // create the sandbox it aborts. As the consumer we may still run the command
-    // without a sandbox (when the user has opted into that), but we record
-    // *why* in `sandbox_not_applied` so we can warn the user and tell the agent.
-    // A standing "run unsandboxed for this thread" fallback grant and the
-    // Linux/Windows sandbox-creation fallbacks reassign this; on platforms
-    // without a sandbox integration the binding stays `None` and wouldn't need
-    // `mut`.
-    #[cfg_attr(
-        not(any(target_os = "macos", target_os = "linux", target_os = "windows")),
-        allow(unused_mut)
-    )]
-    let mut sandbox_not_applied: Option<acp_thread::SandboxNotAppliedReason> = None;
-
+    // A sandboxed command never falls back to running without the sandbox
+    // (ADR-F46): when the sandbox can't be created, the user can only fix the
+    // environment and retry, or cancel.
     let sandbox_wrap = if sandboxing {
-        if unsandboxed_floor {
-            // Every command in this thread runs unsandboxed because the user
-            // chose that for the thread after the sandbox could not be created.
-            // Record why so the model is told it ran without isolation.
-            sandbox_not_applied = Some(acp_thread::SandboxNotAppliedReason::DisabledForThisThread);
-            None
+        let effective = event_stream.effective_sandbox_request(&request, &persistent);
+        if !can_restrict_to_hosts && matches!(effective.network, NetworkRequest::Hosts(_)) {
+            return Err(
+                "This platform or project has a saved host-specific network grant, but cannot enforce host-specific sandboxed network access. Request `allow_all_hosts: true` if the command needs network access."
+                    .to_string(),
+            );
+        }
+        let (writable_paths, protected_paths) = cx.update(|cx| {
+            (
+                sandbox_worktree_writable_paths(project.read(cx), cx),
+                sandbox_git_dirs(project.read(cx), cx),
+            )
+        });
+        let wrap = acp_thread::SandboxWrap {
+            writable_paths,
+            extra_write_paths: effective.write_paths,
+            protected_paths,
+            network: network_request_to_sandbox_network_access(&effective.network),
+            allow_fs_write: effective.allow_fs_write_all,
+            is_local: is_local_project,
+        };
+
+        // ADR-F18: the sandbox for a remote Linux project is built on the
+        // remote host, so there is nothing to probe on the client. The helper
+        // performs its own capability check (Landlock / mount / userns /
+        // slirp) and fails closed with a clear error at run time.
+        if is_remote_linux_project {
+            Some(wrap)
         } else {
-            let effective = event_stream.effective_sandbox_request(&request, &persistent);
-            if !can_restrict_to_hosts && matches!(effective.network, NetworkRequest::Hosts(_)) {
-                return Err(
-                    "This platform or project has a saved host-specific network grant, but cannot enforce host-specific sandboxed network access. Request `allow_all_hosts: true` if the command needs network access."
-                        .to_string(),
-                );
-            }
-            let (writable_paths, protected_paths) = cx.update(|cx| {
-                (
-                    sandbox_worktree_writable_paths(project.read(cx), cx),
-                    sandbox_git_dirs(project.read(cx), cx),
-                )
-            });
-            let wrap = acp_thread::SandboxWrap {
-                writable_paths,
-                extra_write_paths: effective.write_paths,
-                protected_paths,
-                network: network_request_to_sandbox_network_access(&effective.network),
-                allow_fs_write: effective.allow_fs_write_all,
-                is_local: is_local_project,
-                wsl_zed_release: wsl_zed_release.clone(),
-            };
-
-            // ADR-F18: the sandbox for a remote Linux project is built on the
-            // remote host, so there is nothing to probe on the client. The helper
-            // performs its own capability check (Landlock / mount / userns /
-            // slirp) and fails closed with a clear error at run time.
-            if is_remote_linux_project {
-                Some(wrap)
-            } else {
-                // The viability check runs a brief probe subprocess, so do it off
-                // the main thread. On Linux the sandbox can genuinely be unavailable
-                // (missing `bwrap`, disabled user namespaces, …); rather than
-                // silently failing open, we ask the user how to proceed and let them
-                // retry after fixing their environment. (On other platforms the
-                // probe never fails, so this prompt is Linux-only.)
-                // Each retry re-probes from scratch, so the failure reason shown to
-                // the user reflects the *current* environment (e.g. it can change
-                // from "no bwrap" to "bwrap is setuid" after they install one).
-                #[cfg(target_os = "linux")]
-                {
-                    let mut retries = 0usize;
-                    loop {
-                        let probe_wrap = wrap.clone();
-                        let error = match cx
-                            .background_executor()
-                            .spawn(async move { probe_wrap.can_create_sandbox() })
-                            .await
-                        {
-                            Ok(()) => break Some(wrap),
-                            Err(error) => error,
-                        };
-
-                        // Distinct from the intentional skips above (settings / thread
-                        // grant): the sandbox was requested but couldn't be created.
-                        log::warn!(
-                            "Failed to create a sandbox for an agent terminal command: {error:?}"
-                        );
-                        if !linux_sandbox_error_allows_fallback(&error) {
-                            return Err(format!(
-                                "Cannot create a sandbox for this command: {}",
-                                error.user_facing_message()
-                            ));
-                        }
-
-                        let decision = cx
-                            .update(|cx| {
-                                event_stream.authorize_sandbox_fallback(
-                                    Some(input.command.clone()),
-                                    error.user_facing_message(),
-                                    Some(error.docs_section().to_string()),
-                                    retries,
-                                    cx,
-                                )
-                            })
-                            .await;
-                        match decision {
-                            Ok(SandboxFallbackDecision::Retry) => {
-                                retries += 1;
-                                continue;
-                            }
-                            Ok(SandboxFallbackDecision::RunUnsandboxed) => {
-                                sandbox_not_applied =
-                                    Some(acp_thread::SandboxNotAppliedReason::ErrorLinuxWsl(error));
-                                break None;
-                            }
-                            Ok(SandboxFallbackDecision::Deny) | Err(_) => {
-                                return Ok(format!(
-                                    "Command cancelled: the sandbox could not be created ({}) and \
-                                 the user declined to run it without one.",
-                                    error.user_facing_message()
-                                ));
-                            }
-                        }
-                    }
-                }
-                #[cfg(not(target_os = "linux"))]
-                {
+            // The viability check runs a brief probe subprocess, so do it off
+            // the main thread. On Linux the sandbox can genuinely be unavailable
+            // (missing `bwrap`, disabled user namespaces, …), which the user is
+            // asked to fix before retrying. Each retry re-probes from scratch,
+            // so the failure reason shown to the user reflects the *current*
+            // environment (e.g. it can change from "no bwrap" to "bwrap is
+            // setuid" after they install one).
+            #[cfg(target_os = "linux")]
+            {
+                let mut retries = 0usize;
+                loop {
                     let probe_wrap = wrap.clone();
-                    match cx
+                    let error = match cx
                         .background_executor()
                         .spawn(async move { probe_wrap.can_create_sandbox() })
                         .await
                     {
-                        Ok(()) => Some(wrap),
-                        Err(error) => {
-                            // Off Linux the probe only fails when the policy itself
-                            // can't be built (e.g. a required write grant or `.git`
-                            // protection no longer exists or fails its verifying
-                            // reopen). Running the command anyway would silently
-                            // drop access the user approved — or a safety-critical
-                            // protection — so fail closed with the reason instead.
-                            log::warn!(
-                                "Failed to create a sandbox for an agent terminal command: {error:?}"
-                            );
-                            return Err(format!(
-                                "Cannot create a sandbox for this command: {}",
-                                error.user_facing_message()
-                            ));
-                        }
+                        Ok(()) => break Some(wrap),
+                        Err(error) => error,
+                    };
+
+                    log::warn!(
+                        "Failed to create a sandbox for an agent terminal command: {error:?}"
+                    );
+                    if !linux_sandbox_error_offers_retry(&error) {
+                        return Err(format!(
+                            "Cannot create a sandbox for this command: {}",
+                            error.user_facing_message()
+                        ));
+                    }
+                    retry_or_cancel_after_sandbox_failure(
+                        &event_stream,
+                        &input.command,
+                        &error,
+                        retries,
+                        cx,
+                    )
+                    .await?;
+                    retries += 1;
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let probe_wrap = wrap.clone();
+                match cx
+                    .background_executor()
+                    .spawn(async move { probe_wrap.can_create_sandbox() })
+                    .await
+                {
+                    Ok(()) => Some(wrap),
+                    Err(error) => {
+                        // Off Linux the probe only fails when the policy itself
+                        // can't be built (e.g. a required write grant or `.git`
+                        // protection no longer exists or fails its verifying
+                        // reopen). Running the command anyway would silently
+                        // drop access the user approved — or a safety-critical
+                        // protection — so fail closed with the reason instead.
+                        log::warn!(
+                            "Failed to create a sandbox for an agent terminal command: {error:?}"
+                        );
+                        return Err(format!(
+                            "Cannot create a sandbox for this command: {}",
+                            error.user_facing_message()
+                        ));
                     }
                 }
             }
@@ -915,151 +892,41 @@ async fn run_terminal_tool(
         Some(COMMAND_OUTPUT_LIMIT)
     };
 
-    // Create the terminal. On Windows the WSL sandbox can only report whether
-    // it set up the environment once `wsl.exe` actually runs (its probe is
-    // async), so — unlike Linux's up-front `can_create_sandbox` loop above —
-    // the sandbox-creation fallback happens here, around `create_terminal`. The
-    // user gets the same choices via `authorize_sandbox_fallback` (retry / run
-    // unsandboxed once / for this thread / always / deny), and a chosen
-    // "run unsandboxed" is recorded in `sandbox_not_applied` exactly as on
-    // Linux so the model and UI are told the command ran without a sandbox.
     #[cfg(target_os = "windows")]
-    let terminal = {
-        let mut retries = 0usize;
-        let mut effective_wrap = sandbox_wrap.clone();
-        loop {
-            let error = match environment
-                .create_terminal(
-                    input.command.clone(),
-                    extra_env.clone(),
-                    working_dir.clone(),
-                    output_byte_limit,
-                    effective_wrap.clone(),
-                    cx,
-                )
-                .await
-            {
-                Ok(terminal) => break terminal,
-                Err(error) => error,
-            };
-
-            // Only an *environment*-unavailable failure of the WSL sandbox is a
-            // sandbox-creation problem the user can act on. A bad request (a
-            // missing writable path, mixed distros) — or any failure once we're
-            // already running unsandboxed — goes straight back to the model.
-            let Some(message) = effective_wrap.as_ref().and_then(|_| {
-                error
-                    .downcast_ref::<sandbox::SandboxError>()
-                    .and_then(|error| match error {
-                        sandbox::SandboxError::WslUnavailable(message) => Some(message.clone()),
-                        _ => None,
-                    })
-            }) else {
-                return Err(format!("{error:#}"));
-            };
-            let sandbox_error = acp_thread::LinuxWslSandboxError::Other(message);
-            log::warn!("Failed to create a WSL sandbox for an agent terminal command: {error:?}");
-
-            let decision = cx
-                .update(|cx| {
-                    event_stream.authorize_sandbox_fallback(
-                        Some(input.command.clone()),
-                        sandbox_error.user_facing_message(),
-                        Some(sandbox_error.docs_section().to_string()),
-                        retries,
-                        cx,
-                    )
-                })
-                .await;
-            match decision {
-                Ok(SandboxFallbackDecision::Retry) => {
-                    // WSL probe failures aren't cached, so retrying re-probes
-                    // the current environment (e.g. after installing `bwrap`).
-                    retries += 1;
-                }
-                Ok(SandboxFallbackDecision::RunUnsandboxed) => {
-                    sandbox_not_applied = Some(acp_thread::SandboxNotAppliedReason::ErrorLinuxWsl(
-                        sandbox_error,
-                    ));
-                    effective_wrap = None;
-                }
-                Ok(SandboxFallbackDecision::Deny) | Err(_) => {
-                    return Ok(format!(
-                        "Command cancelled: the sandbox could not be created ({}) and the \
-                         user declined to run it without one.",
-                        sandbox_error.user_facing_message()
-                    ));
-                }
-            }
-        }
-    };
+    let terminal = create_terminal_retrying_sandbox_creation(
+        &event_stream,
+        &input.command,
+        sandbox_wrap.is_some(),
+        cx,
+        |cx| {
+            environment.create_terminal(
+                input.command.clone(),
+                extra_env.clone(),
+                working_dir.clone(),
+                output_byte_limit,
+                sandbox_wrap.clone(),
+                cx,
+            )
+        },
+    )
+    .await?;
     #[cfg(not(target_os = "windows"))]
     let terminal = environment
         .create_terminal(
             input.command.clone(),
             extra_env,
-            working_dir.clone(),
+            working_dir,
             output_byte_limit,
-            sandbox_wrap.clone(),
+            sandbox_wrap,
             cx,
         )
         .await
         .map_err(|e| format!("{e:#}"))?;
 
-    // When sandboxing was active but the command ran without a sandbox (the
-    // sandbox could not be created and the user chose to run through, for this
-    // command or for the thread), tell the agent so it can account for the
-    // weaker isolation. Computed here — after the Windows fallback above may have set
-    // the reason — so every affected command communicates the state.
-    let sandbox_note = sandbox_not_applied.as_ref().map(|reason| {
-        // Only the Windows-specific block below mutates this; on other
-        // platforms the note is returned exactly as built.
-        #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
-        let mut note = match reason {
-            acp_thread::SandboxNotAppliedReason::DisabledForThisThread => {
-                "Note: this command ran WITHOUT an OS sandbox because the user allowed unsandboxed \
-                 execution for the rest of this thread."
-                    .to_string()
-            }
-            acp_thread::SandboxNotAppliedReason::ErrorLinuxWsl(error) => format!(
-                "Note: this command ran WITHOUT an OS sandbox because one could not be \
-                 created ({}).",
-                error.user_facing_message()
-            ),
-        };
-        // On Windows, running without a sandbox also changes the interpreter:
-        // the sandboxed path runs the command under WSL's Linux shell, but
-        // every unsandboxed path that reaches here falls back to the host
-        // shell (Git Bash, or PowerShell/cmd when no bash is installed) against
-        // native Windows paths. The model writes commands for the WSL/Linux
-        // sandbox, so the loss of isolation isn't the whole story — warn it
-        // that the shell and path conventions differ too, or a command that
-        // worked sandboxed may silently misbehave or fail here.
-        #[cfg(target_os = "windows")]
-        {
-            note.push(' ');
-            note.push_str(
-                "It also ran under the host shell (Git Bash, or PowerShell/cmd when no bash is \
-                 installed) instead of WSL's Linux shell, so the interpreter and path \
-                 conventions differ from the sandbox: Linux-only commands and `/mnt/...` paths \
-                 may fail. Rewrite the command for the host shell if it doesn't work.",
-            );
-        }
-        note
-    });
-
     let terminal_id = terminal.id(cx).map_err(|e| e.to_string())?;
-    let fields = acp::ToolCallUpdateFields::new().content(vec![acp::ToolCallContent::Terminal(
-        acp::Terminal::new(terminal_id),
-    )]);
-    if let Some(reason) = &sandbox_not_applied {
-        event_stream.update_fields_with_meta(
-            fields,
-            Some(acp_thread::meta_with_sandbox_not_applied(reason)),
-        );
-    } else {
-        event_stream.update_fields(fields);
-    }
+    event_stream.update_fields(acp::ToolCallUpdateFields::new().content(vec![
+        acp::ToolCallContent::Terminal(acp::Terminal::new(terminal_id)),
+    ]));
 
     let timeout = input.timeout_ms.map(Duration::from_millis);
 
@@ -1103,13 +970,13 @@ async fn run_terminal_tool(
 
     let output = terminal.current_output(cx).map_err(|e| e.to_string())?;
 
-    let result = process_content(output, &input.command, timed_out, user_stopped, selection);
-    let notes = sandbox_note.into_iter().collect::<Vec<_>>();
-    Ok(if notes.is_empty() {
-        result
-    } else {
-        format!("{}\n\n{result}", notes.join("\n\n"))
-    })
+    Ok(process_content(
+        output,
+        &input.command,
+        timed_out,
+        user_stopped,
+        selection,
+    ))
 }
 
 /// Resolve model-requested write paths into absolute paths.
@@ -1215,13 +1082,13 @@ fn network_request_to_sandbox_network_access(
         NetworkRequest::None => acp_thread::SandboxNetworkAccess::None,
         NetworkRequest::AnyHost => acp_thread::SandboxNetworkAccess::All,
         NetworkRequest::Hosts(hosts) => {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
             {
                 acp_thread::SandboxNetworkAccess::Restricted(http_proxy::Allowlist::from_patterns(
                     hosts.iter().cloned(),
                 ))
             }
-            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+            #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
             {
                 let _ = hosts;
                 acp_thread::SandboxNetworkAccess::None
@@ -1307,12 +1174,15 @@ cannot run outside the sandbox, so if the task genuinely needs a Windows program
 tell the user the exact command and ask them to run it.";
 
 /// Whether terminal output contains the kernel-style diagnostics WSL prints
-/// when a Windows executable is launched inside our pid-namespaced sandbox
-/// (interop init fails to parse `/proc/1/stat`, which is now `bwrap`). These
-/// markers don't appear for ordinary Linux commands.
+/// when a Windows executable is launched inside the sandbox, whose seccomp
+/// filter refuses the socket interop needs (`UtilBindVsockAnyPort: socket
+/// failed`; the other two came from the earlier Bubblewrap PID namespace).
+/// These markers don't appear for ordinary Linux commands.
 #[cfg(target_os = "windows")]
 fn wsl_interop_blocked(content: &str) -> bool {
-    content.contains("UtilGetPpid") || content.contains("Failed to parse: /proc/1/stat")
+    content.contains("UtilBindVsockAnyPort")
+        || content.contains("UtilGetPpid")
+        || content.contains("Failed to parse: /proc/1/stat")
 }
 
 fn process_content(
@@ -2189,18 +2059,15 @@ mod tests {
     }
 
     /// ADR-F18: a fail-closed remote sandbox helper (exit 126 + marker) is
-    /// explained in Japanese with the opt-out hint, and the raw marker line is
+    /// explained in Japanese, and the raw marker line is
     /// kept for detail — not reported as an ordinary "failed with exit code
     /// 126".
     #[test]
     fn test_process_content_remote_sandbox_failure() {
-        let output = acp::TerminalOutputResponse::new(
-            "zed-remote-sandbox: slirp-missing: slirp4netns was not found next to the remote \
-             server binary"
-                .to_string(),
-            false,
-        )
-        .exit_status(acp::TerminalExitStatus::new().exit_code(126));
+        let helper_output = "zed-remote-sandbox: slirp-missing: slirp4netns was not found next \
+             to the remote server binary";
+        let output = acp::TerminalOutputResponse::new(helper_output.to_string(), false)
+            .exit_status(acp::TerminalExitStatus::new().exit_code(126));
 
         let result = process_content(
             output,
@@ -2214,13 +2081,14 @@ mod tests {
             result.contains("リモートホストでサンドボックスを作成できませんでした"),
             "Expected the JP sandbox-failure lead-in, got: {result}"
         );
+        // The wording belongs to acp_thread's helper-failure table; this test only
+        // checks that the explanation reaches the model.
+        let slirp_missing_reason =
+            acp_thread::remote_sandbox_setup_failure_message(Some(126), helper_output)
+                .expect("the helper marker should read as a sandbox setup failure");
         assert!(
-            result.contains("slirp4netns がリモートに配置されていません"),
+            result.contains(&slirp_missing_reason),
             "Expected the slirp-missing reason, got: {result}"
-        );
-        assert!(
-            result.contains("allow_unsandboxed"),
-            "Expected the opt-out hint, got: {result}"
         );
         assert!(
             !result.contains("failed with exit code"),
@@ -2351,7 +2219,8 @@ mod tests {
         let result = task.await;
         let error = result.expect_err("expected invalid terminal command to be rejected");
         assert!(
-            error.contains("does not allow shell substitutions or interpolations"),
+            error.contains("shell substitutions or interpolations")
+                && error.contains("run it themselves"),
             "expected explicit invalid-command message, got: {error}"
         );
         assert!(
@@ -2376,12 +2245,11 @@ mod tests {
         );
     }
 
-    /// Auto-approve (`tool_permissions.default = "allow"`, ADR-F24) skips the
-    /// authorization prompt, so nothing else may stand between the tool call
-    /// and the terminal. A small model that omits the optional `cd` must still
-    /// get its command run in the project's only root directory.
+    /// A small model that omits the optional `cd` must still get its command
+    /// run in the project's only root directory. The plain terminal runs outside
+    /// the sandbox, so even under auto-approve the command asks first (ADR-F46).
     #[gpui::test]
-    async fn test_run_without_cd_under_auto_approve(cx: &mut gpui::TestAppContext) {
+    async fn test_run_without_cd_runs_in_the_only_root(cx: &mut gpui::TestAppContext) {
         crate::tests::init_test(cx);
 
         let fs = fs::FakeFs::new(cx.executor());
@@ -2413,6 +2281,7 @@ mod tests {
             )
         });
 
+        approve_unsandboxed_command(&mut rx).await;
         let update = rx.expect_update_fields().await;
         assert!(
             update.content.iter().any(|blocks| {
@@ -2435,7 +2304,7 @@ mod tests {
                 rx.try_recv(),
                 Ok(Ok(crate::ThreadEvent::ToolCallAuthorization(_)))
             ),
-            "auto-approve must not request authorization"
+            "an approved command must not ask again"
         );
     }
 
@@ -2470,8 +2339,8 @@ mod tests {
         #[allow(clippy::arc_with_non_send_sync)]
         let tool = std::sync::Arc::new(TerminalTool::new(project, environment.clone()));
 
-        let (event_stream, _rx) = crate::ToolCallEventStream::test();
-        cx.update(|cx| {
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+        let task = cx.update(|cx| {
             tool.clone().run(
                 crate::ToolInput::resolved(TerminalToolInput {
                     command: "ls".to_string(),
@@ -2481,9 +2350,9 @@ mod tests {
                 event_stream,
                 cx,
             )
-        })
-        .await
-        .expect("a worktree-relative `cd` should resolve");
+        });
+        approve_unsandboxed_command(&mut rx).await;
+        task.await.expect("a worktree-relative `cd` should resolve");
         assert_eq!(environment.terminal_creation_count(), 1);
 
         let (event_stream, _rx) = crate::ToolCallEventStream::test();
@@ -2526,8 +2395,11 @@ mod tests {
         );
     }
 
+    /// ADR-F46: outside the sandbox even allow-all mode asks, so the command is
+    /// permission protected like any confirmed one and shell substitutions are
+    /// refused before any card or terminal.
     #[gpui::test]
-    async fn test_run_allows_invalid_substitution_in_unconditional_allow_all_mode(
+    async fn test_run_rejects_substitution_outside_the_sandbox_even_in_allow_all_mode(
         cx: &mut gpui::TestAppContext,
     ) {
         crate::tests::init_test(cx);
@@ -2566,26 +2438,21 @@ mod tests {
             )
         });
 
-        let update = rx.expect_update_fields().await;
-        assert!(
-            update.content.iter().any(|blocks| {
-                blocks
-                    .iter()
-                    .any(|content| matches!(content, acp::ToolCallContent::Terminal(_)))
-            }),
-            "expected terminal content update in unconditional allow-all mode"
-        );
-
-        let result = task
+        let error = task
             .await
-            .expect("command should proceed in unconditional allow-all mode");
+            .expect_err("a substitution outside the sandbox must be rejected");
         assert!(
-            environment.terminal_creation_count() == 1,
-            "terminal should be created exactly once"
+            error.contains("shell substitutions or interpolations")
+                && error.contains("run it themselves"),
+            "expected the invalid-command message, got: {error}"
         );
+        assert_eq!(environment.terminal_creation_count(), 0);
         assert!(
-            !result.contains("could not be approved"),
-            "unexpected invalid-command rejection output: {result}"
+            !matches!(
+                rx.try_recv(),
+                Ok(Ok(crate::ThreadEvent::ToolCallAuthorization(_)))
+            ),
+            "a rejected command must not show a card"
         );
     }
 
@@ -2648,8 +2515,31 @@ mod tests {
         );
     }
 
+    /// The plain terminal runs outside the sandbox, so every command shows a
+    /// card saying so, whatever the tool permissions allow (ADR-F46). Approve
+    /// it once.
+    async fn approve_unsandboxed_command(receiver: &mut crate::ToolCallEventStreamReceiver) {
+        let authorization = receiver.expect_authorization().await;
+        let details =
+            acp_thread::sandbox_authorization_details_from_meta(&authorization.tool_call.meta)
+                .expect("the card should say the command runs outside the sandbox");
+        assert!(details.outside_sandbox_reason.is_some());
+        authorization
+            .response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new("allow"),
+                acp::PermissionOptionKind::AllowOnce,
+            ))
+            .expect("authorization response should send");
+    }
+
+    /// ADR-F46: an `always_allow` pattern doesn't reach a command outside the
+    /// sandbox. The command still shows a card, which explains why it runs
+    /// outside the sandbox and offers no "always" choice. (How allow patterns
+    /// match env-prefixed commands inside the sandbox is covered by the
+    /// tool-permission unit tests.)
     #[gpui::test]
-    async fn test_run_env_prefixed_allow_pattern_is_used_end_to_end(cx: &mut gpui::TestAppContext) {
+    async fn test_run_allow_pattern_still_asks_outside_the_sandbox(cx: &mut gpui::TestAppContext) {
         crate::tests::init_test(cx);
 
         let fs = fs::FakeFs::new(cx.executor());
@@ -2664,11 +2554,11 @@ mod tests {
 
         cx.update(|cx| {
             let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
-            settings.tool_permissions.default = settings::ToolPermissionMode::Deny;
+            settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
             settings.tool_permissions.tools.insert(
                 TerminalTool::NAME.into(),
                 agent_settings::ToolRules {
-                    default: Some(settings::ToolPermissionMode::Deny),
+                    default: Some(settings::ToolPermissionMode::Allow),
                     always_allow: vec![
                         agent_settings::CompiledRegex::new(r"^PAGER=blah\s+git\s+log(\s|$)", false)
                             .unwrap(),
@@ -2698,23 +2588,39 @@ mod tests {
             )
         });
 
-        let update = rx.expect_update_fields().await;
-        assert!(
-            update.content.iter().any(|blocks| {
-                blocks
-                    .iter()
-                    .any(|content| matches!(content, acp::ToolCallContent::Terminal(_)))
-            }),
-            "expected terminal content update for matching env-prefixed allow rule"
+        let authorization = rx.expect_authorization().await;
+        assert_eq!(
+            environment.terminal_creation_count(),
+            0,
+            "nothing runs before the card is answered"
+        );
+        let details =
+            acp_thread::sandbox_authorization_details_from_meta(&authorization.tool_call.meta)
+                .expect("the card should say the command runs outside the sandbox");
+        assert_eq!(
+            details.outside_sandbox_reason.as_deref(),
+            Some("設定でサンドボックスが無効になっています")
+        );
+        let acp_thread::PermissionOptions::Flat(options) = &authorization.options else {
+            panic!("expected flat options without an \"always\" choice");
+        };
+        assert_eq!(
+            options
+                .iter()
+                .map(|option| option.option_id.0.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["allow", "deny"]
         );
 
-        let result = task
-            .await
-            .expect("expected env-prefixed command to be allowed");
-        assert!(
-            environment.terminal_creation_count() == 1,
-            "terminal should be created for allowed env-prefixed command"
-        );
+        authorization
+            .response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new("allow"),
+                acp::PermissionOptionKind::AllowOnce,
+            ))
+            .expect("authorization response should send");
+        let result = task.await.expect("an approved command runs");
+        assert_eq!(environment.terminal_creation_count(), 1);
         assert!(
             result.contains("command output") || result.contains("Command executed successfully."),
             "unexpected terminal result: {result}"
@@ -2766,6 +2672,7 @@ mod tests {
             )
         });
 
+        approve_unsandboxed_command(&mut rx).await;
         let update = rx.expect_update_fields().await;
         assert!(
             update.content.iter().any(|blocks| {
@@ -2824,6 +2731,7 @@ mod tests {
             )
         });
 
+        approve_unsandboxed_command(&mut rx).await;
         rx.expect_update_fields().await;
         let result = task.await.expect("terminal command should succeed");
         assert_eq!(result, "```\ncommand output\n```");
@@ -3038,7 +2946,8 @@ mod tests {
         let result = task.await;
         let error = result.unwrap_err();
         assert!(
-            error.contains("does not allow shell substitutions or interpolations"),
+            error.contains("shell substitutions or interpolations")
+                && error.contains("run it themselves"),
             "command {command:?} should be rejected with substitution message, got: {error}"
         );
         assert!(
@@ -3154,8 +3063,10 @@ mod tests {
         assert_rejected_before_terminal_creation("echo $(cat $(whoami).txt)", cx).await;
     }
 
+    /// The terminal's own "allow" default is an allow source too, so outside
+    /// the sandbox it no longer lets shell substitutions through (ADR-F46).
     #[gpui::test]
-    async fn test_allow_all_terminal_specific_default_with_empty_patterns(
+    async fn test_terminal_allow_default_does_not_bypass_substitution_check_outside_the_sandbox(
         cx: &mut gpui::TestAppContext,
     ) {
         crate::tests::init_test(cx);
@@ -3203,26 +3114,21 @@ mod tests {
             )
         });
 
-        let update = rx.expect_update_fields().await;
-        assert!(
-            update.content.iter().any(|blocks| {
-                blocks
-                    .iter()
-                    .any(|content| matches!(content, acp::ToolCallContent::Terminal(_)))
-            }),
-            "terminal-specific allow-all should bypass substitution rejection"
-        );
-
-        let result = task
+        let error = task
             .await
-            .expect("terminal-specific allow-all should let the command proceed");
+            .expect_err("a substitution outside the sandbox must be rejected");
         assert!(
-            environment.terminal_creation_count() == 1,
-            "terminal should be created exactly once"
+            error.contains("shell substitutions or interpolations")
+                && error.contains("run it themselves"),
+            "expected the invalid-command message, got: {error}"
         );
+        assert_eq!(environment.terminal_creation_count(), 0);
         assert!(
-            !result.contains("could not be approved"),
-            "unexpected rejection output: {result}"
+            !matches!(
+                rx.try_recv(),
+                Ok(Ok(crate::ThreadEvent::ToolCallAuthorization(_)))
+            ),
+            "a rejected command must not show a card"
         );
     }
 
@@ -3288,159 +3194,6 @@ mod tests {
         assert!(
             environment.terminal_creation_count() == 0,
             "terminal should not be created for non-matching env value"
-        );
-    }
-
-    #[gpui::test]
-    async fn test_env_prefix_multiple_assignments_preserved_in_order(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        crate::tests::init_test(cx);
-
-        let fs = fs::FakeFs::new(cx.executor());
-        fs.insert_tree("/root", serde_json::json!({})).await;
-        let project = project::Project::test(fs, ["/root".as_ref()], cx).await;
-
-        let environment = std::rc::Rc::new(cx.update(|cx| {
-            crate::tests::FakeThreadEnvironment::default().with_terminal(
-                crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
-            )
-        }));
-
-        cx.update(|cx| {
-            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
-            settings.tool_permissions.default = settings::ToolPermissionMode::Deny;
-            settings.tool_permissions.tools.insert(
-                TerminalTool::NAME.into(),
-                agent_settings::ToolRules {
-                    default: Some(settings::ToolPermissionMode::Deny),
-                    always_allow: vec![
-                        agent_settings::CompiledRegex::new(r"^A=1\s+B=2\s+git\s+log(\s|$)", false)
-                            .unwrap(),
-                    ],
-                    always_deny: vec![],
-                    always_confirm: vec![],
-                    invalid_patterns: vec![],
-                },
-            );
-            agent_settings::AgentSettings::override_global(settings, cx);
-        });
-
-        #[allow(clippy::arc_with_non_send_sync)]
-        let tool = std::sync::Arc::new(TerminalTool::new(project, environment.clone()));
-        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
-
-        let task = cx.update(|cx| {
-            tool.run(
-                crate::ToolInput::resolved(TerminalToolInput {
-                    command: "A=1 B=2 git log".to_string(),
-                    cd: "root".to_string(),
-                    timeout_ms: None,
-                    ..Default::default()
-                }),
-                event_stream,
-                cx,
-            )
-        });
-
-        let update = rx.expect_update_fields().await;
-        assert!(
-            update.content.iter().any(|blocks| {
-                blocks
-                    .iter()
-                    .any(|content| matches!(content, acp::ToolCallContent::Terminal(_)))
-            }),
-            "multi-assignment pattern should match and produce terminal content"
-        );
-
-        let result = task
-            .await
-            .expect("multi-assignment command matching pattern should be allowed");
-        assert!(
-            environment.terminal_creation_count() == 1,
-            "terminal should be created for matching multi-assignment command"
-        );
-        assert!(
-            result.contains("command output") || result.contains("Command executed successfully."),
-            "unexpected terminal result: {result}"
-        );
-    }
-
-    #[gpui::test]
-    async fn test_env_prefix_quoted_whitespace_value_matches_only_with_quotes_in_pattern(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        crate::tests::init_test(cx);
-
-        let fs = fs::FakeFs::new(cx.executor());
-        fs.insert_tree("/root", serde_json::json!({})).await;
-        let project = project::Project::test(fs, ["/root".as_ref()], cx).await;
-
-        let environment = std::rc::Rc::new(cx.update(|cx| {
-            crate::tests::FakeThreadEnvironment::default().with_terminal(
-                crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
-            )
-        }));
-
-        cx.update(|cx| {
-            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
-            settings.tool_permissions.default = settings::ToolPermissionMode::Deny;
-            settings.tool_permissions.tools.insert(
-                TerminalTool::NAME.into(),
-                agent_settings::ToolRules {
-                    default: Some(settings::ToolPermissionMode::Deny),
-                    always_allow: vec![
-                        agent_settings::CompiledRegex::new(
-                            r#"^PAGER="less\ -R"\s+git\s+log(\s|$)"#,
-                            false,
-                        )
-                        .unwrap(),
-                    ],
-                    always_deny: vec![],
-                    always_confirm: vec![],
-                    invalid_patterns: vec![],
-                },
-            );
-            agent_settings::AgentSettings::override_global(settings, cx);
-        });
-
-        #[allow(clippy::arc_with_non_send_sync)]
-        let tool = std::sync::Arc::new(TerminalTool::new(project, environment.clone()));
-        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
-
-        let task = cx.update(|cx| {
-            tool.run(
-                crate::ToolInput::resolved(TerminalToolInput {
-                    command: "PAGER=\"less -R\" git log".to_string(),
-                    cd: "root".to_string(),
-                    timeout_ms: None,
-                    ..Default::default()
-                }),
-                event_stream,
-                cx,
-            )
-        });
-
-        let update = rx.expect_update_fields().await;
-        assert!(
-            update.content.iter().any(|blocks| {
-                blocks
-                    .iter()
-                    .any(|content| matches!(content, acp::ToolCallContent::Terminal(_)))
-            }),
-            "quoted whitespace value should match pattern with quoted form"
-        );
-
-        let result = task
-            .await
-            .expect("quoted whitespace env value matching pattern should be allowed");
-        assert!(
-            environment.terminal_creation_count() == 1,
-            "terminal should be created for matching quoted-value command"
-        );
-        assert!(
-            result.contains("command output") || result.contains("Command executed successfully."),
-            "unexpected terminal result: {result}"
         );
     }
 
@@ -3599,24 +3352,24 @@ mod tests {
         }
     }
 
-    /// ADR-F41: on Linux only a missing or unusable Bubblewrap may open the
-    /// "run without a sandbox" prompt. A policy that can't be built, which a
-    /// sandboxed command can bring about by deleting an approved write
-    /// directory, must fail closed instead.
+    /// On Linux only a missing or unusable Bubblewrap may open the "fix it and
+    /// retry" card (ADR-F46). A policy that can't be built, which a sandboxed
+    /// command can bring about by deleting an approved write directory, fails
+    /// closed without a card (ADR-F41).
     #[test]
-    fn test_only_environment_failures_offer_the_linux_fallback() {
+    fn test_only_environment_failures_offer_a_linux_retry() {
         use acp_thread::LinuxWslSandboxError;
 
-        assert!(linux_sandbox_error_allows_fallback(
+        assert!(linux_sandbox_error_offers_retry(
             &LinuxWslSandboxError::BwrapNotFound
         ));
-        assert!(linux_sandbox_error_allows_fallback(
+        assert!(linux_sandbox_error_offers_retry(
             &LinuxWslSandboxError::SetuidRejected
         ));
-        assert!(linux_sandbox_error_allows_fallback(
+        assert!(linux_sandbox_error_offers_retry(
             &LinuxWslSandboxError::SandboxProbeFailed
         ));
-        assert!(!linux_sandbox_error_allows_fallback(
+        assert!(!linux_sandbox_error_offers_retry(
             &LinuxWslSandboxError::Other(
                 "cannot re-verify approved sandbox write grant `build`".to_string()
             )
@@ -3715,21 +3468,17 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
+        // Unrestricted writes are nearly the same as running outside the
+        // sandbox, so they can only be allowed once (ADR-F46).
         assert_eq!(
             options,
             vec![
-                ("allow", "Allow once", acp::PermissionOptionKind::AllowOnce),
                 (
-                    "allow_thread",
-                    "Allow for this thread",
-                    acp::PermissionOptionKind::AllowAlways,
+                    "allow",
+                    "許可 (今回のみ)",
+                    acp::PermissionOptionKind::AllowOnce
                 ),
-                (
-                    "allow_always",
-                    "Allow always",
-                    acp::PermissionOptionKind::AllowAlways,
-                ),
-                ("deny", "Deny", acp::PermissionOptionKind::RejectOnce),
+                ("deny", "拒否", acp::PermissionOptionKind::RejectOnce),
             ]
         );
 
@@ -3800,7 +3549,7 @@ mod tests {
         assert_eq!(environment.terminal_creation_count(), 0);
     }
 
-    /// Regression test: choosing "Allow always" on a sandbox prompt must persist
+    /// Regression test: choosing 「常に許可」 on a sandbox prompt must persist
     /// the grant to settings *only* — it must not also cache an in-memory thread
     /// grant. Otherwise removing the entry from settings.json wouldn't revoke it
     /// within the same conversation, and a later identical command would run
@@ -3841,7 +3590,7 @@ mod tests {
             "reason": "needs to write build artifacts",
         });
 
-        // ---- First call: the user picks "Allow always".
+        // ---- First call: the user picks 「常に許可」.
         let environment = std::rc::Rc::new(cx.update(|cx| {
             crate::tests::FakeThreadEnvironment::default().with_terminal(
                 crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
@@ -3876,7 +3625,7 @@ mod tests {
         );
         assert!(
             cached.write_paths.is_empty(),
-            "\"Allow always\" must not cache an in-memory thread grant: {:?}",
+            "「常に許可」 must not cache an in-memory thread grant: {:?}",
             cached.write_paths
         );
 
@@ -3965,80 +3714,180 @@ mod tests {
         (tool, event_stream, receiver, environment)
     }
 
-    /// A thread in which the user chose to run commands without a sandbox after
-    /// it could not be created. Built from the persisted form so the tests below
-    /// also run on macOS, where the sandbox can't fail and `record_fallback`
-    /// doesn't exist.
-    fn fallback_thread_grants() -> crate::sandboxing::ThreadSandboxGrants {
-        crate::sandboxing::ThreadSandboxGrants::from_db(&crate::db::DbSandboxGrants {
-            sandbox_fallback: true,
-            ..Default::default()
-        })
+    #[cfg(target_os = "windows")]
+    fn wsl_unavailable() -> anyhow::Error {
+        anyhow::Error::new(sandbox::SandboxError::WslUnavailable(
+            "WSL is not installed".to_string(),
+        ))
     }
 
-    /// A standing "run unsandboxed for this thread" grant (chosen after the
-    /// sandbox could not be created) makes an ordinary command (one that
-    /// requests no escalation) run without a sandbox, and the model is told so
-    /// in the output.
+    /// ADR-F46: a WSL sandbox that can't be set up shows a card with only
+    /// "retry" and "cancel", and retrying probes the environment again.
+    #[cfg(target_os = "windows")]
     #[gpui::test]
-    async fn test_fallback_thread_grant_runs_bare_command_unsandboxed(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        let (tool, event_stream, _receiver, environment) = floor_test_tool(
-            cx,
-            agent_settings::SandboxPermissions::default(),
-            fallback_thread_grants(),
-        )
-        .await;
+    async fn test_wsl_sandbox_failure_retry_probes_again(cx: &mut gpui::TestAppContext) {
+        crate::tests::init_test(cx);
 
-        let input: SandboxedTerminalToolInput = serde_json::from_value(serde_json::json!({
-            "command": "echo hi",
-            "cd": "root",
-        }))
-        .unwrap();
-        let task = cx.update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx));
-        let result = task.await.expect("bare command should run");
-        assert_eq!(environment.terminal_creation_count(), 1);
+        let attempts = Rc::new(std::cell::Cell::new(0usize));
+        let terminal: Rc<dyn crate::TerminalHandle> = Rc::new(
+            cx.update(|cx| crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0)),
+        );
+        let (event_stream, mut receiver) = crate::ToolCallEventStream::test();
+        let task = cx.spawn({
+            let attempts = attempts.clone();
+            async move |mut cx| {
+                create_terminal_retrying_sandbox_creation(
+                    &event_stream,
+                    "echo hi",
+                    true,
+                    &mut cx,
+                    |_cx| {
+                        attempts.set(attempts.get() + 1);
+                        if attempts.get() == 1 {
+                            Task::ready(Err(wsl_unavailable()))
+                        } else {
+                            Task::ready(Ok(terminal.clone()))
+                        }
+                    },
+                )
+                .await
+                .map(|_| ())
+            }
+        });
+
+        let authorization = receiver.expect_authorization().await;
+        assert_eq!(attempts.get(), 1);
+        let details = acp_thread::sandbox_fallback_authorization_details_from_meta(
+            &authorization.tool_call.meta,
+        )
+        .expect("the card should explain why the sandbox failed");
+        assert_eq!(details.command.as_deref(), Some("echo hi"));
         assert!(
-            result.contains("WITHOUT an OS sandbox"),
-            "a bare command in an unsandboxed thread must run unsandboxed: {result}"
+            details.reason.contains("WSL is not installed"),
+            "unexpected reason: {}",
+            details.reason
+        );
+        let acp_thread::PermissionOptions::Flat(options) = &authorization.options else {
+            panic!("expected flat retry options");
+        };
+        assert_eq!(
+            options
+                .iter()
+                .map(|option| option.option_id.0.as_ref())
+                .collect::<Vec<_>>(),
+            vec![acp_thread::SANDBOX_FALLBACK_RETRY_OPTION_ID, "deny"]
+        );
+
+        authorization
+            .response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new(acp_thread::SANDBOX_FALLBACK_RETRY_OPTION_ID),
+                acp::PermissionOptionKind::RejectAlways,
+            ))
+            .expect("authorization response should send");
+        task.await.expect("the retry should create the terminal");
+        assert_eq!(
+            attempts.get(),
+            2,
+            "retrying must probe the environment again"
         );
     }
 
-    /// Once the thread is unsandboxed, the model must not be able to ask for a
-    /// scoped sandbox (it would silently run unsandboxed instead) — the call is
-    /// rejected so the model fixes its request.
+    /// Cancelling returns an error that says the sandbox couldn't be created
+    /// and the environment has to be fixed; the command never runs, and there
+    /// is no hint at running it without the sandbox.
+    #[cfg(target_os = "windows")]
     #[gpui::test]
-    async fn test_fallback_thread_grant_rejects_scoping_request(cx: &mut gpui::TestAppContext) {
-        let (tool, event_stream, _receiver, environment) = floor_test_tool(
-            cx,
-            agent_settings::SandboxPermissions::default(),
-            fallback_thread_grants(),
-        )
-        .await;
+    async fn test_wsl_sandbox_failure_cancel_returns_the_error(cx: &mut gpui::TestAppContext) {
+        crate::tests::init_test(cx);
 
-        let input: SandboxedTerminalToolInput = serde_json::from_value(serde_json::json!({
-            "command": "touch build/out",
-            "cd": "root",
-            "fs_write_paths": ["build"],
-            "allow_all_hosts": true,
-            "reason": "write build artifacts",
-        }))
-        .unwrap();
-        let task = cx.update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx));
+        let attempts = Rc::new(std::cell::Cell::new(0usize));
+        let (event_stream, mut receiver) = crate::ToolCallEventStream::test();
+        let task = cx.spawn({
+            let attempts = attempts.clone();
+            async move |mut cx| {
+                create_terminal_retrying_sandbox_creation(
+                    &event_stream,
+                    "echo hi",
+                    true,
+                    &mut cx,
+                    |_cx| {
+                        attempts.set(attempts.get() + 1);
+                        Task::ready(Err(wsl_unavailable()))
+                    },
+                )
+                .await
+                .map(|_| ())
+            }
+        });
+
+        let authorization = receiver.expect_authorization().await;
+        authorization
+            .response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new(acp_thread::SandboxPermission::Deny.as_id()),
+                acp::PermissionOptionKind::RejectOnce,
+            ))
+            .expect("authorization response should send");
         let error = task
             .await
-            .expect_err("scoping a request in an unsandboxed thread should be rejected");
+            .expect_err("a cancelled sandbox failure must not run the command");
         assert!(
-            error.contains("Sandboxing is disabled for this thread"),
-            "unexpected error: {error}"
+            error.contains("could not be created") && error.contains("WSL is not installed"),
+            "the error should say why the sandbox failed: {error}"
         );
-        // The error must name exactly the fields that have no effect.
         assert!(
-            error.contains("`fs_write_paths`") && error.contains("`allow_all_hosts`"),
-            "error should name the ineffective fields: {error}"
+            !error.contains("allow_unsandboxed"),
+            "the error must not point at running without the sandbox: {error}"
         );
-        assert_eq!(environment.terminal_creation_count(), 0);
+        assert_eq!(attempts.get(), 1, "cancelling must not probe again");
+    }
+
+    /// Only an unavailable WSL environment offers a retry. A bad request, or a
+    /// failure of a command that isn't sandboxed, goes straight back to the
+    /// model without a card.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn test_other_terminal_failures_do_not_offer_a_retry(cx: &mut gpui::TestAppContext) {
+        crate::tests::init_test(cx);
+
+        let cases = [
+            (
+                true,
+                sandbox::SandboxError::InvalidRequest("mixed distros".to_string()),
+            ),
+            (
+                false,
+                sandbox::SandboxError::WslUnavailable("WSL is not installed".to_string()),
+            ),
+        ];
+        for (sandboxed, sandbox_error) in cases {
+            let (event_stream, mut receiver) = crate::ToolCallEventStream::test();
+            let result = cx
+                .spawn({
+                    let sandbox_error = sandbox_error.clone();
+                    async move |mut cx| {
+                        create_terminal_retrying_sandbox_creation(
+                            &event_stream,
+                            "echo hi",
+                            sandboxed,
+                            &mut cx,
+                            |_cx| Task::ready(Err(anyhow::Error::new(sandbox_error.clone()))),
+                        )
+                        .await
+                        .map(|_| ())
+                    }
+                })
+                .await;
+            assert!(
+                result.is_err(),
+                "expected an error for {sandbox_error:?} (sandboxed: {sandboxed})"
+            );
+            assert!(
+                receiver.try_recv().is_err(),
+                "no card for {sandbox_error:?} (sandboxed: {sandboxed})"
+            );
+        }
     }
 
     /// A persistent "allow unrestricted filesystem writes" setting makes scoping
@@ -4051,7 +3900,7 @@ mod tests {
             allow_fs_write_all: true,
             ..Default::default()
         };
-        let (tool, event_stream, _receiver, environment) = floor_test_tool(
+        let (tool, event_stream, mut receiver, environment) = floor_test_tool(
             cx,
             persistent,
             crate::sandboxing::ThreadSandboxGrants::default(),
@@ -4066,6 +3915,8 @@ mod tests {
         }))
         .unwrap();
         let task = cx.update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx));
+        // With unrestricted writes on, every command asks first (ADR-F46).
+        approve_unsandboxed_command(&mut receiver).await;
         let error = task
             .await
             .expect_err("scoping writes when FS is unrestricted should be rejected");
@@ -4073,6 +3924,62 @@ mod tests {
             error.contains("Unrestricted filesystem writes are enabled for this thread"),
             "unexpected error: {error}"
         );
+        assert_eq!(environment.terminal_creation_count(), 0);
+    }
+
+    /// ADR-F46: while unrestricted writes are on in settings, a command is
+    /// nearly the same as one outside the sandbox, so even under auto-approve
+    /// it asks first, and the card says why.
+    #[gpui::test]
+    async fn test_unrestricted_writes_setting_makes_every_command_ask(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let persistent = agent_settings::SandboxPermissions {
+            allow_fs_write_all: true,
+            ..Default::default()
+        };
+        let (tool, event_stream, mut receiver, environment) = floor_test_tool(
+            cx,
+            persistent,
+            crate::sandboxing::ThreadSandboxGrants::default(),
+        )
+        .await;
+
+        let input: SandboxedTerminalToolInput = serde_json::from_value(serde_json::json!({
+            "command": "echo hi",
+            "cd": "root",
+        }))
+        .unwrap();
+        let task = cx.update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx));
+
+        let authorization = receiver.expect_authorization().await;
+        let details =
+            acp_thread::sandbox_authorization_details_from_meta(&authorization.tool_call.meta)
+                .expect("the card should say why the command asks");
+        assert!(details.allow_fs_write_all);
+        assert_eq!(
+            details.outside_sandbox_reason.as_deref(),
+            Some("設定でファイルシステムへの書き込みがすべて許可されています")
+        );
+        let acp_thread::PermissionOptions::Flat(options) = &authorization.options else {
+            panic!("expected flat options");
+        };
+        assert_eq!(
+            options
+                .iter()
+                .map(|option| option.option_id.0.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["allow", "deny"]
+        );
+
+        authorization
+            .response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new("deny"),
+                acp::PermissionOptionKind::RejectOnce,
+            ))
+            .expect("authorization response should send");
+        assert!(task.await.is_err(), "a denied command must not run");
         assert_eq!(environment.terminal_creation_count(), 0);
     }
 
@@ -4161,14 +4068,15 @@ mod tests {
             other => panic!("expected unrestricted network access, got {other:?}"),
         }
 
-        // macOS and Linux confine host requests through the allowlist proxy.
+        // macOS, Linux and Windows (inside WSL) confine host requests through
+        // the allowlist proxy.
         match network_request_to_sandbox_network_access(&host_request(&["github.com"])) {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
             acp_thread::SandboxNetworkAccess::Restricted(allowlist) => {
                 assert!(allowlist.allows("github.com"));
                 assert!(!allowlist.allows("example.com"));
             }
-            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+            #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
             acp_thread::SandboxNetworkAccess::None => {}
             other => panic!("unexpected network access for host request, got {other:?}"),
         }

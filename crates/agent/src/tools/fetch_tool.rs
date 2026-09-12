@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::{borrow::Cow, cell::RefCell};
 
 use agent_client_protocol::schema::v1 as acp;
+use agent_settings::AgentSettings;
 use anyhow::{Context as _, Result, bail};
 use futures::{AsyncReadExt as _, FutureExt as _};
 use gpui::{App, AppContext as _, Task};
@@ -10,6 +11,7 @@ use html_to_markdown::{TagHandler, convert_html_to_markdown, markdown};
 use http_client::{AsyncBody, HttpClientWithUrl};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use settings::Settings as _;
 use ui::SharedString;
 use util::markdown::{MarkdownEscaped, MarkdownInlineCode};
 
@@ -54,11 +56,8 @@ fn normalize_url(url: &str) -> Cow<'_, str> {
 /// it for the other, whether the grant is for this thread or saved permanently.
 /// HTTP redirects are followed one hop at a time, and each hop's host must be
 /// granted the same way, so a granted host can't redirect the request to a host
-/// that hasn't been approved.
-/// When the terminal runs without a sandbox (the user turned it off, or chose
-/// to continue without one after it could not be created), these restrictions
-/// are lifted entirely, matching the terminal. Only then are loopback and
-/// IP-literal hosts, which can't be granted individually, reachable.
+/// that hasn't been approved. Hosts are granted by domain name; loopback and
+/// IP-literal hosts can't be granted.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FetchToolInput {
     /// The URL to fetch.
@@ -204,9 +203,9 @@ fn host_pattern_for_url(url: &str) -> Result<http_proxy::HostPattern> {
         .with_context(|| format!("URL {url:?} has no host to authorize network access for"))?;
     http_proxy::HostPattern::parse(host).map_err(|error| match error {
         http_proxy::HostPatternError::IpLiteral(_) => anyhow::anyhow!(
-            "cannot fetch {host:?}: loopback and IP-literal hosts can't be granted network \
-             access individually. They are only reachable once the user turns the terminal \
-             sandbox off (the `allow_unsandboxed` setting); the agent cannot request that."
+            "cannot fetch {host:?}: this host isn't allowed, and loopback and IP-literal \
+             hosts can't be allowed at all. Network access is only granted to domain names, \
+             which the user can add in the 「サンドボックス」 settings under 「許可するドメイン」."
         ),
         error => anyhow::anyhow!("cannot authorize network access to {host:?}: {error}"),
     })
@@ -254,7 +253,7 @@ impl AgentTool for FetchTool {
                     crate::ToolPermissionContext::new(Self::NAME, vec![input.url.clone()]);
 
                 event_stream.authorize(
-                    format!("Fetch {}", MarkdownInlineCode(&input.url)),
+                    format!("{} を取得", MarkdownInlineCode(&input.url)),
                     context,
                     cx,
                 )
@@ -266,16 +265,17 @@ impl AgentTool for FetchTool {
                 }
             };
 
-            // Then, unless unsandboxed access is already in effect, the per-host
-            // network grant shared with the terminal tool. If the host isn't
-            // already granted (for this thread or in saved settings) the user is
-            // shown the same escalation prompt the terminal uses; a denial
-            // aborts the fetch. This tool never runs inside the OS sandbox, so
-            // the grant is only consulted to decide whether the request may
-            // proceed. When unsandboxed access has been granted the terminal
-            // already runs without isolation, so we drop fetch's restrictions
-            // too — including reaching hosts that can't be granted individually
-            // (loopback and IP literals).
+            // Then, unless the user turned the terminal sandbox off in settings,
+            // the per-host network grant shared with the terminal tool. If the
+            // host isn't already granted (for this thread or in saved settings)
+            // the user is shown the same escalation prompt the terminal uses; a
+            // denial aborts the fetch. This tool never runs inside the OS
+            // sandbox, so the grant is only consulted to decide whether the
+            // request may proceed. With the sandbox turned off the terminal
+            // already runs without isolation, so fetch's restrictions are
+            // dropped too, including hosts that can't be granted individually
+            // (loopback and IP literals). No per-thread choice lifts them
+            // (ADR-F46).
             //
             // Crucially, this authorization is applied to every redirect hop as
             // well as the initial URL, so a granted host can't 30x-redirect the
@@ -288,7 +288,9 @@ impl AgentTool for FetchTool {
             // isolation; skip it entirely (the pre-sandboxing behavior).
             let unsandboxed = cx.update(|cx| {
                 !crate::sandboxing::sandboxing_enabled(cx)
-                    || event_stream.unsandboxed_access_granted(cx)
+                    || AgentSettings::get_global(cx)
+                        .sandbox_permissions
+                        .allow_unsandboxed
             });
 
             let mut current_url = input.url.clone();

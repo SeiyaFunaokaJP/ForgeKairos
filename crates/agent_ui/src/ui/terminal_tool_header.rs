@@ -284,10 +284,14 @@ impl Component for TerminalToolHeader {
                 .into_any_element()
         };
 
-        let sandbox_warning = || TerminalSandboxWarning {
-            title: "Ran without sandbox".into(),
-            detail: "Unsandboxed execution is allowed for the rest of this thread.".into(),
+        let sandbox_warning = || {
+            TerminalSandboxWarning {
+            title: "サンドボックスなしで実行されました".into(),
+            detail: "以前のバージョンで、サンドボックスを作れなかったときに許可されて実行されたコマンドです。\
+                     現在は常にサンドボックスの中で実行します。"
+                .into(),
             docs_url: "https://zed.dev/docs/ai/sandboxing".into(),
+        }
         };
 
         v_flex()

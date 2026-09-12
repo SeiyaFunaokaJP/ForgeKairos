@@ -337,8 +337,12 @@ mod tests {
         assert!(rendered.contains("first create it with the `create_directory` tool"));
     }
 
+    /// ADR-F46 B: on Windows commands run inside WSL under Zed's own sandbox
+    /// helper, whose per-command proxy enforces host-specific network grants,
+    /// so the prompt offers `allow_hosts` there too and never points at running
+    /// outside the sandbox.
     #[test]
-    fn test_system_prompt_windows_sandbox_section_rejects_host_specific_network() {
+    fn test_system_prompt_windows_sandbox_section_offers_host_specific_network() {
         use prompt_store::{ProjectContext, WorktreeContext};
 
         let worktrees = vec![WorktreeContext {
@@ -362,11 +366,20 @@ mod tests {
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
 
-        assert!(rendered.contains("commands run inside WSL under Bubblewrap"));
+        assert!(rendered.contains("## Terminal sandbox"));
+        assert!(rendered.contains("commands run inside WSL, isolated by Zed's sandbox helper"));
         assert!(rendered.contains("Protected Git metadata remains read-only"));
-        assert!(rendered.contains("do not use this on Windows"));
-        assert!(rendered.contains("such requests are rejected"));
+        // Host-specific grants are enforced by the helper's proxy, so they are
+        // offered rather than rejected.
+        assert!(rendered.contains("HTTP/HTTPS proxy inside WSL"));
+        assert!(rendered.contains("`allow_hosts: [\"github.com\""));
+        assert!(!rendered.contains("do not use this on Windows"));
+        assert!(!rendered.contains("such requests are rejected"));
         assert!(rendered.contains("allow_all_hosts: true"));
+        // ADR-F41 / ADR-F46: nothing offers or advises running outside the
+        // sandbox.
+        assert!(!rendered.contains("unsandboxed"));
+        assert!(rendered.contains("Commands cannot be run outside the sandbox"));
         assert!(rendered.contains("git --no-optional-locks status"));
         // Out-of-project `create_directory` grants aren't supported on Windows,
         // so the prompt must not recommend that flow; it suggests granting the

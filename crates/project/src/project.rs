@@ -2267,11 +2267,10 @@ impl Project {
     }
 
     /// ADR-F18: whether this project can run agent commands inside the on-host
-    /// sandbox helper — an SSH-remote **Linux** host that has provisioned the
-    /// remote server binary (which doubles as the helper). `false` for local,
-    /// Windows/macOS remotes, and WSL/Docker remotes (which don't expose a
-    /// server-binary path and use their own mechanisms), so those keep their
-    /// existing behavior.
+    /// sandbox helper — a **Linux** remote (SSH, and since ADR-F46 also WSL and
+    /// Docker) that has provisioned the remote server binary (which doubles as
+    /// the helper). `false` for local projects and Windows/macOS remotes, so
+    /// those keep their existing behavior.
     #[inline]
     pub fn remote_supports_agent_sandbox(&self, cx: &App) -> bool {
         self.remote_client.as_ref().is_some_and(|client| {

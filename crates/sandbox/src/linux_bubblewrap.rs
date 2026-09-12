@@ -41,14 +41,6 @@ use std::thread;
 /// inodes we captured (the bind-source TOCTOU backstop) and (b) run the
 /// restricted-network HTTP bridge. See `README.md` for the design.
 const LAUNCHER_FLAG: &str = "--zed-linux-sandbox-launcher";
-/// Re-exec marker for the WSL-side helper. This runs *inside WSL* (a Linux
-/// process) and does what `Sandbox::wrap` + the validation-fd sender do
-/// in-process on native Linux: capture the writable binds' `O_PATH` fds, stand
-/// up the validation socket, assemble the bwrap invocation, and spawn it. The
-/// capture must happen WSL-side because a Windows process holds no Linux fds.
-/// See `README.md`. Shared with the Windows side via `crate::WSL_SANDBOX_HELPER_FLAG`.
-const WSL_HELPER_FLAG: &str = crate::WSL_SANDBOX_HELPER_FLAG;
-const WSL_RESOLVE_FLAG: &str = crate::WSL_SANDBOX_RESOLVE_FLAG;
 /// Sentinel argv token meaning "this optional field is absent".
 const LAUNCHER_NONE: &str = "-";
 const PROXY_SOCKET_SANDBOX_PATH_PREFIX: &str = "/tmp/zed-sandbox";
@@ -595,6 +587,7 @@ pub fn wrap_invocation(
     cwd: Option<&Path>,
     program: &str,
     args: &[String],
+    command_environment: &[(String, String)],
     proxy_socket_path: Option<&Path>,
     validation_socket: Option<ValidationSocket<'_>>,
 ) -> Result<(String, Vec<String>)> {
@@ -691,6 +684,13 @@ pub fn wrap_invocation(
     for path in validation_paths {
         bwrap_args.push(path.to_string_lossy().into_owned());
     }
+    // Field 5: the command's environment (count, then name/value pairs), for
+    // the launcher to give the command alone.
+    bwrap_args.push(command_environment.len().to_string());
+    for (name, value) in command_environment {
+        bwrap_args.push(name.clone());
+        bwrap_args.push(value.clone());
+    }
     bwrap_args.push("--".to_string());
 
     bwrap_args.push(program.to_string());
@@ -730,9 +730,21 @@ struct LauncherInvocation {
     /// `(in-sandbox proxy socket path, loopback port)` if the restricted-network
     /// bridge is required.
     bridge: Option<(PathBuf, u16)>,
+    /// The command's environment, applied only to the command itself (see
+    /// [`LAUNCHER_LOADER_VARIABLES`]).
+    environment: Vec<(OsString, OsString)>,
     program: OsString,
     args: Vec<OsString>,
 }
+
+/// Variables through which the dynamic loader runs code in a process before
+/// its `main`. `bwrap` and this launcher (Zed's own, dynamically linked binary,
+/// running before the command's seccomp filter is in place) get them blanked
+/// in their environment; the command's own values reach only the command, from
+/// the launcher's argv. A project's `.envrc` setting `LD_PRELOAD` therefore
+/// runs nothing outside the finished sandbox.
+pub(crate) const LAUNCHER_LOADER_VARIABLES: [&str; 3] =
+    ["LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT"];
 
 fn parse_launcher_args(
     args: impl IntoIterator<Item = OsString>,
@@ -791,6 +803,20 @@ fn decode_launcher_args(mut args: impl Iterator<Item = OsString>) -> Result<Laun
         ));
     }
 
+    let variable_count = args
+        .next()
+        .context("missing environment variable count")?
+        .to_str()
+        .context("environment variable count is not valid UTF-8")?
+        .parse::<usize>()
+        .context("invalid environment variable count")?;
+    let mut environment = Vec::new();
+    for _ in 0..variable_count {
+        let name = args.next().context("missing environment variable name")?;
+        let value = args.next().context("missing environment variable value")?;
+        environment.push((name, value));
+    }
+
     let separator = args.next().context("missing launcher argument separator")?;
     if separator != "--" {
         bail!("missing launcher argument separator");
@@ -801,6 +827,7 @@ fn decode_launcher_args(mut args: impl Iterator<Item = OsString>) -> Result<Laun
         validation_socket,
         validation_paths,
         bridge,
+        environment,
         program,
         args,
     })
@@ -819,14 +846,34 @@ fn run_launcher(invocation: LauncherInvocation) -> ! {
         }
     }
 
+    let command = command_with_environment(
+        &invocation.program,
+        &invocation.args,
+        &invocation.environment,
+    );
     match invocation.bridge {
-        Some((socket_path, port)) => {
-            run_bridge(socket_path, port, &invocation.program, &invocation.args)
-        }
+        Some((socket_path, port)) => run_bridge(socket_path, port, command),
         // No bridge to keep alive, so `exec` the command directly rather than
         // lingering as a parent process.
-        None => exec_command(&invocation.program, &invocation.args),
+        None => exec_command(command),
     }
+}
+
+/// The command to run: its own environment on top of this launcher's, whose
+/// loader variables are blanked (see [`LAUNCHER_LOADER_VARIABLES`]) and so
+/// removed unless the command sets them itself.
+fn command_with_environment(
+    program: &OsStr,
+    args: &[OsString],
+    environment: &[(OsString, OsString)],
+) -> Command {
+    let mut command = Command::new(program);
+    command.args(args);
+    for name in LAUNCHER_LOADER_VARIABLES {
+        command.env_remove(name);
+    }
+    command.envs(environment.iter().map(|(name, value)| (name, value)));
+    command
 }
 
 /// Verify each writable bind resolves, inside the sandbox, to the exact inode the
@@ -984,14 +1031,14 @@ pub(crate) fn install_command_seccomp_filter() -> Result<()> {
 
 /// Replace this process with the sandboxed command. Only returns (after logging)
 /// if `exec` itself fails.
-fn exec_command(program: &OsStr, args: &[OsString]) -> ! {
+fn exec_command(mut command: Command) -> ! {
     // Lock down socket/io_uring/ptrace syscalls right before handing control to
     // the untrusted command; the filter survives `exec`.
     if let Err(error) = install_command_seccomp_filter() {
         eprintln!("zed: failed to install sandbox seccomp filter: {error:#}");
         std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
     }
-    let error = Command::new(program).args(args).exec();
+    let error = command.exec();
     eprintln!("zed: failed to exec sandboxed command: {error}");
     std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
 }
@@ -1000,7 +1047,7 @@ fn exec_command(program: &OsStr, args: &[OsString]) -> ! {
     clippy::disallowed_methods,
     reason = "the bridge is an in-sandbox process that must synchronously spawn and wait for the command"
 )]
-fn run_bridge(socket_path: PathBuf, port: u16, program: &OsStr, program_args: &[OsString]) -> ! {
+fn run_bridge(socket_path: PathBuf, port: u16, mut command: Command) -> ! {
     let listener = match TcpListener::bind((Ipv4Addr::LOCALHOST, port)) {
         Ok(listener) => listener,
         Err(error) => {
@@ -1029,8 +1076,6 @@ fn run_bridge(socket_path: PathBuf, port: u16, program: &OsStr, program_args: &[
             std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
         }
     };
-    let mut command = Command::new(program);
-    command.args(program_args);
     // SAFETY: the closure runs in the forked child after `fork` and before
     // `exec`. It only calls `seccompiler::apply_filter` (a `prctl` on a program
     // built before the fork) — async-signal-safe and allocation-free.
@@ -1138,276 +1183,6 @@ fn lstat_dev_ino(path: &Path) -> std::io::Result<(u64, u64)> {
     // `symlink_metadata` is `lstat(2)` (it does not follow a final symlink).
     let metadata = std::fs::symlink_metadata(path)?;
     Ok((metadata.dev(), metadata.ino()))
-}
-
-/// A decoded WSL-helper invocation (`--wsl-sandbox-helper`). All fields are
-/// produced by the trusted Windows side and parsed before any untrusted command
-/// runs.
-struct WslHelperInvocation {
-    /// Absolute path of `bwrap` inside WSL (located by the Windows-side probe).
-    bwrap_path: PathBuf,
-    /// Pre-built bwrap *options* — everything before the trailing `-- cmd` —
-    /// assembled on the Windows side (`windows_wsl::build_bwrap_args`): root
-    /// bind, `/tmp` tmpfs, writable binds, Windows-interop blocking, `--setenv`s,
-    /// `--chdir`, namespace flags, etc.
-    base_args: Vec<OsString>,
-    /// The writable bind destinations to validate — exactly the ones `base_args`
-    /// binds read-write. Each is captured here (WSL-side) and checked in-sandbox.
-    writable_paths: Vec<PathBuf>,
-    program: OsString,
-    args: Vec<OsString>,
-}
-
-/// Handle a possible re-exec of this binary as the WSL-side sandbox helper. Does
-/// not return if it was invoked as one.
-pub fn run_wsl_helper_if_invoked() {
-    let args: Vec<OsString> = std::env::args_os().collect();
-    if args.get(1).and_then(|arg| arg.to_str()) == Some(WSL_RESOLVE_FLAG) {
-        let Some(path) = args.get(2) else {
-            eprintln!("zed: malformed WSL canonical-path resolver invocation");
-            std::process::exit(127);
-        };
-        if args.len() != 3 {
-            eprintln!("zed: malformed WSL canonical-path resolver invocation");
-            std::process::exit(127);
-        }
-        match crate::util::CanonicalPathBuf::resolve(PathBuf::from(path.as_os_str())) {
-            Ok(canonical) => {
-                let Some(canonical) = canonical.path().to_str() else {
-                    eprintln!("zed: canonical WSL sandbox grant is not valid UTF-8");
-                    std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-                };
-                let Ok(distro) = std::env::var("WSL_DISTRO_NAME") else {
-                    eprintln!("zed: WSL_DISTRO_NAME is unavailable while resolving sandbox grant");
-                    std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-                };
-                // Classify the backing filesystem of the *canonical* target (the
-                // path that will actually be bound), so the Windows side can
-                // persist whether this grant lives on a Windows-hosted (DrvFs)
-                // filesystem, whose sandbox-integrity guarantees are weaker.
-                let fs_class = if path_is_on_windows_fs(Path::new(canonical)) {
-                    "windows-fs"
-                } else {
-                    "native-fs"
-                };
-                println!("{distro}");
-                println!("{canonical}");
-                println!("{fs_class}");
-                std::process::exit(0);
-            }
-            Err(error) => {
-                eprintln!("zed: could not resolve WSL sandbox grant: {error}");
-                std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-            }
-        }
-    }
-
-    let Some(invocation) = parse_wsl_helper_args(args) else {
-        return;
-    };
-    let invocation = match invocation {
-        Ok(invocation) => invocation,
-        Err(error) => {
-            eprintln!("zed: malformed WSL sandbox helper invocation: {error:#}");
-            std::process::exit(127);
-        }
-    };
-    run_wsl_helper(invocation);
-}
-
-/// Whether `path` resides on a Windows-hosted filesystem exposed to WSL via
-/// DrvFs. Inside WSL the Windows drives (`/mnt/<letter>`) are served by either
-/// 9p or virtiofs, whereas the distro's own filesystems are native (ext4/btrfs/
-/// overlay/tmpfs). We use the backing filesystem type rather than a `/mnt/`
-/// path prefix so a reconfigured automount root, or a symlink that lands on a
-/// Windows drive, is still classified correctly. Fails safe: if the type can't
-/// be determined we report `true` (weaker guarantees ⇒ warn) rather than
-/// silently treating it as native.
-fn path_is_on_windows_fs(path: &Path) -> bool {
-    // `statfs.f_type` magics for the DrvFs transports. virtiofs is FUSE-backed.
-    const V9FS_MAGIC: u64 = 0x0102_1997;
-    const FUSE_SUPER_MAGIC: u64 = 0x6573_5546;
-    match nix::sys::statfs::statfs(path) {
-        Ok(stat) => {
-            // `f_type` is `i64` on glibc but `u64` on musl, so widen it
-            // losslessly instead of comparing against a fixed-width constant.
-            #[allow(
-                clippy::useless_conversion,
-                reason = "the conversion is a real widen on glibc (i64) and a no-op on musl (u64); \
-                          clippy only sees the musl case when cross-compiling the remote server"
-            )]
-            u64::try_from(stat.filesystem_type().0)
-                .is_ok_and(|fs_type| fs_type == V9FS_MAGIC || fs_type == FUSE_SUPER_MAGIC)
-        }
-        Err(_) => true,
-    }
-}
-
-fn parse_wsl_helper_args(
-    args: impl IntoIterator<Item = OsString>,
-) -> Option<Result<WslHelperInvocation>> {
-    let mut args = args.into_iter();
-    args.next()?;
-    if args.next()?.to_str() != Some(WSL_HELPER_FLAG) {
-        return None;
-    }
-    Some(decode_wsl_helper_args(args))
-}
-
-fn decode_wsl_helper_args(mut args: impl Iterator<Item = OsString>) -> Result<WslHelperInvocation> {
-    let bwrap_path = PathBuf::from(args.next().context("missing bwrap path")?);
-    let base_count = parse_count(
-        args.next().context("missing base-arg count")?,
-        "base-arg count",
-    )?;
-    let mut base_args = Vec::with_capacity(base_count);
-    for _ in 0..base_count {
-        base_args.push(args.next().context("missing base arg")?);
-    }
-    let writable_count = parse_count(
-        args.next().context("missing writable count")?,
-        "writable count",
-    )?;
-    if writable_count > MAX_VALIDATED_BINDS {
-        bail!("writable count {writable_count} exceeds {MAX_VALIDATED_BINDS}");
-    }
-    let mut writable_paths = Vec::with_capacity(writable_count);
-    for _ in 0..writable_count {
-        writable_paths.push(PathBuf::from(args.next().context("missing writable path")?));
-    }
-    let separator = args.next().context("missing argument separator")?;
-    if separator != "--" {
-        bail!("missing argument separator");
-    }
-    let program = args.next().context("missing program to run")?;
-    let args = args.collect();
-    Ok(WslHelperInvocation {
-        bwrap_path,
-        base_args,
-        writable_paths,
-        program,
-        args,
-    })
-}
-
-fn parse_count(value: OsString, what: &str) -> Result<usize> {
-    value
-        .to_str()
-        .with_context(|| format!("{what} is not valid UTF-8"))?
-        .parse::<usize>()
-        .with_context(|| format!("invalid {what}"))
-}
-
-/// The WSL-side helper entry point. Mirrors the native-Linux host side: capture
-/// the writable binds' inodes (here, inside WSL), stand up the validation socket,
-/// finish assembling the bwrap invocation (validation socket bind + in-sandbox
-/// validator re-exec), spawn bwrap, and propagate its exit. Never returns.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the WSL helper is a dedicated per-command process that must spawn and wait for bwrap"
-)]
-fn run_wsl_helper(invocation: WslHelperInvocation) -> ! {
-    let mut fds = Vec::with_capacity(invocation.writable_paths.len());
-    for path in &invocation.writable_paths {
-        let fd = crate::util::CanonicalPathBuf::from_canonical(path.clone())
-            .and_then(|canonical| canonical.dup_fd());
-        match fd {
-            Ok(fd) => fds.push(fd),
-            Err(error) => {
-                eprintln!(
-                    "zed: WSL sandbox helper could not verify canonical writable bind {}: {error}",
-                    path.display()
-                );
-                std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-            }
-        }
-    }
-
-    let validation = if fds.is_empty() {
-        None
-    } else {
-        match ValidationFdSender::spawn(fds) {
-            Ok(sender) => Some(sender),
-            Err(error) => {
-                eprintln!("zed: WSL sandbox helper could not start the bind validator: {error}");
-                std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-            }
-        }
-    };
-
-    let current_exe = match std::env::current_exe() {
-        Ok(path) => path,
-        Err(error) => {
-            eprintln!("zed: WSL sandbox helper could not resolve its own path: {error}");
-            std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-        }
-    };
-
-    let mut args = invocation.base_args.clone();
-    // Always re-exec ourselves as the in-sandbox launcher, even when there is
-    // nothing to validate: the launcher is where the seccomp filter is installed
-    // on the untrusted command (see `exec_command`). When there are writable
-    // binds, also bind the validation socket so the launcher can verify them.
-    // WSL has no restricted-network bridge, so both bridge fields are the absent
-    // sentinel.
-    if let Some(sender) = &validation {
-        // Bind the validation socket in, after the base args' tmpfs and writable
-        // binds so it isn't shadowed.
-        args.push(OsString::from("--bind"));
-        args.push(sender.host_socket_path().as_os_str().to_os_string());
-        args.push(sender.sandbox_socket_path().as_os_str().to_os_string());
-    }
-    args.push(OsString::from("--"));
-    args.push(current_exe.into_os_string());
-    args.push(OsString::from(LAUNCHER_FLAG));
-    // Field 1: validation socket (in-sandbox path) or sentinel.
-    match &validation {
-        Some(sender) => args.push(sender.sandbox_socket_path().as_os_str().to_os_string()),
-        None => args.push(OsString::from(LAUNCHER_NONE)),
-    }
-    // Fields 2-3: bridge socket + port (WSL has no bridge).
-    args.push(OsString::from(LAUNCHER_NONE));
-    args.push(OsString::from(LAUNCHER_NONE));
-    // Field 4: writable bind-destination paths to validate (count, then paths);
-    // empty when there is nothing to validate.
-    let validation_paths: &[PathBuf] = if validation.is_some() {
-        &invocation.writable_paths
-    } else {
-        &[]
-    };
-    args.push(OsString::from(validation_paths.len().to_string()));
-    for path in validation_paths {
-        args.push(path.clone().into_os_string());
-    }
-    args.push(OsString::from("--"));
-    args.push(invocation.program.clone());
-    args.extend(invocation.args.iter().cloned());
-
-    let mut child = match Command::new(&invocation.bwrap_path).args(&args).spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            eprintln!("zed: WSL sandbox helper could not spawn bwrap: {error}");
-            std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-        }
-    };
-
-    let status = child.wait();
-    // Hold the validator open until bwrap (and thus the in-sandbox validator that
-    // connects to it during startup) has finished.
-    drop(validation);
-    match status {
-        Ok(status) => {
-            if let Some(code) = status.code() {
-                std::process::exit(code);
-            }
-            let signal = status.signal().unwrap_or(1);
-            std::process::exit(128 + signal);
-        }
-        Err(error) => {
-            eprintln!("zed: WSL sandbox helper failed waiting for bwrap: {error}");
-            std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
-        }
-    }
 }
 
 fn run_bridge_listener(listener: TcpListener, socket_path: PathBuf) {
@@ -1634,6 +1409,11 @@ mod tests {
                 "2",
                 "/work/a",
                 "/work/b",
+                "2",
+                "GREETING",
+                "hello -- there",
+                "LD_PRELOAD",
+                "",
                 "--",
                 "/bin/sh",
                 "-c",
@@ -1654,6 +1434,13 @@ mod tests {
             vec![PathBuf::from("/work/a"), PathBuf::from("/work/b")]
         );
         assert_eq!(
+            decoded.environment,
+            vec![
+                (OsString::from("GREETING"), OsString::from("hello -- there")),
+                (OsString::from("LD_PRELOAD"), OsString::new()),
+            ]
+        );
+        assert_eq!(
             decoded.bridge,
             Some((PathBuf::from(bridge_socket), 8080u16))
         );
@@ -1661,49 +1448,6 @@ mod tests {
         assert_eq!(
             decoded.args,
             vec![OsString::from("-c"), OsString::from("echo hi there")]
-        );
-    }
-
-    #[test]
-    fn test_wsl_helper_args_round_trip() {
-        let argv = launcher_argv(
-            "/path/to/zed",
-            vec![
-                WSL_HELPER_FLAG,
-                "/usr/bin/bwrap",
-                // base bwrap options (3 tokens)
-                "3",
-                "--ro-bind",
-                "/",
-                "/",
-                // writable binds to validate (1)
-                "1",
-                "/work/a",
-                "--",
-                "/bin/sh",
-                "-c",
-                "echo hi",
-            ],
-        );
-
-        let decoded = parse_wsl_helper_args(argv)
-            .expect("should be recognized as a WSL helper invocation")
-            .expect("should decode successfully");
-
-        assert_eq!(decoded.bwrap_path, PathBuf::from("/usr/bin/bwrap"));
-        assert_eq!(
-            decoded.base_args,
-            vec![
-                OsString::from("--ro-bind"),
-                OsString::from("/"),
-                OsString::from("/")
-            ]
-        );
-        assert_eq!(decoded.writable_paths, vec![PathBuf::from("/work/a")]);
-        assert_eq!(decoded.program, OsString::from("/bin/sh"));
-        assert_eq!(
-            decoded.args,
-            vec![OsString::from("-c"), OsString::from("echo hi")]
         );
     }
 
@@ -1719,6 +1463,7 @@ mod tests {
                 LAUNCHER_NONE,
                 "1",
                 "/work/a",
+                "0",
                 "--",
                 "/bin/true",
             ],
@@ -1734,8 +1479,38 @@ mod tests {
         );
         assert_eq!(decoded.validation_paths, vec![PathBuf::from("/work/a")]);
         assert_eq!(decoded.bridge, None);
+        assert!(decoded.environment.is_empty());
         assert_eq!(decoded.program, OsString::from("/bin/true"));
         assert!(decoded.args.is_empty());
+    }
+
+    /// The command's environment reaches the command, on top of loader
+    /// variables removed from what `bwrap` and the launcher ran with.
+    #[test]
+    fn the_command_environment_reaches_only_the_command() {
+        let command = command_with_environment(
+            OsStr::new("/bin/true"),
+            &[],
+            &[
+                (
+                    OsString::from("LD_LIBRARY_PATH"),
+                    OsString::from("/opt/lib"),
+                ),
+                (OsString::from("GREETING"), OsString::from("hi")),
+            ],
+        );
+        let environment: std::collections::HashMap<&OsStr, Option<&OsStr>> =
+            command.get_envs().collect();
+        assert_eq!(environment.get(OsStr::new("LD_PRELOAD")), Some(&None));
+        assert_eq!(environment.get(OsStr::new("LD_AUDIT")), Some(&None));
+        assert_eq!(
+            environment.get(OsStr::new("LD_LIBRARY_PATH")),
+            Some(&Some(OsStr::new("/opt/lib")))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("GREETING")),
+            Some(&Some(OsStr::new("hi")))
+        );
     }
 
     #[test]
@@ -1767,6 +1542,7 @@ mod tests {
                 LAUNCHER_NONE,
                 &sandbox_destination,
                 "8080",
+                "0",
                 "0",
                 "--",
             ]
@@ -1806,6 +1582,7 @@ mod tests {
             bwrap_args.push(LAUNCHER_NONE.to_string());
             bwrap_args.push(proxy_socket_sandbox_path.to_string_lossy().into_owned());
             bwrap_args.push(port.to_string());
+            bwrap_args.push("0".to_string());
             bwrap_args.push("0".to_string());
             bwrap_args.push("--".to_string());
         }
@@ -1973,6 +1750,7 @@ mod tests {
             &[],
             None,
             "/bin/true",
+            &[],
             &[],
             None,
             None,

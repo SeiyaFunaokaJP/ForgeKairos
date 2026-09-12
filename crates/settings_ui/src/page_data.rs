@@ -8792,7 +8792,7 @@ fn ai_page(cx: &App) -> SettingsPage {
                 r#type: Default::default(),
                 json_path: Some(zed_actions::AGENT_SANDBOX_SETTINGS_PATH),
                 description: Some(
-                    "確認なしで常に許可される、ターミナルサンドボックスの昇格権限を確認・変更します。"
+                    "エージェントのターミナルコマンドを OS のサンドボックスで実行するかどうかを切り替え、サンドボックス内の許可 (書き込み先・ネットワーク) を設定します。自動承認はサンドボックス内で実行するときだけ効きます。"
                         .into(),
                 ),
                 search_aliases: &[

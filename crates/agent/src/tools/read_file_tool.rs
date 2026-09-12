@@ -1286,7 +1286,7 @@ mod test {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.contains("points outside the project")),
+                .is_some_and(|title| title.contains("プロジェクトの外を指しています")),
             "Expected symlink escape authorization before reading the image"
         );
         authorization
@@ -1580,7 +1580,7 @@ mod test {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project"),
+            title.contains("プロジェクトの外を指しています"),
             "title: {title}"
         );
 

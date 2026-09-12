@@ -1,5 +1,6 @@
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::{
     RemoteArch, RemoteOs, RemotePlatform,
@@ -14,6 +15,7 @@ use futures::{
 use gpui::{AppContext as _, AsyncApp, Task};
 use rpc::proto::Envelope;
 use util::command::Child;
+use util::rel_path::RelPath;
 
 pub mod docker;
 #[cfg(any(test, feature = "test-support"))]
@@ -309,6 +311,32 @@ pub(crate) fn find_bundled_server_artifact(platform: RemotePlatform) -> Option<P
     find_bundled_server_artifact_in_dirs(platform, &dirs)
 }
 
+/// Where a WSL or Docker connection gets the server binary it installs, in the
+/// order the SSH transport tries them: a binary just built from source (dev
+/// builds), the copy the remote already holds (so the bundled binary is not
+/// uploaded again on every connection), the artifact bundled with the app (so a
+/// first connection works offline), and only then a download.
+#[derive(Debug, PartialEq)]
+pub(crate) enum ServerBinarySource {
+    LocallyBuilt(PathBuf),
+    AlreadyInstalled,
+    Bundled(PathBuf),
+    Download,
+}
+
+pub(crate) fn choose_server_binary_source(
+    locally_built: Option<PathBuf>,
+    binary_exists_on_server: bool,
+    bundled: Option<PathBuf>,
+) -> ServerBinarySource {
+    match (locally_built, binary_exists_on_server, bundled) {
+        (Some(path), _, _) => ServerBinarySource::LocallyBuilt(path),
+        (None, true, _) => ServerBinarySource::AlreadyInstalled,
+        (None, false, Some(path)) => ServerBinarySource::Bundled(path),
+        (None, false, None) => ServerBinarySource::Download,
+    }
+}
+
 /// Locates the bundled `slirp4netns` binary shipped with the application for
 /// ADR-F18's remote Linux sandbox. Mirrors [`find_bundled_server_artifact`]: it
 /// looks next to the running executable and in its `bin` subdirectory. Only
@@ -326,6 +354,60 @@ pub(crate) fn find_bundled_slirp4netns(platform: RemotePlatform) -> Option<PathB
         .iter()
         .map(|dir| dir.join(&name))
         .find(|candidate| candidate.is_file())
+}
+
+/// ADR-F18: where the remote sandbox helper looks for `slirp4netns`. The helper
+/// resolves it from the directory of its own executable — the remote server
+/// binary — so it has to sit beside that, under exactly this name.
+pub(crate) fn remote_slirp4netns_path() -> Result<Arc<RelPath>> {
+    Ok(paths::remote_server_dir_relative()
+        .join(
+            RelPath::from_unix_str("slirp4netns")
+                .context("building the remote slirp4netns path")?,
+        )
+        .into())
+}
+
+/// A temporary name in the remote server directory to upload `src_path` to
+/// before it is moved into place. Unique per upload — process id, clock and a
+/// counter — because a process id alone repeats across machines that share a
+/// remote, and within one process across installs.
+pub(crate) fn remote_upload_temp_path(src_path: &Path) -> Result<Arc<RelPath>> {
+    static UPLOADS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let file_name = src_path
+        .file_name()
+        .with_context(|| format!("no file name in {}", src_path.display()))?
+        .to_string_lossy();
+    let clock = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since_epoch| since_epoch.as_nanos());
+    let upload = UPLOADS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Ok(paths::remote_server_dir_relative()
+        .join(
+            RelPath::from_unix_str(&format!(
+                "download-{}-{clock:x}-{upload}-{file_name}",
+                std::process::id()
+            ))
+            .context("building the remote temporary upload path")?,
+        )
+        .into())
+}
+
+/// ADR-F18: a `slirp4netns` that could not be installed only costs sandboxed
+/// agent commands their network access (the helper refuses to run the ones
+/// that ask for it), so it must not fail a connection that human terminals can
+/// still use. Silently degrading meant the user only found out when an agent
+/// command refused to run, hours later and in a place that does not explain
+/// why; every transport says it while the connection is still the thing they
+/// are looking at.
+pub(crate) fn warn_slirp4netns_not_installed(error: &anyhow::Error) {
+    log::warn!("could not install slirp4netns for the remote sandbox: {error:#}");
+    ssh::CONNECTION_WARNINGS.lock().push(format!(
+        "リモートのサンドボックス用ヘルパー (slirp4netns) を配置できませんでした。\
+         ネットワークを使うエージェントのコマンドはサンドボックスを作れないため実行されません。\
+         リモートの `~/.zed_server/` に書き込めるか (空き容量・権限) と、Zed 本体と同じフォルダーに\
+         同梱の slirp4netns があるかを確認して再接続してください: {error:#}"
+    ));
 }
 
 #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
@@ -578,8 +660,8 @@ async fn build_remote_server_from_source(
 /// binary, and this runs while a connection is being established.
 ///
 /// Used to answer "does the remote already have exactly this binary?" without
-/// uploading it: see `SshRemoteConnection::locally_built_binary_is_already_installed`.
-#[cfg(any(test, debug_assertions, feature = "build-remote-server-binary"))]
+/// uploading it: see `SshRemoteConnection::locally_built_binary_is_already_installed`,
+/// and the WSL and Docker transports' check of an installed `slirp4netns`.
 pub(crate) async fn sha256_of_file(path: &std::path::Path) -> Result<String> {
     use sha2::Digest as _;
 
@@ -608,7 +690,6 @@ pub(crate) async fn sha256_of_file(path: &std::path::Path) -> Result<String> {
 /// Lines are scanned from the back, for the same reason [`parse_platform`] takes
 /// the last line: a login shell's initialization can print to stdout ahead of
 /// the command's own output.
-#[cfg(any(test, debug_assertions, feature = "build-remote-server-binary"))]
 pub(crate) fn parse_sha256sum_output(output: &str) -> Option<String> {
     output.lines().rev().find_map(|line| {
         let token = line.split_whitespace().next()?;
@@ -636,7 +717,6 @@ pub(crate) fn parse_certutil_hash_output(output: &str) -> Option<String> {
     })
 }
 
-#[cfg(any(test, debug_assertions, feature = "build-remote-server-binary"))]
 fn is_sha256_hex(token: &str) -> bool {
     token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -652,7 +732,11 @@ fn is_sha256_hex(token: &str) -> bool {
 /// binary someone else replaced, invalidates the entry and the digests get
 /// computed again. Nothing here is trusted for correctness beyond that — the
 /// caller still requires that the remote's copy actually *ran*.
-#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
+///
+/// The WSL and Docker transports keep the same record for a different purpose
+/// (ADR-F46): the digest the remote reported right after this app installed the
+/// bundled server there, which a later connection has to see again before it
+/// reuses that binary as the agent sandbox's helper.
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct RemoteServerInstall {
     pub local_size: u64,
@@ -670,17 +754,14 @@ pub(crate) struct RemoteServerInstall {
 /// How many `(remote, installed binary name)` pairs the cache keeps. A dev
 /// build's binary name carries the commit it was built from, so entries would
 /// otherwise accumulate one per revision ever connected with.
-#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 const MAX_REMOTE_SERVER_INSTALLS: usize = 32;
 
-#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 fn remote_server_install_cache_path() -> PathBuf {
     paths::data_dir().join("remote_server_installs.json")
 }
 
 /// `(size, modification time in nanoseconds since the epoch)` of a local file,
 /// or `None` if it cannot be stat'ed or predates the epoch.
-#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 pub(crate) async fn local_file_stat(path: &std::path::Path) -> Option<(u64, u64)> {
     let metadata = smol::fs::metadata(path).await.ok()?;
     let modified = metadata.modified().ok()?;
@@ -689,6 +770,27 @@ pub(crate) async fn local_file_stat(path: &std::path::Path) -> Option<(u64, u64)
         .ok()?
         .as_nanos();
     Some((metadata.len(), u64::try_from(nanos).ok()?))
+}
+
+/// One remote command reporting a file's SHA-256 and, where GNU `stat` exists,
+/// its `(size, mtime)`. The path arrives as `$1`, so it needs no quoting, and a
+/// missing `stat` does not cost the digest.
+pub(crate) const REMOTE_FILE_DIGEST_SCRIPT: &str =
+    "sha256sum \"$1\" && { stat -c '%s %Y' \"$1\" || true; }";
+
+/// What the remote reported about one of its files through
+/// [`REMOTE_FILE_DIGEST_SCRIPT`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RemoteFileDigest {
+    pub sha256: String,
+    pub stat: Option<(u64, i64)>,
+}
+
+pub(crate) fn parse_remote_file_digest(output: &str) -> Option<RemoteFileDigest> {
+    Some(RemoteFileDigest {
+        sha256: parse_sha256sum_output(output)?,
+        stat: parse_remote_stat_output(output),
+    })
 }
 
 /// Reads `(size, mtime in seconds since the epoch)` out of the output of
@@ -710,7 +812,6 @@ pub(crate) fn parse_remote_stat_output(output: &str) -> Option<(u64, i64)> {
 /// The verdict remembered for `key`, if any. Every failure mode (no file yet,
 /// unreadable, written by a future version in a shape this cannot parse) is a
 /// `None`, which only costs the caller the comparison it was going to do anyway.
-#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 pub(crate) async fn read_remote_server_install(key: &str) -> Option<RemoteServerInstall> {
     let contents = smol::fs::read(remote_server_install_cache_path())
         .await
@@ -723,7 +824,6 @@ pub(crate) async fn read_remote_server_install(key: &str) -> Option<RemoteServer
 /// Records `install` for `key`, replacing any previous verdict for the same
 /// remote and binary. Best effort: this only ever saves work on a later
 /// connection, so a failure to write is logged and otherwise ignored.
-#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 pub(crate) async fn record_remote_server_install(key: &str, install: RemoteServerInstall) {
     let path = remote_server_install_cache_path();
     let mut installs: std::collections::HashMap<String, RemoteServerInstall> =
@@ -763,11 +863,66 @@ pub(crate) async fn record_remote_server_install(key: &str, install: RemoteServe
 }
 
 /// Seconds since the epoch, or 0 if the clock is set before it.
-#[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 pub(crate) fn now_in_seconds() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .map_or(0, |since_epoch| since_epoch.as_secs() as i64)
+}
+
+/// ADR-F46: whether the server binary a WSL or Docker connection finds at
+/// `install_key` is the one this app installed there from `bundled` — the
+/// remote reports the digest it reported right after that install, and
+/// `bundled` has not changed since. A binary of unknown origin, such as an
+/// upstream build under the same name or one replaced while agent commands
+/// still ran unwrapped, answers `version` just as well, and it is the helper
+/// every sandboxed agent command starts with.
+pub(crate) async fn installed_server_binary_is_verified(
+    install_key: &str,
+    bundled: &Path,
+    installed: Option<&RemoteFileDigest>,
+) -> bool {
+    let (Some(installed), Some(record), Some((local_size, local_mtime_nanos))) = (
+        installed,
+        read_remote_server_install(install_key).await,
+        local_file_stat(bundled).await,
+    ) else {
+        return false;
+    };
+    record.sha256 == installed.sha256
+        && record.local_size == local_size
+        && record.local_mtime_nanos == local_mtime_nanos
+}
+
+/// Remembers what the remote reported right after this app installed the
+/// bundled server binary at `install_key`, for
+/// [`installed_server_binary_is_verified`] to hold later connections to.
+pub(crate) async fn record_verified_server_binary(
+    install_key: &str,
+    bundled: &Path,
+    installed: Option<RemoteFileDigest>,
+) {
+    let (Some(installed), Some((local_size, local_mtime_nanos))) =
+        (installed, local_file_stat(bundled).await)
+    else {
+        log::warn!(
+            "could not pin the server binary just installed at {install_key}; \
+             the next connection installs it again"
+        );
+        return;
+    };
+    let (remote_size, remote_mtime_secs) = installed.stat.unwrap_or_default();
+    record_remote_server_install(
+        install_key,
+        RemoteServerInstall {
+            local_size,
+            local_mtime_nanos,
+            remote_size,
+            remote_mtime_secs,
+            sha256: installed.sha256,
+            recorded_at: now_in_seconds(),
+        },
+    )
+    .await;
 }
 
 #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
@@ -1280,5 +1435,96 @@ mod tests {
         );
         assert_eq!(parse_shell("", "sh"), "sh");
         assert_eq!(parse_shell("\n", "sh"), "sh");
+    }
+
+    #[test]
+    fn test_remote_slirp4netns_path_is_beside_the_server_binary() {
+        let slirp4netns = remote_slirp4netns_path().unwrap();
+        assert_eq!(
+            slirp4netns.display(util::paths::PathStyle::Unix),
+            ".zed_server/slirp4netns"
+        );
+        let server_binary: Arc<RelPath> = paths::remote_server_dir_relative()
+            .join(RelPath::from_unix_str("zed-remote-server-stable-1.17.2").unwrap())
+            .into();
+        assert_eq!(slirp4netns.parent(), server_binary.parent());
+    }
+
+    #[test]
+    fn test_remote_upload_temp_path() {
+        let source = Path::new("bundle").join("slirp4netns-linux-x86_64");
+        let first = remote_upload_temp_path(&source).unwrap();
+        let second = remote_upload_temp_path(&source).unwrap();
+        for temp_path in [&first, &second] {
+            let temp_path = temp_path.display(util::paths::PathStyle::Unix);
+            assert!(
+                temp_path.starts_with(&format!(".zed_server/download-{}-", std::process::id())),
+                "{temp_path}"
+            );
+            assert!(
+                temp_path.ends_with("-slirp4netns-linux-x86_64"),
+                "{temp_path}"
+            );
+        }
+        assert_ne!(
+            first, second,
+            "two uploads must never share a temporary name"
+        );
+        assert!(remote_upload_temp_path(Path::new("..")).is_err());
+    }
+
+    #[test]
+    fn test_parse_remote_file_digest() {
+        let digest = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+        assert_eq!(
+            parse_remote_file_digest(&format!(
+                "{digest}  .zed_server/slirp4netns\n2346328 1756800000\n"
+            )),
+            Some(RemoteFileDigest {
+                sha256: digest.to_string(),
+                stat: Some((2346328, 1756800000)),
+            })
+        );
+        // Without GNU `stat` the digest alone still counts.
+        assert_eq!(
+            parse_remote_file_digest(&format!("shell noise\n{digest}  .zed_server/slirp4netns\n")),
+            Some(RemoteFileDigest {
+                sha256: digest.to_string(),
+                stat: None,
+            })
+        );
+        assert_eq!(
+            parse_remote_file_digest(
+                "sha256sum: .zed_server/slirp4netns: No such file or directory\n"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_choose_server_binary_source() {
+        let built = PathBuf::from("built");
+        let bundled = PathBuf::from("bundled");
+
+        assert_eq!(
+            choose_server_binary_source(Some(built.clone()), true, Some(bundled.clone())),
+            ServerBinarySource::LocallyBuilt(built)
+        );
+        // Reusing the installed copy keeps the bundled binary from being
+        // uploaded again on every connection.
+        assert_eq!(
+            choose_server_binary_source(None, true, Some(bundled.clone())),
+            ServerBinarySource::AlreadyInstalled
+        );
+        // A first connection takes the bundled artifact before trying the
+        // network, so it works offline.
+        assert_eq!(
+            choose_server_binary_source(None, false, Some(bundled.clone())),
+            ServerBinarySource::Bundled(bundled)
+        );
+        assert_eq!(
+            choose_server_binary_source(None, false, None),
+            ServerBinarySource::Download
+        );
     }
 }

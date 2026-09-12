@@ -1,10 +1,11 @@
 //! Cross-platform sandboxing for commands run on behalf of the agent.
 //!
 //! The public API is intentionally platform-neutral. Internally, macOS uses
-//! Seatbelt (`sandbox-exec`), Linux uses Bubblewrap (`bwrap`), and Windows uses
-//! Bubblewrap inside WSL. Restricted-network policies are enforced by an
-//! in-process HTTP/HTTPS proxy (the `http_proxy` crate) that this crate
-//! constructs and owns; callers only describe intent via [`SandboxPolicy`].
+//! Seatbelt (`sandbox-exec`), Linux uses Bubblewrap (`bwrap`), and Windows runs
+//! the SSH-remote helper (ADR-F18) inside WSL (ADR-F46). Restricted-network
+//! policies are enforced by an HTTP/HTTPS proxy (the `http_proxy` crate) that
+//! this crate constructs and owns — in-process, or on Windows inside the WSL
+//! helper; callers only describe intent via [`SandboxPolicy`].
 //! That proxy also enforces the editor-wide ceiling published through
 //! [`set_network_ceiling`], so a command's allowed hosts can only ever narrow
 //! what the application as a whole is permitted to reach. An *unrestricted*
@@ -19,9 +20,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use http_proxy::{Allowlist, DestinationPolicy, HostPattern, ProxyHandle};
+#[cfg(any(target_os = "linux", test))]
+use http_proxy::{DenyReason, PolicyDecision};
 #[cfg(not(target_os = "windows"))]
-use http_proxy::{Allowlist, HostPattern, ProxyConfig, ProxyEvent, UpstreamProxy};
-use http_proxy::{DestinationPolicy, ProxyHandle};
+use http_proxy::{ProxyConfig, ProxyEvent, UpstreamProxy};
 
 #[cfg(target_os = "linux")]
 mod linux_bubblewrap;
@@ -55,10 +58,11 @@ pub use util::{
     resolve_canonical,
 };
 #[cfg(target_os = "windows")]
-pub use windows_wsl::{ResolvedGrant, resolve_canonical_for_grant};
+pub use windows_wsl::{ResolvedGrant, is_forwardable_env_var, resolve_canonical_for_grant};
 
 #[cfg(target_os = "windows")]
-pub(crate) const WSL_SANDBOX_UNAVAILABLE_PREFIX: &str = "Windows sandboxing via WSL is unavailable";
+pub(crate) const WSL_SANDBOX_UNAVAILABLE_PREFIX: &str =
+    "WSL でサンドボックスを作成できませんでした";
 
 /// A path *inside the sandbox* — i.e. where a host location is exposed in the
 /// sandboxed process's view of the filesystem (for example, a bind-mount
@@ -177,12 +181,55 @@ pub fn set_network_ceiling(policy: Option<Arc<dyn DestinationPolicy>>) {
         .unwrap_or_else(|error| error.into_inner()) = policy;
 }
 
-#[cfg(not(target_os = "windows"))]
 fn network_ceiling() -> Option<Arc<dyn DestinationPolicy>> {
     NETWORK_CEILING
         .read()
         .unwrap_or_else(|error| error.into_inner())
         .clone()
+}
+
+/// ADR-F46: the editor-wide network allowlist as the WSL helper's proxy
+/// enforces it around the command's own host list. The decision is the one
+/// `egress_policy` makes for the in-process proxy on macOS and Linux (same
+/// matching, same loopback exemption, same refusal), taken from the entries the
+/// Windows side captured when it wrapped the command.
+#[cfg(any(target_os = "linux", test))]
+pub(crate) struct EditorAllowlistCeiling {
+    policy: http_client::EgressPolicy,
+}
+
+#[cfg(any(target_os = "linux", test))]
+impl EditorAllowlistCeiling {
+    /// A malformed entry is refused rather than skipped: the Windows side only
+    /// sends entries that already parsed there, so one that doesn't here means
+    /// the two sides disagree about the allowlist.
+    pub(crate) fn parse(entries: &[String]) -> anyhow::Result<Self> {
+        let (policy, errors) = http_client::EgressPolicy::from_host_strings(entries);
+        if let Some(error) = errors.first() {
+            anyhow::bail!("invalid network allowlist entry: {error}");
+        }
+        Ok(Self { policy })
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+impl DestinationPolicy for EditorAllowlistCeiling {
+    fn evaluate(&self, host: &str, _port: u16) -> PolicyDecision {
+        let permitted =
+            http_client::RequestHost::parse(host).is_some_and(|host| self.policy.allows(&host));
+        if permitted {
+            // No objection to local addresses from this half; the command's
+            // own decision, ANDed with it, still refuses them unless the
+            // command was granted any host.
+            return PolicyDecision::Allow {
+                permit_local_addresses: true,
+            };
+        }
+        PolicyDecision::Deny(DenyReason::NotPermittedByPolicy {
+            host: host.to_string(),
+            explanation: format!("host '{host}' is not on the network allowlist"),
+        })
+    }
 }
 
 /// Host paths that should remain readable but not writable, even when they fall
@@ -771,9 +818,6 @@ enum NetSetup {
     /// *and* no [`NETWORK_CEILING`] is published.
     Unrestricted,
     Blocked,
-    // Restricted networking is rejected up front on Windows, so this variant is
-    // never constructed there.
-    #[cfg(not(target_os = "windows"))]
     Restricted {
         /// The command's own half of the decision. `Allowlist::any()` is how an
         /// unrestricted grant under a ceiling is expressed: it waives every
@@ -805,15 +849,11 @@ pub struct Sandbox {
     /// with writable binds); a `Sandbox` normally wraps a single command.
     #[cfg(target_os = "linux")]
     validation_fd_sender: Option<linux_bubblewrap::ValidationFdSender>,
-    /// Windows only: `(release channel, version)` of the Linux `zed` to
-    /// provision inside WSL as the `--wsl-sandbox-helper` (version `latest` for
-    /// dev builds). Set by the caller (which has the running release info);
-    /// `None` falls back to exec'ing bwrap directly without in-sandbox bind
-    /// validation.
-    #[cfg(target_os = "windows")]
-    wsl_zed_release: Option<(String, String)>,
     #[cfg(target_os = "macos")]
     seatbelt_config: Option<macos_seatbelt::SeatbeltConfigFile>,
+    /// See [`Sandbox::set_editor_network_allowlist`].
+    #[cfg(target_os = "windows")]
+    editor_network_allowlist: Option<Vec<String>>,
 }
 
 impl Sandbox {
@@ -866,24 +906,12 @@ impl Sandbox {
             proxy: None,
             #[cfg(target_os = "linux")]
             validation_fd_sender: None,
-            #[cfg(target_os = "windows")]
-            wsl_zed_release: None,
             #[cfg(target_os = "macos")]
             seatbelt_config: None,
+            #[cfg(target_os = "windows")]
+            editor_network_allowlist: None,
         })
     }
-
-    /// Windows only: record the `(release channel, version)` of the Linux `zed`
-    /// to provision inside WSL as the sandbox helper (version `latest` for dev
-    /// builds). The caller resolves these from the running app's release info
-    /// (which this low-level crate can't read) and sets them before `wrap`. When
-    /// unset, the WSL backend falls back to exec'ing bwrap directly without
-    /// in-sandbox bind validation.
-    #[cfg(target_os = "windows")]
-    pub fn set_wsl_zed_release(&mut self, channel: String, version: String) {
-        self.wsl_zed_release = Some((channel, version));
-    }
-
     /// Check whether the platform sandbox can be created on this host without
     /// actually building a command or spawning the proxy. On Linux this runs a
     /// brief `bwrap` probe (call it off the main thread).
@@ -904,18 +932,26 @@ impl Sandbox {
             };
             linux_bubblewrap::check_can_create_sandbox(permissions).map_err(map_linux_status)
         }
-        #[cfg(target_os = "windows")]
-        {
-            if matches!(policy.network, SandboxNetPolicy::Restricted { .. }) {
-                return Err(unsupported_restricted_network_on_windows());
-            }
-            Ok(())
-        }
-        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        // Windows: whether WSL can host the sandbox is only known from WSL, so
+        // it is found out when the command is wrapped, and reported as
+        // `SandboxError::WslUnavailable` with the fix.
+        #[cfg(not(target_os = "linux"))]
         {
             let _ = policy;
             Ok(())
         }
+    }
+
+    /// Windows only: the entries of the editor-wide network allowlist, for the
+    /// WSL helper to nest this command's network inside (ADR-F17). Elsewhere
+    /// the proxy consults the live policy published through
+    /// [`set_network_ceiling`]; the WSL helper's proxy runs inside WSL, where
+    /// that object cannot follow, so the caller hands over the entries as they
+    /// stand when the command starts. While a ceiling is published and this was
+    /// never called, the command may reach loopback only.
+    #[cfg(target_os = "windows")]
+    pub fn set_editor_network_allowlist(&mut self, entries: Vec<String>) {
+        self.editor_network_allowlist = Some(entries);
     }
 
     /// Transform `command` into the invocation that runs it inside this sandbox.
@@ -1123,15 +1159,23 @@ impl Sandbox {
             command.cwd.as_deref(),
             &command.program,
             &command.args,
+            &command_environment_pairs(&env),
             proxy_socket_path.as_deref(),
             validation_socket,
         )
         .map_err(map_anyhow_error)?;
 
+        // The command's environment travels in the launcher's argv and reaches
+        // only the command (see `linux_bubblewrap::LAUNCHER_LOADER_VARIABLES`):
+        // `bwrap`, which is dynamically linked and honors `LD_PRELOAD` before it
+        // has isolated anything, is started with none of it.
         Ok(WrappedCommand {
             program,
             args,
-            env,
+            env: linux_bubblewrap::LAUNCHER_LOADER_VARIABLES
+                .iter()
+                .map(|name| (name.to_string(), String::new()))
+                .collect(),
             cwd: command.cwd.clone(),
         })
     }
@@ -1169,11 +1213,18 @@ impl Sandbox {
             .map(HostFilesystemLocation::macos_canonical_path)
             .collect();
 
+        // The command's environment is applied by `/usr/bin/env` inside the
+        // sandbox, so `sandbox-exec` itself is started with none of it.
+        let (inner_program, inner_args) = command_under_env(
+            &command.program,
+            &command.args,
+            &command_environment_pairs(&env),
+        )?;
         // SSH-agent socket handling (commit signing) is deferred, so no unix
         // sockets are allowed for now.
         let (program, args, config) = macos_seatbelt::wrap_invocation(
-            &command.program,
-            &command.args,
+            &inner_program,
+            &inner_args,
             &writable,
             &protected,
             &[],
@@ -1186,7 +1237,7 @@ impl Sandbox {
         Ok(WrappedCommand {
             program,
             args,
-            env,
+            env: HashMap::new(),
             cwd: command.cwd.clone(),
         })
     }
@@ -1196,9 +1247,14 @@ impl Sandbox {
         &mut self,
         command: &CommandAndArgs,
     ) -> Result<WrappedCommand, SandboxError> {
-        // Restricted host network access is rejected at `new` time on Windows.
+        let network = wsl_network(&self.network);
         let permissions = windows_wsl::SandboxPermissions {
-            allow_network: matches!(self.network, NetSetup::Unrestricted),
+            network_ceiling: wsl_network_ceiling(
+                &network,
+                network_ceiling().is_some(),
+                self.editor_network_allowlist.as_deref(),
+            ),
+            network,
             allow_fs_write: self.fs.allow_fs_write,
         };
         let writable_paths = self
@@ -1223,15 +1279,18 @@ impl Sandbox {
             permissions,
             command.cwd.clone(),
             command.env.clone(),
-            self.wsl_zed_release.clone(),
         )
         .await
         .map_err(map_anyhow_error)?;
 
+        // The command's environment reaches it through the helper's `--setenv`;
+        // `wsl.exe` itself is given none of it. An empty `WSLENV` also stops
+        // anything this process inherited from being forwarded into WSL around
+        // the helper — `LD_PRELOAD` into the shell that verifies it, say.
         Ok(WrappedCommand {
             program,
             args,
-            env: command.env.clone(),
+            env: HashMap::from([("WSLENV".to_string(), String::new())]),
             cwd: command.cwd.clone(),
         })
     }
@@ -1250,34 +1309,32 @@ impl Drop for Sandbox {
     }
 }
 
-/// Argv flag that marks the WSL-side sandbox-helper re-exec. Shared so the
-/// Windows side (`windows_wsl`, which builds the `wsl.exe` invocation) and the
-/// Linux side (`linux_bubblewrap`, which parses it inside WSL) can't drift.
-///
-/// Only referenced by those two cfg-gated modules, so it's gated to match;
-/// otherwise it's dead code on macOS.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub(crate) const WSL_SANDBOX_HELPER_FLAG: &str = "--wsl-sandbox-helper";
+// ADR-F46: arguments of the helper binary the Windows backend installs inside
+// WSL (the bundled Linux `remote_server`, see `run_remote_sandbox_helper_if_invoked`).
+// Shared so the Windows side, which builds the `wsl.exe` invocation, and the
+// Linux side, which parses it, can't drift; gated to the two platforms using them.
+
+/// Resolves a write grant to its canonical target inside the distro.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) const WSL_SANDBOX_RESOLVE_FLAG: &str = "--wsl-sandbox-resolve-path";
-
-/// Handle a possible re-exec of this binary as a sandbox helper.
-///
-/// Two Linux re-exec modes funnel through here, neither of which returns if it
-/// matches:
-/// - the in-sandbox launcher (bind validator + restricted-network bridge), run
-///   by bwrap before the real command; and
-/// - the WSL-side helper, run inside WSL to capture fds + drive bwrap (the moral
-///   equivalent of `Sandbox::wrap` on native Linux).
+/// Reports whether the distro's kernel can build the sandbox at all.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) const WSL_SANDBOX_PROBE_FLAG: &str = "--wsl-sandbox-probe";
+/// Prefix of the single result line [`WSL_SANDBOX_PROBE_FLAG`] prints.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) const WSL_PROBE_RESULT_PREFIX: &str = "zed-wsl-probe:";
+/// Selects the helper's local-WSL behavior (see `linux_remote_helper`).
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) const WSL_HELPER_MODE_FLAG: &str = "--wsl";
+/// Handle a possible re-exec of this binary as the in-sandbox launcher (bind
+/// validator + restricted-network bridge) that bwrap runs before the real
+/// command. Does not return if it matched.
 ///
 /// Call this at the top of `main`, before normal argument parsing.
 #[doc(hidden)]
 pub fn run_sandbox_launcher_if_invoked() {
     #[cfg(target_os = "linux")]
-    {
-        linux_bubblewrap::run_launcher_if_invoked();
-        linux_bubblewrap::run_wsl_helper_if_invoked();
-    }
+    linux_bubblewrap::run_launcher_if_invoked();
 }
 
 // ===========================================================================
@@ -1290,9 +1347,10 @@ pub fn run_sandbox_launcher_if_invoked() {
 pub const REMOTE_SANDBOX_HELPER_FLAG: &str = "--remote-sandbox-helper";
 
 /// Outbound-network intent for a remote sandboxed command, as the client
-/// requests it. The remote proxy enforces exactly this; there is no host-side
-/// egress ceiling on the remote (a documented boundary — the editor-wide
-/// allowlist is not shipped to the remote proxy).
+/// requests it. On an SSH host the remote proxy enforces exactly this: the
+/// editor-wide allowlist is not shipped there (a documented boundary). The
+/// local WSL backend does ship it, as a separate ceiling around this intent
+/// (see `build_wsl_sandbox_helper_argv`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RemoteSandboxNetwork {
     /// No outbound access at all: the holder's network namespace is left empty
@@ -1313,6 +1371,83 @@ pub enum RemoteSandboxNetwork {
 /// tested on every platform. Its decode half lives in the Linux-only
 /// `linux_remote_helper` module and is round-trip tested there.
 pub fn build_remote_sandbox_helper_argv(
+    writable_paths: &[String],
+    protected_paths: &[String],
+    network: &RemoteSandboxNetwork,
+    allow_fs_write: bool,
+    chdir: Option<&str>,
+) -> Vec<String> {
+    let mut argv = remote_sandbox_helper_policy_argv(
+        writable_paths,
+        protected_paths,
+        network,
+        allow_fs_write,
+        chdir,
+    );
+    argv.push("--".to_string());
+    argv
+}
+
+/// ADR-F46: what the local Windows backend hands the WSL helper on top of the
+/// shared policy.
+#[cfg(any(target_os = "windows", all(test, target_os = "linux")))]
+#[derive(Default)]
+pub(crate) struct WslHelperOptions<'a> {
+    /// The editor-wide network allowlist the helper's proxy nests the
+    /// command's network inside; `None` when no editor-wide allowlist is in
+    /// force.
+    pub(crate) network_ceiling: Option<&'a [String]>,
+    /// SHA-256 of the `slirp4netns` this build installed, which the helper
+    /// checks before running it.
+    pub(crate) slirp_sha256: Option<&'a str>,
+    /// Set in the command's environment, which `wsl.exe` does not bring
+    /// across from Windows.
+    pub(crate) environment: &'a [(String, String)],
+    /// Then removed from it.
+    pub(crate) unset_environment: &'a [&'a str],
+}
+
+/// ADR-F46: the argv for the same helper when the local Windows backend runs it
+/// inside WSL, up to and including the trailing `--`: the shared policy, WSL
+/// mode, and `options`. The environment is applied before the helper's own
+/// `TMPDIR` and proxy variables.
+#[cfg(any(target_os = "windows", all(test, target_os = "linux")))]
+pub(crate) fn build_wsl_sandbox_helper_argv(
+    writable_paths: &[String],
+    protected_paths: &[String],
+    network: &RemoteSandboxNetwork,
+    allow_fs_write: bool,
+    chdir: Option<&str>,
+    options: &WslHelperOptions,
+) -> Vec<String> {
+    let mut argv = remote_sandbox_helper_policy_argv(
+        writable_paths,
+        protected_paths,
+        network,
+        allow_fs_write,
+        chdir,
+    );
+    argv.push(WSL_HELPER_MODE_FLAG.to_string());
+    if let Some(entries) = options.network_ceiling {
+        argv.push("--network-ceiling".to_string());
+        for entry in entries {
+            argv.extend(["--ceiling-host".to_string(), entry.clone()]);
+        }
+    }
+    if let Some(digest) = options.slirp_sha256 {
+        argv.extend(["--slirp-sha256".to_string(), digest.to_string()]);
+    }
+    for (name, value) in options.environment {
+        argv.extend(["--setenv".to_string(), name.clone(), value.clone()]);
+    }
+    for name in options.unset_environment {
+        argv.extend(["--unsetenv".to_string(), name.to_string()]);
+    }
+    argv.push("--".to_string());
+    argv
+}
+
+fn remote_sandbox_helper_policy_argv(
     writable_paths: &[String],
     protected_paths: &[String],
     network: &RemoteSandboxNetwork,
@@ -1342,18 +1477,161 @@ pub fn build_remote_sandbox_helper_argv(
     if let Some(chdir) = chdir {
         argv.extend(["--chdir".to_string(), chdir.to_string()]);
     }
-    argv.push("--".to_string());
     argv
 }
 
-/// Handle a possible re-exec of this binary as the remote sandbox helper. A
-/// no-op off Linux and when the argv doesn't match. Call at the very top of the
-/// remote server's `main`, before argument parsing.
+/// Handle a possible re-exec of this binary as the remote sandbox helper — on
+/// an SSH host, or inside WSL for the local Windows backend, which also runs it
+/// to resolve write grants and to probe the distro (ADR-F46). A no-op off Linux
+/// and when the argv doesn't match. Call at the very top of the remote server's
+/// `main`, before argument parsing.
 #[doc(hidden)]
 pub fn run_remote_sandbox_helper_if_invoked() {
     #[cfg(target_os = "linux")]
     {
         linux_remote_helper::run_if_invoked();
+    }
+}
+
+/// ADR-F46: the flag after which the helper's whole argv arrives as one
+/// hex-encoded argument. On an SSH host the command line is parsed by the
+/// user's login shell, which may be csh, rc or anything else whose quoting the
+/// client does not reproduce; hex digits and `.` mean the same to every shell,
+/// so no part of the argv — the model's command and working directory included
+/// — can run as shell syntax outside the sandbox.
+pub const REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG: &str = "--remote-sandbox-helper-argv-hex";
+
+/// Packs a helper argv, which starts with [`REMOTE_SANDBOX_HELPER_FLAG`], as
+/// [`REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG`] and one argument: every element in
+/// lowercase hex, the elements joined by `.`, so none can split into or merge
+/// with another.
+pub fn encode_remote_sandbox_helper_argv(argv: &[String]) -> [String; 2] {
+    let encoded = argv
+        .iter()
+        .map(|element| {
+            element
+                .bytes()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join(".");
+    [REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG.to_string(), encoded]
+}
+
+/// The argv packed by [`encode_remote_sandbox_helper_argv`], or `None` when
+/// `payload` is not such a packing.
+pub fn decode_remote_sandbox_helper_argv(payload: &str) -> Option<Vec<String>> {
+    payload
+        .split('.')
+        .map(|element| {
+            if element.len() % 2 != 0 || !element.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return None;
+            }
+            let bytes = (0..element.len())
+                .step_by(2)
+                .map(|index| u8::from_str_radix(element.get(index..index + 2)?, 16).ok())
+                .collect::<Option<Vec<u8>>>()?;
+            String::from_utf8(bytes).ok()
+        })
+        .collect()
+}
+
+/// Unpacks the helper's own argv (without the program name) when it arrived
+/// through [`REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG`], and returns any other argv
+/// unchanged. A payload that does not unpack into a helper invocation becomes
+/// one the helper rejects as malformed, so it fails closed instead of falling
+/// through to the server's own argument parsing.
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn expand_remote_sandbox_helper_argv(
+    args: Vec<std::ffi::OsString>,
+) -> Vec<std::ffi::OsString> {
+    let packed = matches!(
+        args.as_slice(),
+        [flag, _] if flag == REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG
+    );
+    if !packed {
+        return args;
+    }
+    match args
+        .get(1)
+        .and_then(|payload| payload.to_str())
+        .and_then(decode_remote_sandbox_helper_argv)
+    {
+        Some(argv) if argv.first().map(String::as_str) == Some(REMOTE_SANDBOX_HELPER_FLAG) => {
+            argv.into_iter().map(std::ffi::OsString::from).collect()
+        }
+        _ => vec![
+            REMOTE_SANDBOX_HELPER_FLAG.into(),
+            "--malformed-hex-argv".into(),
+        ],
+    }
+}
+
+#[cfg(test)]
+mod remote_sandbox_helper_hex_argv_tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn a_csh_hostile_argv_travels_as_hex_digits_only() {
+        let hostile = "'\"; touch /tmp/p; echo \"`id`$(id)!\\ \n";
+        let argv = vec![
+            REMOTE_SANDBOX_HELPER_FLAG.to_string(),
+            "--chdir".to_string(),
+            hostile.to_string(),
+            "--setenv".to_string(),
+            "NAME".to_string(),
+            String::new(),
+            "--".to_string(),
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            hostile.to_string(),
+        ];
+
+        let [flag, payload] = encode_remote_sandbox_helper_argv(&argv);
+        assert_eq!(flag, REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG);
+        assert!(
+            payload
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f' | b'.')),
+            "{payload}"
+        );
+        assert_eq!(
+            decode_remote_sandbox_helper_argv(&payload),
+            Some(argv.clone())
+        );
+        assert_eq!(
+            expand_remote_sandbox_helper_argv(vec![OsString::from(flag), OsString::from(payload)]),
+            argv.into_iter().map(OsString::from).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn anything_else_is_left_alone_or_fails_closed() {
+        let plain = vec![
+            OsString::from(REMOTE_SANDBOX_HELPER_FLAG),
+            OsString::from("--"),
+            OsString::from("true"),
+        ];
+        assert_eq!(expand_remote_sandbox_helper_argv(plain.clone()), plain);
+
+        let [_, not_a_helper_invocation] =
+            encode_remote_sandbox_helper_argv(&["--something-else".to_string()]);
+        let malformed = vec![
+            OsString::from(REMOTE_SANDBOX_HELPER_FLAG),
+            OsString::from("--malformed-hex-argv"),
+        ];
+        for payload in ["2d2", "zz", "+f2d", "ff", not_a_helper_invocation.as_str()] {
+            assert_eq!(
+                expand_remote_sandbox_helper_argv(vec![
+                    OsString::from(REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG),
+                    OsString::from(payload),
+                ]),
+                malformed,
+                "{payload:?} must fail closed"
+            );
+        }
     }
 }
 
@@ -1435,6 +1713,119 @@ mod remote_sandbox_helper_argv_tests {
     }
 }
 
+#[cfg(test)]
+mod editor_allowlist_ceiling_tests {
+    use super::*;
+
+    fn ceiling(entries: &[&str]) -> EditorAllowlistCeiling {
+        let entries: Vec<String> = entries.iter().map(ToString::to_string).collect();
+        EditorAllowlistCeiling::parse(&entries).expect("valid allowlist entries")
+    }
+
+    fn allows(ceiling: &EditorAllowlistCeiling, host: &str) -> bool {
+        match ceiling.evaluate(host, 443) {
+            PolicyDecision::Allow {
+                permit_local_addresses,
+            } => {
+                assert!(
+                    permit_local_addresses,
+                    "the ceiling leaves the rebinding filter to the command's own decision"
+                );
+                true
+            }
+            PolicyDecision::Deny(_) => false,
+        }
+    }
+
+    /// The editor-wide allowlist's own matching: exact hosts, `*.` for
+    /// subdomains only, IP literals, canonicalized like request hosts.
+    #[test]
+    fn listed_hosts_pass_and_everything_else_is_refused() {
+        let ceiling = ceiling(&["api.github.com", "*.corp.example", "10.0.0.5", "[fd00::5]"]);
+        for host in [
+            "api.github.com",
+            "API.GitHub.com.",
+            "a.corp.example",
+            "a.b.corp.example",
+            "10.0.0.5",
+            "fd00::5",
+            "[fd00::5]",
+        ] {
+            assert!(allows(&ceiling, host), "{host} is on the allowlist");
+        }
+        for host in [
+            "github.com",
+            "evil.api.github.com",
+            "corp.example",
+            "10.0.0.6",
+            "evil.example",
+            "foo.localhost",
+        ] {
+            assert!(!allows(&ceiling, host), "{host} is not on the allowlist");
+        }
+    }
+
+    /// Loopback is exempt, as it is for the editor's own requests, so an empty
+    /// allowlist leaves exactly loopback.
+    #[test]
+    fn an_empty_allowlist_leaves_only_loopback() {
+        let ceiling = ceiling(&[]);
+        for host in [
+            "localhost",
+            "127.0.0.1",
+            "127.8.9.10",
+            "[::1]",
+            "::ffff:127.0.0.1",
+        ] {
+            assert!(allows(&ceiling, host), "{host} is loopback");
+        }
+        for host in ["example.com", "10.0.0.5", "localhost.example"] {
+            assert!(!allows(&ceiling, host), "{host} is not loopback");
+        }
+    }
+
+    /// A refusal reads exactly like the in-process ceiling's, so a command
+    /// gets the same explanation on every platform.
+    #[test]
+    fn refusals_name_the_editor_allowlist() {
+        let ceiling = ceiling(&["api.github.com"]);
+        match ceiling.evaluate("crates.io", 443) {
+            PolicyDecision::Deny(DenyReason::NotPermittedByPolicy { host, explanation }) => {
+                assert_eq!(host, "crates.io");
+                assert_eq!(
+                    explanation,
+                    "host 'crates.io' is not on the network allowlist"
+                );
+            }
+            _ => panic!("expected a refusal by the editor-wide allowlist"),
+        }
+    }
+
+    #[test]
+    fn malformed_entries_are_refused() {
+        for entry in ["foo.*.com", "*.10.0.0.5", ""] {
+            assert!(
+                EditorAllowlistCeiling::parse(&[entry.to_string()]).is_err(),
+                "{entry:?} must be refused"
+            );
+        }
+    }
+
+    /// What the Windows side sends is `egress_policy`'s patterns in their
+    /// display form; every kind of pattern survives that trip unchanged.
+    #[test]
+    fn allowlist_entries_survive_their_display_form() {
+        let listed = ["api.github.com", "*.corp.example", "10.0.0.5", "[fd00::5]"];
+        let (policy, errors) = http_client::EgressPolicy::from_host_strings(listed);
+        assert!(errors.is_empty());
+        let entries: Vec<String> = policy.patterns().iter().map(ToString::to_string).collect();
+        assert_eq!(entries, listed);
+        let ceiling = EditorAllowlistCeiling::parse(&entries).expect("displayed patterns parse");
+        assert!(allows(&ceiling, "x.corp.example"));
+        assert!(allows(&ceiling, "fd00::5"));
+    }
+}
+
 // The createability probe only needs to know whether a sandbox *can* be built
 // (namespaces, `bwrap` availability); it does not enforce any grant, so it runs
 // with no writable binds rather than re-deriving paths from the opaque
@@ -1470,15 +1861,151 @@ fn resolve_unrestricted_network() -> NetSetup {
     }
 }
 
-/// Windows has no restricted-network sandbox at all (see
-/// [`unsupported_restricted_network_on_windows`]), so there is no proxy to nest
-/// an unrestricted grant inside and it stays as it was.
+/// On Windows every grant is proxied anyway — by the helper inside WSL, which
+/// applies the editor-wide ceiling there (see [`wsl_network_ceiling`]).
 #[cfg(target_os = "windows")]
 fn resolve_unrestricted_network() -> NetSetup {
     NetSetup::Unrestricted
 }
 
-#[cfg(not(target_os = "windows"))]
+/// How a network plan is handed to the WSL helper, whose own egress proxy
+/// enforces it (ADR-F46). Even an unrestricted grant goes through that proxy:
+/// the command's network namespace has no other way out.
+///
+/// The editor-wide ceiling travels separately ([`wsl_network_ceiling`]), so an
+/// unrestricted grant stays `AnyHost` here exactly as it stays
+/// `Allowlist::any()` under the in-process proxy elsewhere.
+#[cfg(target_os = "windows")]
+fn wsl_network(network: &NetSetup) -> RemoteSandboxNetwork {
+    match network {
+        NetSetup::Blocked => RemoteSandboxNetwork::Blocked,
+        NetSetup::Unrestricted => RemoteSandboxNetwork::AnyHost,
+        NetSetup::Restricted { allowlist } if allowlist.allows_any() => {
+            RemoteSandboxNetwork::AnyHost
+        }
+        NetSetup::Restricted { allowlist } => RemoteSandboxNetwork::Hosts(
+            allowlist
+                .patterns()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        ),
+    }
+}
+
+/// The editor-wide allowlist the WSL helper's proxy nests `network` inside —
+/// the WSL form of the ceiling the in-process proxy consults elsewhere, and
+/// present exactly when one is published, as there. A caller that never
+/// supplied the entries gets an empty allowlist (loopback only) rather than
+/// none, so a published ceiling cannot be skipped by omission. A blocked
+/// command gets no proxy at all and so needs none.
+#[cfg(target_os = "windows")]
+fn wsl_network_ceiling(
+    network: &RemoteSandboxNetwork,
+    ceiling_published: bool,
+    entries: Option<&[String]>,
+) -> Option<Vec<String>> {
+    if !ceiling_published || matches!(network, RemoteSandboxNetwork::Blocked) {
+        return None;
+    }
+    Some(entries.map(<[String]>::to_vec).unwrap_or_default())
+}
+
+/// The command's environment as `(name, value)` pairs in name order, for the
+/// backends that hand it to the command inside the sandbox rather than to the
+/// launcher. Entries `exec` could not pass on, or that `env(1)` would read as an
+/// option or as its program, are left out: an empty name, one starting with
+/// `-` or containing `=`, and a NUL anywhere.
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
+fn command_environment_pairs(env: &HashMap<String, String>) -> Vec<(String, String)> {
+    let mut pairs: Vec<(String, String)> = env
+        .iter()
+        .filter(|(name, value)| {
+            !name.is_empty()
+                && !name.starts_with('-')
+                && !name.contains(['=', '\0'])
+                && !value.contains('\0')
+        })
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    pairs.sort();
+    pairs
+}
+
+/// `program` run by `/usr/bin/env` with `environment` applied (macOS). A program
+/// whose path contains `=` would be read as one more assignment, so it is
+/// refused rather than run as something else.
+#[cfg(any(target_os = "macos", test))]
+fn command_under_env(
+    program: &str,
+    args: &[String],
+    environment: &[(String, String)],
+) -> Result<(String, Vec<String>), SandboxError> {
+    if environment.is_empty() {
+        return Ok((program.to_string(), args.to_vec()));
+    }
+    if program.contains('=') {
+        return Err(SandboxError::InvalidRequest(format!(
+            "cannot pass an environment to `{program}`: its path contains `=`"
+        )));
+    }
+    let mut env_args = Vec::with_capacity(environment.len() + args.len() + 1);
+    env_args.extend(
+        environment
+            .iter()
+            .map(|(name, value)| format!("{name}={value}")),
+    );
+    env_args.push(program.to_string());
+    env_args.extend(args.iter().cloned());
+    Ok(("/usr/bin/env".to_string(), env_args))
+}
+
+#[cfg(test)]
+mod command_environment_tests {
+    use super::*;
+
+    #[test]
+    fn only_passable_variables_are_forwarded_in_name_order() {
+        let env = HashMap::from([
+            ("PATH".to_string(), "/usr/bin".to_string()),
+            ("LD_PRELOAD".to_string(), "/tmp/x.so".to_string()),
+            (String::new(), "empty name".to_string()),
+            ("-u".to_string(), "an option".to_string()),
+            ("A=B".to_string(), "assignment".to_string()),
+            ("NUL".to_string(), "a\0b".to_string()),
+        ]);
+        assert_eq!(
+            command_environment_pairs(&env),
+            [
+                ("LD_PRELOAD".to_string(), "/tmp/x.so".to_string()),
+                ("PATH".to_string(), "/usr/bin".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn env_applies_the_environment_inside_the_sandbox() {
+        let environment = [("GREETING".to_string(), "a b=c".to_string())];
+        let (program, args) = command_under_env(
+            "/bin/sh",
+            &["-c".to_string(), "echo hi".to_string()],
+            &environment,
+        )
+        .expect("an ordinary program");
+        assert_eq!(program, "/usr/bin/env");
+        assert_eq!(args, ["GREETING=a b=c", "/bin/sh", "-c", "echo hi"]);
+
+        let (program, args) =
+            command_under_env("/bin/sh", &["-c".to_string()], &[]).expect("no environment");
+        assert_eq!(
+            (program.as_str(), args.as_slice()),
+            ("/bin/sh", ["-c".to_string()].as_slice())
+        );
+
+        assert!(command_under_env("/opt/a=b/tool", &[], &environment).is_err());
+    }
+}
+
 fn resolve_restricted_network(allowed_domains: &[String]) -> Result<NetSetup, SandboxError> {
     let mut patterns = Vec::with_capacity(allowed_domains.len());
     for domain in allowed_domains {
@@ -1492,16 +2019,134 @@ fn resolve_restricted_network(allowed_domains: &[String]) -> Result<NetSetup, Sa
     })
 }
 
-#[cfg(target_os = "windows")]
-fn resolve_restricted_network(_allowed_domains: &[String]) -> Result<NetSetup, SandboxError> {
-    Err(unsupported_restricted_network_on_windows())
-}
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests {
+    use super::*;
 
-#[cfg(target_os = "windows")]
-fn unsupported_restricted_network_on_windows() -> SandboxError {
-    SandboxError::UnsupportedPolicy(
-        "restricted host network access is not yet supported for Windows sandboxes".to_string(),
-    )
+    /// Every grant reaches the WSL helper as a proxy policy; host lists stay
+    /// host lists instead of widening to all hosts.
+    #[test]
+    fn network_plans_map_onto_the_wsl_helper_proxy() {
+        assert_eq!(
+            wsl_network(&NetSetup::Blocked),
+            RemoteSandboxNetwork::Blocked
+        );
+        assert_eq!(
+            wsl_network(&NetSetup::Unrestricted),
+            RemoteSandboxNetwork::AnyHost
+        );
+        let restricted =
+            resolve_restricted_network(&["github.com".to_string(), "*.npmjs.org".to_string()])
+                .expect("valid host patterns");
+        assert_eq!(
+            wsl_network(&restricted),
+            RemoteSandboxNetwork::Hosts(vec!["github.com".to_string(), "*.npmjs.org".to_string()])
+        );
+        assert_eq!(
+            wsl_network(&NetSetup::Restricted {
+                allowlist: Allowlist::any()
+            }),
+            RemoteSandboxNetwork::AnyHost
+        );
+    }
+
+    /// The editor-wide allowlist reaches the helper exactly when this process
+    /// published a ceiling, for host lists and unrestricted grants alike.
+    #[test]
+    fn editor_allowlist_reaches_the_helper_only_under_a_published_ceiling() {
+        let entries = vec!["api.github.com".to_string(), "*.corp.example".to_string()];
+        let any_host = RemoteSandboxNetwork::AnyHost;
+        let hosts = RemoteSandboxNetwork::Hosts(vec!["github.com".to_string()]);
+
+        assert_eq!(wsl_network_ceiling(&any_host, false, Some(&entries)), None);
+        assert_eq!(
+            wsl_network_ceiling(&any_host, true, Some(&entries)),
+            Some(entries.clone())
+        );
+        assert_eq!(
+            wsl_network_ceiling(&hosts, true, Some(&entries)),
+            Some(entries.clone())
+        );
+        // Published but never supplied: loopback only, never uncapped.
+        assert_eq!(wsl_network_ceiling(&any_host, true, None), Some(Vec::new()));
+        assert_eq!(
+            wsl_network_ceiling(&RemoteSandboxNetwork::Blocked, true, Some(&entries)),
+            None
+        );
+    }
+
+    #[test]
+    fn wsl_helper_argv_carries_the_editor_allowlist() {
+        let argv = |ceiling: Option<&[String]>| {
+            build_wsl_sandbox_helper_argv(
+                &[],
+                &[],
+                &RemoteSandboxNetwork::AnyHost,
+                false,
+                None,
+                &WslHelperOptions {
+                    network_ceiling: ceiling,
+                    ..WslHelperOptions::default()
+                },
+            )
+        };
+        let entries = ["api.github.com".to_string(), "10.0.0.5".to_string()];
+        assert_eq!(
+            argv(Some(&entries)),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "any",
+                "--wsl",
+                "--network-ceiling",
+                "--ceiling-host",
+                "api.github.com",
+                "--ceiling-host",
+                "10.0.0.5",
+                "--",
+            ]
+        );
+        assert_eq!(
+            argv(Some(&[])),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "any",
+                "--wsl",
+                "--network-ceiling",
+                "--",
+            ]
+        );
+        assert_eq!(
+            argv(None),
+            ["--remote-sandbox-helper", "--net", "any", "--wsl", "--"]
+        );
+    }
+
+    /// Restricted networking is supported on Windows now; only malformed host
+    /// patterns are refused.
+    #[test]
+    fn host_scoped_grants_are_accepted_and_malformed_hosts_refused() {
+        let sandbox = Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Restricted {
+                writable_paths: Vec::new(),
+                protected_paths: Vec::new(),
+            },
+            network: SandboxNetPolicy::Restricted {
+                allowed_domains: vec!["github.com".to_string()],
+            },
+        });
+        assert!(sandbox.is_ok());
+        for malformed in ["foo.*.com", "127.0.0.1"] {
+            assert!(
+                matches!(
+                    resolve_restricted_network(&[malformed.to_string()]),
+                    Err(SandboxError::InvalidRequest(_))
+                ),
+                "{malformed} must be refused"
+            );
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]

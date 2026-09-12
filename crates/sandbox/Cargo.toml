@@ -59,6 +59,9 @@ required-features = ["remote-sandbox-test"]
 [dependencies]
 anyhow.workspace = true
 futures.workspace = true
+# The editor-wide allowlist's host patterns, which the WSL helper's proxy
+# enforces with the same matching `egress_policy` uses (ADR-F17 / ADR-F46).
+http_client.workspace = true
 http_proxy.workspace = true
 log.workspace = true
 # Used only by the `nixos-test` helper binary to parse its check list; gated
@@ -75,6 +78,9 @@ nix = { workspace = true, features = ["fs", "socket", "uio"] }
 # creating `AF_UNIX` (and other non-IP) sockets, `io_uring`, `ptrace`, etc. — the
 # syscall-level half of preventing session-IPC-socket sandbox escapes.
 seccompiler.workspace = true
+# Checks the `slirp4netns` beside the WSL helper against the digest the Windows
+# side shipped before running it (ADR-F46).
+sha2.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 tempfile.workspace = true
@@ -90,6 +96,10 @@ tempfile.workspace = true
 tempfile.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# Decompresses the bundled Linux helper while copying it into WSL (ADR-F46).
+async-compression.workspace = true
+# Names the helper's per-build directory inside WSL and verifies the copy.
+sha2.workspace = true
 smol.workspace = true
 # Structural WSL-installed check (registered distros under HKCU\...\Lxss)
 # without spawning `wsl.exe`.

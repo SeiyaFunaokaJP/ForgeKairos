@@ -20,11 +20,16 @@
 //! host. Both share [`UNIX_PROTECTED_HOME_RELATIVE`]; only the local side adds
 //! the running application's own directories, which don't exist remotely. On
 //! Windows there are two homes to cover — `%USERPROFILE%` and the WSL distro
-//! account the sandbox actually runs in — so both lists apply.
+//! account the sandbox actually runs in. `Sandbox::new` adds the Windows list;
+//! the helper running inside WSL adds the Unix one for the distro account
+//! (plus [`WSL_SANDBOX_HELPER_HOME_RELATIVE`]), as it does on an SSH host.
 //!
 //! Semantics, identical on both sides: **readable, never writable/creatable/
-//! deletable**. Entries that do not exist are skipped (there is no object to
-//! protect); an entry that exists but cannot be captured/pinned fails the
+//! deletable**. An entry that does not exist yet must not be creatable either
+//! (writing a missing `~/.bash_login` is as good as editing one): Seatbelt
+//! denies by path, and the WSL / SSH-remote helper denies new entries in the
+//! directory that would hold it. Bubblewrap can only bind what exists, so it
+//! skips them. An entry that exists but cannot be captured/pinned fails the
 //! command closed. Both directories and plain files appear here.
 //!
 //! `/etc` and the rest of the system directories need no entry: they are outside
@@ -38,7 +43,9 @@ use std::path::{Path, PathBuf};
 /// Shared verbatim with the SSH-remote helper, whose behavior on real hosts was
 /// validated against exactly this list; treat additions as a change that needs
 /// re-validation there, and put local-only entries in
-/// [`LOCAL_EXTRA_PROTECTED_HOME_RELATIVE`] instead.
+/// [`LOCAL_EXTRA_PROTECTED_HOME_RELATIVE`] instead. On Windows it is applied by
+/// the helper inside WSL, not by this process.
+#[cfg(not(target_os = "windows"))]
 pub(crate) const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     // Credentials and keys.
     ".ssh",
@@ -59,14 +66,29 @@ pub(crate) const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     ".local/bin",
     // Shell init: written once, executed on every later login.
     ".bashrc",
+    ".bash_aliases",
     ".bash_profile",
+    ".bash_login",
     ".profile",
     ".zshrc",
     ".zprofile",
     ".zshenv",
+    ".zlogin",
+    ".zlogout",
+    ".cshrc",
+    ".tcshrc",
+    ".login",
     ".config/fish",
     ".bash_logout",
+    // Read by `pam_env` at login where `user_readenv` is on, so it can set
+    // `LD_PRELOAD` for every later session.
+    ".pam_environment",
 ];
+
+/// The startup files zsh reads from `$ZDOTDIR` instead of the home directory
+/// when that is set.
+#[cfg(target_os = "linux")]
+const ZSH_STARTUP_FILES: &[&str] = &[".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout"];
 
 /// The Windows equivalent of [`UNIX_PROTECTED_HOME_RELATIVE`], relative to
 /// `%USERPROFILE%`.
@@ -108,7 +130,9 @@ const WINDOWS_PROTECTED_HOME_RELATIVE: &[&str] = &[
     r"Documents\PowerShell",
     r"Documents\WindowsPowerShell",
     r".bashrc",
+    r".bash_aliases",
     r".bash_profile",
+    r".bash_login",
     r".profile",
     r".bash_logout",
     // Run at every logon — the Windows analogue of `.bashrc`.
@@ -230,32 +254,15 @@ pub(crate) fn local_builtin_protected_paths(
     paths
 }
 
-/// Entries protected inside a **WSL distro** on top of the shared Unix list:
-/// the sandbox helper this crate provisions there and runs *before* every
-/// sandboxed command (`windows_wsl::HELPER_PROVISION_SCRIPT` installs it under
-/// `$HOME/.local/libexec/zed`). Overwriting it is code execution as the helper
-/// on the next command — the WSL analogue of `.zed_server`.
-#[cfg(target_os = "windows")]
-const WSL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[".local/libexec/zed"];
-
-/// The set to protect inside a WSL distro, resolved against the *distro
-/// account's* `$HOME`.
+/// Where the Windows backend installs its WSL sandbox helper (the bundled Linux
+/// `remote_server` and `slirp4netns`), relative to the distro account's home.
 ///
-/// The distro is a Linux account, so this is the Unix list: a `%USERPROFILE%`
-/// entry would be meaningless there, and the Windows-side entries are protected
-/// separately through their `/mnt/<drive>/…` mapping. Built as strings because
-/// everything WSL-side already traffics in Linux path strings — `Path::join`
-/// would splice in Windows separators.
-#[cfg(target_os = "windows")]
-pub(crate) fn wsl_distro_builtin_protected_paths(home: &str) -> Vec<String> {
-    let home = home.trim_end_matches('/');
-    UNIX_PROTECTED_HOME_RELATIVE
-        .iter()
-        .chain(WSL_EXTRA_PROTECTED_HOME_RELATIVE)
-        .map(|relative| format!("{home}/{relative}"))
-        .collect()
-}
-
+/// Inside WSL the helper itself protects the distro account's home — the Unix
+/// list, exactly as on an SSH host — and in WSL mode this directory as well:
+/// overwriting the binary that runs before every sandboxed command would be
+/// code execution outside the sandbox (the WSL counterpart of `.zed_server`).
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) const WSL_SANDBOX_HELPER_HOME_RELATIVE: &str = ".cache/zed-jp-enhance";
 /// The account's home directory, read from the environment.
 ///
 /// Every process that runs a sandboxed command inherits it, whether it is the
@@ -270,6 +277,24 @@ pub(crate) fn home_dir_from_environment() -> Option<PathBuf> {
     // The passwd fallback covers the rare non-login invocation with `$HOME`
     // unset, where the account still has a home directory to protect.
     absolute_env_path("HOME").or_else(home_dir_from_passwd)
+}
+
+/// The account's home directory from the account database alone, for callers
+/// that cannot trust their environment: the sandbox helper, whose environment
+/// can come from the Windows side (`WSLENV`) or a dev container's
+/// `containerEnv`.
+#[cfg(target_os = "linux")]
+pub(crate) fn home_dir_from_account() -> Option<PathBuf> {
+    home_dir_from_passwd()
+}
+
+/// zsh's startup files in `$ZDOTDIR`, when the environment names an absolute
+/// one. Taking this from the environment is safe: it can only add protection.
+#[cfg(target_os = "linux")]
+pub(crate) fn zsh_startup_files_from_environment() -> Vec<PathBuf> {
+    absolute_env_path("ZDOTDIR")
+        .map(|zdotdir| resolve_home_relative(&zdotdir, ZSH_STARTUP_FILES))
+        .unwrap_or_default()
 }
 
 /// See the Linux [`home_dir_from_environment`]. macOS has no passwd fallback
@@ -299,8 +324,8 @@ fn absolute_env_path(name: &str) -> Option<PathBuf> {
     path.is_absolute().then_some(path)
 }
 
-/// `getpwuid(getuid())->pw_dir`, for the case where `$HOME` is unset or
-/// relative.
+/// `getpwuid(geteuid())->pw_dir`: the home directory of the account this
+/// process acts as.
 #[cfg(target_os = "linux")]
 fn home_dir_from_passwd() -> Option<PathBuf> {
     use std::os::unix::ffi::OsStrExt as _;
@@ -318,7 +343,7 @@ fn home_dir_from_passwd() -> Option<PathBuf> {
         // with pointers into `buffer`, which outlives every read below.
         let status = unsafe {
             libc::getpwuid_r(
-                libc::getuid(),
+                libc::geteuid(),
                 &mut passwd,
                 buffer.as_mut_ptr(),
                 buffer.len(),

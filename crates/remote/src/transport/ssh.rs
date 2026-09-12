@@ -48,7 +48,7 @@ const BYTES_PER_MEGABYTE: u64 = 1024 * 1024;
 /// A process-wide queue rather than something on the connection because the
 /// transport has no route to a workspace: `RemoteClientDelegate` can only set
 /// the progress line of a modal that is about to close.
-static CONNECTION_WARNINGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+pub(super) static CONNECTION_WARNINGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Takes everything a connection attempt wanted to tell the user but could not
 /// fail over. Draining is deliberate: each warning is shown once.
@@ -1008,16 +1008,7 @@ impl SshRemoteConnection {
             .ensure_slirp4netns_binary(posix_probe.as_ref(), &delegate, cx)
             .await
         {
-            log::warn!("could not install slirp4netns for the remote sandbox: {error:#}");
-            // Silently degrading meant the user only found out when an agent
-            // command refused to run, hours later and in a place that does not
-            // explain why. Say it while the connection is still the thing they
-            // are looking at.
-            CONNECTION_WARNINGS.lock().push(format!(
-                "リモートのサンドボックス用ヘルパー (slirp4netns) を配置できませんでした。\
-                 エージェントのコマンド実行はサンドボックスを作れないため拒否されます \
-                 (設定 `allow_unsandboxed` を有効にすると、外部通信の統制も外れた状態で実行できます): {error:#}"
-            ));
+            super::warn_slirp4netns_not_installed(&error);
         }
 
         log::info!(
@@ -3369,6 +3360,35 @@ fn build_command_windows(
 mod tests {
     use super::*;
     use base64::Engine as _;
+
+    /// ADR-F46: the agent sandbox helper is started with no environment of its
+    /// own and an argv of hex digits, so whatever the login shell (csh here),
+    /// nothing in the command line is shell syntax.
+    #[test]
+    fn test_build_command_runs_the_sandbox_helper_without_any_environment() -> Result<()> {
+        let helper = ".zed_server/zed-remote-server-stable-1.17.2";
+        let packed = "2d2d72656d6f74652d73616e64626f782d68656c706572.2d2d";
+        let command = build_command_posix(
+            Some(helper.to_string()),
+            &[
+                "--remote-sandbox-helper-argv-hex".to_string(),
+                packed.to_string(),
+            ],
+            &HashMap::default(),
+            None,
+            None,
+            HashMap::default(),
+            PathStyle::Unix,
+            "/bin/csh",
+            ShellKind::Csh,
+            Vec::new(),
+            "user@host",
+            Interactive::Yes,
+        )?;
+        let expected = format!("cd && exec env {helper} --remote-sandbox-helper-argv-hex {packed}");
+        assert_eq!(command.args.last(), Some(&expected));
+        Ok(())
+    }
 
     #[test]
     fn test_build_command() -> Result<()> {

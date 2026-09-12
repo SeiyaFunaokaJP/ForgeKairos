@@ -488,11 +488,17 @@ fn render_verification_section(
     let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
 
     let current_text = editor.read(cx).text(cx);
+    // ADR-F46: with the sandbox switched off, terminal commands run with Zed's
+    // own permissions and are never auto-approved.
+    let outside_sandbox = tool_id == TerminalTool::NAME
+        && AgentSettings::get_global(cx)
+            .sandbox_permissions
+            .allow_unsandboxed;
     let (decision, matched_patterns) = if current_text.is_empty() {
         (None, Vec::new())
     } else {
         let matches = find_matched_patterns(tool_id, &current_text, cx);
-        let decision = evaluate_test_input(tool_id, &current_text, cx);
+        let decision = evaluate_test_input(tool_id, &current_text, outside_sandbox, cx);
         (Some(decision), matches)
     };
 
@@ -513,7 +519,12 @@ fn render_verification_section(
     let (authoritative_mode, patterns_agree) = match &decision {
         Some(decision) => {
             let authoritative = decision_to_mode(decision);
-            let implied = implied_mode_from_patterns(&matched_patterns, default_mode);
+            let implied = match implied_mode_from_patterns(&matched_patterns, default_mode) {
+                // Outside the sandbox an allow rule only lets the command be
+                // asked for instead of refused; it never approves it.
+                ToolPermissionMode::Allow if outside_sandbox => ToolPermissionMode::Confirm,
+                implied => implied,
+            };
             let agrees = authoritative == implied;
             if !agrees {
                 log::error!(
@@ -595,6 +606,15 @@ fn render_verification_section(
                         this.child(render_hardcoded_rules(true, cx))
                     })
                     .child(render_verdict_label(mode))
+                    .when(outside_sandbox, |this| {
+                        this.child(
+                            Label::new(
+                                "サンドボックスが無効なため、ターミナルのコマンドは「許可」でも毎回確認します。",
+                            )
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                        )
+                    })
                     .when_some(
                         denial_reason.filter(|_| patterns_agree && !is_hardcoded_denial),
                         |this, reason| {
@@ -730,8 +750,22 @@ fn render_matched_patterns(patterns: &[MatchedPattern], cx: &App) -> AnyElement 
         .into_any_element()
 }
 
-fn evaluate_test_input(tool_id: &str, input: &str, cx: &App) -> ToolPermissionDecision {
+fn evaluate_test_input(
+    tool_id: &str,
+    input: &str,
+    outside_sandbox: bool,
+    cx: &App,
+) -> ToolPermissionDecision {
     let settings = AgentSettings::get_global(cx);
+
+    if outside_sandbox {
+        return agent::decide_terminal_permission(
+            &[input.to_string()],
+            &settings.tool_permissions,
+            ShellKind::system(),
+            agent::TerminalExecution::Unsandboxed,
+        );
+    }
 
     // ShellKind is only used for terminal tool's hardcoded security rules;
     // for other tools, the check returns None immediately.
@@ -1091,7 +1125,7 @@ fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyEl
                 .child(Label::new("既定の権限"))
                 .child(
                     Label::new(
-                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「自動承認」と同じ設定で、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。",
+                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「自動承認」と同じ設定で、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。サンドボックスの外で実行されるターミナルコマンド (サンドボックスを無効にしているとき、またはサンドボックスの無いプロジェクト) は、「許可」や「常に許可」に関係なく毎回確認します。",
                     )
                     .size(LabelSize::Small)
                     .color(Color::Muted),

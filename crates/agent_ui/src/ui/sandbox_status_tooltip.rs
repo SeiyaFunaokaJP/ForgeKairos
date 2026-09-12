@@ -142,19 +142,12 @@ pub enum SandboxStatusTooltip {
         settings: SandboxSection,
         thread: Option<SandboxSection>,
     },
-    DisabledForThread {
-        settings: SandboxSection,
-    },
     DisabledInSettings,
 }
 
 impl SandboxStatusTooltip {
     pub fn enabled(settings: SandboxSection, thread: Option<SandboxSection>) -> Self {
         Self::Enabled { settings, thread }
-    }
-
-    pub fn disabled_for_thread(settings: SandboxSection) -> Self {
-        Self::DisabledForThread { settings }
     }
 
     pub fn disabled_in_settings() -> Self {
@@ -170,15 +163,6 @@ impl RenderOnce for SandboxStatusTooltip {
                     Label::new("設定でサンドボックスが無効になっています。")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
-                )
-                .into_any_element(),
-            SandboxStatusTooltip::DisabledForThread { settings } => v_flex()
-                .gap_1()
-                .child(div().opacity(0.5).child(settings.render(cx)))
-                .child(Divider::horizontal())
-                .child(
-                    Label::new("このスレッドではサンドボックスが無効になっています")
-                        .size(LabelSize::Small),
                 )
                 .into_any_element(),
             SandboxStatusTooltip::Enabled { settings, thread } => v_flex()
@@ -251,7 +235,7 @@ impl Component for SandboxStatusTooltip {
                     "Enabled",
                     container()
                         .child(SandboxStatusTooltip::enabled(
-                            settings_section.clone(),
+                            settings_section,
                             Some(thread_section),
                         ))
                         .into_any_element(),
@@ -260,12 +244,6 @@ impl Component for SandboxStatusTooltip {
                     "Enabled (unrestricted, no overrides)",
                     container()
                         .child(SandboxStatusTooltip::enabled(unrestricted_section, None))
-                        .into_any_element(),
-                ),
-                single_example(
-                    "Disabled for thread",
-                    container()
-                        .child(SandboxStatusTooltip::disabled_for_thread(settings_section))
                         .into_any_element(),
                 ),
                 single_example(

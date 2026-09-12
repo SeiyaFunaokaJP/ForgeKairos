@@ -914,7 +914,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project"),
+            title.contains("プロジェクトの外を指しています"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

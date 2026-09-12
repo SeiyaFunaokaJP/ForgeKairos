@@ -370,7 +370,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("agent skills"),
+            title.contains("エージェントのスキル"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(

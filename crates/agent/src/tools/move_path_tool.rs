@@ -88,7 +88,7 @@ impl AgentTool for MovePathTool {
                     let filename = MarkdownInlineCode(&filename);
                     format!("{src} の名前を {filename} に変更").into()
                 }
-                _ => format!("{src} を {dest} へ移動").into(),
+                _ => format!("{src} を {dest} に移動").into(),
             }
         } else {
             "パスを移動".into()
@@ -183,7 +183,7 @@ impl AgentTool for MovePathTool {
                         Self::NAME,
                         vec![input.source_path.clone(), input.destination_path.clone()],
                     );
-                    let title = format!("Move {src} to {dest}");
+                    let title = format!("{src} を {dest} に移動");
                     authorize_with_sensitive_settings(
                         sensitive_kind,
                         context,
@@ -351,7 +351,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("agent skills"),
+            title.contains("エージェントのスキル"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -417,7 +417,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("agent skills"),
+            title.contains("エージェントのスキル"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -489,8 +489,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project")
-                || title.contains("symlinks outside project"),
+            title.contains("プロジェクトの外を指しています")
+                || title.contains("プロジェクト外へのシンボリックリンク"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 
@@ -598,8 +598,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project")
-                || title.contains("symlinks outside project"),
+            title.contains("プロジェクトの外を指しています")
+                || title.contains("プロジェクト外へのシンボリックリンク"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

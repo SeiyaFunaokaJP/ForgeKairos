@@ -184,12 +184,12 @@ The `terminal` tool runs commands inside a sandbox with these permissions:
   `.git` directories remain protected. Writes anywhere else on the filesystem are blocked.{{else}}. No project directories are currently writable.{{/if}}
 {{else}}
 {{#if is_windows}}
-- Execution: commands run inside WSL under Bubblewrap. Native Windows project paths are routed through WSL's `/mnt/<drive>/...` filesystem view.
-- Writes: `/tmp` inside WSL is writable but is cleared between `terminal` calls{{#if worktrees}}. These project directories are also writable and persist across calls:
+- Execution: commands run inside WSL, isolated by Zed's sandbox helper. Native Windows project paths are routed through WSL's `/mnt/<drive>/...` filesystem view. Windows programs (`.exe`) cannot be started from inside the sandbox.
+- Writes: `$TMPDIR` (also `$TMP` and `$TEMP`; normally `/tmp`, which is private to each `terminal` call) is writable but is cleared after each `terminal` call{{#if worktrees}}. These project directories are also writable and persist across calls:
 {{#each worktrees}}
   - `{{abs_path}}`
 {{/each}}
-  Protected Git metadata remains read-only. Writes anywhere else on the WSL filesystem and mounted Windows drives are blocked.{{else}}. No project directories are currently writable.{{/if}}
+  Protected Git metadata remains read-only. In a project on a Windows drive (`/mnt/<drive>/...`), or one without `.git`, new files and directories can't be created directly in its top-level directory; create them in a subdirectory (existing top-level files stay writable). Writes anywhere else on the WSL filesystem and mounted Windows drives are blocked.{{else}}. No project directories are currently writable.{{/if}}
 {{else}}
 - Writes: a per-thread temporary directory exposed via `$TMPDIR`, `$TMP`, and `$TEMP` is writable and persists across `terminal` calls in this thread{{#if worktrees}}, along with these project directories:
 {{#each worktrees}}
@@ -201,12 +201,12 @@ The `terminal` tool runs commands inside a sandbox with these permissions:
 - Network: outbound network access is blocked.
 
 {{#if is_windows}}
-The sandbox can only allow or block outbound network access as a whole — it cannot restrict access to specific hosts. There is no HTTP/HTTPS proxy, so once network access is granted SSH, FTP, and raw sockets work too.
+Network access goes through an HTTP/HTTPS proxy inside WSL (standard proxy environment variables are set for the command); the command has no other route out. Tools that don't honor proxy environment variables (SSH, FTP, raw sockets, `ping`, etc.) cannot reach the network even when access is granted, so use `https://` URLs instead of `git@`/`ssh://` when cloning or pushing.
 
 You can request elevated permissions on individual `terminal` calls:
 
-- `allow_all_hosts: true` — allow unrestricted outbound network access. On this platform this is the only way to grant network access.
-- `allow_hosts: ["github.com", ...]` — do not use this on Windows. Host-specific network grants cannot be enforced, and such requests are rejected; use `allow_all_hosts: true` when the command genuinely needs network access.
+- `allow_hosts: ["github.com", "*.npmjs.org"]` — allow outbound HTTP/HTTPS to specific hosts (exact hostnames or leading-`*.` subdomain wildcards; no IP literals). Prefer this whenever you know which hosts the command needs.
+- `allow_all_hosts: true` — allow outbound HTTP/HTTPS to any host. Use only when the specific hosts can't be enumerated up front.
 {{else}}
 Host-scoped network access works through an HTTP/HTTPS proxy (standard proxy environment variables are set for the command). When access is scoped to specific hosts, tools that don't honor proxy environment variables (SSH, FTP, raw sockets, etc.) can't reach them, so use `https://` URLs instead of `git@`/`ssh://` when cloning or pushing.
 

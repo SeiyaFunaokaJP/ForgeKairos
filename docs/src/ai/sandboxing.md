@@ -46,7 +46,7 @@ Sandboxing is supported, in some form, on all platforms. In order to sandbox a
 `terminal` tool call, the following is required:
 
 - On Linux, a runnable, non-setuid `bwrap` binary must be on the `$PATH`. See [Installing Bubblewrap](#installing-bubblewrap).
-- On Windows, WSL must be available.
+- On Windows, WSL 2 with a Linux distribution must be installed (any distribution, running under WSL 2). Nothing has to be installed inside the distribution and nothing is downloaded: Zed copies the sandbox helper it ships with into it. See [Windows](#windows).
 
 There are no extra requirements on MacOS.
 
@@ -140,7 +140,8 @@ Depending on what the tool requested, the prompt can ask you to allow:
 - unrestricted filesystem writes, except protected Git metadata
 
 The agent cannot ask to run a command outside the sandbox. A command only runs without one if you turn sandboxing off
-(`allow_unsandboxed`), or if the sandbox cannot be created on your machine and you choose to continue without it.
+(`allow_unsandboxed`); every such command then asks for your approval. If the sandbox cannot be created on your machine,
+the command does not run: Zed explains what is missing and lets you retry after fixing it.
 
 You can grant a sandbox request for:
 
@@ -232,8 +233,8 @@ When host-specific network access is approved on Linux, Zed uses an HTTP/HTTPS p
 hosts. Tools that do not honor proxy environment variables, such as SSH, FTP, and raw socket clients, may not work even
 after host-specific network access is approved.
 
-If Bubblewrap is unavailable or cannot create a sandbox in the current environment, Zed may run the command without the OS
-sandbox and show a warning in the tool output.
+If Bubblewrap is unavailable or cannot create a sandbox in the current environment, Zed does not run the command: it
+explains what is missing and lets you retry after fixing it.
 
 > **Warning**: On Linux and WSL, restrictions on filesystem objects are
 > determined at _sandbox creation time_. Among other things, this means that an
@@ -291,7 +292,9 @@ sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
 
 ### Windows {#windows}
 
-On Windows, Zed Agent sandboxing is supported only when the agent action runs inside WSL.
+On Windows, sandboxed terminal commands run inside WSL 2, isolated by Zed's own sandbox helper — the same one Zed uses to
+sandbox commands on a Linux host over SSH. It builds the sandbox from Linux kernel features (user and network namespaces,
+Landlock, and seccomp) and does not need Bubblewrap.
 
 > **Warning**: Due to limitations in WSL's implementation, it is possible that a
 > terminal command may write outside sandbox grants when the user has given
@@ -301,22 +304,46 @@ On Windows, Zed Agent sandboxing is supported only when the agent action runs in
 > security cannot be guaranteed. See [below](#why-ntfs-compromise) for a more
 > technical explanation.
 
-Zed uses the Linux Bubblewrap sandbox inside WSL because WSL provides the Linux process and filesystem primitives that
-Bubblewrap needs. Native Windows processes do not currently have the same sandbox integration in Zed, so a native Windows
-command cannot be confined by Zed Agent's OS sandbox in the same way.
+#### Requirements {#windows-requirements}
 
-When running inside WSL, the Linux sandboxing behavior applies, including the requirement that `bwrap` not be setuid-root:
+- **WSL 2 and a distribution.** Any distribution works, as long as it runs under WSL 2 (not WSL 1). If WSL is not
+  installed, run `wsl --install` in an administrator PowerShell and restart the PC. `wsl --install -d Ubuntu` adds a
+  distribution, and `wsl --set-version <name> 2` converts a WSL 1 distribution. Commands run in the default
+  distribution (`wsl --set-default <name>`), as its default user.
+- **A current WSL kernel**, which provides Landlock and unprivileged user namespaces. If Zed reports that either is
+  missing, run `wsl --update`, then `wsl --shutdown` to restart WSL.
 
-- filesystem isolation is provided by Bubblewrap
-- protected Git metadata contents remain readable, but writes are blocked
-- `/tmp` is temporary for sandboxed terminal calls
-- network access is all-or-nothing rather than host-specific, so host-specific network requests are rejected and the agent must request unrestricted network access when network access is needed
+Nothing has to be installed inside the distribution, and nothing is downloaded. The first sandboxed command after
+installing or updating Zed copies the Linux helper that ships with Zed, and `slirp4netns`, into
+`~/.cache/zed-jp-enhance/sandbox/` inside the distribution; later commands reuse that copy. This also works offline.
+Every command first checks that copy against the SHA-256 of what this Zed installed, and a replaced or damaged
+helper is not run.
 
-If WSL is not installed, or if you choose to run a command without the sandbox, Zed falls back to the standard terminal
-behavior of running in your native shell. It selects the shell using the usual preference order: a bash (scoop's bash or
-Git Bash) when one is installed, otherwise PowerShell, and finally `cmd.exe`. Because the command then runs against native
-Windows paths instead of WSL's Linux filesystem, path conventions change accordingly (for example `C:\...` or `/c/...`
-rather than WSL's `/mnt/c/...`), so a command written for the sandboxed WSL shell may behave differently.
+#### Behavior {#windows-behavior}
+
+Sandboxed terminal commands:
+
+- run inside WSL, with native Windows project paths mapped to `/mnt/<drive>/...`
+- can read the filesystem, including protected Git metadata contents
+- can write inside open project directories, except protected Git metadata. New files and directories directly in a project's top-level directory are possible only for a Git repository on the distribution's own filesystem; in a project on a Windows drive, or one without `.git`, create them in a subdirectory (existing top-level files stay writable). Windows drives accept any capitalization of a name, so `.GIT` reaches `.git`, and only this keeps Git metadata read-only there
+- get a `/tmp` and `/dev/shm` of their own, discarded when the command finishes (`$TMPDIR`, `$TMP`, and `$TEMP` point at `/tmp`); a project inside `/tmp` stays reachable at its own path
+- cannot write elsewhere on the WSL filesystem or on the Windows drives unless you approve additional paths or broader write access; credentials and shell startup files in your Windows profile and in the distribution's home directory, Zed's own settings, and the sandbox helper stay read-only even then, cannot be created where they don't exist yet, and cannot be moved out of the way by renaming a directory above them
+- cannot start Windows programs (`.exe`) through WSL interop
+- cannot signal processes outside the sandbox
+- reach the network only through an HTTP/HTTPS proxy inside WSL that allows only the approved hosts (or any host, when you approve unrestricted network access), and of those only what your editor-wide network allowlist also permits
+
+Tools that do not honor proxy environment variables, such as SSH, FTP, `ping`, and raw socket clients, cannot reach the
+network even after network access is approved. Prefer HTTPS URLs over SSH URLs.
+
+If the sandbox cannot be created — WSL is missing, the distribution runs under WSL 1, the kernel lacks a required feature,
+or the bundled helper is missing (reinstall Zed) — the command does not run. Zed explains the cause and how to fix it, and
+lets you retry. If WSL is still starting up and does not answer within a minute, Zed retries once on its own first.
+
+> **Note**: As on macOS and Linux, the editor-wide network allowlist (`network_allowlist.json`) caps what a sandboxed
+> command can reach: a host must be approved for the command _and_ allowed editor-wide. With unrestricted network
+> access the command can also reach services on WSL's own loopback (and, with mirrored networking, on Windows'), as
+> the editor itself can; other local and private addresses only if the allowlist names them. Zed hands the allowlist to
+> WSL as it stands when the command starts.
 
 #### Why do NTFS objects compromise the sandbox? {#why-ntfs-compromise}
 

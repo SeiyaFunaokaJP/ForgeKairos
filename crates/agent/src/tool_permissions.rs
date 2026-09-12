@@ -6,7 +6,7 @@ use shell_command_parser::{
     TerminalCommandValidation, extract_commands, validate_terminal_command,
 };
 use std::path::{Component, Path};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use util::shell::ShellKind;
 
 const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "組み込みのセキュリティルールによりブロックされました。この操作は許可するには危険すぎると判断されており、設定で上書きすることはできません。";
@@ -14,6 +14,12 @@ const INVALID_TERMINAL_COMMAND_MESSAGE: &str = "The terminal command could not b
      allow shell substitutions or interpolations in permission-protected commands. Forbidden examples include $VAR, \
      ${VAR}, $(...), backticks, $((...)), <(...), and >(...). Resolve those values before calling terminal, or ask \
      the user for the literal value to use.";
+const UNAPPROVABLE_SUBSTITUTION_MESSAGE: &str = "The command was not run. It runs outside the sandbox \
+     (or in one that may write anywhere), so the user has to approve this exact command, and a command \
+     with shell substitutions or interpolations ($VAR, ${VAR}, $(...), backticks, $((...)), <(...), \
+     >(...)) can't be shown for that approval safely: what actually runs depends on values the user \
+     doesn't see. Run the command with the literal values instead, or tell the user the exact command \
+     so they can run it themselves in a terminal.";
 
 /// Security rules that are always enforced and cannot be overridden by any setting.
 /// These protect against catastrophic operations like wiping filesystems.
@@ -474,6 +480,93 @@ pub fn decide_permission_from_settings(
         &settings.tool_permissions,
         ShellKind::system(),
     )
+}
+
+/// Where an agent terminal command will run, which decides whether the tool
+/// permissions may approve it without asking (ADR-F46).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TerminalExecution {
+    /// Inside the OS sandbox.
+    Sandboxed,
+    /// Outside any sandbox, with Zed's own permissions (sandboxing is turned
+    /// off in settings, or this kind of project has no sandbox), or inside one
+    /// that may write anywhere but the protected paths, which is nearly the
+    /// same.
+    Unsandboxed,
+}
+
+/// The permission decision for an agent terminal command (ADR-F46).
+///
+/// Inside the sandbox this is exactly [`ToolPermissionDecision::from_input`].
+/// Outside it, auto-approval doesn't apply. Deny patterns, the built-in safety
+/// rules and the shell-substitution check refuse the command as they would in
+/// confirm mode, and a "deny" default still refuses it unless one of the
+/// user's allow patterns matches the whole command. Everything else asks,
+/// including every command an allow source would have approved.
+pub fn decide_terminal_permission(
+    inputs: &[String],
+    permissions: &ToolPermissions,
+    shell_kind: ShellKind,
+    execution: TerminalExecution,
+) -> ToolPermissionDecision {
+    match execution {
+        TerminalExecution::Sandboxed => {
+            ToolPermissionDecision::from_input(TerminalTool::NAME, inputs, permissions, shell_kind)
+        }
+        TerminalExecution::Unsandboxed => {
+            if let ToolPermissionDecision::Deny(reason) = ToolPermissionDecision::from_input(
+                TerminalTool::NAME,
+                inputs,
+                &terminal_permissions_in_confirm_mode(permissions),
+                shell_kind,
+            ) {
+                // `from_input` reports a refused substitution only through its
+                // message; tell the model why here and what the user can do.
+                if reason == INVALID_TERMINAL_COMMAND_MESSAGE {
+                    return ToolPermissionDecision::Deny(UNAPPROVABLE_SUBSTITUTION_MESSAGE.into());
+                }
+                return ToolPermissionDecision::Deny(reason);
+            }
+            match ToolPermissionDecision::from_input(
+                TerminalTool::NAME,
+                inputs,
+                permissions,
+                shell_kind,
+            ) {
+                // Only a "deny" default that no allow pattern overrides is left
+                // to refuse the command here.
+                ToolPermissionDecision::Deny(reason) => ToolPermissionDecision::Deny(reason),
+                // The user allowed the command, but not to run outside the
+                // sandbox without seeing it first.
+                ToolPermissionDecision::Allow | ToolPermissionDecision::Confirm => {
+                    ToolPermissionDecision::Confirm
+                }
+            }
+        }
+    }
+}
+
+/// The terminal's permissions as confirm mode sees them: both defaults ask and
+/// no `always_allow` pattern applies, so only deny and confirm patterns, the
+/// safety rules and the shell-substitution check can decide.
+fn terminal_permissions_in_confirm_mode(permissions: &ToolPermissions) -> ToolPermissions {
+    let mut tools = collections::HashMap::default();
+    if let Some(rules) = permissions.tools.get(TerminalTool::NAME) {
+        tools.insert(
+            Arc::from(TerminalTool::NAME),
+            ToolRules {
+                default: rules.default.map(|_| ToolPermissionMode::Confirm),
+                always_allow: Vec::new(),
+                always_deny: rules.always_deny.clone(),
+                always_confirm: rules.always_confirm.clone(),
+                invalid_patterns: rules.invalid_patterns.clone(),
+            },
+        );
+    }
+    ToolPermissions {
+        default: ToolPermissionMode::Confirm,
+        tools,
+    }
 }
 
 /// Normalizes a path by collapsing `.` and `..` segments without touching the filesystem.
@@ -1191,6 +1284,22 @@ mod tests {
         t("PAGER=blah git log && git status")
             .allow(&["^PAGER=blah\\s+git\\s+log(\\s|$)"])
             .is_confirm();
+    }
+
+    #[test]
+    fn env_prefix_multiple_assignments_preserved_in_order() {
+        t("A=1 B=2 git log")
+            .mode(ToolPermissionMode::Deny)
+            .allow(&["^A=1\\s+B=2\\s+git\\s+log(\\s|$)"])
+            .is_allow();
+    }
+
+    #[test]
+    fn env_prefix_quoted_whitespace_value_matches_only_with_quotes_in_pattern() {
+        t("PAGER=\"less -R\" git log")
+            .mode(ToolPermissionMode::Deny)
+            .allow(&["^PAGER=\"less\\ -R\"\\s+git\\s+log(\\s|$)"])
+            .is_allow();
     }
 
     // The agent panel's "auto approve" switch only flips the global default to
@@ -2465,5 +2574,224 @@ mod tests {
     fn decide_permission_for_path_denies_edit_file_traversal_to_dotenv() {
         let decision = path_perm(EditFileTool::NAME, "src/../.env", &["^\\.env"], &[], &[]);
         assert!(matches!(decision, ToolPermissionDecision::Deny(_)));
+    }
+
+    fn terminal_permission(
+        input: &str,
+        permissions: &ToolPermissions,
+        execution: TerminalExecution,
+    ) -> ToolPermissionDecision {
+        decide_terminal_permission(
+            &[input.to_string()],
+            permissions,
+            ShellKind::Posix,
+            execution,
+        )
+    }
+
+    fn global_default_only(global_default: ToolPermissionMode) -> ToolPermissions {
+        ToolPermissions {
+            default: global_default,
+            tools: collections::HashMap::default(),
+        }
+    }
+
+    fn terminal_rules(
+        global_default: ToolPermissionMode,
+        terminal_default: Option<ToolPermissionMode>,
+        allow: &[&str],
+        deny: &[&str],
+    ) -> ToolPermissions {
+        let compile = |patterns: &[&str]| -> Vec<CompiledRegex> {
+            patterns
+                .iter()
+                .map(|pattern| {
+                    CompiledRegex::new(pattern, false)
+                        .unwrap_or_else(|| panic!("invalid regex in test: {pattern:?}"))
+                })
+                .collect()
+        };
+        let mut tools = collections::HashMap::default();
+        tools.insert(
+            Arc::from(TerminalTool::NAME),
+            ToolRules {
+                default: terminal_default,
+                always_allow: compile(allow),
+                always_deny: compile(deny),
+                always_confirm: vec![],
+                invalid_patterns: vec![],
+            },
+        );
+        ToolPermissions {
+            default: global_default,
+            tools,
+        }
+    }
+
+    /// ADR-F46: auto-approval (`tool_permissions.default = "allow"`, or the
+    /// terminal's own default) doesn't reach a command outside the sandbox.
+    #[test]
+    fn default_allow_asks_outside_the_sandbox() {
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &global_default_only(ToolPermissionMode::Allow),
+                TerminalExecution::Unsandboxed,
+            ),
+            ToolPermissionDecision::Confirm
+        );
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &terminal_rules(
+                    ToolPermissionMode::Confirm,
+                    Some(ToolPermissionMode::Allow),
+                    &[],
+                    &[],
+                ),
+                TerminalExecution::Unsandboxed,
+            ),
+            ToolPermissionDecision::Confirm
+        );
+    }
+
+    #[test]
+    fn always_allow_pattern_asks_outside_the_sandbox() {
+        for global_default in [ToolPermissionMode::Confirm, ToolPermissionMode::Allow] {
+            assert_eq!(
+                terminal_permission(
+                    "cargo build",
+                    &terminal_rules(global_default, None, &["^cargo\\b"], &[]),
+                    TerminalExecution::Unsandboxed,
+                ),
+                ToolPermissionDecision::Confirm,
+                "global default {global_default:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn deny_rules_refuse_outside_the_sandbox_without_asking() {
+        let deny_pattern =
+            terminal_rules(ToolPermissionMode::Allow, None, &["^rm\\b"], &["^rm\\b"]);
+        assert!(matches!(
+            terminal_permission(
+                "rm build.log",
+                &deny_pattern,
+                TerminalExecution::Unsandboxed
+            ),
+            ToolPermissionDecision::Deny(_)
+        ));
+        assert!(matches!(
+            terminal_permission(
+                "rm -rf /",
+                &global_default_only(ToolPermissionMode::Allow),
+                TerminalExecution::Unsandboxed,
+            ),
+            ToolPermissionDecision::Deny(_)
+        ));
+    }
+
+    /// With a "deny" default, a command one of the user's allow patterns
+    /// matches still asks outside the sandbox (the user did allow it), while
+    /// anything the patterns don't fully cover is refused.
+    #[test]
+    fn deny_default_asks_outside_the_sandbox_only_for_commands_an_allow_pattern_matches() {
+        for permissions in [
+            terminal_rules(
+                ToolPermissionMode::Confirm,
+                Some(ToolPermissionMode::Deny),
+                &["^echo\\s"],
+                &[],
+            ),
+            terminal_rules(ToolPermissionMode::Deny, None, &["^echo\\s"], &[]),
+        ] {
+            assert_eq!(
+                terminal_permission("echo hi", &permissions, TerminalExecution::Unsandboxed),
+                ToolPermissionDecision::Confirm
+            );
+            assert!(matches!(
+                terminal_permission("ls", &permissions, TerminalExecution::Unsandboxed),
+                ToolPermissionDecision::Deny(_)
+            ));
+            assert!(matches!(
+                terminal_permission(
+                    "echo hi && ls",
+                    &permissions,
+                    TerminalExecution::Unsandboxed
+                ),
+                ToolPermissionDecision::Deny(_)
+            ));
+            assert_eq!(
+                terminal_permission("echo hi", &permissions, TerminalExecution::Sandboxed),
+                ToolPermissionDecision::Allow
+            );
+        }
+    }
+
+    /// Without auto-approval a command outside the sandbox is permission
+    /// protected like any confirmed command, so shell substitutions are refused
+    /// even when everything is otherwise allowed.
+    #[test]
+    fn substitutions_are_refused_outside_the_sandbox_even_in_allow_all_mode() {
+        let allow_all = global_default_only(ToolPermissionMode::Allow);
+        let ToolPermissionDecision::Deny(reason) =
+            terminal_permission("echo $HOME", &allow_all, TerminalExecution::Unsandboxed)
+        else {
+            panic!("a substitution outside the sandbox must be refused");
+        };
+        // The model is told why, and that the user can run it themselves.
+        assert!(
+            reason.contains("can't be shown for that approval safely"),
+            "{reason}"
+        );
+        assert!(
+            reason.contains("run it themselves in a terminal"),
+            "{reason}"
+        );
+        assert_eq!(
+            terminal_permission("echo $HOME", &allow_all, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Allow
+        );
+        let allow_pattern_under_deny_default = terminal_rules(
+            ToolPermissionMode::Confirm,
+            Some(ToolPermissionMode::Deny),
+            &["^echo\\s"],
+            &[],
+        );
+        assert!(matches!(
+            terminal_permission(
+                "echo $HOME",
+                &allow_pattern_under_deny_default,
+                TerminalExecution::Unsandboxed,
+            ),
+            ToolPermissionDecision::Deny(_)
+        ));
+    }
+
+    #[test]
+    fn sandboxed_commands_keep_auto_approval() {
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &global_default_only(ToolPermissionMode::Allow),
+                TerminalExecution::Sandboxed,
+            ),
+            ToolPermissionDecision::Allow
+        );
+        let allow_pattern = terminal_rules(ToolPermissionMode::Confirm, None, &["^cargo\\b"], &[]);
+        assert_eq!(
+            terminal_permission("cargo build", &allow_pattern, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Allow
+        );
+        assert_eq!(
+            terminal_permission("make", &allow_pattern, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Confirm
+        );
+        let deny_pattern = terminal_rules(ToolPermissionMode::Allow, None, &[], &["^rm\\b"]);
+        assert!(matches!(
+            terminal_permission("rm build.log", &deny_pattern, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Deny(_)
+        ));
     }
 }

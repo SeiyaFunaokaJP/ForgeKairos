@@ -12,7 +12,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use util::ResultExt;
 use util::command::Stdio;
 use util::shell::ShellKind;
 use util::{
@@ -115,6 +114,10 @@ impl DockerExecConnection {
             )
             .await?,
         );
+
+        if let Err(error) = this.ensure_slirp4netns_binary(&delegate, cx).await {
+            super::warn_slirp4netns_not_installed(&error);
+        }
 
         Ok(this)
     }
@@ -239,37 +242,91 @@ impl DockerExecConnection {
             .await
             .is_ok();
         #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
-        if let Some(remote_server_path) = super::build_remote_server_from_source(
+        let locally_built = match super::build_remote_server_from_source(
             &remote_platform,
             delegate.as_ref(),
             binary_exists_on_server,
             cx,
         )
-        .await?
+        .await
         {
-            let tmp_path = paths::remote_server_dir_relative().join(
-                RelPath::from_unix_str(&format!(
-                    "download-{}-{}",
-                    std::process::id(),
-                    remote_server_path.file_name().unwrap().to_string_lossy()
-                ))
-                .unwrap(),
-            );
-            self.upload_local_server_binary(
-                &remote_server_path,
-                &tmp_path,
-                &remote_dir_for_server,
-                delegate,
-                cx,
-            )
-            .await?;
-            self.extract_server_binary(&dst_path, &tmp_path, &remote_dir_for_server, delegate, cx)
-                .await?;
-            return Ok(dst_path.into());
-        }
+            Ok(locally_built) => locally_built,
+            // A missing cross-compilation toolchain (zig, cargo-zigbuild,
+            // cmake) must not be fatal: the bundled artifact is the fallback for
+            // exactly that case.
+            Err(error) => {
+                log::warn!(
+                    "failed to build the remote server from source, \
+                     falling back to a bundled or downloaded binary: {error:#}"
+                );
+                None
+            }
+        };
+        #[cfg(not(any(debug_assertions, feature = "build-remote-server-binary")))]
+        let locally_built = None;
 
-        if binary_exists_on_server {
-            return Ok(dst_path.into());
+        let bundled_path = super::find_bundled_server_artifact(remote_platform);
+        let install_key = format!(
+            "{}:{}:{}|{}",
+            self.docker_cli(),
+            self.connection_options.container_id,
+            self.connection_options.remote_user,
+            dst_path.display(self.path_style())
+        );
+        // With nothing bundled to compare against, a binary that runs is all
+        // there is to go on.
+        let reusable_binary_on_server = binary_exists_on_server
+            && (locally_built.is_some()
+                || match &bundled_path {
+                    None => true,
+                    Some(bundled_path) => {
+                        let installed = self.remote_file_digest(&dst_path).await;
+                        super::installed_server_binary_is_verified(
+                            &install_key,
+                            bundled_path,
+                            installed.as_ref(),
+                        )
+                        .await
+                    }
+                });
+
+        match super::choose_server_binary_source(
+            locally_built,
+            reusable_binary_on_server,
+            bundled_path,
+        ) {
+            super::ServerBinarySource::LocallyBuilt(remote_server_path) => {
+                self.install_local_binary(
+                    &remote_server_path,
+                    &dst_path,
+                    remote_dir_for_server,
+                    delegate,
+                    cx,
+                )
+                .await
+                .context("installing locally built server binary")?;
+                return Ok(dst_path.into());
+            }
+            super::ServerBinarySource::AlreadyInstalled => return Ok(dst_path.into()),
+            super::ServerBinarySource::Bundled(bundled_path) => {
+                log::info!(
+                    "remote server binary source: artifact bundled with this app, {}",
+                    bundled_path.display()
+                );
+                self.install_local_binary(
+                    &bundled_path,
+                    &dst_path,
+                    remote_dir_for_server,
+                    delegate,
+                    cx,
+                )
+                .await
+                .context("installing bundled server binary")?;
+                let installed = self.remote_file_digest(&dst_path).await;
+                super::record_verified_server_binary(&install_key, &bundled_path, installed).await;
+                return Ok(dst_path.into());
+            }
+            super::ServerBinarySource::Download => {}
         }
 
         let wanted_version = cx.update(|cx| match release_channel {
@@ -345,6 +402,165 @@ impl DockerExecConnection {
         Ok(dst_path.into())
     }
 
+    /// ADR-F18: puts the bundled `slirp4netns` beside the server binary, where
+    /// the sandbox helper looks for it. The helper runs it outside the sandbox,
+    /// so a copy already there is kept only if it is byte for byte the bundled
+    /// one (ADR-F46) — or, with nothing bundled to compare it against, if it
+    /// runs at all.
+    async fn ensure_slirp4netns_binary(
+        &self,
+        delegate: &Arc<dyn RemoteClientDelegate>,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        let remote_platform = self
+            .remote_platform
+            .context("No remote platform defined; cannot proceed.")?;
+        if remote_platform.os != RemoteOs::Linux {
+            return Ok(());
+        }
+        let remote_dir_for_server = self.remote_dir_for_server.as_str();
+        let dst_path = super::remote_slirp4netns_path()?;
+        let bundled_path = super::find_bundled_slirp4netns(remote_platform);
+        let installed_runs = self
+            .run_docker_exec(
+                &dst_path.display(self.path_style()),
+                Some(remote_dir_for_server),
+                &Default::default(),
+                &["--version"],
+            )
+            .await
+            .is_ok();
+        if installed_runs {
+            match &bundled_path {
+                None => return Ok(()),
+                Some(bundled_path) => {
+                    if self.installed_file_matches(&dst_path, bundled_path).await {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        let Some(bundled_path) = bundled_path else {
+            anyhow::bail!("no slirp4netns bundled next to this executable");
+        };
+        log::info!(
+            "installing bundled slirp4netns for the container sandbox: {}",
+            bundled_path.display()
+        );
+        self.install_local_binary(
+            &bundled_path,
+            &dst_path,
+            remote_dir_for_server,
+            delegate,
+            cx,
+        )
+        .await
+        .context("installing bundled slirp4netns")
+    }
+
+    /// The temporary upload keeps the source's file name, whose `.gz` extension
+    /// is what `extract_server_binary` decides to decompress on.
+    async fn install_local_binary(
+        &self,
+        src_path: &Path,
+        dst_path: &RelPath,
+        remote_dir_for_server: &str,
+        delegate: &Arc<dyn RemoteClientDelegate>,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        let tmp_path = super::remote_upload_temp_path(src_path)?;
+        self.upload_local_server_binary(src_path, &tmp_path, remote_dir_for_server, delegate, cx)
+            .await?;
+        self.extract_server_binary(dst_path, &tmp_path, remote_dir_for_server, delegate, cx)
+            .await
+    }
+
+    /// Whether the container's `path` holds exactly the bytes of the local
+    /// `source`.
+    async fn installed_file_matches(&self, path: &RelPath, source: &Path) -> bool {
+        let local = match super::sha256_of_file(source).await {
+            Ok(digest) => digest,
+            Err(error) => {
+                log::warn!("could not hash {}: {error:#}", source.display());
+                return false;
+            }
+        };
+        self.remote_file_digest(path)
+            .await
+            .is_some_and(|remote| remote.sha256 == local)
+    }
+
+    async fn remote_file_digest(&self, path: &RelPath) -> Option<super::RemoteFileDigest> {
+        let path = path.display(self.path_style());
+        match self
+            .run_docker_exec(
+                "sh",
+                Some(self.remote_dir_for_server.as_str()),
+                &Default::default(),
+                &["-c", super::REMOTE_FILE_DIGEST_SCRIPT, "zed-digest", &*path],
+            )
+            .await
+        {
+            Ok(output) => super::parse_remote_file_digest(&output),
+            Err(error) => {
+                log::debug!("could not hash {path} in the container: {error:#}");
+                None
+            }
+        }
+    }
+
+    /// Whether `program` is this connection's own server binary, which a
+    /// terminal only ever runs as the ADR-F18 sandbox helper.
+    fn is_sandbox_helper(&self, program: &str) -> bool {
+        self.remote_binary_relpath
+            .as_ref()
+            .is_some_and(|path| path.display(self.path_style()) == program)
+    }
+
+    /// ADR-F46: `docker exec` starts the static helper itself, by absolute path
+    /// because without `-w` the working directory is the container's rather than
+    /// the home the path is relative to, and with neither the caller's
+    /// environment nor the container's `remoteEnv`: both come from the project,
+    /// and on the helper's own process they would act before the sandbox exists
+    /// (it reads `HOME` and `PATH` itself). The command's environment travels in
+    /// its argv, as `--setenv`.
+    fn build_sandbox_helper_command(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &HashMap<String, String>,
+        interactive: Interactive,
+    ) -> Result<CommandTemplate> {
+        anyhow::ensure!(
+            env.is_empty(),
+            "the sandbox helper takes the command's environment through --setenv"
+        );
+        let helper = format!(
+            "{}/{program}",
+            self.remote_dir_for_server.trim_end_matches('/')
+        );
+        let mut docker_args = vec![
+            "exec".to_string(),
+            "-u".to_string(),
+            self.connection_options.remote_user.clone(),
+        ];
+        docker_args.push(
+            match interactive {
+                Interactive::Yes => "-it",
+                Interactive::No => "-i",
+            }
+            .to_string(),
+        );
+        docker_args.push(self.connection_options.container_id.clone());
+        docker_args.push(helper);
+        docker_args.extend(args.iter().cloned());
+        Ok(CommandTemplate {
+            program: self.docker_cli().to_string(),
+            args: docker_args,
+            env: Default::default(),
+        })
+    }
+
     async fn docker_user_home_dir(&self) -> Result<String> {
         self.run_docker_exec_delimited("echo $HOME").await
     }
@@ -358,31 +574,8 @@ impl DockerExecConnection {
         cx: &mut AsyncApp,
     ) -> Result<()> {
         delegate.set_status(Some("リモート開発サーバーを展開しています"), cx);
-        let server_mode = 0o755;
-
-        let shell_kind = ShellKind::Posix;
-        let orig_tmp_path = tmp_path.display(self.path_style());
-        let server_mode = format!("{:o}", server_mode);
-        let server_mode = shell_kind
-            .try_quote(&server_mode)
-            .context("shell quoting")?;
-        let dst_path = dst_path.display(self.path_style());
-        let dst_path = shell_kind.try_quote(&dst_path).context("shell quoting")?;
-        let script = if let Some(tmp_path) = orig_tmp_path.strip_suffix(".gz") {
-            let orig_tmp_path = shell_kind
-                .try_quote(&orig_tmp_path)
-                .context("shell quoting")?;
-            let tmp_path = shell_kind.try_quote(&tmp_path).context("shell quoting")?;
-            format!(
-                "gunzip -f {orig_tmp_path} && chmod {server_mode} {tmp_path} && mv {tmp_path} {dst_path}",
-            )
-        } else {
-            let orig_tmp_path = shell_kind
-                .try_quote(&orig_tmp_path)
-                .context("shell quoting")?;
-            format!("chmod {server_mode} {orig_tmp_path} && mv {orig_tmp_path} {dst_path}",)
-        };
-        let args = shell_kind.args_for_shell(false, script.to_string());
+        let script = install_uploaded_binary_script(tmp_path, dst_path, self.path_style())?;
+        let args = ShellKind::Posix.args_for_shell(false, script);
         self.run_docker_exec(
             "sh",
             Some(&remote_dir_for_server),
@@ -390,7 +583,7 @@ impl DockerExecConnection {
             &args,
         )
         .await
-        .log_err();
+        .context("unpacking the uploaded binary into place")?;
         Ok(())
     }
 
@@ -776,6 +969,12 @@ impl RemoteConnection for DockerExecConnection {
         _port_forward: Option<(u16, String, u16)>,
         interactive: Interactive,
     ) -> Result<CommandTemplate> {
+        if let Some(program) = &program
+            && self.is_sandbox_helper(program)
+        {
+            return self.build_sandbox_helper_command(program, args, env, interactive);
+        }
+
         let mut parsed_working_dir = None;
 
         let path_style = self.path_style();
@@ -876,5 +1075,194 @@ impl RemoteConnection for DockerExecConnection {
 
     fn default_system_shell(&self) -> String {
         String::from("/bin/sh")
+    }
+
+    // ADR-F46: exposed even though Docker's default seccomp profile allows
+    // `unshare` only with CAP_SYS_ADMIN, so in most containers the ADR-F18
+    // helper refuses to start (exit 126). Refusing is the point: without this
+    // path, agent commands ran in the container unwrapped.
+    fn remote_server_binary_path(&self) -> Option<Arc<RelPath>> {
+        self.remote_binary_relpath.clone()
+    }
+}
+
+/// Unpacks an uploaded binary (gunzipping it first when it is a `.gz`), makes it
+/// executable and renames it over `dst_path`, so nothing ever runs a
+/// half-written file.
+fn install_uploaded_binary_script(
+    tmp_path: &RelPath,
+    dst_path: &RelPath,
+    path_style: PathStyle,
+) -> Result<String> {
+    let shell_kind = ShellKind::Posix;
+    let tmp_path = tmp_path.display(path_style);
+    let uploaded = shell_kind.try_quote(&tmp_path).context("shell quoting")?;
+    let dst_path = dst_path.display(path_style);
+    let dst_path = shell_kind.try_quote(&dst_path).context("shell quoting")?;
+    Ok(match tmp_path.strip_suffix(".gz") {
+        Some(unpacked) => {
+            let unpacked = shell_kind.try_quote(unpacked).context("shell quoting")?;
+            format!("gunzip -f {uploaded} && chmod 755 {unpacked} && mv {unpacked} {dst_path}")
+        }
+        None => format!("chmod 755 {uploaded} && mv {uploaded} {dst_path}"),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn connection_with_server_binary(
+        remote_binary_relpath: Option<Arc<RelPath>>,
+    ) -> DockerExecConnection {
+        DockerExecConnection {
+            proxy_process: Mutex::new(None),
+            remote_dir_for_server: "/home/vscode".to_string(),
+            remote_binary_relpath,
+            connection_options: DockerConnectionOptions::default(),
+            remote_platform: Some(RemotePlatform {
+                os: RemoteOs::Linux,
+                arch: RemoteArch::X86_64,
+            }),
+            os_version: None,
+            path_style: Some(PathStyle::Unix),
+            shell: "/bin/bash".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_remote_server_binary_path_is_exposed_for_the_sandbox_helper() {
+        assert_eq!(
+            connection_with_server_binary(None).remote_server_binary_path(),
+            None
+        );
+
+        let installed: Arc<RelPath> = paths::remote_server_dir_relative()
+            .join(RelPath::from_unix_str("zed-remote-server-stable-1.17.2").unwrap())
+            .into();
+        assert_eq!(
+            connection_with_server_binary(Some(installed.clone())).remote_server_binary_path(),
+            Some(installed)
+        );
+    }
+
+    #[test]
+    fn test_sandbox_helper_is_executed_directly() {
+        let helper = ".zed_server/zed-remote-server-stable-1.17.2";
+        let installed: Arc<RelPath> = RelPath::from_unix_str(helper).unwrap().into();
+        let mut connection = connection_with_server_binary(Some(installed));
+        connection.connection_options.container_id = "container".to_string();
+        connection.connection_options.remote_user = "vscode".to_string();
+        connection.connection_options.remote_env = BTreeMap::from_iter([(
+            "LD_PRELOAD".to_string(),
+            "/workspaces/project/x.so".to_string(),
+        )]);
+        let args = vec![
+            "--remote-sandbox-helper".to_string(),
+            "--".to_string(),
+            "/bin/sh".to_string(),
+        ];
+
+        let command = connection
+            .build_command(
+                Some(helper.to_string()),
+                &args,
+                &HashMap::default(),
+                Some("/workspaces/project".to_string()),
+                None,
+                Interactive::Yes,
+            )
+            .unwrap();
+        assert_eq!(command.program, "docker");
+        assert_eq!(
+            command.args,
+            [
+                "exec",
+                "-u",
+                "vscode",
+                "-it",
+                "container",
+                "/home/vscode/.zed_server/zed-remote-server-stable-1.17.2",
+                "--remote-sandbox-helper",
+                "--",
+                "/bin/sh"
+            ],
+            "no `-w`, no `-e`: the container's `remoteEnv` comes from the project"
+        );
+
+        let environment = HashMap::from_iter([("A".to_string(), "B".to_string())]);
+        assert!(
+            connection
+                .build_command(
+                    Some(helper.to_string()),
+                    &args,
+                    &environment,
+                    None,
+                    None,
+                    Interactive::Yes
+                )
+                .is_err()
+        );
+
+        let command = connection
+            .build_command(
+                Some("ls".to_string()),
+                &[],
+                &HashMap::default(),
+                None,
+                None,
+                Interactive::No,
+            )
+            .unwrap();
+        assert!(
+            command
+                .args
+                .iter()
+                .any(|arg| arg == "LD_PRELOAD=/workspaces/project/x.so"),
+            "any other program keeps the container's `remoteEnv`"
+        );
+    }
+
+    #[test]
+    fn test_install_uploaded_binary_script() {
+        // The bundled server artifact is gzipped.
+        let script = install_uploaded_binary_script(
+            RelPath::from_unix_str(".zed_server/download-7-zed-remote-server-linux-x86_64.gz")
+                .unwrap(),
+            RelPath::from_unix_str(".zed_server/zed-remote-server-stable-1.17.2").unwrap(),
+            PathStyle::Unix,
+        )
+        .unwrap();
+        assert_eq!(
+            script,
+            "gunzip -f .zed_server/download-7-zed-remote-server-linux-x86_64.gz \
+             && chmod 755 .zed_server/download-7-zed-remote-server-linux-x86_64 \
+             && mv .zed_server/download-7-zed-remote-server-linux-x86_64 \
+             .zed_server/zed-remote-server-stable-1.17.2"
+        );
+
+        // slirp4netns ships uncompressed.
+        let script = install_uploaded_binary_script(
+            RelPath::from_unix_str(".zed_server/download-7-slirp4netns-linux-x86_64").unwrap(),
+            RelPath::from_unix_str(".zed_server/slirp4netns").unwrap(),
+            PathStyle::Unix,
+        )
+        .unwrap();
+        assert_eq!(
+            script,
+            "chmod 755 .zed_server/download-7-slirp4netns-linux-x86_64 \
+             && mv .zed_server/download-7-slirp4netns-linux-x86_64 .zed_server/slirp4netns"
+        );
+
+        let script = install_uploaded_binary_script(
+            RelPath::from_unix_str("my dir/download-7-x").unwrap(),
+            RelPath::from_unix_str("my dir/x").unwrap(),
+            PathStyle::Unix,
+        )
+        .unwrap();
+        assert_eq!(
+            script,
+            "chmod 755 'my dir/download-7-x' && mv 'my dir/download-7-x' 'my dir/x'"
+        );
     }
 }

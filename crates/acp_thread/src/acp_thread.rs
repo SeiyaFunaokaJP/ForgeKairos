@@ -190,6 +190,12 @@ pub struct SandboxAuthorizationDetails {
     /// shown to the user (attributed to the agent) in the approval prompt.
     #[serde(default)]
     pub reason: String,
+    /// ADR-F46: set when the command will run outside any sandbox, with Zed's
+    /// own permissions, to the user-facing reason (sandboxing turned off in
+    /// settings, or unavailable for this kind of project). Drives the warning
+    /// on that command's approval card, which offers only a one-time allow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outside_sandbox_reason: Option<String>,
 }
 
 pub fn meta_with_sandbox_authorization(details: SandboxAuthorizationDetails) -> acp::Meta {
@@ -209,22 +215,22 @@ pub fn sandbox_authorization_details_from_meta(
 
 pub const SANDBOX_FALLBACK_AUTHORIZATION_META_KEY: &str = "sandbox_fallback_authorization";
 
-/// Stable `PermissionOption` id for the "Retry" choice in the sandbox
-/// *fallback* prompt (shown when the OS sandbox can't be created on this
-/// system). The remaining choices reuse the [`SandboxPermission`] ids.
+/// Stable `PermissionOption` id for the "Retry" choice on the card shown when
+/// the OS sandbox can't be created on this system. The other choice (cancel)
+/// reuses [`SandboxPermission::Deny`]'s id; running the command without a
+/// sandbox is not offered (ADR-F46).
 pub const SANDBOX_FALLBACK_RETRY_OPTION_ID: &str = "retry";
 
 /// Details shown when the OS sandbox could not be created for a command and
-/// the user is asked whether to run it without a sandbox. Distinct from
-/// [`SandboxAuthorizationDetails`] (a model-requested *escalation*): here the
-/// sandbox itself failed, so the prompt explains why and offers a retry.
+/// the user is asked to fix the environment and retry, or cancel. Distinct
+/// from [`SandboxAuthorizationDetails`] (a model-requested *escalation*): here
+/// the sandbox itself failed, so the card explains why.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SandboxFallbackAuthorizationDetails {
     #[serde(default)]
     pub command: Option<String>,
     /// Human-readable reason the OS sandbox could not be created (for example,
-    /// "bwrap not found on PATH"), shown to the user so they can decide
-    /// whether to run the command without a sandbox.
+    /// "bwrap not found on PATH"), shown to the user so they know what to fix.
     #[serde(default)]
     pub reason: String,
     /// Slug of the sandboxing docs section that best explains how to fix this
@@ -253,16 +259,10 @@ pub fn sandbox_fallback_authorization_details_from_meta(
 
 /// Meta key recording why the OS sandbox was not applied to a terminal tool
 /// call, even though sandboxing was active for the thread. The value is a
-/// serialized [`SandboxNotAppliedReason`]. Surfaced as a warning in the UI and
-/// used to explain the situation to both the user and the agent.
+/// serialized [`SandboxNotAppliedReason`]. Only builds before ADR-F46 wrote it
+/// (a sandboxed command can no longer fall back to running without one); it is
+/// still read so tool calls in older threads keep their warning.
 pub const SANDBOX_NOT_APPLIED_META_KEY: &str = "sandbox_not_applied";
-
-pub fn meta_with_sandbox_not_applied(reason: &SandboxNotAppliedReason) -> acp::Meta {
-    acp::Meta::from_iter([(
-        SANDBOX_NOT_APPLIED_META_KEY.into(),
-        serde_json::to_value(reason).unwrap_or_default(),
-    )])
-}
 
 pub fn sandbox_not_applied_from_meta(meta: &Option<acp::Meta>) -> Option<SandboxNotAppliedReason> {
     meta.as_ref()
@@ -4392,10 +4392,20 @@ impl AcpThread {
         sandbox_wrap: Option<SandboxWrap>,
         cx: &mut Context<Self>,
     ) -> Task<Result<Entity<Terminal>>> {
+        // ADR-F46: a sandboxed command never has an environment captured for
+        // it. Capturing runs the user's login shell and its `cd` hooks (direnv
+        // and the like) in the directory the model picked, outside the sandbox;
+        // such a command reuses what the project already captured for the
+        // worktree root, or goes without.
         let env = match &cwd {
             Some(dir) => self.project.update(cx, |project, cx| {
                 project.environment().update(cx, |env, cx| {
-                    env.directory_environment(dir.as_path().into(), cx)
+                    if sandbox_wrap.is_some() {
+                        env.cached_worktree_environment(dir, cx)
+                            .unwrap_or_else(|| Task::ready(None).shared())
+                    } else {
+                        env.directory_environment(dir.as_path().into(), cx)
+                    }
                 })
             }),
             None => Task::ready(None).shared(),
@@ -4418,6 +4428,8 @@ impl AcpThread {
         // setup fails with `ENOTTY`. Run the command non-interactively and
         // without a PTY in that case.
         let headless = HeadlessTerminal::is_enabled(cx);
+        #[cfg(target_os = "windows")]
+        let editor_network_allowlist = editor_network_allowlist(cx);
 
         let terminal_id = acp::TerminalId::new(Uuid::new_v4().to_string());
         let terminal_task = cx.spawn({
@@ -4432,12 +4444,13 @@ impl AcpThread {
                     })
                     .unwrap_or_else(|| get_default_system_shell_preferring_bash());
 
-                // ADR-F18: an SSH-remote Linux project enforces the sandbox on
-                // the remote host. When one is requested, rewrite the command to
-                // invoke the on-host helper (`--remote-sandbox-helper`) and skip
-                // the client-side (WSL/bwrap/Seatbelt) sandbox path entirely. The
-                // helper does its own network proxy + FS jail on the remote, so
-                // no client-side `Sandbox` handle is created.
+                // ADR-F18: a remote Linux project (SSH, WSL remote or Docker)
+                // enforces the sandbox on the remote host. When one is requested,
+                // rewrite the command to invoke the on-host helper
+                // (`--remote-sandbox-helper`) and skip the client-side
+                // (WSL/bwrap/Seatbelt) sandbox path entirely. The helper does its
+                // own network proxy + FS jail on the remote, so no client-side
+                // `Sandbox` handle is created.
                 let remote_helper_binary = if sandbox_wrap.is_some() {
                     project.update(cx, |project, cx| {
                         if project.remote_supports_agent_sandbox(cx) {
@@ -4451,32 +4464,46 @@ impl AcpThread {
                 } else {
                     None
                 };
+                let route =
+                    terminal_spawn_route(sandbox_wrap.as_ref(), remote_helper_binary.is_some())?;
                 if let Some(remote_binary) = remote_helper_binary {
-                    let wrap = sandbox_wrap
-                        .expect("a remote helper binary is only resolved when a wrap was requested");
+                    let wrap = sandbox_wrap.expect(
+                        "a remote helper binary is only resolved when a wrap was requested",
+                    );
                     let (inner_command, inner_args) =
                         task::ShellBuilder::new(&Shell::Program(shell), false)
                             .non_interactive()
                             .redirect_stdin_to_dev_null()
                             .build(Some(command.clone()), &args);
+                    // ADR-F46: everything the command sees goes in through the
+                    // helper, in the order the terminal used to layer it; the
+                    // process that starts the helper gets none of it.
+                    let (mut environment, zed_environment) = project.update(cx, |project, cx| {
+                        (
+                            project.terminal_settings_environment(cwd.as_deref(), cx),
+                            project::terminals::zed_terminal_environment(cx),
+                        )
+                    });
+                    environment.extend(env);
+                    environment.extend(zed_environment);
                     let (task_command, task_args) = build_remote_sandbox_command(
                         &remote_binary,
                         &wrap,
                         cwd.as_deref(),
+                        &environment,
                         inner_command,
                         inner_args,
                     );
                     let terminal = project
                         .update(cx, |project, cx| {
-                            project.create_terminal_task(
+                            project.create_sandboxed_terminal_task(
                                 task::SpawnInTerminal {
                                     command: Some(task_command),
                                     args: task_args,
-                                    // `cwd: None`: the helper is invoked via a
-                                    // `$HOME`-relative path and does its own
-                                    // `--chdir`, so ssh's own cwd is irrelevant.
+                                    // `cwd: None`: the helper's path is relative
+                                    // to the remote home, where the transport
+                                    // starts it, and it `--chdir`s itself.
                                     cwd: None,
-                                    env,
                                     ..Default::default()
                                 },
                                 cx,
@@ -4497,36 +4524,66 @@ impl AcpThread {
                     }));
                 }
 
+                // ADR-F46: `terminal.env` from settings goes inside the sandbox
+                // (see `prefix_environment`), not onto the sandbox's own process.
+                let settings_environment = project.update(cx, |project, cx| {
+                    project.terminal_settings_environment(cwd.as_deref(), cx)
+                });
+
                 // The sandbox owns the network proxy (for restricted-network
                 // policies) and injects the child's proxy env vars, returning
-                // the env to spawn with. On Windows, restricted host access is
-                // rejected inside the sandbox before command preparation.
+                // the env to spawn with. On Windows that proxy is the sandbox
+                // helper's own, inside WSL.
                 #[cfg(target_os = "windows")]
                 let (task_command, task_args, task_env, sandbox, spawn_cwd) =
-                    if sandbox_wrap.is_some() {
-                        let (task_command, task_args) = task::ShellBuilder::new(
-                            &Shell::Program("/bin/sh".to_string()),
-                            false,
-                        )
-                        .non_interactive()
-                        .redirect_stdin_to_dev_null()
-                        .build(Some(command.clone()), &args);
-                        let wrap = cx.background_spawn(prepare_sandbox_wrap(
-                            task_command,
-                            task_args,
-                            cwd.clone(),
-                            sandbox_wrap,
-                            env,
-                        ));
-                        let timeout = cx.background_executor().timer(WSL_SANDBOX_WRAP_TIMEOUT);
-                        let (task_command, task_args, task_env, sandbox) = futures::select_biased! {
-                            result = wrap.fuse() => result?,
-                            _ = timeout.fuse() => return Err(anyhow::Error::new(
-                                sandbox::SandboxError::WslUnavailable(format!(
-                                    "WSL did not respond within {} seconds while preparing the sandboxed command",
-                                    WSL_SANDBOX_WRAP_TIMEOUT.as_secs()
-                                )),
-                            )),
+                    if let Some(sandbox_wrap) = sandbox_wrap {
+                        let (task_command, task_args) =
+                            task::ShellBuilder::new(&Shell::Program("/bin/sh".to_string()), false)
+                                .non_interactive()
+                                .redirect_stdin_to_dev_null()
+                                .build(Some(command.clone()), &args);
+                        // `terminal.env` here is Windows configuration: what the
+                        // WSL backend keeps out of Linux (`PATH`, `HOME`, ...)
+                        // stays out of this path too.
+                        let settings_environment = settings_environment
+                            .iter()
+                            .filter(|(name, _)| sandbox::is_forwardable_env_var(name))
+                            .map(|(name, value)| (name.clone(), value.clone()))
+                            .collect();
+                        let (task_command, task_args) =
+                            prefix_environment(task_command, task_args, &settings_environment);
+                        // Dropping a timed-out attempt kills its `wsl.exe`.
+                        let mut attempt = 1;
+                        let (task_command, task_args, task_env, sandbox) = loop {
+                            let wrap = cx.background_spawn(prepare_sandbox_wrap(
+                                task_command.clone(),
+                                task_args.clone(),
+                                cwd.clone(),
+                                Some(sandbox_wrap.clone()),
+                                env.clone(),
+                                editor_network_allowlist.clone(),
+                            ));
+                            let timeout = cx.background_executor().timer(WSL_SANDBOX_WRAP_TIMEOUT);
+                            let finished = futures::select_biased! {
+                                result = wrap.fuse() => Some(result),
+                                _ = timeout.fuse() => None,
+                            };
+                            if let Some(result) = finished {
+                                break result?;
+                            }
+                            if attempt >= WSL_SANDBOX_WRAP_ATTEMPTS {
+                                return Err(anyhow::Error::new(
+                                    sandbox::SandboxError::WslUnavailable(
+                                        wsl_sandbox_timeout_message(),
+                                    ),
+                                ));
+                            }
+                            log::warn!(
+                                "WSL did not respond within {} seconds while preparing a \
+                                 sandboxed command; trying again",
+                                WSL_SANDBOX_WRAP_TIMEOUT.as_secs()
+                            );
+                            attempt += 1;
                         };
                         (task_command, task_args, task_env, sandbox, None)
                     } else {
@@ -4553,6 +4610,11 @@ impl AcpThread {
                     let (task_command, task_args) = builder
                         .redirect_stdin_to_dev_null()
                         .build(Some(command.clone()), &args);
+                    let (task_command, task_args) = if sandbox_wrap.is_some() {
+                        prefix_environment(task_command, task_args, &settings_environment)
+                    } else {
+                        (task_command, task_args)
+                    };
                     let (task_command, task_args, task_env, sandbox) = cx
                         .background_spawn(prepare_sandbox_wrap(
                             task_command,
@@ -4564,18 +4626,23 @@ impl AcpThread {
                         .await?;
                     (task_command, task_args, task_env, sandbox, cwd.clone())
                 };
+                // ADR-F46: a wrapped command's terminal adds nothing of its own
+                // outside the wrapper; an unwrapped one keeps the full terminal.
+                let sandboxed = route == TerminalSpawnRoute::LocalSandbox;
                 let terminal = project
                     .update(cx, |project, cx| {
-                        project.create_terminal_task(
-                            task::SpawnInTerminal {
-                                command: Some(task_command),
-                                args: task_args,
-                                cwd: spawn_cwd,
-                                env: task_env,
-                                ..Default::default()
-                            },
-                            cx,
-                        )
+                        let spawn_task = task::SpawnInTerminal {
+                            command: Some(task_command),
+                            args: task_args,
+                            cwd: spawn_cwd,
+                            env: task_env,
+                            ..Default::default()
+                        };
+                        if sandboxed {
+                            project.create_sandboxed_terminal_task(spawn_task, cx)
+                        } else {
+                            project.create_terminal_task(spawn_task, cx)
+                        }
                     })
                     .await?;
 

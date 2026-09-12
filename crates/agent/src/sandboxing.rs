@@ -6,24 +6,24 @@
 //! place instead of scattered across the agent crate).
 //!
 //! The current policy is: enabled iff the user has the `sandboxing` feature
-//! flag turned on, the project is local, the platform has an integration, and
-//! the user has not persistently allowed unsandboxed execution (the
-//! `allow_unsandboxed` sandbox setting). Setting `allow_unsandboxed`
-//! persistently turns sandboxing off for the model-facing surface entirely:
-//! the plain (non-sandboxed) `terminal` tool is exposed and the system prompt
-//! omits the sandbox section, since every command would run without a wrap
-//! anyway.
+//! flag turned on, the project is local (or, ADR-F18, a remote Linux host
+//! reached over SSH, WSL or Docker), the platform has an integration, and the
+//! user has not turned sandboxing off (the `allow_unsandboxed` sandbox
+//! setting). Setting `allow_unsandboxed` turns sandboxing off for the
+//! model-facing surface entirely: the plain (non-sandboxed) `terminal` tool is
+//! exposed and the system prompt omits the sandbox section, since every command
+//! would run without a wrap anyway.
 //!
-//! The model cannot ask to run a command outside the sandbox (ADR-F41). Short
-//! of that setting, a command only runs without one when the sandbox could not
-//! be created and the user chose to go ahead in the fallback prompt; choosing
-//! that "for this thread" does NOT change the prompt/tool set. See
-//! `sandboxing_enabled_for_project` and `ThreadSandboxGrants`.
+//! Short of that setting (or a project kind without a sandbox), a command
+//! never runs outside the sandbox: the model cannot ask for it (ADR-F41), and
+//! when the sandbox cannot be created the user can only retry or cancel
+//! (ADR-F46). Commands that do run unwrapped are never auto-approved; see
+//! `crate::decide_terminal_permission`.
 //!
-//! macOS (Seatbelt), Linux (Bubblewrap), and Windows (Bubblewrap via WSL)
-//! have real sandbox integrations; on platforms without one the per-command
-//! wrap is a no-op, so commands run with the agent's ambient permissions even
-//! when the flag is on.
+//! macOS (Seatbelt), Linux (Bubblewrap), and Windows (the ADR-F18 sandbox
+//! helper inside WSL) have real sandbox integrations; on platforms without one
+//! the per-command wrap is a no-op, so commands run with the agent's ambient
+//! permissions even when the flag is on.
 //!
 //! Naming note: this module is about agent terminal sandboxing specifically.
 //! Other agent operations (e.g. file edits) are gated separately.
@@ -103,23 +103,6 @@ pub enum ThreadSandbox {
 }
 
 impl ThreadSandbox {
-    /// Combine two layers (e.g. the persistent settings and this thread's
-    /// grants).
-    ///
-    /// This is treated as an allowlist - i.e. merging a sandbox that allows
-    /// resource A with a sandbox that allows resource B creates a sandbox with
-    /// access to both resource A and resource B.
-    pub fn merge(self, other: ThreadSandbox) -> ThreadSandbox {
-        match (self, other) {
-            (ThreadSandbox::Unsandboxed, _) | (_, ThreadSandbox::Unsandboxed) => {
-                ThreadSandbox::Unsandboxed
-            }
-            (ThreadSandbox::Sandboxed(a), ThreadSandbox::Sandboxed(b)) => {
-                ThreadSandbox::Sandboxed(a.merge(b))
-            }
-        }
-    }
-
     /// Whether no OS sandbox is applied.
     pub fn is_unsandboxed(&self) -> bool {
         matches!(self, ThreadSandbox::Unsandboxed)
@@ -132,22 +115,31 @@ impl ThreadSandbox {
         match self {
             ThreadSandbox::Unsandboxed => ThreadSandbox::Unsandboxed,
             ThreadSandbox::Sandboxed(policy) => {
-                // Capture each protected location (pinning its inode / canonical
-                // path). A location that can't be captured is dropped — fail-closed.
-                let protected_paths = protected_paths
-                    .into_iter()
-                    .filter_map(|path| HostFilesystemLocation::capture(path).ok())
-                    .collect();
-                ThreadSandbox::Sandboxed(policy.with_protected_paths(protected_paths))
+                ThreadSandbox::Sandboxed(policy_with_protected_paths(policy, protected_paths))
             }
         }
     }
 }
 
+/// Attach the project's protected paths (see [`sandbox_git_dirs`]) to a
+/// sandbox policy, such as the one this thread's grants establish.
+pub(crate) fn policy_with_protected_paths(
+    policy: SandboxPolicy,
+    protected_paths: Vec<PathBuf>,
+) -> SandboxPolicy {
+    // Capture each protected location (pinning its inode / canonical path). A
+    // location that can't be captured is dropped — fail-closed.
+    let protected_paths = protected_paths
+        .into_iter()
+        .filter_map(|path| HostFilesystemLocation::capture(path).ok())
+        .collect();
+    policy.with_protected_paths(protected_paths)
+}
+
 /// The sandbox the user's persistent settings establish for every thread, as a
 /// [`ThreadSandbox`]. The persistent `allow_unsandboxed` setting removes the
 /// sandbox entirely; otherwise the writable-path and host grants form its
-/// scope. The per-thread overrides come from [`ThreadSandboxGrants::thread_sandbox`].
+/// scope. The per-thread overrides come from [`ThreadSandboxGrants::to_policy`].
 pub fn settings_thread_sandbox(persistent: &SandboxPermissions) -> ThreadSandbox {
     if persistent.allow_unsandboxed {
         ThreadSandbox::Unsandboxed
@@ -198,11 +190,8 @@ pub fn settings_sandbox_policy(persistent: &SandboxPermissions) -> SandboxPolicy
 /// The persistent `allow_unsandboxed` setting turns sandboxing off for the
 /// model-facing surface: when it's set we expose the plain `terminal` tool and
 /// omit the sandbox section from the system prompt, because every command would
-/// run without a wrap regardless. This is deliberately keyed off the
-/// *persistent* setting only. Running a thread's commands without a sandbox
-/// after it could not be created (tracked in `ThreadSandboxGrants`) keeps the
-/// sandboxed tool and prompt in place; each such command's result tells the
-/// model it ran without one.
+/// run without a wrap regardless (and, per ADR-F46, ask for approval each
+/// time).
 pub(crate) fn sandboxing_enabled_for_project(project: &Project, cx: &App) -> bool {
     sandboxing_available_for_project(project, cx)
         && !AgentSettings::get_global(cx)
@@ -218,17 +207,17 @@ pub(crate) fn sandboxing_enabled(cx: &App) -> bool {
 
 /// Whether sandboxing is *applicable* for this project at all — the feature is
 /// enabled, the platform has a sandbox integration, and the project is either
-/// local or (ADR-F18) an SSH-remote Linux host that can enforce the sandbox on
-/// its side. Independent of the persistent `allow_unsandboxed` setting. Used by
-/// the UI to distinguish "sandboxing isn't relevant here" (don't show the
-/// indicator) from "sandboxing is available but turned off in settings" (show
-/// it, struck out).
+/// local or (ADR-F18) a remote Linux host (over SSH, WSL or Docker) whose remote
+/// server can enforce the sandbox on its side. Independent of the persistent
+/// `allow_unsandboxed` setting. Used by the UI to distinguish "sandboxing isn't
+/// relevant here" (don't show the indicator) from "sandboxing is available but
+/// turned off in settings" (show it, struck out).
 pub(crate) fn sandboxing_available_for_project(project: &Project, cx: &App) -> bool {
     if !sandboxing_enabled(cx) {
         return false;
     }
-    // ADR-F18: an SSH-remote Linux project enforces the sandbox on the remote
-    // host, so it is available regardless of the client's own OS.
+    // ADR-F18: a remote Linux project (SSH, WSL or Docker) enforces the sandbox
+    // on the remote host, so it is available regardless of the client's own OS.
     if project.remote_supports_agent_sandbox(cx) {
         return true;
     }
@@ -238,6 +227,32 @@ pub(crate) fn sandboxing_available_for_project(project: &Project, cx: &App) -> b
             target_os = "linux",
             target_os = "windows"
         ))
+}
+
+/// Why agent terminal commands in this project run outside any sandbox, shown
+/// on the approval card that every such command gets (ADR-F46).
+pub(crate) fn unsandboxed_execution_reason(project: &Project, cx: &App) -> String {
+    if sandboxing_available_for_project(project, cx) {
+        return "設定でサンドボックスが無効になっています".to_string();
+    }
+    let project_kind = if project.is_via_collab() {
+        "共同編集"
+    } else if let Some(remote_client) = project.remote_client() {
+        let remote_client = remote_client.read(cx);
+        match remote_client.connection_type() {
+            "wsl" => "WSL リモート",
+            "docker" => "Docker",
+            "podman" => "Podman",
+            "ssh" if remote_client.remote_platform().os.as_str() != "linux" => "SSH (Linux 以外)",
+            "ssh" => "SSH",
+            _ => "リモート",
+        }
+    } else if !sandboxing_enabled(cx) {
+        "サンドボックス機能が無効"
+    } else {
+        "この OS には未対応"
+    };
+    format!("このプロジェクトではサンドボックスを使えません ({project_kind})")
 }
 
 /// Network escalation requested for (or granted to) a sandboxed command.
@@ -309,6 +324,11 @@ impl SandboxRequest {
 /// call's event stream so a later command requesting an already-granted
 /// permission can skip the approval prompt. Persistent "allow always" grants
 /// are stored separately in [`SandboxPermissions`].
+///
+/// Unrestricted writes (`allow_fs_write_all`) are never granted for a thread:
+/// writing anywhere but the protected paths is nearly the same as running
+/// outside the sandbox, so they're only ever allowed once per command or
+/// through the settings switch (ADR-F46).
 #[derive(Default)]
 pub(crate) struct ThreadSandboxGrants {
     /// Whether arbitrary-host network access has been granted for the thread.
@@ -316,13 +336,6 @@ pub(crate) struct ThreadSandboxGrants {
     /// Host patterns granted network access for the thread. Each covers its
     /// whole subdomain space; redundant entries are pruned on insert.
     network_hosts: Vec<HostPattern>,
-    allow_fs_write_all: bool,
-    /// Whether the user approved running commands *without* a sandbox for the
-    /// rest of the thread when the OS sandbox could not be created (the
-    /// fallback prompt's "Allow for this thread"). This is a user-acknowledged
-    /// degradation because the sandbox is unavailable; the model has no way to
-    /// request it (ADR-F41).
-    sandbox_fallback: bool,
     /// Paths granted write access for the thread, each paired with the canonical
     /// target resolved at approval time. Each covers its whole subtree; redundant
     /// children are pruned on insert (by canonical target).
@@ -347,13 +360,12 @@ impl ThreadSandboxGrants {
             return false;
         }
 
-        if request.allow_fs_write_all && !(self.allow_fs_write_all || persistent.allow_fs_write_all)
-        {
+        if request.allow_fs_write_all && !persistent.allow_fs_write_all {
             return false;
         }
-        // A full-access write grant covers any concrete write request at the
-        // authorization layer; protected paths are enforced by the sandbox.
-        if self.allow_fs_write_all || persistent.allow_fs_write_all {
+        // The full-access write setting covers any concrete write request at
+        // the authorization layer; protected paths are enforced by the sandbox.
+        if persistent.allow_fs_write_all {
             return true;
         }
         request.write_paths.iter().all(|request| {
@@ -389,59 +401,24 @@ impl ThreadSandboxGrants {
         }
     }
 
-    /// Whether the user allowed running commands unsandboxed for the rest of
-    /// the thread (the fallback prompt's "Allow for this thread"). Distinct
-    /// from the persistent `allow_unsandboxed` setting.
-    pub fn fallback_granted_for_thread(&self) -> bool {
-        self.sandbox_fallback
-    }
-
-    /// Record that the user approved running commands unsandboxed for the rest
-    /// of the thread when the sandbox can't be created. Only the Bubblewrap
-    /// sandboxes (Linux directly, Windows via WSL) can fail to create a
-    /// sandbox, so this is gated to those platforms.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn record_fallback(&mut self) {
-        self.sandbox_fallback = true;
-    }
-
-    /// The sandbox this thread's grants establish on top of the settings, as a
-    /// [`ThreadSandbox`]. A standing sandbox-creation fallback grant removes the
-    /// sandbox entirely; otherwise the granted writable paths and hosts form its
-    /// scope. This is the "overridden in this thread" half of the sandbox
-    /// status surface; the persistent half comes from [`settings_thread_sandbox`].
-    pub fn thread_sandbox(&self) -> ThreadSandbox {
-        if self.sandbox_fallback {
-            ThreadSandbox::Unsandboxed
-        } else {
-            ThreadSandbox::Sandboxed(self.to_policy())
-        }
-    }
-
     /// Translate the per-thread overrides into the cross-platform
     /// [`SandboxPolicy`] used for display. This is the "overridden in this
     /// thread" half of the sandbox status surface; the persistent half comes
-    /// from [`settings_sandbox_policy`].
+    /// from [`settings_thread_sandbox`]. Thread grants only ever widen the
+    /// sandbox, never remove it (ADR-F46), so this is always a policy.
     pub fn to_policy(&self) -> SandboxPolicy {
-        let fs = if self.allow_fs_write_all {
-            SandboxFsPolicy::Unrestricted {
-                protected_paths: Vec::new(),
-            }
-        } else {
-            SandboxFsPolicy::Restricted {
-                // Route each grant through the verifying reopen (or a fresh
-                // capture for legacy bare-string grants) so the enforced path is
-                // the one vetted at approval time. A grant that fails to reopen
-                // is logged and dropped (fail-closed) rather than silently
-                // swallowed, then the survivors are reduced to a minimal cover
-                // on their canonical paths.
-                writable_paths: sandbox::normalize_host_filesystem_locations(
-                    self.write_paths
-                        .iter()
-                        .filter_map(acp_thread::granted_write_path_to_location_or_log),
-                ),
-                protected_paths: Vec::new(),
-            }
+        let fs = SandboxFsPolicy::Restricted {
+            // Route each grant through the verifying reopen (or a fresh capture
+            // for legacy bare-string grants) so the enforced path is the one
+            // vetted at approval time. A grant that fails to reopen is logged
+            // and dropped (fail-closed) rather than silently swallowed, then the
+            // survivors are reduced to a minimal cover on their canonical paths.
+            writable_paths: sandbox::normalize_host_filesystem_locations(
+                self.write_paths
+                    .iter()
+                    .filter_map(acp_thread::granted_write_path_to_location_or_log),
+            ),
+            protected_paths: Vec::new(),
         };
         let network = if self.network_any_host {
             SandboxNetPolicy::Unrestricted
@@ -471,8 +448,6 @@ impl ThreadSandboxGrants {
                 .map(|host| host.to_string())
                 .collect(),
             network_any_host: self.network_any_host,
-            allow_fs_write_all: self.allow_fs_write_all,
-            sandbox_fallback: self.sandbox_fallback,
         }
     }
 
@@ -492,8 +467,6 @@ impl ThreadSandboxGrants {
         Self {
             network_any_host: db.network_any_host,
             network_hosts,
-            allow_fs_write_all: db.allow_fs_write_all,
-            sandbox_fallback: db.sandbox_fallback,
             write_paths: db.write_paths.clone(),
         }
     }
@@ -510,7 +483,7 @@ impl ThreadSandboxGrants {
                 }
             }
         }
-        self.allow_fs_write_all |= request.allow_fs_write_all;
+        // `allow_fs_write_all` is deliberately not recorded (see the struct docs).
         for granted in &request.write_paths {
             insert_granted_subtree(&mut self.write_paths, granted.clone());
         }
@@ -560,9 +533,7 @@ impl ThreadSandboxGrants {
         }
         SandboxRequest {
             network,
-            allow_fs_write_all: persistent.allow_fs_write_all
-                || self.allow_fs_write_all
-                || request.allow_fs_write_all,
+            allow_fs_write_all: persistent.allow_fs_write_all || request.allow_fs_write_all,
             write_paths,
         }
     }
@@ -681,52 +652,6 @@ mod tests {
     }
 
     #[test]
-    fn thread_sandbox_merge_unsandboxed_wins_else_unions_scopes() {
-        // Writable paths are captured as real `HostFilesystemLocation`s (which
-        // open an fd and key on the inode), so the test uses real directories.
-        let dir_a = tempfile::tempdir().expect("create temp dir a");
-        let dir_b = tempfile::tempdir().expect("create temp dir b");
-        let path_a = dir_a.path();
-        let path_b = dir_b.path();
-
-        let policy = |paths: &[&Path], hosts: &[&str]| SandboxPolicy {
-            fs: SandboxFsPolicy::Restricted {
-                writable_paths: paths
-                    .iter()
-                    .map(|p| HostFilesystemLocation::capture(p).expect("capture temp dir"))
-                    .collect(),
-                protected_paths: Vec::new(),
-            },
-            network: if hosts.is_empty() {
-                SandboxNetPolicy::Blocked
-            } else {
-                SandboxNetPolicy::Restricted {
-                    allowed_domains: hosts.iter().map(|h| h.to_string()).collect(),
-                }
-            },
-        };
-
-        // Unsandboxed on either side wins — the agent runs with ambient access.
-        assert!(
-            ThreadSandbox::Unsandboxed
-                .merge(ThreadSandbox::Sandboxed(policy(&[path_a], &["a.com"])))
-                .is_unsandboxed()
-        );
-        assert!(
-            ThreadSandbox::Sandboxed(policy(&[path_a], &["a.com"]))
-                .merge(ThreadSandbox::Unsandboxed)
-                .is_unsandboxed()
-        );
-
-        // Two sandboxed layers union their scopes.
-        assert_eq!(
-            ThreadSandbox::Sandboxed(policy(&[path_a], &["a.com"]))
-                .merge(ThreadSandbox::Sandboxed(policy(&[path_b], &["b.com"]))),
-            ThreadSandbox::Sandboxed(policy(&[path_a, path_b], &["a.com", "b.com"]))
-        );
-    }
-
-    #[test]
     fn settings_thread_sandbox_reflects_allow_unsandboxed() {
         let unsandboxed = SandboxPermissions {
             allow_unsandboxed: true,
@@ -749,11 +674,59 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "unsandboxed": true }))
                 .expect("a legacy grant row should still deserialize");
         let restored = ThreadSandboxGrants::from_db(&db);
-        assert!(!restored.fallback_granted_for_thread());
-        assert!(matches!(
-            restored.thread_sandbox(),
-            ThreadSandbox::Sandboxed(_)
+        assert_eq!(restored.to_db(), crate::db::DbSandboxGrants::default());
+    }
+
+    /// Threads saved before ADR-F46 can carry `sandbox_fallback: true` (the
+    /// sandbox could not be created and the user chose to run the thread's
+    /// commands without one). That choice no longer exists, so such a thread
+    /// resumes sandboxed while its other grants still load.
+    #[test]
+    fn legacy_fallback_thread_grant_is_not_restored() {
+        let db: crate::db::DbSandboxGrants = serde_json::from_value(serde_json::json!({
+            "sandbox_fallback": true,
+            "network_hosts": ["github.com"],
+        }))
+        .expect("a legacy grant row should still deserialize");
+        let restored = ThreadSandboxGrants::from_db(&db);
+        assert_eq!(
+            restored.network_hosts,
+            vec![HostPattern::parse("github.com").unwrap()]
+        );
+        let saved_again =
+            serde_json::to_string(&restored.to_db()).expect("thread grants should serialize");
+        assert!(
+            !saved_again.contains("sandbox_fallback"),
+            "the legacy field must not be written back: {saved_again}"
+        );
+    }
+
+    /// Threads saved before ADR-F46 can carry `allow_fs_write_all: true` from
+    /// "allow for this thread" on unrestricted writes. Writing anywhere is
+    /// nearly the same as running outside the sandbox, so that grant is not
+    /// restored; the thread's other grants still load.
+    #[test]
+    fn legacy_write_all_thread_grant_is_not_restored() {
+        let db: crate::db::DbSandboxGrants = serde_json::from_value(serde_json::json!({
+            "allow_fs_write_all": true,
+            "write_paths": ["/tmp/build"],
+        }))
+        .expect("a legacy grant row should still deserialize");
+        let restored = ThreadSandboxGrants::from_db(&db);
+        assert!(!covers(
+            &restored,
+            &request(NetworkRequest::None, true, &[])
         ));
+        assert!(covers(
+            &restored,
+            &request(NetworkRequest::None, false, &["/tmp/build/cache"])
+        ));
+        let saved_again =
+            serde_json::to_string(&restored.to_db()).expect("thread grants should serialize");
+        assert!(
+            !saved_again.contains("allow_fs_write_all"),
+            "the legacy field must not be written back: {saved_again}"
+        );
     }
 
     #[test]
@@ -776,17 +749,22 @@ mod tests {
         assert_eq!(restored.write_paths, grants.write_paths);
     }
 
+    /// Unrestricted writes are never kept for the thread (ADR-F46), so an
+    /// approval that also asked for them only keeps its network grant.
     #[test]
-    fn db_form_preserves_any_host_and_write_all() {
+    fn db_form_preserves_any_host_but_never_write_all() {
         let mut grants = ThreadSandboxGrants::default();
         grants.record(&request(NetworkRequest::AnyHost, true, &[]));
 
         let restored = ThreadSandboxGrants::from_db(&grants.to_db());
         assert!(restored.network_any_host);
-        assert!(restored.allow_fs_write_all);
         assert!(covers(
             &restored,
-            &request(NetworkRequest::AnyHost, true, &["/anywhere"])
+            &request(NetworkRequest::AnyHost, false, &[])
+        ));
+        assert!(!covers(
+            &restored,
+            &request(NetworkRequest::None, true, &[])
         ));
     }
 
@@ -832,13 +810,15 @@ mod tests {
         );
         assert_eq!(empty.network, SandboxNetPolicy::Blocked);
 
-        // The broad escapes map to the unrestricted variants.
+        // Any-host maps to the unrestricted network. Unrestricted writes are
+        // never kept for the thread (ADR-F46), so writes stay restricted.
         let mut broad = ThreadSandboxGrants::default();
         broad.record(&request(NetworkRequest::AnyHost, true, &[]));
         let policy = broad.to_policy();
         assert_eq!(
             policy.fs,
-            SandboxFsPolicy::Unrestricted {
+            SandboxFsPolicy::Restricted {
+                writable_paths: Vec::new(),
                 protected_paths: Vec::new(),
             }
         );
@@ -910,21 +890,6 @@ mod tests {
         grants.effective_with_persistent(request, &SandboxPermissions::default())
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    #[test]
-    fn fallback_grant_drops_the_thread_sandbox() {
-        let mut grants = ThreadSandboxGrants::default();
-        assert!(!grants.fallback_granted_for_thread());
-        assert!(matches!(
-            grants.thread_sandbox(),
-            ThreadSandbox::Sandboxed(_)
-        ));
-
-        grants.record_fallback();
-        assert!(grants.fallback_granted_for_thread());
-        assert!(grants.thread_sandbox().is_unsandboxed());
-    }
-
     #[test]
     fn empty_grants_cover_nothing() {
         let grants = ThreadSandboxGrants::default();
@@ -985,17 +950,13 @@ mod tests {
     }
 
     #[test]
-    fn all_access_covers_any_concrete_write() {
+    fn thread_grants_never_record_unrestricted_writes() {
         let mut grants = ThreadSandboxGrants::default();
         grants.record(&request(NetworkRequest::None, true, &[]));
-        assert!(covers(
-            &grants,
-            &request(NetworkRequest::None, false, &["/anywhere/at/all"])
-        ));
-        // But not network, which wasn't granted.
+        assert!(!covers(&grants, &request(NetworkRequest::None, true, &[])));
         assert!(!covers(
             &grants,
-            &request(NetworkRequest::AnyHost, false, &[])
+            &request(NetworkRequest::None, false, &["/anywhere/at/all"])
         ));
     }
 

@@ -89,12 +89,16 @@ pub struct DbThread {
 }
 
 /// Serialized form of the sandbox permissions the user granted "for the rest of
-/// this thread" (the "Allow for this thread" prompt option). Stored inside the
+/// this thread" (the 「許可 (このスレッド)」 prompt option). Stored inside the
 /// thread blob; round-trips with [`crate::sandboxing::ThreadSandboxGrants`].
 ///
-/// Rows saved before ADR-F41 can also hold `unsandboxed: true` (the model asked
-/// to run outside the sandbox and the user allowed it for the thread). That
-/// field is deliberately no longer read, so such a thread resumes sandboxed.
+/// Older rows can also hold `unsandboxed: true` (before ADR-F41: the model
+/// asked to run outside the sandbox and the user allowed it for the thread),
+/// `sandbox_fallback: true` (before ADR-F46: the sandbox could not be created
+/// and the user chose to run the thread's commands without one) or
+/// `allow_fs_write_all: true` (before ADR-F46: unrestricted writes allowed for
+/// the thread, nearly the same as running outside the sandbox). None of these
+/// fields is read any more.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DbSandboxGrants {
     /// Paths granted write access, each paired with the canonical
@@ -111,14 +115,6 @@ pub struct DbSandboxGrants {
     /// Whether arbitrary-host network access was granted.
     #[serde(default)]
     pub network_any_host: bool,
-    /// Whether unrestricted filesystem writes (the broad escape hatch) were
-    /// granted.
-    #[serde(default)]
-    pub allow_fs_write_all: bool,
-    /// Whether running commands unsandboxed was allowed because the OS sandbox
-    /// could not be created (the fallback prompt's "for this thread" option).
-    #[serde(default)]
-    pub sandbox_fallback: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -963,8 +959,6 @@ mod tests {
             ],
             network_hosts: vec!["github.com".to_string(), "*.npmjs.org".to_string()],
             network_any_host: false,
-            allow_fs_write_all: false,
-            sandbox_fallback: true,
         };
         thread.sandbox_grants = grants.clone();
 

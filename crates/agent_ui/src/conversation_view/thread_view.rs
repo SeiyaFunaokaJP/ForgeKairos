@@ -5020,43 +5020,24 @@ impl ThreadView {
 
     pub fn render_sandbox_status(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let status = self.refresh_sandbox_status(cx)?;
-        let settings_sandbox = status.settings_sandbox.clone();
-        let thread_sandbox = status.thread_sandbox.clone();
         let baseline = status.baseline_writable_paths;
 
-        // The lock is struck only when the *merged* result is unsandboxed (the
-        // agent runs with ambient permissions). A layer that is merely wide open
-        // but still sandboxed keeps the closed lock.
-        let (icon, icon_color) = if settings_sandbox
-            .clone()
-            .merge(thread_sandbox.clone())
-            .is_unsandboxed()
-        {
+        // The lock is struck only when commands run without any sandbox (the
+        // user turned it off in settings). A sandbox that is merely wide open
+        // keeps the closed lock.
+        let (icon, icon_color) = if status.settings_sandbox.is_unsandboxed() {
             (IconName::LockOff, Color::Muted)
         } else {
             (IconName::Lock, Color::Default)
         };
 
-        let tooltip = match (settings_sandbox, thread_sandbox) {
-            // No sandbox at all because the user turned it off in settings: the
-            // per-thread layer is moot, so don't show it.
-            (ThreadSandbox::Unsandboxed, _) => SandboxStatusTooltip::disabled_in_settings(),
-            // Sandboxed by settings, but disabled for this thread: show the
-            // settings scope (greyed) for context above the disabled status.
-            (ThreadSandbox::Sandboxed(settings_policy), ThreadSandbox::Unsandboxed) => {
+        let tooltip = match status.settings_sandbox {
+            // With the sandbox off in settings the per-thread grants are moot,
+            // so don't show them.
+            ThreadSandbox::Unsandboxed => SandboxStatusTooltip::disabled_in_settings(),
+            ThreadSandbox::Sandboxed(settings_policy) => {
                 let settings = augment_settings_sandbox_policy(&settings_policy, baseline);
-                SandboxStatusTooltip::disabled_for_thread(sandbox_section(
-                    "設定での定義:",
-                    &settings,
-                    true,
-                ))
-            }
-            (
-                ThreadSandbox::Sandboxed(settings_policy),
-                ThreadSandbox::Sandboxed(thread_policy),
-            ) => {
-                let settings = augment_settings_sandbox_policy(&settings_policy, baseline);
-                let thread = SandboxPolicyDisplay::from_policy(&thread_policy);
+                let thread = SandboxPolicyDisplay::from_policy(&status.thread_policy);
                 // Omit the per-thread section when it grants nothing extra.
                 let thread = (!sandbox_policy_grants_nothing(&thread))
                     .then(|| sandbox_section("このスレッドでの許可:", &thread, false));
@@ -5166,7 +5147,7 @@ impl ThreadView {
                                     .max_w_72()
                                     .child(
                                         Label::new(
-                                            "自動承認でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。",
+                                            "自動承認でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。サンドボックスの外で実行されるターミナルコマンドは、自動承認でも毎回確認します。",
                                         )
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
@@ -8233,54 +8214,34 @@ impl ThreadView {
             .into_any()
     }
 
+    /// Only tool calls recorded before ADR-F46 carry this reason: the sandbox
+    /// couldn't be created and the user let that command, or the rest of the
+    /// thread, run without one. Nothing records it any more, so the text
+    /// describes that past run instead of a permission the thread still has.
     fn sandbox_not_applied_warning(
         &self,
         reason: &SandboxNotAppliedReason,
         cx: &Context<Self>,
     ) -> TerminalSandboxWarning {
-        // (title, detail line, docs section slug)
-        let (title, detail, docs_section): (SharedString, SharedString, Option<&'static str>) =
-            match reason {
-                SandboxNotAppliedReason::ErrorLinuxWsl(error) => (
-                    "サンドボックスを作成できませんでした".into(),
-                    error.user_facing_message().into(),
-                    Some(error.docs_section()),
-                ),
-                SandboxNotAppliedReason::DisabledForThisThread => {
-                    // The grant only exists because an earlier command failed to
-                    // create a sandbox; surface that same explanation here.
-                    let thread_error = self.find_thread_sandbox_error(cx);
-                    let detail = thread_error
-                        .as_ref()
-                        .map(|error| {
-                            SharedString::from(format!(
-                                "サンドボックスの作成に失敗したため、このスレッドでは許可されています: {}",
-                                error.user_facing_message()
-                            ))
-                        })
-                        .unwrap_or_else(|| {
-                            "このスレッドでは以降、サンドボックスなしの実行が許可されています。"
-                                .into()
-                        });
-                    let docs_section = thread_error.as_ref().map(|error| error.docs_section());
-                    (
-                        "サンドボックスなしで実行しました".into(),
-                        detail,
-                        docs_section,
-                    )
-                }
-            };
+        let docs_section = match reason {
+            SandboxNotAppliedReason::ErrorLinuxWsl(error) => Some(error.docs_section()),
+            SandboxNotAppliedReason::DisabledForThisThread => self
+                .find_thread_sandbox_error(cx)
+                .map(|error| error.docs_section()),
+        };
 
         TerminalSandboxWarning {
-            title,
-            detail,
+            title: "サンドボックスなしで実行されました".into(),
+            detail: "以前のバージョンで、サンドボックスを作れなかったときに許可されて実行されたコマンドです。\
+                     現在は常にサンドボックスの中で実行します。"
+                .into(),
             docs_url: zed_urls::sandboxing_docs(docs_section, cx).into(),
         }
     }
 
     /// Find the first terminal tool call in the thread whose sandbox couldn't be
-    /// created, so a later "disabled for this thread" warning can reuse the same
-    /// explanation of *why* the sandbox failed.
+    /// created, so a legacy thread-wide warning can link the docs for that
+    /// failure.
     fn find_thread_sandbox_error(&self, cx: &App) -> Option<acp_thread::LinuxWslSandboxError> {
         self.thread.read(cx).entries().iter().find_map(|entry| {
             if let AgentThreadEntry::ToolCall(tool_call) = entry
@@ -8942,7 +8903,13 @@ impl ThreadView {
         // visible even after the "Don't show again" checkbox flips the setting
         // avoids the card disappearing out from under the user mid-decision.
         let has_windows_fs_warning = details.warn_windows_fs;
-        if !has_network && !has_write && details.reason.is_empty() && !has_windows_fs_warning {
+        let outside_sandbox_reason = details.outside_sandbox_reason.as_deref();
+        if !has_network
+            && !has_write
+            && details.reason.is_empty()
+            && !has_windows_fs_warning
+            && outside_sandbox_reason.is_none()
+        {
             return Empty.into_any_element();
         }
 
@@ -9141,6 +9108,16 @@ impl ThreadView {
         v_flex()
             .border_t_1()
             .border_color(self.tool_card_border_color(cx))
+            .when_some(
+                Self::outside_sandbox_warning_headline(details),
+                |this, headline| {
+                    this.child(self.render_outside_sandbox_warning(
+                        headline,
+                        outside_sandbox_reason,
+                        cx,
+                    ))
+                },
+            )
             .when(has_windows_fs_warning, |this| {
                 this.child(self.render_sandbox_windows_fs_warning(cx))
             })
@@ -9438,6 +9415,65 @@ impl ThreadView {
             .into_any_element()
     }
 
+    /// Banner on the approval card of a command that will run outside any
+    /// sandbox, with Zed's own permissions (ADR-F46): says so and why. Such a
+    /// card offers only a one-time allow, since auto-approval never covers
+    /// these commands.
+    /// The warning headline for a command that runs outside the sandbox, or in
+    /// one that may write anywhere but the protected paths, which is nearly
+    /// the same (ADR-F46).
+    fn outside_sandbox_warning_headline(
+        details: &SandboxAuthorizationDetails,
+    ) -> Option<&'static str> {
+        if details.allow_fs_write_all {
+            Some(
+                "保護されたパス以外のどこにでも書き込めるため、サンドボックスの外で実行するのとほぼ同じです",
+            )
+        } else if details.outside_sandbox_reason.is_some() {
+            Some("サンドボックスの外 (Zed 本体の権限) で実行されます")
+        } else {
+            None
+        }
+    }
+
+    fn render_outside_sandbox_warning(
+        &self,
+        headline: &'static str,
+        reason: Option<&str>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        h_flex()
+            .w_full()
+            .p_2()
+            .gap_1p5()
+            .items_start()
+            .bg(cx.theme().status().warning_background.opacity(0.15))
+            .child(
+                Icon::new(IconName::Warning)
+                    .size(IconSize::Small)
+                    .color(Color::Warning),
+            )
+            .child(
+                v_flex()
+                    .min_w_0()
+                    .flex_1()
+                    .gap_0p5()
+                    .child(
+                        Label::new(headline)
+                            .size(LabelSize::Small)
+                            .color(Color::Warning),
+                    )
+                    .when_some(reason, |this, reason| {
+                        this.child(
+                            Label::new(reason.to_string())
+                                .size(LabelSize::XSmall)
+                                .color(Color::Muted),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+
     fn render_sandbox_fallback_authorization_details(
         &self,
         details: &SandboxFallbackAuthorizationDetails,
@@ -9445,7 +9481,7 @@ impl ThreadView {
     ) -> AnyElement {
         // The command itself is shown in the tool-call header (a collapsible
         // command), so here we only explain *why* the sandbox couldn't be
-        // created — the user needs both to decide whether to run unsandboxed.
+        // created, which is what the user has to fix before retrying.
         if details.reason.is_empty() {
             return Empty.into_any_element();
         }
@@ -10011,10 +10047,10 @@ impl ThreadView {
                 let option_id = SharedString::from(option.option_id.0.clone());
                 Button::new((option_id, entry_ix), option.name.clone())
                     .map(|this| {
-                        // The sandbox-fallback prompt offers a "Retry" option
-                        // that re-attempts creating the sandbox; it isn't an
-                        // allow/deny choice, so give it its own icon and no
-                        // keybinding.
+                        // The card shown when the sandbox can't be created
+                        // offers a "Retry" option that re-attempts creating
+                        // it; it isn't an allow/deny choice, so give it its
+                        // own icon and no keybinding.
                         let is_retry = option.option_id.0.as_ref()
                             == acp_thread::SANDBOX_FALLBACK_RETRY_OPTION_ID;
                         let (icon, action) = if is_retry {

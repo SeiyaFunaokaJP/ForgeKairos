@@ -142,7 +142,7 @@ impl AgentTool for DeletePathTool {
                     ToolPermissionDecision::Confirm => Some(cx.update(|cx| {
                         let context =
                             crate::ToolPermissionContext::new(Self::NAME, vec![path.clone()]);
-                        let title = format!("Delete {}", MarkdownInlineCode(&path));
+                        let title = format!("{} を削除", MarkdownInlineCode(&path));
                         authorize_with_sensitive_settings(
                             settings_kind,
                             context,
@@ -324,7 +324,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("agent skills"),
+            title.contains("エージェントのスキル"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -481,7 +481,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project") || title.contains("symlink"),
+            title.contains("プロジェクトの外を指しています")
+                || title.contains("シンボリックリンク"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 
@@ -611,7 +612,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project") || title.contains("symlink"),
+            title.contains("プロジェクトの外を指しています")
+                || title.contains("シンボリックリンク"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

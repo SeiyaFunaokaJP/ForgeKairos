@@ -523,18 +523,6 @@ impl AgentSettingsContent {
             .network_hosts = Some(ExtendingVec(hosts));
     }
 
-    pub fn allow_sandbox_fs_write_all(&mut self) {
-        self.sandbox_permissions
-            .get_or_insert_default()
-            .allow_fs_write_all = Some(true);
-    }
-
-    pub fn allow_sandbox_unsandboxed(&mut self) {
-        self.sandbox_permissions
-            .get_or_insert_default()
-            .allow_unsandboxed = Some(true);
-    }
-
     pub fn add_sandbox_write_path(&mut self, granted: GrantedWritePathContent) {
         let write_paths = &mut self
             .sandbox_permissions
@@ -954,17 +942,20 @@ pub struct SandboxPermissionsContent {
     /// Default: []
     pub network_hosts: Option<ExtendingVec<String>>,
 
-    /// Whether sandboxed terminal commands may always write anywhere on the
-    /// filesystem without prompting.
+    /// Whether sandboxed terminal commands may write anywhere on the
+    /// filesystem except protected paths. That is nearly the same as running
+    /// outside the sandbox, so while this is on terminal commands are never
+    /// auto-approved: each one asks first.
     /// Default: false
     pub allow_fs_write_all: Option<bool>,
 
-    /// Whether to persistently run agent terminal commands outside the OS
-    /// sandbox. This is the model-facing "off switch": when true, the sandboxed
-    /// terminal tool is not exposed and the system prompt omits the sandbox
-    /// section, so the model uses the plain `terminal` tool. On Windows, WSL
-    /// sandbox setup is skipped. The agent itself has no way to ask for a
-    /// command to run outside the sandbox.
+    /// Whether to run agent terminal commands outside the OS sandbox, with
+    /// Zed's own permissions (the inverse of the settings UI's "enable sandbox"
+    /// switch). When true, the sandboxed terminal tool is not exposed and the
+    /// system prompt omits the sandbox section, so the model uses the plain
+    /// `terminal` tool; on Windows, WSL sandbox setup is skipped. Such commands
+    /// are never auto-approved: each one asks first. Only the user sets this;
+    /// the agent has no way to ask for a command to run outside the sandbox.
     /// Default: false
     pub allow_unsandboxed: Option<bool>,
 
@@ -1313,8 +1304,6 @@ mod tests {
             settings.sandbox_network_hosts(),
             &["github.com".to_string(), "*.npmjs.org".to_string()]
         );
-        settings.allow_sandbox_fs_write_all();
-        settings.allow_sandbox_unsandboxed();
         settings.add_sandbox_write_path(GrantedWritePathContent {
             requested: PathBuf::from("/tmp/build"),
             resolved: None,
@@ -1332,8 +1321,10 @@ mod tests {
                 .as_slice(),
             &["github.com".to_string(), "*.npmjs.org".to_string()]
         );
-        assert_eq!(sandbox_permissions.allow_fs_write_all, Some(true));
-        assert_eq!(sandbox_permissions.allow_unsandboxed, Some(true));
+        // Nothing here turns the sandbox off or lets it write anywhere: only the
+        // user's own switches write these (ADR-F46).
+        assert_eq!(sandbox_permissions.allow_fs_write_all, None);
+        assert_eq!(sandbox_permissions.allow_unsandboxed, None);
         assert_eq!(
             sandbox_permissions
                 .write_paths

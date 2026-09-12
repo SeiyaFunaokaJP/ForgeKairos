@@ -361,6 +361,7 @@ async fn test_terminal_tool_timeout_kills_handle(cx: &mut TestAppContext) {
         )
     });
 
+    approve_unsandboxed_terminal_command(rx.expect_authorization().await);
     let update = rx.expect_update_fields().await;
     assert!(
         update.content.iter().any(|blocks| {
@@ -429,6 +430,7 @@ async fn test_terminal_tool_without_timeout_does_not_kill_handle(cx: &mut TestAp
         )
     });
 
+    approve_unsandboxed_terminal_command(rx.expect_authorization().await);
     let update = rx.expect_update_fields().await;
     assert!(
         update.content.iter().any(|blocks| {
@@ -2774,7 +2776,32 @@ async fn verify_thread_recovery(
     assert_eq!(stop_events(events), vec![acp::StopReason::EndTurn]);
 }
 
-/// Waits for a terminal tool to start by watching for a ToolCallUpdate with terminal content.
+/// The plain `terminal` tool runs outside the sandbox, so every command shows a
+/// card first, even under auto-approve (ADR-F46). Approve it once.
+fn approve_unsandboxed_terminal_command(authorization: ToolCallAuthorization) {
+    authorization
+        .response
+        .send(acp_thread::SelectedPermissionOutcome::new(
+            acp::PermissionOptionId::new("allow"),
+            acp::PermissionOptionKind::AllowOnce,
+        ))
+        .expect("authorization response should send");
+}
+
+fn is_terminal_started(event: &Result<ThreadEvent>) -> bool {
+    matches!(
+        event,
+        Ok(ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::UpdateFields(update)))
+            if update.fields.content.as_ref().is_some_and(|content| {
+                content
+                    .iter()
+                    .any(|c| matches!(c, acp::ToolCallContent::Terminal(_)))
+            })
+    )
+}
+
+/// Waits for a terminal tool call to start, approving the card it shows first
+/// (see [`approve_unsandboxed_terminal_command`]).
 async fn wait_for_terminal_tool_started(
     events: &mut mpsc::UnboundedReceiver<Result<ThreadEvent>>,
     cx: &mut TestAppContext,
@@ -2784,17 +2811,11 @@ async fn wait_for_terminal_tool_started(
         cx.run_until_parked();
 
         while let Some(Some(event)) = events.next().now_or_never() {
-            if let Ok(ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::UpdateFields(
-                update,
-            ))) = &event
-            {
-                if update.fields.content.as_ref().is_some_and(|content| {
-                    content
-                        .iter()
-                        .any(|c| matches!(c, acp::ToolCallContent::Terminal(_)))
-                }) {
-                    return;
-                }
+            if is_terminal_started(&event) {
+                return;
+            }
+            if let Ok(ThreadEvent::ToolCallAuthorization(authorization)) = event {
+                approve_unsandboxed_terminal_command(authorization);
             }
         }
 
@@ -2957,20 +2978,13 @@ async fn test_cancel_multiple_concurrent_terminal_tools(cx: &mut TestAppContext)
         cx.run_until_parked();
 
         while let Some(Some(event)) = events.next().now_or_never() {
-            if let Ok(ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::UpdateFields(
-                update,
-            ))) = &event
-            {
-                if update.fields.content.as_ref().is_some_and(|content| {
-                    content
-                        .iter()
-                        .any(|c| matches!(c, acp::ToolCallContent::Terminal(_)))
-                }) {
-                    terminals_started += 1;
-                    if terminals_started >= 2 {
-                        break;
-                    }
+            if is_terminal_started(&event) {
+                terminals_started += 1;
+                if terminals_started >= 2 {
+                    break;
                 }
+            } else if let Ok(ThreadEvent::ToolCallAuthorization(authorization)) = event {
+                approve_unsandboxed_terminal_command(authorization);
             }
         }
         if terminals_started >= 2 {
@@ -5335,7 +5349,8 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
         );
     }
 
-    // Test 2: Allow rule skips confirmation (and overrides default: Deny)
+    // Test 2: the plain terminal runs outside the sandbox, so an allow rule no
+    // longer skips confirmation (ADR-F46)...
     {
         let environment = Rc::new(cx.update(|cx| {
             FakeThreadEnvironment::default()
@@ -5347,7 +5362,7 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
             settings.tool_permissions.tools.insert(
                 TerminalTool::NAME.into(),
                 agent_settings::ToolRules {
-                    default: Some(settings::ToolPermissionMode::Deny),
+                    default: Some(settings::ToolPermissionMode::Confirm),
                     always_allow: vec![
                         agent_settings::CompiledRegex::new(r"^echo\s", false).unwrap(),
                     ],
@@ -5376,6 +5391,7 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
             )
         });
 
+        approve_unsandboxed_terminal_command(rx.expect_authorization().await);
         let update = rx.expect_update_fields().await;
         assert!(
             update.content.iter().any(|blocks| {
@@ -5383,13 +5399,77 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
                     .iter()
                     .any(|c| matches!(c, acp::ToolCallContent::Terminal(_)))
             }),
-            "expected terminal content (allow rule should skip confirmation and override default deny)"
+            "expected terminal content once the card was approved"
+        );
+        assert!(task.await.is_ok(), "expected the approved command to run");
+    }
+
+    // ...and with a "deny" default it still asks for a command an allow
+    // pattern matches (the user did allow it), while refusing the rest.
+    {
+        let environment = Rc::new(cx.update(|cx| {
+            FakeThreadEnvironment::default()
+                .with_terminal(FakeTerminalHandle::new_with_immediate_exit(cx, 0))
+        }));
+
+        cx.update(|cx| {
+            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+            settings.tool_permissions.tools.insert(
+                TerminalTool::NAME.into(),
+                agent_settings::ToolRules {
+                    default: Some(settings::ToolPermissionMode::Deny),
+                    always_allow: vec![
+                        agent_settings::CompiledRegex::new(r"^echo\s", false).unwrap(),
+                    ],
+                    always_deny: vec![],
+                    always_confirm: vec![],
+                    invalid_patterns: vec![],
+                },
+            );
+            agent_settings::AgentSettings::override_global(settings, cx);
+        });
+
+        #[allow(clippy::arc_with_non_send_sync)]
+        let tool = Arc::new(crate::TerminalTool::new(project.clone(), environment));
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+        let task = cx.update(|cx| {
+            tool.clone().run(
+                ToolInput::resolved(crate::TerminalToolInput {
+                    command: "echo hello".to_string(),
+                    cd: ".".to_string(),
+                    timeout_ms: None,
+                    ..Default::default()
+                }),
+                event_stream,
+                cx,
+            )
+        });
+        approve_unsandboxed_terminal_command(rx.expect_authorization().await);
+        assert!(
+            task.await.is_ok(),
+            "the user may still approve an allowed command once"
         );
 
-        let result = task.await;
+        let (event_stream, _rx) = crate::ToolCallEventStream::test();
+        let task = cx.update(|cx| {
+            tool.run(
+                ToolInput::resolved(crate::TerminalToolInput {
+                    command: "ls".to_string(),
+                    cd: ".".to_string(),
+                    timeout_ms: None,
+                    ..Default::default()
+                }),
+                event_stream,
+                cx,
+            )
+        });
+
+        let error = task
+            .await
+            .expect_err("the \"deny\" default should refuse a command no allow pattern matches");
         assert!(
-            result.is_ok(),
-            "expected command to succeed without confirmation"
+            error.to_lowercase().contains("disabled"),
+            "error should mention the tool is disabled, got: {error}"
         );
     }
 
@@ -7662,8 +7742,8 @@ async fn test_fetch_tool_granted_host_skips_prompt(cx: &mut TestAppContext) {
 }
 
 /// Loopback / IP-literal hosts can't be granted individually, so while the
-/// sandbox is on a fetch to them is refused, saying that only the user can
-/// turn the sandbox off.
+/// sandbox is on a fetch to them is refused. The refusal points at the sandbox
+/// settings' allowed domains, never at turning the sandbox off (ADR-F46).
 #[gpui::test]
 async fn test_fetch_tool_refuses_loopback_without_unsandboxed(cx: &mut TestAppContext) {
     init_test(cx);
@@ -7698,8 +7778,12 @@ async fn test_fetch_tool_refuses_loopback_without_unsandboxed(cx: &mut TestAppCo
         .await
         .expect_err("expected a loopback fetch to be refused");
     assert!(
-        error.contains("allow_unsandboxed") && error.contains("cannot request"),
-        "error should say only the user can lift the restriction: {error}"
+        error.contains("isn't allowed") && error.contains("許可するドメイン"),
+        "error should say the host isn't allowed and where domains are added: {error}"
+    );
+    assert!(
+        !error.contains("allow_unsandboxed"),
+        "error must not advertise turning the sandbox off: {error}"
     );
 }
 
@@ -7802,8 +7886,8 @@ async fn test_fetch_tool_refuses_redirect_to_loopback(cx: &mut TestAppContext) {
         .await
         .expect_err("expected a redirect to a loopback host to be refused");
     assert!(
-        error.contains("allow_unsandboxed") && error.contains("cannot request"),
-        "error should say only the user can lift the restriction: {error}"
+        error.contains("isn't allowed") && !error.contains("allow_unsandboxed"),
+        "error should refuse the host without advertising turning the sandbox off: {error}"
     );
 }
 

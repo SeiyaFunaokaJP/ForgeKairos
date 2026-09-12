@@ -9865,27 +9865,30 @@ pub(crate) mod tests {
         PermissionOptions::Flat(vec![
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("allow"),
-                "Allow once",
+                "許可 (今回のみ)",
                 acp::PermissionOptionKind::AllowOnce,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("allow_thread"),
-                "Allow for this thread",
+                "許可 (このスレッド)",
                 acp::PermissionOptionKind::AllowAlways,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("allow_always"),
-                "Allow always",
+                "常に許可",
                 acp::PermissionOptionKind::AllowAlways,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("deny"),
-                "Deny",
+                "拒否",
                 acp::PermissionOptionKind::RejectOnce,
             ),
         ])
     }
 
+    /// On the sandbox *escalation* card, 「常に許可」 widens the sandbox for
+    /// every thread (the command stays wrapped), so the shortcut picks it over
+    /// 「許可 (このスレッド)」.
     #[test]
     fn permission_option_for_action_prefers_explicit_sandbox_allow_always() {
         let options = sandbox_permission_options();
@@ -9895,6 +9898,44 @@ pub(crate) mod tests {
                 .unwrap();
 
         assert_eq!(option.option_id.0.as_ref(), "allow_always");
+    }
+
+    /// ADR-F46: the card for a command outside the sandbox has no "always"
+    /// choice, so the allow-always shortcut does nothing there instead of
+    /// saving a standing allow rule.
+    #[test]
+    fn allow_always_shortcut_does_nothing_on_the_unsandboxed_command_card() {
+        let options = agent::unsandboxed_command_permission_options();
+
+        assert!(
+            super::permission_option_for_action(&options, acp::PermissionOptionKind::AllowAlways)
+                .is_none()
+        );
+        let allow_once = super::resolve_outcome_from_selection(&options, None, true)
+            .expect("the one-time allow stays reachable");
+        assert_eq!(allow_once.option_id.0.as_ref(), "allow");
+    }
+
+    /// When the sandbox can't be created the card offers only "retry" and
+    /// "cancel", so neither allow shortcut picks anything and the reject
+    /// shortcut cancels.
+    #[test]
+    fn allow_shortcuts_do_nothing_on_the_sandbox_retry_card() {
+        let options = agent::sandbox_retry_permission_options(0);
+
+        for kind in [
+            acp::PermissionOptionKind::AllowAlways,
+            acp::PermissionOptionKind::AllowOnce,
+        ] {
+            assert!(
+                super::permission_option_for_action(&options, kind).is_none(),
+                "{kind:?}"
+            );
+        }
+        assert!(super::resolve_outcome_from_selection(&options, None, true).is_none());
+        let cancel = super::resolve_outcome_from_selection(&options, None, false)
+            .expect("the reject shortcut cancels");
+        assert_eq!(cancel.option_id.0.as_ref(), "deny");
     }
 
     #[test]

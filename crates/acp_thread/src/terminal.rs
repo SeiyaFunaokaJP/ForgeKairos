@@ -25,7 +25,7 @@ use util::{get_default_system_shell_preferring_bash, paths::PathStyle, rel_path:
 ///
 /// Passed to [`super::AcpThread::create_terminal`]. The actual sandboxing
 /// mechanism is platform-specific (macOS Seatbelt; Linux Bubblewrap; Windows
-/// via Bubblewrap inside WSL), so callers describe the *intent* with plain data
+/// via Zed's sandbox helper inside WSL), so callers describe the *intent* with plain data
 /// here rather than constructing platform-specific types directly.
 ///
 /// Default is the fully-sandboxed run (no network, project-only writes).
@@ -61,13 +61,6 @@ pub struct SandboxWrap {
     /// enforcing proxy binds a loopback port on this host, so it can only
     /// confine local commands; a remote terminal can't reach it.
     pub is_local: bool,
-    /// Windows/WSL only: `(release channel, version)` of the Linux `zed` to
-    /// provision inside WSL as the sandbox helper (version `latest` for dev
-    /// builds). Resolved by the agent (which can read the running app's release
-    /// info) and forwarded to the sandbox. `None` on other platforms, or when
-    /// the release can't be determined, in which case the WSL backend falls back
-    /// to running bwrap without in-sandbox bind validation.
-    pub wsl_zed_release: Option<(String, String)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -119,18 +112,19 @@ impl LinuxWslSandboxError {
     pub fn user_facing_message(&self) -> String {
         match self {
             LinuxWslSandboxError::BwrapNotFound => {
-                "No usable `bwrap` binary was found on your PATH. Install Bubblewrap to let \
-                 the agent sandbox terminal commands."
+                "PATH 上に使える `bwrap` が見つかりません。エージェントのコマンドをサンドボックスで\
+                 実行するには Bubblewrap をインストールしてください。"
                     .to_string()
             }
             LinuxWslSandboxError::SetuidRejected => {
-                "The only `bwrap` available is setuid-root, which Zed refuses to run. Install \
-                 a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+                "見つかった `bwrap` は setuid-root のため、Zed は実行しません。setuid ではない \
+                 Bubblewrap をインストールしてください。"
                     .to_string()
             }
             LinuxWslSandboxError::SandboxProbeFailed => {
-                "`bwrap` is installed but couldn't create a sandbox, likely because \
-                 unprivileged user namespaces are disabled on this system."
+                "`bwrap` はありますが、サンドボックスを作成できませんでした。このシステムでは\
+                 非特権のユーザー名前空間が無効になっている可能性があります (Ubuntu 23.10 以降は \
+                 AppArmor のプロファイルが必要です)。"
                     .to_string()
             }
             LinuxWslSandboxError::Other(message) => message.clone(),
@@ -150,11 +144,11 @@ impl LinuxWslSandboxError {
             // A failed probe on Linux is almost always disabled unprivileged
             // user namespaces, which the Ubuntu-specific section covers.
             LinuxWslSandboxError::SandboxProbeFailed => "installing-bubblewrap-ubuntu",
-            // Catch-all (includes WSL/Windows messages): point at the platform
-            // overview for the current OS.
+            // Catch-all. On Windows this is what WSL environment failures arrive
+            // as, and the requirements section says how to fix each of them.
             LinuxWslSandboxError::Other(_) => {
                 if cfg!(target_os = "windows") {
-                    "windows"
+                    "windows-requirements"
                 } else {
                     "linux"
                 }
@@ -345,12 +339,32 @@ pub enum SandboxNotAppliedReason {
 /// and, on macOS, the Seatbelt policy file) until the terminal exits.
 type SandboxConfigHandle = sandbox::Sandbox;
 
-/// Upper bound on preparing a WSL-sandboxed command. Deliberately generous:
-/// the first invocation after the WSL utility VM has shut down (or after boot)
-/// has to start the VM and the distro, which routinely takes 10-30 seconds on
-/// slow disks or under antivirus scanning.
+/// Upper bound on one attempt at preparing a WSL-sandboxed command.
+/// Deliberately generous: the first invocation after the WSL utility VM has
+/// shut down (or after boot) has to start the VM and the distro, which
+/// routinely takes 10-30 seconds on slow disks or under antivirus scanning, and
+/// the first command after installing or updating Zed also copies the sandbox
+/// helper into WSL.
 #[cfg(target_os = "windows")]
 pub(crate) const WSL_SANDBOX_WRAP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How many attempts `create_terminal` makes before reporting a timeout. WSL
+/// keeps booting after an attempt is abandoned, so a cold start that ran out of
+/// time usually succeeds on the next one without the user noticing.
+#[cfg(target_os = "windows")]
+pub(crate) const WSL_SANDBOX_WRAP_ATTEMPTS: usize = 2;
+
+/// The environment-unavailable reason reported once every attempt timed out.
+#[cfg(target_os = "windows")]
+pub(crate) fn wsl_sandbox_timeout_message() -> String {
+    format!(
+        "WSL でサンドボックスを作成できませんでした: WSL が {} 秒以内に応答しませんでした \
+         ({} 回試行)。WSL の起動に時間がかかっている可能性があります。しばらく待ってから再試行し、\
+         改善しない場合は `wsl --shutdown` で WSL を再起動してください。",
+        WSL_SANDBOX_WRAP_TIMEOUT.as_secs(),
+        WSL_SANDBOX_WRAP_ATTEMPTS
+    )
+}
 
 /// Wrap `(program, args)` for sandboxed execution, returning the wrapped
 /// invocation (program, argv, env) plus the live [`sandbox::Sandbox`] that must
@@ -364,15 +378,20 @@ pub(crate) const WSL_SANDBOX_WRAP_TIMEOUT: std::time::Duration = std::time::Dura
 /// on-host remote sandbox helper (which is the remote server binary re-invoked
 /// with `--remote-sandbox-helper`).
 ///
-/// The program is `/bin/sh`, running `exec "$HOME/<helper>" "$@"`, so the helper
-/// — installed at a `$HOME`-relative path — resolves regardless of which
-/// directory ssh happens to `cd` into, and every policy argument reaches the
-/// helper as its own argv element (no shell re-quoting). The helper itself
-/// `--chdir`s into the real working directory once its jail is in place.
+/// The program is the helper itself, by its `$HOME`-relative path: the remote
+/// transports start a command that has no working directory in the remote home
+/// (ADR-F46), so nothing — no `/bin/sh -c` to expand `$HOME` — runs in front of
+/// it. `environment` reaches the command through the helper's `--setenv`,
+/// which the helper applies inside its jail and before its own temp-dir and
+/// proxy variables; on the helper's own process, a project-controlled
+/// `LD_PRELOAD`, or a `HOME` / `PATH` the helper itself reads, would act before
+/// the sandbox exists. The helper `--chdir`s into the real working directory
+/// once its jail is in place.
 pub(crate) fn build_remote_sandbox_command(
     remote_binary: &RelPath,
     wrap: &SandboxWrap,
     cwd: Option<&Path>,
+    environment: &HashMap<String, String>,
     inner_command: String,
     inner_args: Vec<String>,
 ) -> (String, Vec<String>) {
@@ -413,23 +432,117 @@ pub(crate) fn build_remote_sandbox_command(
         .map(|path| path.to_string_lossy().into_owned())
         .or_else(|| writable.first().cloned());
 
-    let helper_argv = sandbox::build_remote_sandbox_helper_argv(
+    let mut args = sandbox::build_remote_sandbox_helper_argv(
         &writable,
         &protected,
         &network,
         wrap.allow_fs_write,
         chdir.as_deref(),
     );
-
-    // `$0` is a placeholder; `"$@"` forwards $1.. (the helper argv + inner
-    // command) to the helper verbatim.
-    let relative = remote_binary.display(PathStyle::Unix).into_owned();
-    let script = format!("exec \"$HOME/{relative}\" \"$@\"");
-    let mut args = vec!["-c".to_string(), script, "zed-remote-sandbox".to_string()];
-    args.extend(helper_argv);
+    // The policy ends with `--`, and the environment belongs before it.
+    let separator = args.pop_if(|arg| arg == "--");
+    let mut environment = environment
+        .iter()
+        .filter(|(name, value)| can_forward_environment_variable(name, value))
+        .collect::<Vec<_>>();
+    environment.sort();
+    for (name, value) in environment {
+        args.extend(["--setenv".to_string(), name.clone(), value.clone()]);
+    }
+    args.extend(separator);
     args.push(inner_command);
     args.extend(inner_args);
-    ("/bin/sh".to_string(), args)
+    // Packed as hex because on an SSH host this command line is parsed by the
+    // user's login shell, whose quoting (csh, rc, ...) the client can't match.
+    (
+        remote_binary.display(PathStyle::Unix).into_owned(),
+        sandbox::encode_remote_sandbox_helper_argv(&args).to_vec(),
+    )
+}
+
+/// Whether a variable may be forwarded into a sandbox at all: its name a
+/// portable shell name (`[A-Za-z_][A-Za-z0-9_]*`), so that it can be neither
+/// an option to `env` nor refused by `setenv(3)` — the helper rejects a whole
+/// invocation over one bad name — and its value one an argv can carry.
+fn can_forward_environment_variable(name: &str, value: &str) -> bool {
+    let mut characters = name.chars();
+    characters
+        .next()
+        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+        && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
+        && !value.contains('\0')
+}
+
+/// How [`super::AcpThread::create_terminal`] runs a command (ADR-F46).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TerminalSpawnRoute {
+    /// Wrapped by the on-host helper of a remote project.
+    RemoteHelper,
+    /// Wrapped by this machine's sandbox.
+    LocalSandbox,
+    /// Not wrapped (the user confirmed it): an ordinary task terminal.
+    Unwrapped,
+}
+
+/// Decides [`TerminalSpawnRoute`] once, from the wrap the caller asked for and
+/// whether the project's remote still has a helper. A wrap meant for a remote
+/// that no longer has one — its connection changed in between — is an error:
+/// running it anyway would put a remote command into this machine's sandbox.
+pub(crate) fn terminal_spawn_route(
+    sandbox_wrap: Option<&SandboxWrap>,
+    remote_helper_available: bool,
+) -> Result<TerminalSpawnRoute> {
+    match sandbox_wrap {
+        None => Ok(TerminalSpawnRoute::Unwrapped),
+        Some(_) if remote_helper_available => Ok(TerminalSpawnRoute::RemoteHelper),
+        Some(wrap) if wrap.is_local => Ok(TerminalSpawnRoute::LocalSandbox),
+        Some(_) => Err(anyhow::anyhow!(
+            "リモートのサンドボックスを使えなくなったため、エージェントのコマンドを実行しませんでした \
+             (接続が切り替わった可能性があります)。再接続してから再試行してください。"
+        )),
+    }
+}
+
+/// Variables a local sandbox sets for the command itself — its proxy and its
+/// temp directory — which [`prefix_environment`] must not override.
+const SANDBOX_OWNED_VARIABLES: &[&str] = &[
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+];
+
+/// ADR-F46: runs `(program, args)` under `env` with `environment` laid over the
+/// command's own, so that a locally sandboxed command still gets `terminal.env`
+/// from settings — inside the sandbox, where `env` runs — instead of on the
+/// sandbox's own process.
+pub(crate) fn prefix_environment(
+    program: String,
+    args: Vec<String>,
+    environment: &HashMap<String, String>,
+) -> (String, Vec<String>) {
+    let mut assignments = environment
+        .iter()
+        .filter(|(name, value)| {
+            can_forward_environment_variable(name, value)
+                && !SANDBOX_OWNED_VARIABLES.contains(&name.as_str())
+        })
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>();
+    if assignments.is_empty() {
+        return (program, args);
+    }
+    assignments.sort();
+    assignments.push(program);
+    assignments.extend(args);
+    ("env".to_string(), assignments)
 }
 
 /// ADR-F18: the exit code the on-host remote sandbox helper uses to signal that
@@ -439,22 +552,73 @@ pub(crate) fn build_remote_sandbox_command(
 pub const REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE: u32 = 126;
 
 /// The stderr marker the helper prints before the structured `<code>: <detail>`
-/// failure line (see `sandbox::linux_remote_helper::fail_closed`). The client
-/// keys the fail-closed detection on this exact prefix so an ordinary command's
-/// output can never masquerade as a sandbox-creation failure.
+/// failure line on an SSH host (see `sandbox::linux_remote_helper::fail_closed`).
+/// The client keys the fail-closed detection on this exact prefix so an
+/// ordinary command's output can never masquerade as a sandbox-creation failure.
 const REMOTE_SANDBOX_FAILURE_MARKER: &str = "zed-remote-sandbox: ";
+
+/// ADR-F46: the same helper's marker when the Windows backend runs it inside
+/// WSL. The codes are shared; what the user has to fix is not.
+const WSL_SANDBOX_FAILURE_MARKER: &str = "zed-wsl-sandbox: ";
 
 /// Shared Japanese lead-in for every remote sandbox-creation failure
 /// (GLOSSARY §5).
 const REMOTE_SANDBOX_FAILURE_PREFIX: &str =
     "リモートホストでサンドボックスを作成できませんでした: ";
 
+const WSL_SANDBOX_FAILURE_PREFIX: &str = "WSL でサンドボックスを作成できませんでした: ";
+
 /// One-line, user-facing hint appended when a remote sandbox-creation failure is
-/// surfaced: how to opt out of sandboxing, and the egress-control cost of doing
-/// so. `allow_unsandboxed` is a settings key, so it stays untranslated
-/// (GLOSSARY §1).
-pub const REMOTE_SANDBOX_UNSANDBOX_HINT: &str = "サンドボックスを無効化するには設定 `allow_unsandboxed` を有効にしてください \
-     (ただし外部通信の統制も外れます)。";
+/// surfaced: what the host needs for the sandbox helper (ADR-F18). There is no
+/// way to run the command outside the sandbox instead (ADR-F46). The name is
+/// kept because `terminal_tool` recognizes an already-annotated output by it.
+pub const REMOTE_SANDBOX_UNSANDBOX_HINT: &str = "リモートホストには、ユーザー名前空間 \
+     (`unshare -Un true` が成功すること)、Landlock (カーネル 5.13 以上) またはユーザー名前空間内の \
+     mount、`~/.zed_server/slirp4netns` (接続時に自動で配置されます) が必要です。";
+
+/// Appended to a WSL failure that updating WSL's kernel fixes.
+const WSL_SANDBOX_UPDATE_HINT: &str = "`wsl --update` で WSL を更新し、`wsl --shutdown` で\
+     再起動してから再試行してください。";
+
+/// Where a fail-closed helper ran, which decides how its failure is worded.
+#[derive(Clone, Copy)]
+enum SandboxHost {
+    Remote,
+    Wsl,
+}
+
+impl SandboxHost {
+    fn marker(self) -> &'static str {
+        match self {
+            SandboxHost::Remote => REMOTE_SANDBOX_FAILURE_MARKER,
+            SandboxHost::Wsl => WSL_SANDBOX_FAILURE_MARKER,
+        }
+    }
+
+    fn prefix(self) -> &'static str {
+        match self {
+            SandboxHost::Remote => REMOTE_SANDBOX_FAILURE_PREFIX,
+            SandboxHost::Wsl => WSL_SANDBOX_FAILURE_PREFIX,
+        }
+    }
+
+    /// The line added after the reason, if any.
+    fn hint(self, code: &str) -> Option<&'static str> {
+        match self {
+            SandboxHost::Remote => Some(REMOTE_SANDBOX_UNSANDBOX_HINT),
+            SandboxHost::Wsl => matches!(
+                code,
+                "userns-failed"
+                    | "no-fs-backend"
+                    | "landlock-failed"
+                    | "mount-failed"
+                    | "seccomp-failed"
+                    | "caps-failed"
+            )
+            .then_some(WSL_SANDBOX_UPDATE_HINT),
+        }
+    }
+}
 
 /// ADR-F18: recognize the fail-closed signature the remote sandbox helper emits
 /// — exit code 126 *and* a `zed-remote-sandbox: <code>: <detail>` marker line at
@@ -474,13 +638,14 @@ pub fn remote_sandbox_setup_failure_message(
     if exit_code != Some(REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE) {
         return None;
     }
-    let code = remote_sandbox_failure_code(output)?;
-    Some(remote_sandbox_failure_message_for_code(code))
+    let code = sandbox_failure_code(output, SandboxHost::Remote)?;
+    Some(sandbox_failure_message_for_code(SandboxHost::Remote, code))
 }
 
-/// Writes [`remote_sandbox_setup_failure_message`] into a finished command's
-/// output, so every reader of that output learns why the command never ran —
-/// not just the callers that run the detection themselves.
+/// Writes the fail-closed reason of the sandbox helper — on an SSH host, or
+/// inside WSL for the Windows backend — into a finished command's output, so
+/// every reader of that output learns why the command never ran, not just the
+/// callers that run the detection themselves.
 ///
 /// The explanation goes *after* the marker line, not in front of it, because
 /// the marker has to stay first for [`remote_sandbox_setup_failure_message`] to
@@ -490,25 +655,36 @@ pub fn remote_sandbox_setup_failure_message(
 /// Returns `output` untouched when the failure signature is absent, which is
 /// every ordinary command.
 pub fn annotate_sandbox_setup_failure(output: String, exit_code: Option<u32>) -> String {
-    let Some(reason) = remote_sandbox_setup_failure_message(exit_code, &output) else {
+    if exit_code != Some(REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE) {
+        return output;
+    }
+    let Some((host, code)) = [SandboxHost::Remote, SandboxHost::Wsl]
+        .into_iter()
+        .find_map(|host| Some((host, sandbox_failure_code(&output, host)?)))
+    else {
         return output;
     };
+    let reason = sandbox_failure_message_for_code(host, code);
+    let hint = host
+        .hint(code)
+        .map(|hint| format!("{hint}\n"))
+        .unwrap_or_default();
     let leading_blanks = output.len() - output.trim_start().len();
     let (head, rest) = output.split_at(leading_blanks);
     let (marker_line, rest) = match rest.split_once('\n') {
         Some((marker_line, rest)) => (marker_line, rest),
         None => (rest, ""),
     };
-    format!("{head}{marker_line}\n{reason}\n{REMOTE_SANDBOX_UNSANDBOX_HINT}\n{rest}")
+    format!("{head}{marker_line}\n{reason}\n{hint}{rest}")
 }
 
-/// Extract `<code>` from a `zed-remote-sandbox: <code>: <detail>` marker at the
-/// start of `output` (leading blank lines tolerated). Returns `None` when the
-/// marker prefix is absent or no `<code>:` follows it, so the detection cannot
-/// fire on unrelated terminal output.
-fn remote_sandbox_failure_code(output: &str) -> Option<&str> {
+/// Extract `<code>` from `host`'s `<marker> <code>: <detail>` line at the start
+/// of `output` (leading blank lines tolerated). Returns `None` when the marker
+/// is absent or no `<code>:` follows it, so the detection cannot fire on
+/// unrelated terminal output.
+fn sandbox_failure_code(output: &str, host: SandboxHost) -> Option<&str> {
     let line = output.trim_start().lines().next()?;
-    let rest = line.strip_prefix(REMOTE_SANDBOX_FAILURE_MARKER)?;
+    let rest = line.strip_prefix(host.marker())?;
     // Codes contain no colon, so the first `:` ends the code and begins the
     // (ignored) human-readable detail.
     let (code, _detail) = rest.split_once(':')?;
@@ -520,33 +696,79 @@ fn remote_sandbox_failure_code(output: &str) -> Option<&str> {
 }
 
 /// Map a helper failure `<code>` to its user-facing Japanese message (GLOSSARY
-/// §5), prefixed with the shared "could not create the sandbox" lead-in. An
+/// §5), prefixed with `host`'s "could not create the sandbox" lead-in. An
 /// unrecognized code falls back to naming the raw code (`不明な理由 (<code>)`) so
 /// a future helper addition still surfaces something actionable rather than
 /// nothing.
-fn remote_sandbox_failure_message_for_code(code: &str) -> String {
-    let reason = match code {
-        "slirp-missing" => "slirp4netns がリモートに配置されていません (ネットワーク隔離に必要)。",
-        "userns-failed" => "ユーザー名前空間を作成できません (無効化されている可能性があります)。",
-        "no-fs-backend" => "ファイル隔離の方式 (Landlock / mount) がどちらも使えません。",
-        "landlock-failed" | "mount-failed" => "ファイル書込制限を適用できませんでした。",
-        "protected-pin-failed" => {
+fn sandbox_failure_message_for_code(host: SandboxHost, code: &str) -> String {
+    let reason = match (host, code) {
+        (SandboxHost::Remote, "slirp-missing") => {
+            "サンドボックス用ヘルパー (slirp4netns) がリモートの `~/.zed_server/` にないため、通信を隔離できません。接続し直すと配置し直します。"
+        }
+        (SandboxHost::Wsl, "slirp-missing") => {
+            "WSL 内のサンドボックス用ヘルパー (slirp4netns) が見つからないため、通信を隔離できません。\
+             Zed を再起動すると配置し直します。"
+        }
+        (SandboxHost::Remote, "userns-failed") => {
+            "ユーザー名前空間を作成できません (無効化されている可能性があります)。開発コンテナー \
+             (Docker) では既定の seccomp プロファイルが `unshare` を拒否するため、`runArgs` に \
+             `--cap-add SYS_ADMIN` (または `--security-opt seccomp=unconfined`) を、ネットワークを\
+             使うコマンドのために `--device /dev/net/tun` も追加してください。"
+        }
+        (SandboxHost::Wsl, "userns-failed") => "WSL でユーザー名前空間を作成できません。",
+        (SandboxHost::Remote, "no-fs-backend") => {
+            "ファイル隔離の方式 (Landlock / mount) がどちらも使えません。"
+        }
+        (SandboxHost::Wsl, "no-fs-backend") => "WSL のカーネルが Landlock に対応していません。",
+        (_, "landlock-failed" | "mount-failed") => "ファイル書込制限を適用できませんでした。",
+        (_, "protected-pin-failed") => {
             "保護対象のパス (`.git` / `~/.ssh` / `~/.bashrc` などの認証情報・シェル初期化ファイル) を\
              確認できませんでした (権限などを確認してください)。"
         }
-        "home-unknown" => {
+        (SandboxHost::Remote, "home-unknown") => {
             "リモートのホームディレクトリを特定できませんでした \
              (常に保護するパスを確定できないため実行しません)。"
         }
-        "proxy-failed" | "slirp-failed" | "relay-failed" => {
+        (SandboxHost::Wsl, "home-unknown") => {
+            "WSL のホームディレクトリを特定できませんでした \
+             (常に保護するパスを確定できないため実行しません)。"
+        }
+        (_, "writable-redirected") => {
+            "書込を許可したパスが、承認後に別の場所 (シンボリックリンクなど) を指すように\
+             置き換えられています。安全のため実行しませんでした。"
+        }
+        (_, "proxy-failed" | "slirp-failed" | "relay-failed") => {
             "ネットワーク統制を確立できませんでした。"
         }
-        "seccomp-failed" => "システムコール制限を適用できませんでした。",
-        "exec-failed" | "chdir-failed" => "サンドボックス内でコマンドを起動できませんでした。",
-        "bad-args" => "サンドボックスの起動引数が不正です (内部エラー)。",
-        other => return format!("{REMOTE_SANDBOX_FAILURE_PREFIX}不明な理由 ({other})"),
+        (_, "seccomp-failed") => "システムコール制限を適用できませんでした。",
+        (_, "caps-failed") => "コマンドの権限 (capability) を外せませんでした。",
+        (_, "helper-mismatch") => {
+            "サンドボックス用のヘルパー (または slirp4netns) が、この Zed に同梱のものと一致しません \
+             (置き換えられたか壊れています)。安全のため実行しませんでした。Zed を再起動すると配置し直します。"
+        }
+        (_, "exec-failed" | "chdir-failed") => "サンドボックス内でコマンドを起動できませんでした。",
+        (_, "bad-args") => "サンドボックスの起動引数が不正です (内部エラー)。",
+        (_, other) => return format!("{}不明な理由 ({other})", host.prefix()),
     };
-    format!("{REMOTE_SANDBOX_FAILURE_PREFIX}{reason}")
+    format!("{}{reason}", host.prefix())
+}
+
+/// The editor-wide network allowlist's entries as they stand now, for the WSL
+/// sandbox to nest a command's network inside (see
+/// `sandbox::Sandbox::set_editor_network_allowlist`). `None` in a process that
+/// has no editor-wide allowlist.
+#[cfg(target_os = "windows")]
+pub(crate) fn editor_network_allowlist(cx: &App) -> Option<Vec<String>> {
+    let global = cx.try_global::<egress_policy::EgressAllowlistGlobal>()?;
+    Some(
+        global
+            .0
+            .snapshot()
+            .patterns()
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    )
 }
 
 pub(crate) async fn prepare_sandbox_wrap(
@@ -555,6 +777,7 @@ pub(crate) async fn prepare_sandbox_wrap(
     cwd: Option<PathBuf>,
     sandbox_wrap: Option<SandboxWrap>,
     env: HashMap<String, String>,
+    #[cfg(target_os = "windows")] editor_network_allowlist: Option<Vec<String>>,
 ) -> anyhow::Result<(
     String,
     Vec<String>,
@@ -567,11 +790,9 @@ pub(crate) async fn prepare_sandbox_wrap(
 
     let mut sandbox =
         sandbox::Sandbox::new(sandbox_wrap.to_policy()?).map_err(anyhow::Error::new)?;
-    // Windows/WSL only: tell the sandbox which Linux `zed` to provision inside
-    // WSL as its `--wsl-sandbox-helper`. A no-op (and a no-op setter) elsewhere.
     #[cfg(target_os = "windows")]
-    if let Some((channel, version)) = sandbox_wrap.wsl_zed_release.clone() {
-        sandbox.set_wsl_zed_release(channel, version);
+    if let Some(entries) = editor_network_allowlist {
+        sandbox.set_editor_network_allowlist(entries);
     }
     let command = sandbox::CommandAndArgs {
         program,
@@ -895,6 +1116,10 @@ mod remote_sandbox_failure_tests {
         "exec-failed",
         "chdir-failed",
         "bad-args",
+        "home-unknown",
+        "writable-redirected",
+        "caps-failed",
+        "helper-mismatch",
     ];
 
     /// Every known code maps to a concrete Japanese message carrying the shared
@@ -924,7 +1149,7 @@ mod remote_sandbox_failure_tests {
             remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: slirp-missing: x"),
             Some(
                 "リモートホストでサンドボックスを作成できませんでした: \
-                 slirp4netns がリモートに配置されていません (ネットワーク隔離に必要)。"
+                 サンドボックス用ヘルパー (slirp4netns) がリモートの `~/.zed_server/` にないため、通信を隔離できません。接続し直すと配置し直します。"
                     .to_string()
             )
         );
@@ -1055,7 +1280,7 @@ mod remote_sandbox_failure_tests {
             lines.next(),
             Some(
                 "リモートホストでサンドボックスを作成できませんでした: \
-                 slirp4netns がリモートに配置されていません (ネットワーク隔離に必要)。"
+                 サンドボックス用ヘルパー (slirp4netns) がリモートの `~/.zed_server/` にないため、通信を隔離できません。接続し直すと配置し直します。"
             )
         );
         assert_eq!(lines.next(), Some(REMOTE_SANDBOX_UNSANDBOX_HINT));
@@ -1077,6 +1302,71 @@ mod remote_sandbox_failure_tests {
             ),
             "zed-remote-sandbox: slirp-missing: x\n"
         );
+    }
+
+    /// ADR-F46: the WSL helper's failures are worded for WSL, every code it can
+    /// emit is translated, and only the kernel-related ones point at
+    /// `wsl --update`.
+    #[test]
+    fn wsl_failures_are_worded_for_wsl() {
+        for code in ALL_CODES {
+            let annotated = annotate_sandbox_setup_failure(
+                format!("zed-wsl-sandbox: {code}: detail\n"),
+                Some(126),
+            );
+            let mut lines = annotated.lines();
+            assert_eq!(
+                lines.next(),
+                Some(format!("zed-wsl-sandbox: {code}: detail").as_str())
+            );
+            let reason = lines.next().unwrap_or_default();
+            assert!(
+                reason.starts_with(WSL_SANDBOX_FAILURE_PREFIX),
+                "{code}: {reason}"
+            );
+            assert!(!reason.contains("不明な理由"), "{code}: {reason}");
+            assert!(
+                !annotated.contains(REMOTE_SANDBOX_UNSANDBOX_HINT),
+                "{code} must not get the SSH-host hint"
+            );
+        }
+
+        let kernel = annotate_sandbox_setup_failure(
+            "zed-wsl-sandbox: no-fs-backend: x\n".to_string(),
+            Some(126),
+        );
+        assert!(kernel.contains("Landlock") && kernel.contains(WSL_SANDBOX_UPDATE_HINT));
+        let redirected = annotate_sandbox_setup_failure(
+            "zed-wsl-sandbox: writable-redirected: x\n".to_string(),
+            Some(126),
+        );
+        assert!(!redirected.contains(WSL_SANDBOX_UPDATE_HINT));
+
+        // The SSH-host detection `terminal_tool` runs does not fire on it, and
+        // an ordinary exit code is left alone.
+        assert_eq!(
+            remote_sandbox_setup_failure_message(Some(126), "zed-wsl-sandbox: userns-failed: x"),
+            None
+        );
+        assert_eq!(
+            annotate_sandbox_setup_failure(
+                "zed-wsl-sandbox: userns-failed: x\n".to_string(),
+                Some(1)
+            ),
+            "zed-wsl-sandbox: userns-failed: x\n"
+        );
+    }
+
+    /// ADR-F46: the SSH-host hint says what the host needs and never suggests
+    /// turning the sandbox off; a container gets the flags it needs.
+    #[test]
+    fn remote_hints_are_about_fixing_the_host() {
+        assert!(!REMOTE_SANDBOX_UNSANDBOX_HINT.contains("allow_unsandboxed"));
+        assert!(REMOTE_SANDBOX_UNSANDBOX_HINT.contains("slirp4netns"));
+        let userns =
+            remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: userns-failed: x")
+                .unwrap_or_default();
+        assert!(userns.contains("--cap-add SYS_ADMIN") && userns.contains("--device /dev/net/tun"));
     }
 }
 
@@ -1164,5 +1454,136 @@ mod linux_tests {
 
         wrap.to_policy()
             .expect("uncapturable protected paths must be dropped, not fail the policy");
+    }
+}
+
+#[cfg(test)]
+mod sandboxed_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn a_wrapped_command_is_routed_to_a_sandbox_or_refused() {
+        let local = SandboxWrap {
+            is_local: true,
+            ..Default::default()
+        };
+        let remote = SandboxWrap {
+            is_local: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            terminal_spawn_route(None, false).ok(),
+            Some(TerminalSpawnRoute::Unwrapped)
+        );
+        assert_eq!(
+            terminal_spawn_route(Some(&local), false).ok(),
+            Some(TerminalSpawnRoute::LocalSandbox)
+        );
+        assert_eq!(
+            terminal_spawn_route(Some(&remote), true).ok(),
+            Some(TerminalSpawnRoute::RemoteHelper)
+        );
+        assert!(
+            terminal_spawn_route(Some(&remote), false).is_err(),
+            "a remote wrap whose helper went away must not fall into this machine's sandbox"
+        );
+    }
+
+    #[test]
+    fn remote_helper_is_started_directly_with_the_environment_inside() {
+        let environment = HashMap::from_iter([
+            ("PATH".to_string(), "/usr/bin".to_string()),
+            ("LD_PRELOAD".to_string(), "/project/evil.so".to_string()),
+            ("BAD=NAME".to_string(), "dropped".to_string()),
+            ("-u".to_string(), "dropped".to_string()),
+            ("1ABC".to_string(), "dropped".to_string()),
+        ]);
+        let wrap = SandboxWrap {
+            writable_paths: vec![PathBuf::from("/home/user/project")],
+            ..Default::default()
+        };
+        let helper = RelPath::from_unix_str(".zed_server/zed-remote-server-stable-1.17.2")
+            .expect("a valid relative path");
+
+        let (program, args) = build_remote_sandbox_command(
+            helper,
+            &wrap,
+            Some(Path::new("/home/user/project")),
+            &environment,
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), "make".to_string()],
+        );
+
+        assert_eq!(
+            program, ".zed_server/zed-remote-server-stable-1.17.2",
+            "the helper itself starts the command, with no shell in front of it"
+        );
+        let [flag, payload] = args.as_slice() else {
+            panic!("the argv travels as one hex-encoded argument: {args:?}");
+        };
+        assert_eq!(flag, sandbox::REMOTE_SANDBOX_HELPER_HEX_ARGV_FLAG);
+        assert!(
+            payload
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f' | b'.')),
+            "nothing a login shell could read as syntax: {payload}"
+        );
+        let args =
+            sandbox::decode_remote_sandbox_helper_argv(payload).expect("the packed argv decodes");
+        let separator = args
+            .iter()
+            .position(|arg| arg == "--")
+            .expect("the policy ends with `--`");
+        let (policy, command) = args.split_at(separator);
+        assert_eq!(
+            policy.first().map(String::as_str),
+            Some("--remote-sandbox-helper")
+        );
+        let command = command.iter().map(String::as_str).collect::<Vec<_>>();
+        assert_eq!(command, ["--", "/bin/sh", "-c", "make"]);
+        let forwarded = policy
+            .windows(3)
+            .filter_map(|window| match window {
+                [flag, name, value] if flag == "--setenv" => Some((name.as_str(), value.as_str())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            forwarded,
+            [("LD_PRELOAD", "/project/evil.so"), ("PATH", "/usr/bin")],
+            "the environment reaches the command through the helper, sorted, and a name \
+             `setenv(3)` refuses is left out"
+        );
+    }
+
+    #[test]
+    fn settings_environment_goes_inside_a_local_sandbox() {
+        let environment = HashMap::from_iter([
+            ("LD_PRELOAD".to_string(), "/project/evil.so".to_string()),
+            (
+                "HTTP_PROXY".to_string(),
+                "http://elsewhere:8080".to_string(),
+            ),
+            ("TMPDIR".to_string(), "/project/tmp".to_string()),
+        ]);
+        let (program, args) = prefix_environment(
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), "make".to_string()],
+            &environment,
+        );
+        assert_eq!(program, "env");
+        assert_eq!(
+            args,
+            ["LD_PRELOAD=/project/evil.so", "/bin/sh", "-c", "make"],
+            "the sandbox's own proxy and temp directory are not overridden"
+        );
+
+        let (program, args) = prefix_environment(
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), "make".to_string()],
+            &HashMap::default(),
+        );
+        assert_eq!(program, "/bin/sh");
+        assert_eq!(args, ["-c", "make"]);
     }
 }

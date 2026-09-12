@@ -325,7 +325,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("agent skills"),
+            title.contains("エージェントのスキル"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -391,7 +391,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("agent skills"),
+            title.contains("エージェントのスキル"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -463,8 +463,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project")
-                || title.contains("symlinks outside project"),
+            title.contains("プロジェクトの外を指しています")
+                || title.contains("プロジェクト外へのシンボリックリンク"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 
@@ -572,8 +572,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("points outside the project")
-                || title.contains("symlinks outside project"),
+            title.contains("プロジェクトの外を指しています")
+                || title.contains("プロジェクト外へのシンボリックリンク"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

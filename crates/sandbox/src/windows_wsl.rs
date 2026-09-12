@@ -1,45 +1,62 @@
-//! Windows sandbox integration via WSL.
+//! Windows sandbox integration via WSL (ADR-F46).
 //!
-//! Sandboxed Windows terminal commands are routed through WSL and then executed
-//! under Bubblewrap inside Linux. Projects may be opened either from native
-//! Windows paths (`C:\Users\...`) or WSL UNC paths
-//! (`\\wsl.localhost\Ubuntu\home\...`). Native drive-letter paths are
-//! translated into the distro's filesystem view with `wslpath` (falling back
+//! Sandboxed Windows terminal commands run inside WSL under the same helper that
+//! isolates the agent's commands on an SSH host (ADR-F18, `linux_remote_helper`):
+//! the Linux `remote_server` Zed ships for SSH remotes, run as
+//! `--remote-sandbox-helper --wsl …`. It needs nothing from the distro beyond a
+//! WSL 2 kernel — no `bwrap`, no packages, no network: the helper and
+//! `slirp4netns` are copied from Zed's own installation into the distro, once
+//! per build (see [`ensure_sandbox_helper`]). Inside WSL the helper puts the
+//! command in a user + network namespace whose only way out is the helper's own
+//! host-allowlisting egress proxy, confines writes with Landlock (protected
+//! paths get read-only binds), and blocks `AF_UNIX` / `AF_VSOCK` sockets with
+//! seccomp — which is also what keeps the command away from WSL's Windows
+//! interop socket.
+//!
+//! Projects may be opened either from native Windows paths (`C:\Users\...`) or
+//! WSL UNC paths (`\\wsl.localhost\Ubuntu\home\...`). Native drive-letter paths
+//! are translated into the distro's filesystem view with `wslpath` (falling back
 //! to the conventional `/mnt/<drive>/...` mapping if that fails) and use the
 //! user's default WSL distro unless a WSL UNC path in the request pins a
 //! specific distro.
 //!
 //! Errors fall into two classes the agent treats differently:
 //!
-//! * **Environment unavailable** — WSL missing or failing to start, no
-//!   usable `bwrap`, or the probe/path-resolution stdout protocol breaking
-//!   down. These are returned as a [`WslSandboxUnavailable`] (whose `Display`
-//!   carries
+//! * **Environment unavailable** — WSL missing, a missing or WSL 1 distro, WSL
+//!   failing to start, the bundled helper missing or not installable, a kernel
+//!   without Landlock or user namespaces, or a WSL stdout protocol breaking
+//!   down. These are returned as a [`WslSandboxUnavailable`] carrying a Japanese
+//!   explanation of the fix (its `Display` adds
 //!   [`WSL_SANDBOX_UNAVAILABLE_PREFIX`](crate::WSL_SANDBOX_UNAVAILABLE_PREFIX)),
-//!   so the agent recognizes them *by type* and offers the same
-//!   retry / run-unsandboxed fallback it offers on Linux, rather than matching
-//!   on message text.
+//!   so the agent recognizes them *by type* and asks the user to fix the
+//!   environment and retry, rather than matching on message text.
 //! * **Bad request** — a specific path that doesn't exist or can't be mapped
 //!   into WSL, or a request mixing distros. These are ordinary `anyhow` errors
 //!   *without* [`WslSandboxUnavailable`], and are reported back to the model,
 //!   which can fix the request and retry.
 
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-
-use smol::process::{Command, Stdio};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context as _, Result, bail, ensure};
+use futures::{AsyncRead, AsyncReadExt as _, AsyncWriteExt as _};
+use sha2::{Digest as _, Sha256};
+use smol::process::{Command, Stdio};
 
-use crate::WSL_SANDBOX_UNAVAILABLE_PREFIX;
+use crate::protected_paths::WSL_SANDBOX_HELPER_HOME_RELATIVE;
+use crate::{RemoteSandboxNetwork, WSL_PROBE_RESULT_PREFIX, WSL_SANDBOX_UNAVAILABLE_PREFIX};
 
-/// Per-command relaxations of the WSL/Bubblewrap sandbox. Windows can only
-/// toggle network access wholesale (no loopback-proxy confinement yet), so this
-/// is a plain bool rather than the richer cross-platform [`crate::SandboxNetPolicy`].
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// Per-command relaxations of the WSL sandbox.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SandboxPermissions {
-    pub(crate) allow_network: bool,
+    /// Outbound access, always through the helper's egress proxy inside WSL.
+    pub(crate) network: RemoteSandboxNetwork,
+    /// The editor-wide allowlist that proxy nests `network` inside; `None`
+    /// when none is in force.
+    pub(crate) network_ceiling: Option<Vec<String>>,
     pub(crate) allow_fs_write: bool,
 }
 
@@ -48,139 +65,140 @@ pub(crate) struct WritablePath {
     pub(crate) canonical: PathBuf,
 }
 
-/// Exit code the environment probe script uses to signal that `bwrap` is not
-/// installed, distinguishing that from WSL itself failing to start a shell.
-/// Chosen to be unlikely to collide with `wsl.exe`'s own failure codes.
-const BWRAP_MISSING_EXIT_CODE: i32 = 41;
+/// Environment variables through which a process inside WSL finds the Windows
+/// interop socket. The helper's seccomp filter already makes that socket
+/// unusable; removing them as well stops a command from even trying.
+const WSL_INTEROP_VARIABLES: [&str; 2] = ["WSL_INTEROP", "WSLENV"];
 
-/// Exit code the environment probe script uses to signal that `bwrap` is
-/// installed but failed the sandbox smoke test — typically because the
-/// distro restricts unprivileged user namespaces (e.g. Ubuntu 24.04's
-/// default AppArmor policy), which every namespace flag we pass depends on.
-const BWRAP_UNUSABLE_EXIT_CODE: i32 = 42;
+/// The two files of an installed helper; the helper finds `slirp4netns` next to
+/// its own executable. [`CHECK_SCRIPT`] spells both names out as well.
+const HELPER_BINARY_NAME: &str = "zed-remote-server";
+const SLIRP_BINARY_NAME: &str = "slirp4netns";
 
-/// Prefix of the probe script's single result line, so it can be picked out
-/// of any stdout noise printed by the login shell's profile scripts.
-const PROBE_RESULT_PREFIX: &str = "zed-wsl-probe:";
+/// How long a verified helper installation is trusted before it is checked
+/// again. Checking refreshes the installation's timestamp, which is what keeps
+/// another build's clean-up (of anything unused for a day, see
+/// [`FINALIZE_SCRIPT`]) away from it while this Zed runs.
+const HELPER_RECHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-/// Prefix of the probe script's *second* result line, carrying the distro
-/// account's `$HOME`. A line of its own because a home directory may contain
-/// spaces, which the space-separated [`PROBE_RESULT_PREFIX`] line can't express
-/// alongside another field.
-const PROBE_HOME_PREFIX: &str = "zed-wsl-home:";
+const COPY_BUFFER_SIZE: usize = 256 * 1024;
 
-/// Prefix of the helper-provisioning script's single result line (the absolute
-/// in-WSL path of the Linux `zed` to run as the sandbox helper), picked out of
-/// login-shell stdout noise just like [`PROBE_RESULT_PREFIX`].
+/// Prefix of [`CHECK_SCRIPT`]'s result line, picked out of any other output.
 const HELPER_RESULT_PREFIX: &str = "zed-wsl-helper:";
+/// Prefix of [`STAGE_SCRIPT`]'s result line.
+const STAGE_RESULT_PREFIX: &str = "zed-wsl-install:";
 
-/// Ensures a Linux `zed` matching the running release is available inside WSL to
-/// act as the sandbox helper (`--wsl-sandbox-helper`), and prints its absolute
-/// in-WSL path on a [`HELPER_RESULT_PREFIX`] line. `$1` is the release channel,
-/// `$2` the version (`latest` for dev builds, which have no matching release and
-/// so track the latest nightly); both are passed as argv, never interpolated, so
-/// a version/channel string can't inject shell.
-///
-/// Unlike a normal Linux install, this deliberately does **not** consult the WSL
-/// `PATH`: inside WSL `zed` typically resolves to the *Windows* `zed.exe` via
-/// interop, which is not a Linux binary and so can't be the helper. It also does
-/// not use the public install script (`install.sh`), which puts `zed` on the
-/// user's `PATH` and writes desktop entries we don't want. Instead the Windows
-/// side resolves the exact channel+version (see `wsl_zed_release`) and this
-/// script downloads that release's Linux tarball straight from
-/// `cloud.zed.dev/releases` and unpacks it into a private, off-`PATH` location
-/// (`~/.local/libexec/zed/<channel>`, the conventional spot for executables run
-/// by other programs rather than directly by the user). One managed copy per
-/// channel is kept, tracked by a marker file so an exact channel+version match
-/// is reused rather than re-downloaded. The floating `latest` version (dev
-/// builds) is the exception: it always re-downloads so it tracks the newest
-/// nightly rather than pinning to the first copy fetched.
-///
-/// We ship no `zed` (nor `bwrap`) into WSL ourselves; this downloads `zed` on
-/// demand. A missing `curl`/`wget` (or a failed download) is a hard error the
-/// caller surfaces to the user, exactly like a missing `bwrap`.
-const HELPER_PROVISION_SCRIPT: &str = r#"
-set -eu
-channel="$1"
-version="$2"
-dest="$HOME/.local/libexec/zed/$channel"
-marker="$dest/.zed-wsl-helper-version"
-want="$channel $version"
-
-# Reuse an exact, already-installed channel+version — but never for the floating
-# "latest" tag (dev builds), which must always re-fetch so they track the most
-# recent nightly instead of pinning to whatever was downloaded first.
-if [ "$version" != "latest" ] && [ "$(cat "$marker" 2>/dev/null || true)" = "$want" ]; then
-    helper=$(find "$dest" -type f -path '*/libexec/zed-editor' -print 2>/dev/null | head -n 1 || true)
-    if [ -n "$helper" ] && [ -x "$helper" ]; then
-        printf 'zed-wsl-helper: %s\n' "$helper"
+/// Reports whether this build's helper is installed in the distro. `$1` is the
+/// install key ([`helper_install_key`]), `$2` the install root relative to
+/// `$HOME`, `$3` and `$4` the SHA-256 of the server and of `slirp4netns` as this
+/// build installs them; all arrive as argv, never interpolated. An installation
+/// counts only when the marker [`FINALIZE_SCRIPT`] writes last exists and both
+/// files still hash to those digests — a replacement can match a size.
+const CHECK_SCRIPT: &str = r#"
+set -u
+dir="$HOME/$2/sandbox/$1"
+if [ -f "$dir/installed" ] && [ -x "$dir/zed-remote-server" ] && [ -x "$dir/slirp4netns" ]; then
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        printf 'zed-wsl-helper: unverifiable %s\n' "$dir"
+        exit 0
+    fi
+    server=$(sha256sum < "$dir/zed-remote-server")
+    slirp=$(sha256sum < "$dir/slirp4netns")
+    if [ "${server%% *}" = "$3" ] && [ "${slirp%% *}" = "$4" ]; then
+        touch "$dir"
+        printf 'zed-wsl-helper: ready %s\n' "$dir/zed-remote-server"
         exit 0
     fi
 fi
-
-arch=$(uname -m)
-case "$arch" in
-    x86_64 | amd64) arch="x86_64" ;;
-    aarch64 | arm64) arch="aarch64" ;;
-    *) echo "unsupported WSL architecture for the zed sandbox helper: $arch" >&2; exit 1 ;;
-esac
-url="https://cloud.zed.dev/releases/$channel/$version/download?asset=zed&arch=$arch&os=linux&source=zed-wsl-sandbox"
-
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/zed-wsl-helper-XXXXXX")
-trap 'rm -rf "$tmp"' EXIT
-tarball="$tmp/zed.tar.gz"
-if command -v curl >/dev/null 2>&1; then
-    curl -fL "$url" -o "$tarball"
-elif command -v wget >/dev/null 2>&1; then
-    wget -O "$tarball" "$url"
-else
-    echo 'neither curl nor wget is available in WSL to download zed' >&2
-    exit 1
-fi
-
-mkdir -p "$tmp/unpacked"
-tar -xzf "$tarball" -C "$tmp/unpacked"
-helper_src=$(find "$tmp/unpacked" -type f -path '*/libexec/zed-editor' -print 2>/dev/null | head -n 1 || true)
-if [ -z "$helper_src" ]; then
-    echo 'the downloaded zed tarball did not contain a libexec/zed-editor binary' >&2
-    exit 1
-fi
-app=$(dirname "$(dirname "$helper_src")")
-
-# Install atomically: stage the unpacked app next to the destination on the same
-# filesystem, then swap it into place so a concurrent run never sees (or execs) a
-# partially-written install. The whole app dir is kept so the binary's bundled
-# libraries ($ORIGIN/../lib) remain alongside it.
-mkdir -p "$(dirname "$dest")"
-rm -rf "$dest.new" "$dest.old"
-cp -a "$app" "$dest.new"
-if [ -e "$dest" ]; then mv "$dest" "$dest.old"; fi
-mv "$dest.new" "$dest"
-rm -rf "$dest.old"
-printf '%s' "$want" > "$marker"
-
-helper=$(find "$dest" -type f -path '*/libexec/zed-editor' -print 2>/dev/null | head -n 1 || true)
-if [ -z "$helper" ] || [ ! -x "$helper" ]; then
-    echo "the installed zed sandbox helper is missing or not executable under $dest" >&2
-    exit 1
-fi
-printf 'zed-wsl-helper: %s\n' "$helper"
-exit 0
+printf 'zed-wsl-helper: missing %s\n' "$dir"
 "#;
 
-/// Marks a failure of the Windows WSL sandboxing *environment*: WSL is missing
-/// or won't start, there's no usable `bwrap`, or the probe / path-resolution
-/// stdout protocol broke down. Returned as the root of the `anyhow::Error` so
-/// callers classify it by type ([`anyhow::Error::downcast_ref`]) instead of by
-/// matching message text. Per-request failures (a missing writable path, paths
-/// mixing distros) are ordinary `anyhow` errors *without* this type, so they
-/// never match — the agent returns those to the model rather than offering to
-/// run unsandboxed.
+/// Starts an installed helper only if it is still exactly what this build
+/// installed. The file is opened once, hashed through that descriptor and then
+/// executed from it (`/proc/self/fd/3`), so nothing can swap it in between; the
+/// helper closes the descriptor again. `$1` is the helper and `$2` its SHA-256;
+/// the helper's own arguments follow. A mismatch fails the way the helper
+/// itself fails closed (exit 126 and a `zed-wsl-sandbox:` line first on
+/// stderr), so it is reported the same way.
+const VERIFIED_EXEC_SCRIPT: &str = r#"
+set -u
+helper=$1
+expected=$2
+shift 2
+fail() {
+    printf 'zed-wsl-sandbox: helper-mismatch: %s\n' "$1" >&2
+    exit 126
+}
+[ -r "$helper" ] || fail "cannot read $helper"
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is not available"
+exec 3<"$helper"
+actual=$(sha256sum <&3) || fail "cannot hash $helper"
+[ "${actual%% *}" = "$expected" ] || fail "$helper does not match this build"
+exec /proc/self/fd/3 "$@"
+"#;
+
+/// Copies one file into the install directory: stdin goes to a fresh temporary
+/// file there, whose size, SHA-256 (`-` without `sha256sum`) and path are
+/// reported for [`stage_file`] to check against what it sent. `$1` is the key,
+/// `$2` the install root, `$3` the file's final name.
+const STAGE_SCRIPT: &str = r#"
+set -eu
+dir="$HOME/$2/sandbox/$1"
+mkdir -p "$dir"
+staged=$(mktemp "$dir/.$3.XXXXXX")
+if ! cat > "$staged"; then
+    rm -f "$staged"
+    exit 1
+fi
+size=$(wc -c < "$staged" | tr -d ' ')
+if command -v sha256sum >/dev/null 2>&1; then
+    sum=$(sha256sum < "$staged")
+    sum=${sum%% *}
+else
+    sum=-
+fi
+printf 'zed-wsl-install: %s %s %s\n' "$size" "$sum" "$staged"
+"#;
+
+/// Moves the verified files into place and writes the marker [`CHECK_SCRIPT`]
+/// looks for — last, so a half-finished installation never counts. Then
+/// removes what nobody needs any more: other builds' directories unused for a
+/// day (a running Zed refreshes its own at least every
+/// [`HELPER_RECHECK_INTERVAL`]) and temporary files an interrupted copy left.
+/// `$1` is the key, `$2` the install root, then a `staged-path name size`
+/// triple per file.
+const FINALIZE_SCRIPT: &str = r#"
+set -eu
+key=$1
+root="$HOME/$2/sandbox"
+dir="$root/$key"
+shift 2
+: > "$dir/installed.new"
+while [ "$#" -ge 3 ]; do
+    chmod 755 "$1"
+    mv -f "$1" "$dir/$2"
+    printf '%s %s\n' "$2" "$3" >> "$dir/installed.new"
+    shift 3
+done
+mv -f "$dir/installed.new" "$dir/installed"
+touch "$dir"
+if command -v find >/dev/null 2>&1; then
+    find "$root" -mindepth 1 -maxdepth 1 -type d ! -name "$key" -mmin +1440 -exec rm -rf {} + 2>/dev/null || true
+    find "$dir" -maxdepth 1 -type f -name '.*' -mmin +60 -exec rm -f {} + 2>/dev/null || true
+fi
+"#;
+
+/// Marks a failure of the Windows WSL sandboxing *environment* (see the module
+/// docs). The message is the Japanese explanation shown to the user, telling
+/// them what to fix. Returned as the root of the `anyhow::Error` so callers
+/// classify it by type ([`anyhow::Error::downcast_ref`]) instead of by matching
+/// message text. Per-request failures (a missing writable path, paths mixing
+/// distros) are ordinary `anyhow` errors *without* this type.
 #[derive(Debug, Clone)]
 pub struct WslSandboxUnavailable(String);
 
 impl WslSandboxUnavailable {
-    /// Build an environment-unavailable error from a human-readable reason
+    /// Build an environment-unavailable error from a user-facing reason
     /// (without the [`WSL_SANDBOX_UNAVAILABLE_PREFIX`], which `Display` adds).
     pub fn new(message: impl Into<String>) -> Self {
         Self(message.into())
@@ -267,17 +285,19 @@ pub fn path_is_on_windows_drive(path: &Path) -> bool {
     )
 }
 
+/// Where WSL registers each distro of the current user.
+const LXSS_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Lxss";
+
 /// Whether WSL is structurally present: at least one distro is registered
-/// under `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`. A cheap
-/// registry read (no `wsl.exe` spawn), suitable for UI gating decisions like
-/// suppressing sandbox-integrity warnings on machines where no WSL sandbox
-/// could ever be constructed. It is *not* an availability guarantee: a
-/// registered distro can still fail the real environment probe (no `bwrap`,
-/// unhealthy WSL service, …), so enforcement paths must keep relying on
-/// [`probe_environment`]'s in-WSL round-trip.
+/// under [`LXSS_KEY`]. A cheap registry read (no `wsl.exe` spawn), suitable for
+/// UI gating decisions like suppressing sandbox-integrity warnings on machines
+/// where no WSL sandbox could ever be constructed. It is *not* an availability
+/// guarantee: a registered distro can still fail the real checks (WSL 1, a
+/// kernel without Landlock, an unhealthy WSL service, …), so enforcement paths
+/// must keep relying on [`wrap_invocation`]'s in-WSL round-trips.
 pub fn wsl_distro_registered() -> bool {
     windows_registry::CURRENT_USER
-        .open("Software\\Microsoft\\Windows\\CurrentVersion\\Lxss")
+        .open(LXSS_KEY)
         .and_then(|lxss_key| {
             Ok(lxss_key.keys()?.any(|key| {
                 lxss_key
@@ -287,6 +307,139 @@ pub fn wsl_distro_registered() -> bool {
             }))
         })
         .unwrap_or(false)
+}
+
+/// One distro as registered under [`LXSS_KEY`].
+#[derive(Clone, Debug)]
+struct RegisteredDistro {
+    id: String,
+    name: String,
+    /// `1` for WSL 1, `2` for WSL 2; absent on some registrations.
+    version: Option<u32>,
+}
+
+/// What the registry says about the distro a command would run in, known
+/// before any `wsl.exe` is started.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum DistroRegistration {
+    /// WSL itself does not appear to be installed.
+    NotInstalled,
+    /// WSL is installed, but no distro is registered.
+    NoDistro,
+    /// Distros are registered, but none of them is the default.
+    NoDefault,
+    /// A WSL UNC path named a distro that is not registered.
+    Missing(String),
+    /// The distro runs under WSL 1, which has no Linux kernel of its own.
+    Wsl1(String),
+    Usable,
+}
+
+fn read_distro_registration(distro: Option<&str>) -> DistroRegistration {
+    let Ok(lxss) = windows_registry::CURRENT_USER.open(LXSS_KEY) else {
+        return if wsl_installed() {
+            DistroRegistration::NoDistro
+        } else {
+            DistroRegistration::NotInstalled
+        };
+    };
+    let distros: Vec<RegisteredDistro> = match lxss.keys() {
+        Ok(keys) => keys
+            .filter_map(|id| {
+                let key = lxss.open(&id).ok()?;
+                let name = key.get_string("DistributionName").ok()?;
+                let version = key.get_u32("Version").ok();
+                Some(RegisteredDistro { id, name, version })
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    if distros.is_empty() && !wsl_installed() {
+        return DistroRegistration::NotInstalled;
+    }
+    let default_id = lxss.get_string("DefaultDistribution").ok();
+    classify_registration(&distros, default_id.as_deref(), distro)
+}
+
+/// Whether the WSL platform is installed, which the distro list alone can't
+/// tell apart from "installed, no distro yet": the Store / MSI package lives
+/// under Program Files, the older optional component under `System32\lxss`.
+fn wsl_installed() -> bool {
+    let program_files = std::env::var_os("ProgramW6432")
+        .or_else(|| std::env::var_os("ProgramFiles"))
+        .map(PathBuf::from);
+    program_files.is_some_and(|directory| directory.join("WSL").join("wsl.exe").is_file())
+        || windows_directory().join("System32").join("lxss").is_dir()
+}
+
+fn classify_registration(
+    distros: &[RegisteredDistro],
+    default_id: Option<&str>,
+    requested: Option<&str>,
+) -> DistroRegistration {
+    if distros.is_empty() {
+        return DistroRegistration::NoDistro;
+    }
+    let distro = match requested {
+        Some(name) => match distros
+            .iter()
+            .find(|distro| distro.name.eq_ignore_ascii_case(name))
+        {
+            Some(distro) => distro,
+            None => return DistroRegistration::Missing(name.to_string()),
+        },
+        None => match default_id.and_then(|id| {
+            distros
+                .iter()
+                .find(|distro| distro.id.eq_ignore_ascii_case(id))
+        }) {
+            Some(distro) => distro,
+            None => return DistroRegistration::NoDefault,
+        },
+    };
+    if distro.version == Some(1) {
+        DistroRegistration::Wsl1(distro.name.clone())
+    } else {
+        DistroRegistration::Usable
+    }
+}
+
+fn registration_message(registration: &DistroRegistration) -> Option<String> {
+    match registration {
+        DistroRegistration::Usable => None,
+        DistroRegistration::NotInstalled => Some(
+            "WSL がインストールされていません。Windows ではエージェントのコマンドを WSL 2 の中の\
+             サンドボックスで実行します。管理者として PowerShell を開いて `wsl --install` を実行し、\
+             PC を再起動してください。"
+                .to_string(),
+        ),
+        DistroRegistration::NoDistro => Some(
+            "WSL のディストリビューションが登録されていません。`wsl --install -d Ubuntu` などで\
+             ディストリビューションを追加してください (種類は問いません。WSL 2 で動いている必要があります)。"
+                .to_string(),
+        ),
+        DistroRegistration::NoDefault => Some(
+            "既定の WSL ディストリビューションが設定されていません。`wsl --list --verbose` で一覧を\
+             確認し、`wsl --set-default <名前>` で WSL 2 のディストリビューションを既定にしてください。"
+                .to_string(),
+        ),
+        DistroRegistration::Missing(name) => Some(format!(
+            "WSL ディストリビューション `{name}` が登録されていません。`wsl --list --verbose` で\
+             名前を確認してください。"
+        )),
+        DistroRegistration::Wsl1(name) => Some(format!(
+            "WSL ディストリビューション `{name}` は WSL 1 で動いています。サンドボックスには WSL 2 が\
+             必要です。`wsl --set-version {name} 2` で WSL 2 に変換するか、WSL 2 のディストリビューションを\
+             `wsl --set-default <名前>` で既定にしてください。"
+        )),
+    }
+}
+
+fn ensure_distro_registered(distro: Option<&str>) -> Result<()> {
+    match registration_message(&read_distro_registration(distro)) {
+        Some(problem) => Err(unavailable(problem)),
+        None => Ok(()),
+    }
 }
 
 /// Resolve a requested write grant to the path we persist for it, in
@@ -300,30 +453,19 @@ pub fn wsl_distro_registered() -> bool {
 ///
 /// * A **Windows drive path** is canonicalized on the **Windows host**. A
 ///   junction (or symlink) on a Windows drive is a Windows filesystem object;
-///   WSL's DrvFs surfaces it as a plain symlink but cannot reliably resolve it
-///   (the `/proc/self/fd` readback that follows an ext4 symlink to its real
-///   target does not follow a DrvFs junction). Resolving it WSL-side would
-///   therefore store the junction unresolved and then reject it at enforcement,
-///   where [`crate::util::CanonicalPathBuf::from_canonical`] refuses a symlink
-///   leaf. `std::fs::canonicalize` follows the junction/symlink chain and
-///   confirms the target exists.
-/// * A **WSL path** is canonicalized inside **WSL** via the in-distro helper —
-///   Windows can't follow ext4 symlinks.
+///   WSL's DrvFs surfaces it as a plain symlink but cannot reliably resolve it.
+///   `std::fs::canonicalize` follows the junction/symlink chain and confirms
+///   the target exists.
+/// * A **WSL path** is canonicalized inside **WSL** by the sandbox helper
+///   (`--wsl-sandbox-resolve-path`) — Windows can't follow ext4 symlinks.
 ///
-/// Either way the persisted canonical is re-verified in the enforcement
-/// namespace by `from_canonical` (which opens it `O_NOFOLLOW` and pins the
-/// inode), so a component swapped for a symlink/junction after approval still
-/// fails closed.
+/// Either way the helper re-verifies the persisted canonical when the command
+/// runs (a writable root must still be exactly that path), so a component
+/// swapped for a symlink/junction after approval fails closed.
 ///
-/// A local project (the only kind that is sandboxed) has NTFS files, so grants
-/// are either those `C:\...` paths or WSL-native scratch locations named with
-/// `/...`; `\\wsl.localhost\...` and other shapes are rejected. There is no
-/// distro to pin — a sandboxed command runs in exactly one distro (the project's
-/// or WSL's default), so a bare Linux path is unambiguous.
-pub async fn resolve_canonical_for_grant(
-    requested: PathBuf,
-    wsl_zed_release: (String, String),
-) -> Result<ResolvedGrant> {
+/// There is no distro to pin — a sandboxed command runs in exactly one distro
+/// (the project's or WSL's default), so a bare Linux path is unambiguous.
+pub async fn resolve_canonical_for_grant(requested: PathBuf) -> Result<ResolvedGrant> {
     let path_string = requested.to_string_lossy();
 
     // A Windows drive grant (NTFS) is resolved on the Windows host, which is
@@ -338,7 +480,7 @@ pub async fn resolve_canonical_for_grant(
         // `canonicalize` yields a `\\?\` verbatim path; store the plain native
         // spelling so a non-junction grant compares equal to what was requested.
         // A junction resolving off the local drives (onto a UNC/WSL path) is
-        // rejected — only a Windows drive path maps to a DrvFs bind.
+        // rejected — only a Windows drive path maps to a DrvFs path.
         let canonical = strip_windows_verbatim_prefix(canonical);
         ensure!(
             parse_native_drive_path(&canonical.to_string_lossy()).is_ok(),
@@ -347,8 +489,6 @@ pub async fn resolve_canonical_for_grant(
             requested.display(),
             canonical.display()
         );
-        // A Windows drive is reached inside WSL via DrvFs (weaker guarantees), so
-        // a native-drive grant is on a Windows filesystem by definition.
         return Ok(ResolvedGrant {
             canonical,
             on_windows_fs: true,
@@ -366,37 +506,24 @@ pub async fn resolve_canonical_for_grant(
     })?;
     let mapping = PathMapping::Wsl(wsl_path);
 
+    ensure_distro_registered(None)?;
     let wsl_exe = wsl_exe_path();
     if !wsl_exe.is_file() {
-        return Err(unavailable(format!(
-            "WSL (`wsl.exe`) was not found at `{}`",
-            wsl_exe.display()
-        )));
+        return Err(unavailable(
+            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default(),
+        ));
     }
 
-    // Translate + existence-check the path inside WSL, then resolve its
-    // symlink-free canonical (and classify its filesystem) via the helper. No
-    // distro is pinned — a sandboxed command runs in one distro.
     let translated = resolve_paths(&wsl_exe, None, &[(mapping, "writable path", true)])
         .await?
         .into_iter()
         .next()
         .context("bug: missing resolved writable path")?
         .context("bug: required writable path resolved as missing")?;
-    let (channel, version) = wsl_zed_release;
-    let helper = ensure_wsl_zed_helper(&wsl_exe, None, &channel, &version).await?;
-    let output = run_wsl_command(
-        &wsl_exe,
-        None,
-        [
-            "--exec",
-            helper.as_str(),
-            crate::WSL_SANDBOX_RESOLVE_FLAG,
-            translated.as_str(),
-        ],
-        "resolve a sandbox write grant",
-    )
-    .await?;
+    let helper = ensure_sandbox_helper(&wsl_exe, None).await?;
+    let mut args = helper_invocation(&helper);
+    args.extend([crate::WSL_SANDBOX_RESOLVE_FLAG.to_string(), translated]);
+    let output = run_wsl_command(&wsl_exe, None, &args, "書込許可の解決").await?;
     if !output.status.success() {
         return Err(anyhow::anyhow!(
             "failed to resolve writable path `{}`{}",
@@ -428,7 +555,8 @@ const RESOLVE_WINDOWS_FS: &str = "windows-fs";
 /// target.
 const RESOLVE_NATIVE_FS: &str = "native-fs";
 
-/// Wrap a Linux process invocation so it runs under Bubblewrap inside WSL.
+/// Wrap a Linux process invocation so it runs inside WSL under the sandbox
+/// helper.
 ///
 /// `program` and `args` must name a Linux executable and Linux argv, not a
 /// Windows executable. The caller is expected to convert the model's command
@@ -437,32 +565,28 @@ const RESOLVE_NATIVE_FS: &str = "native-fs";
 ///
 /// All writable paths, protected paths, and the cwd must be paths that can be
 /// mapped into WSL. The cwd and writable paths must exist; protected paths may
-/// be missing because Bubblewrap cannot bind a missing source. WSL UNC paths
-/// may specify a distro; native drive-letter paths are translated with `wslpath`
-/// inside either that distro or the default distro (falling back to
+/// be missing (there is nothing to protect yet). WSL UNC paths may specify a
+/// distro; native drive-letter paths are translated with `wslpath` inside
+/// either that distro or the default distro (falling back to
 /// `/mnt/<drive>/...` if translation fails).
 ///
-/// `env` is forwarded into the sandboxed command via `bwrap --setenv` rather
-/// than being set on the `wsl.exe` process. Windows environment variables
-/// don't cross the WSL boundary unless they're listed in `WSLENV`, so without
-/// this the command would lose `PAGER` (used to stop `git` from paging into
-/// the PTY) and the rest of the project environment. Variables whose Windows
-/// values are meaningless or harmful inside Linux are dropped (see
+/// `env` is recreated inside the command by the helper (`--setenv`) rather than
+/// being set on the `wsl.exe` process, because Windows environment variables
+/// don't cross the WSL boundary unless they're listed in `WSLENV`. Variables
+/// whose Windows values are meaningless or harmful inside Linux are dropped (see
 /// [`is_forwardable_env_var`]).
 ///
-/// This function performs up to two `wsl.exe` round-trips (environment probe
-/// and path resolution, each cached) plus filesystem stats of WSL UNC paths,
-/// any of which can take seconds when the WSL VM is cold (and the stats can
-/// stall on a slow `\\wsl.localhost` filesystem). Run it on a background
+/// Up to a few `wsl.exe` round-trips happen here (the helper check and probe,
+/// path resolution, and on first use the helper copy), each cached, any of
+/// which can take seconds when the WSL VM is cold. Run it on a background
 /// executor, never on the UI thread, and bound it with a timeout — a wedged
 /// `wsl.exe` (a real failure mode when the WSL service is unhealthy)
-/// otherwise stalls the returned future forever. This crate deliberately has
-/// no timer of its own (timers come from the caller's executor so tests stay
+/// otherwise stalls the returned future forever. This crate deliberately has no
+/// timer of its own (timers come from the caller's executor so tests stay
 /// deterministic); instead it guarantees that dropping the future kills any
-/// in-flight `wsl.exe` child, so a caller-side timeout that drops the future
-/// also reaps the process. Parameters are owned so the returned future is
+/// in-flight `wsl.exe` child. Parameters are owned so the returned future is
 /// `Send + 'static`.
-pub async fn wrap_invocation<S: std::hash::BuildHasher>(
+pub async fn wrap_invocation<S: BuildHasher>(
     program: String,
     args: Vec<String>,
     writable_paths: Vec<WritablePath>,
@@ -470,17 +594,9 @@ pub async fn wrap_invocation<S: std::hash::BuildHasher>(
     permissions: SandboxPermissions,
     cwd: Option<PathBuf>,
     env: HashMap<String, String, S>,
-    // `(release channel, version)` of the Linux `zed` to provision inside WSL as
-    // the `--wsl-sandbox-helper` (the version is `latest` for dev builds). When
-    // `None`, no helper is used and bwrap is exec'd directly — the legacy path,
-    // which binds writable paths by string and so carries the bind-source TOCTOU
-    // the helper closes. Callers that can determine the running release should
-    // always pass `Some`.
-    wsl_zed_release: Option<(String, String)>,
 ) -> Result<(String, Vec<String>)> {
     // Mapping failures are bad requests (a path that doesn't exist or has a
-    // shape WSL can't address), not environment problems, so no
-    // `WSL_SANDBOX_UNAVAILABLE_PREFIX` here.
+    // shape WSL can't address), not environment problems.
     let cwd_mapping =
         match &cwd {
             Some(cwd) => Some(directory_to_wsl(cwd).with_context(|| {
@@ -527,19 +643,19 @@ pub async fn wrap_invocation<S: std::hash::BuildHasher>(
             .chain(writable_mappings.iter())
             .chain(protected_mappings.iter()),
     )?;
+    ensure_distro_registered(distro.as_deref())?;
     let wsl_exe = wsl_exe_path();
     if !wsl_exe.is_file() {
-        return Err(unavailable(format!(
-            "WSL (`wsl.exe`) was not found at `{}`",
-            wsl_exe.display()
-        )));
+        return Err(unavailable(
+            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default(),
+        ));
     }
-    let environment = probe_environment(&wsl_exe, distro.as_deref()).await?;
+    let helper = ensure_sandbox_helper(&wsl_exe, distro.as_deref()).await?;
 
     // Resolve all paths (translating native drive-letter paths with `wslpath`
     // now that the distro is known) in a single WSL round-trip. The cwd and
-    // ordinary writable paths must exist; protected paths may be missing because,
-    // as with Linux bwrap, a not-yet-created path can't be overlaid.
+    // writable paths must exist; protected paths may be missing — the helper
+    // skips those, and would itself protect the distro account's home.
     let has_cwd = cwd_mapping.is_some();
     let writable_path_count = writable_mappings.len();
     let mut mappings = Vec::with_capacity(writable_mappings.len() + protected_mappings.len() + 1);
@@ -556,81 +672,78 @@ pub async fn wrap_invocation<S: std::hash::BuildHasher>(
             .into_iter()
             .map(|mapping| (mapping, "protected path", false)),
     );
-    // The distro account's own home is a *second* home a sandboxed command can
-    // reach, and the Windows-side built-in set says nothing about it: with
-    // `allow_fs_write` the whole distro root is bound read-write, and a
-    // persisted write grant can name a distro-native path outright. Its `$HOME`
-    // is only known after the probe, hence appending here rather than parsing
-    // these up front; they are optional, so entries that don't exist are dropped
-    // WSL-side just like the Windows-side ones.
-    mappings.extend(
-        crate::protected_paths::wsl_distro_builtin_protected_paths(&environment.home)
-            .into_iter()
-            .map(|path| {
-                (
-                    PathMapping::Wsl(WslPath { distro: None, path }),
-                    "protected path",
-                    false,
-                )
-            }),
-    );
     let resolved = resolve_paths(&wsl_exe, distro.as_deref(), &mappings).await?;
     let (cwd, writable_paths, protected_paths) =
         split_resolved_paths(has_cwd, writable_path_count, resolved)?;
 
-    let mut wsl_args = Vec::new();
-    if let Some(distro) = distro.as_deref() {
-        wsl_args.extend(["-d".to_string(), distro.to_string()]);
-    }
-    if let Some(cwd) = &cwd {
-        wsl_args.extend(["--cd".to_string(), cwd.clone()]);
-    }
-
-    // The bwrap *options* (everything before the trailing `-- cmd`): root bind,
-    // `/tmp` tmpfs, writable binds, interop blocking, `--setenv`s, `--chdir`,
-    // namespace flags. Identical whether or not we route through the helper.
-    let bwrap_options = build_bwrap_args(
+    let environment = forwarded_environment(&env);
+    let helper_argv = crate::build_wsl_sandbox_helper_argv(
         &writable_paths,
         &protected_paths,
-        permissions,
+        &permissions.network,
+        permissions.allow_fs_write,
         cwd.as_deref(),
-        environment.mask_interop_dir,
-        &env,
+        &crate::WslHelperOptions {
+            network_ceiling: permissions.network_ceiling.as_deref(),
+            slirp_sha256: helper
+                .digests
+                .as_ref()
+                .map(|digests| digests.slirp.as_str()),
+            environment: &environment,
+            unset_environment: &WSL_INTEROP_VARIABLES,
+        },
     );
-
-    match wsl_zed_release {
-        // Preferred path: run the in-WSL `zed` as the sandbox helper, which
-        // verifies and pins the persisted canonical writable paths WSL-side,
-        // then validates them again after bwrap's mounts.
-        Some((channel, version)) => {
-            let helper =
-                ensure_wsl_zed_helper(&wsl_exe, distro.as_deref(), &channel, &version).await?;
-            wsl_args.extend(["--exec".to_string(), helper]);
-            // Protocol (decoded by `linux_bubblewrap::decode_wsl_helper_args`):
-            //   <flag> <bwrap_path> <n_base> <base...> <n_writable> <writable...> -- <prog> <args>
-            wsl_args.push(crate::WSL_SANDBOX_HELPER_FLAG.to_string());
-            wsl_args.push(environment.bwrap_path.clone());
-            wsl_args.push(bwrap_options.len().to_string());
-            wsl_args.extend(bwrap_options);
-            wsl_args.push(writable_paths.len().to_string());
-            wsl_args.extend(writable_paths.iter().cloned());
-            wsl_args.push("--".to_string());
-            wsl_args.push(program);
-            wsl_args.extend(args);
-        }
-        // Legacy path: exec bwrap directly (no in-sandbox bind validation). Use
-        // the absolute path the probe validated, since `wsl --exec` searches
-        // only the default WSL PATH.
-        None => {
-            wsl_args.extend(["--exec".to_string(), environment.bwrap_path.clone()]);
-            wsl_args.extend(bwrap_options);
-            wsl_args.push("--".to_string());
-            wsl_args.push(program);
-            wsl_args.extend(args);
-        }
-    }
-
+    let wsl_args = helper_command_line(
+        distro.as_deref(),
+        cwd.as_deref(),
+        &helper,
+        helper_argv,
+        program,
+        args,
+    );
     Ok((wsl_exe.to_string_lossy().into_owned(), wsl_args))
+}
+
+/// The `wsl.exe` arguments that run `program` under `helper`.
+fn helper_command_line(
+    distro: Option<&str>,
+    cwd: Option<&str>,
+    helper: &InstalledHelper,
+    helper_argv: Vec<String>,
+    program: String,
+    args: Vec<String>,
+) -> Vec<String> {
+    let mut wsl_args = Vec::with_capacity(helper_argv.len() + args.len() + 11);
+    if let Some(distro) = distro {
+        wsl_args.extend(["-d".to_string(), distro.to_string()]);
+    }
+    if let Some(cwd) = cwd {
+        wsl_args.extend(["--cd".to_string(), cwd.to_string()]);
+    }
+    wsl_args.extend(helper_invocation(helper));
+    wsl_args.extend(helper_argv);
+    wsl_args.push(program);
+    wsl_args.extend(args);
+    wsl_args
+}
+
+/// The `wsl.exe` arguments that start `helper`, for its own arguments to
+/// follow. An installed helper is started through [`VERIFIED_EXEC_SCRIPT`]:
+/// it runs outside every namespace, and the directory it lives in is inside
+/// the distro account's home.
+fn helper_invocation(helper: &InstalledHelper) -> Vec<String> {
+    match &helper.digests {
+        Some(digests) => vec![
+            "--exec".to_string(),
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            VERIFIED_EXEC_SCRIPT.to_string(),
+            "zed-wsl-exec".to_string(),
+            helper.path.clone(),
+            digests.server.clone(),
+        ],
+        None => vec!["--exec".to_string(), helper.path.clone()],
+    }
 }
 
 fn parse_canonical_grant_output(stdout: &str) -> Result<ResolvedGrant> {
@@ -656,7 +769,7 @@ fn parse_canonical_grant_output(stdout: &str) -> Result<ResolvedGrant> {
             && canonical.starts_with('/'),
         "WSL sandbox helper returned invalid canonical-path output: {stdout:?}"
     );
-    // Store the canonical as the Linux path bwrap actually binds. The distro is
+    // Store the canonical as the Linux path the helper grants. The distro is
     // pinned at enforcement from the *requested* path (see `wrap_invocation`),
     // so it is not re-encoded here: spelling the canonical as
     // `\\wsl.localhost\<distro>\...` would resurface the Windows-style path we
@@ -710,7 +823,7 @@ fn select_distro<'a>(
         match distro.as_deref() {
             // A bad request, not an environment problem: the model (or
             // project layout) asked for paths spanning two distros, which a
-            // single bwrap invocation can't serve.
+            // single sandboxed command can't serve.
             Some(distro) => ensure!(
                 distro == path_distro,
                 "cannot sandbox a command whose paths mix WSL distros `{}` and `{}`",
@@ -723,276 +836,794 @@ fn select_distro<'a>(
     Ok(distro)
 }
 
-/// What [`probe_environment`] learned about a WSL distro.
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct EnvironmentProbe {
-    /// Whether the WSL interop socket directory (`/run/WSL`) exists and so
-    /// must (and can) be masked — see [`build_bwrap_args`].
-    mask_interop_dir: bool,
-    /// Absolute path of the `bwrap` binary the smoke test validated. The real
-    /// invocation must exec this exact path: `wsl --exec` searches only the
-    /// default WSL PATH, so a bare `bwrap` could miss (or differ from) the
-    /// binary the probe's login shell found.
-    bwrap_path: String,
-    /// The distro account's `$HOME`. The sandbox runs as that account, so this
-    /// is the *second* home directory a Windows command can reach (the first
-    /// being `%USERPROFILE%` through `/mnt/<drive>/…`), and the built-in
-    /// protected set has to be resolved against it too — see
-    /// `protected_paths::wsl_distro_builtin_protected_paths`.
-    home: String,
-}
+// ===========================================================================
+// The helper inside the distro
+// ===========================================================================
 
-/// Shell script run by [`probe_environment`]. Resolves `bwrap` to an absolute
-/// path (exit [`BWRAP_MISSING_EXIT_CODE`] if absent), rejects setuid-root
-/// binaries, then smoke-tests a real minimal sandbox (exit
-/// [`BWRAP_UNUSABLE_EXIT_CODE`] on failure) using the same mount and namespace
-/// flags as [`build_bwrap_args`] — presence isn't
-/// enough, because unprivileged user namespaces can be disabled by the
-/// distro's kernel, sysctl, or AppArmor policy (notably Ubuntu 24.04, the
-/// current default WSL distro), in which case `bwrap` exists but every
-/// sandboxed command would fail. The interop mask is included in the smoke
-/// test when `/run/WSL` exists so the exact mount we later perform is
-/// exercised too. On success, one [`PROBE_RESULT_PREFIX`]-marked result line
-/// reports the interop state and the resolved `bwrap` path.
-fn probe_script() -> String {
-    format!(
-        "bwrap_path=$(command -v bwrap) || exit {BWRAP_MISSING_EXIT_CODE}; \
-         if [ -u \"$bwrap_path\" ] && [ \"$(stat -c %u \"$bwrap_path\" 2>/dev/null)\" = 0 ]; then \
-         echo 'setuid-root bwrap is not supported' >&2; \
-         exit {BWRAP_UNUSABLE_EXIT_CODE}; fi; \
-         if [ -d /run/WSL ]; then interop=interop; mask='--tmpfs /run/WSL'; \
-         else interop=no-interop; mask=''; fi; \
-         \"$bwrap_path\" --ro-bind / / --tmpfs /tmp $mask --dev /dev --proc /proc \
-         --unshare-net --unshare-user --unshare-ipc --unshare-uts --unshare-pid \
-         --unshare-cgroup-try --die-with-parent -- true >/dev/null \
-         || exit {BWRAP_UNUSABLE_EXIT_CODE}; \
-         printf '{PROBE_RESULT_PREFIX} %s %s\\n' \"$interop\" \"$bwrap_path\"; \
-         printf '{PROBE_HOME_PREFIX} %s\\n' \"$HOME\""
-    )
-}
-
-/// Probe a distro's sandbox environment in one `wsl.exe` round-trip: confirm
-/// a shell starts, confirm `bwrap` is installed *and can actually set up an
-/// unprivileged sandbox* (see [`probe_script`]), and report whether the
-/// interop socket directory exists.
+/// Make sure this build's helper is installed in `distro` and that the distro
+/// can run it, returning its absolute path inside the distro.
 ///
-/// Successful results are cached per distro for the life of the process —
-/// like `linux_bubblewrap::is_available`, the answers can't realistically
-/// change while Zed runs. Failures are deliberately *not* cached so a user
-/// who installs `bwrap` (or lifts a user-namespace restriction) after seeing
-/// the error can retry the command without restarting Zed.
-async fn probe_environment(wsl_exe: &Path, distro: Option<&str>) -> Result<EnvironmentProbe> {
-    static CACHE: OnceLock<Mutex<HashMap<Option<String>, EnvironmentProbe>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+/// The helper is the Linux `remote_server` and `slirp4netns` shipped next to
+/// `Zed.exe` (the same files `crates/remote` uploads to SSH hosts), copied into
+/// `~/.cache/zed-jp-enhance/sandbox/<key>/` inside the distro — nothing is
+/// downloaded, so this works offline and never runs a binary this build did not
+/// ship. `<key>` is derived from the artifacts' contents, so each build (and
+/// each development rebuild) has a directory of its own.
+///
+/// Verified installations are remembered per distro for
+/// [`HELPER_RECHECK_INTERVAL`], so a steady stream of commands costs no extra
+/// round-trip. Failures are not remembered, so the user can fix the
+/// environment (`wsl --update`, reinstalling Zed) and retry without restarting.
+///
+/// `ZED_WSL_SANDBOX_HELPER` (an absolute path inside the distro to a Linux
+/// `remote_server` with `slirp4netns` next to it) skips the copy, for working
+/// on the helper without rebuilding the bundled artifact.
+async fn ensure_sandbox_helper(wsl_exe: &Path, distro: Option<&str>) -> Result<InstalledHelper> {
+    type HelperCache = HashMap<(Option<String>, String), (InstalledHelper, Instant)>;
+    static CACHE: OnceLock<Mutex<HelperCache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
 
-    let key = distro.map(str::to_string);
-    if let Some(probe) = cache
+    let (install_key, artifacts) = match helper_override()? {
+        Some(helper) => (helper, None),
+        None => {
+            let artifacts = locate_helper_artifacts()?;
+            let server_digest = file_sha256(&artifacts.server).await?;
+            let slirp_digest = file_sha256(&artifacts.slirp).await?;
+            let digests = HelperDigests {
+                server: installed_content_sha256(
+                    &artifacts.server,
+                    artifacts.server_is_gzip,
+                    &server_digest,
+                )
+                .await?,
+                slirp: slirp_digest.clone(),
+            };
+            (
+                helper_install_key(&server_digest, &slirp_digest),
+                Some((artifacts, digests)),
+            )
+        }
+    };
+    let cache_key = (distro.map(str::to_string), install_key.clone());
+    if let Some((helper, verified_at)) = cache
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(&key)
+        .get(&cache_key)
+        && verified_at.elapsed() < HELPER_RECHECK_INTERVAL
     {
-        return Ok(probe.clone());
+        return Ok(helper.clone());
     }
 
-    // A login shell (`-lc`) is used so a `bwrap` reachable only through a
-    // profile-managed PATH is still found; the resolved absolute path is
-    // reported back so the real invocation execs the same binary.
-    let script = probe_script();
-    let output = run_wsl_command(
-        wsl_exe,
-        distro,
-        ["--exec", "sh", "-lc", &script],
-        "probe the sandbox environment",
-    )
-    .await?;
-    if output.status.code() == Some(BWRAP_MISSING_EXIT_CODE) {
-        return Err(unavailable(format!(
-            "Bubblewrap (`bwrap`) is not installed in {}",
-            wsl_distro_label(distro)
-        )));
-    }
-    if output.status.code() == Some(BWRAP_UNUSABLE_EXIT_CODE) {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stderr = stderr.trim();
-        return Err(unavailable(format!(
-            "Bubblewrap (`bwrap`) is installed in {} but could not set up a sandbox — the \
-             distro may restrict unprivileged user namespaces (as Ubuntu 24.04's default \
-             AppArmor policy does){}",
-            wsl_distro_label(distro),
-            if stderr.is_empty() {
-                String::new()
-            } else {
-                format!(": {stderr}")
+    let (helper, probe) = match &artifacts {
+        None => {
+            let helper = InstalledHelper {
+                path: install_key.clone(),
+                digests: None,
+            };
+            let probe = probe_helper(wsl_exe, distro, &helper).await?;
+            (helper, probe)
+        }
+        Some((artifacts, digests)) => {
+            let (path, freshly_installed) =
+                install_if_needed(wsl_exe, distro, &install_key, artifacts, digests).await?;
+            let helper = InstalledHelper {
+                path,
+                digests: Some(digests.clone()),
+            };
+            match probe_helper(wsl_exe, distro, &helper).await {
+                Ok(probe) => (helper, probe),
+                Err(error) if !freshly_installed => {
+                    log::warn!(
+                        "the WSL sandbox helper installed earlier does not run ({error:#}); \
+                         installing it again"
+                    );
+                    install_helper(wsl_exe, distro, &install_key, artifacts).await?;
+                    let probe = probe_helper(wsl_exe, distro, &helper).await?;
+                    (helper, probe)
+                }
+                Err(error) => return Err(error),
             }
-        )));
-    }
-    if !output.status.success() {
-        return Err(unavailable(format!(
-            "failed to start a shell in {}{}",
-            wsl_distro_label(distro),
-            command_failure_details(output.status.code(), &output.stderr)
-        )));
+        }
+    };
+    if let Some(problem) = probe_problem(&probe, distro) {
+        return Err(unavailable(problem));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let probe = parse_probe_output(&stdout).map_err(|error| {
-        unavailable(format!(
-            "unexpected sandbox probe output from {}: {error:#}",
-            wsl_distro_label(distro)
-        ))
-    })?;
     cache
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(key, probe.clone());
-    Ok(probe)
+        .insert(cache_key, (helper.clone(), Instant::now()));
+    Ok(helper)
 }
 
-/// Parse [`probe_script`] output: the last [`PROBE_RESULT_PREFIX`]- and
-/// [`PROBE_HOME_PREFIX`]-marked lines win, so stdout noise from login-shell
-/// profile scripts (which runs before the script body) is ignored.
-///
-/// A missing or non-absolute `$HOME` fails the probe rather than defaulting:
-/// without it the built-in protected set inside the distro can't be determined,
-/// and a sandbox that silently drops it is a sandbox that hands out the distro
-/// account's ssh keys.
-fn parse_probe_output(stdout: &str) -> Result<EnvironmentProbe> {
-    let home = stdout
-        .lines()
-        .rev()
-        .find_map(|line| line.strip_prefix(PROBE_HOME_PREFIX))
-        .with_context(|| format!("no probe home line in: {stdout:?}"))?
-        .trim_start();
-    ensure!(
-        home.starts_with('/'),
-        "the distro reported {home:?} as its home directory rather than an absolute path, \
-         so the paths that must always be protected inside it cannot be determined"
-    );
-    let line = stdout
-        .lines()
-        .rev()
-        .find_map(|line| line.strip_prefix(PROBE_RESULT_PREFIX))
-        .with_context(|| format!("no probe result line in: {stdout:?}"))?;
-    let (interop, bwrap_path) = line
-        .trim_start()
-        .split_once(' ')
-        .with_context(|| format!("malformed probe result line: {line:?}"))?;
-    let mask_interop_dir = match interop {
-        "interop" => true,
-        "no-interop" => false,
-        _ => bail!("malformed probe result line: {line:?}"),
+fn helper_override() -> Result<Option<String>> {
+    let Some(helper) = std::env::var_os("ZED_WSL_SANDBOX_HELPER") else {
+        return Ok(None);
     };
-    ensure!(
-        bwrap_path.starts_with('/'),
-        "`bwrap` resolved to {bwrap_path:?} rather than an absolute path; a shell \
-         alias or function named `bwrap` cannot be run with `wsl --exec`"
-    );
-    Ok(EnvironmentProbe {
-        mask_interop_dir,
-        bwrap_path: bwrap_path.to_string(),
-        home: home.to_string(),
-    })
+    match helper.into_string() {
+        Ok(helper) if helper.starts_with('/') => Ok(Some(helper)),
+        _ => Err(unavailable(
+            "環境変数 `ZED_WSL_SANDBOX_HELPER` には WSL 内の絶対パス (UTF-8) を指定してください。",
+        )),
+    }
 }
 
-/// Ensure a Linux `zed` of the given release `channel`/`version` is available
-/// inside WSL and return its absolute in-WSL path, to be `--exec`'d as the
-/// `--wsl-sandbox-helper`. Runs [`HELPER_PROVISION_SCRIPT`] (which downloads the
-/// matching release tarball into an off-`PATH` location on first use).
-///
-/// Successful resolutions are cached per `(distro, channel, version)` for the
-/// life of the process — once provisioned, the path won't change. Failures are
-/// not cached, so a user who installs `curl` (or fixes networking) after an
-/// error can retry without restarting Zed.
-async fn ensure_wsl_zed_helper(
-    wsl_exe: &Path,
-    distro: Option<&str>,
-    channel: &str,
-    version: &str,
-) -> Result<String> {
-    // TODO: Remove this development override once WSL canonical-path handling is released.
-    if let Some(helper) = std::env::var_os("ZED_WSL_SANDBOX_HELPER") {
-        let helper = helper
-            .into_string()
-            .map_err(|_| anyhow::anyhow!("ZED_WSL_SANDBOX_HELPER is not valid UTF-8"))?;
-        ensure!(
-            helper.starts_with('/'),
-            "ZED_WSL_SANDBOX_HELPER must be an absolute path inside WSL"
-        );
-        return Ok(helper);
+/// This build's helper as installed in a distro.
+#[derive(Clone)]
+struct InstalledHelper {
+    /// Absolute path inside the distro.
+    path: String,
+    /// What the installed files hash to, which every start checks (see
+    /// [`VERIFIED_EXEC_SCRIPT`]); `None` for a `ZED_WSL_SANDBOX_HELPER`
+    /// development override, which nothing vouches for.
+    digests: Option<HelperDigests>,
+}
+
+/// SHA-256 digests of the installed files, in lowercase hex.
+#[derive(Clone)]
+struct HelperDigests {
+    server: String,
+    slirp: String,
+}
+
+/// The bundled helper artifacts found for this build.
+struct HelperArtifacts {
+    server: PathBuf,
+    /// Whether `server` is the gzip-compressed form (as the installer ships it)
+    /// rather than a plain local cross-build.
+    server_is_gzip: bool,
+    slirp: PathBuf,
+}
+
+/// File names of the artifacts for this machine's architecture: the server
+/// compressed (as shipped) then plain, and `slirp4netns`. Must match
+/// `script/bundle-windows.ps1`, `script/build-dev.ps1`, and what `crates/remote`
+/// uploads to SSH hosts.
+fn helper_artifact_names() -> ([String; 2], String) {
+    let architecture = std::env::consts::ARCH;
+    let server = format!("zed-remote-server-linux-{architecture}");
+    (
+        [format!("{server}.gz"), server],
+        format!("slirp4netns-linux-{architecture}"),
+    )
+}
+
+/// Where the artifacts are looked for, most preferred first: next to the
+/// running executable, its `bin` directory (where the installer puts them),
+/// and in debug builds the workspace's `target\debug`, where
+/// `script/build-dev.ps1` always writes them — so a development binary built
+/// into another target directory finds them too. `crates/remote` searches the
+/// same places for its SSH uploads.
+fn helper_artifact_search_dirs() -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    if let Some(executable_directory) = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(Path::to_path_buf))
+    {
+        directories.push(executable_directory.join("bin"));
+        directories.insert(0, executable_directory);
     }
+    #[cfg(debug_assertions)]
+    directories.push(PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../target/debug"
+    )));
+    directories
+}
 
-    type HelperCache = HashMap<(Option<String>, String, String), String>;
-    static CACHE: OnceLock<Mutex<HelperCache>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+fn locate_helper_artifacts() -> Result<HelperArtifacts> {
+    let (server_names, slirp_name) = helper_artifact_names();
+    let directories = helper_artifact_search_dirs();
+    let server = directories.iter().find_map(|directory| {
+        server_names
+            .iter()
+            .map(|name| directory.join(name))
+            .find(|candidate| candidate.is_file())
+    });
+    let slirp = directories
+        .iter()
+        .map(|directory| directory.join(&slirp_name))
+        .find(|candidate| candidate.is_file());
+    match (server, slirp) {
+        (Some(server), Some(slirp)) => Ok(HelperArtifacts {
+            server_is_gzip: server
+                .extension()
+                .is_some_and(|extension| extension == "gz"),
+            server,
+            slirp,
+        }),
+        _ => {
+            let searched = directories
+                .iter()
+                .map(|directory| format!("`{}`", directory.display()))
+                .collect::<Vec<_>>()
+                .join("、");
+            Err(unavailable(format!(
+                "サンドボックス用のヘルパー (`{}` と `{slirp_name}`) が Zed のインストール先に\
+                 見つかりません。Zed を再インストールしてください。開発ビルドでは \
+                 `script/build-dev.ps1` が `target\\debug` に用意します (探した場所: {searched})。",
+                server_names[0]
+            )))
+        }
+    }
+}
 
-    let key = (
-        distro.map(str::to_string),
-        channel.to_string(),
-        version.to_string(),
-    );
-    if let Some(path) = cache
+/// SHA-256 of a file as stored, in hex. Cached per `(path, length, modified)`
+/// for the life of the process: the artifacts only change when Zed is updated,
+/// which restarts it.
+async fn file_sha256(path: &Path) -> Result<String> {
+    type DigestCache = HashMap<(PathBuf, u64, Option<SystemTime>), String>;
+    static CACHE: OnceLock<Mutex<DigestCache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+
+    let unreadable = |error: std::io::Error| {
+        unavailable(format!(
+            "同梱のサンドボックス用ヘルパー `{}` を読み取れませんでした ({error})。\
+             Zed を再インストールしてください。",
+            path.display()
+        ))
+    };
+    let metadata = smol::fs::metadata(path).await.map_err(unreadable)?;
+    let key = (path.to_path_buf(), metadata.len(), metadata.modified().ok());
+    if let Some(digest) = cache
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get(&key)
     {
-        return Ok(path.clone());
+        return Ok(digest.clone());
     }
 
-    // A login shell (`-lc`) is used so a profile-managed PATH (where `zed` or
-    // `curl` may live) is honored. `channel`/`version` are passed as positional
-    // args (`$1`/`$2`), never interpolated into the script body.
+    let mut file = smol::fs::File::open(path).await.map_err(unreadable)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0; COPY_BUFFER_SIZE];
+    loop {
+        let read = file.read(&mut buffer).await.map_err(unreadable)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(buffer.get(..read).context("bug: read past the buffer")?);
+    }
+    let digest = hex_string(hasher.finalize().as_slice());
+    cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(key, digest.clone());
+    Ok(digest)
+}
+
+/// Names this build's helper directory inside the distro: a digest over both
+/// artifacts as shipped, so no build ever runs another build's helper.
+/// SHA-256 of what `path` becomes once installed: its decompressed contents
+/// when `gzip`. `file_digest`, of the file as shipped, keys the cache, so each
+/// build is decompressed once per process.
+async fn installed_content_sha256(path: &Path, gzip: bool, file_digest: &str) -> Result<String> {
+    if !gzip {
+        return Ok(file_digest.to_string());
+    }
+    static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(digest) = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(file_digest)
+    {
+        return Ok(digest.clone());
+    }
+
+    let file = smol::fs::File::open(path).await.map_err(|error| {
+        unavailable(format!(
+            "同梱のサンドボックス用ヘルパー `{}` を読み取れませんでした ({error})。\
+             Zed を再インストールしてください。",
+            path.display()
+        ))
+    })?;
+    let mut decoder = Box::pin(async_compression::futures::bufread::GzipDecoder::new(
+        futures::io::BufReader::new(file),
+    ));
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0; COPY_BUFFER_SIZE];
+    loop {
+        let read = decoder.read(&mut buffer).await.map_err(|error| {
+            unavailable(format!(
+                "同梱のサンドボックス用ヘルパー `{}` が壊れています ({error})。\
+                 Zed を再インストールしてください。",
+                path.display()
+            ))
+        })?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(buffer.get(..read).context("bug: read past the buffer")?);
+    }
+    let digest = hex_string(hasher.finalize().as_slice());
+    cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(file_digest.to_string(), digest.clone());
+    Ok(digest)
+}
+
+fn helper_install_key(server_digest: &str, slirp_digest: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(server_digest.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(slirp_digest.as_bytes());
+    hex_string(hasher.finalize().as_slice())
+        .chars()
+        .take(16)
+        .collect()
+}
+
+fn hex_string(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The outcome of [`CHECK_SCRIPT`].
+#[derive(Debug, Eq, PartialEq)]
+enum HelperCheck {
+    /// Installed and intact, at this absolute path.
+    Ready(String),
+    Missing,
+    /// Installed, but the distro has no `sha256sum` to check it with.
+    Unverifiable,
+}
+
+/// Installs the helper unless this build's copy is already there; returns its
+/// path and whether it was installed just now.
+async fn install_if_needed(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    key: &str,
+    artifacts: &HelperArtifacts,
+    digests: &HelperDigests,
+) -> Result<(String, bool)> {
+    match check_helper(wsl_exe, distro, key, digests).await? {
+        HelperCheck::Ready(helper) => return Ok((helper, false)),
+        HelperCheck::Unverifiable => return Err(unverifiable_helper(distro)),
+        HelperCheck::Missing => {}
+    }
+    install_helper(wsl_exe, distro, key, artifacts).await?;
+    match check_helper(wsl_exe, distro, key, digests).await? {
+        HelperCheck::Ready(helper) => Ok((helper, true)),
+        HelperCheck::Unverifiable => Err(unverifiable_helper(distro)),
+        HelperCheck::Missing => Err(unavailable(format!(
+            "サンドボックス用のヘルパーを{}に配置しましたが、確認できませんでした。もう一度実行してください。",
+            wsl_distro_label(distro)
+        ))),
+    }
+}
+
+fn unverifiable_helper(distro: Option<&str>) -> anyhow::Error {
+    unavailable(format!(
+        "{}に `sha256sum` がないため、サンドボックス用のヘルパーが置き換えられていないことを\
+         確認できません。coreutils をインストールしてから再試行してください。",
+        wsl_distro_label(distro)
+    ))
+}
+
+async fn check_helper(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    key: &str,
+    digests: &HelperDigests,
+) -> Result<HelperCheck> {
     let output = run_wsl_command(
         wsl_exe,
         distro,
         [
             "--exec",
             "sh",
-            "-lc",
-            HELPER_PROVISION_SCRIPT,
-            "zed-wsl-sandbox-helper",
-            channel,
-            version,
+            "-c",
+            CHECK_SCRIPT,
+            "zed-wsl-check",
+            key,
+            WSL_SANDBOX_HELPER_HOME_RELATIVE,
+            digests.server.as_str(),
+            digests.slirp.as_str(),
         ],
-        "provision the Linux `zed` sandbox helper",
+        "サンドボックス用ヘルパーの確認",
     )
     .await?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stderr = stderr.trim();
         return Err(unavailable(format!(
-            "failed to provision a Linux `zed` sandbox helper in {}{}",
+            "{}でサンドボックス用ヘルパーの状態を確認できませんでした{}。\
+             `wsl --update` を実行してから再試行してください。",
             wsl_distro_label(distro),
-            if stderr.is_empty() {
-                String::new()
-            } else {
-                format!(": {stderr}")
-            }
+            command_failure_details(output.status.code(), &output.stderr)
         )));
     }
+    parse_check_output(&String::from_utf8_lossy(&output.stdout)).map_err(|error| {
+        unavailable(format!(
+            "{}でサンドボックス用ヘルパーの状態を確認できませんでした ({error:#})。",
+            wsl_distro_label(distro)
+        ))
+    })
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let path = stdout
+fn parse_check_output(stdout: &str) -> Result<HelperCheck> {
+    let line = stdout
         .lines()
         .rev()
         .find_map(|line| line.strip_prefix(HELPER_RESULT_PREFIX))
-        .map(|path| path.trim().to_string())
-        .with_context(|| {
-            unavailable(format!(
-                "no helper result line in sandbox-helper provisioning output from {}: {stdout:?}",
+        .with_context(|| format!("no helper check result in {stdout:?}"))?;
+    let (state, path) = line
+        .trim_start()
+        .split_once(' ')
+        .with_context(|| format!("malformed helper check result {line:?}"))?;
+    match state {
+        "ready" if path.starts_with('/') => Ok(HelperCheck::Ready(path.to_string())),
+        "missing" => Ok(HelperCheck::Missing),
+        "unverifiable" => Ok(HelperCheck::Unverifiable),
+        _ => bail!("malformed helper check result {line:?}"),
+    }
+}
+
+/// A file copied into the install directory under a temporary name, waiting
+/// for [`FINALIZE_SCRIPT`].
+struct StagedFile {
+    name: &'static str,
+    path: String,
+    size: u64,
+}
+
+/// What [`STAGE_SCRIPT`] reports about the file it received.
+#[derive(Debug, Eq, PartialEq)]
+struct StageReport {
+    size: u64,
+    /// `None` when the distro has no `sha256sum`, leaving only the size check.
+    sha256: Option<String>,
+    path: String,
+}
+
+/// What was actually sent into WSL for one file.
+struct SentFile {
+    size: u64,
+    sha256: String,
+}
+
+async fn install_helper(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    key: &str,
+    artifacts: &HelperArtifacts,
+) -> Result<()> {
+    let files = [
+        (
+            HELPER_BINARY_NAME,
+            artifacts.server.as_path(),
+            artifacts.server_is_gzip,
+        ),
+        (SLIRP_BINARY_NAME, artifacts.slirp.as_path(), false),
+    ];
+    let mut staged = Vec::with_capacity(files.len());
+    for (name, source, gzip) in files {
+        match stage_file(wsl_exe, distro, key, name, source, gzip).await {
+            Ok(file) => staged.push(file),
+            Err(error) => {
+                discard_staged_files(
+                    wsl_exe,
+                    distro,
+                    staged.iter().map(|file| file.path.as_str()),
+                )
+                .await;
+                return Err(error);
+            }
+        }
+    }
+
+    let mut args = vec![
+        "--exec".to_string(),
+        "sh".to_string(),
+        "-c".to_string(),
+        FINALIZE_SCRIPT.to_string(),
+        "zed-wsl-finalize".to_string(),
+        key.to_string(),
+        WSL_SANDBOX_HELPER_HOME_RELATIVE.to_string(),
+    ];
+    for file in &staged {
+        args.extend([
+            file.path.clone(),
+            file.name.to_string(),
+            file.size.to_string(),
+        ]);
+    }
+    let output = run_wsl_command(wsl_exe, distro, &args, "サンドボックス用ヘルパーの配置").await?;
+    if !output.status.success() {
+        discard_staged_files(
+            wsl_exe,
+            distro,
+            staged.iter().map(|file| file.path.as_str()),
+        )
+        .await;
+        return Err(copy_failure(distro, &output));
+    }
+    log::info!(
+        "installed the WSL sandbox helper {key} into {}",
+        wsl_distro_label(distro)
+    );
+    Ok(())
+}
+
+/// Copy `source` (decompressed when `gzip`) into the install directory under a
+/// temporary name, and check that what arrived is exactly what was sent.
+async fn stage_file(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    key: &str,
+    name: &'static str,
+    source: &Path,
+    gzip: bool,
+) -> Result<StagedFile> {
+    use smol::process::windows::CommandExt as _;
+
+    let mut command = Command::new(wsl_exe);
+    if let Some(distro) = distro {
+        command.args(["-d", distro]);
+    }
+    command
+        .args([
+            "--exec",
+            "sh",
+            "-c",
+            STAGE_SCRIPT,
+            "zed-wsl-stage",
+            key,
+            WSL_SANDBOX_HELPER_HOME_RELATIVE,
+            name,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .creation_flags(CREATE_NO_WINDOW);
+    let mut child = command
+        .spawn()
+        .map_err(|error| wsl_start_failure("サンドボックス用ヘルパーのコピー", &error))?;
+    let stdin = child
+        .stdin
+        .take()
+        .context("bug: wsl.exe was spawned without a stdin pipe")?;
+    let (sent, output) = futures::join!(send_file(source, gzip, stdin), child.output());
+    let output =
+        output.map_err(|error| wsl_start_failure("サンドボックス用ヘルパーのコピー", &error))?;
+    let report = parse_stage_output(&String::from_utf8_lossy(&output.stdout));
+
+    // A failed `wsl.exe` is the better explanation of a failed send (the pipe
+    // broke because the other end went away), so it is checked first.
+    let failure = if !output.status.success() {
+        Some(copy_failure(distro, &output))
+    } else {
+        match (&sent, &report) {
+            (Err(_), _) => None,
+            (Ok(_), Err(error)) => Some(unavailable(format!(
+                "サンドボックス用のヘルパーを{}にコピーできませんでした ({error:#})。",
                 wsl_distro_label(distro)
+            ))),
+            (Ok(sent), Ok(report)) => {
+                let intact = report.size == sent.size
+                    && report
+                        .sha256
+                        .as_deref()
+                        .is_none_or(|received| received == sent.sha256);
+                (!intact).then(|| {
+                    unavailable(format!(
+                        "{}にコピーしたサンドボックス用のヘルパー `{name}` が元のファイルと一致しませんでした \
+                         (送信 {} バイト、受信 {} バイト)。もう一度実行してください。改善しない場合は \
+                         WSL 内の空き容量を確認してください。",
+                        wsl_distro_label(distro),
+                        sent.size,
+                        report.size
+                    ))
+                })
+            }
+        }
+    };
+    let sent = match (failure, sent) {
+        (None, Ok(sent)) => sent,
+        (failure, sent) => {
+            if let Ok(report) = &report {
+                discard_staged_files(wsl_exe, distro, [report.path.as_str()]).await;
+            }
+            return Err(match (failure, sent) {
+                (Some(failure), _) => failure,
+                (None, Err(error)) => error,
+                (None, Ok(_)) => anyhow::anyhow!("bug: a staged file was discarded without cause"),
+            });
+        }
+    };
+    let report = report?;
+    Ok(StagedFile {
+        name,
+        path: report.path,
+        size: sent.size,
+    })
+}
+
+/// Stream `source` (decompressed when `gzip`) into `sink`, returning the size
+/// and SHA-256 of what was sent.
+async fn send_file(source: &Path, gzip: bool, sink: smol::process::ChildStdin) -> Result<SentFile> {
+    let file = smol::fs::File::open(source).await.map_err(|error| {
+        unavailable(format!(
+            "同梱のサンドボックス用ヘルパー `{}` を読み取れませんでした ({error})。\
+             Zed を再インストールしてください。",
+            source.display()
+        ))
+    })?;
+    let reader = futures::io::BufReader::new(file);
+    if gzip {
+        let decoder = async_compression::futures::bufread::GzipDecoder::new(reader);
+        pump(Box::pin(decoder), source, sink).await
+    } else {
+        pump(reader, source, sink).await
+    }
+}
+
+async fn pump(
+    mut reader: impl AsyncRead + Unpin,
+    source: &Path,
+    mut sink: smol::process::ChildStdin,
+) -> Result<SentFile> {
+    let mut hasher = Sha256::new();
+    let mut size = 0u64;
+    let mut buffer = vec![0; COPY_BUFFER_SIZE];
+    loop {
+        // A read error here is the artifact itself (a truncated download, a
+        // gzip checksum mismatch), so it names the file and the fix.
+        let read = reader.read(&mut buffer).await.map_err(|error| {
+            unavailable(format!(
+                "同梱のサンドボックス用ヘルパー `{}` が壊れています ({error})。\
+                 Zed を再インストールしてください。",
+                source.display()
             ))
         })?;
-    ensure!(
-        path.starts_with('/'),
-        "the WSL `zed` sandbox helper resolved to {path:?} rather than an absolute path"
-    );
-
-    cache
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(key, path.clone());
-    Ok(path)
+        if read == 0 {
+            break;
+        }
+        let chunk = buffer.get(..read).context("bug: read past the buffer")?;
+        hasher.update(chunk);
+        size += read as u64;
+        sink.write_all(chunk)
+            .await
+            .context("writing the sandbox helper into WSL")?;
+    }
+    sink.close()
+        .await
+        .context("finishing the sandbox helper copy into WSL")?;
+    Ok(SentFile {
+        size,
+        sha256: hex_string(hasher.finalize().as_slice()),
+    })
 }
+
+fn parse_stage_output(stdout: &str) -> Result<StageReport> {
+    let line = stdout
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix(STAGE_RESULT_PREFIX))
+        .with_context(|| format!("no copy result in {stdout:?}"))?;
+    let mut fields = line.trim_start().splitn(3, ' ');
+    let (Some(size), Some(sha256), Some(path)) = (fields.next(), fields.next(), fields.next())
+    else {
+        bail!("malformed copy result {line:?}");
+    };
+    ensure!(path.starts_with('/'), "malformed copy result {line:?}");
+    Ok(StageReport {
+        size: size
+            .parse()
+            .with_context(|| format!("malformed copy result {line:?}"))?,
+        sha256: (sha256 != "-").then(|| sha256.to_string()),
+        path: path.to_string(),
+    })
+}
+
+/// Best effort: a leftover is also swept up by the next installation.
+async fn discard_staged_files<'a>(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    paths: impl IntoIterator<Item = &'a str>,
+) {
+    let mut args = vec!["--exec", "rm", "-f", "--"];
+    args.extend(paths);
+    if args.len() == 4 {
+        return;
+    }
+    match run_wsl_command(wsl_exe, distro, &args, "コピー途中のファイルの削除").await {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => log::warn!(
+            "could not remove a partial WSL sandbox helper copy{}",
+            command_failure_details(output.status.code(), &output.stderr)
+        ),
+        Err(error) => log::warn!("could not remove a partial WSL sandbox helper copy: {error:#}"),
+    }
+}
+
+fn copy_failure(distro: Option<&str>, output: &std::process::Output) -> anyhow::Error {
+    unavailable(format!(
+        "サンドボックス用のヘルパーを{}にコピーできませんでした{}。WSL 内の空き容量と、\
+         ホームディレクトリへの書き込み権限を確認してください。",
+        wsl_distro_label(distro),
+        command_failure_details(output.status.code(), &output.stderr)
+    ))
+}
+
+/// What `--wsl-sandbox-probe` reports about the distro's kernel.
+#[derive(Debug, Eq, PartialEq)]
+struct HelperProbe {
+    landlock_abi: i32,
+    /// `Err` carries the helper's one-word reason (`errno-<n>`).
+    namespaces: std::result::Result<(), String>,
+}
+
+async fn probe_helper(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    helper: &InstalledHelper,
+) -> Result<HelperProbe> {
+    let mut args = helper_invocation(helper);
+    args.push(crate::WSL_SANDBOX_PROBE_FLAG.to_string());
+    let output =
+        run_wsl_command(wsl_exe, distro, &args, "サンドボックス用ヘルパーの動作確認").await?;
+    parse_helper_probe(&String::from_utf8_lossy(&output.stdout)).map_err(|error| {
+        unavailable(format!(
+            "{}でサンドボックス用のヘルパーを実行できませんでした{} ({error:#})。\
+             `wsl --update` で WSL を更新してから再試行してください。",
+            wsl_distro_label(distro),
+            command_failure_details(output.status.code(), &output.stderr)
+        ))
+    })
+}
+
+fn parse_helper_probe(stdout: &str) -> Result<HelperProbe> {
+    let line = stdout
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix(WSL_PROBE_RESULT_PREFIX))
+        .with_context(|| format!("no probe result in {stdout:?}"))?;
+    let mut landlock_abi = None;
+    let mut namespaces = None;
+    for field in line.split_whitespace() {
+        if let Some(value) = field.strip_prefix("landlock=") {
+            landlock_abi = Some(
+                value
+                    .parse::<i32>()
+                    .with_context(|| format!("malformed probe result {line:?}"))?,
+            );
+        } else if let Some(value) = field.strip_prefix("userns=") {
+            namespaces = Some(if value == "ok" {
+                Ok(())
+            } else {
+                Err(value.to_string())
+            });
+        }
+    }
+    Ok(HelperProbe {
+        landlock_abi: landlock_abi.with_context(|| format!("malformed probe result {line:?}"))?,
+        namespaces: namespaces.with_context(|| format!("malformed probe result {line:?}"))?,
+    })
+}
+
+fn probe_problem(probe: &HelperProbe, distro: Option<&str>) -> Option<String> {
+    if let Err(reason) = &probe.namespaces {
+        return Some(format!(
+            "{}でユーザー名前空間を作成できないため、サンドボックスを作れません ({reason})。\
+             `wsl --update` で WSL を更新し、`wsl --shutdown` で WSL を再起動してから再試行してください \
+             (WSL 2 が必要です)。",
+            wsl_distro_label(distro)
+        ));
+    }
+    if probe.landlock_abi < 1 {
+        return Some(format!(
+            "{}のカーネルが Landlock に対応していないため、サンドボックスを作れません。\
+             `wsl --update` で WSL を更新し、`wsl --shutdown` で WSL を再起動してから再試行してください。",
+            wsl_distro_label(distro)
+        ));
+    }
+    None
+}
+
+// ===========================================================================
+// Path resolution
+// ===========================================================================
 
 /// Shell script that resolves and existence-checks paths in a single WSL
 /// round-trip. Arguments come in triples `(kind, path, fallback)`: kind `W`
@@ -1031,10 +1662,10 @@ struct ResolvedPath {
 /// handles all cache misses ([`resolve_uncached_paths`]). A hit reuses the
 /// translation — which only changes if the distro's automount configuration
 /// is edited and the distro restarted — and also skips the WSL-side
-/// existence re-check. That staleness is acceptable: if a cached path
-/// disappears mid-session bwrap fails closed on the missing bind source rather
-/// than running the command unsandboxed. Optional missing paths are not cached,
-/// so a protected Git path can be created and then included by a later command.
+/// existence re-check. That staleness is acceptable: if a cached writable path
+/// disappears mid-session the helper simply does not grant it. Optional missing
+/// paths are not cached, so a protected Git path can be created and then
+/// included by a later command.
 ///
 /// Each mapping is paired with a human-readable description used in errors and
 /// a flag for whether the path is required to exist. The returned paths are in
@@ -1065,22 +1696,29 @@ async fn resolve_paths(
             .collect()
     };
 
-    let misses: Vec<usize> = (0..mappings.len())
-        .filter(|&index| resolved[index].is_none())
+    let misses: Vec<usize> = resolved
+        .iter()
+        .enumerate()
+        .filter(|(_, path)| path.is_none())
+        .map(|(index, _)| index)
         .collect();
     if !misses.is_empty() {
-        let miss_mappings: Vec<&(PathMapping, &str, bool)> =
-            misses.iter().map(|&index| &mappings[index]).collect();
+        let miss_mappings: Vec<&(PathMapping, &str, bool)> = misses
+            .iter()
+            .filter_map(|&index| mappings.get(index))
+            .collect();
         let miss_resolved = resolve_uncached_paths(wsl_exe, distro, &miss_mappings).await?;
         let mut cache = cache
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let per_distro = cache.entry(distro_key).or_default();
-        for (&index, path) in misses.iter().zip(miss_resolved) {
+        for ((&index, mapping), path) in misses.iter().zip(miss_mappings).zip(miss_resolved) {
             if let Some(path) = &path {
-                per_distro.insert(mappings[index].0.clone(), path.clone());
+                per_distro.insert(mapping.0.clone(), path.clone());
             }
-            resolved[index] = Some(path);
+            if let Some(slot) = resolved.get_mut(index) {
+                *slot = Some(path);
+            }
         }
     }
 
@@ -1110,10 +1748,10 @@ async fn resolve_uncached_paths(
     args.extend(path_resolution_args(
         mappings.iter().map(|mapping| &mapping.0),
     ));
-    let output = run_wsl_command(wsl_exe, distro, &args, "resolve sandbox paths").await?;
+    let output = run_wsl_command(wsl_exe, distro, &args, "パスの解決").await?;
     if !output.status.success() {
         return Err(unavailable(format!(
-            "failed to resolve sandbox paths in {}{}",
+            "{}でパスを解決できませんでした{}。`wsl --update` を実行してから再試行してください。",
             wsl_distro_label(distro),
             command_failure_details(output.status.code(), &output.stderr)
         )));
@@ -1122,7 +1760,7 @@ async fn resolve_uncached_paths(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let resolved = parse_path_resolution_output(&stdout, mappings.len()).map_err(|error| {
         unavailable(format!(
-            "failed to resolve sandbox paths in {}: {error:#}",
+            "{}でパスを解決できませんでした ({error:#})。",
             wsl_distro_label(distro)
         ))
     })?;
@@ -1144,14 +1782,13 @@ async fn resolve_uncached_paths(
             if !resolved.exists {
                 // A bad request (the path simply isn't there), not an
                 // environment problem — the model can create it or fix the path
-                // and retry, so no `WSL_SANDBOX_UNAVAILABLE_PREFIX`. Protected
-                // Git paths are allowed to be absent, matching Linux bwrap's
-                // behavior: a missing path cannot be overlaid, so it is skipped.
+                // and retry. Protected paths are allowed to be absent: there is
+                // nothing to protect yet.
                 ensure!(
                     !required,
                     "mapped {description} `{}` does not exist in {}",
                     resolved.path,
-                    wsl_distro_label(distro)
+                    distro.unwrap_or("the default WSL distro")
                 );
                 return Ok(None);
             }
@@ -1222,6 +1859,10 @@ fn parse_path_resolution_output(stdout: &str, expected: usize) -> Result<Vec<Res
         .collect()
 }
 
+// ===========================================================================
+// wsl.exe
+// ===========================================================================
+
 /// `CREATE_NO_WINDOW` process creation flag. `wsl.exe` is a console-subsystem
 /// binary, so spawning it from a GUI process without this flag flashes a
 /// console window. Defined locally because this crate doesn't depend on
@@ -1231,9 +1872,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Invoke `wsl.exe` with the given args and return its raw output.
 ///
 /// Only spawn failures become errors here; callers interpret the exit status
-/// themselves. stdout, when used, is decoded as UTF-8 (lossily) — that's
-/// only valid for `--exec`'d programs whose output we control, not for
-/// `wsl.exe`'s own diagnostics (which are UTF-16LE).
+/// themselves. `description` names the step in Japanese for the error message.
 ///
 /// `output()` spawns the child eagerly and the returned future owns it, so
 /// with `kill_on_drop` the child can't outlive this future: a caller-side
@@ -1257,144 +1896,118 @@ async fn run_wsl_command(
         .kill_on_drop(true)
         .creation_flags(CREATE_NO_WINDOW);
 
-    command.output().await.map_err(|error| {
-        unavailable(format!(
-            "failed to invoke WSL while trying to {description}: {error:#}"
-        ))
-    })
+    command
+        .output()
+        .await
+        .map_err(|error| wsl_start_failure(description, &error))
+}
+
+fn wsl_start_failure(description: &str, error: &std::io::Error) -> anyhow::Error {
+    unavailable(format!(
+        "{description}のために WSL を起動できませんでした ({error})。`wsl --update` を実行するか、\
+         Windows を再起動してから再試行してください。"
+    ))
 }
 
 fn command_failure_details(exit_code: Option<i32>, stderr: &[u8]) -> String {
-    let stderr = String::from_utf8_lossy(stderr);
+    let stderr = decode_wsl_text(stderr);
     let stderr = stderr.trim();
     let exit_status = match exit_code {
-        Some(code) => format!("exit code {code}"),
-        None => "terminated by signal".to_string(),
+        Some(code) => format!("終了コード {code}"),
+        None => "シグナルで終了".to_string(),
     };
     if stderr.is_empty() {
         format!(" ({exit_status})")
     } else {
-        format!(" ({exit_status}; stderr: {stderr})")
+        format!(" ({exit_status}、エラー出力: {stderr})")
+    }
+}
+
+/// Decode `wsl.exe` output. What a Linux program prints arrives as UTF-8, but
+/// `wsl.exe`'s own messages (an unknown distro, a WSL that fails to start —
+/// exactly the ones worth showing) are UTF-16LE.
+fn decode_wsl_text(bytes: &[u8]) -> String {
+    let high_bytes_zero = bytes
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .filter(|byte| **byte == 0)
+        .count();
+    let looks_like_utf16 =
+        bytes.len() >= 2 && bytes.len().is_multiple_of(2) && high_bytes_zero * 4 >= bytes.len();
+    if looks_like_utf16 {
+        let units: Vec<u16> = bytes
+            .chunks_exact(2)
+            .filter_map(|pair| match pair {
+                [low, high] => Some(u16::from_le_bytes([*low, *high])),
+                _ => None,
+            })
+            .collect();
+        String::from_utf16_lossy(&units)
+    } else {
+        String::from_utf8_lossy(bytes).into_owned()
     }
 }
 
 fn wsl_distro_label(distro: Option<&str>) -> String {
     match distro {
-        Some(distro) => format!("WSL distro `{distro}`"),
-        None => "the default WSL distro".to_string(),
+        Some(distro) => format!("WSL ディストリビューション `{distro}`"),
+        None => "既定の WSL ディストリビューション".to_string(),
     }
 }
 
-fn wsl_exe_path() -> PathBuf {
+fn windows_directory() -> PathBuf {
     std::env::var_os("SystemRoot")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
-        .join("System32")
-        .join("wsl.exe")
 }
 
-fn build_bwrap_args<S: std::hash::BuildHasher>(
-    writable_paths: &[String],
-    protected_paths: &[String],
-    permissions: SandboxPermissions,
-    cwd: Option<&str>,
-    mask_interop_dir: bool,
+fn wsl_exe_path() -> PathBuf {
+    windows_directory().join("System32").join("wsl.exe")
+}
+
+// ===========================================================================
+// Environment and path mapping
+// ===========================================================================
+
+/// The part of the caller's environment to recreate inside the command, sorted
+/// by name so the command line is stable. Without it the command would lose
+/// `PAGER` (which stops `git` from paging into the PTY) and the rest of the
+/// project environment.
+fn forwarded_environment<S: BuildHasher>(
     env: &HashMap<String, String, S>,
-) -> Vec<String> {
-    let mut args = Vec::new();
-
-    if permissions.allow_fs_write {
-        push_bind(&mut args, "--bind", "/", "/");
-    } else {
-        push_bind(&mut args, "--ro-bind", "/", "/");
-        args.extend(["--tmpfs".to_string(), "/tmp".to_string()]);
-        for path in writable_paths {
-            push_bind(&mut args, "--bind", path, path);
-        }
-    }
-
-    // Protect requested paths by re-binding them read-only over any writable
-    // binds above (order matters: later binds win).
-    for path in protected_paths {
-        push_bind(&mut args, "--ro-bind", path, path);
-    }
-
-    // Block WSL's Windows interop, regardless of the requested permissions.
-    // Without this, a sandboxed process can exec a Windows binary (e.g.
-    // /mnt/c/Windows/System32/cmd.exe), which the kernel's binfmt handler
-    // (`/init`) hands off to the Windows host over an AF_UNIX socket — running
-    // fully outside bwrap and defeating both the filesystem and the network
-    // restrictions. `/init` locates that socket via the $WSL_INTEROP
-    // environment variable, so we drop it; and we mask the socket directory
-    // (when it exists) so the value can't be rediscovered by listing
-    // /run/WSL and re-exporting it. Both steps are required: unsetting the
-    // variable alone is bypassable, and masking alone leaves the inherited
-    // variable usable.
-    args.extend(["--unsetenv".to_string(), "WSL_INTEROP".to_string()]);
-    args.extend(["--unsetenv".to_string(), "WSLENV".to_string()]);
-    if mask_interop_dir {
-        args.extend(["--tmpfs".to_string(), "/run/WSL".to_string()]);
-    }
-
-    args.extend([
-        "--dev".to_string(),
-        "/dev".to_string(),
-        "--proc".to_string(),
-        "/proc".to_string(),
-    ]);
-
-    if !permissions.allow_network {
-        args.push("--unshare-net".to_string());
-    }
-
-    args.extend([
-        "--unshare-user".to_string(),
-        "--unshare-ipc".to_string(),
-        "--unshare-uts".to_string(),
-        "--unshare-pid".to_string(),
-        "--unshare-cgroup-try".to_string(),
-        "--die-with-parent".to_string(),
-    ]);
-
-    // Forward the caller-provided environment into the command. Windows env
-    // set on the `wsl.exe` process doesn't reach the Linux command, so we
-    // re-apply it here on the sandbox's child instead.
-    for (name, value) in env {
-        if is_forwardable_env_var(name) {
-            args.extend(["--setenv".to_string(), name.clone(), value.clone()]);
-        }
-    }
-
-    if let Some(cwd) = cwd {
-        args.extend(["--chdir".to_string(), cwd.to_string()]);
-    }
-
-    args
+) -> Vec<(String, String)> {
+    let mut forwarded: Vec<(String, String)> = env
+        .iter()
+        .filter(|(name, _)| is_forwardable_env_var(name))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    forwarded.sort();
+    forwarded
 }
 
 /// Whether an environment variable should be forwarded into the Linux sandbox.
 ///
-/// `bwrap --setenv` calls `setenv(3)`, which rejects names that are empty or
-/// contain `=`. Windows process environments include such entries — most
-/// notably the per-drive current-directory pseudo-variables (`=C:`, `=D:`,
-/// ...) Windows keeps in the environment block — so they must be skipped or
-/// bwrap aborts with "setenv failed".
+/// The helper sets each one with `setenv(3)`, which rejects names that are
+/// empty or contain `=`. Windows process environments include such entries —
+/// most notably the per-drive current-directory pseudo-variables (`=C:`,
+/// `=D:`, ...) Windows keeps in the environment block — so they are skipped.
 ///
 /// Beyond that, many variables hold Windows-specific values that would be
 /// meaningless or actively break the command inside WSL, so they are dropped
 /// rather than forwarded: `PATH`/`PATHEXT` would shadow WSL's own `PATH` and
 /// stop the shell from finding Linux executables, the temp-dir variables point
-/// at Windows paths that don't exist in WSL (bwrap provides a fresh tmpfs
-/// `/tmp` instead), the WSL interop variables would undermine the explicit
-/// interop block above, a Windows-set `HOME` would clobber the distro's own
-/// `$HOME` and break the shell, and the rest are Windows system locations,
-/// shell settings, host/session identity, and CPU descriptors that are either
-/// wrong or misleading inside Linux. This is a blocklist rather than an allowlist so
+/// at Windows paths that don't exist in WSL (the helper provides a private
+/// `TMPDIR` instead), the WSL interop variables would undermine the interop
+/// block, a Windows-set `HOME` would clobber the distro's own `$HOME` and break
+/// the shell, and the rest are Windows system locations, shell settings,
+/// host/session identity, and CPU descriptors that are either wrong or
+/// misleading inside Linux. This is a blocklist rather than an allowlist so
 /// genuinely portable variables (e.g. `LANG`, `CARGO_TERM_COLOR`, `PAGER`)
 /// still reach the command; it only needs to cover the variables Windows
 /// populates by default. Matched case-insensitively because Windows
 /// environment variable names are.
-fn is_forwardable_env_var(name: &str) -> bool {
+pub fn is_forwardable_env_var(name: &str) -> bool {
     if name.is_empty() || name.contains('=') {
         return false;
     }
@@ -1405,7 +2018,7 @@ fn is_forwardable_env_var(name: &str) -> bool {
         "TMPDIR",
         "TMP",
         "TEMP",
-        // Would undermine the explicit WSL interop block above.
+        // Would undermine the WSL interop block.
         "WSL_INTEROP",
         "WSLENV",
         // Windows system locations and shell, meaningless inside Linux.
@@ -1453,14 +2066,6 @@ fn is_forwardable_env_var(name: &str) -> bool {
     !BLOCKED
         .iter()
         .any(|blocked| name.eq_ignore_ascii_case(blocked))
-}
-
-fn push_bind(args: &mut Vec<String>, flag: &str, source: &str, destination: &str) {
-    args.extend([
-        flag.to_string(),
-        source.to_string(),
-        destination.to_string(),
-    ]);
 }
 
 fn directory_to_wsl(path: &Path) -> Result<PathMapping> {
@@ -1586,11 +2191,345 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            SandboxPermissions::default(),
+            SandboxPermissions {
+                network: RemoteSandboxNetwork::Blocked,
+                network_ceiling: None,
+                allow_fs_write: false,
+            },
             None,
             HashMap::<String, String>::new(),
-            None,
         ));
+    }
+
+    #[test]
+    fn helper_command_line_starts_the_verified_helper_after_wsl_options() {
+        let helper = InstalledHelper {
+            path: "/home/me/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server".to_string(),
+            digests: Some(HelperDigests {
+                server: "server-digest".to_string(),
+                slirp: "slirp-digest".to_string(),
+            }),
+        };
+        let helper_argv = crate::build_wsl_sandbox_helper_argv(
+            &["/mnt/c/proj".to_string()],
+            &["/mnt/c/proj/.git".to_string()],
+            &RemoteSandboxNetwork::Hosts(vec!["github.com".to_string()]),
+            false,
+            Some("/mnt/c/proj"),
+            &crate::WslHelperOptions {
+                network_ceiling: None,
+                slirp_sha256: Some("slirp-digest"),
+                environment: &[("PAGER".to_string(), String::new())],
+                unset_environment: &WSL_INTEROP_VARIABLES,
+            },
+        );
+        let args = helper_command_line(
+            Some("Ubuntu"),
+            Some("/mnt/c/proj"),
+            &helper,
+            helper_argv,
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), "echo hi".to_string()],
+        );
+        assert_eq!(
+            args,
+            [
+                "-d",
+                "Ubuntu",
+                "--cd",
+                "/mnt/c/proj",
+                "--exec",
+                "/bin/sh",
+                "-c",
+                VERIFIED_EXEC_SCRIPT,
+                "zed-wsl-exec",
+                "/home/me/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server",
+                "server-digest",
+                "--remote-sandbox-helper",
+                "--net",
+                "hosts",
+                "--allow-host",
+                "github.com",
+                "--writable",
+                "/mnt/c/proj",
+                "--protected",
+                "/mnt/c/proj/.git",
+                "--chdir",
+                "/mnt/c/proj",
+                "--wsl",
+                "--slirp-sha256",
+                "slirp-digest",
+                "--setenv",
+                "PAGER",
+                "",
+                "--unsetenv",
+                "WSL_INTEROP",
+                "--unsetenv",
+                "WSLENV",
+                "--",
+                "/bin/sh",
+                "-c",
+                "echo hi",
+            ]
+        );
+    }
+
+    /// A development override has nothing to verify against and is started
+    /// directly; an installed helper only through the verifying shell, which
+    /// fails the way the helper fails closed and runs what it hashed.
+    #[test]
+    fn only_an_installed_helper_is_started_through_the_verifier() {
+        let development = InstalledHelper {
+            path: "/opt/zed/remote_server".to_string(),
+            digests: None,
+        };
+        assert_eq!(
+            helper_invocation(&development),
+            ["--exec", "/opt/zed/remote_server"]
+        );
+        assert!(VERIFIED_EXEC_SCRIPT.contains("zed-wsl-sandbox: helper-mismatch:"));
+        assert!(VERIFIED_EXEC_SCRIPT.contains("exit 126"));
+        assert!(VERIFIED_EXEC_SCRIPT.contains("exec /proc/self/fd/3 \"$@\""));
+    }
+
+    #[test]
+    fn forwarded_environment_keeps_portable_variables_in_name_order() {
+        let env = HashMap::from([
+            ("PAGER".to_string(), String::new()),
+            ("LANG".to_string(), "en_US.UTF-8".to_string()),
+            ("CARGO_TERM_COLOR".to_string(), "always".to_string()),
+        ]);
+        assert_eq!(
+            forwarded_environment(&env),
+            [
+                ("CARGO_TERM_COLOR".to_string(), "always".to_string()),
+                ("LANG".to_string(), "en_US.UTF-8".to_string()),
+                ("PAGER".to_string(), String::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn forwarded_environment_drops_windows_specific_and_invalid_names() {
+        // These hold Windows paths/values that would break or be meaningless
+        // inside WSL, or names `setenv(3)` rejects (the per-drive `=C:`
+        // pseudo-variables). Names are matched case-insensitively, as Windows
+        // env var names are.
+        let env = HashMap::from([
+            ("Path".to_string(), r"C:\Windows\System32".to_string()),
+            ("PATHEXT".to_string(), ".COM;.EXE;.BAT".to_string()),
+            (
+                "TEMP".to_string(),
+                r"C:\Users\me\AppData\Local\Temp".to_string(),
+            ),
+            ("TMPDIR".to_string(), r"C:\tmp".to_string()),
+            (
+                "WSL_INTEROP".to_string(),
+                "/run/WSL/123_interop".to_string(),
+            ),
+            ("WsLeNv".to_string(), "WSL_INTEROP/u".to_string()),
+            ("HOME".to_string(), r"C:\Users\me".to_string()),
+            ("USERPROFILE".to_string(), r"C:\Users\me".to_string()),
+            (
+                "ProgramFiles(x86)".to_string(),
+                r"C:\Program Files (x86)".to_string(),
+            ),
+            ("COMPUTERNAME".to_string(), "DESKTOP-ABC".to_string()),
+            ("=C:".to_string(), r"C:\Users\me".to_string()),
+            (String::new(), "value".to_string()),
+            ("OK".to_string(), "value".to_string()),
+        ]);
+        assert_eq!(
+            forwarded_environment(&env),
+            [("OK".to_string(), "value".to_string())]
+        );
+    }
+
+    fn registered(id: &str, name: &str, version: Option<u32>) -> RegisteredDistro {
+        RegisteredDistro {
+            id: id.to_string(),
+            name: name.to_string(),
+            version,
+        }
+    }
+
+    #[test]
+    fn registration_is_classified_from_the_lxss_entries() {
+        let distros = [
+            registered("{a}", "Ubuntu", Some(2)),
+            registered("{b}", "Legacy", Some(1)),
+            registered("{c}", "Old", None),
+        ];
+        assert_eq!(
+            classify_registration(&[], None, None),
+            DistroRegistration::NoDistro
+        );
+        assert_eq!(
+            classify_registration(&distros, Some("{A}"), None),
+            DistroRegistration::Usable,
+            "registry ids compare case-insensitively"
+        );
+        assert_eq!(
+            classify_registration(&distros, Some("{b}"), None),
+            DistroRegistration::Wsl1("Legacy".to_string())
+        );
+        assert_eq!(
+            classify_registration(&distros, Some("{c}"), None),
+            DistroRegistration::Usable,
+            "an unrecorded version is left to the probe"
+        );
+        assert_eq!(
+            classify_registration(&distros, Some("{missing}"), None),
+            DistroRegistration::NoDefault
+        );
+        assert_eq!(
+            classify_registration(&distros, None, None),
+            DistroRegistration::NoDefault
+        );
+        assert_eq!(
+            classify_registration(&distros, Some("{a}"), Some("legacy")),
+            DistroRegistration::Wsl1("Legacy".to_string()),
+            "a distro pinned by a UNC path wins over the default"
+        );
+        assert_eq!(
+            classify_registration(&distros, Some("{a}"), Some("Debian")),
+            DistroRegistration::Missing("Debian".to_string())
+        );
+    }
+
+    #[test]
+    fn every_registration_problem_names_its_fix() {
+        let cases = [
+            (DistroRegistration::NotInstalled, "wsl --install"),
+            (DistroRegistration::NoDistro, "wsl --install -d"),
+            (DistroRegistration::NoDefault, "wsl --set-default"),
+            (
+                DistroRegistration::Missing("Debian".to_string()),
+                "wsl --list --verbose",
+            ),
+            (
+                DistroRegistration::Wsl1("Legacy".to_string()),
+                "wsl --set-version Legacy 2",
+            ),
+        ];
+        for (registration, fix) in cases {
+            let message = registration_message(&registration)
+                .unwrap_or_else(|| panic!("{registration:?} must be reported"));
+            assert!(message.contains(fix), "{registration:?}: {message}");
+        }
+        assert_eq!(registration_message(&DistroRegistration::Usable), None);
+    }
+
+    #[test]
+    fn check_output_is_read_past_other_output() {
+        assert_eq!(
+            parse_check_output(
+                "motd noise\nzed-wsl-helper: ready /home/my user/.cache/zed-jp-enhance/sandbox/k/zed-remote-server\n"
+            )
+            .unwrap(),
+            HelperCheck::Ready(
+                "/home/my user/.cache/zed-jp-enhance/sandbox/k/zed-remote-server".to_string()
+            )
+        );
+        assert_eq!(
+            parse_check_output("zed-wsl-helper: missing /root/.cache/zed-jp-enhance/sandbox/k\n")
+                .unwrap(),
+            HelperCheck::Missing
+        );
+        assert_eq!(
+            parse_check_output(
+                "zed-wsl-helper: unverifiable /root/.cache/zed-jp-enhance/sandbox/k\n"
+            )
+            .unwrap(),
+            HelperCheck::Unverifiable
+        );
+        assert!(parse_check_output("").is_err());
+        assert!(parse_check_output("zed-wsl-helper: ready relative\n").is_err());
+        assert!(parse_check_output("zed-wsl-helper: maybe /x\n").is_err());
+    }
+
+    #[test]
+    fn stage_output_keeps_spaces_in_the_staged_path() {
+        assert_eq!(
+            parse_stage_output(
+                "zed-wsl-install: 1234 abcdef /home/my user/.cache/zed-jp-enhance/sandbox/k/.slirp4netns.AbC123\n"
+            )
+            .unwrap(),
+            StageReport {
+                size: 1234,
+                sha256: Some("abcdef".to_string()),
+                path: "/home/my user/.cache/zed-jp-enhance/sandbox/k/.slirp4netns.AbC123".to_string(),
+            }
+        );
+        // Without `sha256sum` only the size can be compared.
+        assert_eq!(
+            parse_stage_output("zed-wsl-install: 7 - /tmp/x\n")
+                .unwrap()
+                .sha256,
+            None
+        );
+        assert!(parse_stage_output("zed-wsl-install: many - /tmp/x\n").is_err());
+        assert!(parse_stage_output("zed-wsl-install: 7 -\n").is_err());
+    }
+
+    #[test]
+    fn helper_probe_output_is_parsed_and_explained() {
+        let healthy = parse_helper_probe("zed-wsl-probe: landlock=7 userns=ok\n").unwrap();
+        assert_eq!(probe_problem(&healthy, None), None);
+
+        let no_landlock = parse_helper_probe("zed-wsl-probe: landlock=0 userns=ok\n").unwrap();
+        let message = probe_problem(&no_landlock, Some("Ubuntu")).expect("must be reported");
+        assert!(message.contains("Landlock") && message.contains("wsl --update"));
+
+        let no_namespaces =
+            parse_helper_probe("zed-wsl-probe: landlock=7 userns=errno-1\n").unwrap();
+        let message = probe_problem(&no_namespaces, None).expect("must be reported");
+        assert!(message.contains("errno-1") && message.contains("wsl --update"));
+
+        assert!(parse_helper_probe("").is_err());
+        assert!(parse_helper_probe("zed-wsl-probe: userns=ok\n").is_err());
+    }
+
+    #[test]
+    fn install_key_depends_on_both_artifacts() {
+        let key = helper_install_key("server-a", "slirp-a");
+        assert_eq!(key.len(), 16);
+        assert!(key.chars().all(|character| character.is_ascii_hexdigit()));
+        assert_eq!(key, helper_install_key("server-a", "slirp-a"));
+        assert_ne!(key, helper_install_key("server-b", "slirp-a"));
+        assert_ne!(key, helper_install_key("server-a", "slirp-b"));
+    }
+
+    #[test]
+    fn artifact_names_prefer_the_compressed_server() {
+        let ([compressed, plain], slirp) = helper_artifact_names();
+        let architecture = std::env::consts::ARCH;
+        assert_eq!(
+            compressed,
+            format!("zed-remote-server-linux-{architecture}.gz")
+        );
+        assert_eq!(plain, format!("zed-remote-server-linux-{architecture}"));
+        assert_eq!(slirp, format!("slirp4netns-linux-{architecture}"));
+    }
+
+    #[test]
+    fn scripts_use_the_installed_file_names() {
+        for script in [CHECK_SCRIPT, FINALIZE_SCRIPT] {
+            assert!(script.contains("installed"));
+        }
+        assert!(CHECK_SCRIPT.contains(&format!("$dir/{HELPER_BINARY_NAME}")));
+        assert!(CHECK_SCRIPT.contains(&format!("$dir/{SLIRP_BINARY_NAME}")));
+    }
+
+    #[test]
+    fn wsl_output_is_decoded_from_utf16_or_utf8() {
+        let utf16: Vec<u8> = "エラー: distro"
+            .encode_utf16()
+            .flat_map(|unit| unit.to_le_bytes())
+            .collect();
+        assert_eq!(decode_wsl_text(&utf16), "エラー: distro");
+        assert_eq!(decode_wsl_text("plain output".as_bytes()), "plain output");
+        assert_eq!(decode_wsl_text(b""), "");
     }
 
     #[test]
@@ -1636,158 +2575,6 @@ mod tests {
     #[test]
     fn rejects_unc_non_wsl_path() {
         assert!(parse_native_drive_path(r"\\server\share\project").is_err());
-    }
-
-    #[test]
-    fn probe_output_reports_interop_bwrap_path_and_home() {
-        let probe =
-            parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\nzed-wsl-home: /home/me\n")
-                .unwrap();
-        assert_eq!(
-            probe,
-            EnvironmentProbe {
-                mask_interop_dir: true,
-                bwrap_path: "/usr/bin/bwrap".to_string(),
-                home: "/home/me".to_string(),
-            }
-        );
-
-        // A home directory containing a space is why `$HOME` gets a line of its
-        // own rather than a third field on the result line.
-        let probe = parse_probe_output(
-            "zed-wsl-probe: no-interop /home/me/.nix-profile/bin/bwrap\nzed-wsl-home: /home/my user\n",
-        )
-        .unwrap();
-        assert_eq!(
-            probe,
-            EnvironmentProbe {
-                mask_interop_dir: false,
-                bwrap_path: "/home/me/.nix-profile/bin/bwrap".to_string(),
-                home: "/home/my user".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn probe_output_ignores_profile_noise_even_mentioning_interop() {
-        // Login-shell profile scripts run before the probe body and may print
-        // arbitrary text; only the marked result lines count.
-        let probe = parse_probe_output(
-            "welcome to my shell, interop fans\nzed-wsl-probe: no-interop /usr/bin/bwrap\n\
-             zed-wsl-home: /home/me\n",
-        )
-        .unwrap();
-        assert!(!probe.mask_interop_dir);
-    }
-
-    /// Without the distro's `$HOME` the built-in protected set inside it can't
-    /// be resolved, so the probe fails rather than sandboxing without it.
-    #[test]
-    fn probe_output_rejects_missing_or_relative_home() {
-        assert!(parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\n").is_err());
-        assert!(
-            parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\nzed-wsl-home: \n").is_err()
-        );
-        assert!(
-            parse_probe_output("zed-wsl-probe: interop /usr/bin/bwrap\nzed-wsl-home: me\n")
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn probe_output_rejects_missing_or_malformed_result_line() {
-        assert!(parse_probe_output("").is_err());
-        assert!(parse_probe_output("profile noise only\n").is_err());
-        assert!(parse_probe_output("zed-wsl-probe: interop\nzed-wsl-home: /home/me\n").is_err());
-        assert!(
-            parse_probe_output("zed-wsl-probe: maybe /usr/bin/bwrap\nzed-wsl-home: /home/me\n")
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn probe_output_rejects_non_absolute_bwrap_path() {
-        // `command -v` reports a bare name for shell functions and aliases,
-        // which `wsl --exec` could never run.
-        assert!(
-            parse_probe_output("zed-wsl-probe: interop bwrap\nzed-wsl-home: /home/me\n").is_err()
-        );
-    }
-
-    /// The probe reports the distro account's `$HOME`; the built-in protected
-    /// set inside the distro is resolved against it.
-    #[test]
-    fn probe_script_reports_the_distro_home() {
-        let script = probe_script();
-        assert!(script.contains(PROBE_HOME_PREFIX));
-        assert!(script.contains("\"$HOME\""));
-    }
-
-    /// The distro-side built-in set is the *Unix* list resolved against the
-    /// distro account's home (a Windows-side entry would be meaningless there),
-    /// plus the sandbox helper this crate installs inside the distro.
-    #[test]
-    fn distro_protected_paths_resolve_against_the_distro_home() {
-        let paths = crate::protected_paths::wsl_distro_builtin_protected_paths("/home/me");
-        for expected in [
-            "/home/me/.ssh",
-            "/home/me/.bashrc",
-            "/home/me/.config/gh",
-            "/home/me/.local/libexec/zed",
-        ] {
-            assert!(
-                paths.iter().any(|path| path == expected),
-                "{expected} must always be protected inside the distro"
-            );
-        }
-        assert!(
-            paths.iter().all(|path| path.starts_with("/home/me/")),
-            "every entry is resolved against the distro home"
-        );
-        assert_eq!(
-            crate::protected_paths::wsl_distro_builtin_protected_paths("/home/me/"),
-            paths,
-            "a trailing separator must not produce a doubled separator"
-        );
-    }
-
-    #[test]
-    fn probe_script_smoke_tests_the_namespaces_the_real_invocation_uses() {
-        // Presence isn't enough: unprivileged user namespaces can be
-        // restricted (e.g. Ubuntu 24.04's AppArmor policy), so the probe must
-        // actually exercise the namespace flags `build_bwrap_args` emits.
-        let script = probe_script();
-        for flag in [
-            "--unshare-user",
-            "--unshare-net",
-            "--unshare-ipc",
-            "--unshare-uts",
-            "--unshare-pid",
-            "--unshare-cgroup-try",
-            "--ro-bind / /",
-        ] {
-            assert!(script.contains(flag), "probe script must contain {flag}");
-        }
-        assert!(script.contains("exit 41"));
-        assert!(script.contains("exit 42"));
-    }
-
-    #[test]
-    fn probe_script_rejects_setuid_root_bwrap_before_smoke_test() {
-        let script = probe_script();
-        let guard =
-            "[ -u \"$bwrap_path\" ] && [ \"$(stat -c %u \"$bwrap_path\" 2>/dev/null)\" = 0 ]";
-        let smoke_test = "\"$bwrap_path\" --ro-bind / /";
-        let Some(guard_index) = script.find(guard) else {
-            panic!("probe script must contain setuid-root guard: {script}");
-        };
-        let Some(smoke_test_index) = script.find(smoke_test) else {
-            panic!("probe script must contain bwrap smoke test: {script}");
-        };
-
-        assert!(script.contains("setuid-root bwrap is not supported"));
-        assert!(script.contains(&format!("exit {BWRAP_UNUSABLE_EXIT_CODE}; fi")));
-        assert!(guard_index < smoke_test_index);
     }
 
     #[test]
@@ -1852,329 +2639,6 @@ mod tests {
     }
 
     #[test]
-    fn bwrap_denies_network_by_default() {
-        let args = build_bwrap_args(
-            &["/home/me/project".to_string()],
-            &[],
-            SandboxPermissions::default(),
-            Some("/home/me/project"),
-            true,
-            &HashMap::new(),
-        );
-        assert!(args.iter().any(|arg| arg == "--unshare-net"));
-        assert!(
-            args.windows(3)
-                .any(|window| window == ["--bind", "/home/me/project", "/home/me/project"])
-        );
-    }
-
-    #[test]
-    fn bwrap_allows_network_when_requested() {
-        let args = build_bwrap_args(
-            &[],
-            &[],
-            SandboxPermissions {
-                allow_network: true,
-                allow_fs_write: false,
-            },
-            None,
-            true,
-            &HashMap::new(),
-        );
-        assert!(!args.iter().any(|arg| arg == "--unshare-net"));
-    }
-
-    #[test]
-    fn bwrap_binds_explicit_writable_file_paths() {
-        let args = build_bwrap_args(
-            &["/mnt/c/Users/me/AppData/Roaming/Zed/AGENTS.md".to_string()],
-            &[],
-            SandboxPermissions::default(),
-            None,
-            true,
-            &HashMap::new(),
-        );
-        assert!(args.windows(3).any(|window| window
-            == [
-                "--bind",
-                "/mnt/c/Users/me/AppData/Roaming/Zed/AGENTS.md",
-                "/mnt/c/Users/me/AppData/Roaming/Zed/AGENTS.md"
-            ]));
-    }
-
-    #[test]
-    fn bwrap_protects_paths_after_writable_paths() {
-        let args = build_bwrap_args(
-            &["/home/me/project".to_string()],
-            &["/home/me/project/.git".to_string()],
-            SandboxPermissions::default(),
-            Some("/home/me/project"),
-            true,
-            &HashMap::new(),
-        );
-        let writable_index = args
-            .windows(3)
-            .position(|window| window == ["--bind", "/home/me/project", "/home/me/project"])
-            .expect("project should be writable");
-        let protected_index = args
-            .windows(3)
-            .position(|window| {
-                window
-                    == [
-                        "--ro-bind",
-                        "/home/me/project/.git",
-                        "/home/me/project/.git",
-                    ]
-            })
-            .expect("protected path should be bound read-only");
-        assert!(protected_index > writable_index);
-    }
-
-    #[test]
-    fn bwrap_protects_paths_when_fs_writes_are_unrestricted() {
-        let args = build_bwrap_args(
-            &[],
-            &["/home/me/project/.git".to_string()],
-            SandboxPermissions {
-                allow_network: false,
-                allow_fs_write: true,
-            },
-            None,
-            true,
-            &HashMap::new(),
-        );
-        let unrestricted_write_index = args
-            .windows(3)
-            .position(|window| window == ["--bind", "/", "/"])
-            .expect("root should be writable");
-        let protected_index = args
-            .windows(3)
-            .position(|window| {
-                window
-                    == [
-                        "--ro-bind",
-                        "/home/me/project/.git",
-                        "/home/me/project/.git",
-                    ]
-            })
-            .expect("protected path should be bound read-only");
-        assert!(protected_index > unrestricted_write_index);
-    }
-
-    #[test]
-    fn bwrap_blocks_wsl_interop_by_default() {
-        let args = build_bwrap_args(
-            &["/home/me/project".to_string()],
-            &[],
-            SandboxPermissions::default(),
-            Some("/home/me/project"),
-            true,
-            &HashMap::new(),
-        );
-        assert!(
-            args.windows(2)
-                .any(|window| window == ["--unsetenv", "WSL_INTEROP"])
-        );
-        assert!(
-            args.windows(2)
-                .any(|window| window == ["--tmpfs", "/run/WSL"])
-        );
-    }
-
-    #[test]
-    fn bwrap_blocks_wsl_interop_even_with_fs_write() {
-        let args = build_bwrap_args(
-            &[],
-            &[],
-            SandboxPermissions {
-                allow_network: true,
-                allow_fs_write: true,
-            },
-            None,
-            true,
-            &HashMap::new(),
-        );
-        // Interop is host code execution, not just a filesystem write, so it
-        // stays blocked even when the user has granted unrestricted writes
-        // and network.
-        assert!(
-            args.windows(2)
-                .any(|window| window == ["--unsetenv", "WSL_INTEROP"])
-        );
-        assert!(
-            args.windows(2)
-                .any(|window| window == ["--tmpfs", "/run/WSL"])
-        );
-    }
-
-    #[test]
-    fn bwrap_skips_interop_dir_mask_when_absent() {
-        // When the interop socket directory doesn't exist (interop disabled),
-        // there's nothing to mask and a `--tmpfs /run/WSL` would abort bwrap,
-        // so the mount must be omitted. Unsetting the variable is harmless and
-        // stays.
-        let args = build_bwrap_args(
-            &[],
-            &[],
-            SandboxPermissions::default(),
-            None,
-            false,
-            &HashMap::new(),
-        );
-        assert!(
-            args.windows(2)
-                .any(|window| window == ["--unsetenv", "WSL_INTEROP"])
-        );
-        assert!(!args.iter().any(|arg| arg == "/run/WSL"));
-    }
-
-    #[test]
-    fn bwrap_forwards_env_via_setenv() {
-        let env = HashMap::from([
-            ("PAGER".to_string(), String::new()),
-            ("CARGO_TERM_COLOR".to_string(), "always".to_string()),
-        ]);
-        let args = build_bwrap_args(&[], &[], SandboxPermissions::default(), None, false, &env);
-        assert!(
-            args.windows(3)
-                .any(|window| window == ["--setenv", "PAGER", ""])
-        );
-        assert!(
-            args.windows(3)
-                .any(|window| window == ["--setenv", "CARGO_TERM_COLOR", "always"])
-        );
-    }
-
-    #[test]
-    fn bwrap_does_not_forward_wsl_interop_env() {
-        let env = HashMap::from([
-            (
-                "WSL_INTEROP".to_string(),
-                "/run/WSL/123_interop".to_string(),
-            ),
-            ("WsLeNv".to_string(), "WSL_INTEROP/u".to_string()),
-            ("PAGER".to_string(), String::new()),
-        ]);
-        let args = build_bwrap_args(&[], &[], SandboxPermissions::default(), None, false, &env);
-
-        assert!(
-            args.windows(2)
-                .any(|window| window == ["--unsetenv", "WSL_INTEROP"])
-        );
-        assert!(
-            args.windows(2)
-                .any(|window| window == ["--unsetenv", "WSLENV"])
-        );
-        assert!(
-            args.windows(3)
-                .any(|window| window == ["--setenv", "PAGER", ""])
-        );
-        assert!(!args.windows(3).any(|window| {
-            matches!(window, [flag, name, _]
-                if flag.as_str() == "--setenv"
-                    && name.eq_ignore_ascii_case("WSL_INTEROP"))
-        }));
-        assert!(!args.windows(3).any(|window| {
-            matches!(window, [flag, name, _]
-                if flag.as_str() == "--setenv"
-                    && name.eq_ignore_ascii_case("WSLENV"))
-        }));
-    }
-
-    #[test]
-    fn bwrap_does_not_forward_windows_specific_env() {
-        // These hold Windows paths/values that would break or be meaningless
-        // inside WSL, so they must never cross the boundary. Names are matched
-        // case-insensitively, as Windows env var names are. `(x86)` variants
-        // contain parentheses but no `=`, so they'd pass the `setenv` filter
-        // and must be blocked by name.
-        let env = HashMap::from([
-            ("Path".to_string(), r"C:\Windows\System32".to_string()),
-            ("PATHEXT".to_string(), ".COM;.EXE;.BAT".to_string()),
-            (
-                "TEMP".to_string(),
-                r"C:\Users\me\AppData\Local\Temp".to_string(),
-            ),
-            (
-                "Tmp".to_string(),
-                r"C:\Users\me\AppData\Local\Temp".to_string(),
-            ),
-            ("TMPDIR".to_string(), r"C:\tmp".to_string()),
-            ("OS".to_string(), "Windows_NT".to_string()),
-            (
-                "ComSpec".to_string(),
-                r"C:\Windows\system32\cmd.exe".to_string(),
-            ),
-            ("windir".to_string(), r"C:\Windows".to_string()),
-            ("SystemRoot".to_string(), r"C:\Windows".to_string()),
-            ("HOME".to_string(), r"C:\Users\me".to_string()),
-            ("USERPROFILE".to_string(), r"C:\Users\me".to_string()),
-            (
-                "APPDATA".to_string(),
-                r"C:\Users\me\AppData\Roaming".to_string(),
-            ),
-            (
-                "LOCALAPPDATA".to_string(),
-                r"C:\Users\me\AppData\Local".to_string(),
-            ),
-            (
-                "ProgramFiles(x86)".to_string(),
-                r"C:\Program Files (x86)".to_string(),
-            ),
-            ("USERNAME".to_string(), "me".to_string()),
-            ("COMPUTERNAME".to_string(), "DESKTOP-ABC".to_string()),
-            ("PROCESSOR_ARCHITECTURE".to_string(), "AMD64".to_string()),
-            ("NUMBER_OF_PROCESSORS".to_string(), "16".to_string()),
-        ]);
-        let args = build_bwrap_args(&[], &[], SandboxPermissions::default(), None, false, &env);
-        assert!(!args.iter().any(|arg| arg == "--setenv"));
-    }
-
-    #[test]
-    fn bwrap_forwards_portable_env_alongside_windows_specific_env() {
-        // A blocklist (not an allowlist) means genuinely portable variables
-        // still reach the command even when Windows-only ones are present.
-        let env = HashMap::from([
-            ("USERPROFILE".to_string(), r"C:\Users\me".to_string()),
-            ("LANG".to_string(), "en_US.UTF-8".to_string()),
-            ("CARGO_TERM_COLOR".to_string(), "always".to_string()),
-        ]);
-        let args = build_bwrap_args(&[], &[], SandboxPermissions::default(), None, false, &env);
-        assert!(
-            args.windows(3)
-                .any(|window| window == ["--setenv", "LANG", "en_US.UTF-8"])
-        );
-        assert!(
-            args.windows(3)
-                .any(|window| window == ["--setenv", "CARGO_TERM_COLOR", "always"])
-        );
-        assert!(!args.windows(3).any(|window| {
-            matches!(window, [flag, name, _]
-                if flag.as_str() == "--setenv"
-                    && name.eq_ignore_ascii_case("USERPROFILE"))
-        }));
-    }
-
-    #[test]
-    fn bwrap_skips_env_names_setenv_would_reject() {
-        // bwrap's `--setenv` calls `setenv(3)`, which rejects empty names and
-        // names containing `=`. Windows environments include the per-drive
-        // current-directory pseudo-variables (`=C:`, ...); forwarding them
-        // would abort bwrap with "setenv failed".
-        let env = HashMap::from([
-            ("=C:".to_string(), r"C:\Users\me".to_string()),
-            (String::new(), "value".to_string()),
-            ("OK".to_string(), "value".to_string()),
-        ]);
-        let args = build_bwrap_args(&[], &[], SandboxPermissions::default(), None, false, &env);
-        assert!(
-            args.windows(3)
-                .any(|window| window == ["--setenv", "OK", "value"])
-        );
-        assert_eq!(args.iter().filter(|arg| *arg == "--setenv").count(), 1);
-    }
-
-    #[test]
     fn select_distro_uses_wsl_distro_when_present() {
         let distro = select_distro(
             None,
@@ -2200,8 +2664,8 @@ mod tests {
     fn bad_request_errors_do_not_claim_sandboxing_is_unavailable() {
         // Mixed distros and missing/unmappable paths are model-fixable bad
         // requests. They must not be typed as `WslSandboxUnavailable` (nor
-        // carry its prefix), since the agent uses that type to offer the
-        // run-unsandboxed fallback only for genuine environment failures.
+        // carry its prefix), since the agent uses that type to ask the user to
+        // fix their environment.
         let mixed_distros = select_distro(
             Some(&PathMapping::Wsl(WslPath {
                 distro: Some("Ubuntu".to_string()),
@@ -2242,14 +2706,12 @@ mod tests {
     fn unavailable_errors_are_typed_and_prefixed() {
         // Environment failures are recognizable by type (so the agent doesn't
         // depend on message text) and still render with the shared prefix.
-        let error = unavailable("Bubblewrap (`bwrap`) is not installed in the default WSL distro");
+        let message = registration_message(&DistroRegistration::NotInstalled).unwrap();
+        let error = unavailable(message.clone());
         let typed = error
             .downcast_ref::<WslSandboxUnavailable>()
             .expect("environment failure should downcast to WslSandboxUnavailable");
-        assert_eq!(
-            typed.message(),
-            "Bubblewrap (`bwrap`) is not installed in the default WSL distro"
-        );
+        assert_eq!(typed.message(), message);
         assert!(format!("{error:#}").starts_with(WSL_SANDBOX_UNAVAILABLE_PREFIX));
     }
 

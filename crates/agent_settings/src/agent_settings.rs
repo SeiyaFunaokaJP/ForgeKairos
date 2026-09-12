@@ -417,13 +417,18 @@ pub struct SandboxPermissions {
     /// hostnames or leading-`*.` subdomain wildcards). Parsed/validated where
     /// consumed (`agent::sandboxing`).
     pub network_hosts: Vec<String>,
+    /// Allow sandboxed commands to write anywhere except protected paths. That
+    /// is nearly the same as running outside the sandbox, so while it is on
+    /// terminal commands are never auto-approved (ADR-F46).
     pub allow_fs_write_all: bool,
-    /// Persistently run agent terminal commands outside the OS sandbox. This is
-    /// the model-facing "off switch": when set, the sandboxed terminal tool is
-    /// not exposed and the system prompt omits the sandbox section, so the
-    /// model uses the plain `terminal` tool (on Windows, WSL sandbox setup is
-    /// skipped). The agent itself has no way to ask for a command to run
-    /// outside the sandbox — see `agent::sandboxing`.
+    /// Run agent terminal commands outside the OS sandbox, with Zed's own
+    /// permissions. This is the model-facing "off switch": when set, the
+    /// sandboxed terminal tool is not exposed and the system prompt omits the
+    /// sandbox section, so the model uses the plain `terminal` tool (on
+    /// Windows, WSL sandbox setup is skipped). Such commands are never
+    /// auto-approved (ADR-F46). Only the user's settings set this; the agent
+    /// has no way to ask for a command to run outside the sandbox — see
+    /// `agent::sandboxing`.
     pub allow_unsandboxed: bool,
     /// Directory subtree grants, each paired with the canonical
     /// (symlink-resolved) target established when the grant was approved.

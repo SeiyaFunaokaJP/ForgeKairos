@@ -55,6 +55,11 @@ uuid.workspace = true
 watch.workspace = true
 urlencoding.workspace = true
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# The editor-wide network allowlist, which the WSL sandbox helper's proxy is
+# handed to nest a command's network inside (ADR-F17 / ADR-F46).
+egress_policy.workspace = true
+
 [dev-dependencies]
 env_logger.workspace = true
 gpui = { workspace = true, "features" = ["test-support"] }

@@ -281,6 +281,43 @@ impl ProjectEnvironment {
             .clone()
     }
 
+    /// ADR-F46: the environment this project has already captured for the root
+    /// of the worktree containing `abs_path`, without capturing one. A sandboxed
+    /// agent command's working directory is the model's choice, and capturing
+    /// runs the user's login shell and whatever hooks into `cd` (direnv, asdf,
+    /// mise, ...) there, outside the sandbox. `None` until the user's own use of
+    /// the project has captured that worktree's environment.
+    pub fn cached_worktree_environment(
+        &self,
+        abs_path: &Path,
+        cx: &App,
+    ) -> Option<Shared<Task<Option<HashMap<String, String>>>>> {
+        // The field rather than `get_cli_environment`, whose test override
+        // would answer for every directory and hide the cache from tests.
+        if let Some(mut cli_environment) = self.cli_environment.clone() {
+            set_origin_marker(&mut cli_environment, EnvironmentOrigin::Cli);
+            return Some(Task::ready(Some(cli_environment)).shared());
+        }
+        let worktree_store = self.worktree_store.upgrade()?;
+        let (worktree, _) = worktree_store.read(cx).find_worktree(abs_path, cx)?;
+        let worktree = worktree.read(cx);
+        let mut root = worktree.abs_path();
+        if worktree.is_single_file() {
+            root = root.parent()?.into();
+        }
+        match self
+            .remote_client
+            .as_ref()
+            .and_then(|client| client.upgrade())
+        {
+            Some(remote_client) => {
+                let shell = Shell::Program(remote_client.read(cx).shell()?);
+                self.remote_environments.get(&(shell, root)).cloned()
+            }
+            None => self.local_environments.get(&(Shell::System, root)).cloned(),
+        }
+    }
+
     pub fn peek_environment_error(&self) -> Option<&String> {
         self.environment_error_messages.front()
     }
@@ -420,4 +457,77 @@ async fn load_direnv_environment(
     }
 
     serde_json::from_str(&output).context("parsing direnv json")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fs::FakeFs;
+    use gpui::TestAppContext;
+    use serde_json::json;
+    use settings::SettingsStore;
+    use util::path;
+
+    #[gpui::test]
+    async fn sandboxed_commands_only_reuse_the_worktree_root_environment(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "sub": { "deeper": {} } }))
+            .await;
+        let project = crate::Project::test(fs, [path!("/root").as_ref()], cx).await;
+        let environment = project.read_with(cx, |project, _| project.environment().clone());
+        let subdirectory = Path::new(path!("/root/sub/deeper"));
+
+        environment.read_with(cx, |environment, cx| {
+            assert!(
+                environment
+                    .cached_worktree_environment(subdirectory, cx)
+                    .is_none(),
+                "nothing captured yet means no environment at all"
+            );
+            assert!(
+                environment.local_environments.is_empty(),
+                "and asking must not capture one"
+            );
+        });
+
+        let root: Arc<Path> = Path::new(path!("/root")).into();
+        environment.update(cx, |environment, _| {
+            environment.local_environments.insert(
+                (Shell::System, root),
+                Task::ready(Some(HashMap::from_iter([(
+                    "FROM_ROOT".to_string(),
+                    "1".to_string(),
+                )])))
+                .shared(),
+            );
+        });
+        let reused = environment
+            .read_with(cx, |environment, cx| {
+                environment.cached_worktree_environment(subdirectory, cx)
+            })
+            .expect("the root's environment is reused for any directory inside it");
+        assert_eq!(
+            reused
+                .await
+                .and_then(|environment| environment.get("FROM_ROOT").cloned()),
+            Some("1".to_string())
+        );
+        environment.read_with(cx, |environment, cx| {
+            assert_eq!(
+                environment.local_environments.len(),
+                1,
+                "the model's directory never gets a capture of its own"
+            );
+            assert!(
+                environment
+                    .cached_worktree_environment(Path::new(path!("/elsewhere")), cx)
+                    .is_none()
+            );
+        });
+    }
 }
