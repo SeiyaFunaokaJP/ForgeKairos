@@ -31,7 +31,7 @@ use std::time::SystemTime;
 use std::{
     cmp::Ordering,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 use sum_tree::MapSeekTarget;
 use thiserror::Error;
@@ -1956,10 +1956,11 @@ impl GitRepository for RealGitRepository {
         untracked_files: StatusUntrackedFiles,
     ) -> Task<Result<GitStatus>> {
         let git = self.git_binary_in_worktree();
-        let args = git_status_args(path_prefixes, untracked_files);
+        let path_prefixes = path_prefixes.to_vec();
         log::debug!("Checking for git status in {path_prefixes:?}");
         self.executor.spawn(async move {
             let git = git?;
+            let args = git_status_args(&path_prefixes, untracked_files, git.version().await);
             let output = git.build_command(&args).output().await?;
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2055,10 +2056,9 @@ impl GitRepository for RealGitRepository {
                 // this call is to tell apart deletions from files that were
                 // deleted and recreated, and a recreated file inside an
                 // untracked directory would otherwise go unreported.
-                let status_output = git
-                    .build_command(&git_status_args(&[], StatusUntrackedFiles::All))
-                    .output()
-                    .await?;
+                let status_args =
+                    git_status_args(&[], StatusUntrackedFiles::All, git.version().await);
+                let status_output = git.build_command(&status_args).output().await?;
                 if !status_output.status.success() {
                     let stderr = String::from_utf8_lossy(&status_output.stderr);
                     anyhow::bail!("git status failed: {stderr}");
@@ -3839,18 +3839,66 @@ fn parse_initial_graph_output<'a>(
         .collect()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct GitVersion {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+impl GitVersion {
+    const STATUS_NO_RENAMES: Self = Self {
+        major: 2,
+        minor: 18,
+        patch: 0,
+    };
+
+    /// Parses `git --version` output such as `git version 2.45.1.windows.1`
+    /// or `git version 2.39.3 (Apple Git-146)`.
+    fn parse(version_output: &str) -> Option<Self> {
+        let version = version_output
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("git version "))?
+            .split_whitespace()
+            .next()?;
+        let mut components = version.split('.');
+        let major = components.next()?.parse().ok()?;
+        let minor = components.next()?.parse().ok()?;
+        // Builds from git's own source tree report versions like `2.45.GIT`.
+        let patch = components
+            .next()
+            .and_then(|patch| patch.parse().ok())
+            .unwrap_or(0);
+        Some(Self {
+            major,
+            minor,
+            patch,
+        })
+    }
+}
+
+/// Keyed by binary path so that every repository using the same git shares one probe.
+static GIT_BINARY_VERSIONS: LazyLock<
+    Mutex<HashMap<PathBuf, Arc<smol::lock::OnceCell<Option<GitVersion>>>>>,
+> = LazyLock::new(|| Mutex::new(HashMap::default()));
+
 fn git_status_args(
     path_prefixes: &[RepoPath],
     untracked_files: StatusUntrackedFiles,
+    git_version: Option<GitVersion>,
 ) -> Vec<OsString> {
     let mut args = vec![
         OsString::from("status"),
         OsString::from("--porcelain=v1"),
         OsString::from(untracked_files.as_git_argument()),
-        OsString::from("--no-renames"),
-        OsString::from("-z"),
-        OsString::from("--"),
     ];
+    // Before git 2.18 `git status` fails outright on `--no-renames`; `GitStatus` parsing folds
+    // the rename pairs those versions report instead. An unknown version keeps the flag so that
+    // an unrecognized version string can't change the behavior of a modern git.
+    if git_version.is_none_or(|version| version >= GitVersion::STATUS_NO_RENAMES) {
+        args.push(OsString::from("--no-renames"));
+    }
+    args.extend([OsString::from("-z"), OsString::from("--")]);
     args.extend(path_prefixes.iter().map(|path_prefix| {
         if path_prefix.is_empty() {
             Path::new(".").into()
@@ -3998,6 +4046,31 @@ impl GitBinary {
     fn envs(mut self, envs: HashMap<String, String>) -> Self {
         self.envs = envs;
         self
+    }
+
+    /// The version of this git binary, probed once per binary path for the whole process.
+    async fn version(&self) -> Option<GitVersion> {
+        let version = GIT_BINARY_VERSIONS
+            .lock()
+            .entry(self.git_binary_path.clone())
+            .or_default()
+            .clone();
+        // A probe that fails to run isn't cached, so a transient failure is retried by the next
+        // caller instead of pinning the fallback for the rest of the process.
+        version
+            .get_or_try_init(|| async {
+                let output = self.run(&["--version"]).await?;
+                let version = GitVersion::parse(&output);
+                if version.is_none() {
+                    log::warn!("unrecognized `git --version` output: {output:?}");
+                }
+                anyhow::Ok(version)
+            })
+            .await
+            .with_context(|| format!("probing the version of {:?}", self.git_binary_path))
+            .log_err()
+            .copied()
+            .flatten()
     }
 
     pub async fn with_temp_index<R>(
@@ -4389,7 +4462,7 @@ mod tests {
     #[test]
     fn test_git_status_args_untracked_files_modes() {
         let untracked_argument = |untracked_files| {
-            git_status_args(&[], untracked_files)
+            git_status_args(&[], untracked_files, None)
                 .into_iter()
                 .find(|argument| argument.to_string_lossy().starts_with("--untracked-files="))
                 .expect("status args always carry an --untracked-files argument")
@@ -4422,6 +4495,7 @@ mod tests {
         let args = git_status_args(
             &[repo_path("src/main.rs"), repo_path("")],
             StatusUntrackedFiles::Normal,
+            None,
         );
         let args = args
             .iter()
@@ -4440,9 +4514,204 @@ mod tests {
         );
     }
 
-    #[allow(clippy::disallowed_methods)]
+    #[test]
+    fn test_git_version_parse() {
+        let version = |major, minor, patch| {
+            Some(GitVersion {
+                major,
+                minor,
+                patch,
+            })
+        };
+        assert_eq!(GitVersion::parse("git version 2.17.1\n"), version(2, 17, 1));
+        assert_eq!(
+            GitVersion::parse("git version 2.45.1.windows.1\n"),
+            version(2, 45, 1)
+        );
+        assert_eq!(
+            GitVersion::parse("git version 2.39.3 (Apple Git-146)\n"),
+            version(2, 39, 3)
+        );
+        assert_eq!(
+            GitVersion::parse("git version 2.45.GIT\n"),
+            version(2, 45, 0)
+        );
+        assert_eq!(GitVersion::parse(""), None);
+        assert_eq!(GitVersion::parse("git version\n"), None);
+        assert_eq!(GitVersion::parse("git version 2\n"), None);
+        assert_eq!(GitVersion::parse("git version two.17.1\n"), None);
+        assert_eq!(GitVersion::parse("bash: git: command not found\n"), None);
+    }
+
+    #[test]
+    fn test_git_status_args_no_renames_follows_git_version() {
+        let args = |git_version: Option<GitVersion>| {
+            git_status_args(&[], StatusUntrackedFiles::All, git_version)
+                .into_iter()
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        let version = |major, minor, patch| {
+            Some(GitVersion {
+                major,
+                minor,
+                patch,
+            })
+        };
+
+        assert_eq!(
+            args(version(2, 17, 1)),
+            [
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "-z",
+                "--"
+            ]
+        );
+        assert_eq!(
+            args(version(2, 18, 0)),
+            [
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--no-renames",
+                "-z",
+                "--"
+            ]
+        );
+        assert!(!args(version(2, 17, 99)).contains(&"--no-renames".to_string()));
+        for git_version in [version(2, 45, 1), version(3, 0, 0), None] {
+            assert!(
+                args(git_version).contains(&"--no-renames".to_string()),
+                "{git_version:?} should get --no-renames"
+            );
+        }
+    }
+
+    #[test]
+    fn test_status_rename_pairs_match_no_renames_output() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        // Distinct contents, so that git only pairs the files renamed or copied on purpose.
+        let contents = |name: &str| {
+            (0..20)
+                .map(|line| format!("{name} {line}\n"))
+                .collect::<String>()
+        };
+        for name in ["a", "k", "ab c", "r", "x", "orig"] {
+            fs::write(repo_dir.join(name), contents(name)).unwrap();
+        }
+        git_command(&repo_dir, ["add", "."]);
+        git_command(&repo_dir, ["commit", "-m", "initial"]);
+
+        fs::write(repo_dir.join("a"), contents("a") + "unstaged\n").unwrap();
+        fs::write(repo_dir.join("n"), contents("n")).unwrap();
+        fs::write(repo_dir.join("s"), contents("s")).unwrap();
+        git_command(&repo_dir, ["add", "s"]);
+        git_command(&repo_dir, ["mv", "k", "k2"]);
+        fs::write(repo_dir.join("k2"), contents("k") + "unstaged\n").unwrap();
+        git_command(&repo_dir, ["mv", "ab c", "moved"]);
+        git_command(&repo_dir, ["mv", "r", "r2"]);
+        fs::write(repo_dir.join("r"), contents("recreated")).unwrap();
+        git_command(&repo_dir, ["rm", "--cached", "x"]);
+        fs::write(repo_dir.join("copy"), contents("orig")).unwrap();
+        fs::write(repo_dir.join("orig"), contents("orig") + "staged\n").unwrap();
+        git_command(&repo_dir, ["add", "copy", "orig"]);
+
+        let status_arguments = ["status", "--porcelain=v1", "--untracked-files=all", "-z"];
+        let with_renames = git_command_raw_output(&repo_dir, status_arguments);
+        let with_copies = git_command_raw_output(
+            &repo_dir,
+            ["-c", "status.renames=copies"]
+                .into_iter()
+                .chain(status_arguments),
+        );
+        let without_renames = git_command_raw_output(
+            &repo_dir,
+            status_arguments.into_iter().chain(["--no-renames"]),
+        );
+        for record in ["RM k2\0k\0", "R  moved\0ab c\0", "R  r2\0r\0"] {
+            assert!(
+                with_renames.contains(record),
+                "{record:?} missing from {with_renames:?}"
+            );
+        }
+        assert!(
+            with_copies.contains("C  copy\0orig\0"),
+            "no copy record in {with_copies:?}"
+        );
+
+        let parse = |output: &str| output.parse::<GitStatus>().unwrap().entries;
+        let expected = parse(&without_renames);
+        assert_eq!(parse(&with_renames), expected);
+        assert_eq!(parse(&with_copies), expected);
+    }
+
+    #[gpui::test]
+    async fn test_status_with_probed_git_version(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        fs::write(repo_dir.join("k"), "k\n").unwrap();
+        git_command(&repo_dir, ["add", "k"]);
+        git_command(&repo_dir, ["commit", "-m", "initial"]);
+        git_command(&repo_dir, ["mv", "k", "k2"]);
+
+        let repository = RealGitRepository::new(
+            &repo_dir.join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        let status = repository
+            .status(
+                &[RepoPath::from_rel_path(RelPath::empty())],
+                StatusUntrackedFiles::All,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            &*status.entries,
+            &[
+                (
+                    RepoPath::new("k").unwrap(),
+                    FileStatus::index(StatusCode::Deleted)
+                ),
+                (
+                    RepoPath::new("k2").unwrap(),
+                    FileStatus::index(StatusCode::Added)
+                ),
+            ]
+        );
+
+        let installed_version = GitVersion::parse(&git_command_output(&repo_dir, ["--version"]));
+        assert!(
+            installed_version.is_some(),
+            "the installed git's version should be recognized"
+        );
+        assert_eq!(repository.git_binary().version().await, installed_version);
+    }
+
     #[track_caller]
     fn git_command_output<I, S>(working_directory: &Path, arguments: I) -> String
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        git_command_raw_output(working_directory, arguments)
+            .trim()
+            .to_string()
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    #[track_caller]
+    fn git_command_raw_output<I, S>(working_directory: &Path, arguments: I) -> String
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -4463,10 +4732,7 @@ mod tests {
             "git command failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        String::from_utf8(output.stdout)
-            .expect("git command output was not valid UTF-8")
-            .trim()
-            .to_string()
+        String::from_utf8(output.stdout).expect("git command output was not valid UTF-8")
     }
 
     #[track_caller]

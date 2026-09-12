@@ -436,28 +436,44 @@ impl FromStr for GitStatus {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let mut entries = s
-            .split('\0')
-            .filter_map(|entry| {
-                let sep = entry.get(2..3)?;
-                if sep != " " {
-                    return None;
-                };
-                let path = &entry[3..];
-                // The git status output includes untracked directories as well as untracked files.
-                // We do our own processing to compute the "summary" status of each directory,
-                // so just skip any directories in the output, since they'll otherwise interfere
-                // with our handling of nested repositories.
-                if path.ends_with('/') {
-                    return None;
+        let mut entries = Vec::new();
+        let mut fields = s.split('\0');
+        while let Some(field) = fields.next() {
+            let Some((status, path)) = field.split_at_checked(3) else {
+                continue;
+            };
+            let &[index_code, worktree_code, b' '] = status.as_bytes() else {
+                continue;
+            };
+            let codes = [index_code, worktree_code];
+            let is_rename_or_copy = |code: u8| matches!(code, b'R' | b'C');
+            if codes.into_iter().any(is_rename_or_copy) {
+                // In the `-z` format a rename or copy spans two fields, the new path and then the
+                // original one, so the original must be consumed here rather than read as a record.
+                let original_path = fields.next();
+                // `git status` only accepts `--no-renames` since git 2.18, so older versions report
+                // pairs. Record them exactly as `--no-renames` would: the new path as added, and a
+                // renamed-away original as deleted, so no `Renamed`/`Copied` status reaches callers.
+                let new_path_codes =
+                    codes.map(|code| if is_rename_or_copy(code) { b'A' } else { code });
+                entries.extend(status_entry(new_path_codes, path));
+                let original_path_codes = codes.map(|code| if code == b'R' { b'D' } else { b' ' });
+                if original_path_codes != [b' ', b' ']
+                    && let Some(original_path) = original_path
+                {
+                    entries.extend(status_entry(original_path_codes, original_path));
                 }
-                let status = entry.as_bytes()[0..2].try_into().unwrap();
-                let status = FileStatus::from_bytes(status).log_err()?;
-                // git-status outputs `/`-delimited repo paths, even on Windows.
-                let path = RepoPath::from_rel_path(RelPath::from_unix_str(path).log_err()?);
-                Some((path, status))
-            })
-            .collect::<Vec<_>>();
+                continue;
+            }
+            // The git status output includes untracked directories as well as untracked files.
+            // We do our own processing to compute the "summary" status of each directory,
+            // so just skip any directories in the output, since they'll otherwise interfere
+            // with our handling of nested repositories.
+            if path.ends_with('/') {
+                continue;
+            }
+            entries.extend(status_entry(codes, path));
+        }
         entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
         // When a file exists in HEAD, is deleted in the index, and exists again in the working copy,
         // git produces two lines for it, one reading `D ` (deleted in index, unmodified in working copy)
@@ -488,6 +504,13 @@ impl FromStr for GitStatus {
             entries: entries.into(),
         })
     }
+}
+
+fn status_entry(status: [u8; 2], path: &str) -> Option<(RepoPath, FileStatus)> {
+    let status = FileStatus::from_bytes(status).log_err()?;
+    // git-status outputs `/`-delimited repo paths, even on Windows.
+    let path = RepoPath::from_rel_path(RelPath::from_unix_str(path).log_err()?);
+    Some((path, status))
 }
 
 impl Default for GitStatus {
@@ -620,7 +643,7 @@ mod tests {
 
     use crate::{
         repository::RepoPath,
-        status::{FileStatus, GitStatus, TreeDiff, TreeDiffStatus},
+        status::{FileStatus, GitStatus, StatusCode, TrackedStatus, TreeDiff, TreeDiffStatus},
     };
 
     use super::{DiffStat, parse_numstat};
@@ -628,6 +651,104 @@ mod tests {
     fn lookup<'a>(entries: &'a [(RepoPath, DiffStat)], path: &str) -> Option<&'a DiffStat> {
         let path = RepoPath::new(path).unwrap();
         entries.iter().find(|(p, _)| p == &path).map(|(_, s)| s)
+    }
+
+    fn parsed_status(output: &str) -> Vec<(String, FileStatus)> {
+        let status: GitStatus = output.parse().unwrap();
+        status
+            .entries
+            .iter()
+            .map(|(path, status)| (path.as_unix_str().to_string(), *status))
+            .collect()
+    }
+
+    #[test]
+    fn test_rename_pairs_from_git_2_17() {
+        // Verbatim output of git 2.17.1, which rejects `--no-renames`, for a repository where
+        // `a` is modified, `n` is untracked, and `git mv k k2` is staged.
+        assert_eq!(
+            parsed_status(" M a\0R  k2\0k\0?? n\0"),
+            [
+                ("a".to_string(), FileStatus::worktree(StatusCode::Modified)),
+                ("k".to_string(), FileStatus::index(StatusCode::Deleted)),
+                ("k2".to_string(), FileStatus::index(StatusCode::Added)),
+                ("n".to_string(), FileStatus::Untracked),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_rename_with_worktree_modification() {
+        assert_eq!(
+            parsed_status("RM new\0old\0"),
+            [
+                (
+                    "new".to_string(),
+                    FileStatus::Tracked(TrackedStatus {
+                        index_status: StatusCode::Added,
+                        worktree_status: StatusCode::Modified,
+                    })
+                ),
+                ("old".to_string(), FileStatus::index(StatusCode::Deleted)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_worktree_rename() {
+        assert_eq!(
+            parsed_status(" R new\0old\0"),
+            [
+                ("new".to_string(), FileStatus::worktree(StatusCode::Added)),
+                ("old".to_string(), FileStatus::worktree(StatusCode::Deleted)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_copy_records() {
+        assert_eq!(
+            parsed_status("C  copy\0orig\0M  orig\0"),
+            [
+                ("copy".to_string(), FileStatus::index(StatusCode::Added)),
+                ("orig".to_string(), FileStatus::index(StatusCode::Modified)),
+            ]
+        );
+        assert_eq!(
+            parsed_status("C  copy\0orig\0"),
+            [("copy".to_string(), FileStatus::index(StatusCode::Added))]
+        );
+    }
+
+    #[test]
+    fn test_rename_original_path_is_not_read_as_a_record() {
+        // Original paths whose third character is a space look like status records on their own.
+        assert_eq!(
+            parsed_status("R  moved\0ab c\0R  new\0AM x\0"),
+            [
+                ("AM x".to_string(), FileStatus::index(StatusCode::Deleted)),
+                ("ab c".to_string(), FileStatus::index(StatusCode::Deleted)),
+                ("moved".to_string(), FileStatus::index(StatusCode::Added)),
+                ("new".to_string(), FileStatus::index(StatusCode::Added)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_rename_of_path_recreated_as_untracked() {
+        assert_eq!(
+            parsed_status("R  k2\0k\0?? k\0"),
+            [
+                (
+                    "k".to_string(),
+                    FileStatus::Tracked(TrackedStatus {
+                        index_status: StatusCode::Deleted,
+                        worktree_status: StatusCode::Added,
+                    })
+                ),
+                ("k2".to_string(), FileStatus::index(StatusCode::Added)),
+            ]
+        );
     }
 
     #[test]
