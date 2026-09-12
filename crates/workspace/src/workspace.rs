@@ -1672,10 +1672,13 @@ enum WorkspaceLocation {
     None,
 }
 
+/// Arguments after the lister: the directory the prompt should open in (if
+/// the caller has one) and the suggested file name.
 type PromptForNewPath = Box<
     dyn Fn(
         &mut Workspace,
         DirectoryLister,
+        Option<PathBuf>,
         Option<String>,
         &mut Window,
         &mut Context<Workspace>,
@@ -3944,12 +3947,26 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> oneshot::Receiver<Option<Vec<PathBuf>>> {
+        self.prompt_for_new_path_in_directory(lister, None, suggested_name, window, cx)
+    }
+
+    /// Same as [`Self::prompt_for_new_path`], but opens the prompt in
+    /// `start_directory` when one is given. That directory is an absolute path
+    /// on the machine the lister lists (the host, for remote projects).
+    pub fn prompt_for_new_path_in_directory(
+        &mut self,
+        lister: DirectoryLister,
+        start_directory: Option<PathBuf>,
+        suggested_name: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Option<Vec<PathBuf>>> {
         if self.project.read(cx).is_via_collab()
             || self.project.read(cx).is_via_remote_server()
             || !WorkspaceSettings::get_global(cx).use_system_path_prompts
         {
             let prompt = self.on_prompt_for_new_path.take().unwrap();
-            let rx = prompt(self, lister, suggested_name, window, cx);
+            let rx = prompt(self, lister, start_directory, suggested_name, window, cx);
             self.on_prompt_for_new_path = Some(prompt);
             return rx;
         }
@@ -3957,9 +3974,13 @@ impl Workspace {
         let (tx, rx) = oneshot::channel();
         cx.spawn_in(window, async move |workspace, cx| {
             let abs_path = workspace.update(cx, |workspace, cx| {
-                let relative_to = workspace
-                    .most_recent_active_path(cx)
-                    .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                let relative_to = start_directory
+                    .clone()
+                    .or_else(|| {
+                        workspace
+                            .most_recent_active_path(cx)
+                            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                    })
                     .or_else(|| {
                         let project = workspace.project.read(cx);
                         project.visible_worktrees(cx).find_map(|worktree| {
@@ -3978,7 +3999,14 @@ impl Workspace {
                             .show_error(workspace_error::PortalError::new(err.to_string()), cx);
 
                         let prompt = workspace.on_prompt_for_new_path.take().unwrap();
-                        let rx = prompt(workspace, lister, suggested_name, window, cx);
+                        let rx = prompt(
+                            workspace,
+                            lister,
+                            start_directory,
+                            suggested_name,
+                            window,
+                            cx,
+                        );
                         workspace.on_prompt_for_new_path = Some(prompt);
                         rx
                     })?;

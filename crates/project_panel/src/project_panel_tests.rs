@@ -11741,3 +11741,549 @@ async fn test_restore_file_prompt_escapes_markdown_in_file_name(cx: &mut gpui::T
 
     assert_eq!(message, "`__init__.py` の変更を破棄しますか?");
 }
+
+const PATCH_FILE_CONTENTS: &str = concat!(
+    "diff --git a/file.txt b/file.txt\n",
+    "--- a/file.txt\n",
+    "+++ b/file.txt\n",
+    "@@ -1 +1 @@\n",
+    "-original\n",
+    "+modified\n",
+);
+
+const CREATE_PATCH_MENU_ITEM: &str = "MENU_ITEM-パッチファイルを作成…";
+const APPLY_PATCH_MENU_ITEM: &str = "MENU_ITEM-パッチファイルを適用…";
+
+/// The patch actions end up in the Git panel, so these tests dock one; building
+/// it needs the language model registry on top of `init_test_with_git_ui`.
+fn init_test_with_git_panel(cx: &mut TestAppContext) {
+    init_test_with_git_ui(cx);
+    cx.update(language_model::init);
+}
+
+/// Opens a window with both the project panel and the Git panel docked, and
+/// the project panel focused.
+fn add_project_and_git_panels<'a>(
+    project: &Entity<Project>,
+    cx: &'a mut TestAppContext,
+) -> (Entity<ProjectPanel>, &'a mut VisualTestContext) {
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace = multi_workspace.read_with(&*cx, |multi_workspace, _| {
+        multi_workspace.workspace().clone()
+    });
+    let project_panel = workspace.update_in(cx, |workspace, window, cx| {
+        let git_panel = git_ui::git_panel::GitPanel::new_test(workspace, window, cx);
+        workspace.add_panel(git_panel, window, cx);
+        let project_panel = ProjectPanel::new(workspace, window, cx);
+        workspace.add_panel(project_panel.clone(), window, cx);
+        workspace.focus_panel::<ProjectPanel>(window, cx);
+        project_panel
+    });
+    cx.run_until_parked();
+    (project_panel, cx)
+}
+
+fn set_fake_git_command_output(fs: &FakeFs, dot_git: &str, args: &str, stdout: &str) {
+    fs.with_git_state(Path::new(dot_git), false, |state| {
+        state.command_outputs.insert(
+            args.to_owned(),
+            git::repository::GitCommandOutput {
+                stdout: stdout.to_owned(),
+                stderr: String::new(),
+                exit_code: Some(0),
+            },
+        );
+    })
+    .expect("fake repository should exist");
+}
+
+fn fake_git_command_log(fs: &FakeFs, dot_git: &str) -> Vec<(Vec<String>, Option<String>)> {
+    fs.with_git_state(Path::new(dot_git), false, |state| {
+        state.run_command_log.clone()
+    })
+    .expect("fake repository should exist")
+}
+
+/// Right-clicks `path` (the worktree's root name, then the path inside it) and
+/// returns whether the menu that opens offers creating and applying a patch.
+fn patch_items_in_context_menu(
+    panel: &Entity<ProjectPanel>,
+    path: &str,
+    cx: &mut VisualTestContext,
+) -> (bool, bool) {
+    let entry_id = find_project_entry(panel, path, cx).expect("entry should exist");
+    panel.update_in(cx, |panel, window, cx| {
+        panel.deploy_context_menu(
+            gpui::point(gpui::px(10.), gpui::px(10.)),
+            entry_id,
+            window,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    assert!(
+        cx.debug_bounds("MENU_ITEM-パスをコピー").is_some(),
+        "the context menu for {path} should be on screen"
+    );
+    (
+        cx.debug_bounds(CREATE_PATCH_MENU_ITEM).is_some(),
+        cx.debug_bounds(APPLY_PATCH_MENU_ITEM).is_some(),
+    )
+}
+
+fn select_and_focus(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
+    select_path(panel, path, cx);
+    panel.update_in(cx, |panel, window, cx| {
+        panel.focus_handle(cx).focus(window, cx);
+    });
+    cx.run_until_parked();
+}
+
+fn click_context_menu_item(item: &'static str, cx: &mut VisualTestContext) {
+    let item_center = cx
+        .debug_bounds(item)
+        .expect("the menu item should be on screen")
+        .center();
+    cx.simulate_click(item_center, Modifiers::none());
+    cx.run_until_parked();
+}
+
+/// Picks the first patch source, "作業ツリーの変更 (git diff)", then answers
+/// the save dialog with `destination` and returns the directory it opened in.
+fn finish_creating_patch(destination: &Path, cx: &mut VisualTestContext) -> Option<PathBuf> {
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    let mut dialog_directory = None;
+    cx.simulate_new_path_selection(|directory| {
+        dialog_directory = Some(directory.to_path_buf());
+        Some(destination.to_path_buf())
+    });
+    cx.run_until_parked();
+    dialog_directory
+}
+
+#[gpui::test]
+async fn test_context_menu_offers_patch_items_for_folders_and_patch_files(
+    cx: &mut gpui::TestAppContext,
+) {
+    init_test_with_git_panel(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/project"),
+        json!({
+            ".git": {},
+            "src": { "main.rs": "" },
+            "fix.patch": PATCH_FILE_CONTENTS,
+            "NOTES.DIFF": PATCH_FILE_CONTENTS,
+            "file.txt": "original\n",
+        }),
+    )
+    .await;
+    fs.insert_tree(
+        path!("/plain"),
+        json!({
+            "docs": { "readme.md": "" },
+            "outside.patch": PATCH_FILE_CONTENTS,
+        }),
+    )
+    .await;
+
+    let project = Project::test(
+        fs.clone(),
+        [path!("/project").as_ref(), path!("/plain").as_ref()],
+        cx,
+    )
+    .await;
+    cx.run_until_parked();
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "project/src", cx),
+        (true, false),
+        "a folder inside a repository offers creating a patch"
+    );
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "project", cx),
+        (true, false),
+        "so does a worktree root, which is what the empty area below the entries opens a menu for"
+    );
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "project/fix.patch", cx),
+        (false, true),
+        "a patch file offers applying it"
+    );
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "project/NOTES.DIFF", cx),
+        (false, true),
+        "the extension is matched without regard to case"
+    );
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "project/file.txt", cx),
+        (false, false),
+        "an ordinary file offers neither"
+    );
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "plain/docs", cx),
+        (false, false),
+        "a folder outside every repository has nothing to create a patch from"
+    );
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "plain/outside.patch", cx),
+        (false, true),
+        "a patch outside every repository can still be applied to the active one"
+    );
+}
+
+/// Choosing the menu item runs the Git panel's flow on the folder's repository,
+/// with the save dialog opening in that folder.
+#[gpui::test]
+async fn test_create_patch_from_folder_context_menu(cx: &mut gpui::TestAppContext) {
+    init_test_with_git_panel(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/project"),
+        json!({
+            ".git": {},
+            "src": { "main.rs": "" },
+            "file.txt": "modified\n",
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+    cx.run_until_parked();
+    set_fake_git_command_output(
+        &fs,
+        path!("/project/.git"),
+        "diff --binary",
+        PATCH_FILE_CONTENTS,
+    );
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "project/src", cx),
+        (true, false)
+    );
+    click_context_menu_item(CREATE_PATCH_MENU_ITEM, cx);
+    let destination = PathBuf::from(path!("/elsewhere/src.patch"));
+    assert_eq!(
+        finish_creating_patch(&destination, cx),
+        Some(PathBuf::from(path!("/project/src")))
+    );
+    assert_eq!(
+        fake_git_command_log(&fs, path!("/project/.git")),
+        vec![(
+            vec!["diff".to_string(), "--binary".to_string()],
+            None::<String>
+        )]
+    );
+    assert_eq!(
+        fs.load(&destination)
+            .await
+            .expect("the patch file should be written"),
+        PATCH_FILE_CONTENTS
+    );
+    project.read_with(&*cx, |project, cx| {
+        assert_eq!(project.worktrees(cx).count(), 1);
+    });
+}
+
+/// Two worktrees with a repository each, `/active` being the active one; both
+/// answer `git diff --binary`.
+async fn setup_two_repository_project(
+    cx: &mut gpui::TestAppContext,
+) -> (Arc<FakeFs>, Entity<Project>) {
+    init_test_with_git_panel(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/active"),
+        json!({
+            ".git": {},
+            "a": { "a.txt": "" },
+        }),
+    )
+    .await;
+    fs.insert_tree(
+        path!("/other"),
+        json!({
+            ".git": {},
+            "b": { "b.txt": "" },
+        }),
+    )
+    .await;
+    let project = Project::test(
+        fs.clone(),
+        [path!("/active").as_ref(), path!("/other").as_ref()],
+        cx,
+    )
+    .await;
+    cx.run_until_parked();
+
+    let active_worktree_id = project.read_with(cx, |project, cx| {
+        project
+            .worktree_for_root_name("active", cx)
+            .expect("worktree should exist")
+            .read(cx)
+            .id()
+    });
+    project.update(cx, |project, cx| {
+        project.git_store().update(cx, |git_store, cx| {
+            git_store.set_active_repo_for_worktree(active_worktree_id, cx);
+        });
+    });
+    cx.run_until_parked();
+    let active_work_directory = project.read_with(cx, |project, cx| {
+        project
+            .active_repository(cx)
+            .expect("should have an active repository")
+            .read(cx)
+            .work_directory_abs_path
+            .clone()
+    });
+    assert_eq!(active_work_directory.as_ref(), Path::new(path!("/active")));
+
+    set_fake_git_command_output(
+        &fs,
+        path!("/active/.git"),
+        "diff --binary",
+        PATCH_FILE_CONTENTS,
+    );
+    set_fake_git_command_output(
+        &fs,
+        path!("/other/.git"),
+        "diff --binary",
+        PATCH_FILE_CONTENTS,
+    );
+    (fs, project)
+}
+
+fn assert_patch_taken_from_the_other_repository(fs: &FakeFs) {
+    assert_eq!(
+        fake_git_command_log(fs, path!("/other/.git")),
+        vec![(
+            vec!["diff".to_string(), "--binary".to_string()],
+            None::<String>
+        )]
+    );
+    assert_eq!(
+        fake_git_command_log(fs, path!("/active/.git")),
+        Vec::<(Vec<String>, Option<String>)>::new()
+    );
+}
+
+/// The Git panel works on its active repository; a patch created from a folder
+/// of another repository has to come from that other repository.
+#[gpui::test]
+async fn test_create_patch_uses_the_repository_of_the_selected_folder(
+    cx: &mut gpui::TestAppContext,
+) {
+    let (fs, project) = setup_two_repository_project(cx).await;
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+
+    select_and_focus(&panel, "other/b", cx);
+    cx.update(|window, cx| {
+        window.dispatch_action(Box::new(git::CreatePatch), cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        finish_creating_patch(Path::new(path!("/elsewhere/other.patch")), cx),
+        Some(PathBuf::from(path!("/other/b")))
+    );
+    assert_patch_taken_from_the_other_repository(&fs);
+}
+
+/// Whether the project panel takes the patch actions used to be decided while
+/// the workspace drew, from the focus of the frame before. A context menu item
+/// focuses the panel and dispatches in one go, so a click that came before the
+/// next frame (the menu having just opened) went to the Git panel, which
+/// silently created the patch from its active repository instead.
+#[gpui::test]
+async fn test_create_patch_dispatched_as_the_panel_gets_focus(cx: &mut gpui::TestAppContext) {
+    let (fs, project) = setup_two_repository_project(cx).await;
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+    select_path(&panel, "other/b", cx);
+
+    cx.update(|window, cx| {
+        let workspace = panel
+            .read(cx)
+            .workspace
+            .upgrade()
+            .expect("workspace should exist");
+        let pane_focus = workspace.read(cx).active_pane().read(cx).focus_handle(cx);
+        window.focus(&pane_focus, cx);
+    });
+    cx.run_until_parked();
+
+    cx.update(|window, cx| {
+        let panel_focus = panel.read(cx).focus_handle(cx);
+        window.focus(&panel_focus, cx);
+        window.dispatch_action(Box::new(git::CreatePatch), cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        finish_creating_patch(Path::new(path!("/elsewhere/other.patch")), cx),
+        Some(PathBuf::from(path!("/other/b")))
+    );
+    assert_patch_taken_from_the_other_repository(&fs);
+}
+
+/// With folder folding on, one row stands for a chain of folders; the patch is
+/// created from the folder of the chain that the row currently points at.
+#[gpui::test]
+async fn test_create_patch_from_a_folded_folder_uses_its_active_part(
+    cx: &mut gpui::TestAppContext,
+) {
+    init_test_with_git_panel(cx);
+    cx.update(|cx| {
+        let settings = *ProjectPanelSettings::get_global(cx);
+        ProjectPanelSettings::override_global(
+            ProjectPanelSettings {
+                auto_fold_dirs: true,
+                ..settings
+            },
+            cx,
+        );
+    });
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/project"),
+        json!({
+            ".git": {},
+            "outer": { "inner": { "file.txt": "" } },
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+    cx.run_until_parked();
+    set_fake_git_command_output(
+        &fs,
+        path!("/project/.git"),
+        "diff --binary",
+        PATCH_FILE_CONTENTS,
+    );
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+
+    select_folded_path_with_mark(&panel, "project/outer/inner", "project/outer", cx);
+    panel.update_in(cx, |panel, window, cx| {
+        panel.focus_handle(cx).focus(window, cx);
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        window.dispatch_action(Box::new(git::CreatePatch), cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        finish_creating_patch(Path::new(path!("/elsewhere/outer.patch")), cx),
+        Some(PathBuf::from(path!("/project/outer")))
+    );
+}
+
+async fn setup_patch_file_project(cx: &mut gpui::TestAppContext) -> (Arc<FakeFs>, Entity<Project>) {
+    init_test_with_git_panel(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/project"),
+        json!({
+            ".git": {},
+            "fix.patch": PATCH_FILE_CONTENTS,
+            "file.txt": "original\n",
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+    cx.run_until_parked();
+    set_fake_git_command_output(&fs, path!("/project/.git"), "apply", "");
+    (fs, project)
+}
+
+/// Applying from the menu asks first and then hands the file's contents to
+/// `git apply`; the file is already known, so no file dialog is shown.
+#[gpui::test]
+async fn test_apply_patch_from_context_menu_asks_and_runs_git_apply(cx: &mut gpui::TestAppContext) {
+    let (fs, project) = setup_patch_file_project(cx).await;
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+
+    assert_eq!(
+        patch_items_in_context_menu(&panel, "project/fix.patch", cx),
+        (false, true)
+    );
+    click_context_menu_item(APPLY_PATCH_MENU_ITEM, cx);
+
+    let (message, detail) = cx
+        .pending_prompt()
+        .expect("applying should ask for confirmation first");
+    assert_eq!(message, "パッチファイル `fix.patch` を適用しますか?");
+    assert_eq!(
+        detail,
+        format!(
+            "適用先: {}",
+            MarkdownInlineCode(&Path::new(path!("/project")).to_string_lossy())
+        )
+    );
+    cx.simulate_prompt_answer("適用");
+    cx.run_until_parked();
+
+    assert_eq!(
+        fake_git_command_log(&fs, path!("/project/.git")),
+        vec![(
+            vec!["apply".to_string()],
+            Some(PATCH_FILE_CONTENTS.to_string())
+        )]
+    );
+    assert!(!cx.did_prompt_for_paths());
+}
+
+#[gpui::test]
+async fn test_apply_patch_from_project_panel_can_be_cancelled(cx: &mut gpui::TestAppContext) {
+    let (fs, project) = setup_patch_file_project(cx).await;
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+
+    select_and_focus(&panel, "project/fix.patch", cx);
+    cx.update(|window, cx| {
+        window.dispatch_action(Box::new(git::ApplyPatch), cx);
+    });
+    cx.run_until_parked();
+
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("キャンセル");
+    cx.run_until_parked();
+
+    assert_eq!(
+        fake_git_command_log(&fs, path!("/project/.git")),
+        Vec::<(Vec<String>, Option<String>)>::new()
+    );
+}
+
+/// With a selection the project panel has no patch target for, the action goes
+/// on to the Git panel, which asks for the patch file with a file dialog.
+#[gpui::test]
+async fn test_apply_patch_on_an_ordinary_file_falls_back_to_the_file_dialog(
+    cx: &mut gpui::TestAppContext,
+) {
+    let (fs, project) = setup_patch_file_project(cx).await;
+    let (panel, cx) = add_project_and_git_panels(&project, cx);
+
+    select_and_focus(&panel, "project/file.txt", cx);
+    cx.update(|window, cx| {
+        window.dispatch_action(Box::new(git::ApplyPatch), cx);
+    });
+    cx.run_until_parked();
+
+    assert!(!cx.has_pending_prompt());
+    assert!(cx.did_prompt_for_paths());
+    cx.simulate_path_prompt_response(|_| None);
+    cx.run_until_parked();
+
+    assert_eq!(
+        fake_git_command_log(&fs, path!("/project/.git")),
+        Vec::<(Vec<String>, Option<String>)>::new()
+    );
+}

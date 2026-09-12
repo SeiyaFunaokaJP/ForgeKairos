@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{path::PathBuf, rc::Rc};
 
 use gpui::{
     AnyView, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Global,
@@ -113,4 +113,98 @@ pub fn open_file_history(
         return;
     };
     opener(workspace, path, window, cx);
+}
+
+/// Returns whether the request was taken; `false` when there is nothing in the
+/// workspace to create the patch with.
+type PatchFileCreator = dyn Fn(
+    &mut Workspace,
+    Entity<Repository>,
+    PathBuf,
+    &mut Window,
+    &mut Context<Workspace>,
+) -> bool;
+
+struct PatchFileCreatorGlobal(Rc<PatchFileCreator>);
+
+impl Global for PatchFileCreatorGlobal {}
+
+pub fn set_patch_file_creator(
+    creator: impl Fn(
+        &mut Workspace,
+        Entity<Repository>,
+        PathBuf,
+        &mut Window,
+        &mut Context<Workspace>,
+    ) -> bool
+    + 'static,
+    cx: &mut App,
+) {
+    cx.set_global(PatchFileCreatorGlobal(Rc::new(creator)));
+}
+
+/// Starts creating a patch file from `repository`, with the save dialog
+/// opening in `start_directory`. Returns `false` when no creator was installed
+/// via [`set_patch_file_creator`] or it did not take the request.
+pub fn create_patch_file(
+    workspace: &mut Workspace,
+    repository: Entity<Repository>,
+    start_directory: PathBuf,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> bool {
+    let Some(creator) = cx
+        .try_global::<PatchFileCreatorGlobal>()
+        .map(|creator| creator.0.clone())
+    else {
+        return false;
+    };
+    creator(workspace, repository, start_directory, window, cx)
+}
+
+/// Returns whether the request was taken; `false` when there is nothing in the
+/// workspace to apply the patch with.
+type PatchFileApplier = dyn Fn(
+    &mut Workspace,
+    Entity<Repository>,
+    ProjectPath,
+    &mut Window,
+    &mut Context<Workspace>,
+) -> bool;
+
+struct PatchFileApplierGlobal(Rc<PatchFileApplier>);
+
+impl Global for PatchFileApplierGlobal {}
+
+pub fn set_patch_file_applier(
+    applier: impl Fn(
+        &mut Workspace,
+        Entity<Repository>,
+        ProjectPath,
+        &mut Window,
+        &mut Context<Workspace>,
+    ) -> bool
+    + 'static,
+    cx: &mut App,
+) {
+    cx.set_global(PatchFileApplierGlobal(Rc::new(applier)));
+}
+
+/// Asks to apply the patch file at `patch_path` to `repository`. Returns
+/// `false` when no applier was installed via [`set_patch_file_applier`] or it
+/// did not take the request.
+pub fn apply_patch_file(
+    workspace: &mut Workspace,
+    repository: Entity<Repository>,
+    patch_path: ProjectPath,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> bool {
+    let Some(applier) = cx
+        .try_global::<PatchFileApplierGlobal>()
+        .map(|applier| applier.0.clone())
+    else {
+        return false;
+    };
+    applier(workspace, repository, patch_path, window, cx)
 }

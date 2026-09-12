@@ -35,7 +35,7 @@ use notifications::status_toast::StatusToast;
 use project::{
     Entry, EntryKind, Fs, GitEntry, GitEntryRef, GitTraversal, Project, ProjectEntryId,
     ProjectPath, Worktree, WorktreeId,
-    git_store::{GitStoreEvent, RepositoryEvent, git_traversal::ChildEntriesGitIter},
+    git_store::{GitStoreEvent, Repository, RepositoryEvent, git_traversal::ChildEntriesGitIter},
     project_settings::GoToDiagnosticSeverityFilter,
 };
 use project_panel_settings::ProjectPanelSettings;
@@ -552,35 +552,78 @@ pub fn init(cx: &mut App) {
             }
         });
 
-        // Forwards `git::FileHistory` to the file history opener installed by
-        // `git_ui` when the project panel is the focused source of selection.
-        // Lives here (and not in `git_ui`) so that `git_ui` does not need to
-        // depend on `project_panel`, which would create a dependency cycle.
+        // Forwards `git::FileHistory`, `git::CreatePatch` and `git::ApplyPatch`
+        // to the handlers installed by `git_ui` when the project panel is the
+        // focused source of selection. Lives here (and not in `git_ui`) so that
+        // `git_ui` does not need to depend on `project_panel`, which would
+        // create a dependency cycle.
         workspace.register_action_renderer(|div, workspace, window, cx| {
             let Some(panel) = workspace.panel::<ProjectPanel>(cx) else {
                 return div;
             };
-            if !panel.read(cx).focus_handle(cx).contains_focused(window, cx) {
-                return div;
-            }
-            if panel.read(cx).selected_entry_project_path(cx).is_none() {
-                return div;
-            }
+            let forwards_file_history =
+                panel.read(cx).focus_handle(cx).contains_focused(window, cx)
+                    && panel.read(cx).selected_entry_project_path(cx).is_some();
+            let is_read_only = workspace.project().read(cx).is_read_only(cx);
             let workspace = workspace.weak_handle();
-            div.capture_action(move |_: &git::FileHistory, window, cx| {
-                workspace
-                    .update(cx, |workspace, cx| {
-                        let Some(panel) = workspace.panel::<ProjectPanel>(cx) else {
-                            return;
-                        };
-                        let Some(project_path) = panel.read(cx).selected_entry_project_path(cx)
+            div.when(forwards_file_history, |div| {
+                div.capture_action({
+                    let workspace = workspace.clone();
+                    move |_: &git::FileHistory, window, cx| {
+                        workspace
+                            .update(cx, |workspace, cx| {
+                                let Some(panel) = workspace.panel::<ProjectPanel>(cx) else {
+                                    return;
+                                };
+                                let Some(project_path) =
+                                    panel.read(cx).selected_entry_project_path(cx)
+                                else {
+                                    return;
+                                };
+                                git_ui_core::open_file_history(
+                                    workspace,
+                                    &project_path,
+                                    window,
+                                    cx,
+                                );
+                            })
+                            .log_err();
+                        cx.stop_propagation();
+                    }
+                })
+            })
+            // `git_ui` only registers the patch actions for writable projects;
+            // capturing them in a read-only one would still list them in the
+            // command palette.
+            .when(!is_read_only, |div| {
+                div.capture_action(forward_patch_action::<git::CreatePatch>(
+                    workspace.clone(),
+                    |workspace, panel, window, cx| {
+                        let Some((repository, start_directory)) =
+                            panel.read(cx).patch_creation_target(cx)
                         else {
-                            return;
+                            return false;
                         };
-                        git_ui_core::open_file_history(workspace, &project_path, window, cx);
-                    })
-                    .log_err();
-                cx.stop_propagation();
+                        git_ui_core::create_patch_file(
+                            workspace,
+                            repository,
+                            start_directory,
+                            window,
+                            cx,
+                        )
+                    },
+                ))
+                .capture_action(forward_patch_action::<git::ApplyPatch>(
+                    workspace,
+                    |workspace, panel, window, cx| {
+                        let Some((repository, patch_path)) =
+                            panel.read(cx).patch_application_target(cx)
+                        else {
+                            return false;
+                        };
+                        git_ui_core::apply_patch_file(workspace, repository, patch_path, window, cx)
+                    },
+                ))
             })
         });
     })
@@ -1129,6 +1172,10 @@ impl ProjectPanel {
                         .is_some_and(|status| status.is_created());
                 (has_git_repo, has_history)
             };
+            // The same resolution the action capture in `init` uses, so an item
+            // is only offered when that capture is going to handle it.
+            let can_create_patch = is_dir && self.patch_creation_target(cx).is_some();
+            let can_apply_patch = self.patch_application_target(cx).is_some();
 
             let has_pasteable_content = self.has_pasteable_content(cx);
             let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
@@ -1221,6 +1268,15 @@ impl ProjectPanel {
                                     .when(has_history, |menu| {
                                         menu.action("履歴を表示", Box::new(git::FileHistory))
                                     })
+                            })
+                            // A patch kept outside every repository still opens the
+                            // Git group, even though the Git items above are not shown.
+                            .when(!has_git_repo && can_apply_patch, |menu| menu.separator())
+                            .when(can_create_patch, |menu| {
+                                menu.action("パッチファイルを作成…", Box::new(git::CreatePatch))
+                            })
+                            .when(can_apply_patch, |menu| {
+                                menu.action("パッチファイルを適用…", Box::new(git::ApplyPatch))
                             })
                             .when(!should_hide_rename, |menu| {
                                 menu.separator().action("名前の変更", Box::new(Rename))
@@ -4165,11 +4221,8 @@ impl ProjectPanel {
     }
 
     pub fn selected_entry_project_path(&self, cx: &App) -> Option<ProjectPath> {
-        let (worktree, entry) = self.selected_sub_entry(cx)?;
-        Some(ProjectPath {
-            worktree_id: worktree.read(cx).id(),
-            path: entry.path.clone(),
-        })
+        self.selected_sub_entry_with_path(cx)
+            .map(|(project_path, _)| project_path)
     }
 
     /// Compared to selected_entry, this function resolves to the currently
@@ -4186,6 +4239,59 @@ impl ProjectPanel {
             entry = worktree.entry_for_id(resolved_id)?;
         }
         Some((worktree, entry))
+    }
+
+    fn selected_sub_entry_with_path<'a>(
+        &self,
+        cx: &'a App,
+    ) -> Option<(ProjectPath, &'a project::Entry)> {
+        let (worktree, entry) = self.selected_sub_entry(cx)?;
+        let project_path = ProjectPath {
+            worktree_id: worktree.read(cx).id(),
+            path: entry.path.clone(),
+        };
+        Some((project_path, entry))
+    }
+
+    /// What `git::CreatePatch` acts on when the project panel handles it: the
+    /// repository holding the selected directory (or the selected file's
+    /// directory), and that directory as an absolute path for the save dialog.
+    fn patch_creation_target(&self, cx: &App) -> Option<(Entity<Repository>, PathBuf)> {
+        let (selected_path, entry) = self.selected_sub_entry_with_path(cx)?;
+        let directory = if entry.is_dir() {
+            selected_path
+        } else {
+            ProjectPath {
+                worktree_id: selected_path.worktree_id,
+                path: selected_path.path.parent()?.into(),
+            }
+        };
+        let project = self.project.read(cx);
+        let (repository, _) = project
+            .git_store()
+            .read(cx)
+            .repository_and_path_for_project_path(&directory, cx)?;
+        let start_directory = project.absolute_path(&directory, cx)?;
+        Some((repository, start_directory))
+    }
+
+    /// What `git::ApplyPatch` acts on when the project panel handles it: the
+    /// selected patch file, and the repository to apply it to.
+    fn patch_application_target(&self, cx: &App) -> Option<(Entity<Repository>, ProjectPath)> {
+        let (patch_path, entry) = self.selected_sub_entry_with_path(cx)?;
+        if !entry.is_file() || !is_patch_file(&patch_path.path) {
+            return None;
+        }
+        let project = self.project.read(cx);
+        // A patch kept outside every repository still has to go somewhere; the
+        // active repository is the one the Git panel would apply it to.
+        let repository = project
+            .git_store()
+            .read(cx)
+            .repository_and_path_for_project_path(&patch_path, cx)
+            .map(|(repository, _)| repository)
+            .or_else(|| project.active_repository(cx))?;
+        Some((repository, patch_path))
     }
 
     fn reveal_in_file_manager_path(&self, cx: &App) -> Option<PathBuf> {
@@ -7818,6 +7924,49 @@ impl ClipboardEntry {
             ClipboardEntry::Cut(entries) => ClipboardEntry::Copied(entries),
         }
     }
+}
+
+/// Captures a patch action for the project panel. Whether the panel takes it is
+/// decided when the action is dispatched rather than when the workspace renders:
+/// rendering compares the focus against the previous frame, which does not have
+/// a context menu that has only just opened, so a click on one of its items
+/// could slip past a capture registered only while the panel looked focused.
+/// The item focuses the panel itself before it dispatches.
+fn forward_patch_action<A: Action>(
+    workspace: WeakEntity<Workspace>,
+    forward: impl Fn(
+        &mut Workspace,
+        &Entity<ProjectPanel>,
+        &mut Window,
+        &mut Context<Workspace>,
+    ) -> bool
+    + 'static,
+) -> impl Fn(&A, &mut Window, &mut App) + 'static {
+    move |_, window, cx| {
+        let forwarded = workspace
+            .update(cx, |workspace, cx| {
+                let Some(panel) = workspace.panel::<ProjectPanel>(cx) else {
+                    return false;
+                };
+                if !panel.read(cx).focus_handle(cx).contains_focused(window, cx) {
+                    return false;
+                }
+                forward(workspace, &panel, window, cx)
+            })
+            .log_err()
+            .unwrap_or(false);
+        // Otherwise the action goes on to the Git panel's own handler, which
+        // uses its active repository.
+        if forwarded {
+            cx.stop_propagation();
+        }
+    }
+}
+
+fn is_patch_file(path: &RelPath) -> bool {
+    path.extension().is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("patch") || extension.eq_ignore_ascii_case("diff")
+    })
 }
 
 #[inline]

@@ -3,14 +3,15 @@ use std::sync::{Arc, atomic};
 
 use futures::channel::oneshot;
 use fuzzy::{StringMatch, StringMatchCandidate};
-use gpui::{AppContext, Entity, TestAppContext, VisualTestContext};
+use gpui::{AppContext, BorrowAppContext, Entity, TestAppContext, VisualTestContext};
 use picker::{Picker, PickerDelegate};
 use project::Project;
 use serde_json::json;
+use settings::SettingsStore;
 use util::path;
 use workspace::{AppState, MultiWorkspace};
 
-use crate::{CandidateInfo, DirectoryState, OpenPathDelegate};
+use crate::{CandidateInfo, DirectoryState, OpenPathDelegate, OpenPathPrompt};
 
 #[gpui::test]
 async fn test_open_path_prompt(cx: &mut TestAppContext) {
@@ -745,6 +746,70 @@ async fn test_dismiss_cancels_in_flight_match(cx: &mut TestAppContext) {
         cancel_flag.load(atomic::Ordering::Acquire),
         "dismissing the prompt must cancel the in-flight fuzzy match"
     );
+}
+
+/// The in-app new-path prompt opens where its caller asks, e.g. in the folder a
+/// patch file is created from, rather than always in the first worktree.
+#[gpui::test]
+async fn test_new_path_prompt_opens_in_the_requested_directory(cx: &mut TestAppContext) {
+    let app_state = init_test(cx);
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.workspace.use_system_path_prompts = Some(false);
+            });
+        });
+    });
+    app_state
+        .fs
+        .as_fake()
+        .insert_tree(path!("/root"), json!({ "dir1": { "a": "A" } }))
+        .await;
+
+    let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+    workspace.update_in(cx, |workspace, window, cx| {
+        OpenPathPrompt::register_new_path(workspace, Some(window), cx);
+    });
+
+    let cases = [
+        (
+            Some(PathBuf::from(path!("/root/dir1"))),
+            path!("/root/dir1/new.patch"),
+        ),
+        // A directory that already ends in a separator does not get a second one.
+        (
+            Some(PathBuf::from(path!("/root/dir1/"))),
+            path!("/root/dir1/new.patch"),
+        ),
+        // Without a directory the prompt still opens in the first worktree.
+        (None, path!("/root/new.patch")),
+    ];
+    for (start_directory, expected_query) in cases {
+        let _receiver = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.prompt_for_new_path_in_directory(
+                project::DirectoryLister::Project(project.clone()),
+                start_directory.clone(),
+                Some("new.patch".to_string()),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let query = workspace.update_in(cx, |workspace, window, cx| {
+            let query = workspace
+                .active_modal::<Picker<OpenPathDelegate>>(cx)
+                .expect("the in-app prompt should be open")
+                .read(cx)
+                .query(cx);
+            workspace.hide_modal(window, cx);
+            query
+        });
+        assert_eq!(query, expected_query, "start directory {start_directory:?}");
+    }
 }
 
 fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {

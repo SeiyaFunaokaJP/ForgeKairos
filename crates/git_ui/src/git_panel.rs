@@ -81,7 +81,7 @@ use smallvec::SmallVec;
 use std::cell::Cell;
 use std::future::Future;
 use std::ops::Range;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::{sync::Arc, time::Duration};
 use strum::{IntoEnumIterator, VariantNames};
@@ -4387,6 +4387,19 @@ impl GitPanel {
         let Some(repository) = self.active_repository.clone() else {
             return;
         };
+        self.create_patch_for_repository(repository, None, window, cx);
+    }
+
+    /// Creates a patch file from `repository`. The save dialog opens in
+    /// `start_directory` when one is given, so that a patch created from a
+    /// folder in the project panel is offered a place in that folder.
+    pub(crate) fn create_patch_for_repository(
+        &mut self,
+        repository: Entity<Repository>,
+        start_directory: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let workspace = self.workspace.clone();
         let project = self.project.clone();
 
@@ -4398,8 +4411,14 @@ impl GitPanel {
                 "直近のコミット (git format-patch -1 HEAD)",
             ),
         ];
+        // The patch always covers the whole repository, which is not obvious
+        // when it was started from a folder in the project panel.
+        let title = format!(
+            "パッチファイルに含める内容を選択 (リポジトリ全体: {})",
+            repository.read(cx).display_name()
+        );
         let selection = picker_prompt::prompt(
-            "パッチファイルに含める内容を選択",
+            &title,
             sources
                 .iter()
                 .map(|(_, label)| SharedString::new_static(label))
@@ -4417,7 +4436,9 @@ impl GitPanel {
                 return;
             };
 
-            match Self::write_new_patch(repository, workspace, project, source, cx).await {
+            match Self::write_new_patch(repository, workspace, project, source, start_directory, cx)
+                .await
+            {
                 Ok(Some(destination)) => {
                     this.update(cx, |this, cx| {
                         this.show_success_toast(
@@ -4447,6 +4468,7 @@ impl GitPanel {
         workspace: WeakEntity<Workspace>,
         project: Entity<Project>,
         source: PatchSource,
+        start_directory: Option<PathBuf>,
         cx: &mut AsyncWindowContext,
     ) -> Result<Option<String>> {
         let output = repository
@@ -4464,8 +4486,9 @@ impl GitPanel {
         // while the panel method runs; calling `prompt_for_new_path` from there
         // would lease the same entity twice and abort the process.
         let destination = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.prompt_for_new_path(
+            workspace.prompt_for_new_path_in_directory(
                 Self::patch_directory_lister(workspace, cx),
+                start_directory,
                 Some(source.suggested_file_name().to_owned()),
                 window,
                 cx,
@@ -4540,35 +4563,65 @@ impl GitPanel {
         let project = self.project.clone();
 
         cx.spawn_in(window, async move |this, cx| {
-            match Self::apply_chosen_patch(repository, workspace, project, cx).await {
-                Ok(Some((output, used_three_way))) => {
-                    this.update(cx, |this, cx| {
-                        if output.succeeded() && used_three_way {
-                            this.show_git_output_toast(
-                                "apply",
-                                "パッチファイルを 3-way マージで適用し、ステージしました。",
-                                &output,
-                                cx,
-                            );
-                        } else if output.succeeded() {
-                            this.show_success_toast("パッチファイルを適用しました。", cx);
-                        } else {
-                            this.show_error_toast(
-                                "apply",
-                                anyhow::anyhow!("{}", output.failure_message()),
-                                cx,
-                            );
-                        }
-                    })
-                    .ok();
-                }
-                // The user dismissed the file dialog.
-                Ok(None) => {}
-                Err(error) => {
-                    this.update(cx, |this, cx| this.show_error_toast("apply", error, cx))
-                        .ok();
-                }
+            // `None` means the user dismissed the file dialog.
+            let Some(result) = Self::apply_chosen_patch(repository, workspace, project, cx)
+                .await
+                .transpose()
+            else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                this.show_patch_application_result(result, cx)
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Applies `patch_path`, a patch file inside the project, to `repository`
+    /// once the user confirms. There is no file dialog here, unlike in
+    /// [`Self::apply_patch`]: the project panel already knows which file the
+    /// user right-clicked.
+    pub(crate) fn apply_patch_file(
+        &mut self,
+        repository: Entity<Repository>,
+        patch_path: ProjectPath,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let project = self.project.clone();
+        let file_name = patch_path.path.file_name().unwrap_or_default();
+        let work_directory = repository.read(cx).work_directory_abs_path.clone();
+        let confirmation = window.prompt(
+            PromptLevel::Info,
+            &format!(
+                "パッチファイル {} を適用しますか?",
+                MarkdownInlineCode(file_name)
+            ),
+            Some(&format!(
+                "適用先: {}",
+                MarkdownInlineCode(&work_directory.to_string_lossy())
+            )),
+            &["適用", "キャンセル"],
+            cx,
+        );
+
+        cx.spawn_in(window, async move |this, cx| {
+            if confirmation.await.ok() != Some(0) {
+                return;
             }
+            let result = async {
+                let abs_path = project
+                    .read_with(cx, |project, cx| project.absolute_path(&patch_path, cx))
+                    .context("パッチファイルのあるフォルダーがプロジェクトから外されました。")?;
+                let contents = Self::load_patch_file(&project, abs_path, cx).await?;
+                Self::apply_patch_contents(repository, contents, cx).await
+            }
+            .await;
+            this.update(cx, |this, cx| {
+                this.show_patch_application_result(result, cx)
+            })
+            .ok();
         })
         .detach();
     }
@@ -4608,40 +4661,63 @@ impl GitPanel {
             return Ok(None);
         };
 
+        let contents = Self::load_patch_file(&project, patch_path, cx).await?;
+        Self::apply_patch_contents(repository, contents, cx)
+            .await
+            .map(Some)
+    }
+
+    /// Reads the patch file at `abs_path`, a path on the machine the project
+    /// lives on.
+    async fn load_patch_file(
+        project: &Entity<Project>,
+        abs_path: PathBuf,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<String> {
         let fs = project.read_with(cx, |project, _| {
             project.is_local().then(|| project.fs().clone())
         });
-        let contents = if let Some(fs) = fs {
+        if let Some(fs) = fs {
             // Read directly, for the same reason the local save writes
             // directly: opening the patch through the project would add a
             // worktree and a buffer for a file the user only wants applied.
-            fs.load(&patch_path).await.with_context(|| {
+            return fs.load(&abs_path).await.with_context(|| {
                 format!(
                     "パッチファイル {} を読み込めませんでした",
-                    patch_path.display()
+                    abs_path.display()
                 )
-            })?
-        } else {
-            let (worktree, relative_path) = project
-                .update(cx, |project, cx| {
-                    project.find_or_create_worktree(&patch_path, false, cx)
-                })
-                .await?;
-            let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
-            let buffer = project
-                .update(cx, |project, cx| {
-                    project.open_buffer(
-                        ProjectPath {
-                            worktree_id,
-                            path: relative_path,
-                        },
-                        cx,
-                    )
-                })
-                .await?;
-            buffer.read_with(cx, |buffer, _| buffer.text())
-        };
+            });
+        }
+        // Remote project: the file is on the host, and the project is how its
+        // contents get here. A patch inside one of the project's folders is
+        // read through that folder's worktree; only one outside them gets a
+        // hidden worktree of its own.
+        let (worktree, relative_path) = project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(&abs_path, false, cx)
+            })
+            .await?;
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_buffer(
+                    ProjectPath {
+                        worktree_id,
+                        path: relative_path,
+                    },
+                    cx,
+                )
+            })
+            .await?;
+        Ok(buffer.read_with(cx, |buffer, _| buffer.text()))
+    }
 
+    /// Returns git's output plus whether the `--3way` retry produced it.
+    async fn apply_patch_contents(
+        repository: Entity<Repository>,
+        contents: String,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<(git::repository::GitCommandOutput, bool)> {
         // Plain `git apply` is all-or-nothing, so it is the safe first
         // attempt. `--3way` is the "try harder" retry: it can apply a patch
         // whose context has drifted, but it also stages what it applies and
@@ -4653,14 +4729,42 @@ impl GitPanel {
             })
             .await??;
         if plain.succeeded() {
-            return Ok(Some((plain, false)));
+            return Ok((plain, false));
         }
         let three_way = repository
             .update(cx, |repository, cx| {
                 repository.apply_patch(contents, true, cx)
             })
             .await??;
-        Ok(Some((three_way, true)))
+        Ok((three_way, true))
+    }
+
+    fn show_patch_application_result(
+        &self,
+        result: Result<(git::repository::GitCommandOutput, bool)>,
+        cx: &mut App,
+    ) {
+        match result {
+            Ok((output, used_three_way)) => {
+                if output.succeeded() && used_three_way {
+                    self.show_git_output_toast(
+                        "apply",
+                        "パッチファイルを 3-way マージで適用し、ステージしました。",
+                        &output,
+                        cx,
+                    );
+                } else if output.succeeded() {
+                    self.show_success_toast("パッチファイルを適用しました。", cx);
+                } else {
+                    self.show_error_toast(
+                        "apply",
+                        anyhow::anyhow!("{}", output.failure_message()),
+                        cx,
+                    );
+                }
+            }
+            Err(error) => self.show_error_toast("apply", error, cx),
+        }
     }
 
     /// Mirrors `Pane::save_item`: local projects get the platform's own file

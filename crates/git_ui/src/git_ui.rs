@@ -99,6 +99,32 @@ pub fn init(cx: &mut App) {
         cx,
     );
 
+    git_ui_core::set_patch_file_creator(
+        |workspace, repository, start_directory, window, cx| {
+            let Some(panel) = workspace.panel::<GitPanel>(cx) else {
+                return false;
+            };
+            panel.update(cx, |panel, cx| {
+                panel.create_patch_for_repository(repository, Some(start_directory), window, cx);
+            });
+            true
+        },
+        cx,
+    );
+
+    git_ui_core::set_patch_file_applier(
+        |workspace, repository, patch_path, window, cx| {
+            let Some(panel) = workspace.panel::<GitPanel>(cx) else {
+                return false;
+            };
+            panel.update(cx, |panel, cx| {
+                panel.apply_patch_file(repository, patch_path, window, cx);
+            });
+            true
+        },
+        cx,
+    );
+
     cx.observe_new(|editor: &mut Editor, _, cx| {
         conflict_view::register_editor(editor, editor.buffer().clone(), cx);
     })

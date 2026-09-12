@@ -290,7 +290,7 @@ impl OpenPathPrompt {
     ) {
         workspace.set_prompt_for_open_path(Box::new(|workspace, lister, window, cx| {
             let (tx, rx) = futures::channel::oneshot::channel();
-            Self::prompt_for_open_path(workspace, lister, false, None, tx, window, cx);
+            Self::prompt_for_open_path(workspace, lister, false, None, None, tx, window, cx);
             rx
         }));
     }
@@ -301,9 +301,17 @@ impl OpenPathPrompt {
         _: &mut Context<Workspace>,
     ) {
         workspace.set_prompt_for_new_path(Box::new(
-            |workspace, lister, suggested_name, window, cx| {
+            |workspace, lister, start_directory, suggested_name, window, cx| {
                 let (tx, rx) = futures::channel::oneshot::channel();
-                Self::prompt_for_new_path(workspace, lister, suggested_name, tx, window, cx);
+                Self::prompt_for_new_path(
+                    workspace,
+                    lister,
+                    start_directory,
+                    suggested_name,
+                    tx,
+                    window,
+                    cx,
+                );
                 rx
             },
         ));
@@ -313,6 +321,7 @@ impl OpenPathPrompt {
         workspace: &mut Workspace,
         lister: DirectoryLister,
         creating_path: bool,
+        start_directory: Option<PathBuf>,
         suggested_name: Option<String>,
         tx: oneshot::Sender<Option<Vec<PathBuf>>>,
         window: &mut Window,
@@ -322,10 +331,12 @@ impl OpenPathPrompt {
             let delegate =
                 OpenPathDelegate::new(tx, lister.clone(), creating_path, cx).show_hidden();
             let picker = Picker::uniform_list(delegate, window, cx);
-            let mut query = lister.default_query(cx);
-            if let Some(suggested_name) = suggested_name {
-                query.push_str(&suggested_name);
-            }
+            let query = initial_query(
+                &lister,
+                start_directory.as_deref(),
+                suggested_name.as_deref(),
+                cx,
+            );
             picker.set_query(&query, window, cx);
             picker
         });
@@ -334,13 +345,46 @@ impl OpenPathPrompt {
     fn prompt_for_new_path(
         workspace: &mut Workspace,
         lister: DirectoryLister,
+        start_directory: Option<PathBuf>,
         suggested_name: Option<String>,
         tx: oneshot::Sender<Option<Vec<PathBuf>>>,
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        Self::prompt_for_open_path(workspace, lister, true, suggested_name, tx, window, cx);
+        Self::prompt_for_open_path(
+            workspace,
+            lister,
+            true,
+            start_directory,
+            suggested_name,
+            tx,
+            window,
+            cx,
+        );
     }
+}
+
+fn initial_query(
+    lister: &DirectoryLister,
+    start_directory: Option<&Path>,
+    suggested_name: Option<&str>,
+    cx: &mut App,
+) -> String {
+    let mut query = match start_directory {
+        Some(start_directory) => {
+            let separator = lister.path_style(cx).primary_separator();
+            let mut query = start_directory.to_string_lossy().into_owned();
+            if !query.ends_with(separator) {
+                query.push_str(separator);
+            }
+            query
+        }
+        None => lister.default_query(cx),
+    };
+    if let Some(suggested_name) = suggested_name {
+        query.push_str(suggested_name);
+    }
+    query
 }
 
 impl PickerDelegate for OpenPathDelegate {
