@@ -2058,6 +2058,10 @@ async fn test_late_lsp_adapter_registration(cx: &mut gpui::TestAppContext) {
 #[gpui::test]
 async fn test_language_server_relative_path(cx: &mut gpui::TestAppContext) {
     init_test(cx);
+    // The binaries come from the project's settings, which need approval (ADR-F42).
+    cx.update(
+        project::project_launch_approvals::ProjectLaunchApprovals::approve_everything_for_tests,
+    );
 
     let settings_json_contents = json!({
         "languages": {
@@ -2142,6 +2146,9 @@ async fn test_language_server_relative_path(cx: &mut gpui::TestAppContext) {
 #[gpui::test]
 async fn test_language_server_tilde_path(cx: &mut gpui::TestAppContext) {
     init_test(cx);
+    cx.update(
+        project::project_launch_approvals::ProjectLaunchApprovals::approve_everything_for_tests,
+    );
 
     let settings_json_contents = json!({
         "languages": {

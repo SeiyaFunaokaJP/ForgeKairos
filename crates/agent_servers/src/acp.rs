@@ -4455,9 +4455,13 @@ fn mcp_servers_for_project(project: &Entity<Project>, cx: &App) -> Vec<acp::McpS
     let configured_server_ids = context_server_store.configured_server_ids();
     let ide_server = ide_server_entry(
         ide_server::mcp_endpoint(project, cx),
-        configured_server_ids
-            .iter()
-            .any(|id| id.0.as_ref() == ide_server::MCP_SERVER_NAME),
+        // A project-defined server that waits for approval is not forwarded,
+        // so it must not keep the built-in one out either (ADR-F42).
+        configured_server_ids.iter().any(|id| {
+            id.0.as_ref() == ide_server::MCP_SERVER_NAME
+                && context_server_store.status_for_server(id)
+                    != Some(project::context_server_store::ContextServerStatus::ApprovalRequired)
+        }),
     );
     ide_server
         .into_iter()

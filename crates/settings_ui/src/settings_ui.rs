@@ -432,6 +432,7 @@ pub fn init(cx: &mut App) {
     init_renderers(cx);
     let queue = ProjectSettingsUpdateQueue::new(cx);
     cx.set_global(queue);
+    pages::init_launch_approval_prompts(cx);
 
     cx.on_action(|_: &OpenSettings, cx| {
         open_settings_editor(None, None, None, cx);

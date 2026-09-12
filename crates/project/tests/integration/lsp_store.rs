@@ -1,13 +1,15 @@
 use std::{
+    cell::RefCell,
     path::Path,
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use collections::HashMap;
-use fs::FakeFs;
+use collections::{HashMap, HashSet};
+use fs::{FakeFs, Fs as _};
 use futures::StreamExt;
-use gpui::TestAppContext;
+use gpui::{AppContext as _, TestAppContext, UpdateGlobal as _};
 use language::{CodeLabel, FakeLspAdapter, HighlightId, rust_lang};
 use lsp::{LanguageServerName, Uri};
 use parking_lot::Mutex;
@@ -17,11 +19,615 @@ use project::{
         log_store::{TestRpcLogHeaderState, TestRpcRequestTracker},
         *,
     },
+    project_launch_approvals::{
+        LaunchApprovalKey, LaunchKind, ProjectLaunchApprovals, ProjectLaunchApprovalsEvent,
+    },
 };
 use serde_json::json;
+use settings::SettingsStore;
 use util::path;
 
 use crate::init_test;
+
+#[gpui::test]
+async fn test_project_language_server_binary_waits_for_approval(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "languages": { "Rust": { "language_servers": ["project_lsp"] } },
+                    "lsp": {
+                        "project_lsp": {
+                            "binary": { "path": "project-lsp-binary", "arguments": ["--stdio"] }
+                        }
+                    },
+                })
+                .to_string(),
+            },
+            "src": { "main.rs": "fn main() {}" },
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/the-root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "project_lsp",
+            ..Default::default()
+        },
+    );
+    cx.run_until_parked();
+
+    let _buffer_with_lsp = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    assert!(
+        fake_servers.try_recv().is_err(),
+        "the language server must wait until its binary is approved"
+    );
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let pending = approvals.read_with(cx, |approvals, _| approvals.pending_launches().to_vec());
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].kind, LaunchKind::LanguageServerBinary);
+    assert_eq!(pending[0].name.to_string(), "project_lsp");
+    assert_eq!(
+        pending[0].target.display().to_string(),
+        "project-lsp-binary --stdio"
+    );
+
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    let server = fake_servers
+        .next()
+        .await
+        .expect("the language server starts once approved");
+    assert_eq!(
+        server.binary.path,
+        std::path::PathBuf::from("project-lsp-binary")
+    );
+}
+
+// The key covers the script a binary runs, and is computed again after the
+// decision: a script swapped between what the user saw and the approval
+// needs its own approval.
+#[gpui::test]
+async fn test_project_language_server_binary_is_checked_again_after_approval(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "languages": { "Rust": { "language_servers": ["project_lsp"] } },
+                    "lsp": {
+                        "project_lsp": {
+                            "binary": { "path": "node", "arguments": ["scripts/lsp.js"] }
+                        }
+                    },
+                })
+                .to_string(),
+            },
+            "scripts": { "lsp.js": "serve()" },
+            "src": { "main.rs": "fn main() {}" },
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), [path!("/the-root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "project_lsp",
+            ..Default::default()
+        },
+    );
+    cx.run_until_parked();
+    let _buffer_with_lsp = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let shown = approvals.read_with(cx, |approvals, _| {
+        approvals
+            .pending_launches()
+            .first()
+            .cloned()
+            .expect("the binary waits for approval")
+    });
+    assert_eq!(shown.referenced_worktree_files.len(), 1);
+
+    fs.insert_file(path!("/the-root/scripts/lsp.js"), b"steal()".to_vec())
+        .await;
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&shown.key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    assert!(
+        fake_servers.try_recv().is_err(),
+        "the changed script is not what was approved"
+    );
+    let pending = approvals.read_with(cx, |approvals, _| approvals.pending_launches().to_vec());
+    assert_eq!(pending.len(), 1);
+    assert_ne!(pending[0].key, shown.key);
+
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    let server = fake_servers
+        .next()
+        .await
+        .expect("the language server starts once the current script is approved");
+    assert_eq!(server.binary.path, std::path::PathBuf::from("node"));
+}
+
+#[gpui::test]
+async fn test_user_language_server_binary_needs_no_approval(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_user_settings(
+                    &json!({
+                        "languages": { "Rust": { "language_servers": ["user_lsp"] } },
+                        "lsp": { "user_lsp": { "binary": { "path": "user-lsp-binary" } } },
+                    })
+                    .to_string(),
+                    cx,
+                )
+                .expect("the user settings parse");
+        });
+    });
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({ "src": { "main.rs": "fn main() {}" } }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/the-root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "user_lsp",
+            ..Default::default()
+        },
+    );
+    cx.run_until_parked();
+
+    let _buffer_with_lsp = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    let server = fake_servers
+        .next()
+        .await
+        .expect("a binary from the user's settings starts right away");
+    assert_eq!(
+        server.binary.path,
+        std::path::PathBuf::from("user-lsp-binary")
+    );
+    let pending_count = cx.update(|cx| {
+        ProjectLaunchApprovals::global(cx)
+            .read(cx)
+            .pending_launches()
+            .len()
+    });
+    assert_eq!(pending_count, 0);
+}
+
+#[gpui::test]
+async fn test_project_external_formatter_waits_for_approval(cx: &mut TestAppContext) {
+    const FORMATTER: &str = "zed-project-formatter-that-is-not-installed";
+    init_test(cx);
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "format_on_save": "on",
+                    "formatter": { "external": { "command": FORMATTER, "arguments": ["--stdin"] } },
+                })
+                .to_string(),
+            },
+            "src": { "main.rs": "fn main() {}\n" },
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), [path!("/the-root").as_ref()], cx).await;
+    project.read_with(cx, |project, _| project.languages().add(rust_lang()));
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    buffer.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "// edited\n")], None, cx)
+    });
+
+    // What the agent's edit tool does: format for saving, then save.
+    project
+        .update(cx, |project, cx| {
+            project.format(
+                HashSet::from_iter([buffer.clone()]),
+                LspFormatTarget::Buffers,
+                true,
+                FormatTrigger::Save,
+                cx,
+            )
+        })
+        .await
+        .expect("an unapproved formatter is skipped rather than failing the format");
+    project
+        .update(cx, |project, cx| project.save_buffer(buffer.clone(), cx))
+        .await
+        .expect("the save goes through");
+    assert_eq!(
+        fs.load(path!("/the-root/src/main.rs").as_ref())
+            .await
+            .unwrap(),
+        "// edited\nfn main() {}\n"
+    );
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let pending = approvals.read_with(cx, |approvals, _| approvals.pending_launches().to_vec());
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].kind, LaunchKind::ExternalFormatter);
+    assert_eq!(
+        pending[0].target.display().to_string(),
+        format!("{FORMATTER} --stdin")
+    );
+    let first_key = pending[0].key.clone();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let events = events.clone();
+        cx.subscribe(&approvals, move |_, event, _| {
+            events.borrow_mut().push(event.clone())
+        })
+    });
+
+    // Varying the arguments on every save replaces the pending entry instead
+    // of piling up entries and notifications.
+    fs.insert_file(
+        path!("/the-root/.zed/settings.json"),
+        json!({
+            "format_on_save": "on",
+            "formatter": {
+                "external": { "command": FORMATTER, "arguments": ["--stdin", "--varied"] }
+            },
+        })
+        .to_string()
+        .into_bytes(),
+    )
+    .await;
+    cx.run_until_parked();
+    project
+        .update(cx, |project, cx| {
+            project.format(
+                HashSet::from_iter([buffer.clone()]),
+                LspFormatTarget::Buffers,
+                true,
+                FormatTrigger::Save,
+                cx,
+            )
+        })
+        .await
+        .expect("an unapproved formatter is skipped rather than failing the format");
+    let pending = approvals.read_with(cx, |approvals, _| approvals.pending_launches().to_vec());
+    assert_eq!(pending.len(), 1);
+    assert_eq!(
+        pending[0].target.display().to_string(),
+        format!("{FORMATTER} --stdin --varied")
+    );
+    assert!(
+        matches!(
+            events.borrow().as_slice(),
+            [ProjectLaunchApprovalsEvent::PendingLaunchReplaced { old, new }]
+                if old == &first_key && new.key == pending[0].key
+        ),
+        "one live notification per launch, updated in place: {:?}",
+        events.borrow()
+    );
+
+    // Once approved the formatter really runs, and as it is not installed
+    // the format now fails.
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    let result = project
+        .update(cx, |project, cx| {
+            project.format(
+                HashSet::from_iter([buffer.clone()]),
+                LspFormatTarget::Buffers,
+                true,
+                FormatTrigger::Save,
+                cx,
+            )
+        })
+        .await;
+    assert!(
+        result.is_err(),
+        "the approved formatter should have been run"
+    );
+}
+
+// A binary path that climbs out with `..` runs from the worktree root, which
+// its approval key resolved it against, rather than from Zed's own working
+// directory.
+#[gpui::test]
+async fn test_project_language_server_binary_with_dot_dot_runs_from_the_worktree_root(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "languages": { "Rust": { "language_servers": ["project_lsp"] } },
+                    "lsp": { "project_lsp": { "binary": { "path": "../the-root/bin/lsp" } } },
+                })
+                .to_string(),
+            },
+            "bin": { "lsp": "serve" },
+            "src": { "main.rs": "fn main() {}" },
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/the-root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "project_lsp",
+            ..Default::default()
+        },
+    );
+    cx.run_until_parked();
+    let _buffer_with_lsp = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let pending = approvals.read_with(cx, |approvals, _| approvals.pending_launches().to_vec());
+    assert_eq!(pending.len(), 1);
+    assert_eq!(
+        pending[0]
+            .referenced_worktree_files
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        vec![path!("/the-root/bin/lsp").to_string()],
+        "the binary is a worktree file, bound by its contents"
+    );
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    let server = fake_servers
+        .next()
+        .await
+        .expect("the language server starts once approved");
+    assert_eq!(
+        server.binary.path,
+        Path::new(path!("/the-root")).join("../the-root/bin/lsp")
+    );
+}
+
+// A project-defined binary runs only while its approval stands.
+#[gpui::test]
+async fn test_revoking_a_language_server_binary_approval_stops_it(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "languages": { "Rust": { "language_servers": ["project_lsp"] } },
+                    "lsp": { "project_lsp": { "binary": { "path": "project-lsp-binary" } } },
+                })
+                .to_string(),
+            },
+            "src": { "main.rs": "fn main() {}" },
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/the-root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "project_lsp",
+            ..Default::default()
+        },
+    );
+    cx.run_until_parked();
+    let _buffer_with_lsp = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let key = approvals
+        .read_with(cx, |approvals, _| {
+            approvals
+                .pending_launches()
+                .first()
+                .map(|pending| pending.key.clone())
+        })
+        .expect("the binary waits for approval");
+    approvals
+        .update(cx, |approvals, cx| approvals.approve_pending(&key, cx))
+        .await
+        .expect("the approval is stored");
+    let _server = fake_servers
+        .next()
+        .await
+        .expect("the language server starts once approved");
+    cx.run_until_parked();
+    let running = |cx: &mut TestAppContext| {
+        project.read_with(cx, |project, cx| {
+            project
+                .lsp_store()
+                .read(cx)
+                .language_server_statuses()
+                .any(|(_, status)| &*status.name.0 == "project_lsp")
+        })
+    };
+    assert!(running(cx));
+
+    approvals
+        .update(cx, |approvals, cx| approvals.revoke(&key, cx))
+        .await
+        .expect("the approval is revoked");
+    cx.run_until_parked();
+    assert!(!running(cx), "the server stops with its approval");
+}
+
+// A language server waiting for its binary to be approved asks for its own
+// definition once, however often its wait is cut short, and stops asking once
+// it is stopped.
+#[gpui::test]
+async fn test_language_server_waiting_for_approval_asks_once_until_stopped(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "languages": { "Rust": { "language_servers": ["project_lsp"] } },
+                    "lsp": { "project_lsp": { "binary": { "path": "project-lsp-binary" } } },
+                })
+                .to_string(),
+            },
+            "src": { "main.rs": "fn main() {}" },
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/the-root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "project_lsp",
+            ..Default::default()
+        },
+    );
+    cx.run_until_parked();
+    let _buffer_with_lsp = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let shown = approvals.read_with(cx, |approvals, _| approvals.pending_launches().to_vec());
+    assert_eq!(shown.len(), 1);
+    let mut other_definition = shown[0].clone();
+    other_definition.key = LaunchApprovalKey::for_tests("another-definition");
+    let other_window = cx.new(|_| ()).entity_id();
+    let pending_keys = |cx: &mut TestAppContext| {
+        approvals.read_with(cx, |approvals, _| {
+            approvals
+                .pending_launches()
+                .iter()
+                .map(|pending| pending.key.clone())
+                .collect::<Vec<_>>()
+        })
+    };
+
+    // A newer definition of the same launch cuts the wait short; the server
+    // looks again and asks for the definition it would run, once.
+    approvals.update(cx, |approvals, cx| {
+        approvals.request_launch(other_definition.clone(), other_window, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(pending_keys(cx), vec![shown[0].key.clone()]);
+
+    // Stopped, it no longer asks.
+    project.update(cx, |project, cx| {
+        project
+            .lsp_store()
+            .update(cx, |lsp_store, cx| lsp_store.stop_all_language_servers(cx))
+    });
+    approvals.update(cx, |approvals, cx| {
+        approvals.request_launch(other_definition.clone(), other_window, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        pending_keys(cx),
+        vec![other_definition.key],
+        "a stopped server no longer asks for its definition"
+    );
+    assert!(fake_servers.try_recv().is_err());
+}
 
 #[gpui::test]
 async fn test_removing_invisible_worktree_cleans_reused_lsp_bookkeeping(cx: &mut TestAppContext) {

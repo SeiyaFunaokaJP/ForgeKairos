@@ -5,8 +5,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context as _, Result};
-use collections::{HashMap, HashSet};
+use anyhow::{Context as _, Result, anyhow};
+use collections::{BTreeMap, HashMap, HashSet};
 use context_server::oauth::{self, McpOAuthTokenProvider, OAuthDiscovery, OAuthSession};
 use context_server::transport::HttpTransport;
 use context_server::{ContextServer, ContextServerCommand, ContextServerId};
@@ -14,7 +14,8 @@ use credentials_provider::CredentialsProvider;
 use futures::future::Either;
 use futures::{FutureExt as _, StreamExt as _, future::join_all};
 use gpui::{
-    App, AsyncApp, Context, Entity, EventEmitter, Subscription, Task, TaskExt, WeakEntity, actions,
+    App, AsyncApp, Context, Entity, EventEmitter, SharedString, Subscription, Task, TaskExt,
+    WeakEntity, actions,
 };
 use http_client::HttpClient;
 use itertools::Itertools;
@@ -23,11 +24,19 @@ use rand::Rng as _;
 use registry::ContextServerDescriptorRegistry;
 use remote::{Interactive, RemoteClient};
 use rpc::{AnyProtoClient, TypedEnvelope, proto};
-use settings::{Settings as _, SettingsLocation, SettingsStore, WorktreeId};
+use settings::{Settings as _, SettingsFile, SettingsLocation, SettingsStore, WorktreeId};
 use util::{ResultExt as _, rel_path::RelPath};
+use worktree::Worktree;
 
 use crate::{
     DisableAiSettings, Project,
+    project_launch_approvals::{
+        CHANGED_SINCE_SHOWN_MESSAGE, CommandLineScan, ExecutionHost, LaunchApprovalDetails,
+        LaunchApprovalKey, LaunchApprovalState, LaunchDecision, LaunchDefinitionFile, LaunchHost,
+        LaunchKind, LaunchRequest, LaunchTarget, ProjectLaunchApprovals,
+        ProjectLaunchApprovalsEvent, ScannedWorktrees, code_loading_environment,
+        worktree_settings_file,
+    },
     project_settings::{ContextServerSettings, OAuthClientSettings, ProjectSettings},
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
@@ -65,6 +74,10 @@ pub enum ContextServerStatus {
     /// The OAuth browser flow is in progress — the user has been redirected
     /// to the authorization server and we're waiting for the callback.
     Authenticating,
+    /// Defined by a project's settings, and this exact definition has not
+    /// been approved (or was denied). Nothing is launched until it is; see
+    /// [`ContextServerStore::launch_approval_details`] (ADR-F42).
+    ApprovalRequired,
 }
 
 impl ContextServerStatus {
@@ -285,6 +298,30 @@ enum ContextServerStoreState {
 struct ContextServerSettingsEntry {
     worktree_id: Option<WorktreeId>,
     settings: ContextServerSettings,
+    source: ContextServerSource,
+    replaces_user_entry: bool,
+}
+
+/// Where a server's definition comes from. Only `Project` definitions need
+/// the user's approval before they are launched (ADR-F42).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ContextServerSource {
+    /// The user's or the global settings.
+    User,
+    /// An installed extension's default.
+    Extension,
+    /// A worktree's `.zed/settings.json`, or the remote host's own settings.
+    Project {
+        worktree_id: WorktreeId,
+        settings_file: LaunchDefinitionFile,
+        host: LaunchHost,
+    },
+}
+
+impl ContextServerSource {
+    pub fn is_project(&self) -> bool {
+        matches!(self, Self::Project { .. })
+    }
 }
 
 pub struct ContextServerStore {
@@ -306,6 +343,22 @@ pub struct ContextServerStore {
     server_working_directories: HashMap<ContextServerId, Option<Arc<Path>>>,
     needs_server_update: bool,
     ai_disabled: bool,
+    launch_host: LaunchHost,
+    /// `None` on the remote server, which never starts servers itself.
+    launch_approvals: Option<Entity<ProjectLaunchApprovals>>,
+    /// The approval state of every enabled project-defined server, as found
+    /// the last time the servers were brought in line with the settings.
+    project_launches: HashMap<ContextServerId, LaunchApprovalDetails>,
+    /// The approved configurations: the only ones `create_context_server`
+    /// builds a project-defined server from.
+    approved_project_configurations: HashMap<ContextServerId, Arc<ContextServerConfiguration>>,
+    /// Approval state of the commands the remote host resolved on its own for
+    /// `remote: true` extension servers, which nothing here can predict.
+    remote_resolved_launches: HashMap<ContextServerId, LaunchApprovalDetails>,
+    /// The configuration each server was last started from, as checked and
+    /// before a `remote: true` command is wrapped for the remote host: what
+    /// `maintain_servers` compares the settings with.
+    started_configurations: HashMap<ContextServerId, Arc<ContextServerConfiguration>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -375,7 +428,9 @@ impl ContextServerStore {
         matches!(self.state, ContextServerStoreState::Remote { .. })
     }
 
-    /// Returns all configured context server ids, excluding the ones that are disabled
+    /// Returns all configured context server ids, excluding the ones that are disabled.
+    /// Project-defined servers that wait for approval are included; they have
+    /// no [`Self::configuration_for_server`], so nothing forwards them.
     pub fn configured_server_ids(&self) -> Vec<ContextServerId> {
         self.context_server_settings
             .iter()
@@ -438,6 +493,11 @@ impl ContextServerStore {
     }
 
     #[cfg(feature = "test-support")]
+    pub fn working_directory_for_test(&self, id: &ContextServerId) -> Option<Option<Arc<Path>>> {
+        self.server_working_directories.get(id).cloned()
+    }
+
+    #[cfg(feature = "test-support")]
     pub fn test_start_server(&mut self, server: Arc<ContextServer>, cx: &mut Context<Self>) {
         let configuration = Arc::new(ContextServerConfiguration::Custom {
             command: ContextServerCommand {
@@ -460,12 +520,31 @@ impl ContextServerStore {
         state: ContextServerStoreState,
         cx: &mut Context<Self>,
     ) -> Self {
+        let launch_host = match &state {
+            ContextServerStoreState::Remote {
+                upstream_client, ..
+            } => LaunchHost::from_remote_connection(&upstream_client.read(cx).connection_options()),
+            ContextServerStoreState::Local { .. } => LaunchHost::ThisMachine,
+        };
+        let is_headless = matches!(
+            state,
+            ContextServerStoreState::Local {
+                is_headless: true,
+                ..
+            }
+        );
+        let launch_approvals = (!is_headless).then(|| ProjectLaunchApprovals::global(cx));
+
         let mut subscriptions = vec![cx.observe_global::<SettingsStore>(move |this, cx| {
             let ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
             let ai_was_disabled = this.ai_disabled;
             this.ai_disabled = ai_disabled;
 
-            let settings = Self::resolve_all_context_server_settings(&this.worktree_store, cx);
+            let settings = Self::resolve_all_context_server_settings(
+                &this.worktree_store,
+                &this.launch_host,
+                cx,
+            );
             let settings_changed = this.context_server_settings != settings;
 
             if settings_changed {
@@ -500,18 +579,75 @@ impl ContextServerStore {
                         | WorktreeStoreEvent::WorktreeRemoved(_, _)
                 ) && !DisableAiSettings::get_global(cx).disable_ai
                 {
-                    this.context_server_settings =
-                        Self::resolve_all_context_server_settings(&this.worktree_store, cx);
+                    this.context_server_settings = Self::resolve_all_context_server_settings(
+                        &this.worktree_store,
+                        &this.launch_host,
+                        cx,
+                    );
                     this.available_context_servers_changed(cx);
                 }
             }));
+            if let Some(launch_approvals) = &launch_approvals {
+                subscriptions.push(cx.subscribe(launch_approvals, |this, _, event, cx| {
+                    let (key, lost_approval) = match event {
+                        ProjectLaunchApprovalsEvent::LaunchDecided { key, decision } => {
+                            (key, *decision == LaunchDecision::Denied)
+                        }
+                        ProjectLaunchApprovalsEvent::LaunchApprovalRevoked(key) => (key, true),
+                        ProjectLaunchApprovalsEvent::PendingLaunchAppeared(_)
+                        | ProjectLaunchApprovalsEvent::PendingLaunchReplaced { .. }
+                        | ProjectLaunchApprovalsEvent::PendingLaunchWithdrawn(_) => return,
+                    };
+                    // Decisions about what other stores and windows asked
+                    // for leave this store's servers as they are.
+                    let requested_here = this
+                        .project_launches
+                        .values()
+                        .chain(this.remote_resolved_launches.values())
+                        .any(|details| &details.key == key);
+                    if !requested_here {
+                        return;
+                    }
+                    // A remote-resolved command is only checked when it is
+                    // started, so a running one that loses its approval is
+                    // stopped here.
+                    if lost_approval {
+                        let withheld = this
+                            .remote_resolved_launches
+                            .iter()
+                            .filter(|(_, details)| &details.key == key)
+                            .map(|(id, _)| id.clone())
+                            .collect::<Vec<_>>();
+                        for id in withheld {
+                            this.withhold_server(&id);
+                            this.remote_resolved_launches.remove(&id);
+                        }
+                    }
+                    if !DisableAiSettings::get_global(cx).disable_ai {
+                        this.available_context_servers_changed(cx);
+                    }
+                }));
+            }
+        }
+        if let Some(launch_approvals) = launch_approvals.clone() {
+            let requester = cx.entity_id();
+            cx.on_release(move |_, cx| {
+                launch_approvals.update(cx, |launch_approvals, cx| {
+                    launch_approvals.withdraw_requester(requester, cx)
+                });
+            })
+            .detach();
         }
 
         let ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
         let mut this = Self {
             state,
             _subscriptions: subscriptions,
-            context_server_settings: Self::resolve_all_context_server_settings(&worktree_store, cx),
+            context_server_settings: Self::resolve_all_context_server_settings(
+                &worktree_store,
+                &launch_host,
+                cx,
+            ),
             worktree_store,
             project: weak_project,
             registry,
@@ -522,6 +658,12 @@ impl ContextServerStore {
             update_servers_task: None,
             context_server_factory,
             server_working_directories: HashMap::default(),
+            launch_host,
+            launch_approvals,
+            project_launches: HashMap::default(),
+            approved_project_configurations: HashMap::default(),
+            remote_resolved_launches: HashMap::default(),
+            started_configurations: HashMap::default(),
         };
         if maintain_server_loop && !DisableAiSettings::get_global(cx).disable_ai {
             this.available_context_servers_changed(cx);
@@ -542,7 +684,105 @@ impl ContextServerStore {
     }
 
     pub fn status_for_server(&self, id: &ContextServerId) -> Option<ContextServerStatus> {
-        self.servers.get(id).map(ContextServerStatus::from_state)
+        if let Some(state) = self.servers.get(id) {
+            return Some(ContextServerStatus::from_state(state));
+        }
+        self.launch_details(id)
+            .filter(|details| details.state != LaunchApprovalState::Approved)
+            .map(|_| ContextServerStatus::ApprovalRequired)
+    }
+
+    fn launch_details(&self, id: &ContextServerId) -> Option<&LaunchApprovalDetails> {
+        self.project_launches
+            .get(id)
+            .or_else(|| self.remote_resolved_launches.get(id))
+    }
+
+    /// Where the server's definition comes from.
+    pub fn server_source(&self, id: &ContextServerId, cx: &App) -> Option<ContextServerSource> {
+        match self.context_server_settings.get(&id.0) {
+            Some(entry) => Some(entry.source.clone()),
+            None => self
+                .registry
+                .read(cx)
+                .context_server_descriptor(&id.0)
+                .map(|_| ContextServerSource::Extension),
+        }
+    }
+
+    /// What an enabled server that needs approval would launch — one defined
+    /// by a project, or a `remote: true` extension server whose command the
+    /// remote host resolved — and whether that exact launch is approved.
+    /// `None` for servers that need no approval.
+    pub fn launch_approval_details(&self, id: &ContextServerId) -> Option<LaunchApprovalDetails> {
+        self.launch_details(id).cloned()
+    }
+
+    /// Approves the launch shown for a server, keyed `shown`, which starts
+    /// it. Refused with [`CHANGED_SINCE_SHOWN_MESSAGE`] when the server's
+    /// launch has changed since. Resolves once the approval is stored.
+    pub fn approve_server(
+        &mut self,
+        id: &ContextServerId,
+        shown: &LaunchApprovalKey,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        self.decide_project_launch(id, shown, LaunchDecision::Approved, cx)
+    }
+
+    /// Denies the launch shown for a server, keyed `shown`; refused like
+    /// [`Self::approve_server`]. The server stays stopped and the same launch
+    /// does not notify again.
+    pub fn deny_server(
+        &mut self,
+        id: &ContextServerId,
+        shown: &LaunchApprovalKey,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        self.decide_project_launch(id, shown, LaunchDecision::Denied, cx)
+    }
+
+    /// Forgets the decision about the launch shown for a server, keyed
+    /// `shown`; refused like [`Self::approve_server`]. A running server is
+    /// stopped and taken out of the store, back to waiting for approval.
+    pub fn revoke_server_approval(
+        &mut self,
+        id: &ContextServerId,
+        shown: &LaunchApprovalKey,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let (Some(details), Some(launch_approvals)) =
+            (self.launch_details(id), self.launch_approvals.clone())
+        else {
+            return Task::ready(Err(no_project_launch_error(id)));
+        };
+        if &details.key != shown {
+            return Task::ready(Err(anyhow!(CHANGED_SINCE_SHOWN_MESSAGE)));
+        }
+        let key = details.key.clone();
+        launch_approvals.update(cx, |launch_approvals, cx| launch_approvals.revoke(&key, cx))
+    }
+
+    fn decide_project_launch(
+        &mut self,
+        id: &ContextServerId,
+        shown: &LaunchApprovalKey,
+        decision: LaunchDecision,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let (Some(details), Some(launch_approvals)) = (
+            self.launch_details(id).cloned(),
+            self.launch_approvals.clone(),
+        ) else {
+            return Task::ready(Err(no_project_launch_error(id)));
+        };
+        if &details.key != shown {
+            return Task::ready(Err(anyhow!(CHANGED_SINCE_SHOWN_MESSAGE)));
+        }
+        launch_approvals.update(cx, |launch_approvals, cx| match decision {
+            LaunchDecision::Approved => launch_approvals.approve(details, cx),
+            LaunchDecision::Denied => launch_approvals.deny(details, cx),
+        })
     }
 
     pub fn configuration_for_server(
@@ -665,11 +905,15 @@ impl ContextServerStore {
                 return anyhow::Ok(());
             }
 
-            let (registry, worktree_store) = this.update(cx, |this, _| {
-                (this.registry.clone(), this.worktree_store.clone())
+            let (registry, worktree_store, root_path) = this.update(cx, |this, cx| {
+                (
+                    this.registry.clone(),
+                    this.worktree_store.clone(),
+                    this.resolve_root_path(cx),
+                )
             });
             let configuration = ContextServerConfiguration::from_settings(
-                settings_entry.settings,
+                settings_entry.settings.clone(),
                 id.clone(),
                 registry,
                 worktree_store,
@@ -677,13 +921,146 @@ impl ContextServerStore {
             )
             .await
             .context("Failed to create context server configuration")?;
+            let configuration = Arc::new(configuration);
 
-            this.update(cx, |this, cx| {
-                this.run_server(server, Arc::new(configuration), cx)
+            if !settings_entry.source.is_project() {
+                this.update(cx, |this, cx| {
+                    // Recorded as `maintain_servers` records its own starts,
+                    // so that it leaves this server running.
+                    let working_directory = working_directory_for(
+                        &configuration,
+                        root_path,
+                        this.is_remote_project(),
+                        false,
+                    );
+                    this.server_working_directories
+                        .insert(id.clone(), working_directory);
+                    this.started_configurations
+                        .insert(id, configuration.clone());
+                    this.run_server(server, configuration, cx)
+                });
+                return Ok(());
+            }
+            if !Self::project_launch_allowed(
+                &this,
+                &id,
+                &configuration,
+                &settings_entry,
+                root_path.clone(),
+                cx,
+            )
+            .await
+            {
+                return Ok(());
+            }
+
+            // The server handed in was built from whatever its caller read;
+            // what runs is built from the definition just checked, in the
+            // working directory it was checked with.
+            let working_directory = this.update(cx, |this, _| {
+                working_directory_for(
+                    &configuration,
+                    root_path.clone(),
+                    this.is_remote_project(),
+                    true,
+                )
             });
-            Ok(())
+            match Self::create_context_server_in(
+                this.downgrade(),
+                id.clone(),
+                configuration.clone(),
+                root_path,
+                cx,
+            )
+            .await
+            {
+                Ok((server, started_configuration)) => {
+                    this.update(cx, |this, cx| {
+                        this.server_working_directories
+                            .insert(id.clone(), working_directory);
+                        this.started_configurations.insert(id, configuration);
+                        this.run_server(server, started_configuration, cx)
+                    });
+                    Ok(())
+                }
+                Err(error) if error.is::<LaunchNeedsApproval>() => {
+                    this.update(cx, |_, cx| {
+                        cx.emit(ServerStatusChangedEvent {
+                            server_id: id,
+                            status: ContextServerStatus::ApprovalRequired,
+                        });
+                        cx.notify();
+                    });
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            }
         })
         .detach_and_log_err(cx);
+    }
+
+    /// The settings switch and the connection test start servers directly, so
+    /// they get the same check `maintain_servers` makes. Returns whether the
+    /// launch may go ahead.
+    async fn project_launch_allowed(
+        this: &Entity<Self>,
+        id: &ContextServerId,
+        configuration: &Arc<ContextServerConfiguration>,
+        settings_entry: &ContextServerSettingsEntry,
+        root_path: Option<Arc<Path>>,
+        cx: &mut AsyncApp,
+    ) -> bool {
+        let (request, launch_approvals, fs) = this.update(cx, |this, cx| {
+            (
+                this.context_server_launch_request(
+                    id,
+                    configuration,
+                    settings_entry,
+                    root_path,
+                    cx,
+                ),
+                this.launch_approvals.clone(),
+                this.worktree_store.read(cx).fs(),
+            )
+        });
+        let details = match request {
+            Some(request) => Some(request.resolve(fs).await),
+            None => None,
+        };
+        let requester = this.entity_id();
+        let details = match (details, launch_approvals) {
+            (Some(details), Some(launch_approvals)) => {
+                Some(launch_approvals.update(cx, |launch_approvals, cx| {
+                    launch_approvals.request_launch(details, requester, cx)
+                }))
+            }
+            (details, _) => details,
+        };
+        let approved = details
+            .as_ref()
+            .is_some_and(|details| details.state == LaunchApprovalState::Approved);
+        this.update(cx, |this, cx| {
+            match details {
+                Some(details) => {
+                    this.project_launches.insert(id.clone(), details);
+                }
+                None => {
+                    this.project_launches.remove(id);
+                }
+            }
+            if approved {
+                this.approved_project_configurations
+                    .insert(id.clone(), configuration.clone());
+            } else {
+                this.withhold_server(id);
+                cx.emit(ServerStatusChangedEvent {
+                    server_id: id.clone(),
+                    status: ContextServerStatus::ApprovalRequired,
+                });
+                cx.notify();
+            }
+        });
+        approved
     }
 
     pub fn stop_server(&mut self, id: &ContextServerId, cx: &mut Context<Self>) -> Result<()> {
@@ -867,6 +1244,7 @@ impl ContextServerStore {
             .remove(id)
             .context("Context server not found")?;
         self.server_working_directories.remove(id);
+        self.started_configurations.remove(id);
 
         if let ContextServerConfiguration::Http { url, .. } = state.configuration().as_ref() {
             let server_url = url.clone();
@@ -888,6 +1266,327 @@ impl ContextServerStore {
         });
         cx.notify();
         Ok(())
+    }
+
+    /// Takes a server whose definition lost its approval out of the store,
+    /// without the teardown `remove_server` does for a server deleted from
+    /// settings: the OAuth session stays for when it is approved again.
+    fn withhold_server(&mut self, id: &ContextServerId) {
+        if let Some(state) = self.servers.remove(id) {
+            state.server().stop().log_err();
+        }
+        self.server_working_directories.remove(id);
+        self.started_configurations.remove(id);
+    }
+
+    /// Records the approval state found for the project-defined servers, and
+    /// reports the ones that now wait for an approval or no longer do.
+    fn update_project_launches(
+        &mut self,
+        project_launches: HashMap<ContextServerId, LaunchApprovalDetails>,
+        withheld_servers: &HashSet<ContextServerId>,
+        starting_servers: &HashSet<ContextServerId>,
+        cx: &mut Context<Self>,
+    ) {
+        let previous_launches = std::mem::replace(&mut self.project_launches, project_launches);
+        for (id, details) in &self.project_launches {
+            let needs_approval = details.state != LaunchApprovalState::Approved;
+            if needs_approval
+                && (withheld_servers.contains(id) || previous_launches.get(id) != Some(details))
+            {
+                cx.emit(ServerStatusChangedEvent {
+                    server_id: id.clone(),
+                    status: ContextServerStatus::ApprovalRequired,
+                });
+            }
+        }
+        for (id, previous) in &previous_launches {
+            let current = self.project_launches.get(id);
+            if previous.state != LaunchApprovalState::Approved
+                && current.is_none_or(|details| details.state == LaunchApprovalState::Approved)
+                && !self.servers.contains_key(id)
+                && !starting_servers.contains(id)
+            {
+                cx.emit(ServerStatusChangedEvent {
+                    server_id: id.clone(),
+                    status: ContextServerStatus::Stopped,
+                });
+            }
+            if previous.state == LaunchApprovalState::Pending
+                && current.is_none_or(|details| details.key != previous.key)
+                && let Some(launch_approvals) = &self.launch_approvals
+            {
+                let requester = cx.entity_id();
+                launch_approvals.update(cx, |launch_approvals, cx| {
+                    launch_approvals.withdraw_pending(&previous.key, requester, cx)
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// What a project-defined server would launch with `root_path` as the
+    /// project root, for the approval key and the approval UI. `None` for
+    /// servers that need no approval, and for a project-defined one whose
+    /// worktree is gone (which then stays blocked).
+    fn context_server_launch_request(
+        &self,
+        id: &ContextServerId,
+        configuration: &ContextServerConfiguration,
+        settings_entry: &ContextServerSettingsEntry,
+        root_path: Option<Arc<Path>>,
+        cx: &App,
+    ) -> Option<LaunchRequest> {
+        let ContextServerSource::Project {
+            worktree_id,
+            settings_file,
+            host,
+        } = &settings_entry.source
+        else {
+            return None;
+        };
+        let worktree_store = self.worktree_store.read(cx);
+        let worktree_abs_path = worktree_store
+            .worktree_for_id(*worktree_id, cx)?
+            .read(cx)
+            .abs_path();
+        let worktrees = ScannedWorktrees::of(
+            worktree_store
+                .visible_worktrees(cx)
+                .map(|worktree| worktree.read(cx)),
+        );
+        let is_remote_project = self.is_remote_project();
+
+        let (
+            definition,
+            target,
+            environment_variable_names,
+            header_names,
+            code_loading_environment,
+            execution_host,
+            scan,
+        ) = match configuration {
+            ContextServerConfiguration::Custom { command, remote }
+            | ContextServerConfiguration::Extension {
+                command, remote, ..
+            } => {
+                let runs_on_remote_host = *remote && is_remote_project;
+                // The working directory it is spawned with: the project over
+                // there for a server run there; for one spawned here the
+                // project, or in a remote project the neutral directory, from
+                // which no worktree can be reached.
+                let (working_directory, worktrees) = if runs_on_remote_host {
+                    (root_path, worktrees)
+                } else if is_remote_project {
+                    (
+                        local_working_directory(true, true, root_path),
+                        ScannedWorktrees::default(),
+                    )
+                } else {
+                    (local_working_directory(false, true, root_path), worktrees)
+                };
+                let program = command.path.to_string_lossy().into_owned();
+                let environment = command.env.iter().flatten().collect::<BTreeMap<_, _>>();
+                let scan = CommandLineScan::new(
+                    Some(program.as_str()),
+                    &command.args,
+                    environment
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value.as_str())),
+                    working_directory.as_deref(),
+                    worktrees,
+                );
+                let (transport, extension_settings) = match configuration {
+                    ContextServerConfiguration::Extension { settings, .. } => {
+                        ("extension", Some(settings))
+                    }
+                    _ => ("stdio", None),
+                };
+                (
+                    serde_json::json!({
+                        "transport": transport,
+                        "program": program,
+                        "arguments": command.args,
+                        "env": environment,
+                        "timeout": command.timeout,
+                        "remote": remote,
+                        "settings": extension_settings,
+                    }),
+                    LaunchTarget::Command {
+                        program: program.into(),
+                        arguments: command
+                            .args
+                            .iter()
+                            .cloned()
+                            .map(SharedString::from)
+                            .collect(),
+                    },
+                    environment
+                        .keys()
+                        .map(|name| SharedString::from((*name).clone()))
+                        .collect(),
+                    Vec::new(),
+                    code_loading_environment(
+                        environment
+                            .iter()
+                            .map(|(name, value)| (name.as_str(), value.as_str())),
+                    ),
+                    if runs_on_remote_host {
+                        ExecutionHost::of(host)
+                    } else {
+                        ExecutionHost::ThisMachine
+                    },
+                    scan,
+                )
+            }
+            ContextServerConfiguration::Http {
+                url,
+                headers,
+                timeout,
+                oauth,
+            } => (
+                serde_json::json!({
+                    "transport": "http",
+                    "url": url.as_str(),
+                    "headers": headers.iter().collect::<BTreeMap<_, _>>(),
+                    "timeout": timeout,
+                    "oauth": oauth,
+                }),
+                LaunchTarget::Url(url.to_string().into()),
+                Vec::new(),
+                headers
+                    .keys()
+                    .map(|name| SharedString::from(name.clone()))
+                    .collect(),
+                Vec::new(),
+                ExecutionHost::ThisMachine,
+                CommandLineScan::new(None, &[], std::iter::empty(), None, worktrees),
+            ),
+        };
+
+        Some(LaunchRequest {
+            kind: LaunchKind::ContextServer,
+            name: SharedString::from(id.0.clone()),
+            definition,
+            target,
+            environment_variable_names,
+            header_names,
+            execution_host,
+            host: host.clone(),
+            definition_file: settings_file.clone(),
+            worktree_abs_path,
+            replaces_user_entry: settings_entry.replaces_user_entry,
+            code_loading_environment,
+            scan,
+        })
+    }
+
+    /// The launch of a command the remote host resolved on its own for a
+    /// `remote: true` extension server. Nothing here can predict it, so it is
+    /// approved as it came back.
+    fn remote_resolved_launch_request(
+        &self,
+        id: &ContextServerId,
+        response: &proto::ContextServerCommand,
+        extension_settings: &serde_json::Value,
+        root_dir: Option<&Path>,
+        cx: &App,
+    ) -> Option<LaunchRequest> {
+        let settings_entry = self.context_server_settings.get(&id.0);
+        let worktree_store = self.worktree_store.read(cx);
+        let worktree = settings_entry
+            .and_then(|entry| entry.worktree_id)
+            .and_then(|worktree_id| worktree_store.worktree_for_id(worktree_id, cx))
+            .or_else(|| worktree_store.visible_worktrees(cx).next())?;
+        let worktree_abs_path = worktree.read(cx).abs_path();
+        let environment = response
+            .env
+            .iter()
+            .filter(|(name, _)| !is_child_process_proxy_variable(name))
+            .collect::<BTreeMap<_, _>>();
+        let scan = CommandLineScan::new(
+            Some(response.path.as_str()),
+            &response.args,
+            environment
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str())),
+            root_dir,
+            ScannedWorktrees::of(
+                worktree_store
+                    .visible_worktrees(cx)
+                    .map(|worktree| worktree.read(cx)),
+            ),
+        );
+        Some(LaunchRequest {
+            kind: LaunchKind::ContextServer,
+            name: SharedString::from(id.0.clone()),
+            definition: serde_json::json!({
+                "transport": "extension",
+                "resolved_on": "remote_host",
+                "program": response.path,
+                "arguments": response.args,
+                "env": environment,
+                "settings": extension_settings,
+            }),
+            target: LaunchTarget::Command {
+                program: response.path.clone().into(),
+                arguments: response
+                    .args
+                    .iter()
+                    .cloned()
+                    .map(SharedString::from)
+                    .collect(),
+            },
+            environment_variable_names: environment
+                .keys()
+                .map(|name| SharedString::from((*name).clone()))
+                .collect(),
+            header_names: Vec::new(),
+            code_loading_environment: code_loading_environment(
+                environment
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str())),
+            ),
+            execution_host: ExecutionHost::of(&self.launch_host),
+            host: self.launch_host.clone(),
+            definition_file: LaunchDefinitionFile::ResolvedOnRemoteHost,
+            worktree_abs_path,
+            replaces_user_entry: false,
+            scan,
+        })
+    }
+
+    async fn approve_remote_resolved_command(
+        this: WeakEntity<Self>,
+        id: &ContextServerId,
+        response: &proto::ContextServerCommand,
+        extension_settings: &serde_json::Value,
+        root_dir: Option<&Path>,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        let (request, launch_approvals) = this.update(cx, |this, cx| {
+            (
+                this.remote_resolved_launch_request(id, response, extension_settings, root_dir, cx),
+                this.launch_approvals.clone(),
+            )
+        })?;
+        let (Some(request), Some(launch_approvals)) = (request, launch_approvals) else {
+            return Err(anyhow::Error::new(LaunchNeedsApproval));
+        };
+        let details = request.resolve(None).await;
+        let requester = this.entity_id();
+        let details = launch_approvals.update(cx, |launch_approvals, cx| {
+            launch_approvals.request_launch(details, requester, cx)
+        });
+        let approved = details.state == LaunchApprovalState::Approved;
+        this.update(cx, |this, _| {
+            this.remote_resolved_launches.insert(id.clone(), details);
+        })?;
+        if approved {
+            Ok(())
+        } else {
+            Err(anyhow::Error::new(LaunchNeedsApproval))
+        }
     }
 
     /// The project root a locally-spawned stdio server should use as its working
@@ -921,6 +1620,19 @@ impl ContextServerStore {
         configuration: Arc<ContextServerConfiguration>,
         cx: &mut AsyncApp,
     ) -> Result<(Arc<ContextServer>, Arc<ContextServerConfiguration>)> {
+        let root_path = this.update(cx, |this, cx| this.resolve_root_path(cx))?;
+        Self::create_context_server_in(this, id, configuration, root_path, cx).await
+    }
+
+    /// Builds the server for `configuration` with `root_path` as the project
+    /// root: the one its approval was checked with (ADR-F42).
+    async fn create_context_server_in(
+        this: WeakEntity<Self>,
+        id: ContextServerId,
+        configuration: Arc<ContextServerConfiguration>,
+        root_path: Option<Arc<Path>>,
+        cx: &mut AsyncApp,
+    ) -> Result<(Arc<ContextServer>, Arc<ContextServerConfiguration>)> {
         let remote = configuration.remote();
         let needs_remote_command = match configuration.as_ref() {
             ContextServerConfiguration::Custom { .. }
@@ -928,19 +1640,32 @@ impl ContextServerStore {
             ContextServerConfiguration::Http { .. } => false,
         };
 
-        let (remote_state, is_remote_project) = this.update(cx, |this, _| {
-            let remote_state = match &this.state {
-                ContextServerStoreState::Remote {
-                    project_id,
-                    upstream_client,
-                } if needs_remote_command => Some((*project_id, upstream_client.clone())),
-                _ => None,
-            };
-            (remote_state, this.is_remote_project())
-        })?;
-
-        let root_path: Option<Arc<Path>> =
-            this.update(cx, |this, cx| this.resolve_root_path(cx))?;
+        let (remote_state, is_remote_project, project_defined) =
+            this.update(cx, |this, _| {
+                let project_defined = this
+                    .context_server_settings
+                    .get(&id.0)
+                    .is_some_and(|entry| entry.source.is_project());
+                if project_defined
+                    && this
+                        .approved_project_configurations
+                        .get(&id)
+                        .map(Arc::as_ref)
+                        != Some(configuration.as_ref())
+                {
+                    anyhow::bail!(
+                        "MCP サーバー「{id}」はプロジェクトの設定で定義されていて、この内容はまだ承認されていません"
+                    );
+                }
+                let remote_state = match &this.state {
+                    ContextServerStoreState::Remote {
+                        project_id,
+                        upstream_client,
+                    } if needs_remote_command => Some((*project_id, upstream_client.clone())),
+                    _ => None,
+                };
+                anyhow::Ok((remote_state, this.is_remote_project(), project_defined))
+            })??;
 
         // `needs_remote_command` only says what the settings asked for; the
         // command is actually resolved over there when the store is also the
@@ -949,7 +1674,12 @@ impl ContextServerStore {
         let runs_on_this_machine = remote_state.is_none();
 
         let configuration = if let Some((project_id, upstream_client)) = remote_state {
-            let root_dir = root_path.as_ref().map(|p| p.display().to_string());
+            // As on this machine, a server from the user's settings or an
+            // extension does not start in the project over there either.
+            let root_dir = root_path
+                .as_ref()
+                .filter(|_| project_defined)
+                .map(|path| path.display().to_string());
 
             let response = upstream_client
                 .update(cx, |client, _| {
@@ -962,6 +1692,28 @@ impl ContextServerStore {
                         })
                 })
                 .await?;
+
+            // The remote host resolves the command from its own settings,
+            // which commands run over there can rewrite, so what comes back
+            // must be what was resolved (and approved) here, whoever defined
+            // the server.
+            match configuration.as_ref() {
+                ContextServerConfiguration::Custom { command, .. } => {
+                    verify_remote_command(command, &response)?;
+                }
+                ContextServerConfiguration::Extension { settings, .. } => {
+                    Self::approve_remote_resolved_command(
+                        this.clone(),
+                        &id,
+                        &response,
+                        settings,
+                        root_path.as_deref().filter(|_| project_defined),
+                        cx,
+                    )
+                    .await?;
+                }
+                ContextServerConfiguration::Http { .. } => {}
+            }
 
             let remote_command = upstream_client.update(cx, |client, _| {
                 client.build_command(
@@ -992,6 +1744,19 @@ impl ContextServerStore {
                 .map(|factory| factory(id.clone(), configuration.clone()))
         })? {
             return Ok((server, configuration));
+        }
+
+        let working_directory = working_directory_for(
+            &configuration,
+            root_path,
+            is_remote_project,
+            project_defined,
+        );
+        if let Some(directory) = working_directory.clone()
+            && directory == neutral_working_directory()
+        {
+            let fs = this.update(cx, |this, cx| this.worktree_store.read(cx).fs())?;
+            create_neutral_working_directory(fs, directory, cx).await?;
         }
 
         let cached_token_provider: Option<Arc<dyn oauth::OAuthTokenProvider>> =
@@ -1062,8 +1827,15 @@ impl ContextServerStore {
                             .min(MAX_TIMEOUT_SECS),
                     );
 
-                    // Don't pass remote paths as working directory for locally-spawned processes
-                    let working_directory = if is_remote_project { None } else { root_path };
+                    // Windows resolves a relative program against Zed's own
+                    // working directory rather than the child's, while the
+                    // approval key resolved it against the child's (ADR-F42).
+                    if let Some(working_directory) = &working_directory
+                        && command.path.is_relative()
+                        && command.path.components().count() > 1
+                    {
+                        command.path = working_directory.join(&command.path);
+                    }
 
                     // ADR-F13 (F2-7): point the MCP server at the fork's
                     // loopback egress proxy so its traffic is judged by the
@@ -1119,6 +1891,8 @@ impl ContextServerStore {
                             .map(|_| ContextServerSettingsEntry {
                                 worktree_id: None,
                                 settings: ContextServerSettings::default_extension(),
+                                source: ContextServerSource::Extension,
+                                replaces_user_entry: false,
                             })
                     })
                     .with_context(|| format!("context server `{}` not found", server_id))?;
@@ -1164,22 +1938,41 @@ impl ContextServerStore {
     /// in any project folder in a multi-root workspace are picked up.
     fn resolve_all_context_server_settings(
         worktree_store: &Entity<WorktreeStore>,
+        launch_host: &LaunchHost,
         cx: &App,
     ) -> HashMap<Arc<str>, ContextServerSettingsEntry> {
         let mut merged = HashMap::default();
-        for worktree in worktree_store.read(cx).visible_worktrees(cx) {
-            let worktree_id = worktree.read(cx).id();
+        let Some(settings_store) = cx.try_global::<SettingsStore>() else {
+            return merged;
+        };
+        let worktrees = worktree_store
+            .read(cx)
+            .visible_worktrees(cx)
+            .map(|worktree| worktree.read(cx))
+            .collect::<Vec<_>>();
+        for worktree in &worktrees {
+            let worktree_id = worktree.id();
             let location = settings::SettingsLocation {
                 worktree_id,
                 path: RelPath::empty(),
             };
             for (id, settings) in &ProjectSettings::get(Some(location), cx).context_servers {
-                merged
-                    .entry(id.clone())
-                    .or_insert_with(|| ContextServerSettingsEntry {
+                merged.entry(id.clone()).or_insert_with(|| {
+                    let (source, replaces_user_entry) = context_server_source(
+                        id,
+                        settings,
+                        worktree,
+                        &worktrees,
+                        launch_host,
+                        settings_store,
+                    );
+                    ContextServerSettingsEntry {
                         worktree_id: Some(worktree_id),
                         settings: settings.clone(),
-                    });
+                        source,
+                        replaces_user_entry,
+                    }
+                });
             }
         }
         merged
@@ -1765,19 +2558,24 @@ impl ContextServerStore {
             this.update(cx, |this, cx| {
                 let server_ids: Vec<_> = this.servers.keys().cloned().collect();
                 for id in server_ids {
-                    let _ = this.stop_server(&id, cx);
+                    this.stop_server(&id, cx).log_err();
                 }
             })?;
             return Ok(());
         }
 
-        let (mut configured_servers, registry, worktree_store) = this.update(cx, |this, _| {
-            (
-                this.context_server_settings.clone(),
-                this.registry.clone(),
-                this.worktree_store.clone(),
-            )
-        })?;
+        // One project root for the approval keys and the spawns alike.
+        let (mut configured_servers, registry, worktree_store, launch_approvals, fs, root_path) =
+            this.update(cx, |this, cx| {
+                (
+                    this.context_server_settings.clone(),
+                    this.registry.clone(),
+                    this.worktree_store.clone(),
+                    this.launch_approvals.clone(),
+                    this.worktree_store.read(cx).fs(),
+                    this.resolve_root_path(cx),
+                )
+            })?;
 
         for (id, _) in registry.read_with(cx, |registry, _| registry.context_server_descriptors()) {
             configured_servers
@@ -1785,6 +2583,8 @@ impl ContextServerStore {
                 .or_insert(ContextServerSettingsEntry {
                     worktree_id: None,
                     settings: ContextServerSettings::default_extension(),
+                    source: ContextServerSource::Extension,
+                    replaces_user_entry: false,
                 });
         }
 
@@ -1797,24 +2597,67 @@ impl ContextServerStore {
             join_all(enabled_servers.into_iter().map(|(id, settings_entry)| {
                 let id = ContextServerId(id);
                 ContextServerConfiguration::from_settings(
-                    settings_entry.settings,
+                    settings_entry.settings.clone(),
                     id.clone(),
                     registry.clone(),
                     worktree_store.clone(),
                     cx,
                 )
-                .map(move |config| (id, config))
+                .map(move |config| (id, config, settings_entry))
             }))
             .await
             .into_iter()
-            .filter_map(|(id, config)| config.map(|config| (id, config)))
+            .filter_map(|(id, config, settings_entry)| {
+                config.map(|config| (id, (config, settings_entry)))
+            })
             .collect::<HashMap<_, _>>();
+
+        let mut project_launches = HashMap::default();
+        let requester = this.entity_id();
+        for (id, (configuration, settings_entry)) in &configured_servers {
+            let request = this.update(cx, |this, cx| {
+                this.context_server_launch_request(
+                    id,
+                    configuration,
+                    settings_entry,
+                    root_path.clone(),
+                    cx,
+                )
+            })?;
+            let Some(request) = request else {
+                continue;
+            };
+            let details = request.resolve(fs.clone()).await;
+            let details = match &launch_approvals {
+                Some(launch_approvals) => launch_approvals.update(cx, |launch_approvals, cx| {
+                    launch_approvals.request_launch(details, requester, cx)
+                }),
+                None => details,
+            };
+            project_launches.insert(id.clone(), details);
+        }
+
+        // A project-defined server is launched only with an approval of
+        // exactly what it would run (ADR-F42).
+        let withheld_servers = configured_servers
+            .iter()
+            .filter(|(id, (_, settings_entry))| {
+                settings_entry.source.is_project()
+                    && !project_launches
+                        .get(*id)
+                        .is_some_and(|details: &LaunchApprovalDetails| {
+                            details.state == LaunchApprovalState::Approved
+                        })
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<HashSet<_>>();
 
         let mut servers_to_start = Vec::new();
         let mut servers_to_remove = HashSet::default();
         let mut servers_to_stop = HashSet::default();
+        let mut servers_to_withhold = HashSet::default();
 
-        this.update(cx, |this, cx| {
+        this.update(cx, |this, _| {
             for server_id in this.servers.keys() {
                 // All servers that are not in desired_servers should be removed from the store.
                 // This can happen if the user removed a server from the context server settings.
@@ -1824,18 +2667,44 @@ impl ContextServerStore {
                     } else {
                         servers_to_remove.insert(server_id.clone());
                     }
+                } else if withheld_servers.contains(server_id) {
+                    servers_to_withhold.insert(server_id.clone());
                 }
             }
 
             let is_remote_project = this.is_remote_project();
-            let root_path = this.resolve_root_path(cx);
+            let mut approved_project_configurations = HashMap::default();
+            this.remote_resolved_launches.retain(|id, _| {
+                is_remote_project
+                    && configured_servers
+                        .get(id)
+                        .is_some_and(|(configuration, _)| {
+                            matches!(
+                                configuration,
+                                ContextServerConfiguration::Extension { remote: true, .. }
+                            )
+                        })
+            });
 
-            for (id, config) in configured_servers {
+            for (id, (config, settings_entry)) in configured_servers {
+                if withheld_servers.contains(&id) {
+                    continue;
+                }
                 let state = this.servers.get(&id);
                 let is_stopped = matches!(state, Some(ContextServerState::Stopped { .. }));
-                let existing_config = state.as_ref().map(|state| state.configuration());
-                let working_directory =
-                    working_directory_for(&config, root_path.clone(), is_remote_project);
+                // A `remote: true` server runs the command wrapped for the
+                // remote host, which never equals the settings.
+                let existing_config = this
+                    .started_configurations
+                    .get(&id)
+                    .cloned()
+                    .or_else(|| state.as_ref().map(|state| state.configuration()));
+                let working_directory = working_directory_for(
+                    &config,
+                    root_path.clone(),
+                    is_remote_project,
+                    settings_entry.source.is_project(),
+                );
                 // A running server that was started before the project root became
                 // available keeps its stale working directory, since the working
                 // directory is not part of `ContextServerConfiguration`. Restart it
@@ -1843,21 +2712,29 @@ impl ContextServerStore {
                 let working_directory_changed = state.is_some()
                     && !is_stopped
                     && this.server_working_directories.get(&id) != Some(&working_directory);
-                if existing_config.as_deref() != Some(&config)
+                let config = Arc::new(config);
+                if settings_entry.source.is_project() {
+                    approved_project_configurations.insert(id.clone(), config.clone());
+                }
+                if existing_config.as_deref() != Some(config.as_ref())
                     || is_stopped
                     || working_directory_changed
                 {
-                    let config = Arc::new(config);
                     servers_to_start.push((id.clone(), config, working_directory));
                     if this.servers.contains_key(&id) {
                         servers_to_stop.insert(id);
                     }
                 }
             }
+            this.approved_project_configurations = approved_project_configurations;
 
             anyhow::Ok(())
         })??;
 
+        let starting_servers = servers_to_start
+            .iter()
+            .map(|(id, _, _)| id.clone())
+            .collect::<HashSet<_>>();
         this.update(cx, |this, inner_cx| {
             for id in servers_to_stop {
                 this.stop_server(&id, inner_cx)?;
@@ -1865,16 +2742,60 @@ impl ContextServerStore {
             for id in servers_to_remove {
                 this.remove_server(&id, inner_cx)?;
             }
+            for id in &servers_to_withhold {
+                this.withhold_server(id);
+            }
+            this.update_project_launches(
+                project_launches,
+                &servers_to_withhold,
+                &starting_servers,
+                inner_cx,
+            );
             anyhow::Ok(())
         })??;
 
         for (id, config, working_directory) in servers_to_start {
-            match Self::create_context_server(this.clone(), id.clone(), config, cx).await {
-                Ok((server, config)) => {
+            match Self::create_context_server_in(
+                this.clone(),
+                id.clone(),
+                config.clone(),
+                root_path.clone(),
+                cx,
+            )
+            .await
+            {
+                Ok((server, started_config)) => {
                     this.update(cx, |this, cx| {
+                        // A server started while this one was being built,
+                        // from the same definition in the same directory (as
+                        // `start_server` does with a server of its own), is
+                        // left running.
+                        let started_meanwhile = matches!(
+                            this.servers.get(&id),
+                            Some(
+                                ContextServerState::Starting { .. }
+                                    | ContextServerState::Running { .. }
+                                    | ContextServerState::Authenticating { .. }
+                            )
+                        ) && this.started_configurations.get(&id)
+                            == Some(&config)
+                            && this.server_working_directories.get(&id) == Some(&working_directory);
+                        if started_meanwhile {
+                            return;
+                        }
                         this.server_working_directories
                             .insert(id.clone(), working_directory);
-                        this.run_server(server, config, cx);
+                        this.started_configurations.insert(id.clone(), config);
+                        this.run_server(server, started_config, cx);
+                    })?;
+                }
+                Err(err) if err.is::<LaunchNeedsApproval>() => {
+                    this.update(cx, |_this, cx| {
+                        cx.emit(ServerStatusChangedEvent {
+                            server_id: id,
+                            status: ContextServerStatus::ApprovalRequired,
+                        });
+                        cx.notify();
                     })?;
                 }
                 Err(err) => {
@@ -1917,6 +2838,14 @@ pub fn wait_for_context_server(
     context_server_id: ContextServerId,
     cx: &mut App,
 ) -> Task<WaitOutcome> {
+    if context_server_store
+        .read(cx)
+        .status_for_server(&context_server_id)
+        == Some(ContextServerStatus::ApprovalRequired)
+    {
+        return Task::ready(Err(approval_required_message(&context_server_id)));
+    }
+
     let (tx, rx) = futures::channel::oneshot::channel();
     let tx = Arc::new(Mutex::new(Some(tx)));
 
@@ -1939,6 +2868,9 @@ pub fn wait_for_context_server(
             }
             ContextServerStatus::Error(error) => {
                 send_wait_outcome(&tx, Err(error.clone()));
+            }
+            ContextServerStatus::ApprovalRequired => {
+                send_wait_outcome(&tx, Err(approval_required_message(&context_server_id)));
             }
             ContextServerStatus::Starting | ContextServerStatus::Authenticating => {}
         }
@@ -1971,19 +2903,172 @@ fn send_wait_outcome(
     }
 }
 
+fn approval_required_message(id: &ContextServerId) -> Arc<str> {
+    format!(
+        "MCP サーバー「{id}」は承認待ちです。プロジェクトの設定で定義されたサーバーは、\
+         設定の「MCP サーバー」ページで起動する内容を確認して許可するまで起動しません。"
+    )
+    .into()
+}
+
+fn no_project_launch_error(id: &ContextServerId) -> anyhow::Error {
+    anyhow!("MCP サーバー「{id}」には、承認の対象になるプロジェクトの定義がありません")
+}
+
+/// Only a definition in a file that a sandboxed command cannot write — the
+/// user's or the global settings — counts as the user's own. The effective
+/// entry comes from the first worktree that has one, but an extension's
+/// server reads its settings from every worktree, so for those a definition
+/// in any worktree makes the server project-defined.
+fn context_server_source(
+    id: &str,
+    settings: &ContextServerSettings,
+    worktree: &Worktree,
+    worktrees: &[&Worktree],
+    launch_host: &LaunchHost,
+    settings_store: &SettingsStore,
+) -> (ContextServerSource, bool) {
+    let defined_in = |file: SettingsFile| {
+        settings_store
+            .get_content_for_file(file)
+            .is_some_and(|content| content.project.context_servers.contains_key(id))
+    };
+    let defines = |worktree: &Worktree| {
+        defined_in(SettingsFile::Project((worktree.id(), RelPath::empty_arc())))
+    };
+    let defining_worktree = if matches!(settings, ContextServerSettings::Extension { .. }) {
+        worktrees.iter().copied().find(|worktree| defines(worktree))
+    } else {
+        Some(worktree).filter(|worktree| defines(worktree))
+    };
+    let (worktree_id, settings_file) = match defining_worktree {
+        Some(defining_worktree) => (
+            defining_worktree.id(),
+            worktree_settings_file(defining_worktree, RelPath::empty()),
+        ),
+        None if defined_in(SettingsFile::Server) => {
+            (worktree.id(), LaunchDefinitionFile::RemoteServerSettings)
+        }
+        None => return (ContextServerSource::User, false),
+    };
+    (
+        ContextServerSource::Project {
+            worktree_id,
+            settings_file,
+            host: launch_host.clone(),
+        },
+        defined_in(SettingsFile::User) || defined_in(SettingsFile::Global),
+    )
+}
+
+/// A launch held back until the user approves it (ADR-F42).
+#[derive(Debug)]
+struct LaunchNeedsApproval;
+
+impl std::fmt::Display for LaunchNeedsApproval {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("この MCP サーバーの起動には承認が必要です")
+    }
+}
+
+impl std::error::Error for LaunchNeedsApproval {}
+
+/// The remote side resolves the command from its own copy of the settings,
+/// which can have changed since the definition was approved here.
+fn verify_remote_command(
+    approved: &ContextServerCommand,
+    response: &proto::ContextServerCommand,
+) -> Result<()> {
+    let approved_value = |name: &str| approved.env.as_ref().and_then(|env| env.get(name));
+    let environment_matches = approved
+        .env
+        .iter()
+        .flatten()
+        .all(|(name, value)| response.env.get(name) == Some(value))
+        && response
+            .env
+            .keys()
+            .all(|name| approved_value(name).is_some() || is_child_process_proxy_variable(name));
+    anyhow::ensure!(
+        response.path == approved.path.to_string_lossy()
+            && response.args == approved.args
+            && environment_matches,
+        "接続先が返した MCP サーバーのコマンドが、承認した定義と一致しません"
+    );
+    Ok(())
+}
+
+/// The remote side adds its own egress proxy to the environment (ADR-F14).
+fn is_child_process_proxy_variable(name: &str) -> bool {
+    let mut probe = HashMap::default();
+    probe.insert(name.to_string(), String::new());
+    http_client::env_overrides_child_process_proxy(&probe)
+}
+
 /// The working directory a server will be spawned with, mirroring the choice
-/// made in [`ContextServerStore::create_context_server`]: only locally-spawned
-/// stdio servers use the project root; HTTP and remote servers use none.
+/// made in [`ContextServerStore::create_context_server`].
 fn working_directory_for(
     configuration: &ContextServerConfiguration,
     root_path: Option<Arc<Path>>,
     is_remote_project: bool,
+    project_defined: bool,
 ) -> Option<Arc<Path>> {
     match configuration {
         ContextServerConfiguration::Http { .. } => None,
-        _ if is_remote_project => None,
-        _ => root_path,
+        _ => local_working_directory(is_remote_project, project_defined, root_path),
     }
+}
+
+/// Only an approved project-defined server starts in the project. What an
+/// interpreter or package runner loads from its working directory is part of
+/// no approval, so every other stdio server spawned here — from the user's
+/// settings or an extension, and any in a remote project, whose paths are no
+/// working directory for a process here — starts in the neutral directory,
+/// where an agent cannot plant code for it to pick up (ADR-F42).
+fn local_working_directory(
+    is_remote_project: bool,
+    project_defined: bool,
+    root_path: Option<Arc<Path>>,
+) -> Option<Arc<Path>> {
+    match root_path {
+        Some(root_path) if project_defined && !is_remote_project => Some(root_path),
+        _ => Some(neutral_working_directory()),
+    }
+}
+
+const NEUTRAL_WORKING_DIRECTORY_NAME: &str = "mcp-neutral-cwd";
+
+/// The working directory of a stdio server that does not start in the
+/// project: `<data_dir>/mcp-neutral-cwd`, an empty directory of Zed's own in
+/// the data directory the agent sandbox protects, created when a server is
+/// spawned there.
+pub fn neutral_working_directory() -> Arc<Path> {
+    Arc::from(paths::data_dir().join(NEUTRAL_WORKING_DIRECTORY_NAME))
+}
+
+/// Through the project's file system where there is one (a local project).
+async fn create_neutral_working_directory(
+    fs: Option<Arc<dyn fs::Fs>>,
+    directory: Arc<Path>,
+    cx: &AsyncApp,
+) -> Result<()> {
+    let created = match fs {
+        Some(fs) => fs.create_dir(&directory).await,
+        None => {
+            let directory = directory.clone();
+            cx.background_executor()
+                .spawn(
+                    async move { std::fs::create_dir_all(&directory).map_err(anyhow::Error::from) },
+                )
+                .await
+        }
+    };
+    created.with_context(|| {
+        format!(
+            "MCP サーバーの作業フォルダー {} を作れませんでした",
+            directory.display()
+        )
+    })
 }
 
 /// Determines the appropriate server state after a start attempt fails.

@@ -107,6 +107,13 @@ impl ScopedKeyValueStore<'_> {
         .context("Failed to read from scoped_kv_store")
     }
 
+    pub fn read_all(&self) -> anyhow::Result<Vec<(String, String)>> {
+        self.store.select_bound::<&str, (String, String)>(
+            "SELECT key, value FROM scoped_kv_store WHERE namespace = (?) ORDER BY key",
+        )?(self.namespace)
+        .context("Failed to read all from scoped_kv_store")
+    }
+
     pub async fn write(&self, key: String, value: String) -> anyhow::Result<()> {
         let namespace = self.namespace.to_owned();
         self.store
@@ -237,6 +244,12 @@ mod tests {
         assert_eq!(scope_a.read("key-1").unwrap(), None);
         assert_eq!(scope_a.read("key-2").unwrap(), Some("value-a2".to_string()));
         assert_eq!(scope_b.read("key-1").unwrap(), Some("value-b1".to_string()));
+
+        // read_all lists only this namespace's rows
+        assert_eq!(
+            scope_a.read_all().unwrap(),
+            vec![("key-2".to_string(), "value-a2".to_string())]
+        );
 
         // retain keeps the listed keys and drops the rest of the namespace
         scope_a

@@ -13,6 +13,7 @@ pub mod lsp_command;
 pub mod lsp_store;
 pub mod manifest_tree;
 pub mod prettier_store;
+pub mod project_launch_approvals;
 pub mod project_search;
 pub mod project_settings;
 /// ADR-F28: running the transfer screen's commands on the remote SSH host.
@@ -1201,6 +1202,7 @@ impl Project {
         DapStore::init(&client, cx);
         BreakpointStore::init(&client);
         context_server_store::init(cx);
+        project_launch_approvals::init(cx);
     }
 
     pub fn local(

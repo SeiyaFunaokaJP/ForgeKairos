@@ -16,16 +16,17 @@ use project::{
         ContextServerStatus, ContextServerStore, ServerStatusChangedEvent,
         registry::ContextServerDescriptorRegistry, wait_for_context_server,
     },
-    project_settings::{ContextServerSettings, OAuthClientSettings, ProjectSettings},
+    project_settings::{ContextServerSettings, OAuthClientSettings},
     worktree_store::WorktreeStore,
 };
 use serde::Deserialize;
-use settings::{Settings as _, update_settings_file};
+use serde_json::{Map, Value};
+use settings::{Settings as _, SettingsStore, update_settings_file};
 use std::sync::Arc;
 use theme_settings::ThemeSettings;
 use ui::{
-    CommonAnimationExt, KeyBinding, Modal, ModalFooter, ModalHeader, Section, Tooltip,
-    WithScrollbar, prelude::*,
+    CommonAnimationExt, ContextMenu, DropdownMenu, DropdownStyle, IconPosition, KeyBinding, Modal,
+    ModalFooter, ModalHeader, Section, Switch, ToggleState, Tooltip, WithScrollbar, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Workspace};
@@ -46,6 +47,10 @@ enum ConfigurationTarget {
         id: ContextServerId,
         repository_url: Option<SharedString>,
         installation: Option<extension::ContextServerConfiguration>,
+        /// What the user configured before, if anything: re-opening the dialog
+        /// must not put the extension's placeholders back in its place.
+        current_settings: Option<Value>,
+        remote: bool,
     },
 }
 
@@ -65,6 +70,16 @@ enum ConfigurationSource {
         repository_url: Option<SharedString>,
         installation_instructions: Option<Entity<markdown::Markdown>>,
         settings_validator: Option<jsonschema::Validator>,
+        /// `None` when the extension's settings are not a flat object of
+        /// scalars, which leaves the JSON editor as the only way to edit them.
+        form: Option<ExtensionSettingsForm>,
+        editing_json: bool,
+        /// With no form to mask them, saved secrets would sit in the JSON in
+        /// plain text; the editor then waits for an explicit 「表示」.
+        json_revealed: bool,
+        /// Carried through so that configuring a server that runs on the SSH
+        /// host does not move it back to this machine.
+        remote: bool,
     },
 }
 
@@ -127,6 +142,8 @@ impl ConfigurationSource {
                 id,
                 repository_url,
                 installation,
+                current_settings,
+                remote,
             } => {
                 let settings_validator = installation.as_ref().and_then(|installation| {
                     jsonschema::validator_for(&installation.settings_schema)
@@ -143,14 +160,47 @@ impl ConfigurationSource {
                         )
                     })
                 });
+                let (editor, form, json_revealed) = match installation {
+                    Some(installation) => {
+                        let initial_text = current_settings
+                            .and_then(|settings| {
+                                serde_json::to_string_pretty(&settings)
+                                    .context(
+                                        "Failed to show the configured context server settings",
+                                    )
+                                    .log_err()
+                            })
+                            .unwrap_or(installation.default_settings);
+                        let initial_settings =
+                            serde_json_lenient::from_str::<Value>(&initial_text).ok();
+                        let form =
+                            schema_form_fields(&installation.settings_schema).and_then(|fields| {
+                                let Some(Value::Object(settings)) = initial_settings.clone() else {
+                                    return None;
+                                };
+                                ExtensionSettingsForm::new(fields, settings, window, cx)
+                            });
+                        let json_revealed = !initial_settings
+                            .as_ref()
+                            .is_some_and(contains_secret_values);
+                        (
+                            Some(create_editor(initial_text, jsonc_language, window, cx)),
+                            form,
+                            json_revealed,
+                        )
+                    }
+                    None => (None, None, true),
+                };
                 ConfigurationSource::Extension {
                     id,
                     repository_url,
                     installation_instructions,
                     settings_validator,
-                    editor: installation.map(|installation| {
-                        create_editor(installation.default_settings, jsonc_language, window, cx)
-                    }),
+                    editor,
+                    form,
+                    editing_json: false,
+                    json_revealed,
+                    remote,
                 }
             }
         }
@@ -193,24 +243,41 @@ impl ConfigurationSource {
                 id,
                 editor,
                 settings_validator,
+                form,
+                editing_json,
+                remote,
                 ..
             } => {
-                let text = editor
-                    .as_ref()
-                    .context("設定を取得できませんでした。")?
-                    .read(cx)
-                    .text(cx);
-                let settings = serde_json_lenient::from_str::<serde_json::Value>(&text)?;
+                let settings = match form {
+                    Some(form) if !*editing_json => form
+                        .settings(true, cx)
+                        .map_err(|error| anyhow::anyhow!(error))?,
+                    _ => {
+                        let text = editor
+                            .as_ref()
+                            .context("設定を取得できませんでした。")?
+                            .read(cx)
+                            .text(cx);
+                        serde_json_lenient::from_str::<serde_json::Value>(&text)?
+                    }
+                };
                 if let Some(settings_validator) = settings_validator
                     && let Err(error) = settings_validator.validate(&settings)
                 {
-                    return Err(anyhow::anyhow!(error.to_string()));
+                    // The message quotes the offending value, which can be a
+                    // token the form was masking.
+                    let message = if contains_secret_values(&settings) {
+                        error.masked().to_string()
+                    } else {
+                        error.to_string()
+                    };
+                    return Err(anyhow::anyhow!(message));
                 }
                 Ok((
                     id.clone(),
                     ContextServerSettings::Extension {
                         enabled: true,
-                        remote: false,
+                        remote: *remote,
                         settings,
                     },
                 ))
@@ -369,6 +436,8 @@ fn parse_http_input(
 fn resolve_context_server_extension(
     id: ContextServerId,
     worktree_store: Entity<WorktreeStore>,
+    current_settings: Option<Value>,
+    remote: bool,
     cx: &mut App,
 ) -> Task<Option<ConfigurationTarget>> {
     let registry = ContextServerDescriptorRegistry::default_global(cx).read(cx);
@@ -396,6 +465,8 @@ fn resolve_context_server_extension(
             repository_url: extension
                 .and_then(|(_, manifest)| manifest.repository.clone().map(SharedString::from)),
             installation,
+            current_settings,
+            remote,
         })
     })
 }
@@ -457,6 +528,7 @@ impl ConfigureContextServerModal {
             Some(ContextServerStatus::Starting)
             | Some(ContextServerStatus::Running)
             | Some(ContextServerStatus::Stopped)
+            | Some(ContextServerStatus::ApprovalRequired)
             | None => State::Idle,
         }
     }
@@ -468,17 +540,15 @@ impl ConfigureContextServerModal {
         window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<()>> {
-        let Some(settings) = ProjectSettings::get_global(cx)
-            .context_servers
-            .get(&server_id.0)
-            .cloned()
-            .or_else(|| {
-                ContextServerDescriptorRegistry::default_global(cx)
-                    .read(cx)
-                    .context_server_descriptor(&server_id.0)
-                    .map(|_| ContextServerSettings::default_extension())
-            })
-        else {
+        // Only the user's own file: the merged settings also hold the SSH
+        // host's server settings, which saving would copy into the user's file
+        // as an entry that nobody approved.
+        let Some(settings) = user_context_server_settings(&server_id, cx).or_else(|| {
+            ContextServerDescriptorRegistry::default_global(cx)
+                .read(cx)
+                .context_server_descriptor(&server_id.0)
+                .map(|_| ContextServerSettings::default_extension())
+        }) else {
             return Task::ready(Err(anyhow::anyhow!("Context server not found")));
         };
 
@@ -505,12 +575,23 @@ impl ConfigureContextServerModal {
                     oauth,
                 }),
 
-                ContextServerSettings::Extension { .. } => {
+                ContextServerSettings::Extension {
+                    settings, remote, ..
+                } => {
+                    // `{}` is what an extension server with no settings entry
+                    // resolves to; the extension's own defaults are the better
+                    // starting point then.
+                    let current_settings = settings
+                        .as_object()
+                        .is_some_and(|settings| !settings.is_empty())
+                        .then_some(settings);
                     match workspace
                         .update(cx, |workspace, cx| {
                             resolve_context_server_extension(
                                 server_id,
                                 workspace.project().read(cx).worktree_store(),
+                                current_settings,
+                                remote,
                                 cx,
                             )
                         })
@@ -640,8 +721,7 @@ impl ConfigureContextServerModal {
         })
         .detach();
 
-        let settings_changed =
-            ProjectSettings::get_global(cx).context_servers.get(&id.0) != Some(&settings);
+        let settings_changed = user_context_server_settings(&id, cx).as_ref() != Some(&settings);
 
         if settings_changed {
             // When we write the settings to the file, the context server will be restarted.
@@ -668,6 +748,91 @@ impl ConfigureContextServerModal {
 
     fn cancel(&mut self, _: &menu::Cancel, cx: &mut Context<Self>) {
         cx.emit(DismissEvent);
+    }
+
+    fn reveal_json(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let ConfigurationSource::Extension { json_revealed, .. } = &mut self.source {
+            *json_revealed = true;
+        }
+        self.focus_handle(cx).focus(window, cx);
+        cx.notify();
+    }
+
+    fn set_form_input(
+        &mut self,
+        index: usize,
+        input: ExtensionSettingsInput,
+        cx: &mut Context<Self>,
+    ) {
+        if let ConfigurationSource::Extension {
+            form: Some(form), ..
+        } = &mut self.source
+            && let Some(slot) = form.inputs.get_mut(index)
+        {
+            *slot = input;
+        }
+        cx.notify();
+    }
+
+    fn toggle_json_editing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ConfigurationSource::Extension {
+            editor: Some(editor),
+            form: Some(form),
+            editing_json,
+            ..
+        } = &mut self.source
+        else {
+            return;
+        };
+
+        let outcome = if *editing_json {
+            match serde_json_lenient::from_str::<Value>(&editor.read(cx).text(cx)) {
+                Ok(Value::Object(settings)) => {
+                    match ExtensionSettingsForm::new(form.fields.clone(), settings, window, cx) {
+                        Some(refilled) => {
+                            *form = refilled;
+                            *editing_json = false;
+                            Ok(())
+                        }
+                        None => Err(
+                            "この JSON にはフォームで表せない値が含まれています。JSON で編集を続けてください。"
+                                .to_string(),
+                        ),
+                    }
+                }
+                Ok(_) => {
+                    Err("拡張機能の設定は JSON オブジェクト ({ … }) にしてください。".to_string())
+                }
+                Err(error) => Err(format!(
+                    "JSON を読み取れないため、フォームに切り替えられません: {error}"
+                )),
+            }
+        } else {
+            form.settings(false, cx).and_then(|settings| {
+                // Rewriting only on a change keeps the comments the extension's
+                // defaults came with.
+                let unchanged = serde_json_lenient::from_str::<Value>(&editor.read(cx).text(cx))
+                    .is_ok_and(|current| current == settings);
+                if !unchanged {
+                    let text = serde_json::to_string_pretty(&settings)
+                        .map_err(|error| error.to_string())?;
+                    editor.update(cx, |editor, cx| editor.set_text(text, window, cx));
+                }
+                *editing_json = true;
+                Ok(())
+            })
+        };
+
+        match outcome {
+            Ok(()) => {
+                if matches!(self.state, State::Error(_)) {
+                    self.state = State::Idle;
+                }
+            }
+            Err(error) => self.state = State::Error(error.into()),
+        }
+        self.focus_handle(cx).focus(window, cx);
+        cx.notify();
     }
 
     fn cancel_authentication(&mut self, server_id: &ContextServerId, cx: &mut Context<Self>) {
@@ -731,6 +896,15 @@ impl ConfigureContextServerModal {
                         this._auth_subscription = None;
                         this.set_error(error.clone(), cx);
                     }
+                    // Nothing more will happen until the project's definition
+                    // is approved, so waiting on would never end.
+                    ContextServerStatus::ApprovalRequired => {
+                        this._auth_subscription = None;
+                        this.set_error(
+                            "このサーバーは承認待ちです。設定ウィンドウの「MCP サーバー」ページで確認してください。",
+                            cx,
+                        );
+                    }
                     ContextServerStatus::Authenticating
                     | ContextServerStatus::Starting
                     | ContextServerStatus::Stopped => {}
@@ -779,16 +953,482 @@ fn parse_input(text: &str) -> Result<(ContextServerId, ContextServerCommand)> {
     Ok((ContextServerId(context_server_name.clone().into()), command))
 }
 
+const UNSET_CHOICE_LABEL: &str = "(未設定)";
+
+/// An extension's settings shown as a form built from its settings schema.
+struct ExtensionSettingsForm {
+    fields: Vec<SchemaFormField>,
+    inputs: Vec<ExtensionSettingsInput>,
+    /// What the inputs held when the form was filled, so that only what the
+    /// user changed gets written: an untouched field leaves its key exactly as
+    /// the settings had it, absent included.
+    initial: Vec<SchemaFieldValue>,
+    /// The settings the form was filled from. Keys it has no field for are
+    /// written back as they were.
+    base: Map<String, Value>,
+    focus_handle: FocusHandle,
+}
+
+enum ExtensionSettingsInput {
+    Text(Entity<Editor>),
+    Toggle(bool),
+    Choice(Option<String>),
+}
+
+impl ExtensionSettingsForm {
+    /// `None` when a value in `base` does not fit its field, which the JSON
+    /// editor can still show faithfully.
+    fn new(
+        fields: Vec<SchemaFormField>,
+        base: Map<String, Value>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Self> {
+        let initial = fields
+            .iter()
+            .map(|field| initial_field_value(field, base.get(&field.key)))
+            .collect::<Option<Vec<_>>>()?;
+        let inputs = fields
+            .iter()
+            .zip(&initial)
+            .map(|(field, value)| match value {
+                SchemaFieldValue::Text(text) => {
+                    let text = text.clone();
+                    let secret = field.secret;
+                    ExtensionSettingsInput::Text(cx.new(|cx| {
+                        let mut editor = Editor::single_line(window, cx);
+                        editor.set_text(text, window, cx);
+                        editor.set_masked(secret, cx);
+                        editor
+                    }))
+                }
+                SchemaFieldValue::Toggle(on) => ExtensionSettingsInput::Toggle(*on),
+                SchemaFieldValue::Choice(choice) => ExtensionSettingsInput::Choice(choice.clone()),
+            })
+            .collect();
+        Some(Self {
+            fields,
+            inputs,
+            initial,
+            base,
+            focus_handle: cx.focus_handle(),
+        })
+    }
+
+    fn values(&self, cx: &App) -> Vec<SchemaFieldValue> {
+        self.inputs
+            .iter()
+            .map(|input| match input {
+                ExtensionSettingsInput::Text(editor) => {
+                    SchemaFieldValue::Text(editor.read(cx).text(cx))
+                }
+                ExtensionSettingsInput::Toggle(on) => SchemaFieldValue::Toggle(*on),
+                ExtensionSettingsInput::Choice(choice) => SchemaFieldValue::Choice(choice.clone()),
+            })
+            .collect()
+    }
+
+    /// With `require` off, required fields may still be blank: switching to the
+    /// JSON editor must not be blocked by a field the user has yet to fill in.
+    fn settings(&self, require: bool, cx: &App) -> Result<Value, String> {
+        settings_from_form(
+            &self.fields,
+            &self.initial,
+            &self.values(cx),
+            &self.base,
+            require,
+        )
+        .map(Value::Object)
+    }
+
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.inputs
+            .iter()
+            .find_map(|input| match input {
+                ExtensionSettingsInput::Text(editor) => Some(editor.focus_handle(cx)),
+                ExtensionSettingsInput::Toggle(_) | ExtensionSettingsInput::Choice(_) => None,
+            })
+            .unwrap_or_else(|| self.focus_handle.clone())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SchemaFormField {
+    key: String,
+    title: String,
+    description: Option<String>,
+    kind: SchemaFieldKind,
+    required: bool,
+    secret: bool,
+    default: Option<Value>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum SchemaFieldKind {
+    Text,
+    Number,
+    Integer,
+    Boolean,
+    Choice(Vec<String>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum SchemaFieldValue {
+    /// Also the value of number fields, which are parsed only when written.
+    Text(String),
+    Toggle(bool),
+    Choice(Option<String>),
+}
+
+/// Keywords that make a settings object more than a fixed set of scalars.
+const NON_FLAT_SCHEMA_KEYWORDS: &[&str] = &[
+    "$ref",
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "patternProperties",
+    "propertyNames",
+    "dependencies",
+    "dependentSchemas",
+    "unevaluatedProperties",
+];
+
+/// `None` unless the schema describes a flat object of strings, numbers,
+/// booleans and string choices; anything else is left to the JSON editor.
+fn schema_form_fields(schema: &Value) -> Option<Vec<SchemaFormField>> {
+    let schema = schema.as_object()?;
+    if NON_FLAT_SCHEMA_KEYWORDS
+        .iter()
+        .any(|keyword| schema.contains_key(*keyword))
+    {
+        return None;
+    }
+    if schema
+        .get("type")
+        .is_some_and(|kind| kind.as_str() != Some("object"))
+    {
+        return None;
+    }
+    if schema
+        .get("additionalProperties")
+        .is_some_and(|additional| !additional.is_boolean())
+    {
+        return None;
+    }
+    let properties = schema.get("properties")?.as_object()?;
+    let required = match schema.get("required") {
+        None => Vec::new(),
+        Some(Value::Array(names)) => names
+            .iter()
+            .map(Value::as_str)
+            .collect::<Option<Vec<_>>>()?,
+        Some(_) => return None,
+    };
+
+    properties
+        .iter()
+        .map(|(key, property)| {
+            let property = property.as_object()?;
+            Some(SchemaFormField {
+                key: key.clone(),
+                title: property
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| key.clone()),
+                description: property
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                kind: property_kind(property)?,
+                required: required.contains(&key.as_str()),
+                secret: looks_secret(key),
+                default: property.get("default").cloned(),
+            })
+        })
+        .collect()
+}
+
+fn property_kind(property: &Map<String, Value>) -> Option<SchemaFieldKind> {
+    if ["$ref", "allOf", "not", "if", "properties", "items"]
+        .iter()
+        .any(|keyword| property.contains_key(*keyword))
+    {
+        return None;
+    }
+    if let Some(choices) = property.get("enum") {
+        return string_choices(choices.as_array()?).map(SchemaFieldKind::Choice);
+    }
+    for keyword in ["oneOf", "anyOf"] {
+        if let Some(variants) = property.get(keyword) {
+            return variants_kind(variants.as_array()?);
+        }
+    }
+    match scalar_type(property.get("type")?)? {
+        "string" => Some(SchemaFieldKind::Text),
+        "number" => Some(SchemaFieldKind::Number),
+        "integer" => Some(SchemaFieldKind::Integer),
+        "boolean" => Some(SchemaFieldKind::Boolean),
+        _ => None,
+    }
+}
+
+/// `"string"`, or `["string", "null"]`, which is how an optional value is
+/// spelled.
+fn scalar_type(kind: &Value) -> Option<&str> {
+    match kind {
+        Value::String(name) => Some(name.as_str()),
+        Value::Array(names) => {
+            let mut non_null = names.iter().filter(|name| name.as_str() != Some("null"));
+            let only = non_null.next()?.as_str()?;
+            non_null.next().is_none().then_some(only)
+        }
+        _ => None,
+    }
+}
+
+fn string_choices(values: &[Value]) -> Option<Vec<String>> {
+    // `null` among the choices is how an optional choice is spelled, which
+    // leaving the field unset already covers.
+    let choices = values
+        .iter()
+        .filter(|value| !value.is_null())
+        .map(|value| value.as_str().map(str::to_string))
+        .collect::<Option<Vec<_>>>()?;
+    (!choices.is_empty()).then_some(choices)
+}
+
+/// `oneOf` / `anyOf` as schema generators write them for an enum (one `const`
+/// or single-value `enum` per variant) or for an optional value (the value's
+/// schema next to `{ "type": "null" }`).
+fn variants_kind(variants: &[Value]) -> Option<SchemaFieldKind> {
+    let variants = variants
+        .iter()
+        .map(Value::as_object)
+        .collect::<Option<Vec<_>>>()?;
+    let non_null = variants
+        .into_iter()
+        .filter(|variant| !is_null_schema(variant))
+        .collect::<Vec<_>>();
+
+    let mut choices = Vec::new();
+    for variant in &non_null {
+        match (variant.get("const"), variant.get("enum")) {
+            (Some(Value::String(constant)), _) => choices.push(constant.clone()),
+            (None, Some(Value::Array(values))) => choices.extend(string_choices(values)?),
+            _ => {
+                return match non_null.as_slice() {
+                    [only] => property_kind(only),
+                    _ => None,
+                };
+            }
+        }
+    }
+    (!choices.is_empty()).then_some(SchemaFieldKind::Choice(choices))
+}
+
+fn is_null_schema(variant: &Map<String, Value>) -> bool {
+    variant.get("type").and_then(Value::as_str) == Some("null")
+        && !variant.contains_key("const")
+        && !variant.contains_key("enum")
+}
+
+fn user_context_server_settings(id: &ContextServerId, cx: &App) -> Option<ContextServerSettings> {
+    cx.global::<SettingsStore>()
+        .raw_user_settings()?
+        .content
+        .project
+        .context_servers
+        .get(&id.0)
+        .cloned()
+        .map(ContextServerSettings::from)
+}
+
+fn looks_secret(key: &str) -> bool {
+    let lowercase = key.to_ascii_lowercase();
+    [
+        "key",
+        "token",
+        "secret",
+        "password",
+        "authorization",
+        "credential",
+        "cookie",
+        "passphrase",
+    ]
+    .iter()
+    .any(|word| lowercase.contains(word))
+        // Only as a word of its own: as a substring it would catch `path`.
+        || key_words(key).iter().any(|word| word == "pat")
+}
+
+/// `github_pat`, `GITHUB-PAT` and `githubPat` all split into `github`, `pat`.
+fn key_words(key: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut previous_was_lowercase = false;
+    for character in key.chars() {
+        if !character.is_ascii_alphanumeric() {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            previous_was_lowercase = false;
+            continue;
+        }
+        if character.is_ascii_uppercase() && previous_was_lowercase && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        previous_was_lowercase = character.is_ascii_lowercase() || character.is_ascii_digit();
+        current.push(character.to_ascii_lowercase());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+/// Whether any key that looks like it names a secret holds a value, at any
+/// depth.
+fn contains_secret_values(value: &Value) -> bool {
+    match value {
+        Value::Object(entries) => entries.iter().any(|(key, value)| {
+            let holds_value = match value {
+                Value::Null => false,
+                Value::String(text) => !text.is_empty(),
+                _ => true,
+            };
+            (looks_secret(key) && holds_value) || contains_secret_values(value)
+        }),
+        Value::Array(items) => items.iter().any(contains_secret_values),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => false,
+    }
+}
+
+/// `None` when the value does not fit the field (a string where a number is
+/// expected, a choice that is not among the options).
+fn initial_field_value(field: &SchemaFormField, value: Option<&Value>) -> Option<SchemaFieldValue> {
+    let value = value
+        .or(field.default.as_ref())
+        .filter(|value| !value.is_null());
+    match (&field.kind, value) {
+        (SchemaFieldKind::Text | SchemaFieldKind::Number | SchemaFieldKind::Integer, None) => {
+            Some(SchemaFieldValue::Text(String::new()))
+        }
+        (SchemaFieldKind::Text, Some(Value::String(text))) => {
+            Some(SchemaFieldValue::Text(text.clone()))
+        }
+        (SchemaFieldKind::Number, Some(Value::Number(number))) => {
+            Some(SchemaFieldValue::Text(number.to_string()))
+        }
+        (SchemaFieldKind::Integer, Some(Value::Number(number)))
+            if number.is_i64() || number.is_u64() =>
+        {
+            Some(SchemaFieldValue::Text(number.to_string()))
+        }
+        (SchemaFieldKind::Boolean, None) => Some(SchemaFieldValue::Toggle(false)),
+        (SchemaFieldKind::Boolean, Some(Value::Bool(on))) => Some(SchemaFieldValue::Toggle(*on)),
+        (SchemaFieldKind::Choice(_), None) => Some(SchemaFieldValue::Choice(None)),
+        (SchemaFieldKind::Choice(options), Some(Value::String(choice)))
+            if options.contains(choice) =>
+        {
+            Some(SchemaFieldValue::Choice(Some(choice.clone())))
+        }
+        _ => None,
+    }
+}
+
+fn settings_from_form(
+    fields: &[SchemaFormField],
+    initial: &[SchemaFieldValue],
+    current: &[SchemaFieldValue],
+    base: &Map<String, Value>,
+    require: bool,
+) -> Result<Map<String, Value>, String> {
+    let mut settings = base.clone();
+    for ((field, initial), current) in fields.iter().zip(initial).zip(current) {
+        let blank = match current {
+            SchemaFieldValue::Text(text) => text.trim().is_empty(),
+            SchemaFieldValue::Toggle(_) => false,
+            SchemaFieldValue::Choice(choice) => choice.is_none(),
+        };
+        if require && field.required && blank {
+            return Err(format!("「{}」は必須です。", field.title));
+        }
+        if current == initial {
+            continue;
+        }
+
+        let value = match current {
+            SchemaFieldValue::Toggle(on) => Some(Value::Bool(*on)),
+            SchemaFieldValue::Choice(choice) => choice.clone().map(Value::String),
+            SchemaFieldValue::Text(text) => match &field.kind {
+                SchemaFieldKind::Number => parse_number(text, &field.title)?,
+                SchemaFieldKind::Integer => parse_integer(text, &field.title)?,
+                // Removed rather than written as "", which the extension could
+                // take for a value.
+                _ if text.is_empty() && !field.required => None,
+                _ => Some(Value::String(text.clone())),
+            },
+        };
+        match value {
+            Some(value) => {
+                settings.insert(field.key.clone(), value);
+            }
+            None => {
+                settings.shift_remove(&field.key);
+            }
+        }
+    }
+    Ok(settings)
+}
+
+fn parse_number(text: &str, title: &str) -> Result<Option<Value>, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    if let Ok(integer) = text.parse::<i64>() {
+        return Ok(Some(Value::from(integer)));
+    }
+    text.parse::<f64>()
+        .ok()
+        .and_then(serde_json::Number::from_f64)
+        .map(|number| Some(Value::Number(number)))
+        .ok_or_else(|| format!("「{title}」には数値を入力してください。"))
+}
+
+fn parse_integer(text: &str, title: &str) -> Result<Option<Value>, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    text.parse::<i64>()
+        .map(|integer| Some(Value::from(integer)))
+        .map_err(|_| format!("「{title}」には整数を入力してください。"))
+}
+
 impl ModalView for ConfigureContextServerModal {}
 
 impl Focusable for ConfigureContextServerModal {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         match &self.source {
             ConfigurationSource::Existing { editor, .. } => editor.focus_handle(cx),
-            ConfigurationSource::Extension { editor, .. } => editor
-                .as_ref()
-                .map(|editor| editor.focus_handle(cx))
-                .unwrap_or_else(|| cx.focus_handle()),
+            ConfigurationSource::Extension {
+                editor,
+                form,
+                editing_json,
+                ..
+            } => match form {
+                Some(form) if !*editing_json => form.focus_handle(cx),
+                _ => editor
+                    .as_ref()
+                    .map(|editor| editor.focus_handle(cx))
+                    .unwrap_or_else(|| cx.focus_handle()),
+            },
         }
     }
 }
@@ -828,17 +1468,244 @@ impl ConfigureContextServerModal {
         }
     }
 
-    fn render_modal_content(&self, cx: &App) -> AnyElement {
-        let editor = match &self.source {
-            ConfigurationSource::Existing { editor, .. } => editor,
-            ConfigurationSource::Extension { editor, .. } => {
-                let Some(editor) = editor else {
-                    return div().into_any_element();
-                };
-                editor
+    fn render_modal_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let (editor, form, editing_json, json_revealed) = match &self.source {
+            ConfigurationSource::Existing { editor, .. } => {
+                return Self::render_json_editor(editor, cx);
             }
+            ConfigurationSource::Extension { editor: None, .. } => {
+                return div().into_any_element();
+            }
+            ConfigurationSource::Extension {
+                editor: Some(editor),
+                form,
+                editing_json,
+                json_revealed,
+                ..
+            } => (editor, form.as_ref(), *editing_json, *json_revealed),
         };
 
+        let body = match form {
+            Some(form) if !editing_json => Self::render_settings_form(form, window, cx),
+            // Switching to JSON from the form is itself the explicit request.
+            Some(_) => Self::render_json_editor(editor, cx),
+            None if !json_revealed => Self::render_hidden_json(editor, cx),
+            None => Self::render_json_editor(editor, cx),
+        };
+
+        v_flex()
+            .w_full()
+            .gap_2()
+            .map(|this| match form {
+                Some(_) => this.child(
+                    h_flex().w_full().justify_end().child(
+                        Button::new(
+                            "toggle-json-editing",
+                            if editing_json {
+                                "フォームで編集"
+                            } else {
+                                "JSON で編集"
+                            },
+                        )
+                        .style(ButtonStyle::Subtle)
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(
+                            |this, _event, window, cx| {
+                                this.toggle_json_editing(window, cx);
+                            },
+                        )),
+                    ),
+                ),
+                None => this.child(
+                    Label::new("この拡張機能の設定はフォームで表せないため、JSON で編集します。")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                ),
+            })
+            .child(body)
+            .into_any_element()
+    }
+
+    fn render_settings_form(
+        form: &ExtensionSettingsForm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if form.fields.is_empty() {
+            return Label::new("この拡張機能には設定する項目がありません。")
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element();
+        }
+
+        let border_focused = cx.theme().colors().border_focused;
+        let modal = cx.weak_entity();
+        let rows = form
+            .fields
+            .iter()
+            .zip(&form.inputs)
+            .enumerate()
+            .map(|(index, (field, input))| {
+                let control = match input {
+                    ExtensionSettingsInput::Text(editor) => {
+                        let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
+                        ui::input_frame(false, cx)
+                            .w_full()
+                            .track_focus(&focus_handle)
+                            .focus(|style| style.border_color(border_focused))
+                            .child(editor.clone())
+                            .into_any_element()
+                    }
+                    ExtensionSettingsInput::Toggle(on) => Switch::new(
+                        ("extension-setting-toggle", index),
+                        if *on {
+                            ToggleState::Selected
+                        } else {
+                            ToggleState::Unselected
+                        },
+                    )
+                    .on_click(cx.listener(move |this, state: &ToggleState, _window, cx| {
+                        this.set_form_input(
+                            index,
+                            ExtensionSettingsInput::Toggle(*state == ToggleState::Selected),
+                            cx,
+                        );
+                    }))
+                    .into_any_element(),
+                    ExtensionSettingsInput::Choice(selected) => {
+                        let options = match &field.kind {
+                            SchemaFieldKind::Choice(options) => options.clone(),
+                            _ => Vec::new(),
+                        };
+                        Self::render_choice(
+                            index,
+                            field.required,
+                            selected.clone(),
+                            options,
+                            modal.clone(),
+                            window,
+                            cx,
+                        )
+                    }
+                };
+
+                v_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(
+                        h_flex()
+                            .gap_1p5()
+                            .child(Label::new(field.title.clone()).size(LabelSize::Small))
+                            .when(field.required, |this| {
+                                this.child(
+                                    Label::new("必須")
+                                        .size(LabelSize::XSmall)
+                                        .color(Color::Muted),
+                                )
+                            }),
+                    )
+                    .child(control)
+                    .when_some(field.description.clone(), |this, description| {
+                        this.child(
+                            Label::new(description)
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        v_flex()
+            .w_full()
+            .gap_3()
+            .track_focus(&form.focus_handle)
+            .children(rows)
+            .into_any_element()
+    }
+
+    fn render_choice(
+        index: usize,
+        required: bool,
+        selected: Option<String>,
+        options: Vec<String>,
+        modal: WeakEntity<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let label = selected
+            .clone()
+            .unwrap_or_else(|| UNSET_CHOICE_LABEL.to_string());
+        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+            if !required {
+                let modal = modal.clone();
+                menu = menu.toggleable_entry(
+                    UNSET_CHOICE_LABEL,
+                    selected.is_none(),
+                    IconPosition::Start,
+                    None,
+                    move |_window, cx| {
+                        modal
+                            .update(cx, |this, cx| {
+                                this.set_form_input(index, ExtensionSettingsInput::Choice(None), cx)
+                            })
+                            .log_err();
+                    },
+                );
+            }
+            for option in options {
+                let is_selected = selected.as_deref() == Some(option.as_str());
+                let modal = modal.clone();
+                menu = menu.toggleable_entry(
+                    option.clone(),
+                    is_selected,
+                    IconPosition::Start,
+                    None,
+                    move |_window, cx| {
+                        modal
+                            .update(cx, |this, cx| {
+                                this.set_form_input(
+                                    index,
+                                    ExtensionSettingsInput::Choice(Some(option.clone())),
+                                    cx,
+                                )
+                            })
+                            .log_err();
+                    },
+                );
+            }
+            menu
+        });
+        DropdownMenu::new(("extension-setting-choice", index), label, menu)
+            .style(DropdownStyle::Outlined)
+            .full_width(true)
+            .into_any_element()
+    }
+
+    fn render_hidden_json(editor: &Entity<Editor>, cx: &mut Context<Self>) -> AnyElement {
+        h_flex()
+            .w_full()
+            .gap_2()
+            .justify_between()
+            // Keeps keyboard focus inside the modal while the editor is not
+            // on screen, so Escape and Ctrl+Enter still reach it.
+            .track_focus(&editor.focus_handle(cx))
+            .child(
+                Label::new("保存済みの設定に秘密情報らしい値が含まれるため、JSON を隠しています。")
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+            .child(
+                Button::new("reveal-extension-settings", "表示")
+                    .style(ButtonStyle::Outlined)
+                    .label_size(LabelSize::Small)
+                    .on_click(cx.listener(|this, _event, window, cx| {
+                        this.reveal_json(window, cx);
+                    })),
+            )
+            .into_any_element()
+    }
+
+    fn render_json_editor(editor: &Entity<Editor>, cx: &App) -> AnyElement {
         div()
             .p_2()
             .rounded_md()
@@ -1145,7 +2012,7 @@ impl Render for ConfigureContextServerModal {
                                         .overflow_y_scroll()
                                         .track_scroll(&self.scroll_handle)
                                         .child(self.render_modal_description(window, cx))
-                                        .child(self.render_modal_content(cx))
+                                        .child(self.render_modal_content(window, cx))
                                         .child(match &self.state {
                                             State::Idle => div(),
                                             State::Waiting => {
@@ -1252,5 +2119,339 @@ mod tests {
         let oauth = oauth.expect("oauth should be present");
         assert_eq!(oauth.client_id, "client-id");
         assert_eq!(oauth.client_secret.as_deref(), Some("client-secret"));
+    }
+
+    use serde_json::json;
+
+    /// What `schemars` 0.8 generates for the GitHub extension's settings.
+    #[test]
+    fn maps_a_flat_extension_schema_to_form_fields() {
+        let schema = json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "GitHubContextServerSettings",
+            "type": "object",
+            "required": ["github_personal_access_token"],
+            "properties": {
+                "github_personal_access_token": { "type": "string" }
+            }
+        });
+        assert_eq!(
+            schema_form_fields(&schema),
+            Some(vec![SchemaFormField {
+                key: "github_personal_access_token".into(),
+                title: "github_personal_access_token".into(),
+                description: None,
+                kind: SchemaFieldKind::Text,
+                required: true,
+                secret: true,
+                default: None,
+            }])
+        );
+    }
+
+    fn mixed_schema() -> Value {
+        json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Settings",
+            "type": "object",
+            "properties": {
+                "database_url": { "description": "Postgres connection string", "type": "string" },
+                "api_key": { "type": ["string", "null"] },
+                "port": { "title": "Port", "type": "integer", "format": "uint16", "minimum": 0, "default": 5432 },
+                "ratio": { "type": "number" },
+                "read_only": { "type": "boolean", "default": false },
+                "mode": { "type": "string", "enum": ["fast", "safe"] },
+                "level": { "oneOf": [
+                    { "const": "low", "description": "Fewer requests" },
+                    { "const": "high" }
+                ] },
+                "region": { "anyOf": [
+                    { "type": "string", "enum": ["us", "eu"] },
+                    { "type": "null" }
+                ] },
+                "label": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+                "admin_password": { "type": "string" }
+            },
+            "required": ["database_url"],
+            "additionalProperties": false
+        })
+    }
+
+    fn field<'a>(fields: &'a [SchemaFormField], key: &str) -> &'a SchemaFormField {
+        fields
+            .iter()
+            .find(|field| field.key == key)
+            .unwrap_or_else(|| panic!("no field {key}"))
+    }
+
+    #[test]
+    fn maps_every_scalar_kind_and_every_enum_spelling() {
+        let fields = schema_form_fields(&mixed_schema()).expect("a flat schema");
+        let summary = fields
+            .iter()
+            .map(|field| {
+                (
+                    field.key.as_str(),
+                    field.kind.clone(),
+                    field.required,
+                    field.secret,
+                )
+            })
+            .collect::<Vec<_>>();
+        let choice = |options: &[&str]| {
+            SchemaFieldKind::Choice(options.iter().map(|option| option.to_string()).collect())
+        };
+        assert_eq!(
+            summary,
+            vec![
+                ("database_url", SchemaFieldKind::Text, true, false),
+                ("api_key", SchemaFieldKind::Text, false, true),
+                ("port", SchemaFieldKind::Integer, false, false),
+                ("ratio", SchemaFieldKind::Number, false, false),
+                ("read_only", SchemaFieldKind::Boolean, false, false),
+                ("mode", choice(&["fast", "safe"]), false, false),
+                ("level", choice(&["low", "high"]), false, false),
+                ("region", choice(&["us", "eu"]), false, false),
+                ("label", SchemaFieldKind::Text, false, false),
+                ("admin_password", SchemaFieldKind::Text, false, true),
+            ]
+        );
+        assert_eq!(
+            field(&fields, "database_url").description.as_deref(),
+            Some("Postgres connection string")
+        );
+        assert_eq!(field(&fields, "port").title, "Port");
+        assert_eq!(field(&fields, "port").default, Some(json!(5432)));
+    }
+
+    #[test]
+    fn leaves_anything_nested_to_the_json_editor() {
+        for schema in [
+            json!({ "type": "object", "properties": { "nested": { "type": "object", "properties": {} } } }),
+            json!({ "type": "object", "properties": { "list": { "type": "array", "items": { "type": "string" } } } }),
+            json!({
+                "type": "object",
+                "properties": { "mode": { "$ref": "#/definitions/Mode" } },
+                "definitions": { "Mode": { "enum": ["a"] } }
+            }),
+            json!({ "type": "object", "properties": { "either": { "anyOf": [{ "type": "string" }, { "type": "integer" }] } } }),
+            json!({ "type": "object", "properties": { "a": { "type": "string" } }, "oneOf": [{ "required": ["a"] }] }),
+            json!({ "type": "object", "properties": {}, "additionalProperties": { "type": "string" } }),
+            json!({ "type": "object" }),
+            json!({ "type": "array", "items": { "type": "string" } }),
+            json!("not a schema"),
+        ] {
+            assert_eq!(schema_form_fields(&schema), None, "{schema}");
+        }
+    }
+
+    #[test]
+    fn a_value_that_does_not_fit_its_field_is_left_to_the_json_editor() {
+        let fields = schema_form_fields(&mixed_schema()).expect("a flat schema");
+        let port = field(&fields, "port");
+        assert_eq!(initial_field_value(port, Some(&json!("5432"))), None);
+        assert_eq!(initial_field_value(port, Some(&json!(1.5))), None);
+        assert_eq!(
+            initial_field_value(port, Some(&json!(8080))),
+            Some(SchemaFieldValue::Text("8080".into()))
+        );
+        // Absent: the schema's default is shown.
+        assert_eq!(
+            initial_field_value(port, None),
+            Some(SchemaFieldValue::Text("5432".into()))
+        );
+        assert_eq!(
+            initial_field_value(field(&fields, "mode"), Some(&json!("turbo"))),
+            None
+        );
+        assert_eq!(
+            initial_field_value(field(&fields, "read_only"), Some(&json!("yes"))),
+            None
+        );
+    }
+
+    fn initial_values(
+        fields: &[SchemaFormField],
+        base: &Map<String, Value>,
+    ) -> Vec<SchemaFieldValue> {
+        fields
+            .iter()
+            .map(|field| {
+                initial_field_value(field, base.get(&field.key))
+                    .unwrap_or_else(|| panic!("{} should fit", field.key))
+            })
+            .collect()
+    }
+
+    fn set(
+        fields: &[SchemaFormField],
+        values: &mut [SchemaFieldValue],
+        key: &str,
+        value: SchemaFieldValue,
+    ) {
+        let index = fields
+            .iter()
+            .position(|field| field.key == key)
+            .unwrap_or_else(|| panic!("no field {key}"));
+        values[index] = value;
+    }
+
+    #[test]
+    fn an_untouched_form_writes_back_exactly_what_it_was_filled_with() {
+        let fields = schema_form_fields(&mixed_schema()).expect("a flat schema");
+        let base = json!({
+            "database_url": "postgres://localhost/db",
+            "extra": { "kept": [1, 2] },
+            "read_only": true,
+            "label": ""
+        })
+        .as_object()
+        .cloned()
+        .expect("an object");
+        let initial = initial_values(&fields, &base);
+
+        let settings = settings_from_form(&fields, &initial, &initial, &base, true)
+            .expect("nothing to complain about");
+        assert_eq!(settings, base);
+        assert_eq!(
+            settings.keys().collect::<Vec<_>>(),
+            base.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn writes_only_what_changed_and_checks_it_first() {
+        let fields = schema_form_fields(&mixed_schema()).expect("a flat schema");
+        let base = json!({ "database_url": "postgres://localhost/db", "label": "old" })
+            .as_object()
+            .cloned()
+            .expect("an object");
+        let initial = initial_values(&fields, &base);
+
+        let mut current = initial.clone();
+        set(
+            &fields,
+            &mut current,
+            "port",
+            SchemaFieldValue::Text("8080".into()),
+        );
+        set(
+            &fields,
+            &mut current,
+            "ratio",
+            SchemaFieldValue::Text("0.5".into()),
+        );
+        set(
+            &fields,
+            &mut current,
+            "read_only",
+            SchemaFieldValue::Toggle(true),
+        );
+        set(
+            &fields,
+            &mut current,
+            "mode",
+            SchemaFieldValue::Choice(Some("safe".into())),
+        );
+        set(
+            &fields,
+            &mut current,
+            "label",
+            SchemaFieldValue::Text(String::new()),
+        );
+        let settings =
+            settings_from_form(&fields, &initial, &current, &base, true).expect("valid values");
+        assert_eq!(
+            Value::Object(settings),
+            json!({
+                "database_url": "postgres://localhost/db",
+                "port": 8080,
+                "ratio": 0.5,
+                "read_only": true,
+                "mode": "safe"
+            })
+        );
+
+        let mut missing = initial.clone();
+        set(
+            &fields,
+            &mut missing,
+            "database_url",
+            SchemaFieldValue::Text("  ".into()),
+        );
+        assert_eq!(
+            settings_from_form(&fields, &initial, &missing, &base, true),
+            Err("「database_url」は必須です。".to_string())
+        );
+        // Switching to the JSON editor does not insist on required fields.
+        assert!(settings_from_form(&fields, &initial, &missing, &base, false).is_ok());
+
+        let mut not_an_integer = initial.clone();
+        set(
+            &fields,
+            &mut not_an_integer,
+            "port",
+            SchemaFieldValue::Text("80.5".into()),
+        );
+        assert_eq!(
+            settings_from_form(&fields, &initial, &not_an_integer, &base, true),
+            Err("「Port」には整数を入力してください。".to_string())
+        );
+
+        let mut not_a_number = initial.clone();
+        set(
+            &fields,
+            &mut not_a_number,
+            "ratio",
+            SchemaFieldValue::Text("half".into()),
+        );
+        assert_eq!(
+            settings_from_form(&fields, &initial, &not_a_number, &base, true),
+            Err("「ratio」には数値を入力してください。".to_string())
+        );
+    }
+
+    #[test]
+    fn masks_fields_whose_names_look_secret() {
+        for key in [
+            "GITHUB_TOKEN",
+            "apiKey",
+            "client_secret",
+            "password",
+            "brave_api_key",
+            "Authorization",
+            "aws_credentials",
+            "session_cookie",
+            "ssh_passphrase",
+            "github_pat",
+            "GITHUB-PAT",
+            "githubPat",
+        ] {
+            assert!(looks_secret(key), "{key}");
+        }
+        for key in [
+            "database_url",
+            "region",
+            "read_only",
+            "path",
+            "pattern",
+            "workspace_path",
+        ] {
+            assert!(!looks_secret(key), "{key}");
+        }
+    }
+
+    #[test]
+    fn finds_secret_values_at_any_depth() {
+        assert!(!contains_secret_values(
+            &json!({ "region": "eu", "api_key": "" })
+        ));
+        assert!(!contains_secret_values(
+            &json!({ "api_key": null, "port": 5432 })
+        ));
+        assert!(contains_secret_values(&json!({ "api_key": "sk-123" })));
+        assert!(contains_secret_values(
+            &json!({ "servers": [{ "name": "a", "auth": { "token": "t" } }] })
+        ));
     }
 }

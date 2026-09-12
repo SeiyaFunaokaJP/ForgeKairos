@@ -1,4 +1,4 @@
-use crate::{IconDecoration, IconDecorationKind, Tooltip, prelude::*};
+use crate::{Chip, IconDecoration, IconDecorationKind, Tooltip, prelude::*};
 use gpui::{Animation, AnimationExt, SharedString, pulsating_between};
 use std::time::Duration;
 
@@ -12,6 +12,8 @@ pub enum AiSettingItemStatus {
     AuthRequired,
     ClientSecretRequired,
     Authenticating,
+    /// A project's settings ask to launch it and nobody has allowed it yet.
+    ApprovalRequired,
 }
 
 impl AiSettingItemStatus {
@@ -24,6 +26,7 @@ impl AiSettingItemStatus {
             Self::AuthRequired => "認証が必要です。",
             Self::ClientSecretRequired => "クライアントシークレットが必要です。",
             Self::Authenticating => "認証の完了を待っています…",
+            Self::ApprovalRequired => "承認待ちです。",
         }
     }
 
@@ -33,7 +36,9 @@ impl AiSettingItemStatus {
             Self::Starting | Self::Authenticating => Some(Color::Muted),
             Self::Running => Some(Color::Success),
             Self::Error => Some(Color::Error),
-            Self::AuthRequired | Self::ClientSecretRequired => Some(Color::Warning),
+            Self::AuthRequired | Self::ClientSecretRequired | Self::ApprovalRequired => {
+                Some(Color::Warning)
+            }
         }
     }
 
@@ -47,6 +52,8 @@ pub enum AiSettingItemSource {
     Extension,
     Custom,
     Registry,
+    /// Defined by a project's own settings rather than the user's.
+    Project,
 }
 
 impl AiSettingItemSource {
@@ -55,6 +62,7 @@ impl AiSettingItemSource {
             Self::Extension => IconName::ZedSrcExtension,
             Self::Custom => IconName::ZedSrcCustom,
             Self::Registry => IconName::AcpRegistry,
+            Self::Project => IconName::Folder,
         }
     }
 
@@ -63,6 +71,7 @@ impl AiSettingItemSource {
             Self::Extension => format!("{label} は拡張機能からインストールされました。"),
             Self::Registry => format!("{label} は ACP レジストリからインストールされました。"),
             Self::Custom => format!("{label} は手動で設定されました。"),
+            Self::Project => format!("{label} はプロジェクトの設定で定義されています。"),
         }
     }
 }
@@ -75,6 +84,7 @@ pub struct AiSettingItem {
     source: AiSettingItemSource,
     icon: Option<AnyElement>,
     label: SharedString,
+    badge: Option<SharedString>,
     detail_label: Option<SharedString>,
     detail_label_tooltip: Option<SharedString>,
     actions: Vec<AnyElement>,
@@ -94,11 +104,19 @@ impl AiSettingItem {
             source,
             icon: None,
             label: label.into(),
+            badge: None,
             detail_label: None,
             detail_label_tooltip: None,
             actions: Vec::new(),
             details: None,
         }
+    }
+
+    /// A short word shown after the source icon, for a source that must not
+    /// go unnoticed behind a hover tooltip.
+    pub fn badge(mut self, badge: impl Into<SharedString>) -> Self {
+        self.badge = Some(badge.into());
+        self
     }
 
     pub fn icon(mut self, element: impl IntoElement) -> Self {
@@ -137,6 +155,7 @@ impl RenderOnce for AiSettingItem {
             source,
             icon,
             label,
+            badge,
             detail_label,
             detail_label_tooltip,
             actions,
@@ -235,6 +254,9 @@ impl RenderOnce for AiSettingItem {
                                             .color(Color::Muted),
                                     ),
                             )
+                            .when_some(badge, |this, badge| {
+                                this.child(Chip::new(badge).label_color(Color::Muted))
+                            })
                             .when_some(detail_label, |this, detail| {
                                 this.child(
                                     div()

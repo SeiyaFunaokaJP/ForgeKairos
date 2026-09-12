@@ -259,6 +259,7 @@ impl HeadlessProject {
     pub fn init(cx: &mut App) {
         settings::init(cx);
         log_store::init(true, cx);
+        project::project_launch_approvals::ProjectLaunchApprovals::mark_process_headless(cx);
     }
 
     /// A project that is the only thing its process serves: it brings its own

@@ -26,8 +26,8 @@ pub(crate) use llm_providers_page::{
     ClaudeCliState, LlmProviderForm, render_add_llm_provider_popover, render_llm_providers_page,
 };
 pub(crate) use mcp_servers_page::{
-    McpPageState, McpServerForm, open_mcp_servers_page, render_add_server_popover,
-    render_mcp_servers_page, retarget_mcp_server_subscription,
+    McpPageState, McpServerForm, init_launch_approval_prompts, open_mcp_servers_page,
+    render_add_server_popover, render_mcp_servers_page, retarget_mcp_server_subscription,
 };
 pub(crate) use network_allowlist::{
     NetworkAllowlistState, load_network_allowlist, render_network_allowlist_page,

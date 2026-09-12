@@ -1,10 +1,18 @@
 use anyhow::Result;
 use context_server::test::create_fake_transport;
 use context_server::{ContextServer, ContextServerId};
-use gpui::{AppContext, AsyncApp, Entity, Subscription, Task, TestAppContext, UpdateGlobal as _};
+use gpui::{
+    AppContext, AsyncApp, Entity, SharedString, Subscription, Task, TestAppContext,
+    UpdateGlobal as _,
+};
 use http_client::{FakeHttpClient, Response};
 use project::context_server_store::registry::ContextServerDescriptorRegistry;
 use project::context_server_store::*;
+use project::project_launch_approvals::{
+    CHANGED_SINCE_SHOWN_MESSAGE, ExecutionHost, LaunchApprovalKey, LaunchApprovalState,
+    LaunchDefinitionFile, LaunchHost, LaunchKind, ProjectLaunchApprovals,
+    ProjectLaunchApprovalsEvent, UnboundWorktreeContent,
+};
 use project::project_settings::ContextServerSettings;
 use project::worktree_store::WorktreeStore;
 use project::{
@@ -724,8 +732,12 @@ async fn test_context_server_loaded_when_first_worktree_added(cx: &mut TestAppCo
     });
 }
 
+// A server from the user's settings starts in the neutral directory: what an
+// interpreter or package runner loads from its working directory is part of
+// no approval, so that must not be a directory an agent can write (ADR-F42).
+// Adding a worktree therefore does not restart it either.
 #[gpui::test]
-async fn test_stdio_server_restarts_when_project_root_becomes_available(cx: &mut TestAppContext) {
+async fn test_user_stdio_server_runs_in_the_neutral_directory(cx: &mut TestAppContext) {
     const SERVER_ID: &str = "mcp-1";
     let server_id = ContextServerId(SERVER_ID.into());
 
@@ -741,8 +753,6 @@ async fn test_stdio_server_restarts_when_project_root_becomes_available(cx: &mut
         cx.set_global(settings_store);
     });
 
-    // Open a single-file worktree, whose `root_dir()` is `None`, so the server is
-    // spawned with no working directory even though it is configured.
     let project = Project::test(fs.clone(), [path!("/lonely.rs").as_ref()], cx).await;
 
     let executor = cx.executor();
@@ -785,19 +795,8 @@ async fn test_stdio_server_restarts_when_project_root_becomes_available(cx: &mut
         cx.run_until_parked();
     }
 
-    // Adding a directory worktree makes the project root resolvable. Since the
-    // server was started with working directory `None`, it must be restarted so
-    // it picks up the new root — otherwise it keeps running under Zed's own cwd.
     {
-        let _server_events = assert_server_events(
-            &store,
-            vec![
-                (server_id.clone(), ContextServerStatus::Stopped),
-                (server_id.clone(), ContextServerStatus::Starting),
-                (server_id.clone(), ContextServerStatus::Running),
-            ],
-            cx,
-        );
+        let _server_events = assert_server_events(&store, vec![], cx);
         project
             .update(cx, |project, cx| {
                 project.find_or_create_worktree(path!("/project"), true, cx)
@@ -808,10 +807,19 @@ async fn test_stdio_server_restarts_when_project_root_becomes_available(cx: &mut
     }
 
     cx.update(|cx| {
+        let store = store.read(cx);
         assert_eq!(
-            store.read(cx).status_for_server(&server_id),
-            Some(ContextServerStatus::Running),
-            "Server should be running again after restarting with the project root"
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::Running)
+        );
+        assert_eq!(
+            store.working_directory_for_test(&server_id),
+            Some(Some(neutral_working_directory())),
+            "a server from the user's settings starts in the neutral directory"
+        );
+        assert_eq!(
+            &*neutral_working_directory(),
+            paths::data_dir().join("mcp-neutral-cwd").as_path()
         );
     });
 }
@@ -1601,6 +1609,8 @@ async fn test_multi_worktree_context_server_settings(cx: &mut TestAppContext) {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
     });
+    // Both servers come from `.zed/settings.json`, which needs approval (ADR-F42).
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
 
     // Create project with only project_a initially
     let project = Project::test(fs.clone(), [path!("/project_a").as_ref()], cx).await;
@@ -1652,6 +1662,21 @@ async fn test_multi_worktree_context_server_settings(cx: &mut TestAppContext) {
             configured.contains(&server_b_id),
             "server-b should now be configured from project_b"
         );
+
+        let store = store.read(cx);
+        for server_id in [&server_a_id, &server_b_id] {
+            assert_eq!(
+                store
+                    .launch_approval_details(server_id)
+                    .map(|details| details.state),
+                Some(LaunchApprovalState::Approved),
+                "{server_id} comes from a project and was pre-approved"
+            );
+        }
+        assert_eq!(
+            store.status_for_server(&server_b_id),
+            Some(ContextServerStatus::Running)
+        );
     });
 }
 
@@ -1699,6 +1724,7 @@ async fn test_multi_worktree_duplicate_server_first_wins(cx: &mut TestAppContext
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
     });
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
 
     // Create project with both worktrees
     let project = Project::test(
@@ -1720,6 +1746,13 @@ async fn test_multi_worktree_duplicate_server_first_wins(cx: &mut TestAppContext
             .filter(|id| id.0.as_ref() == SHARED_SERVER)
             .count();
         assert_eq!(count, 1, "duplicate server ID should appear exactly once");
+
+        let details = store
+            .read(cx)
+            .launch_approval_details(&ContextServerId(SHARED_SERVER.into()))
+            .expect("the shared server is defined by a project");
+        assert_eq!(details.target.display().to_string(), "binary-from-a arg-a");
+        assert_eq!(details.state, LaunchApprovalState::Approved);
     });
 }
 
@@ -1902,4 +1935,1044 @@ impl ContextServerDescriptor for FakeContextServerDescriptor {
     ) -> Task<Result<Option<::extension::ContextServerConfiguration>>> {
         Task::ready(Ok(None))
     }
+}
+
+const PROJECT_SERVER_ID: &str = "project-server";
+
+fn project_server_settings(args: &[&str]) -> String {
+    json!({
+        "context_servers": {
+            "project-server": {
+                "command": "project-server-binary",
+                "args": args,
+                "env": { "API_TOKEN": "secret" }
+            }
+        }
+    })
+    .to_string()
+}
+
+fn init_launch_approval_test(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        let settings_store = SettingsStore::test(cx);
+        cx.set_global(settings_store);
+        cx.set_global(db::AppDatabase::test_new());
+    });
+}
+
+/// Opens `/test` holding `files` once a factory is in place that records
+/// every server it creates, so no server is ever spawned for real.
+async fn open_project_with_fake_servers(
+    files: serde_json::Value,
+    cx: &mut TestAppContext,
+) -> (
+    Arc<FakeFs>,
+    Entity<Project>,
+    Entity<ContextServerStore>,
+    Rc<RefCell<Vec<ContextServerId>>>,
+) {
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/test"), files).await;
+    let project = Project::test(fs.clone(), std::iter::empty::<&std::path::Path>(), cx).await;
+    let store = project.read_with(cx, |project, _| project.context_server_store());
+    let created_servers = Rc::new(RefCell::new(Vec::new()));
+    let executor = cx.executor();
+    store.update(cx, |store, _| {
+        let created_servers = created_servers.clone();
+        store.set_context_server_factory(Box::new(move |id, _| {
+            created_servers.borrow_mut().push(id.clone());
+            Arc::new(ContextServer::new(
+                id.clone(),
+                Arc::new(create_fake_transport(id.0.to_string(), executor.clone())),
+            ))
+        }));
+    });
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/test"), true, cx)
+        })
+        .await
+        .expect("failed to add worktree");
+    cx.run_until_parked();
+    (fs, project, store, created_servers)
+}
+
+fn status_of(
+    store: &Entity<ContextServerStore>,
+    server_id: &ContextServerId,
+    cx: &mut TestAppContext,
+) -> Option<ContextServerStatus> {
+    store.read_with(cx, |store, _| store.status_for_server(server_id))
+}
+
+fn approval_state_of(
+    store: &Entity<ContextServerStore>,
+    server_id: &ContextServerId,
+    cx: &mut TestAppContext,
+) -> Option<LaunchApprovalState> {
+    store.read_with(cx, |store, _| {
+        store
+            .launch_approval_details(server_id)
+            .map(|details| details.state)
+    })
+}
+
+/// The key of the launch the approval UI would show for `server_id`.
+fn shown_key(
+    store: &Entity<ContextServerStore>,
+    server_id: &ContextServerId,
+    cx: &mut TestAppContext,
+) -> LaunchApprovalKey {
+    store.read_with(cx, |store, _| {
+        store
+            .launch_approval_details(server_id)
+            .expect("the server needs approval")
+            .key
+    })
+}
+
+async fn approve_shown(
+    store: &Entity<ContextServerStore>,
+    server_id: &ContextServerId,
+    cx: &mut TestAppContext,
+) {
+    let key = shown_key(store, server_id, cx);
+    store
+        .update(cx, |store, cx| store.approve_server(server_id, &key, cx))
+        .await
+        .expect("the approval is stored");
+}
+
+#[gpui::test]
+async fn test_project_context_server_waits_for_approval(cx: &mut TestAppContext) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    init_launch_approval_test(cx);
+    let (_fs, _project, store, created_servers) = open_project_with_fake_servers(
+        json!({
+            ".zed": { "settings.json": project_server_settings(&["--serve", "scripts/serve.js"]) },
+            "scripts": { "serve.js": "" },
+        }),
+        cx,
+    )
+    .await;
+
+    let details = store.read_with(cx, |store, cx| {
+        assert_eq!(
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::ApprovalRequired)
+        );
+        assert!(store.get_server(&server_id).is_none());
+        assert!(
+            store.configuration_for_server(&server_id).is_none(),
+            "nothing may forward an unapproved server to an external agent"
+        );
+        assert!(store.configured_server_ids().contains(&server_id));
+        assert!(matches!(
+            store.server_source(&server_id, cx),
+            Some(ContextServerSource::Project { .. })
+        ));
+        store
+            .launch_approval_details(&server_id)
+            .expect("a project-defined server has approval details")
+    });
+    assert_eq!(details.kind, LaunchKind::ContextServer);
+    assert_eq!(details.state, LaunchApprovalState::Pending);
+    assert_eq!(
+        details.target.display().to_string(),
+        "project-server-binary --serve scripts/serve.js"
+    );
+    assert_eq!(
+        details.environment_variable_names,
+        vec![SharedString::from("API_TOKEN")]
+    );
+    assert_eq!(details.execution_host, ExecutionHost::ThisMachine);
+    assert_eq!(
+        details.definition_file,
+        LaunchDefinitionFile::Worktree(path!("/test/.zed/settings.json").into())
+    );
+    assert!(
+        details.references_worktree_file(),
+        "scripts/serve.js is a file in the worktree"
+    );
+    assert!(
+        details
+            .unbound_worktree_content
+            .contains(&UnboundWorktreeContent::WorkingDirectory {
+                program: "project-server-binary".into(),
+                working_directory: path!("/test").into(),
+            }),
+        "a program from PATH starts in the project, the directory it is \
+         spawned in below: {:?}",
+        details.unbound_worktree_content
+    );
+    assert!(!details.replaces_user_entry);
+
+    // Starting it directly, as the settings switch does, is held back as well.
+    let server = Arc::new(ContextServer::new(
+        server_id.clone(),
+        Arc::new(create_fake_transport(PROJECT_SERVER_ID, cx.executor())),
+    ));
+    store.update(cx, |store, cx| store.start_server(server, cx));
+    cx.run_until_parked();
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::ApprovalRequired)
+    );
+
+    let outcome = cx
+        .update(|cx| wait_for_context_server(&store, server_id.clone(), cx))
+        .await;
+    let error = outcome.expect_err("waiting on a server that needs approval fails at once");
+    assert!(error.contains("承認待ち"), "unexpected message: {error}");
+    assert!(created_servers.borrow().is_empty());
+
+    approve_shown(&store, &server_id, cx).await;
+    cx.run_until_parked();
+
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::Running)
+    );
+    assert_eq!(
+        approval_state_of(&store, &server_id, cx),
+        Some(LaunchApprovalState::Approved)
+    );
+    store.read_with(cx, |store, _| {
+        assert!(store.configuration_for_server(&server_id).is_some());
+        assert_eq!(
+            store.working_directory_for_test(&server_id),
+            Some(Some(Arc::from(std::path::Path::new(path!("/test"))))),
+            "an approved project server was approved to run the project's content"
+        );
+    });
+    assert_eq!(*created_servers.borrow(), vec![server_id]);
+}
+
+#[gpui::test]
+async fn test_project_context_server_running_worktree_code_is_flagged(cx: &mut TestAppContext) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    init_launch_approval_test(cx);
+    let (_fs, _project, store, created_servers) = open_project_with_fake_servers(
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "context_servers": {
+                        "project-server": {
+                            "command": "node",
+                            "args": ["server", "../test/tools/check.js"],
+                            "env": { "NODE_OPTIONS": "--require=./hook.js", "API_TOKEN": "secret" }
+                        }
+                    }
+                })
+                .to_string()
+            },
+            "hook.js": "",
+            "tools": { "check.js": "" },
+        }),
+        cx,
+    )
+    .await;
+
+    let details = store.read_with(cx, |store, _| {
+        store
+            .launch_approval_details(&server_id)
+            .expect("a project-defined server has approval details")
+    });
+    assert!(details.references_worktree_file());
+    let unbound = &details.unbound_worktree_content;
+    assert!(
+        unbound.iter().any(|content| matches!(
+            content,
+            UnboundWorktreeContent::WorkingDirectory { program, .. } if program.as_ref() == "node"
+        )),
+        "node started in the worktree loads `server` from it: {unbound:?}"
+    );
+    assert!(
+        details.referenced_worktree_files.is_empty(),
+        "`server` is no file, so nothing binds the key to its contents: {:?}",
+        details.referenced_worktree_files
+    );
+    for file in [path!("/test/tools/check.js"), path!("/test/hook.js")] {
+        assert!(
+            unbound.contains(&UnboundWorktreeContent::File(file.into())),
+            "{file}, named through `..` or NODE_OPTIONS, is shown but not bound: {unbound:?}"
+        );
+    }
+    assert_eq!(
+        details.code_loading_environment,
+        vec![(
+            SharedString::from("NODE_OPTIONS"),
+            SharedString::from("--require=./hook.js")
+        )]
+    );
+    assert_eq!(
+        details.environment_variable_names,
+        vec![SharedString::from("API_TOKEN")],
+        "only the variables whose values stay hidden"
+    );
+    assert!(created_servers.borrow().is_empty());
+}
+
+#[gpui::test]
+async fn test_extension_server_defined_in_any_worktree_is_project_defined(cx: &mut TestAppContext) {
+    let server_id = ContextServerId("extension-server".into());
+    init_launch_approval_test(cx);
+    set_context_server_configuration(
+        vec![(
+            server_id.0.clone(),
+            settings::ContextServerSettingsContent::Extension {
+                enabled: true,
+                remote: false,
+                settings: json!({ "from": "user" }),
+            },
+        )],
+        cx,
+    );
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/first"), json!({ "code.rs": "" }))
+        .await;
+    fs.insert_tree(
+        path!("/second"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "context_servers": { "extension-server": { "settings": { "from": "project" } } }
+                })
+                .to_string()
+            }
+        }),
+    )
+    .await;
+    let project = Project::test(
+        fs,
+        [path!("/first").as_ref(), path!("/second").as_ref()],
+        cx,
+    )
+    .await;
+    cx.run_until_parked();
+
+    let store = project.read_with(cx, |project, _| project.context_server_store());
+    let second_worktree_id = project.read_with(cx, |project, cx| {
+        project
+            .visible_worktrees(cx)
+            .nth(1)
+            .map(|worktree| worktree.read(cx).id())
+            .expect("two worktrees")
+    });
+    // The first worktree only sees the user's entry, but the extension reads
+    // the second worktree's settings as well.
+    store.read_with(cx, |store, cx| {
+        assert_eq!(
+            store.server_source(&server_id, cx),
+            Some(ContextServerSource::Project {
+                worktree_id: second_worktree_id,
+                settings_file: LaunchDefinitionFile::Worktree(
+                    path!("/second/.zed/settings.json").into()
+                ),
+                host: LaunchHost::ThisMachine,
+            })
+        );
+    });
+}
+
+/// A client connected to a mock remote server whose session answers the ping
+/// sent while connecting. Handlers registered on the returned session live as
+/// long as the returned entity.
+async fn connect_to_mock_remote(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> (
+    Entity<remote::RemoteClient>,
+    rpc::AnyProtoClient,
+    Entity<()>,
+) {
+    cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    let (options, server_session, connect_guard) = remote::RemoteClient::fake_server(cx, server_cx);
+    let handler_owner = server_cx.new(|_| ());
+    server_session.add_request_handler(
+        handler_owner.downgrade(),
+        |_, _: rpc::TypedEnvelope<rpc::proto::Ping>, _| async { Ok(rpc::proto::Ack {}) },
+    );
+    drop(connect_guard);
+    let remote_client = remote::RemoteClient::connect_mock(options, cx).await;
+    (remote_client, server_session, handler_owner)
+}
+
+/// A project with a remote worktree, and a store for it that talks to
+/// `remote_client`. Both its store and the project's own create fake servers.
+async fn open_remote_project_with_fake_servers(
+    remote_client: &Entity<remote::RemoteClient>,
+    cx: &mut TestAppContext,
+) -> (
+    Entity<Project>,
+    Entity<ContextServerStore>,
+    Rc<RefCell<Vec<ContextServerId>>>,
+) {
+    let fs = FakeFs::new(cx.executor());
+    let project = Project::test(fs, std::iter::empty::<&std::path::Path>(), cx).await;
+    project.update(cx, |project, cx| {
+        project.add_test_remote_worktree("/remote/project", cx);
+    });
+    let executor = cx.executor();
+    project
+        .read_with(cx, |project, _| project.context_server_store())
+        .update(cx, |store, _| {
+            let executor = executor.clone();
+            store.set_context_server_factory(Box::new(move |id, _| {
+                Arc::new(ContextServer::new(
+                    id.clone(),
+                    Arc::new(create_fake_transport(id.0.to_string(), executor.clone())),
+                ))
+            }));
+        });
+    let worktree_store = project.read_with(cx, |project, _| project.worktree_store());
+    let created_servers = Rc::new(RefCell::new(Vec::new()));
+    let store = cx.new(|cx| {
+        let mut store = ContextServerStore::remote(
+            0,
+            remote_client.clone(),
+            worktree_store,
+            Some(project.downgrade()),
+            cx,
+        );
+        let created_servers = created_servers.clone();
+        store.set_context_server_factory(Box::new(move |id, _| {
+            created_servers.borrow_mut().push(id.clone());
+            Arc::new(ContextServer::new(
+                id.clone(),
+                Arc::new(create_fake_transport(id.0.to_string(), executor.clone())),
+            ))
+        }));
+        store
+    });
+    (project, store, created_servers)
+}
+
+// A `remote: true` server is resolved again by the remote host from its own
+// settings, which commands run over there can rewrite. What comes back must
+// be what this machine resolved, even for a server from the user's settings.
+#[gpui::test]
+async fn test_remote_command_must_match_what_this_machine_resolved(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let matching_id = ContextServerId("matching".into());
+    let overridden_id = ContextServerId("overridden".into());
+    init_launch_approval_test(cx);
+    let (remote_client, server_session, handler_owner) =
+        connect_to_mock_remote(cx, server_cx).await;
+    server_session.add_request_handler(
+        handler_owner.downgrade(),
+        |_, envelope: rpc::TypedEnvelope<rpc::proto::GetContextServerCommand>, _| async move {
+            let path = if envelope.payload.server_id == "matching" {
+                "matching-binary"
+            } else {
+                "binary-from-the-remote-settings"
+            };
+            Ok(rpc::proto::ContextServerCommand {
+                path: path.to_string(),
+                args: vec!["--stdio".to_string()],
+                env: [("HTTP_PROXY".to_string(), "http://127.0.0.1:1".to_string())]
+                    .into_iter()
+                    .collect(),
+            })
+        },
+    );
+    let (_project, store, created_servers) =
+        open_remote_project_with_fake_servers(&remote_client, cx).await;
+    let errors = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let errors = errors.clone();
+        cx.subscribe(&store, move |_, event, _| {
+            let ServerStatusChangedEvent { server_id, status } = event;
+            if let ContextServerStatus::Error(message) = status {
+                errors
+                    .borrow_mut()
+                    .push((server_id.clone(), message.clone()));
+            }
+        })
+    });
+
+    let stdio = |path: &str| settings::ContextServerSettingsContent::Stdio {
+        enabled: true,
+        remote: true,
+        command: ContextServerCommand {
+            path: path.into(),
+            args: vec!["--stdio".to_string()],
+            env: None,
+            timeout: None,
+        },
+    };
+    set_context_server_configuration(
+        vec![
+            (matching_id.0.clone(), stdio("matching-binary")),
+            (overridden_id.0.clone(), stdio("user-binary")),
+        ],
+        cx,
+    );
+    cx.run_until_parked();
+
+    assert_eq!(
+        status_of(&store, &matching_id, cx),
+        Some(ContextServerStatus::Running)
+    );
+    assert!(
+        errors
+            .borrow()
+            .iter()
+            .any(|(server_id, message)| server_id == &overridden_id
+                && message.contains("一致しません")),
+        "unexpected errors: {:?}",
+        errors.borrow()
+    );
+    // A running `remote: true` server is compared with the definition it was
+    // started from rather than the command wrapped for the remote host, so
+    // it is started once.
+    assert_eq!(
+        created_servers
+            .borrow()
+            .iter()
+            .filter(|id| **id == matching_id)
+            .count(),
+        1
+    );
+    assert!(!created_servers.borrow().contains(&overridden_id));
+}
+
+// An extension's server with `remote: true` gets its command from the
+// extension on the remote host, which nothing here can predict: that exact
+// command needs an approval before it runs.
+#[gpui::test]
+async fn test_remote_resolved_extension_command_needs_approval(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let server_id = ContextServerId("remote-extension".into());
+    init_launch_approval_test(cx);
+    let (remote_client, server_session, handler_owner) =
+        connect_to_mock_remote(cx, server_cx).await;
+    server_session.add_request_handler(
+        handler_owner.downgrade(),
+        |_, _: rpc::TypedEnvelope<rpc::proto::GetContextServerCommand>, _| async move {
+            Ok(rpc::proto::ContextServerCommand {
+                path: "/remote/extensions/mcp-server".to_string(),
+                args: vec!["--stdio".to_string()],
+                env: [
+                    ("HTTP_PROXY".to_string(), "http://127.0.0.1:1".to_string()),
+                    ("NODE_OPTIONS".to_string(), "--inspect".to_string()),
+                ]
+                .into_iter()
+                .collect(),
+            })
+        },
+    );
+    let (_project, store, created_servers) =
+        open_remote_project_with_fake_servers(&remote_client, cx).await;
+    store.update(cx, |store, cx| {
+        store.registry().update(cx, |registry, cx| {
+            registry.register_context_server_descriptor(
+                server_id.0.clone(),
+                Arc::new(FakeContextServerDescriptor::new(
+                    "what-this-machine-would-run",
+                )),
+                cx,
+            );
+        });
+    });
+    set_context_server_configuration(
+        vec![(
+            server_id.0.clone(),
+            settings::ContextServerSettingsContent::Extension {
+                enabled: true,
+                remote: true,
+                settings: json!({}),
+            },
+        )],
+        cx,
+    );
+    cx.run_until_parked();
+
+    let details = store.read_with(cx, |store, _| {
+        assert_eq!(
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::ApprovalRequired)
+        );
+        store
+            .launch_approval_details(&server_id)
+            .expect("the remote-resolved command has approval details")
+    });
+    assert_eq!(
+        details.definition_file,
+        LaunchDefinitionFile::ResolvedOnRemoteHost
+    );
+    assert!(matches!(
+        details.execution_host,
+        ExecutionHost::Remote { .. }
+    ));
+    assert_eq!(
+        details.target.display().to_string(),
+        "/remote/extensions/mcp-server --stdio"
+    );
+    assert!(
+        details.environment_variable_names.is_empty(),
+        "the remote host's own proxy variables are not part of the definition, \
+         and NODE_OPTIONS is shown with its value: {:?}",
+        details.environment_variable_names
+    );
+    assert_eq!(
+        details.code_loading_environment,
+        vec![(
+            SharedString::from("NODE_OPTIONS"),
+            SharedString::from("--inspect")
+        )]
+    );
+    assert!(created_servers.borrow().is_empty());
+
+    approve_shown(&store, &server_id, cx).await;
+    cx.run_until_parked();
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::Running)
+    );
+    assert_eq!(*created_servers.borrow(), vec![server_id]);
+}
+
+#[gpui::test]
+async fn test_project_context_server_approval_survives_restart(
+    cx: &mut TestAppContext,
+    restarted_cx: &mut TestAppContext,
+) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    let files = json!({ ".zed": { "settings.json": project_server_settings(&["--serve"]) } });
+
+    init_launch_approval_test(cx);
+    let (_fs, _project, store, _created_servers) =
+        open_project_with_fake_servers(files.clone(), cx).await;
+    approve_shown(&store, &server_id, cx).await;
+    cx.run_until_parked();
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::Running)
+    );
+
+    // A second app on the same database stands in for the next session.
+    let database = cx.update(|cx| cx.global::<db::AppDatabase>().0.clone());
+    restarted_cx.update(|cx| {
+        let settings_store = SettingsStore::test(cx);
+        cx.set_global(settings_store);
+        cx.set_global(db::AppDatabase(database));
+    });
+    let (_fs, _project, restarted_store, created_servers) =
+        open_project_with_fake_servers(files, restarted_cx).await;
+    assert_eq!(
+        status_of(&restarted_store, &server_id, restarted_cx),
+        Some(ContextServerStatus::Running)
+    );
+    assert_eq!(*created_servers.borrow(), vec![server_id]);
+}
+
+#[gpui::test]
+async fn test_editing_project_context_server_requires_new_approval(cx: &mut TestAppContext) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    init_launch_approval_test(cx);
+    let (fs, _project, store, created_servers) = open_project_with_fake_servers(
+        json!({ ".zed": { "settings.json": project_server_settings(&["--serve"]) } }),
+        cx,
+    )
+    .await;
+    approve_shown(&store, &server_id, cx).await;
+    cx.run_until_parked();
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::Running)
+    );
+    let approved_key = store.read_with(cx, |store, _| {
+        store
+            .launch_approval_details(&server_id)
+            .expect("approved server has details")
+            .key
+    });
+
+    fs.insert_file(
+        path!("/test/.zed/settings.json"),
+        project_server_settings(&["--serve", "--debug"]).into_bytes(),
+    )
+    .await;
+    cx.run_until_parked();
+
+    store.read_with(cx, |store, _| {
+        assert_eq!(
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::ApprovalRequired)
+        );
+        assert!(
+            store.get_server(&server_id).is_none(),
+            "the old approval does not cover the new definition"
+        );
+        assert!(store.configuration_for_server(&server_id).is_none());
+        let details = store
+            .launch_approval_details(&server_id)
+            .expect("the edited server has details");
+        assert_eq!(details.state, LaunchApprovalState::Pending);
+        assert_ne!(details.key, approved_key);
+        assert_eq!(
+            details.target.display().to_string(),
+            "project-server-binary --serve --debug"
+        );
+    });
+    assert_eq!(created_servers.borrow().len(), 1);
+
+    // The approval shown before the edit cannot be applied to the new
+    // definition.
+    let refused = store
+        .update(cx, |store, cx| {
+            store.approve_server(&server_id, &approved_key, cx)
+        })
+        .await;
+    assert_eq!(
+        refused
+            .expect_err("the definition changed since it was shown")
+            .to_string(),
+        CHANGED_SINCE_SHOWN_MESSAGE
+    );
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::ApprovalRequired)
+    );
+}
+
+#[gpui::test]
+async fn test_user_context_server_needs_no_approval(cx: &mut TestAppContext) {
+    let server_id = ContextServerId("user-server".into());
+    // No database: a server from the user's settings never looks for one.
+    let (_fs, project) = setup_context_server_test(cx, json!({"code.rs": ""}), vec![]).await;
+    let store = project.read_with(cx, |project, _| project.context_server_store());
+    let executor = cx.executor();
+    store.update(cx, |store, _| {
+        store.set_context_server_factory(Box::new(move |id, _| {
+            Arc::new(ContextServer::new(
+                id.clone(),
+                Arc::new(create_fake_transport(id.0.to_string(), executor.clone())),
+            ))
+        }));
+    });
+
+    set_context_server_configuration(
+        vec![(
+            server_id.0.clone(),
+            settings::ContextServerSettingsContent::Stdio {
+                enabled: true,
+                remote: false,
+                command: ContextServerCommand {
+                    path: "user-server-binary".into(),
+                    args: vec![],
+                    env: None,
+                    timeout: None,
+                },
+            },
+        )],
+        cx,
+    );
+    cx.run_until_parked();
+
+    cx.update(|cx| {
+        let store = store.read(cx);
+        assert_eq!(
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::Running)
+        );
+        assert_eq!(
+            store.server_source(&server_id, cx),
+            Some(ContextServerSource::User)
+        );
+        assert!(store.launch_approval_details(&server_id).is_none());
+        let approvals =
+            ProjectLaunchApprovals::try_global(cx).expect("a local project sets up approvals");
+        assert!(approvals.read(cx).pending_launches().is_empty());
+    });
+}
+
+#[gpui::test]
+async fn test_project_context_server_replacing_user_entry_requires_approval(
+    cx: &mut TestAppContext,
+) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    init_launch_approval_test(cx);
+    let (_fs, _project, store, created_servers) = open_project_with_fake_servers(
+        json!({ ".zed": { "settings.json": project_server_settings(&["--serve"]) } }),
+        cx,
+    )
+    .await;
+    // Added once the project's file is loaded, so the only definition under
+    // this name that could run is the project's. (Before the file is read,
+    // the user's own server may run under the name, which is fine.)
+    set_context_server_configuration(
+        vec![(
+            server_id.0.clone(),
+            settings::ContextServerSettingsContent::Stdio {
+                enabled: true,
+                remote: false,
+                command: ContextServerCommand {
+                    path: "user-server-binary".into(),
+                    args: vec![],
+                    env: None,
+                    timeout: None,
+                },
+            },
+        )],
+        cx,
+    );
+    cx.run_until_parked();
+
+    store.read_with(cx, |store, _| {
+        assert_eq!(
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::ApprovalRequired)
+        );
+        let details = store
+            .launch_approval_details(&server_id)
+            .expect("the project's entry has details");
+        assert!(details.replaces_user_entry);
+        assert_eq!(
+            details.target.display().to_string(),
+            "project-server-binary --serve"
+        );
+    });
+    assert!(created_servers.borrow().is_empty());
+}
+
+#[gpui::test]
+async fn test_denied_project_context_server_stays_stopped_without_new_notification(
+    cx: &mut TestAppContext,
+) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    init_launch_approval_test(cx);
+    let notifications = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let approvals = ProjectLaunchApprovals::global(cx);
+        let notifications = notifications.clone();
+        cx.subscribe(&approvals, move |_, event, _| {
+            if let ProjectLaunchApprovalsEvent::PendingLaunchAppeared(details) = event {
+                notifications.borrow_mut().push(details.name.clone());
+            }
+        })
+    });
+    let files = json!({ ".zed": { "settings.json": project_server_settings(&["--serve"]) } });
+    let (_fs, _project, store, created_servers) =
+        open_project_with_fake_servers(files.clone(), cx).await;
+    assert_eq!(
+        *notifications.borrow(),
+        vec![SharedString::from(PROJECT_SERVER_ID)]
+    );
+
+    let key = shown_key(&store, &server_id, cx);
+    store
+        .update(cx, |store, cx| store.deny_server(&server_id, &key, cx))
+        .await
+        .expect("the denial is stored");
+    cx.run_until_parked();
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::ApprovalRequired)
+    );
+    assert_eq!(
+        approval_state_of(&store, &server_id, cx),
+        Some(LaunchApprovalState::Denied)
+    );
+
+    // Opening the same folder again finds the denial and stays quiet.
+    let (_fs, _project, other_store, other_created_servers) =
+        open_project_with_fake_servers(files, cx).await;
+    assert_eq!(
+        status_of(&other_store, &server_id, cx),
+        Some(ContextServerStatus::ApprovalRequired)
+    );
+    assert_eq!(
+        approval_state_of(&other_store, &server_id, cx),
+        Some(LaunchApprovalState::Denied)
+    );
+    assert_eq!(
+        notifications.borrow().len(),
+        1,
+        "a denied definition never notifies again"
+    );
+    assert!(created_servers.borrow().is_empty());
+    assert!(other_created_servers.borrow().is_empty());
+}
+
+#[gpui::test]
+async fn test_revoking_project_context_server_approval_removes_it(cx: &mut TestAppContext) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    init_launch_approval_test(cx);
+    let (_fs, _project, store, _created_servers) = open_project_with_fake_servers(
+        json!({ ".zed": { "settings.json": project_server_settings(&["--serve"]) } }),
+        cx,
+    )
+    .await;
+    approve_shown(&store, &server_id, cx).await;
+    cx.run_until_parked();
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::Running)
+    );
+
+    let key = shown_key(&store, &server_id, cx);
+    store
+        .update(cx, |store, cx| {
+            store.revoke_server_approval(&server_id, &key, cx)
+        })
+        .await
+        .expect("the revocation is stored");
+    cx.run_until_parked();
+
+    store.read_with(cx, |store, _| {
+        assert_eq!(
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::ApprovalRequired)
+        );
+        assert!(
+            store.get_server(&server_id).is_none(),
+            "a revoked server is removed, not just stopped"
+        );
+        assert!(store.configuration_for_server(&server_id).is_none());
+    });
+    assert_eq!(
+        approval_state_of(&store, &server_id, cx),
+        Some(LaunchApprovalState::Pending)
+    );
+}
+
+#[gpui::test]
+async fn test_trusting_all_worktrees_does_not_approve_project_context_servers(
+    cx: &mut TestAppContext,
+) {
+    let server_id = ContextServerId(PROJECT_SERVER_ID.into());
+    init_launch_approval_test(cx);
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |content| {
+                content.session.get_or_insert_default().trust_all_worktrees = Some(true);
+            });
+        });
+    });
+    let (_fs, _project, store, created_servers) = open_project_with_fake_servers(
+        json!({ ".zed": { "settings.json": project_server_settings(&["--serve"]) } }),
+        cx,
+    )
+    .await;
+
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::ApprovalRequired)
+    );
+    assert!(created_servers.borrow().is_empty());
+}
+
+// A remote project's `.zed/settings.json` with `remote: false` (the default)
+// would run its command on this machine.
+#[gpui::test]
+async fn test_remote_project_context_server_waits_for_approval(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let server_id = ContextServerId("remote-defined".into());
+    init_launch_approval_test(cx);
+    cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    let (options, server_session, connect_guard) = remote::RemoteClient::fake_server(cx, server_cx);
+    // Connecting pings the server, which a headless project would answer.
+    let _ping_responder = server_cx.new(|_| ());
+    server_session.add_request_handler(
+        _ping_responder.downgrade(),
+        |_, _: rpc::TypedEnvelope<rpc::proto::Ping>, _| async { Ok(rpc::proto::Ack {}) },
+    );
+    drop(connect_guard);
+    let remote_client = remote::RemoteClient::connect_mock(options, cx).await;
+
+    let fs = FakeFs::new(cx.executor());
+    let project = Project::test(fs, std::iter::empty::<&std::path::Path>(), cx).await;
+    let worktree = project.update(cx, |project, cx| {
+        project.add_test_remote_worktree("/remote/project", cx)
+    });
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_local_settings(
+                    worktree_id,
+                    settings::LocalSettingsPath::InWorktree(util::rel_path::RelPath::empty_arc()),
+                    settings::LocalSettingsKind::Settings,
+                    Some(
+                        &json!({
+                            "context_servers": {
+                                "remote-defined": { "command": "helper", "args": ["--stdio"] }
+                            }
+                        })
+                        .to_string(),
+                    ),
+                    cx,
+                )
+                .expect("the project settings parse");
+        });
+    });
+
+    let worktree_store = project.read_with(cx, |project, _| project.worktree_store());
+    let created_servers = Rc::new(RefCell::new(Vec::new()));
+    let executor = cx.executor();
+    let store = cx.new(|cx| {
+        let mut store = ContextServerStore::remote(
+            0,
+            remote_client.clone(),
+            worktree_store,
+            Some(project.downgrade()),
+            cx,
+        );
+        let created_servers = created_servers.clone();
+        store.set_context_server_factory(Box::new(move |id, _| {
+            created_servers.borrow_mut().push(id.clone());
+            Arc::new(ContextServer::new(
+                id.clone(),
+                Arc::new(create_fake_transport(id.0.to_string(), executor.clone())),
+            ))
+        }));
+        store
+    });
+    cx.run_until_parked();
+
+    let details = store.read_with(cx, |store, _| {
+        assert_eq!(
+            store.status_for_server(&server_id),
+            Some(ContextServerStatus::ApprovalRequired)
+        );
+        store
+            .launch_approval_details(&server_id)
+            .expect("a project-defined server has approval details")
+    });
+    assert_eq!(
+        details.execution_host,
+        ExecutionHost::ThisMachine,
+        "`remote: false` runs the command here"
+    );
+    assert!(matches!(details.host, LaunchHost::Remote { .. }));
+    assert_eq!(
+        details.definition_file,
+        LaunchDefinitionFile::Worktree("/remote/project/.zed/settings.json".into())
+    );
+    assert!(created_servers.borrow().is_empty());
+
+    approve_shown(&store, &server_id, cx).await;
+    cx.run_until_parked();
+    assert_eq!(
+        status_of(&store, &server_id, cx),
+        Some(ContextServerStatus::Running)
+    );
+    store.read_with(cx, |store, _| {
+        assert_eq!(
+            store.working_directory_for_test(&server_id),
+            Some(Some(neutral_working_directory())),
+            "spawned here for a remote project, it starts in the neutral directory"
+        );
+    });
+    assert_eq!(*created_servers.borrow(), vec![server_id]);
 }

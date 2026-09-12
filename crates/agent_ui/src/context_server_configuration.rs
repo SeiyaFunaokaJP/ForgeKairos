@@ -106,11 +106,8 @@ mod tests {
     use super::*;
     use context_server::ContextServerCommand;
     use gpui::TestAppContext;
-    use project::{
-        FakeFs, Project,
-        project_settings::{ContextServerSettings, ProjectSettings},
-    };
-    use settings::Settings as _;
+    use project::{FakeFs, Project};
+    use settings::{ContextServerSettingsContent, SettingsStore};
 
     #[gpui::test]
     async fn test_configure_extension_only_opens_modal_in_active_workspace(
@@ -122,21 +119,24 @@ mod tests {
         let language_registry = Arc::new(LanguageRegistry::test(cx.executor()));
         cx.update(|cx| {
             extension::init(cx);
-            let mut settings = ProjectSettings::get_global(cx).clone();
-            settings.context_servers.insert(
-                "slack".into(),
-                ContextServerSettings::Stdio {
-                    enabled: true,
-                    remote: false,
-                    command: ContextServerCommand {
-                        path: "slack-mcp-server".into(),
-                        args: Vec::new(),
-                        env: None,
-                        timeout: None,
-                    },
-                },
-            );
-            ProjectSettings::override_global(settings, cx);
+            // The configuration dialog reads the user's own settings file.
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.context_servers.insert(
+                        "slack".into(),
+                        ContextServerSettingsContent::Stdio {
+                            enabled: true,
+                            remote: false,
+                            command: ContextServerCommand {
+                                path: "slack-mcp-server".into(),
+                                args: Vec::new(),
+                                env: None,
+                                timeout: None,
+                            },
+                        },
+                    );
+                });
+            });
             init(language_registry, fs.clone(), cx);
         });
 
