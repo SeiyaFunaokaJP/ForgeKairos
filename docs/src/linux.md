@@ -268,7 +268,7 @@ Zed relies on inotify to watch your filesystem for changes. If you cannot start 
 If you are seeing "too many open files" then first try `sysctl fs.inotify`.
 
 - You should see that max_user_instances is 128 or higher (you can change the limit with `sudo sysctl fs.inotify.max_user_instances=1024`). Zed needs only 1 inotify instance.
-- You should see that `max_user_watches` is 8000 or higher (you can change the limit with `sudo sysctl fs.inotify.max_user_watches=64000`). Zed needs one watch per directory in all your open projects + one per git repository + a handful more for settings, themes, keymaps, extensions.
+- You should see that `max_user_watches` is 8000 or higher (you can change the limit with `sudo sysctl fs.inotify.max_user_watches=64000`). Zed would like one watch per directory in all your open projects + one per git repository + a handful more for settings, themes, keymaps, extensions. Because this limit is shared by every program you run, Zed only adds inotify watches while your total usage stays under a quarter of `max_user_watches`, watches the remaining directories by polling, and gives its watches back when other programs run low. A low limit therefore makes Zed notice changes in large projects more slowly instead of taking watches away from tools such as build systems; raising it lets Zed watch more directories natively.
 
 It is also possible that you are running out of file descriptors. You can check the limits with `ulimit` and update them by editing `/etc/security/limits.conf`.
 
