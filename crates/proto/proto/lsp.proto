@@ -891,6 +891,105 @@ message LanguageServerPromptResponse {
   optional uint64 action_response = 1;
 }
 
+// ADR-F50: the remote server asks the connected IDE whether it may run a
+// program that a project's settings or the remote's own server settings
+// define there. The remote server resolves the definition and hashes the
+// content it runs on its own file system; the IDE adds the host it is
+// connected to and decides with the same approvals as for local projects.
+message RequestProjectLaunchApproval {
+  uint64 project_id = 1;
+  // The remote server's digest of the definition and of the content it runs.
+  string remote_key = 2;
+  ProjectLaunchKind kind = 3;
+  string name = 4;
+  string program = 5;
+  repeated string arguments = 6;
+  repeated string environment_variable_names = 7;
+  repeated ProjectLaunchEnvironmentVariable code_loading_environment = 8;
+
+  oneof definition_file {
+    string worktree_settings_file = 9;
+    ServerSettings server_settings = 10;
+    ResolvedProgram resolved_program = 11;
+  }
+
+  message ServerSettings {}
+  message ResolvedProgram {}
+
+  uint64 worktree_id = 12;
+  string worktree_abs_path = 13;
+  optional string working_directory = 14;
+  repeated string referenced_worktree_files = 15;
+  repeated ProjectLaunchUnboundContent unbound_worktree_content = 16;
+  bool approval_is_session_only = 17;
+  bool replaces_user_entry = 18;
+  // A digest of the machine the remote server runs on, which can only tell
+  // hosts that the IDE reaches under one name further apart.
+  optional string host_machine = 19;
+}
+
+enum ProjectLaunchKind {
+  LaunchKindUnknown = 0;
+  LaunchKindLanguageServerBinary = 1;
+  LaunchKindExternalFormatter = 2;
+}
+
+message ProjectLaunchEnvironmentVariable {
+  string name = 1;
+  string value = 2;
+}
+
+message ProjectLaunchUnboundContent {
+  ProjectLaunchUnboundKind kind = 1;
+  string path = 2;
+  optional string program = 3;
+}
+
+enum ProjectLaunchUnboundKind {
+  UnboundUnknown = 0;
+  UnboundWorkingDirectory = 1;
+  UnboundFile = 2;
+  UnboundDirectory = 3;
+  UnboundArgumentFile = 4;
+  UnboundWrapper = 5;
+  UnboundRemoteFile = 6;
+  UnboundUnreadable = 7;
+}
+
+message RequestProjectLaunchApprovalResponse {
+  ProjectLaunchApprovalState state = 1;
+  optional string reason = 2;
+}
+
+enum ProjectLaunchApprovalState {
+  LaunchApprovalUnavailable = 0;
+  LaunchApprovalPending = 1;
+  LaunchApprovalApproved = 2;
+  LaunchApprovalDenied = 3;
+  // Too many launches of the project wait for the user already; asking
+  // again later may find room.
+  LaunchApprovalDeferred = 4;
+}
+
+// The user decided a launch the remote server asked about.
+message ProjectLaunchApprovalDecided {
+  uint64 project_id = 1;
+  string remote_key = 2;
+  bool approved = 3;
+}
+
+// The user took back a decision about a launch the remote server asked about.
+message ProjectLaunchApprovalRevoked {
+  uint64 project_id = 1;
+  string remote_key = 2;
+}
+
+// The remote server no longer waits for a launch it asked about.
+message WithdrawProjectLaunchApproval {
+  uint64 project_id = 1;
+  string remote_key = 2;
+}
+
 message GetDocumentColor {
   uint64 project_id = 1;
   uint64 buffer_id = 2;

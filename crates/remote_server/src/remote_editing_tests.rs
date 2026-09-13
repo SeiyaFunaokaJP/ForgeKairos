@@ -30,7 +30,8 @@ use gpui::{
 };
 use http_client::{BlockedHttpClient, FakeHttpClient};
 use language::{
-    Buffer, FakeLspAdapter, LanguageConfig, LanguageMatcher, LanguageRegistry, LineEnding, Point,
+    BinaryStatus, Buffer, FakeLspAdapter, LanguageConfig, LanguageMatcher, LanguageRegistry,
+    LineEnding, Point,
     language_settings::{AllLanguageSettings, ConfiguredLanguageServer, LanguageSettings},
 };
 use lsp::{
@@ -39,24 +40,31 @@ use lsp::{
 };
 use node_runtime::NodeRuntime;
 use project::{
-    ProgressToken, Project, ProjectPath,
+    LspStoreEvent, ProgressToken, Project, ProjectPath,
     agent_server_store::AgentServerCommand,
     image_store,
+    lsp_store::{FormatTrigger, LspFormatTarget, OpenLspBufferHandle},
+    project_launch_approvals::{
+        ExecutionHost, LaunchApprovalDetails, LaunchDefinitionFile, LaunchHost, LaunchKind,
+        ProjectLaunchApprovals, ProjectLaunchApprovalsEvent,
+    },
     search::{SearchQuery, SearchResult},
 };
 use remote::RemoteClient;
-use rpc::proto;
+use rpc::{TypedEnvelope, proto};
 use serde_json::json;
 use settings::{Settings, SettingsLocation, SettingsStore, initial_server_settings_content};
 use smol::stream::StreamExt;
 use std::{
+    cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
     str::FromStr,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 use unindent::Unindent as _;
 use util::{path, path_list::PathList, paths::PathMatcher, rel_path::rel_path};
@@ -970,6 +978,7 @@ async fn test_remote_settings(cx: &mut TestAppContext, server_cx: &mut TestAppCo
 
 #[gpui::test]
 async fn test_remote_lsp(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
     let fs = FakeFs::new(server_cx.executor());
     fs.insert_tree(
         path!("/code"),
@@ -2131,6 +2140,7 @@ async fn test_remote_cancel_language_server_work(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,
 ) {
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
     let fs = FakeFs::new(server_cx.executor());
     fs.insert_tree(
         path!("/code"),
@@ -4286,6 +4296,7 @@ async fn test_remote_apply_code_action_skips_unadvertised_command(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,
 ) {
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
     let fs = FakeFs::new(server_cx.executor());
     fs.insert_tree(
         path!("/code"),
@@ -4741,22 +4752,1738 @@ fn build_project(ssh: Entity<RemoteClient>, cx: &mut TestAppContext) -> Entity<P
         }
     });
 
-    let client = cx.update(|cx| {
+    let client = fake_client(cx);
+    cx.update(|cx| {
+        Project::init(&client, cx);
+    });
+
+    connect_project(ssh, client, cx)
+}
+
+fn fake_client(cx: &mut TestAppContext) -> Arc<Client> {
+    cx.update(|cx| {
         Client::new(
             Arc::new(FakeSystemClock::new()),
             FakeHttpClient::with_404_response(),
             cx,
         )
-    });
+    })
+}
 
+/// A remote project over `ssh`, once `Project::init` has run for this app.
+fn connect_project(
+    ssh: Entity<RemoteClient>,
+    client: Arc<Client>,
+    cx: &mut TestAppContext,
+) -> Entity<Project> {
     let node = NodeRuntime::unavailable();
     let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
     let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let fs = FakeFs::new(cx.executor());
+    cx.update(|cx| Project::remote(ssh, client, node, user_store, languages, fs, false, cx))
+}
 
+const PROJECT_SERVER: &str = "project_lsp";
+const MISSING_FORMATTER: &str = "zed-project-formatter-that-is-not-installed";
+
+fn project_server_settings(binary: serde_json::Value) -> String {
+    json!({
+        "languages": { "Rust": { "language_servers": [PROJECT_SERVER] } },
+        "lsp": { "project_lsp": { "binary": binary } },
+    })
+    .to_string()
+}
+
+async fn remote_tree(settings: String, server_cx: &mut TestAppContext) -> Arc<FakeFs> {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".zed": { "settings.json": settings },
+                "scripts": { "lsp.js": "serve()" },
+                "src": { "lib.rs": "fn one() -> usize { 1 }\n" },
+            },
+        }),
+    )
+    .await;
+    fs
+}
+
+/// `/code/project1` on the remote host, whose own settings start
+/// `project_lsp` from `binary` for its Rust file.
+async fn remote_project_with_language_server(
+    binary: serde_json::Value,
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> (Arc<FakeFs>, Entity<Project>, Entity<HeadlessProject>) {
+    let fs = remote_tree(project_server_settings(binary), server_cx).await;
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    register_rust_on_client(&project, &[PROJECT_SERVER], cx);
+    (fs, project, headless)
+}
+
+/// The client only needs the language and the adapters to pick which servers
+/// the remote host runs.
+fn register_rust_on_client(
+    project: &Entity<Project>,
+    names: &[&'static str],
+    cx: &mut TestAppContext,
+) {
+    project.update(cx, |project, _| {
+        let languages = project.languages();
+        languages.register_test_language(LanguageConfig {
+            name: "Rust".into(),
+            matcher: (LanguageMatcher {
+                path_suffixes: vec!["rs".into()],
+                ..Default::default()
+            })
+            .into(),
+            ..Default::default()
+        });
+        for name in names {
+            languages.register_fake_lsp_adapter(
+                "Rust",
+                FakeLspAdapter {
+                    name,
+                    ..Default::default()
+                },
+            );
+        }
+    });
+}
+
+fn register_fake_server_on_host(
+    languages: &Arc<LanguageRegistry>,
+    name: &'static str,
+) -> futures::channel::mpsc::UnboundedReceiver<lsp::FakeLanguageServer> {
+    languages.register_fake_lsp_adapter(
+        "Rust",
+        FakeLspAdapter {
+            name,
+            ..Default::default()
+        },
+    );
+    languages.register_fake_lsp_server(LanguageServerName(name.into()), Default::default(), None)
+}
+
+fn host_languages(
+    headless: &Entity<HeadlessProject>,
+    server_cx: &mut TestAppContext,
+) -> Arc<LanguageRegistry> {
+    server_cx.read(|cx| headless.read(cx).languages.clone())
+}
+
+async fn open_with_language_servers(
+    project: &Entity<Project>,
+    worktree_path: &str,
+    cx: &mut TestAppContext,
+) -> (Entity<Buffer>, OpenLspBufferHandle) {
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(worktree_path, true, cx)
+        })
+        .await
+        .unwrap()
+        .0
+        .read_with(cx, |worktree, _| worktree.id());
+    cx.run_until_parked();
+    let opened = project
+        .update(cx, |project, cx| {
+            project.open_buffer_with_lsp((worktree_id, rel_path("src/lib.rs")), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    opened
+}
+
+fn pending_launches(cx: &mut TestAppContext) -> Vec<LaunchApprovalDetails> {
     cx.update(|cx| {
-        Project::init(&client, cx);
+        ProjectLaunchApprovals::global(cx)
+            .read(cx)
+            .pending_launches()
+            .to_vec()
+    })
+}
+
+fn runs_language_server(
+    headless: &Entity<HeadlessProject>,
+    name: &str,
+    server_cx: &mut TestAppContext,
+) -> bool {
+    server_cx.read(|cx| {
+        headless
+            .read(cx)
+            .lsp_store
+            .read(cx)
+            .language_server_statuses()
+            .any(|(_, status)| &*status.name.0 == name)
+    })
+}
+
+/// The last reason the remote host gave for not starting `name`.
+fn last_failure(
+    statuses: &mut futures::channel::mpsc::UnboundedReceiver<(LanguageServerName, BinaryStatus)>,
+    name: &str,
+) -> Option<String> {
+    let mut failure = None;
+    while let Ok((server, status)) = statuses.try_recv() {
+        if &*server.0 == name
+            && let BinaryStatus::Failed { error } = status
+        {
+            failure = Some(error);
+        }
+    }
+    failure
+}
+
+/// The last status the remote host reported for `name`.
+fn last_status(
+    statuses: &mut futures::channel::mpsc::UnboundedReceiver<(LanguageServerName, BinaryStatus)>,
+    name: &str,
+) -> Option<BinaryStatus> {
+    let mut last = None;
+    while let Ok((server, status)) = statuses.try_recv() {
+        if &*server.0 == name {
+            last = Some(status);
+        }
+    }
+    last
+}
+
+/// A session whose IDE predates ADR-F50: there is no project on the client
+/// side, so nothing answers the remote server's questions.
+async fn session_without_launch_approvals(
+    fs: &Arc<FakeFs>,
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> (Entity<RemoteClient>, Entity<HeadlessProject>) {
+    cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    init_logger();
+    let (opts, session, _) = RemoteClient::fake_server(cx, server_cx);
+    server_cx.update(HeadlessProject::init);
+    let languages = Arc::new(LanguageRegistry::new(server_cx.executor()));
+    let headless = server_cx.new(|cx| {
+        HeadlessProject::new(
+            crate::HeadlessAppState {
+                session,
+                fs: fs.clone(),
+                http_client: Arc::new(BlockedHttpClient),
+                node_runtime: NodeRuntime::unavailable(),
+                languages,
+                extension_host_proxy: Arc::new(ExtensionHostProxy::new()),
+                startup_time: std::time::Instant::now(),
+            },
+            false,
+            cx,
+        )
+    });
+    let client = RemoteClient::connect_mock(opts, cx).await;
+    // The IDE hands out worktree ids; these tests open a single worktree.
+    let session = client.read_with(cx, |client, _| client.proto_client());
+    session.add_request_handler(
+        client.downgrade(),
+        |_, _: TypedEnvelope<proto::AllocateWorktreeId>, _| {
+            futures::future::ready(anyhow::Ok(proto::AllocateWorktreeIdResponse {
+                worktree_id: 1,
+            }))
+        },
+    );
+    (client, headless)
+}
+
+/// Opens `/code/project1/src/lib.rs` the way an IDE does, over the session
+/// alone, and returns the buffer's id.
+async fn open_buffer_over_session(session: &rpc::AnyProtoClient, cx: &mut TestAppContext) -> u64 {
+    let worktree = session
+        .request(proto::AddWorktree {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            path: path!("/code/project1").to_string(),
+            visible: true,
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    let buffer = session
+        .request(proto::OpenBufferByPath {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            worktree_id: worktree.worktree_id,
+            path: "src/lib.rs".to_string(),
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    buffer.buffer_id
+}
+
+fn format_request(buffer_id: u64) -> proto::FormatBuffers {
+    proto::FormatBuffers {
+        project_id: proto::REMOTE_SERVER_PROJECT_ID,
+        trigger: proto::FormatTrigger::Save as i32,
+        buffer_ids: vec![buffer_id],
+        buffer_ranges: Vec::new(),
+    }
+}
+
+fn formatter_settings() -> serde_json::Value {
+    json!({
+        "format_on_save": "on",
+        "formatter": { "external": { "command": MISSING_FORMATTER, "arguments": ["--stdin"] } },
+    })
+}
+
+// ADR-F50: a binary that the remote project's own settings name waits on the
+// remote host until the IDE approves it, runs once approved, and stops when
+// the approval is taken back.
+#[gpui::test]
+async fn test_remote_project_language_server_waits_for_the_ide_to_approve_it(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (_fs, project, headless) = remote_project_with_language_server(
+        json!({ "path": "project-lsp-binary", "arguments": ["--stdio"] }),
+        cx,
+        server_cx,
+    )
+    .await;
+    let mut fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+    assert!(
+        fake_servers.try_recv().is_err(),
+        "the remote host waits for the IDE before it starts the binary"
+    );
+
+    let pending = pending_launches(cx);
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    let host = project.read_with(cx, |project, cx| {
+        LaunchHost::from_remote_connection(&project.remote_connection_options(cx).unwrap())
+    });
+    assert!(matches!(host, LaunchHost::Remote { .. }));
+    assert_eq!(pending[0].host, host);
+    assert!(matches!(
+        pending[0].execution_host,
+        ExecutionHost::Remote { .. }
+    ));
+    assert_eq!(pending[0].kind, LaunchKind::LanguageServerBinary);
+    assert_eq!(pending[0].name.as_ref(), PROJECT_SERVER);
+    assert_eq!(
+        pending[0].target.display().to_string(),
+        "project-lsp-binary --stdio"
+    );
+    assert_eq!(
+        pending[0].definition_file,
+        LaunchDefinitionFile::Worktree(path!("/code/project1/.zed/settings.json").into())
+    );
+    assert_eq!(
+        &*pending[0].worktree_abs_path,
+        Path::new(path!("/code/project1"))
+    );
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the language server starts on the remote host once approved");
+    cx.run_until_parked();
+    assert!(runs_language_server(&headless, PROJECT_SERVER, server_cx));
+    assert!(pending_launches(cx).is_empty());
+
+    approvals
+        .update(cx, |approvals, cx| approvals.revoke(&pending[0].key, cx))
+        .await
+        .expect("the approval is revoked");
+    cx.run_until_parked();
+    assert!(
+        !runs_language_server(&headless, PROJECT_SERVER, server_cx),
+        "the remote host stops the server with its approval"
+    );
+}
+
+#[gpui::test]
+async fn test_a_denied_remote_language_server_stays_stopped(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (_fs, project, headless) =
+        remote_project_with_language_server(json!({ "path": "project-lsp-binary" }), cx, server_cx)
+            .await;
+    let languages = host_languages(&headless, server_cx);
+    let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
+    let mut binary_statuses = languages.language_server_binary_statuses();
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+
+    let pending = pending_launches(cx);
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.deny_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the denial is stored");
+    cx.run_until_parked();
+    assert!(fake_servers.try_recv().is_err());
+    assert!(!runs_language_server(&headless, PROJECT_SERVER, server_cx));
+    let failure = last_failure(&mut binary_statuses, PROJECT_SERVER)
+        .expect("the remote host reports why the server did not start");
+    assert!(failure.contains("許可されていない"), "{failure}");
+}
+
+// The remote host binds the script a binary runs by its contents, so a
+// script changed after the approval needs its own.
+#[gpui::test]
+async fn test_a_remote_script_changed_after_approval_is_asked_about_again(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (fs, project, headless) = remote_project_with_language_server(
+        json!({ "path": "node", "arguments": ["scripts/lsp.js"] }),
+        cx,
+        server_cx,
+    )
+    .await;
+    let mut fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let (buffer, _handle) = open_with_language_servers(&project, path!("/code/project1"), cx).await;
+
+    let shown = pending_launches(cx);
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert_eq!(
+        shown[0]
+            .referenced_worktree_files
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        vec![path!("/code/project1/scripts/lsp.js").to_string()],
+        "the remote host bound the script by its contents"
+    );
+    assert!(
+        !shown[0].approval_is_session_only,
+        "the remote host hashed the script it runs, so the approval can be kept"
+    );
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&shown[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    let stored = approvals.read_with(cx, |approvals, _| approvals.decision_records().unwrap());
+    assert!(
+        stored
+            .iter()
+            .any(|record| record.key == shown[0].key.as_str() && !record.session_only),
+        "kept across restarts, unlike a remote script the IDE could not read itself: {stored:?}"
+    );
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the approved script starts");
+    cx.run_until_parked();
+    assert!(runs_language_server(&headless, PROJECT_SERVER, server_cx));
+
+    fs.insert_file(path!("/code/project1/scripts/lsp.js"), b"steal()".to_vec())
+        .await;
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(
+            vec![buffer.clone()],
+            HashSet::default(),
+            true,
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    let asked_again = pending_launches(cx);
+    assert_eq!(asked_again.len(), 1, "{asked_again:?}");
+    assert_ne!(
+        asked_again[0].key, shown[0].key,
+        "the changed script is not what was approved"
+    );
+    assert!(fake_servers.try_recv().is_err());
+    assert!(!runs_language_server(&headless, PROJECT_SERVER, server_cx));
+}
+
+// On the remote host the user's own settings are the ones the IDE pushed;
+// the remote server's settings file can be rewritten over there.
+#[gpui::test]
+async fn test_remote_server_settings_are_asked_about_but_the_users_own_are_not(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = remote_tree("{}".to_string(), server_cx).await;
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    cx.update_global(|settings_store: &mut SettingsStore, cx| {
+        settings_store.set_user_settings(
+            &json!({
+                "languages": { "Rust": { "language_servers": ["user_lsp", "server_lsp"] } },
+                "lsp": { "user_lsp": { "binary": { "path": "user-lsp-binary" } } },
+            })
+            .to_string(),
+            cx,
+        )
+    })
+    .unwrap();
+    server_cx
+        .update_global(|settings_store: &mut SettingsStore, cx| {
+            settings_store.set_server_settings(
+                &json!({ "lsp": { "server_lsp": { "binary": { "path": "server-lsp-binary" } } } })
+                    .to_string(),
+                cx,
+            )
+        })
+        .unwrap();
+    cx.run_until_parked();
+    register_rust_on_client(&project, &["user_lsp", "server_lsp"], cx);
+    let languages = host_languages(&headless, server_cx);
+    let mut user_servers = register_fake_server_on_host(&languages, "user_lsp");
+    let mut server_servers = register_fake_server_on_host(&languages, "server_lsp");
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+
+    user_servers
+        .next()
+        .await
+        .expect("a binary from the user's own settings starts right away");
+    assert!(
+        server_servers.try_recv().is_err(),
+        "a binary from the remote server's settings file waits"
+    );
+    let pending = pending_launches(cx);
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert_eq!(pending[0].name.as_ref(), "server_lsp");
+    assert_eq!(
+        pending[0].definition_file,
+        LaunchDefinitionFile::RemoteServerSettings
+    );
+}
+
+#[gpui::test]
+async fn test_remote_project_formatter_is_skipped_until_the_ide_approves_it(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = remote_tree(formatter_settings().to_string(), server_cx).await;
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap()
+        .0
+        .read_with(cx, |worktree, _| worktree.id());
+    cx.run_until_parked();
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("src/lib.rs")), cx)
+        })
+        .await
+        .unwrap();
+    buffer.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "// edited\n")], None, cx)
+    });
+    let format = |cx: &mut TestAppContext| {
+        project.update(cx, |project, cx| {
+            project.format(
+                HashSet::from_iter([buffer.clone()]),
+                LspFormatTarget::Buffers,
+                true,
+                FormatTrigger::Save,
+                cx,
+            )
+        })
+    };
+
+    format(cx)
+        .await
+        .expect("an unapproved formatter is skipped rather than failing the format");
+    project
+        .update(cx, |project, cx| project.save_buffer(buffer.clone(), cx))
+        .await
+        .expect("the save goes through");
+    assert_eq!(
+        fs.load(path!("/code/project1/src/lib.rs").as_ref())
+            .await
+            .unwrap(),
+        "// edited\nfn one() -> usize { 1 }\n"
+    );
+    let pending = pending_launches(cx);
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert_eq!(pending[0].kind, LaunchKind::ExternalFormatter);
+    assert_eq!(
+        pending[0].target.display().to_string(),
+        format!("{MISSING_FORMATTER} --stdin")
+    );
+    assert!(matches!(pending[0].host, LaunchHost::Remote { .. }));
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    assert!(
+        format(cx).await.is_err(),
+        "the approved formatter runs on the remote host, where it is not installed"
+    );
+}
+
+// An IDE that can read the question but has no handler for it answers with
+// an error: nothing that project settings define starts on the remote host.
+#[gpui::test]
+async fn test_an_ide_without_launch_approvals_gets_nothing_started(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let mut settings = formatter_settings();
+    settings["languages"] = json!({ "Rust": { "language_servers": [PROJECT_SERVER] } });
+    settings["lsp"] = json!({ "project_lsp": { "binary": { "path": "project-lsp-binary" } } });
+    let fs = remote_tree(settings.to_string(), server_cx).await;
+    let (client, headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
+    let languages = host_languages(&headless, server_cx);
+    let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
+    let mut binary_statuses = languages.language_server_binary_statuses();
+    let session = client.read_with(cx, |client, _| client.proto_client());
+    let buffer_id = open_buffer_over_session(&session, cx).await;
+
+    session
+        .request(proto::RegisterBufferWithLanguageServers {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            buffer_id,
+            only_servers: Vec::new(),
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    assert!(fake_servers.try_recv().is_err());
+    let failure = last_failure(&mut binary_statuses, PROJECT_SERVER)
+        .expect("the remote host reports why the server did not start");
+    assert!(failure.contains("起動の承認を確認できない"), "{failure}");
+
+    let format = session.request(format_request(buffer_id)).await;
+    assert!(
+        format.is_ok(),
+        "the formatter is skipped rather than run: {format:?}"
+    );
+}
+
+// An IDE from before ADR-F50 cannot read the question and never answers: the
+// save goes on after a short wait, the user hears why, and later launches
+// are refused at once instead of each waiting again, until a new connection.
+#[gpui::test]
+async fn test_an_ide_that_does_not_answer_gets_nothing_formatted(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = remote_tree(formatter_settings().to_string(), server_cx).await;
+    let (client, headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
+    let session = client.read_with(cx, |client, _| client.proto_client());
+    let questions = Arc::new(AtomicUsize::new(0));
+    session.add_request_handler(client.downgrade(), {
+        let questions = questions.clone();
+        move |_, _: TypedEnvelope<proto::RequestProjectLaunchApproval>, _| {
+            questions.fetch_add(1, Ordering::SeqCst);
+            futures::future::pending::<anyhow::Result<proto::RequestProjectLaunchApprovalResponse>>(
+            )
+        }
+    });
+    let notifications = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = server_cx.update(|cx| {
+        let lsp_store = headless.read(cx).lsp_store.clone();
+        let notifications = notifications.clone();
+        cx.subscribe(&lsp_store, move |_, event, _| {
+            if let LspStoreEvent::Notification(message) = event {
+                notifications.borrow_mut().push(message.clone());
+            }
+        })
+    });
+    let buffer_id = open_buffer_over_session(&session, cx).await;
+
+    let formatted = Arc::new(AtomicBool::new(false));
+    let format = cx.executor().spawn({
+        let formatted = formatted.clone();
+        let request = session.request(format_request(buffer_id));
+        async move {
+            let result = request.await;
+            formatted.store(true, Ordering::SeqCst);
+            result
+        }
+    });
+    cx.run_until_parked();
+    assert_eq!(questions.load(Ordering::SeqCst), 1, "the IDE was asked");
+    assert!(
+        !formatted.load(Ordering::SeqCst),
+        "the save waits for the answer until the timeout"
+    );
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    assert!(
+        formatted.load(Ordering::SeqCst),
+        "a save waits 5 seconds at most"
+    );
+    let format = format.await;
+    assert!(
+        format.is_ok(),
+        "the formatter is skipped rather than run: {format:?}"
+    );
+    assert!(
+        notifications
+            .borrow()
+            .iter()
+            .any(|message| message.contains("実行しませんでした")),
+        "the user hears why: {:?}",
+        notifications.borrow()
+    );
+
+    let format = session.request(format_request(buffer_id));
+    cx.run_until_parked();
+    assert!(format.await.is_ok());
+    assert_eq!(
+        questions.load(Ordering::SeqCst),
+        1,
+        "later saves are not held up again"
+    );
+
+    // A new connection may bring an IDE that answers.
+    headless.update(server_cx, |headless, cx| headless.connection_restored(cx));
+    let format = cx
+        .executor()
+        .spawn(session.request(format_request(buffer_id)));
+    cx.run_until_parked();
+    assert_eq!(
+        questions.load(Ordering::SeqCst),
+        2,
+        "asked again on the new connection"
+    );
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    assert!(format.await.is_ok());
+}
+
+// A decision the IDE pushes while its answer is on the way wins over that
+// answer: a revocation makes the remote server ask again, a few times at
+// most, and a denial stands.
+#[gpui::test]
+async fn test_a_decision_pushed_ahead_of_an_answer_wins(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = remote_tree(formatter_settings().to_string(), server_cx).await;
+    let (client, _headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
+    let session = client.read_with(cx, |client, _| client.proto_client());
+    let questions = Arc::new(AtomicUsize::new(0));
+    session.add_request_handler(client.downgrade(), {
+        let questions = questions.clone();
+        let session = session.clone();
+        move |_, envelope: TypedEnvelope<proto::RequestProjectLaunchApproval>, _| {
+            let question = questions.fetch_add(1, Ordering::SeqCst) + 1;
+            let session = session.clone();
+            let remote_key = envelope.payload.remote_key;
+            async move {
+                // The push is acknowledged before the answer goes out, so the
+                // remote server has taken it in by the time the answer comes.
+                if question <= 3 {
+                    session
+                        .request(proto::ProjectLaunchApprovalRevoked {
+                            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+                            remote_key,
+                        })
+                        .await?;
+                } else {
+                    session
+                        .request(proto::ProjectLaunchApprovalDecided {
+                            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+                            remote_key,
+                            approved: false,
+                        })
+                        .await?;
+                }
+                anyhow::Ok(proto::RequestProjectLaunchApprovalResponse {
+                    state: proto::ProjectLaunchApprovalState::LaunchApprovalApproved as i32,
+                    reason: None,
+                })
+            }
+        }
+    });
+    let buffer_id = open_buffer_over_session(&session, cx).await;
+
+    let format = session.request(format_request(buffer_id));
+    cx.run_until_parked();
+    assert!(
+        format.await.is_ok(),
+        "the approval never stands, so the formatter does not run"
+    );
+    assert_eq!(
+        questions.load(Ordering::SeqCst),
+        3,
+        "asked again after each revocation, three times in all"
+    );
+
+    let format = session.request(format_request(buffer_id));
+    cx.run_until_parked();
+    assert!(
+        format.await.is_ok(),
+        "the denial pushed ahead of the approval wins"
+    );
+    assert_eq!(questions.load(Ordering::SeqCst), 4);
+
+    let format = session.request(format_request(buffer_id));
+    cx.run_until_parked();
+    assert!(format.await.is_ok());
+    assert_eq!(
+        questions.load(Ordering::SeqCst),
+        4,
+        "the denial is kept for the session"
+    );
+}
+
+// A remote server that stops waiting takes its question back, and the IDE's
+// notification about it goes away.
+#[gpui::test]
+async fn test_a_launch_the_remote_server_stops_waiting_for_is_withdrawn(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (_fs, project, headless) =
+        remote_project_with_language_server(json!({ "path": "project-lsp-binary" }), cx, server_cx)
+            .await;
+    let _fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+    let pending = pending_launches(cx);
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let events = events.clone();
+        cx.subscribe(&approvals, move |_, event, _| {
+            events.borrow_mut().push(event.clone())
+        })
     });
 
-    cx.update(|cx| Project::remote(ssh, client, node, user_store, languages, fs, false, cx))
+    project.update(cx, |project, cx| {
+        project
+            .lsp_store()
+            .update(cx, |lsp_store, cx| lsp_store.stop_all_language_servers(cx))
+    });
+    cx.run_until_parked();
+    // A server that is still starting gets a few seconds before it is dropped.
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    // The IDE takes the launch away a few seconds later, unless it is asked
+    // about again.
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    assert!(pending_launches(cx).is_empty());
+    assert!(
+        events.borrow().iter().any(|event| matches!(
+            event,
+            ProjectLaunchApprovalsEvent::PendingLaunchWithdrawn(key) if *key == pending[0].key
+        )),
+        "the notification is dismissed: {:?}",
+        events.borrow()
+    );
+}
+
+// A restart withdraws a launch and asks about it again at once: the IDE keeps
+// it in front of the user as it was, instead of taking it away and bringing it
+// up again, and approving it works.
+#[gpui::test]
+async fn test_a_launch_asked_about_again_at_once_stays_in_front_of_the_user(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+    let (_project, worktree_id, session) = questioned_project(cx, server_cx).await;
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let events = events.clone();
+        cx.subscribe(&approvals, move |_, event, _| {
+            events.borrow_mut().push(event.clone())
+        })
+    });
+    let appeared = {
+        let events = events.clone();
+        move || {
+            events
+                .borrow()
+                .iter()
+                .filter(|event| {
+                    matches!(event, ProjectLaunchApprovalsEvent::PendingLaunchAppeared(_))
+                })
+                .count()
+        }
+    };
+    let pending = proto::ProjectLaunchApprovalState::LaunchApprovalPending as i32;
+
+    for _ in 0..10 {
+        let answer = ask_the_ide(&session, formatter_question(worktree_id, 0), cx).await;
+        assert_eq!(answer.state, pending, "{answer:?}");
+        withdraw_from_the_ide(&session, 0, cx).await;
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+    }
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 0), cx).await;
+    assert_eq!(answer.state, pending, "{answer:?}");
+    cx.executor().advance_clock(Duration::from_secs(10));
+    cx.run_until_parked();
+    assert_eq!(pending_launches(cx).len(), 1);
+    assert_eq!(appeared(), 1, "brought up once: {:?}", events.borrow());
+    assert!(
+        !events.borrow().iter().any(|event| matches!(
+            event,
+            ProjectLaunchApprovalsEvent::PendingLaunchWithdrawn(_)
+        )),
+        "never taken away: {:?}",
+        events.borrow()
+    );
+
+    // Taken away once it stays withdrawn, it is not brought up again when it
+    // is asked about.
+    withdraw_from_the_ide(&session, 0, cx).await;
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    assert!(pending_launches(cx).is_empty());
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 0), cx).await;
+    assert_eq!(answer.state, pending, "{answer:?}");
+    assert_eq!(appeared(), 1, "{:?}", events.borrow());
+
+    let shown = pending_launches(cx);
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&shown[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 0), cx).await;
+    assert_eq!(
+        answer.state,
+        proto::ProjectLaunchApprovalState::LaunchApprovalApproved as i32,
+        "{answer:?}"
+    );
+}
+
+// After a reconnection the IDE repeats what it decided, so that a revocation
+// lost with the old connection still reaches the remote server.
+#[gpui::test]
+async fn test_a_reconnection_repeats_the_decisions(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (_fs, project, headless) =
+        remote_project_with_language_server(json!({ "path": "project-lsp-binary" }), cx, server_cx)
+            .await;
+    let mut fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+    let key = pending_launches(cx)
+        .first()
+        .map(|launch| launch.key.clone())
+        .expect("the binary waits for approval");
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| approvals.approve_pending(&key, cx))
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the approved server starts");
+    cx.run_until_parked();
+    approvals
+        .update(cx, |approvals, cx| approvals.revoke(&key, cx))
+        .await
+        .expect("the approval is revoked");
+    cx.run_until_parked();
+    assert!(!runs_language_server(&headless, PROJECT_SERVER, server_cx));
+
+    let pushes = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = server_cx.update(|cx| {
+        let launch_approvals = headless.read(cx).launch_approvals.clone();
+        let pushes = pushes.clone();
+        cx.subscribe(&launch_approvals, move |_, event, _| {
+            pushes.borrow_mut().push(event.clone())
+        })
+    });
+    let remote_client = project
+        .read_with(cx, |project, _| project.remote_client())
+        .expect("a remote project");
+    remote_client
+        .update(cx, |remote_client, cx| {
+            remote_client.simulate_disconnect(cx)
+        })
+        .detach();
+    cx.run_until_parked();
+    assert!(
+        remote_client.read_with(cx, |remote_client, _| remote_client.connection_state())
+            == remote::ConnectionState::Connected,
+        "the IDE reconnected"
+    );
+    // The revocation that went out before was acknowledged, so this one is
+    // the repetition.
+    assert!(
+        pushes
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, ProjectLaunchApprovalsEvent::LaunchApprovalRevoked(_))),
+        "the revocation is repeated on the new connection: {:?}",
+        pushes.borrow()
+    );
+}
+
+// Taking an approval back while the IDE knows it is disconnected tells the
+// user that the remote server hears of it only on reconnecting.
+#[gpui::test]
+async fn test_revoking_while_disconnected_says_when_it_takes_effect(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (_fs, project, headless) =
+        remote_project_with_language_server(json!({ "path": "project-lsp-binary" }), cx, server_cx)
+            .await;
+    let mut fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+    let key = pending_launches(cx)
+        .first()
+        .map(|launch| launch.key.clone())
+        .expect("the binary waits for approval");
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| approvals.approve_pending(&key, cx))
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the approved server starts");
+    cx.run_until_parked();
+
+    let toasts = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let toasts = toasts.clone();
+        cx.subscribe(&project, move |_, event, _| {
+            if let project::Event::Toast { message, .. } = event {
+                toasts.borrow_mut().push(message.clone());
+            }
+        })
+    });
+    let remote_client = project
+        .read_with(cx, |project, _| project.remote_client())
+        .expect("a remote project");
+    remote_client.update(cx, |remote_client, cx| {
+        remote_client.force_server_not_running(cx)
+    });
+    approvals
+        .update(cx, |approvals, cx| approvals.revoke(&key, cx))
+        .await
+        .expect("the approval is revoked");
+    cx.run_until_parked();
+    assert!(
+        toasts
+            .borrow()
+            .iter()
+            .any(|message| message.contains("再接続したときに接続先へ伝わります")),
+        "{:?}",
+        toasts.borrow()
+    );
+}
+
+async fn ask_the_ide(
+    session: &rpc::AnyProtoClient,
+    question: proto::RequestProjectLaunchApproval,
+    cx: &mut TestAppContext,
+) -> proto::RequestProjectLaunchApprovalResponse {
+    let answer = session.request(question);
+    cx.run_until_parked();
+    answer.await.unwrap()
+}
+
+fn formatter_question(worktree_id: u64, index: u64) -> proto::RequestProjectLaunchApproval {
+    launch_question(
+        worktree_id,
+        index,
+        proto::ProjectLaunchKind::LaunchKindExternalFormatter,
+        &format!("fmt-{index}"),
+    )
+}
+
+fn launch_question(
+    worktree_id: u64,
+    index: u64,
+    kind: proto::ProjectLaunchKind,
+    name: &str,
+) -> proto::RequestProjectLaunchApproval {
+    proto::RequestProjectLaunchApproval {
+        project_id: proto::REMOTE_SERVER_PROJECT_ID,
+        remote_key: format!("{index:064x}"),
+        kind: kind as i32,
+        name: name.to_string(),
+        program: name.to_string(),
+        definition_file: Some(
+            proto::request_project_launch_approval::DefinitionFile::WorktreeSettingsFile(
+                path!("/code/project1/.zed/settings.json").to_string(),
+            ),
+        ),
+        worktree_id,
+        worktree_abs_path: path!("/code/project1").to_string(),
+        working_directory: Some(path!("/code/project1").to_string()),
+        ..Default::default()
+    }
+}
+
+/// A remote project, with the session its server puts questions to the IDE
+/// over, to ask them the way a misbehaving remote server would.
+async fn questioned_project(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> (Entity<Project>, u64, rpc::AnyProtoClient) {
+    let fs = remote_tree("{}".to_string(), server_cx).await;
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap()
+        .0
+        .read_with(cx, |worktree, _| worktree.id().to_proto());
+    cx.run_until_parked();
+    let session = server_cx.read(|cx| headless.read(cx).session.clone());
+    (project, worktree_id, session)
+}
+
+fn notified_key_count(cx: &mut TestAppContext) -> usize {
+    cx.update(|cx| {
+        ProjectLaunchApprovals::global(cx)
+            .read(cx)
+            .notified_key_count()
+    })
+}
+
+async fn withdraw_from_the_ide(session: &rpc::AnyProtoClient, index: u64, cx: &mut TestAppContext) {
+    let withdrawn = session.request(proto::WithdrawProjectLaunchApproval {
+        project_id: proto::REMOTE_SERVER_PROJECT_ID,
+        remote_key: format!("{index:064x}"),
+    });
+    cx.run_until_parked();
+    withdrawn.await.unwrap();
+}
+
+// A remote server cannot flood the IDE with questions: only so many launches
+// of one project wait at once, one it stopped waiting for keeps its room for
+// a while unless it is asked about again, and only language servers the IDE
+// knows are asked about.
+#[gpui::test]
+async fn test_a_remote_server_cannot_flood_the_ide_with_questions(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+    let (_project, worktree_id, session) = questioned_project(cx, server_cx).await;
+    let pending = proto::ProjectLaunchApprovalState::LaunchApprovalPending as i32;
+    let unavailable = proto::ProjectLaunchApprovalState::LaunchApprovalUnavailable as i32;
+    let refused_as_too_many = |answer: &proto::RequestProjectLaunchApprovalResponse| {
+        answer.state == proto::ProjectLaunchApprovalState::LaunchApprovalDeferred as i32
+            && answer
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("多すぎます"))
+    };
+
+    for index in 0..32 {
+        let answer = ask_the_ide(&session, formatter_question(worktree_id, index), cx).await;
+        assert_eq!(answer.state, pending, "{answer:?}");
+    }
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 32), cx).await;
+    assert!(refused_as_too_many(&answer), "{answer:?}");
+    assert_eq!(
+        pending_launches(cx).len(),
+        32,
+        "no notification beyond the cap"
+    );
+
+    let answer = ask_the_ide(
+        &session,
+        launch_question(
+            worktree_id,
+            33,
+            proto::ProjectLaunchKind::LaunchKindLanguageServerBinary,
+            "unknown_lsp",
+        ),
+        cx,
+    )
+    .await;
+    assert_eq!(answer.state, unavailable, "{answer:?}");
+    assert!(
+        answer
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("知らない言語サーバー")),
+        "{answer:?}"
+    );
+
+    for index in 0..32 {
+        withdraw_from_the_ide(&session, index, cx).await;
+    }
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    assert!(pending_launches(cx).is_empty());
+    assert_eq!(
+        notified_key_count(cx),
+        32,
+        "remembered for the cooldown, so that asking again brings nothing up again"
+    );
+
+    // Asking about ever new launches and withdrawing them raises no more
+    // notifications than waiting would.
+    for index in 40..80 {
+        let answer = ask_the_ide(&session, formatter_question(worktree_id, index), cx).await;
+        assert!(
+            refused_as_too_many(&answer),
+            "withdrawn launches still count for a while: {answer:?}"
+        );
+        withdraw_from_the_ide(&session, index, cx).await;
+    }
+    assert!(pending_launches(cx).is_empty());
+
+    // A launch asked about again, however often its definition changed in
+    // between, was only restarted: it keeps the room it had.
+    for index in 100..140 {
+        let answer = ask_the_ide(
+            &session,
+            launch_question(
+                worktree_id,
+                index,
+                proto::ProjectLaunchKind::LaunchKindExternalFormatter,
+                "fmt-5",
+            ),
+            cx,
+        )
+        .await;
+        assert_eq!(answer.state, pending, "{answer:?}");
+        withdraw_from_the_ide(&session, index, cx).await;
+    }
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 80), cx).await;
+    assert!(refused_as_too_many(&answer), "{answer:?}");
+
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_secs(11 * 60));
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 81), cx).await;
+    assert_eq!(answer.state, pending, "{answer:?}");
+    assert_eq!(
+        notified_key_count(cx),
+        1,
+        "the others are forgotten with their cooldown"
+    );
+}
+
+// Approved launches are never forgotten, so that a later revocation still
+// reaches the remote server: with nothing else to make room, a new question
+// is refused instead.
+#[gpui::test]
+async fn test_approved_launches_are_never_forgotten(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
+    let (_project, worktree_id, session) = questioned_project(cx, server_cx).await;
+    let approved = proto::ProjectLaunchApprovalState::LaunchApprovalApproved as i32;
+
+    for index in 0..256 {
+        let answer = ask_the_ide(&session, formatter_question(worktree_id, index), cx).await;
+        assert_eq!(answer.state, approved, "{answer:?}");
+    }
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 256), cx).await;
+    assert_eq!(
+        answer.state,
+        proto::ProjectLaunchApprovalState::LaunchApprovalUnavailable as i32,
+        "{answer:?}"
+    );
+    assert!(
+        answer
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("承認済みの起動が多すぎます")),
+        "{answer:?}"
+    );
+    let answer = ask_the_ide(&session, formatter_question(worktree_id, 0), cx).await;
+    assert_eq!(
+        answer.state, approved,
+        "a launch it knows is still answered: {answer:?}"
+    );
+}
+
+// A save that gave up on a stalled IDE does not stop language servers from
+// asking: one that starts meanwhile waits for the IDE, says why once its own
+// wait runs out, stops saying so when the IDE answers, and starts once
+// approved, with no restart.
+#[gpui::test]
+async fn test_a_stalled_ide_holds_language_servers_until_it_answers(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let mut settings = formatter_settings();
+    settings["languages"] = json!({ "Rust": { "language_servers": [PROJECT_SERVER] } });
+    settings["lsp"] = json!({ "project_lsp": { "binary": { "path": "project-lsp-binary" } } });
+    let fs = remote_tree(settings.to_string(), server_cx).await;
+    let (client, headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
+    let languages = host_languages(&headless, server_cx);
+    let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
+    let mut binary_statuses = languages.language_server_binary_statuses();
+    let session = client.read_with(cx, |client, _| client.proto_client());
+    let (end_stall, stall_ended) = futures::channel::oneshot::channel::<()>();
+    let stall_ended = futures::FutureExt::shared(stall_ended);
+    let questions = Arc::new(AtomicUsize::new(0));
+    let language_server_keys = Arc::new(std::sync::Mutex::new(Vec::new()));
+    session.add_request_handler(client.downgrade(), {
+        let questions = questions.clone();
+        let language_server_keys = language_server_keys.clone();
+        move |_, envelope: TypedEnvelope<proto::RequestProjectLaunchApproval>, _| {
+            questions.fetch_add(1, Ordering::SeqCst);
+            if envelope.payload.kind
+                == proto::ProjectLaunchKind::LaunchKindLanguageServerBinary as i32
+            {
+                language_server_keys
+                    .lock()
+                    .unwrap()
+                    .push(envelope.payload.remote_key);
+            }
+            let stall_ended = stall_ended.clone();
+            async move {
+                stall_ended.await?;
+                anyhow::Ok(proto::RequestProjectLaunchApprovalResponse {
+                    state: proto::ProjectLaunchApprovalState::LaunchApprovalPending as i32,
+                    reason: None,
+                })
+            }
+        }
+    });
+    let buffer_id = open_buffer_over_session(&session, cx).await;
+
+    let format = cx
+        .executor()
+        .spawn(session.request(format_request(buffer_id)));
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_secs(6));
+    cx.run_until_parked();
+    assert!(format.await.is_ok(), "the save gave up on the IDE");
+
+    let registered = session.request(proto::RegisterBufferWithLanguageServers {
+        project_id: proto::REMOTE_SERVER_PROJECT_ID,
+        buffer_id,
+        only_servers: Vec::new(),
+    });
+    cx.run_until_parked();
+    registered.await.unwrap();
+    // The server starts a few steps after the registration is acknowledged.
+    cx.run_until_parked();
+    assert_eq!(
+        questions.load(Ordering::SeqCst),
+        2,
+        "the language server still asks the IDE"
+    );
+
+    cx.executor().advance_clock(Duration::from_secs(31));
+    cx.run_until_parked();
+    let failure =
+        last_failure(&mut binary_statuses, PROJECT_SERVER).expect("the server says why it waits");
+    assert!(failure.contains("IDE が応答すると起動します"), "{failure}");
+    assert!(fake_servers.try_recv().is_err());
+
+    end_stall.send(()).unwrap();
+    cx.run_until_parked();
+    assert!(
+        fake_servers.try_recv().is_err(),
+        "the IDE answered that the launch waits for the user"
+    );
+    assert_eq!(
+        last_status(&mut binary_statuses, PROJECT_SERVER),
+        Some(BinaryStatus::None),
+        "the status no longer says that the server waits for the IDE"
+    );
+
+    let remote_key = language_server_keys
+        .lock()
+        .unwrap()
+        .last()
+        .cloned()
+        .expect("the language server asked");
+    session
+        .request(proto::ProjectLaunchApprovalDecided {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            remote_key,
+            approved: true,
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the language server starts once the user approves it");
+}
+
+// Rewriting a server's definition over and over, with a restart each time,
+// keeps one launch waiting at the IDE: the latest definition can still be
+// approved, and starts.
+#[gpui::test]
+async fn test_a_definition_rewritten_over_and_over_can_still_be_approved(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (fs, project, headless) = remote_project_with_language_server(
+        json!({ "path": "project-lsp-binary-0" }),
+        cx,
+        server_cx,
+    )
+    .await;
+    let mut fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let (buffer, _handle) = open_with_language_servers(&project, path!("/code/project1"), cx).await;
+    assert_eq!(pending_launches(cx).len(), 1);
+
+    for cycle in 1..=40 {
+        fs.insert_file(
+            path!("/code/project1/.zed/settings.json"),
+            project_server_settings(json!({ "path": format!("project-lsp-binary-{cycle}") }))
+                .into_bytes(),
+        )
+        .await;
+        cx.run_until_parked();
+        project.update(cx, |project, cx| {
+            project.restart_language_servers_for_buffers(
+                vec![buffer.clone()],
+                HashSet::default(),
+                true,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        // A server that is still starting gets a few seconds before it is
+        // dropped.
+        cx.executor().advance_clock(Duration::from_secs(6));
+        cx.run_until_parked();
+    }
+    assert!(fake_servers.try_recv().is_err());
+
+    let pending = pending_launches(cx);
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert_eq!(
+        pending[0].target.display().to_string(),
+        "project-lsp-binary-40"
+    );
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the latest definition starts once approved");
+    cx.run_until_parked();
+    assert!(runs_language_server(&headless, PROJECT_SERVER, server_cx));
+}
+
+// A language server the IDE has no room for waits for room instead of
+// giving up, says why meanwhile, and is asked about once the IDE decides
+// something.
+#[gpui::test]
+async fn test_a_language_server_waits_for_room_at_the_ide(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (_fs, project, headless) =
+        remote_project_with_language_server(json!({ "path": "project-lsp-binary" }), cx, server_cx)
+            .await;
+    let languages = host_languages(&headless, server_cx);
+    let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
+    let mut binary_statuses = languages.language_server_binary_statuses();
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap()
+        .0
+        .read_with(cx, |worktree, _| worktree.id().to_proto());
+    cx.run_until_parked();
+    let session = server_cx.read(|cx| headless.read(cx).session.clone());
+    for index in 0..32 {
+        let answer = ask_the_ide(&session, formatter_question(worktree_id, index), cx).await;
+        assert_eq!(
+            answer.state,
+            proto::ProjectLaunchApprovalState::LaunchApprovalPending as i32,
+            "{answer:?}"
+        );
+    }
+
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+    let failure =
+        last_failure(&mut binary_statuses, PROJECT_SERVER).expect("the server says why it waits");
+    assert!(
+        failure.contains("承認待ちが減ると問い合わせます"),
+        "{failure}"
+    );
+    assert_eq!(pending_launches(cx).len(), 32);
+    cx.executor().advance_clock(Duration::from_secs(61));
+    cx.run_until_parked();
+    assert_eq!(pending_launches(cx).len(), 32, "still no room");
+
+    let formatter = pending_launches(cx)
+        .into_iter()
+        .find(|launch| launch.kind == LaunchKind::ExternalFormatter)
+        .expect("a formatter waits");
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.deny_pending(&formatter.key, cx)
+        })
+        .await
+        .expect("the denial is stored");
+    cx.run_until_parked();
+    let server = pending_launches(cx)
+        .into_iter()
+        .find(|launch| launch.kind == LaunchKind::LanguageServerBinary)
+        .expect("the language server is asked about once there is room");
+    assert_eq!(
+        last_status(&mut binary_statuses, PROJECT_SERVER),
+        Some(BinaryStatus::None),
+        "the status no longer says that the server waits for room"
+    );
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&server.key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the language server starts once approved");
+}
+
+// While a question the IDE let go unanswered is still out, a restarted
+// language server waits for that answer instead of asking again, until a
+// new connection comes.
+#[gpui::test]
+async fn test_restarts_do_not_pile_up_questions_at_a_silent_ide(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = remote_tree(
+        project_server_settings(json!({ "path": "project-lsp-binary" })),
+        server_cx,
+    )
+    .await;
+    let (client, headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
+    let mut fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let session = client.read_with(cx, |client, _| client.proto_client());
+    let questions = Arc::new(AtomicUsize::new(0));
+    session.add_request_handler(client.downgrade(), {
+        let questions = questions.clone();
+        move |_, _: TypedEnvelope<proto::RequestProjectLaunchApproval>, _| {
+            questions.fetch_add(1, Ordering::SeqCst);
+            futures::future::pending::<anyhow::Result<proto::RequestProjectLaunchApprovalResponse>>(
+            )
+        }
+    });
+    let buffer_id = open_buffer_over_session(&session, cx).await;
+    let registered = session.request(proto::RegisterBufferWithLanguageServers {
+        project_id: proto::REMOTE_SERVER_PROJECT_ID,
+        buffer_id,
+        only_servers: Vec::new(),
+    });
+    cx.run_until_parked();
+    registered.await.unwrap();
+    cx.run_until_parked();
+    assert_eq!(questions.load(Ordering::SeqCst), 1);
+    cx.executor().advance_clock(Duration::from_secs(31));
+    cx.run_until_parked();
+
+    for _ in 0..5 {
+        let restarted = session.request(proto::RestartLanguageServers {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            buffer_ids: vec![buffer_id],
+            only_servers: Vec::new(),
+            all: false,
+        });
+        cx.run_until_parked();
+        restarted.await.unwrap();
+        cx.executor().advance_clock(Duration::from_secs(31));
+        cx.run_until_parked();
+    }
+    assert_eq!(
+        questions.load(Ordering::SeqCst),
+        1,
+        "one question at a time is out for the launch"
+    );
+    assert!(fake_servers.try_recv().is_err());
+
+    // A new connection may bring an IDE that answers.
+    headless.update(server_cx, |headless, cx| headless.connection_restored(cx));
+    cx.run_until_parked();
+    assert_eq!(
+        questions.load(Ordering::SeqCst),
+        2,
+        "asked again on the new connection"
+    );
+}
+
+// Two projects on one host are two sessions of one process (ADR-F45); a
+// decision reaches the session that asked, not the other one.
+#[gpui::test]
+async fn test_each_session_hears_only_its_own_decisions(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    let settings = project_server_settings(json!({ "path": "project-lsp-binary" }));
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": { ".zed": { "settings.json": settings.clone() }, "src": { "lib.rs": "fn one() {}" } },
+            "project2": { ".zed": { "settings.json": settings }, "src": { "lib.rs": "fn two() {}" } },
+        }),
+    )
+    .await;
+    cx.update(|cx| {
+        release_channel::init(semver::Version::new(0, 0, 0), cx);
+        cx.set_global(db::AppDatabase::test_new());
+    });
+    server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+    init_logger();
+    server_cx.update(HeadlessProject::init);
+    let languages = Arc::new(LanguageRegistry::new(server_cx.executor()));
+    let host = server_cx.new(|cx| {
+        crate::HeadlessHost::new(
+            crate::HeadlessHostState {
+                fs: fs.clone(),
+                http_client: Arc::new(BlockedHttpClient),
+                node_runtime: NodeRuntime::unavailable(),
+                languages: languages.clone(),
+                extension_host_proxy: Arc::new(ExtensionHostProxy::new()),
+                startup_time: std::time::Instant::now(),
+            },
+            cx,
+        )
+    });
+    let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
+
+    let mut sessions = Vec::new();
+    for worktree_path in [path!("/code/project1"), path!("/code/project2")] {
+        let (opts, session, _) = RemoteClient::fake_server(cx, server_cx);
+        let headless =
+            server_cx.new(|cx| HeadlessProject::new_in_host(host.clone(), session, false, cx));
+        let ssh = RemoteClient::connect_mock(opts, cx).await;
+        let project = if sessions.is_empty() {
+            build_project(ssh, cx)
+        } else {
+            let client = fake_client(cx);
+            connect_project(ssh, client, cx)
+        };
+        register_rust_on_client(&project, &[PROJECT_SERVER], cx);
+        let opened = open_with_language_servers(&project, worktree_path, cx).await;
+        sessions.push((project, headless, opened));
+    }
+    assert!(fake_servers.try_recv().is_err());
+
+    let pending = pending_launches(cx);
+    assert_eq!(
+        pending.len(),
+        2,
+        "each session asks about its own worktree: {pending:?}"
+    );
+    let launch_in = |worktree_path: &str| {
+        pending
+            .iter()
+            .find(|launch| &*launch.worktree_abs_path == Path::new(worktree_path))
+            .cloned()
+            .expect("a pending launch for the worktree")
+    };
+    let first = launch_in(path!("/code/project1"));
+    let second = launch_in(path!("/code/project2"));
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&first.key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the session that asked starts its server");
+    cx.run_until_parked();
+    assert!(runs_language_server(
+        &sessions[0].1,
+        PROJECT_SERVER,
+        server_cx
+    ));
+    assert!(
+        !runs_language_server(&sessions[1].1, PROJECT_SERVER, server_cx),
+        "the other session still waits for its own decision"
+    );
+    assert!(fake_servers.try_recv().is_err());
+    assert_eq!(
+        pending_launches(cx)
+            .into_iter()
+            .map(|launch| launch.key)
+            .collect::<Vec<_>>(),
+        vec![second.key.clone()]
+    );
+
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.approve_pending(&second.key, cx)
+        })
+        .await
+        .expect("the approval is stored");
+    cx.run_until_parked();
+    fake_servers
+        .next()
+        .await
+        .expect("the second session starts its server once approved");
+    cx.run_until_parked();
+    assert!(runs_language_server(
+        &sessions[1].1,
+        PROJECT_SERVER,
+        server_cx
+    ));
 }

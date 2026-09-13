@@ -23,7 +23,8 @@ use futures::{
     channel::{mpsc, oneshot},
 };
 use gpui::{
-    App, AppContext as _, Context, Entity, EntityId, EventEmitter, Global, SharedString, Task,
+    App, AppContext as _, AsyncApp, Context, Entity, EntityId, EventEmitter, Global, SharedString,
+    Task,
 };
 use itertools::Itertools as _;
 use remote::RemoteConnectionOptions;
@@ -34,6 +35,11 @@ use settings::{
 use sha2::{Digest as _, Sha256};
 use util::{ResultExt as _, paths::PathStyle, rel_path::RelPath};
 use worktree::{Snapshot, Worktree};
+
+use crate::remote_launch_approvals::{
+    FORMATTER_ANSWER_TIMEOUT, LANGUAGE_SERVER_ANSWER_TIMEOUT, LaunchPlace, RemoteAnswer,
+    RemoteLaunchApprovals,
+};
 
 const DB_NAMESPACE: &str = "project_launch_approvals";
 
@@ -397,15 +403,31 @@ pub enum LaunchHost {
 impl LaunchHost {
     pub fn from_remote_connection(options: &RemoteConnectionOptions) -> Self {
         let identity = match options {
-            RemoteConnectionOptions::Ssh(ssh) => format!(
-                "ssh://{}{}{}",
-                ssh.username
-                    .as_deref()
-                    .map(|user| format!("{user}@"))
-                    .unwrap_or_default(),
-                ssh.host.to_bracketed_string(),
-                ssh.port.map(|port| format!(":{port}")).unwrap_or_default(),
-            ),
+            RemoteConnectionOptions::Ssh(ssh) => {
+                let mut identity = format!(
+                    "ssh://{}{}{}",
+                    ssh.username
+                        .as_deref()
+                        .map(|user| format!("{user}@"))
+                        .unwrap_or_default(),
+                    ssh.host.to_bracketed_string(),
+                    ssh.port.map(|port| format!(":{port}")).unwrap_or_default(),
+                );
+                // The same name can lead to another machine through a jump
+                // host, a proxy command or another configuration file.
+                if let Some(arguments) = ssh.args.as_ref().filter(|arguments| !arguments.is_empty())
+                {
+                    // Only a digest: the identity is stored with decisions,
+                    // and a proxy command can hold a secret.
+                    let digest = Sha256::digest(
+                        serde_json::Value::from(arguments.clone())
+                            .to_string()
+                            .as_bytes(),
+                    );
+                    identity.push_str(&format!(" args-sha256:{digest:x}"));
+                }
+                identity
+            }
             RemoteConnectionOptions::Wsl(wsl) => format!(
                 "wsl://{}{}",
                 wsl.user
@@ -426,7 +448,7 @@ impl LaunchHost {
         }
     }
 
-    fn identity(&self) -> Option<&str> {
+    pub(crate) fn identity(&self) -> Option<&str> {
         match self {
             Self::ThisMachine => None,
             Self::Remote { identity, .. } => Some(identity.as_ref()),
@@ -559,7 +581,7 @@ fn quote_command_line_part(part: &str) -> Cow<'_, str> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LaunchApprovalKey(SharedString);
+pub struct LaunchApprovalKey(pub(crate) SharedString);
 
 impl LaunchApprovalKey {
     pub fn as_str(&self) -> &str {
@@ -951,7 +973,7 @@ fn sorted(mut names: Vec<SharedString>) -> Vec<SharedString> {
 
 /// Serializes with object keys sorted, so that equal definitions hash
 /// equally no matter how their maps were ordered.
-fn canonical_json(value: &serde_json::Value) -> String {
+pub(crate) fn canonical_json(value: &serde_json::Value) -> String {
     let mut output = String::new();
     write_canonical_json(value, &mut output);
     output
@@ -2087,7 +2109,7 @@ pub enum ProjectLaunchApprovalsEvent {
 
 /// The launch a pending entry stands for, across edits of its definition.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct LaunchSlot {
+pub(crate) struct LaunchSlot {
     worktree_abs_path: Arc<Path>,
     host: Option<SharedString>,
     kind: LaunchKind,
@@ -2095,7 +2117,7 @@ struct LaunchSlot {
 }
 
 impl LaunchSlot {
-    fn of(details: &LaunchApprovalDetails) -> Self {
+    pub(crate) fn of(details: &LaunchApprovalDetails) -> Self {
         Self {
             worktree_abs_path: details.worktree_abs_path.clone(),
             host: details
@@ -2123,6 +2145,18 @@ pub struct PendingLaunchGuard {
 }
 
 impl PendingLaunchGuard {
+    pub(crate) fn new(
+        key: LaunchApprovalKey,
+        requester: EntityId,
+        withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, EntityId)>,
+    ) -> Self {
+        Self {
+            key,
+            requester,
+            withdrawals,
+        }
+    }
+
     /// Makes the guard stand for `key` from now on, returning the key it
     /// stood for, which the caller withdraws itself if it is still pending.
     pub fn replace_key(&mut self, key: LaunchApprovalKey) -> LaunchApprovalKey {
@@ -2142,25 +2176,217 @@ impl Drop for PendingLaunchGuard {
     }
 }
 
-/// The remote server applies project settings with no one there to ask, so
-/// it runs project-defined language servers and formatters as before.
+/// Marks the remote server, which has no approvals of its own: it asks the
+/// IDE of the session a project belongs to (ADR-F50), and never decides by
+/// itself.
 struct HeadlessProcess;
 
 impl Global for HeadlessProcess {}
 
+/// Who decides about project-defined language servers and formatters.
+#[derive(Clone)]
+pub(crate) enum LaunchApprover {
+    /// This IDE's app-wide approvals.
+    Local(Entity<ProjectLaunchApprovals>),
+    /// The IDE of the remote server's session (ADR-F50).
+    Remote(Entity<RemoteLaunchApprovals>),
+}
+
+/// What asking about a launch came to.
+pub(crate) enum LaunchAnswer {
+    Approved(LaunchApprovalKey),
+    Denied,
+    /// Resolves with the decision, or is canceled when the launch stops
+    /// being pending some other way, after which the caller looks again.
+    Pending(oneshot::Receiver<LaunchDecision>),
+    /// Nobody could be asked: nothing is launched.
+    Unavailable(SharedString),
+    /// The IDE did not answer; `answered` resolves once it answers anything,
+    /// after which the caller asks again.
+    Unanswered {
+        reason: SharedString,
+        answered: oneshot::Receiver<()>,
+    },
+    /// The IDE has no room now for another launch to wait for the user;
+    /// `room` resolves once it may have, after which the caller asks again.
+    Deferred {
+        reason: SharedString,
+        room: oneshot::Receiver<()>,
+    },
+}
+
+impl LaunchApprover {
+    /// Asks about `details` on behalf of `requester`. While the launch is
+    /// pending, `pending_guard` stands for it: dropping the guard withdraws
+    /// it.
+    pub(crate) async fn ask(
+        &self,
+        details: LaunchApprovalDetails,
+        place: &LaunchPlace,
+        requester: EntityId,
+        pending_guard: &mut Option<PendingLaunchGuard>,
+        cx: &mut AsyncApp,
+    ) -> LaunchAnswer {
+        match self {
+            Self::Local(launch_approvals) => launch_approvals.update(cx, |launch_approvals, cx| {
+                let details = launch_approvals.request_launch(details, requester, cx);
+                match details.state {
+                    LaunchApprovalState::Approved => LaunchAnswer::Approved(details.key),
+                    LaunchApprovalState::Denied => LaunchAnswer::Denied,
+                    LaunchApprovalState::Pending => {
+                        match pending_guard {
+                            Some(guard) => {
+                                let previous = guard.replace_key(details.key.clone());
+                                if previous != details.key {
+                                    launch_approvals.withdraw_pending(&previous, requester, cx);
+                                }
+                            }
+                            None => {
+                                *pending_guard = Some(
+                                    launch_approvals.pending_launch_guard(&details.key, requester),
+                                );
+                            }
+                        }
+                        LaunchAnswer::Pending(launch_approvals.wait_for_decision(&details.key))
+                    }
+                }
+            }),
+            Self::Remote(launch_approvals) => loop {
+                let (answer, withdrawals_before) =
+                    launch_approvals.update(cx, |launch_approvals, cx| {
+                        (
+                            launch_approvals.request_launch(
+                                &details,
+                                place,
+                                LANGUAGE_SERVER_ANSWER_TIMEOUT,
+                                cx,
+                            ),
+                            launch_approvals.withdrawals_sent(&details.key),
+                        )
+                    });
+                let answer = answer.await;
+                let key = details.key.clone();
+                return match answer {
+                    RemoteAnswer::Approved => LaunchAnswer::Approved(key),
+                    RemoteAnswer::Denied => LaunchAnswer::Denied,
+                    RemoteAnswer::Unavailable(reason) => LaunchAnswer::Unavailable(reason),
+                    RemoteAnswer::Unanswered {
+                        reason,
+                        answers_seen,
+                    } => LaunchAnswer::Unanswered {
+                        reason,
+                        answered: launch_approvals.update(cx, |launch_approvals, _| {
+                            launch_approvals.wait_until_the_ide_answers(answers_seen)
+                        }),
+                    },
+                    RemoteAnswer::Deferred(reason) => LaunchAnswer::Deferred {
+                        reason,
+                        room: launch_approvals.update(cx, |launch_approvals, cx| {
+                            launch_approvals.wait_for_room(cx)
+                        }),
+                    },
+                    RemoteAnswer::Pending => {
+                        let decision = launch_approvals.update(cx, |launch_approvals, cx| {
+                            // A withdrawal sent for an earlier start while the
+                            // question was out can reach the IDE after it, and
+                            // take back what the IDE answered.
+                            let withdrawn_since_asked =
+                                launch_approvals.withdrawals_sent(&key) > withdrawals_before;
+                            match pending_guard {
+                                Some(guard) => {
+                                    let previous = guard.replace_key(key.clone());
+                                    if previous != key {
+                                        launch_approvals.withdraw_pending(&previous, requester, cx);
+                                    }
+                                    launch_approvals.keep_pending(&key, requester);
+                                }
+                                None => {
+                                    *pending_guard = Some(
+                                        launch_approvals.pending_launch_guard(&key, requester),
+                                    );
+                                }
+                            }
+                            (!withdrawn_since_asked)
+                                .then(|| launch_approvals.wait_for_decision(&key))
+                        });
+                        let Some(decision) = decision else {
+                            continue;
+                        };
+                        LaunchAnswer::Pending(decision)
+                    }
+                };
+            },
+        }
+    }
+
+    /// Asks once, for a launch that does not wait (a formatter is skipped
+    /// instead): whether it may run now, or why nobody could be asked.
+    pub(crate) async fn ask_once(
+        &self,
+        details: LaunchApprovalDetails,
+        place: &LaunchPlace,
+        requester: EntityId,
+        cx: &mut AsyncApp,
+    ) -> Result<bool, SharedString> {
+        match self {
+            Self::Local(launch_approvals) => Ok(launch_approvals
+                .update(cx, |launch_approvals, cx| {
+                    launch_approvals.request_launch(details, requester, cx)
+                })
+                .state
+                == LaunchApprovalState::Approved),
+            Self::Remote(launch_approvals) => {
+                let answer = launch_approvals
+                    .update(cx, |launch_approvals, cx| {
+                        launch_approvals.request_launch(
+                            &details,
+                            place,
+                            FORMATTER_ANSWER_TIMEOUT,
+                            cx,
+                        )
+                    })
+                    .await;
+                match answer {
+                    RemoteAnswer::Approved => Ok(true),
+                    RemoteAnswer::Denied | RemoteAnswer::Pending => Ok(false),
+                    RemoteAnswer::Unavailable(reason)
+                    | RemoteAnswer::Deferred(reason)
+                    | RemoteAnswer::Unanswered { reason, .. } => Err(reason),
+                }
+            }
+        }
+    }
+
+    /// Whether `key` is still approved: a decision taken back while its
+    /// approval was on its way stops the launch it approved.
+    pub(crate) fn still_approved(&self, key: &LaunchApprovalKey, cx: &App) -> bool {
+        let decision = match self {
+            Self::Local(launch_approvals) => launch_approvals.read(cx).decision(key),
+            Self::Remote(launch_approvals) => launch_approvals.read(cx).decision(key),
+        };
+        decision == Some(LaunchDecision::Approved)
+    }
+}
+
 /// Whether a project-defined language server or formatter may be asked about.
 pub(crate) enum LaunchGate {
-    Ask(Entity<ProjectLaunchApprovals>),
-    NoOneToAsk,
-    /// Neither approvals nor the remote server's marker: nothing is launched.
+    Ask(LaunchApprover),
+    /// Nobody to ask: nothing is launched.
     Unavailable,
 }
 
-pub(crate) fn launch_gate(cx: &App) -> LaunchGate {
-    if let Some(launch_approvals) = ProjectLaunchApprovals::try_global(cx) {
-        LaunchGate::Ask(launch_approvals)
+/// `remote_launch_approvals` belongs to a language server store of the
+/// remote server that is shared with an IDE.
+pub(crate) fn launch_gate(
+    remote_launch_approvals: Option<&Entity<RemoteLaunchApprovals>>,
+    cx: &App,
+) -> LaunchGate {
+    if let Some(remote_launch_approvals) = remote_launch_approvals {
+        LaunchGate::Ask(LaunchApprover::Remote(remote_launch_approvals.clone()))
     } else if cx.has_global::<HeadlessProcess>() {
-        LaunchGate::NoOneToAsk
+        LaunchGate::Unavailable
+    } else if let Some(launch_approvals) = ProjectLaunchApprovals::try_global(cx) {
+        LaunchGate::Ask(LaunchApprover::Local(launch_approvals))
     } else {
         LaunchGate::Unavailable
     }
@@ -2254,11 +2480,31 @@ impl ProjectLaunchApprovals {
             .map(|global| global.0.clone())
     }
 
-    /// For the remote server, which has no one to ask: project-defined
-    /// language servers and formatters run there as before. Anywhere else,
-    /// a missing approvals global blocks them.
+    /// For the remote server, which asks the IDE of each session instead of
+    /// deciding by itself (ADR-F50): without such an IDE, project-defined
+    /// language servers and formatters do not run there.
     pub fn mark_process_headless(cx: &mut App) {
         cx.set_global(HeadlessProcess);
+    }
+
+    /// What the user decided about `key`, if anything.
+    pub(crate) fn decision(&self, key: &LaunchApprovalKey) -> Option<LaunchDecision> {
+        match self.state_of(key).0 {
+            LaunchApprovalState::Approved => Some(LaunchDecision::Approved),
+            LaunchApprovalState::Denied => Some(LaunchDecision::Denied),
+            LaunchApprovalState::Pending => None,
+        }
+    }
+
+    /// Lets `key` raise a notification again, for a launch nothing waits for
+    /// any more: kept, the record of notified keys would only grow.
+    pub(crate) fn forget_notification(&mut self, key: &LaunchApprovalKey) {
+        self.notified_keys.remove(key);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn notified_key_count(&self) -> usize {
+        self.notified_keys.len()
     }
 
     /// Launches waiting for a decision, oldest first. A launch whose
@@ -3371,17 +3617,71 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_launch_gate_blocks_without_approvals_except_on_the_remote_server(
-        cx: &mut TestAppContext,
-    ) {
+    fn test_launch_gate_blocks_without_anyone_to_ask(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            assert!(matches!(launch_gate(cx), LaunchGate::Unavailable));
-            ProjectLaunchApprovals::mark_process_headless(cx);
-            assert!(matches!(launch_gate(cx), LaunchGate::NoOneToAsk));
+            assert!(matches!(launch_gate(None, cx), LaunchGate::Unavailable));
             cx.set_global(db::AppDatabase::test_new());
             init(cx);
-            assert!(matches!(launch_gate(cx), LaunchGate::Ask(_)));
+            assert!(matches!(
+                launch_gate(None, cx),
+                LaunchGate::Ask(LaunchApprover::Local(_))
+            ));
+            ProjectLaunchApprovals::mark_process_headless(cx);
+            assert!(
+                matches!(launch_gate(None, cx), LaunchGate::Unavailable),
+                "the remote server never decides by itself, and without an IDE nothing runs"
+            );
         });
+    }
+
+    #[gpui::test]
+    async fn test_a_decision_taken_back_is_no_longer_approved(cx: &mut TestAppContext) {
+        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+        let approvals = cx.update(ProjectLaunchApprovals::global);
+        cx.run_until_parked();
+        let approver = LaunchApprover::Local(approvals.clone());
+        let details = pending_details("taken-back", "fmt");
+        let key = details.key.clone();
+        assert!(!cx.update(|cx| approver.still_approved(&key, cx)));
+
+        approvals
+            .update(cx, |approvals, cx| approvals.approve(details, cx))
+            .await
+            .unwrap();
+        assert!(cx.update(|cx| approver.still_approved(&key, cx)));
+        approvals
+            .update(cx, |approvals, cx| approvals.revoke(&key, cx))
+            .await
+            .unwrap();
+        assert!(
+            !cx.update(|cx| approver.still_approved(&key, cx)),
+            "a start that was on its way stops here"
+        );
+    }
+
+    #[test]
+    fn test_ssh_connections_through_other_hops_are_other_hosts() {
+        let identity = |command: &str| {
+            let options = remote::SshConnectionOptions::parse_command_line(command).unwrap();
+            LaunchHost::from_remote_connection(&RemoteConnectionOptions::Ssh(options))
+        };
+        assert_eq!(identity("dev@build"), identity("dev@build"));
+        assert_ne!(
+            identity("dev@build -J jump-a"),
+            identity("dev@build -J jump-b")
+        );
+        assert_ne!(identity("dev@build"), identity("dev@build -J jump-a"));
+        assert_ne!(identity("dev@build"), identity("dev@build -p 2222"));
+        let LaunchHost::Remote {
+            identity: stored, ..
+        } = identity("dev@build -J jump-a")
+        else {
+            panic!("an SSH connection is a remote host");
+        };
+        assert!(
+            !stored.contains("jump-a"),
+            "only a digest of the arguments is stored with decisions: {stored}"
+        );
     }
 
     #[gpui::test]

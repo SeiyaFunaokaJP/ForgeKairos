@@ -14225,6 +14225,7 @@ dependencies = [
  "crash-handler",
  "crashes",
  "dap_adapters",
+ "db",
  "debug_adapter_extension",
  "editor",
  "egress_policy",

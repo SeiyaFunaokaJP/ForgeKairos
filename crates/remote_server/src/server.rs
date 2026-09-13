@@ -847,7 +847,7 @@ fn this_executable_identity() -> (u64, Option<Duration>) {
 /// Tells apart hosts that share a home directory (see [`DaemonKeyParts`]).
 /// The machine id catches hosts that were given the same name; the name
 /// catches hosts cloned from one image, which share a machine id.
-fn this_host_identity() -> String {
+pub(crate) fn this_host_identity() -> String {
     let host_name = sysinfo::System::host_name().unwrap_or_default();
     let machine_id = ["/etc/machine-id", "/var/lib/dbus/machine-id"]
         .iter()

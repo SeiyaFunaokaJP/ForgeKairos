@@ -528,7 +528,12 @@ message Envelope {
     InstallDevToolResponse install_dev_tool_response = 496;
     RescanProjectWorktree rescan_project_worktree = 497;
     RescanProjectWorktreeResponse rescan_project_worktree_response = 498;
-    // 499-504: ADR-F50 (remote launch approvals and what follows them).
+    RequestProjectLaunchApproval request_project_launch_approval = 499;
+    RequestProjectLaunchApprovalResponse request_project_launch_approval_response = 500;
+    ProjectLaunchApprovalDecided project_launch_approval_decided = 501;
+    ProjectLaunchApprovalRevoked project_launch_approval_revoked = 502;
+    WithdrawProjectLaunchApproval withdraw_project_launch_approval = 503;
+    // 504: kept for what follows ADR-F50's launch approvals.
     SaveBufferVerified save_buffer_verified = 505; // current max
   }
 
@@ -558,6 +563,7 @@ message Envelope {
   reserved 211 to 216, 232 to 233;
   reserved 397 to 398;
   reserved 406 to 408;
+  reserved 504;
 }
 
 message Hello {

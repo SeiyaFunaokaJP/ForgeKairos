@@ -31,6 +31,7 @@ use project::{
     image_store::ImageId,
     lsp_store::log_store::{self, GlobalLogStore, LanguageServerKind, LogKind},
     project_settings::SettingsObserver,
+    remote_launch_approvals::RemoteLaunchApprovals,
     search::SearchQuery,
     task_store::TaskStore,
     trusted_worktrees::{PathTrust, RemoteHostLocation, TrustedWorktrees},
@@ -66,6 +67,9 @@ pub struct HeadlessProject {
     pub worktree_store: Entity<WorktreeStore>,
     pub buffer_store: Entity<BufferStore>,
     pub lsp_store: Entity<LspStore>,
+    /// ADR-F50: what the IDE of this session decided about the language
+    /// servers and formatters that project or server settings define here.
+    pub launch_approvals: Entity<RemoteLaunchApprovals>,
     pub task_store: Entity<TaskStore>,
     pub dap_store: Entity<DapStore>,
     pub breakpoint_store: Entity<BreakpointStore>,
@@ -148,6 +152,9 @@ pub struct HeadlessHost {
     child_process_proxy: Option<Rc<RefCell<ChildProcessProxySupervisor>>>,
     startup_time: Instant,
     projects: Vec<WeakEntity<HeadlessProject>>,
+    /// Tells this machine apart from others the IDE may reach under the same
+    /// name (ADR-F50).
+    host_identity: String,
 }
 
 impl HeadlessHost {
@@ -221,6 +228,7 @@ impl HeadlessHost {
             child_process_proxy,
             startup_time,
             projects: Vec::new(),
+            host_identity: crate::this_host_identity(),
         }
     }
 
@@ -313,6 +321,7 @@ impl HeadlessProject {
             egress_policy,
             child_process_proxy,
             startup_time,
+            host_identity,
         ) = {
             let host = host.read(cx);
             (
@@ -324,6 +333,7 @@ impl HeadlessProject {
                 host.egress_policy.clone(),
                 host.child_process_proxy.clone(),
                 host.startup_time,
+                host.host_identity.clone(),
             )
         };
         let this = cx.weak_entity();
@@ -458,6 +468,19 @@ impl HeadlessProject {
             lsp_store.shared(REMOTE_SERVER_PROJECT_ID, session.clone(), cx);
             lsp_store
         });
+        // ADR-F50: language servers and formatters that project or server
+        // settings define on this host wait for the IDE of this session.
+        let launch_approvals = cx.new(|cx| {
+            RemoteLaunchApprovals::new(
+                session.clone(),
+                REMOTE_SERVER_PROJECT_ID,
+                &host_identity,
+                cx,
+            )
+        });
+        lsp_store.update(cx, |lsp_store, cx| {
+            lsp_store.share_launch_approvals(launch_approvals.clone(), cx)
+        });
 
         let agent_server_store = cx.new(|cx| {
             let mut agent_server_store = AgentServerStore::local(
@@ -492,6 +515,7 @@ impl HeadlessProject {
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &buffer_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &cx.entity());
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &lsp_store);
+        session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &launch_approvals);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &task_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &toolchain_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &dap_store);
@@ -550,6 +574,7 @@ impl HeadlessProject {
         WorktreeStore::init(&session);
         SettingsObserver::init(&session);
         LspStore::init(&session);
+        RemoteLaunchApprovals::init(&session);
         TaskStore::init(Some(&session));
         ToolchainStore::init(&session);
         DapStore::init(&session, cx);
@@ -569,6 +594,7 @@ impl HeadlessProject {
             worktree_store,
             buffer_store,
             lsp_store,
+            launch_approvals,
             task_store,
             dap_store,
             breakpoint_store,
@@ -585,6 +611,14 @@ impl HeadlessProject {
             host,
             quit_app_on_shutdown: false,
         }
+    }
+
+    /// The IDE came back on a new connection to this session (ADR-F45), and
+    /// may answer the launch questions it left unanswered before (ADR-F50).
+    pub fn connection_restored(&mut self, cx: &mut Context<Self>) {
+        self.launch_approvals.update(cx, |launch_approvals, _| {
+            launch_approvals.connection_restored()
+        });
     }
 
     /// Stops what this project runs on the host, for when its session is

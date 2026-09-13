@@ -80,6 +80,11 @@ messages!(
     (ExpandAllForProjectEntryResponse, Foreground),
     (RescanProjectWorktree, Foreground),
     (RescanProjectWorktreeResponse, Foreground),
+    (RequestProjectLaunchApproval, Foreground),
+    (RequestProjectLaunchApprovalResponse, Foreground),
+    (ProjectLaunchApprovalDecided, Foreground),
+    (ProjectLaunchApprovalRevoked, Foreground),
+    (WithdrawProjectLaunchApproval, Foreground),
     (Follow, Foreground),
     (FollowResponse, Foreground),
     (ApplyCodeActionKind, Foreground),
@@ -446,6 +451,13 @@ request_messages!(
     (ExpandProjectEntry, ExpandProjectEntryResponse),
     (ExpandAllForProjectEntry, ExpandAllForProjectEntryResponse),
     (RescanProjectWorktree, RescanProjectWorktreeResponse),
+    (
+        RequestProjectLaunchApproval,
+        RequestProjectLaunchApprovalResponse
+    ),
+    (ProjectLaunchApprovalDecided, Ack),
+    (ProjectLaunchApprovalRevoked, Ack),
+    (WithdrawProjectLaunchApproval, Ack),
     (Follow, FollowResponse),
     (ApplyCodeActionKind, ApplyCodeActionKindResponse),
     (FormatBuffers, FormatBuffersResponse),
@@ -725,6 +737,10 @@ entity_messages!(
     ExpandProjectEntry,
     ExpandAllForProjectEntry,
     RescanProjectWorktree,
+    RequestProjectLaunchApproval,
+    ProjectLaunchApprovalDecided,
+    ProjectLaunchApprovalRevoked,
+    WithdrawProjectLaunchApproval,
     FindSearchCandidates,
     ApplyCodeActionKind,
     FormatBuffers,
@@ -1159,6 +1175,41 @@ mod tests {
             assert_eq!(decoded.allowed_hosts, message.allowed_hosts);
             assert_eq!(decoded.proxy_child_processes, flag);
         }
+    }
+
+    #[test]
+    fn project_launch_approval_messages_fail_closed_and_round_trip() {
+        // ADR-F50: a response that says nothing must not read as an approval.
+        let empty = RequestProjectLaunchApprovalResponse::decode([].as_slice())
+            .expect("an empty message decodes");
+        assert_eq!(
+            ProjectLaunchApprovalState::from_i32(empty.state),
+            Some(ProjectLaunchApprovalState::LaunchApprovalUnavailable)
+        );
+        assert_eq!(
+            ProjectLaunchKind::from_i32(RequestProjectLaunchApproval::default().kind),
+            Some(ProjectLaunchKind::LaunchKindUnknown)
+        );
+
+        let request = RequestProjectLaunchApproval {
+            project_id: REMOTE_SERVER_PROJECT_ID,
+            remote_key: "0".repeat(64),
+            kind: ProjectLaunchKind::LaunchKindLanguageServerBinary as i32,
+            name: "project_lsp".into(),
+            program: "node".into(),
+            arguments: vec!["\u{202E}sj.exe".into()],
+            definition_file: Some(
+                request_project_launch_approval::DefinitionFile::ServerSettings(
+                    request_project_launch_approval::ServerSettings {},
+                ),
+            ),
+            ..Default::default()
+        };
+        let envelope = request.clone().into_envelope(7, None, None);
+        let decoded =
+            RequestProjectLaunchApproval::from_envelope(envelope).expect("the envelope carries it");
+        assert_eq!(decoded, request);
+        assert_eq!(decoded.remote_entity_id(), REMOTE_SERVER_PROJECT_ID);
     }
 
     #[test]

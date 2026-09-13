@@ -18,6 +18,7 @@ pub mod project_search;
 pub mod project_settings;
 /// ADR-F28: running the transfer screen's commands on the remote SSH host.
 pub mod remote_exec;
+pub mod remote_launch_approvals;
 pub mod search;
 pub mod task_inventory;
 pub mod task_store;
@@ -44,6 +45,7 @@ use crate::{
     git_store::GitStore,
     lsp_store::{SymbolLocation, log_store::LogKind},
     project_search::SearchResultsHandle,
+    remote_launch_approvals::RemoteLaunchRequests,
     trusted_worktrees::{PathTrust, RemoteHostLocation, TrustedWorktrees},
     worktree_store::WorktreeIdCounter,
 };
@@ -259,6 +261,9 @@ pub struct Project {
     /// ADR-F28: the transfer commands this project has running on its remote
     /// host, and the askpass callbacks their prompts are routed back to.
     remote_exec: remote_exec::RemoteExec,
+    /// ADR-F50: the launches this remote project's server asked the user
+    /// about. `None` for other projects.
+    _remote_launch_requests: Option<Entity<RemoteLaunchRequests>>,
 }
 
 struct DownloadingFile {
@@ -1410,6 +1415,7 @@ impl Project {
                 downloading_files: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
                 remote_exec: remote_exec::RemoteExec::default(),
+                _remote_launch_requests: None,
             }
         })
     }
@@ -1592,6 +1598,19 @@ impl Project {
 
             cx.subscribe(&remote, Self::on_remote_client_event).detach();
 
+            let weak_project = cx.weak_entity();
+            let remote_launch_requests = cx.new(|cx| {
+                RemoteLaunchRequests::new(
+                    remote_proto.clone(),
+                    REMOTE_SERVER_PROJECT_ID,
+                    weak_project,
+                    &remote,
+                    &worktree_store,
+                    languages.clone(),
+                    cx,
+                )
+            });
+
             let this = Self {
                 buffer_ordered_messages_tx: tx,
                 collaborators: Default::default(),
@@ -1654,10 +1673,12 @@ impl Project {
                 downloading_files: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
                 remote_exec: remote_exec::RemoteExec::default(),
+                _remote_launch_requests: Some(remote_launch_requests.clone()),
             };
 
             // remote server -> local machine handlers
             remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &cx.entity());
+            remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &remote_launch_requests);
             remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &this.buffer_store);
             remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &this.worktree_store);
             remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &this.lsp_store);
@@ -1675,6 +1696,14 @@ impl Project {
             remote_proto.add_entity_message_handler(Self::handle_toast);
             remote_proto.add_entity_message_handler(Self::handle_telemetry_event);
             remote_proto.add_entity_request_handler(Self::handle_language_server_prompt_request);
+            // ADR-F50: the remote server asks before it runs a program that
+            // project or server settings define over there.
+            remote_proto.add_entity_request_handler(
+                RemoteLaunchRequests::handle_request_project_launch_approval,
+            );
+            remote_proto.add_entity_request_handler(
+                RemoteLaunchRequests::handle_withdraw_project_launch_approval,
+            );
             remote_proto.add_entity_message_handler(Self::handle_hide_toast);
             remote_proto.add_entity_request_handler(Self::handle_update_buffer_from_remote_server);
             remote_proto.add_entity_request_handler(Self::handle_trust_worktrees);
@@ -1946,6 +1975,7 @@ impl Project {
                 downloading_files: Default::default(),
                 last_worktree_paths: WorktreePaths::default(),
                 remote_exec: remote_exec::RemoteExec::default(),
+                _remote_launch_requests: None,
             };
             project.set_role(role, cx);
             for worktree in worktrees {

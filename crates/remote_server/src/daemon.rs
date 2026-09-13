@@ -319,7 +319,12 @@ impl SessionRegistry {
         let identifier = hello.identifier.as_str();
         let admission = if hello.reconnect {
             match self.sessions.get(identifier) {
-                Some(session) => Admission::Accepted(session.connections.clone()),
+                Some(session) => {
+                    session
+                        .project
+                        .update(cx, |project, cx| project.connection_restored(cx));
+                    Admission::Accepted(session.connections.clone())
+                }
                 None => Admission::SessionNotFound,
             }
         } else {

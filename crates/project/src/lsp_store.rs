@@ -53,10 +53,12 @@ use crate::{
     },
     prettier_store::{self, PrettierStore, PrettierStoreEvent},
     project_launch_approvals::{
-        self, LaunchApprovalKey, LaunchApprovalState, LaunchDecision, LaunchGate, LaunchRequest,
-        PendingLaunchGuard, ProjectLaunchApprovals, ProjectLaunchApprovalsEvent, ScannedWorktrees,
+        self, LaunchAnswer, LaunchApprovalKey, LaunchApprover, LaunchDecision, LaunchGate,
+        LaunchRequest, PendingLaunchGuard, ProjectLaunchApprovals, ProjectLaunchApprovalsEvent,
+        ScannedWorktrees, escape_for_display,
     },
     project_settings::{BinarySettings, LspSettings, ProjectSettings},
+    remote_launch_approvals::{LaunchPlace, RemoteLaunchApprovals},
     toolchain_store::{LocalToolchainStore, ToolchainStoreEvent},
     trusted_worktrees::{PathTrust, TrustedWorktrees, TrustedWorktreesEvent},
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
@@ -360,6 +362,9 @@ pub struct LocalLspStore {
     /// The approval each project-defined binary was started under (ADR-F42),
     /// so that revoking or denying it stops the server.
     approved_binary_launches: HashMap<LanguageServerId, LaunchApprovalKey>,
+    /// On the remote server, the approvals of the session this store is
+    /// shared with (ADR-F50): project-defined launches are asked about there.
+    remote_launch_approvals: Option<(Entity<RemoteLaunchApprovals>, Subscription)>,
 
     buffers_to_refresh_hash_set: HashSet<BufferId>,
     buffers_to_refresh_queue: VecDeque<BufferId>,
@@ -518,10 +523,18 @@ impl LocalLspStore {
                 let adapter = adapter.clone();
                 let toolchain = toolchain.clone();
                 let delegate = delegate.clone();
+                let server_name = adapter.name.0.clone();
                 cx.spawn(async move |cx| {
-                    let approved = launch_approval.await?;
+                    let (approved, launch_approver) = launch_approval.await?;
                     languages.update_lsp_binary_status(adapter.name(), BinaryStatus::Starting);
                     let binary = lsp_store.update(cx, |lsp_store, cx| {
+                        // Revoking or denying finds the server by the record
+                        // made below, so a decision taken back before then
+                        // is caught here.
+                        anyhow::ensure!(
+                            launch_approver.still_approved(&approved, cx),
+                            "言語サーバー「{server_name}」の実行ファイルの承認は取り消されたため、起動しません"
+                        );
                         let local_lsp_store = lsp_store
                             .as_local_mut()
                             .context("the language server store is no longer local")?;
@@ -752,8 +765,8 @@ impl LocalLspStore {
     }
 
     /// ADR-F42: a `lsp.<name>.binary` that project settings set waits until
-    /// the user approves that exact definition. `None` when nothing needs
-    /// approval, which includes the remote server: there is no one to ask.
+    /// the user approves that exact definition; on the remote server, the IDE
+    /// of the session is asked (ADR-F50). `None` when nothing needs approval.
     fn language_server_launch_approval(
         &self,
         worktree_handle: &Entity<Worktree>,
@@ -761,7 +774,7 @@ impl LocalLspStore {
         settings: &LspSettings,
         server_id: LanguageServerId,
         cx: &mut App,
-    ) -> Option<Task<Result<LaunchApprovalKey>>> {
+    ) -> Option<Task<Result<(LaunchApprovalKey, LaunchApprover)>>> {
         let binary = settings.binary.as_ref()?;
         let worktree = worktree_handle.read(cx);
         let definition = project_launch_approvals::untrusted_language_server_binary(
@@ -770,14 +783,24 @@ impl LocalLspStore {
             &adapter.name.0,
         )?;
         let server_name = adapter.name.0.clone();
-        let launch_approvals = match project_launch_approvals::launch_gate(cx) {
-            LaunchGate::Ask(launch_approvals) => launch_approvals,
-            LaunchGate::NoOneToAsk => return None,
+        let remote_launch_approvals = self
+            .remote_launch_approvals
+            .as_ref()
+            .map(|(remote_launch_approvals, _)| remote_launch_approvals);
+        let launch_approver = match project_launch_approvals::launch_gate(
+            remote_launch_approvals,
+            cx,
+        ) {
+            LaunchGate::Ask(launch_approver) => launch_approver,
             LaunchGate::Unavailable => {
                 return Some(Task::ready(Err(anyhow!(
                     "起動の承認を確認できないため、プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは起動しません"
                 ))));
             }
+        };
+        let place = LaunchPlace {
+            worktree_id: worktree.id(),
+            working_directory: Some(worktree.abs_path().to_path_buf()),
         };
         let request = LaunchRequest::language_server_binary(
             &adapter.name.0,
@@ -794,10 +817,15 @@ impl LocalLspStore {
         let fs = self.fs.clone();
         let lsp_store = self.weak.clone();
         let requester = self.weak.entity_id();
+        let languages = self.languages.clone();
+        let adapter_name = adapter.name.clone();
         Some(cx.spawn(async move |cx| {
             // One guard for the whole wait: a guard dropped between two looks
             // would withdraw again the launch just asked for.
             let mut pending_guard: Option<PendingLaunchGuard> = None;
+            // Whether the status says why the server waits for the IDE, which
+            // must not outlast the wait.
+            let mut shows_why_it_waits = false;
             // Looked at again after every decision, so that a script swapped
             // between what the user saw and the approval needs its own.
             loop {
@@ -814,29 +842,20 @@ impl LocalLspStore {
                         "言語サーバー「{server_name}」の起動は取りやめられたため、実行ファイルの承認を待ちません"
                     );
                 }
-                let (details, decision) = launch_approvals.update(cx, |launch_approvals, cx| {
-                    let details = launch_approvals.request_launch(details, requester, cx);
-                    if details.state != LaunchApprovalState::Pending {
-                        return (details, None);
-                    }
-                    match &mut pending_guard {
-                        Some(guard) => {
-                            let previous = guard.replace_key(details.key.clone());
-                            if previous != details.key {
-                                launch_approvals.withdraw_pending(&previous, requester, cx);
-                            }
-                        }
-                        None => {
-                            pending_guard =
-                                Some(launch_approvals.pending_launch_guard(&details.key, requester));
-                        }
-                    }
-                    let decision = launch_approvals.wait_for_decision(&details.key);
-                    (details, Some(decision))
-                });
-                match (details.state, decision) {
-                    (LaunchApprovalState::Approved, _) => return Ok(details.key),
-                    (LaunchApprovalState::Pending, Some(decision)) => {
+                let answer = launch_approver
+                    .ask(details, &place, requester, &mut pending_guard, cx)
+                    .await;
+                let still_waits_for_the_ide = matches!(
+                    answer,
+                    LaunchAnswer::Unanswered { .. } | LaunchAnswer::Deferred { .. }
+                );
+                if shows_why_it_waits && !still_waits_for_the_ide {
+                    languages.update_lsp_binary_status(adapter_name.clone(), BinaryStatus::None);
+                }
+                shows_why_it_waits = still_waits_for_the_ide;
+                match answer {
+                    LaunchAnswer::Approved(key) => return Ok((key, launch_approver)),
+                    LaunchAnswer::Pending(decision) => {
                         log::info!(
                             "language server {server_name} waits for its binary from project settings to be approved"
                         );
@@ -844,7 +863,36 @@ impl LocalLspStore {
                             break;
                         }
                     }
-                    _ => break,
+                    LaunchAnswer::Denied => break,
+                    LaunchAnswer::Unavailable(reason) => {
+                        anyhow::bail!(
+                            "起動の承認を確認できないため、プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは起動しません ({reason})"
+                        );
+                    }
+                    // Shown as failed while it waits, the server starts as
+                    // soon as the IDE answers, with no restart.
+                    LaunchAnswer::Unanswered { reason, answered } => {
+                        languages.update_lsp_binary_status(
+                            adapter_name.clone(),
+                            BinaryStatus::Failed {
+                                error: format!(
+                                    "IDE が応答しないため、言語サーバー「{server_name}」の実行ファイルの承認を確認できません。IDE が応答すると起動します ({reason})"
+                                ),
+                            },
+                        );
+                        answered.await.log_err();
+                    }
+                    LaunchAnswer::Deferred { reason, room } => {
+                        languages.update_lsp_binary_status(
+                            adapter_name.clone(),
+                            BinaryStatus::Failed {
+                                error: format!(
+                                    "IDE で承認待ちの起動が多すぎるため、言語サーバー「{server_name}」の実行ファイルの承認をまだ問い合わせられません。承認待ちが減ると問い合わせます ({reason})"
+                                ),
+                            },
+                        );
+                        room.await.log_err();
+                    }
                 }
             }
             Err(anyhow!(
@@ -2916,12 +2964,7 @@ impl LocalLspStore {
             ) else {
                 return ExternalFormatterLaunch::NotGated;
             };
-            let launch_approvals = match project_launch_approvals::launch_gate(cx) {
-                LaunchGate::Ask(launch_approvals) => launch_approvals,
-                LaunchGate::NoOneToAsk => return ExternalFormatterLaunch::NotGated,
-                LaunchGate::Unavailable => return ExternalFormatterLaunch::Blocked,
-            };
-            let (fs, worktrees) = match lsp_store.upgrade() {
+            let (fs, worktrees, remote_launch_approvals) = match lsp_store.upgrade() {
                 Some(lsp_store) => {
                     let lsp_store = lsp_store.read(cx);
                     let worktrees = ScannedWorktrees::of(
@@ -2931,19 +2974,31 @@ impl LocalLspStore {
                             .visible_worktrees(cx)
                             .map(|worktree| worktree.read(cx)),
                     );
+                    let local = lsp_store.as_local();
                     (
-                        lsp_store.as_local().map(|local| local.fs.clone()),
+                        local.map(|local| local.fs.clone()),
                         worktrees,
+                        local.and_then(|local| {
+                            local
+                                .remote_launch_approvals
+                                .as_ref()
+                                .map(|(remote_launch_approvals, _)| remote_launch_approvals.clone())
+                        }),
                     )
                 }
-                None => (None, ScannedWorktrees::of([worktree])),
+                None => (None, ScannedWorktrees::of([worktree]), None),
             };
+            let launch_approver =
+                match project_launch_approvals::launch_gate(remote_launch_approvals.as_ref(), cx) {
+                    LaunchGate::Ask(launch_approver) => launch_approver,
+                    LaunchGate::Unavailable => return ExternalFormatterLaunch::Blocked,
+                };
             let mut working_directory = worktree.abs_path().to_path_buf();
             if worktree.root_entry().is_some_and(|entry| entry.is_file()) {
                 working_directory.pop();
             }
             ExternalFormatterLaunch::Ask {
-                launch_approvals,
+                launch_approver,
                 request: LaunchRequest::external_formatter(
                     command,
                     arguments,
@@ -2953,23 +3008,43 @@ impl LocalLspStore {
                     worktrees,
                 ),
                 fs,
+                place: LaunchPlace {
+                    worktree_id: worktree.id(),
+                    working_directory: Some(working_directory),
+                },
             }
         });
-        let (launch_approvals, request, fs) = match launch {
+        let (launch_approver, request, fs, place) = match launch {
             ExternalFormatterLaunch::NotGated => return true,
             ExternalFormatterLaunch::Blocked => return false,
             ExternalFormatterLaunch::Ask {
-                launch_approvals,
+                launch_approver,
                 request,
                 fs,
-            } => (launch_approvals, request, fs),
+                place,
+            } => (launch_approver, request, fs, place),
         };
         let details = request.resolve(fs).await;
         let requester = lsp_store.entity_id();
-        let details = launch_approvals.update(cx, |launch_approvals, cx| {
-            launch_approvals.request_launch(details, requester, cx)
-        });
-        details.state == LaunchApprovalState::Approved
+        match launch_approver
+            .ask_once(details, &place, requester, cx)
+            .await
+        {
+            Ok(approved) => approved,
+            Err(reason) => {
+                // ADR-F42 #5: the save goes through, and the user hears why
+                // the formatter did not run.
+                let message = format!(
+                    "IDE で起動の承認を確認できないため、外部フォーマッター「{}」を実行しませんでした ({})",
+                    escape_for_display(command),
+                    escape_for_display(&reason)
+                );
+                lsp_store
+                    .update(cx, |_, cx| cx.emit(LspStoreEvent::Notification(message)))
+                    .log_err();
+                false
+            }
+        }
     }
 
     async fn format_via_external_command(
@@ -4758,16 +4833,17 @@ pub struct FormattableBuffer {
     ranges: Option<Vec<Range<Anchor>>>,
 }
 
-/// Whether an external formatter may run (ADR-F42).
+/// Whether an external formatter may run (ADR-F42, ADR-F50).
 enum ExternalFormatterLaunch {
-    /// Not set by project settings, or nobody to ask (the remote server).
+    /// Not set by project settings.
     NotGated,
-    /// Set by project settings, but approvals are unavailable.
+    /// Set by project settings, but nobody can be asked.
     Blocked,
     Ask {
-        launch_approvals: Entity<ProjectLaunchApprovals>,
+        launch_approver: LaunchApprover,
         request: LaunchRequest,
         fs: Option<Arc<dyn Fs>>,
+        place: LaunchPlace,
     },
 }
 
@@ -5241,7 +5317,9 @@ impl LspStore {
             .detach();
         cx.observe_global::<SettingsStore>(Self::on_settings_changed)
             .detach();
-        if let LaunchGate::Ask(launch_approvals) = project_launch_approvals::launch_gate(cx) {
+        if let LaunchGate::Ask(LaunchApprover::Local(launch_approvals)) =
+            project_launch_approvals::launch_gate(None, cx)
+        {
             cx.subscribe(&launch_approvals, Self::on_launch_approvals_event)
                 .detach();
         }
@@ -5296,6 +5374,7 @@ impl LspStore {
                 all_language_servers_stopped: false,
                 stopped_language_servers: HashSet::default(),
                 approved_binary_launches: HashMap::default(),
+                remote_launch_approvals: None,
                 watched_manifest_filenames: ManifestProvidersStore::global(cx)
                     .manifest_file_names(),
             }),
@@ -12373,6 +12452,42 @@ impl LspStore {
     fn on_launch_approvals_event(
         &mut self,
         _: Entity<ProjectLaunchApprovals>,
+        event: &ProjectLaunchApprovalsEvent,
+        cx: &mut Context<Self>,
+    ) {
+        self.stop_servers_that_lost_their_approval(event, cx);
+    }
+
+    /// On the remote server, the same for what the IDE of the session decides
+    /// (ADR-F50).
+    fn on_remote_launch_approvals_event(
+        &mut self,
+        _: Entity<RemoteLaunchApprovals>,
+        event: &ProjectLaunchApprovalsEvent,
+        cx: &mut Context<Self>,
+    ) {
+        self.stop_servers_that_lost_their_approval(event, cx);
+    }
+
+    /// Asks the IDE of the session this store is shared with about the
+    /// language servers and formatters that project or server settings define
+    /// on the remote server (ADR-F50).
+    pub fn share_launch_approvals(
+        &mut self,
+        remote_launch_approvals: Entity<RemoteLaunchApprovals>,
+        cx: &mut Context<Self>,
+    ) {
+        let subscription = cx.subscribe(
+            &remote_launch_approvals,
+            Self::on_remote_launch_approvals_event,
+        );
+        if let Some(local) = self.as_local_mut() {
+            local.remote_launch_approvals = Some((remote_launch_approvals, subscription));
+        }
+    }
+
+    fn stop_servers_that_lost_their_approval(
+        &mut self,
         event: &ProjectLaunchApprovalsEvent,
         cx: &mut Context<Self>,
     ) {
