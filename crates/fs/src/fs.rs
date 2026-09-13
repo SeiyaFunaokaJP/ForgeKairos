@@ -1,6 +1,8 @@
 pub mod fs_watcher;
+pub mod verified_write;
 
 pub use fs_watcher::requires_poll_watcher;
+pub use verified_write::VerifiedWriteError;
 
 use parking_lot::Mutex;
 use slotmap::{KeyData, SlotMap};
@@ -136,6 +138,17 @@ pub trait Fs: Send + Sync {
     async fn atomic_write(&self, path: PathBuf, text: String) -> Result<()>;
     async fn save(&self, path: &Path, text: &Rope, line_ending: LineEnding) -> Result<()>;
     async fn write(&self, path: &Path, content: &[u8]) -> Result<()>;
+    /// Writes `content` to the file at `relative_path` inside `root`, and
+    /// nowhere else: no link, junction or hard link on the way is followed,
+    /// missing folders are created the same way, and a file that turns out to
+    /// be anywhere else is not written (and removed again if this call created
+    /// it). `root` itself may be a link. See [`VerifiedWriteError`] (ADR-F49).
+    async fn write_verified(
+        &self,
+        root: &Path,
+        relative_path: &Path,
+        content: Vec<u8>,
+    ) -> Result<()>;
     async fn canonicalize(&self, path: &Path) -> Result<PathBuf>;
     async fn is_file(&self, path: &Path) -> bool;
     async fn is_dir(&self, path: &Path) -> bool;
@@ -998,6 +1011,22 @@ impl Fs for RealFs {
         self.executor
             .spawn(async move {
                 std::fs::write(path, contents)?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn write_verified(
+        &self,
+        root: &Path,
+        relative_path: &Path,
+        content: Vec<u8>,
+    ) -> Result<()> {
+        let root = root.to_owned();
+        let relative_path = relative_path.to_owned();
+        self.executor
+            .spawn(async move {
+                verified_write::write_verified_blocking(&root, &relative_path, &content)?;
                 Ok(())
             })
             .await
@@ -3176,6 +3205,118 @@ impl Fs for FakeFs {
             self.create_dir(path).await?;
         }
         self.write_file_internal(path, content.to_vec(), false)?;
+        Ok(())
+    }
+
+    async fn write_verified(
+        &self,
+        root: &Path,
+        relative_path: &Path,
+        content: Vec<u8>,
+    ) -> Result<()> {
+        self.simulate_random_delay().await;
+        let names = verified_write::plain_names(relative_path)?;
+        let root = normalize_path(root);
+        if let Some(refusal) = verified_write::refusal_for(&root, relative_path, paths::home_dir())
+        {
+            return Err(refusal.into());
+        }
+        let mut state = self.state.lock();
+        let mut current = state
+            .canonicalize(&root, true)
+            .with_context(|| format!("path does not exist: {root:?}"))?;
+        let Some((file_name, folder_names)) = names.split_last() else {
+            drop(state);
+            return self.write_file_internal(&current, content, false);
+        };
+
+        let mut events = Vec::new();
+        for name in folder_names {
+            current.push(name);
+            let existing = state
+                .try_entry(&current, false)
+                .map(|(entry, _)| match entry {
+                    FakeFsEntry::Dir { .. } => None,
+                    FakeFsEntry::Symlink { .. } => {
+                        Some(VerifiedWriteError::Redirected(current.clone()))
+                    }
+                    FakeFsEntry::File { .. } => {
+                        Some(VerifiedWriteError::NotAFolder(current.clone()))
+                    }
+                });
+            match existing {
+                Some(Some(error)) => return Err(error.into()),
+                Some(None) => {}
+                None => {
+                    let inode = state.get_and_increment_inode();
+                    let mtime = state.get_and_increment_mtime();
+                    state.write_path(&current, |entry| {
+                        entry.or_insert(FakeFsEntry::Dir {
+                            inode,
+                            mtime,
+                            len: 0,
+                            entries: Default::default(),
+                            git_repo_state: None,
+                        });
+                        Ok(())
+                    })?;
+                    events.push((current.clone(), Some(PathEventKind::Created)));
+                }
+            }
+        }
+
+        current.push(file_name);
+        let refusal = state
+            .try_entry(&current, false)
+            .and_then(|(entry, _)| match entry {
+                FakeFsEntry::File { .. } => None,
+                FakeFsEntry::Symlink { .. } => {
+                    Some(VerifiedWriteError::Redirected(current.clone()))
+                }
+                FakeFsEntry::Dir { .. } => Some(VerifiedWriteError::NotAFile(current.clone())),
+            });
+        if let Some(error) = refusal {
+            return Err(error.into());
+        }
+
+        *state.path_write_counts.entry(current.clone()).or_insert(0) += 1;
+        let new_inode = state.get_and_increment_inode();
+        let new_mtime = state.get_and_increment_mtime();
+        let new_len = content.len() as u64;
+        let mut kind = None;
+        state.write_path(&current, |entry| {
+            match entry {
+                btree_map::Entry::Vacant(entry) => {
+                    kind = Some(PathEventKind::Created);
+                    entry.insert(FakeFsEntry::File {
+                        inode: new_inode,
+                        mtime: new_mtime,
+                        len: new_len,
+                        content,
+                        git_dir_path: None,
+                    });
+                }
+                btree_map::Entry::Occupied(mut entry) => {
+                    kind = Some(PathEventKind::Changed);
+                    if let FakeFsEntry::File {
+                        mtime,
+                        len,
+                        content: existing_content,
+                        ..
+                    } = entry.get_mut()
+                    {
+                        *mtime = new_mtime;
+                        *len = new_len;
+                        *existing_content = content;
+                    } else {
+                        anyhow::bail!("not a file")
+                    }
+                }
+            }
+            Ok(())
+        })?;
+        events.push((current, kind));
+        state.emit_event(events);
         Ok(())
     }
 

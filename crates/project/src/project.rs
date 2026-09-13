@@ -3478,6 +3478,19 @@ impl Project {
             .update(cx, |buffer_store, cx| buffer_store.save_buffer(buffer, cx))
     }
 
+    /// Saves `buffer` the way an agent's write must be saved: to exactly its
+    /// path inside its worktree, through no link, or not at all. On a remote
+    /// project the remote server does this itself (ADR-F49).
+    pub fn save_buffer_verified(
+        &self,
+        buffer: Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        self.buffer_store.update(cx, |buffer_store, cx| {
+            buffer_store.save_buffer_verified(buffer, cx)
+        })
+    }
+
     pub fn save_buffer_as(
         &mut self,
         buffer: Entity<Buffer>,

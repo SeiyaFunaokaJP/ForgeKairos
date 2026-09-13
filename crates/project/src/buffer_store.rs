@@ -163,6 +163,35 @@ impl RemoteBufferStore {
         })
     }
 
+    fn save_remote_buffer_verified(
+        &self,
+        buffer_handle: Entity<Buffer>,
+        cx: &Context<BufferStore>,
+    ) -> Task<Result<()>> {
+        let buffer = buffer_handle.read(cx);
+        let buffer_id = buffer.remote_id().into();
+        let version = buffer.version();
+        let rpc = self.upstream_client.clone();
+        let project_id = self.project_id;
+        cx.spawn(async move |_, cx| {
+            let response = rpc.request(proto::SaveBufferVerified {
+                project_id,
+                buffer_id,
+                version: serialize_version(&version),
+            });
+            let timeout = cx.background_executor().timer(VERIFIED_SAVE_TIMEOUT);
+            let response = await_verified_save(response, timeout).await?;
+            let version = deserialize_version(&response.version);
+            let mtime = response.mtime.map(|mtime| mtime.into());
+
+            buffer_handle.update(cx, |buffer, cx| {
+                buffer.did_save(version.clone(), mtime, cx);
+            });
+
+            Ok(())
+        })
+    }
+
     pub fn handle_create_buffer_for_peer(
         &mut self,
         envelope: TypedEnvelope<proto::CreateBufferForPeer>,
@@ -381,6 +410,35 @@ impl RemoteBufferStore {
     }
 }
 
+/// How long a remote server gets to confirm a verified save. A server from
+/// before verified saves never answers one (its protocol has no such message),
+/// so this wait is what makes the write fail closed there.
+const VERIFIED_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+const UNCONFIRMED_VERIFIED_SAVE: &str = "The remote server did not confirm that it wrote the file \
+    exactly where it was checked to land, so nothing was written. A remote server from an older \
+    Zed cannot do this; reconnect to update it.";
+
+/// ADR-F49: the remote server's answer to a verified save. No answer in time,
+/// or an answer that nothing handles such a save, both mean nothing was
+/// written.
+pub async fn await_verified_save(
+    response: impl std::future::Future<Output = Result<proto::BufferSaved>>,
+    timeout: impl std::future::Future<Output = ()>,
+) -> Result<proto::BufferSaved> {
+    match futures::future::select(std::pin::pin!(response), std::pin::pin!(timeout)).await {
+        futures::future::Either::Left((Ok(saved), _)) => Ok(saved),
+        futures::future::Either::Left((Err(error), _)) => {
+            if format!("{error:#}").contains("no handler registered") {
+                Err(anyhow!(UNCONFIRMED_VERIFIED_SAVE))
+            } else {
+                Err(error)
+            }
+        }
+        futures::future::Either::Right(((), _)) => Err(anyhow!(UNCONFIRMED_VERIFIED_SAVE)),
+    }
+}
+
 impl LocalBufferStore {
     fn save_local_buffer(
         &self,
@@ -388,6 +446,7 @@ impl LocalBufferStore {
         worktree: Entity<Worktree>,
         path: Arc<RelPath>,
         mut has_changed_file: bool,
+        verified: bool,
         cx: &mut Context<BufferStore>,
     ) -> Task<Result<()>> {
         let buffer = buffer_handle.read(cx);
@@ -407,7 +466,11 @@ impl LocalBufferStore {
         }
 
         let save = worktree.update(cx, |worktree, cx| {
-            worktree.write_file(path, text, line_ending, encoding, has_bom, cx)
+            if verified {
+                worktree.write_file_verified(path, text, line_ending, encoding, has_bom, cx)
+            } else {
+                worktree.write_file(path, text, line_ending, encoding, has_bom, cx)
+            }
         });
 
         cx.spawn(async move |this, cx| {
@@ -649,13 +712,14 @@ impl LocalBufferStore {
     fn save_buffer(
         &self,
         buffer: Entity<Buffer>,
+        verified: bool,
         cx: &mut Context<BufferStore>,
     ) -> Task<Result<()>> {
         let Some(file) = File::from_dyn(buffer.read(cx).file()) else {
             return Task::ready(Err(anyhow!("buffer doesn't have a file")));
         };
         let worktree = file.worktree.clone();
-        self.save_local_buffer(buffer, worktree, file.path.clone(), false, cx)
+        self.save_local_buffer(buffer, worktree, file.path.clone(), false, verified, cx)
     }
 
     fn save_buffer_as(
@@ -671,7 +735,7 @@ impl LocalBufferStore {
         else {
             return Task::ready(Err(anyhow!("no such worktree")));
         };
-        self.save_local_buffer(buffer, worktree, path.path, true, cx)
+        self.save_local_buffer(buffer, worktree, path.path, true, false, cx)
     }
 
     #[ztracing::instrument(skip_all)]
@@ -825,6 +889,7 @@ impl BufferStore {
         client.add_entity_message_handler(Self::handle_buffer_saved);
         client.add_entity_message_handler(Self::handle_update_buffer_file);
         client.add_entity_request_handler(Self::handle_save_buffer);
+        client.add_entity_request_handler(Self::handle_save_buffer_verified);
         client.add_entity_request_handler(Self::handle_reload_buffers);
     }
 
@@ -972,8 +1037,20 @@ impl BufferStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
         match &mut self.state {
-            BufferStoreState::Local(this) => this.save_buffer(buffer, cx),
+            BufferStoreState::Local(this) => this.save_buffer(buffer, false, cx),
             BufferStoreState::Remote(this) => this.save_remote_buffer(buffer, None, cx),
+        }
+    }
+
+    /// See [`crate::Project::save_buffer_verified`].
+    pub fn save_buffer_verified(
+        &mut self,
+        buffer: Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        match &mut self.state {
+            BufferStoreState::Local(this) => this.save_buffer(buffer, true, cx),
+            BufferStoreState::Remote(this) => this.save_remote_buffer_verified(buffer, cx),
         }
     }
 
@@ -1455,6 +1532,40 @@ impl BufferStore {
             this.update(&mut cx, |this, cx| this.save_buffer(buffer.clone(), cx))
                 .await?;
         }
+
+        Ok(buffer.read_with(&cx, |buffer, _| proto::BufferSaved {
+            project_id,
+            buffer_id: buffer_id.into(),
+            version: serialize_version(buffer.saved_version()),
+            mtime: buffer.saved_mtime().map(|time| time.into()),
+        }))
+    }
+
+    pub async fn handle_save_buffer_verified(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::SaveBufferVerified>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::BufferSaved> {
+        let buffer_id = BufferId::new(envelope.payload.buffer_id)?;
+        let (buffer, project_id) = this.read_with(&cx, |this, _| {
+            anyhow::Ok((
+                this.get_existing(buffer_id)?,
+                this.downstream_client
+                    .as_ref()
+                    .map(|(_, project_id)| *project_id)
+                    .context("project is not shared")?,
+            ))
+        })?;
+        buffer
+            .update(&mut cx, |buffer, _| {
+                buffer.wait_for_version(deserialize_version(&envelope.payload.version))
+            })
+            .await?;
+        let buffer_id = buffer.read_with(&cx, |buffer, _| buffer.remote_id());
+        this.update(&mut cx, |this, cx| {
+            this.save_buffer_verified(buffer.clone(), cx)
+        })
+        .await?;
 
         Ok(buffer.read_with(&cx, |buffer, _| proto::BufferSaved {
             project_id,

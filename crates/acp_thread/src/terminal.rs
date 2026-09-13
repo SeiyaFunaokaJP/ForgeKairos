@@ -1,8 +1,9 @@
 use agent_client_protocol::schema::v1 as acp;
 use anyhow::Result;
 use collections::HashMap;
+use feature_flags::{FeatureFlagAppExt as _, SandboxingFeatureFlag};
 use futures::{FutureExt as _, future::Shared};
-use gpui::{App, AppContext, AsyncApp, Context, Entity, Task};
+use gpui::{App, AppContext, Context, Entity, Task};
 use http_proxy::Allowlist;
 use language::LanguageRegistry;
 use markdown::Markdown;
@@ -18,8 +19,7 @@ use std::{
     },
     time::Instant,
 };
-use task::Shell;
-use util::{get_default_system_shell_preferring_bash, paths::PathStyle, rel_path::RelPath};
+use util::{paths::PathStyle, rel_path::RelPath};
 
 /// Request to run a terminal command inside an OS-level sandbox.
 ///
@@ -746,6 +746,22 @@ fn sandbox_failure_message_for_code(host: SandboxHost, code: &str) -> String {
             "サンドボックス用のヘルパー (または slirp4netns) が、この Zed に同梱のものと一致しません \
              (置き換えられたか壊れています)。安全のため実行しませんでした。Zed を再起動すると配置し直します。"
         }
+        (SandboxHost::Remote, "subreaper-failed") => {
+            "リモートのカーネルが子プロセスの回収 (PR_SET_CHILD_SUBREAPER) を拒否したため、\
+             コマンドの終了後に残るプロセスを片付けられません。安全のため実行しませんでした。"
+        }
+        (SandboxHost::Wsl, "subreaper-failed") => {
+            "WSL のカーネルが子プロセスの回収 (PR_SET_CHILD_SUBREAPER) を拒否したため、\
+             コマンドの終了後に残るプロセスを片付けられません。安全のため実行しませんでした。"
+        }
+        (_, "signals-failed") => {
+            "サンドボックス用ヘルパーのシグナル処理を設定できませんでした。安全のため実行しませんでした。"
+        }
+        (_, "ide-forward-invalid") => {
+            "IDE 連携の受け渡し用フォルダー (またはソケット) が安全な状態ではありません \
+             (権限が 0700 でない・所有者が違う・保護対象の外にある) ため、実行しませんでした。\
+             Zed を再起動してから再試行してください。"
+        }
         (_, "exec-failed" | "chdir-failed") => "サンドボックス内でコマンドを起動できませんでした。",
         (_, "bad-args") => "サンドボックスの起動引数が不正です (内部エラー)。",
         (_, other) => return format!("{}不明な理由 ({other})", host.prefix()),
@@ -1034,58 +1050,104 @@ impl Terminal {
     }
 }
 
-pub async fn create_terminal_entity(
-    command: String,
-    args: &[String],
-    env_vars: Vec<(String, String)>,
-    cwd: Option<PathBuf>,
-    project: &Entity<Project>,
-    cx: &mut AsyncApp,
-) -> Result<Entity<terminal::Terminal>> {
-    let mut env = if let Some(dir) = &cwd {
-        project
-            .update(cx, |project, cx| {
-                project.environment().update(cx, |env, cx| {
-                    env.directory_environment(dir.clone().into(), cx)
-                })
-            })
-            .await
-            .unwrap_or_default()
-    } else {
-        Default::default()
-    };
-
-    disable_pagers_through_env(&mut env);
-    env.extend(env_vars);
-
-    // Use remote shell or default system shell, as appropriate
-    let shell = project
-        .update(cx, |project, cx| {
-            project
-                .remote_client()
-                .and_then(|r| r.read(cx).default_system_shell())
-                .map(Shell::Program)
-        })
-        .unwrap_or_else(|| Shell::Program(get_default_system_shell_preferring_bash()));
-    let is_windows = project.read_with(cx, |project, cx| project.path_style(cx).is_windows());
-    let (task_command, task_args) = task::ShellBuilder::new(&shell, is_windows)
-        .redirect_stdin_to_dev_null()
-        .build(Some(command.clone()), &args);
-
+/// The directory subtrees the sandbox always grants write access to for a
+/// project: its worktree roots. This is the single source of truth shared by
+/// the agents' terminals (which hand these to the sandbox as
+/// [`SandboxWrap::writable_paths`]) and the status UI (which lists them), so
+/// the two can't drift if the set ever changes.
+pub fn sandbox_worktree_writable_paths(project: &Project, cx: &App) -> Vec<PathBuf> {
     project
-        .update(cx, |project, cx| {
-            project.create_terminal_task(
-                task::SpawnInTerminal {
-                    command: Some(task_command),
-                    args: task_args,
-                    cwd,
-                    env,
-                    ..Default::default()
-                },
-                cx,
-            )
-        })
-        .await
+        .worktrees(cx)
+        .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
+        .collect()
+}
+
+/// The candidate `.git` paths the sandbox protects for a project. Locating these
+/// requires Git knowledge the sandbox layer can't derive itself: a worktree's
+/// `.git`, a linked worktree's common dir (which lives outside the worktree),
+/// and every discovered repository's git/common dirs.
+pub fn sandbox_git_dirs(project: &Project, cx: &App) -> Vec<PathBuf> {
+    let mut git_dirs = Vec::new();
+
+    for worktree in project.worktrees(cx) {
+        let worktree = worktree.read(cx);
+        let worktree_abs_path = worktree.abs_path();
+        // Protect `<worktree>/.git` even when it doesn't exist yet, so a command
+        // can't `git init` and then write to the freshly created metadata.
+        //
+        // We don't gate this on the worktree's scanned root being a directory:
+        // that state can be stale/pending, and for a *single-file* worktree
+        // (e.g. `settings.json` opened on its own) this synthesizes
+        // `settings.json/.git`, which can never exist. That impossible path is
+        // resolved authoritatively at capture time — the real filesystem
+        // reports `NotADirectory`, and `SandboxWrap::to_policy` skips a
+        // protected path that can't exist — so it never reaches enforcement.
+        git_dirs.push(worktree_abs_path.join(".git"));
+        if let Some(root_repo_common_dir) = worktree.root_repo_common_dir() {
+            git_dirs.push(root_repo_common_dir.to_path_buf());
+        }
+    }
+
+    for repository in project.git_store().read(cx).repositories().values() {
+        let repository = repository.read(cx);
+        git_dirs.push(repository.dot_git_abs_path.to_path_buf());
+        git_dirs.push(repository.repository_dir_abs_path.to_path_buf());
+        git_dirs.push(repository.common_dir_abs_path.to_path_buf());
+    }
+
+    git_dirs.sort();
+    git_dirs.dedup();
+    git_dirs
+}
+
+/// Whether sandboxing is *applicable* for this project at all — the feature is
+/// enabled, the platform has a sandbox integration, and the project is either
+/// local or (ADR-F18) a remote Linux host (over SSH, WSL or Docker) whose remote
+/// server can enforce the sandbox on its side. Independent of the persistent
+/// `allow_unsandboxed` setting. Used by the UI to distinguish "sandboxing isn't
+/// relevant here" (don't show the indicator) from "sandboxing is available but
+/// turned off in settings" (show it, struck out).
+pub fn sandboxing_available_for_project(project: &Project, cx: &App) -> bool {
+    if !cx.has_flag::<SandboxingFeatureFlag>() {
+        return false;
+    }
+    // ADR-F18: a remote Linux project (SSH, WSL or Docker) enforces the sandbox
+    // on the remote host, so it is available regardless of the client's own OS.
+    if project.remote_supports_agent_sandbox(cx) {
+        return true;
+    }
+    project.is_local()
+        && cfg!(any(
+            target_os = "macos",
+            target_os = "linux",
+            target_os = "windows"
+        ))
+}
+
+/// Why agent terminal commands in this project run outside any sandbox, shown
+/// on the approval card that every such command gets (ADR-F46).
+pub fn unsandboxed_execution_reason(project: &Project, cx: &App) -> String {
+    if sandboxing_available_for_project(project, cx) {
+        return "設定でサンドボックスが無効になっています".to_string();
+    }
+    let project_kind = if project.is_via_collab() {
+        "共同編集"
+    } else if let Some(remote_client) = project.remote_client() {
+        let remote_client = remote_client.read(cx);
+        match remote_client.connection_type() {
+            "wsl" => "WSL リモート",
+            "docker" => "Docker",
+            "podman" => "Podman",
+            "ssh" if remote_client.remote_platform().os.as_str() != "linux" => "SSH (Linux 以外)",
+            "ssh" => "SSH",
+            _ => "リモート",
+        }
+    } else if !cx.has_flag::<SandboxingFeatureFlag>() {
+        "サンドボックス機能が無効"
+    } else {
+        "この OS には未対応"
+    };
+    format!("このプロジェクトではサンドボックスを使えません ({project_kind})")
 }
 
 // Disable pagers so agent/terminal commands don't hang behind interactive UIs
@@ -1120,6 +1182,9 @@ mod remote_sandbox_failure_tests {
         "writable-redirected",
         "caps-failed",
         "helper-mismatch",
+        "subreaper-failed",
+        "signals-failed",
+        "ide-forward-invalid",
     ];
 
     /// Every known code maps to a concrete Japanese message carrying the shared

@@ -1192,3 +1192,338 @@ async fn restore_can_be_retried_after_collision(cx: &mut TestAppContext) {
         TrashRestoreError::AlreadyRestored
     ));
 }
+
+fn verified_write_error(error: &anyhow::Error) -> Option<&VerifiedWriteError> {
+    error.downcast_ref::<VerifiedWriteError>()
+}
+
+/// ADR-F49: a verified write reaches a new file in new folders and an existing
+/// file beneath the root.
+#[gpui::test]
+async fn test_fake_fs_write_verified_writes_beneath_the_root(executor: BackgroundExecutor) {
+    let fs = FakeFs::new(executor);
+    fs.insert_tree(path!("/root"), json!({ "existing.txt": "old" }))
+        .await;
+    let root = Path::new(path!("/root"));
+
+    fs.write_verified(root, Path::new("existing.txt"), b"new".to_vec())
+        .await
+        .unwrap();
+    fs.write_verified(root, Path::new("a/b/new.txt"), b"created".to_vec())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        fs.load(path!("/root/existing.txt").as_ref()).await.unwrap(),
+        "new"
+    );
+    assert_eq!(
+        fs.load(path!("/root/a/b/new.txt").as_ref()).await.unwrap(),
+        "created"
+    );
+}
+
+/// ADR-F49: a link anywhere on the way — a folder, the file itself — or a way
+/// out of the root is refused, and nothing is written where it leads.
+#[gpui::test]
+async fn test_fake_fs_write_verified_refuses_links(executor: BackgroundExecutor) {
+    let fs = FakeFs::new(executor);
+    fs.insert_tree(path!("/root"), json!({ ".git": { "config": "[core]\n" } }))
+        .await;
+    fs.insert_symlink(
+        path!("/root/folder_link"),
+        PathBuf::from(path!("/root/.git")),
+    )
+    .await;
+    fs.insert_symlink(
+        path!("/root/file_link"),
+        PathBuf::from(path!("/root/.git/config")),
+    )
+    .await;
+    let root = Path::new(path!("/root"));
+
+    for relative in [
+        "folder_link/config",
+        "folder_link/hooks/pre-commit",
+        "file_link",
+    ] {
+        let error = fs
+            .write_verified(root, Path::new(relative), b"pwned".to_vec())
+            .await
+            .expect_err(relative);
+        assert!(
+            matches!(
+                verified_write_error(&error),
+                Some(VerifiedWriteError::Redirected(_))
+            ),
+            "{relative}: {error:#}"
+        );
+    }
+    let error = fs
+        .write_verified(root, Path::new("../root/.git/config"), b"pwned".to_vec())
+        .await
+        .expect_err("a way out of the root");
+    assert!(
+        matches!(
+            verified_write_error(&error),
+            Some(VerifiedWriteError::NotBeneath(_))
+        ),
+        "{error:#}"
+    );
+
+    assert_eq!(
+        fs.load(path!("/root/.git/config").as_ref()).await.unwrap(),
+        "[core]\n"
+    );
+    assert!(!fs.is_dir(path!("/root/.git/hooks").as_ref()).await);
+}
+
+/// A folder link that needs no privilege: a junction on Windows.
+#[cfg(windows)]
+// One short `mklink` may block this test helper; an async process would have
+// the deterministic test executor wait on the outside world.
+#[allow(clippy::disallowed_methods)]
+fn link_folder(target: &Path, link: &Path) {
+    let status = std::process::Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .status()
+        .unwrap();
+    assert!(status.success(), "mklink /J failed");
+}
+
+#[cfg(unix)]
+fn link_folder(target: &Path, link: &Path) {
+    std::os::unix::fs::symlink(target, link).unwrap();
+}
+
+/// ADR-F49: on the real filesystem, a verified write reaches ordinary files,
+/// and refuses a hard link, a folder link on the way (without creating folders
+/// through it) and a link as the file itself.
+#[gpui::test]
+async fn test_real_fs_write_verified(executor: BackgroundExecutor) {
+    let fs = RealFs::new(None, executor);
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().join("project");
+    let git_directory = root.join(".git");
+    std::fs::create_dir_all(&git_directory).unwrap();
+    std::fs::write(git_directory.join("config"), "[core]\n").unwrap();
+    std::fs::write(root.join("existing.txt"), "old").unwrap();
+
+    fs.write_verified(&root, Path::new("existing.txt"), b"new".to_vec())
+        .await
+        .unwrap();
+    fs.write_verified(&root, Path::new("a/b/new.txt"), b"created".to_vec())
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(root.join("existing.txt")).unwrap(),
+        "new"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("a").join("b").join("new.txt")).unwrap(),
+        "created"
+    );
+
+    std::fs::hard_link(git_directory.join("config"), root.join("hard_link")).unwrap();
+    let error = fs
+        .write_verified(&root, Path::new("hard_link"), b"pwned".to_vec())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            verified_write_error(&error),
+            Some(VerifiedWriteError::HardLinked(_))
+        ),
+        "{error:#}"
+    );
+
+    link_folder(&git_directory, &root.join("folder_link"));
+    for relative in ["folder_link/config", "folder_link/hooks/pre-commit"] {
+        let error = fs
+            .write_verified(&root, Path::new(relative), b"pwned".to_vec())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                verified_write_error(&error),
+                Some(VerifiedWriteError::Redirected(_))
+            ),
+            "{relative}: {error:#}"
+        );
+    }
+    assert!(!git_directory.join("hooks").exists());
+
+    // The link as the file itself: a directory junction on Windows (opening it
+    // for writing fails), a symlink elsewhere.
+    #[cfg(windows)]
+    link_folder(&git_directory, &root.join("file_link"));
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(git_directory.join("config"), root.join("file_link")).unwrap();
+    let error = fs
+        .write_verified(&root, Path::new("file_link"), b"pwned".to_vec())
+        .await
+        .unwrap_err();
+    assert!(verified_write_error(&error).is_some(), "{error:#}");
+
+    assert_eq!(
+        std::fs::read_to_string(git_directory.join("config")).unwrap(),
+        "[core]\n"
+    );
+}
+
+/// ADR-F49: a verified write refuses Git metadata by itself, whoever asks for
+/// it, in any spelling that reaches it.
+#[gpui::test]
+async fn test_write_verified_refuses_git_metadata_by_itself(executor: BackgroundExecutor) {
+    let fs = FakeFs::new(executor);
+    fs.insert_tree(path!("/root"), json!({ ".git": { "config": "[core]\n" } }))
+        .await;
+    let root = Path::new(path!("/root"));
+
+    for relative in [".git/config", ".GIT/hooks/pre-commit", "sub/.git/config"] {
+        let error = fs
+            .write_verified(root, Path::new(relative), b"pwned".to_vec())
+            .await
+            .expect_err(relative);
+        assert!(
+            matches!(
+                verified_write_error(&error),
+                Some(VerifiedWriteError::GitMetadata(_))
+            ),
+            "{relative}: {error:#}"
+        );
+    }
+    assert_eq!(
+        fs.load(path!("/root/.git/config").as_ref()).await.unwrap(),
+        "[core]\n"
+    );
+    assert!(!fs.is_dir(path!("/root/.GIT").as_ref()).await);
+}
+
+/// ADR-F49: the account's protected files are refused wherever the root is;
+/// a project's own agent configuration is left to the client to confirm.
+#[test]
+fn test_refusal_for_protects_the_home_directory() {
+    let home = Path::new(path!("/home/user"));
+    for relative in [
+        ".gitconfig",
+        ".config/git/config",
+        ".claude.json",
+        ".claude/settings.json",
+        ".ssh/authorized_keys",
+        ".bashrc",
+    ] {
+        assert!(
+            matches!(
+                verified_write::refusal_for(home, Path::new(relative), home),
+                Some(VerifiedWriteError::Protected(_))
+            ),
+            "{relative}"
+        );
+    }
+    assert!(verified_write::refusal_for(home, Path::new("project/src/main.rs"), home).is_none());
+    assert!(
+        verified_write::refusal_for(
+            &home.join("project"),
+            Path::new(".claude/settings.json"),
+            home
+        )
+        .is_none()
+    );
+}
+
+/// Only Windows (and a Windows drive seen from WSL) reads `name:stream` as
+/// `name` and drops trailing dots and spaces; case, invisible characters and
+/// compatibility forms fold everywhere.
+#[test]
+fn test_name_rules_fold_windows_spellings_only_on_windows_filesystems() {
+    let windows = verified_write::NameRules { windows: true };
+    let elsewhere = verified_write::NameRules { windows: false };
+    for spelling in [".git:notes", ".git.", ".git ", ".git::$INDEX_ALLOCATION"] {
+        assert_eq!(
+            windows.comparable_name(spelling),
+            windows.comparable_name(".git"),
+            "{spelling}"
+        );
+        assert_ne!(
+            elsewhere.comparable_name(spelling),
+            elsewhere.comparable_name(".git"),
+            "{spelling}"
+        );
+    }
+    for spelling in [".GIT", ".g\u{200C}it", ".gıt"] {
+        assert_eq!(
+            elsewhere.comparable_name(spelling),
+            elsewhere.comparable_name(".git"),
+            "{spelling}"
+        );
+    }
+    assert!(verified_write::NameRules::for_path(Path::new("/mnt/c/project")).windows);
+    assert!(!verified_write::NameRules::for_path(Path::new("/mnt/data/project")).windows);
+    assert!(!verified_write::NameRules::for_path(Path::new("/home/user/project")).windows);
+    assert!(verified_write::same_path_ignoring_case(
+        Path::new(r"\\?\C:\P\.GIT"),
+        Path::new(r"\\?\c:\p\.git")
+    ));
+    assert!(!verified_write::same_path_ignoring_case(
+        Path::new(r"\\?\C:\p\.git"),
+        Path::new(r"\\?\C:\p\GIT~1")
+    ));
+}
+
+/// ADR-F49: a folder's 8.3 alias (such as `GIT~1` for `.git`) is a second name
+/// for it, and a verified write refuses to walk through one.
+#[cfg(windows)]
+#[gpui::test]
+async fn test_real_fs_write_verified_refuses_a_short_name_alias(executor: BackgroundExecutor) {
+    use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
+    use windows::Win32::Storage::FileSystem::GetShortPathNameW;
+    use windows::core::PCWSTR;
+
+    let fs = RealFs::new(None, executor);
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().join("project");
+    let git_directory = root.join(".git");
+    std::fs::create_dir_all(&git_directory).unwrap();
+    std::fs::write(git_directory.join("config"), "[core]\n").unwrap();
+
+    let long_path = git_directory
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<u16>>();
+    let mut buffer = vec![0u16; 1024];
+    let length =
+        unsafe { GetShortPathNameW(PCWSTR(long_path.as_ptr()), Some(&mut buffer)) } as usize;
+    let short_path = PathBuf::from(std::ffi::OsString::from_wide(
+        buffer
+            .get(..length)
+            .expect("the short path fits its buffer"),
+    ));
+    // A volume without 8.3 names has no alias to try; the comparison itself
+    // is covered by `test_name_rules_fold_windows_spellings_only_on_windows_filesystems`.
+    let Some(alias) = short_path
+        .file_name()
+        .filter(|alias| *alias != std::ffi::OsStr::new(".git"))
+    else {
+        return;
+    };
+
+    let error = fs
+        .write_verified(&root, &Path::new(alias).join("config"), b"pwned".to_vec())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            verified_write_error(&error),
+            Some(VerifiedWriteError::Elsewhere { .. })
+        ),
+        "{error:#}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(git_directory.join("config")).unwrap(),
+        "[core]\n"
+    );
+}

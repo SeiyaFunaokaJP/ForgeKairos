@@ -5661,25 +5661,10 @@ pub fn sandbox_retry_permission_options(retries: usize) -> acp_thread::Permissio
     ])
 }
 
-/// The choices on the card for a terminal command that will run outside the
-/// sandbox (ADR-F46). There is deliberately no "always" choice, so no button or
-/// shortcut can turn approving such a command into a standing rule.
-pub fn unsandboxed_command_permission_options() -> acp_thread::PermissionOptions {
-    acp_thread::PermissionOptions::Flat(vec![
-        acp::PermissionOption::new(
-            acp::PermissionOptionId::new(UNSANDBOXED_COMMAND_ALLOW_OPTION_ID),
-            "許可 (今回のみ)",
-            acp::PermissionOptionKind::AllowOnce,
-        ),
-        acp::PermissionOption::new(
-            acp::PermissionOptionId::new("deny"),
-            "拒否",
-            acp::PermissionOptionKind::RejectOnce,
-        ),
-    ])
-}
-
-const UNSANDBOXED_COMMAND_ALLOW_OPTION_ID: &str = "allow";
+// Shared with the cards Zed shows for external agents' commands and writes
+// (ADR-F49), so both offer exactly the same two choices.
+use acp_thread::UNSANDBOXED_COMMAND_ALLOW_OPTION_ID;
+pub use acp_thread::unsandboxed_command_permission_options;
 
 #[derive(Clone)]
 pub struct ToolCallEventStream {

@@ -970,6 +970,27 @@ impl Worktree {
         }
     }
 
+    /// Like [`Self::write_file`], but writes exactly `path` inside the worktree
+    /// through no link, or nothing (see `Fs::write_verified`, ADR-F49).
+    pub fn write_file_verified(
+        &self,
+        path: Arc<RelPath>,
+        text: Rope,
+        line_ending: LineEnding,
+        encoding: &'static Encoding,
+        has_bom: bool,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<Arc<File>>> {
+        match self {
+            Worktree::Local(this) => {
+                this.write_file_verified(path, text, line_ending, encoding, has_bom, cx)
+            }
+            Worktree::Remote(_) => {
+                Task::ready(Err(anyhow!("remote worktree can't yet write files")))
+            }
+        }
+    }
+
     pub fn create_entry(
         &mut self,
         path: Arc<RelPath>,
@@ -1358,6 +1379,22 @@ impl Worktree {
             full_path_string.into()
         }
     }
+}
+
+/// The bytes a buffer's text is saved as, with its line endings and encoding
+/// applied.
+fn saved_bytes(
+    text: &Rope,
+    line_ending: LineEnding,
+    encoding: &'static Encoding,
+    has_bom: bool,
+) -> Vec<u8> {
+    let text = text.to_string();
+    let text = match line_ending {
+        LineEnding::Unix => text,
+        LineEnding::Windows => text.replace('\n', "\r\n"),
+    };
+    encode_text(text, encoding, has_bom)
 }
 
 impl LocalWorktree {
@@ -1937,11 +1974,9 @@ impl LocalWorktree {
         cx: &Context<Worktree>,
     ) -> Task<Result<Arc<File>>> {
         let fs = self.fs.clone();
-        let is_private = self.is_path_private(&path);
         let abs_path = self.absolutize(&path);
 
         let write = cx.background_spawn({
-            let fs = fs.clone();
             let abs_path = abs_path.clone();
             async move {
                 // For UTF-8, use the optimized `fs.save` which writes Rope chunks directly to disk
@@ -1956,16 +1991,49 @@ impl LocalWorktree {
                 // Note: This is inefficient for very large files compared to the streaming approach above,
                 // but supporting streaming writes for arbitrary encodings would require a significant
                 // refactor of the `fs` crate to expose a Writer interface.
-                let text_string = text.to_string();
-                let normalized_text = match line_ending {
-                    LineEnding::Unix => text_string,
-                    LineEnding::Windows => text_string.replace('\n', "\r\n"),
-                };
-
-                let bytes = encode_text(normalized_text, encoding, has_bom);
+                let bytes = saved_bytes(&text, line_ending, encoding, has_bom);
                 fs.write(&abs_path, &bytes).await
             }
         });
+
+        self.refresh_after_write(path, abs_path, write, cx)
+    }
+
+    /// See [`Worktree::write_file_verified`].
+    pub fn write_file_verified(
+        &self,
+        path: Arc<RelPath>,
+        text: Rope,
+        line_ending: LineEnding,
+        encoding: &'static Encoding,
+        has_bom: bool,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<Arc<File>>> {
+        let fs = self.fs.clone();
+        let abs_path = self.absolutize(&path);
+        let root_path = self.abs_path().to_path_buf();
+
+        let write = cx.background_spawn({
+            let path = path.clone();
+            async move {
+                let bytes = saved_bytes(&text, line_ending, encoding, has_bom);
+                fs.write_verified(&root_path, path.as_std_path(), bytes)
+                    .await
+            }
+        });
+
+        self.refresh_after_write(path, abs_path, write, cx)
+    }
+
+    fn refresh_after_write(
+        &self,
+        path: Arc<RelPath>,
+        abs_path: PathBuf,
+        write: Task<Result<()>>,
+        cx: &Context<Worktree>,
+    ) -> Task<Result<Arc<File>>> {
+        let fs = self.fs.clone();
+        let is_private = self.is_path_private(&path);
 
         cx.spawn(async move |this, cx| {
             write.await?;

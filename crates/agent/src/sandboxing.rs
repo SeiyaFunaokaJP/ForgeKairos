@@ -37,55 +37,11 @@ use sandbox::{HostFilesystemLocation, SandboxFsPolicy, SandboxNetPolicy, Sandbox
 use settings::{GrantedWritePath, Settings};
 use std::path::PathBuf;
 
-/// The directory subtrees the sandbox always grants write access to for a
-/// project: its worktree roots. This is the single source of truth shared by
-/// the terminal tool (which hands these to the sandbox as
-/// [`acp_thread::SandboxWrap::writable_paths`]) and the status UI (which lists
-/// them), so the two can't drift if the set ever changes.
-pub fn sandbox_worktree_writable_paths(project: &Project, cx: &App) -> Vec<PathBuf> {
-    project
-        .worktrees(cx)
-        .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
-        .collect()
-}
-
-/// The candidate `.git` paths the sandbox protects for a project. Locating these
-/// requires Git knowledge the sandbox layer can't derive itself: a worktree's
-/// `.git`, a linked worktree's common dir (which lives outside the worktree),
-/// and every discovered repository's git/common dirs.
-pub fn sandbox_git_dirs(project: &Project, cx: &App) -> Vec<PathBuf> {
-    let mut git_dirs = Vec::new();
-
-    for worktree in project.worktrees(cx) {
-        let worktree = worktree.read(cx);
-        let worktree_abs_path = worktree.abs_path();
-        // Protect `<worktree>/.git` even when it doesn't exist yet, so a command
-        // can't `git init` and then write to the freshly created metadata.
-        //
-        // We don't gate this on the worktree's scanned root being a directory:
-        // that state can be stale/pending, and for a *single-file* worktree
-        // (e.g. `settings.json` opened on its own) this synthesizes
-        // `settings.json/.git`, which can never exist. That impossible path is
-        // resolved authoritatively at capture time — the real filesystem
-        // reports `NotADirectory`, and `SandboxWrap::to_policy` skips a
-        // protected path that can't exist — so it never reaches enforcement.
-        git_dirs.push(worktree_abs_path.join(".git"));
-        if let Some(root_repo_common_dir) = worktree.root_repo_common_dir() {
-            git_dirs.push(root_repo_common_dir.to_path_buf());
-        }
-    }
-
-    for repository in project.git_store().read(cx).repositories().values() {
-        let repository = repository.read(cx);
-        git_dirs.push(repository.dot_git_abs_path.to_path_buf());
-        git_dirs.push(repository.repository_dir_abs_path.to_path_buf());
-        git_dirs.push(repository.common_dir_abs_path.to_path_buf());
-    }
-
-    git_dirs.sort();
-    git_dirs.dedup();
-    git_dirs
-}
+// These live in `acp_thread` so that the terminals external agents ask Zed to
+// run (ADR-F49, built in `agent_servers`, which can't depend on this crate) get
+// exactly the same sandbox scope and the same reason on their cards.
+pub use acp_thread::{sandbox_git_dirs, sandbox_worktree_writable_paths};
+pub(crate) use acp_thread::{sandboxing_available_for_project, unsandboxed_execution_reason};
 
 /// What sandbox a thread applies to agent terminal commands, as one value the
 /// UI renders and enforcement builds from. "No sandbox" is its own variant
@@ -203,56 +159,6 @@ pub(crate) fn sandboxing_enabled_for_project(project: &Project, cx: &App) -> boo
 /// sandbox for this process. See module docs for the policy.
 pub(crate) fn sandboxing_enabled(cx: &App) -> bool {
     cx.has_flag::<SandboxingFeatureFlag>()
-}
-
-/// Whether sandboxing is *applicable* for this project at all — the feature is
-/// enabled, the platform has a sandbox integration, and the project is either
-/// local or (ADR-F18) a remote Linux host (over SSH, WSL or Docker) whose remote
-/// server can enforce the sandbox on its side. Independent of the persistent
-/// `allow_unsandboxed` setting. Used by the UI to distinguish "sandboxing isn't
-/// relevant here" (don't show the indicator) from "sandboxing is available but
-/// turned off in settings" (show it, struck out).
-pub(crate) fn sandboxing_available_for_project(project: &Project, cx: &App) -> bool {
-    if !sandboxing_enabled(cx) {
-        return false;
-    }
-    // ADR-F18: a remote Linux project (SSH, WSL or Docker) enforces the sandbox
-    // on the remote host, so it is available regardless of the client's own OS.
-    if project.remote_supports_agent_sandbox(cx) {
-        return true;
-    }
-    project.is_local()
-        && cfg!(any(
-            target_os = "macos",
-            target_os = "linux",
-            target_os = "windows"
-        ))
-}
-
-/// Why agent terminal commands in this project run outside any sandbox, shown
-/// on the approval card that every such command gets (ADR-F46).
-pub(crate) fn unsandboxed_execution_reason(project: &Project, cx: &App) -> String {
-    if sandboxing_available_for_project(project, cx) {
-        return "設定でサンドボックスが無効になっています".to_string();
-    }
-    let project_kind = if project.is_via_collab() {
-        "共同編集"
-    } else if let Some(remote_client) = project.remote_client() {
-        let remote_client = remote_client.read(cx);
-        match remote_client.connection_type() {
-            "wsl" => "WSL リモート",
-            "docker" => "Docker",
-            "podman" => "Podman",
-            "ssh" if remote_client.remote_platform().os.as_str() != "linux" => "SSH (Linux 以外)",
-            "ssh" => "SSH",
-            _ => "リモート",
-        }
-    } else if !sandboxing_enabled(cx) {
-        "サンドボックス機能が無効"
-    } else {
-        "この OS には未対応"
-    };
-    format!("このプロジェクトではサンドボックスを使えません ({project_kind})")
 }
 
 /// Network escalation requested for (or granted to) a sandboxed command.

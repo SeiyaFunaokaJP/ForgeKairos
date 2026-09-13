@@ -1,3 +1,4 @@
+mod agent_write_guard;
 mod connection;
 mod diff;
 mod mention;
@@ -159,6 +160,28 @@ impl SandboxPermission {
             _ => None,
         }
     }
+}
+
+/// The id of the one-time allow on a card for something Zed can't keep inside
+/// the sandbox (ADR-F46, ADR-F49).
+pub const UNSANDBOXED_COMMAND_ALLOW_OPTION_ID: &str = "allow";
+
+/// The choices on the card for a terminal command that will run outside the
+/// sandbox (ADR-F46). There is deliberately no "always" choice, so no button or
+/// shortcut can turn approving such a command into a standing rule.
+pub fn unsandboxed_command_permission_options() -> PermissionOptions {
+    PermissionOptions::Flat(vec![
+        acp::PermissionOption::new(
+            acp::PermissionOptionId::new(UNSANDBOXED_COMMAND_ALLOW_OPTION_ID),
+            "許可 (今回のみ)",
+            acp::PermissionOptionKind::AllowOnce,
+        ),
+        acp::PermissionOption::new(
+            acp::PermissionOptionId::new("deny"),
+            "拒否",
+            acp::PermissionOptionKind::RejectOnce,
+        ),
+    ])
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -3415,6 +3438,73 @@ impl AcpThread {
         }))
     }
 
+    /// ADR-F46 / ADR-F49: a card of Zed's own for something an external agent
+    /// asked Zed to do that the user has to allow every time — a command Zed
+    /// can't keep inside the sandbox, or a write to settings. It offers only a
+    /// one-time allow or a denial and remembers neither, so no agent setting or
+    /// auto-approval can answer it. `body` (Markdown) shows exactly what would
+    /// happen. Returns the card's tool call — to close it with
+    /// [`Self::finish_zed_confirmation`], or withdraw it with
+    /// [`Self::cancel_tool_call_authorization`] — and whether the user allowed
+    /// it (`false` when denied or dismissed).
+    pub fn request_zed_confirmation(
+        &mut self,
+        title: String,
+        kind: acp::ToolKind,
+        sandbox_details: Option<SandboxAuthorizationDetails>,
+        body: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> Result<(acp::ToolCallId, Task<bool>)> {
+        let tool_call_id = acp::ToolCallId::new(format!("zed-confirmation-{}", Uuid::new_v4()));
+        let mut fields = acp::ToolCallUpdateFields::new()
+            .title(title)
+            .kind(kind)
+            .status(acp::ToolCallStatus::Pending);
+        if let Some(body) = body {
+            fields = fields.content(vec![acp::ToolCallContent::from(body)]);
+        }
+        let mut tool_call = acp::ToolCallUpdate::new(tool_call_id.clone(), fields);
+        if let Some(sandbox_details) = sandbox_details {
+            tool_call = tool_call.meta(meta_with_sandbox_authorization(sandbox_details));
+        }
+        let outcome = self.request_tool_call_authorization(
+            tool_call,
+            unsandboxed_command_permission_options(),
+            AuthorizationKind::PermissionGrant,
+            cx,
+        )?;
+        let decision = cx.spawn(async move |_this, _cx| {
+            matches!(
+                outcome.await,
+                RequestPermissionOutcome::Selected(selected)
+                    if selected.option_id.0.as_ref() == UNSANDBOXED_COMMAND_ALLOW_OPTION_ID
+            )
+        });
+        Ok((tool_call_id, decision))
+    }
+
+    /// Closes a card from [`Self::request_zed_confirmation`] once what it
+    /// allowed has run (or failed to).
+    pub fn finish_zed_confirmation(
+        &mut self,
+        tool_call_id: &acp::ToolCallId,
+        succeeded: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<()> {
+        let status = if succeeded {
+            acp::ToolCallStatus::Completed
+        } else {
+            acp::ToolCallStatus::Failed
+        };
+        self.update_tool_call(
+            acp::ToolCallUpdate::new(
+                tool_call_id.clone(),
+                acp::ToolCallUpdateFields::new().status(status),
+            ),
+            cx,
+        )
+    }
+
     pub fn cancel_tool_call_authorization(&mut self, id: &acp::ToolCallId, cx: &mut Context<Self>) {
         let Some((ix, call)) = self.tool_call_mut(id) else {
             return;
@@ -4287,6 +4377,9 @@ impl AcpThread {
         })
     }
 
+    /// An external agent's `fs/write_text_file`. Zed writes the file itself,
+    /// outside any sandbox, so the write first has to pass
+    /// [`agent_write_guard::authorize_agent_file_write`] (ADR-F49).
     pub fn write_text_file(
         &self,
         path: PathBuf,
@@ -4297,88 +4390,103 @@ impl AcpThread {
         let action_log = self.action_log.clone();
         let should_update_agent_location = self.parent_session_id.is_none();
         cx.spawn(async move |this, cx| {
-            let load = project.update(cx, |project, cx| {
-                let path = project
-                    .project_path_for_absolute_path(&path, cx)
-                    .context("invalid path")?;
-                anyhow::Ok(project.open_buffer(path, cx))
-            });
-            let buffer = load?.await?;
-            let snapshot = this.update(cx, |this, cx| {
-                this.shared_buffers
-                    .get(&buffer)
-                    .cloned()
-                    .unwrap_or_else(|| buffer.read(cx).snapshot())
-            })?;
-            let edits = cx
-                .background_executor()
-                .spawn(async move {
-                    let old_text = snapshot.text();
-                    text_diff(old_text.as_str(), &content)
-                        .into_iter()
-                        .map(|(range, replacement)| {
-                            (snapshot.anchor_range_inside(range), replacement)
-                        })
-                        .collect::<Vec<_>>()
+            let confirmation =
+                agent_write_guard::authorize_agent_file_write(&this, &path, cx).await?;
+
+            let result: Result<()> = async {
+                let load = project.update(cx, |project, cx| {
+                    let path = project
+                        .project_path_for_absolute_path(&path, cx)
+                        .context("invalid path")?;
+                    anyhow::Ok(project.open_buffer(path, cx))
+                });
+                let buffer = load?.await?;
+                let snapshot = this.update(cx, |this, cx| {
+                    this.shared_buffers
+                        .get(&buffer)
+                        .cloned()
+                        .unwrap_or_else(|| buffer.read(cx).snapshot())
+                })?;
+                let edits = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let old_text = snapshot.text();
+                        text_diff(old_text.as_str(), &content)
+                            .into_iter()
+                            .map(|(range, replacement)| {
+                                (snapshot.anchor_range_inside(range), replacement)
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .await;
+
+                if should_update_agent_location {
+                    project.update(cx, |project, cx| {
+                        project.set_agent_location(
+                            Some(AgentLocation {
+                                buffer: buffer.downgrade(),
+                                position: edits
+                                    .last()
+                                    .map(|(range, _)| range.end)
+                                    .unwrap_or(Anchor::min_for_buffer(buffer.read(cx).remote_id())),
+                            }),
+                            cx,
+                        );
+                    });
+                }
+
+                let format_on_save = cx.update(|cx| {
+                    action_log.update(cx, |action_log, cx| {
+                        action_log.buffer_read(buffer.clone(), cx);
+                    });
+
+                    let format_on_save = buffer.update(cx, |buffer, cx| {
+                        buffer.start_transaction();
+                        buffer.edit(edits, None, cx);
+                        buffer.end_transaction_with_source(BufferEditSource::Agent, cx);
+
+                        let settings =
+                            language::language_settings::LanguageSettings::for_buffer(buffer, cx);
+
+                        settings.format_on_save != FormatOnSave::Off
+                    });
+                    action_log.update(cx, |action_log, cx| {
+                        action_log.buffer_edited(buffer.clone(), cx);
+                    });
+                    format_on_save
+                });
+
+                if format_on_save {
+                    let format_task = project.update(cx, |project, cx| {
+                        project.format(
+                            HashSet::from_iter([buffer.clone()]),
+                            LspFormatTarget::Buffers,
+                            false,
+                            FormatTrigger::Save,
+                            cx,
+                        )
+                    });
+                    format_task.await.log_err();
+
+                    action_log.update(cx, |action_log, cx| {
+                        action_log.buffer_edited(buffer.clone(), cx);
+                    });
+                }
+
+                project
+                    .update(cx, |project, cx| project.save_buffer_verified(buffer, cx))
+                    .await
+            }
+            .await;
+
+            if let Some(tool_call_id) = confirmation {
+                this.update(cx, |thread, cx| {
+                    thread.finish_zed_confirmation(&tool_call_id, result.is_ok(), cx)
                 })
-                .await;
-
-            if should_update_agent_location {
-                project.update(cx, |project, cx| {
-                    project.set_agent_location(
-                        Some(AgentLocation {
-                            buffer: buffer.downgrade(),
-                            position: edits
-                                .last()
-                                .map(|(range, _)| range.end)
-                                .unwrap_or(Anchor::min_for_buffer(buffer.read(cx).remote_id())),
-                        }),
-                        cx,
-                    );
-                });
+                .and_then(|finished| finished)
+                .log_err();
             }
-
-            let format_on_save = cx.update(|cx| {
-                action_log.update(cx, |action_log, cx| {
-                    action_log.buffer_read(buffer.clone(), cx);
-                });
-
-                let format_on_save = buffer.update(cx, |buffer, cx| {
-                    buffer.start_transaction();
-                    buffer.edit(edits, None, cx);
-                    buffer.end_transaction_with_source(BufferEditSource::Agent, cx);
-
-                    let settings =
-                        language::language_settings::LanguageSettings::for_buffer(buffer, cx);
-
-                    settings.format_on_save != FormatOnSave::Off
-                });
-                action_log.update(cx, |action_log, cx| {
-                    action_log.buffer_edited(buffer.clone(), cx);
-                });
-                format_on_save
-            });
-
-            if format_on_save {
-                let format_task = project.update(cx, |project, cx| {
-                    project.format(
-                        HashSet::from_iter([buffer.clone()]),
-                        LspFormatTarget::Buffers,
-                        false,
-                        FormatTrigger::Save,
-                        cx,
-                    )
-                });
-                format_task.await.log_err();
-
-                action_log.update(cx, |action_log, cx| {
-                    action_log.buffer_edited(buffer.clone(), cx);
-                });
-            }
-
-            project
-                .update(cx, |project, cx| project.save_buffer(buffer, cx))
-                .await
+            result
         })
     }
 
@@ -6193,6 +6301,291 @@ mod tests {
             "zero\none\ntwo\nthree\nfour\nfive\n"
         );
         request.await.unwrap();
+    }
+
+    fn waiting_zed_confirmation(
+        thread: &Entity<AcpThread>,
+        cx: &mut TestAppContext,
+    ) -> (acp::ToolCallId, String) {
+        thread.read_with(cx, |thread, cx| {
+            thread
+                .entries
+                .iter()
+                .rev()
+                .find_map(|entry| match entry {
+                    AgentThreadEntry::ToolCall(tool_call)
+                        if matches!(
+                            tool_call.status,
+                            ToolCallStatus::WaitingForConfirmation { .. }
+                        ) =>
+                    {
+                        Some((
+                            tool_call.id.clone(),
+                            tool_call.label.read(cx).source().to_string(),
+                        ))
+                    }
+                    _ => None,
+                })
+                .expect("a confirmation card should be waiting")
+        })
+    }
+
+    /// ADR-F49: Zed writes an external agent's files itself, outside any
+    /// sandbox, so it refuses Git metadata in any spelling and anything a link
+    /// takes out of the project — and writes an ordinary file without asking.
+    #[gpui::test]
+    async fn test_agent_writes_refuse_git_metadata_and_links_out_of_the_project(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/outside"), json!({ "secret.txt": "secret\n" }))
+            .await;
+        fs.insert_tree(
+            path!("/test"),
+            json!({
+                ".git": { "config": "[core]\n", "hooks": {} },
+                "sub": { ".git": { "hooks": {} } },
+                "src": { "main.rs": "fn main() {}\n" },
+            }),
+        )
+        .await;
+        fs.insert_symlink(path!("/test/link"), PathBuf::from(path!("/outside")))
+            .await;
+        fs.insert_symlink(
+            path!("/test/leaf.txt"),
+            PathBuf::from(path!("/outside/secret.txt")),
+        )
+        .await;
+        fs.insert_symlink(path!("/test/safe"), PathBuf::from(path!("/test/.git")))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+
+        for (path, reason) in [
+            (path!("/test/.git/config"), "Git metadata"),
+            (path!("/test/.GIT/config"), "Git metadata"),
+            (path!("/test/sub/.git/hooks/pre-commit"), "Git metadata"),
+            (path!("/test/link/escape.txt"), "leads out of the project"),
+            (path!("/test/leaf.txt"), "leads out of the project"),
+            (path!("/test/safe/config"), "Git metadata"),
+            (
+                path!("/outside/new.txt"),
+                "not inside any of the project's folders",
+            ),
+        ] {
+            let result = thread
+                .update(cx, |thread, cx| {
+                    thread.write_text_file(
+                        PathBuf::from(path),
+                        "[core]\n\tfsmonitor = touch pwned\n".to_string(),
+                        cx,
+                    )
+                })
+                .await;
+            let Err(error) = result else {
+                panic!("writing {path} must be refused");
+            };
+            assert!(
+                error.to_string().contains(reason),
+                "writing {path} should be refused as {reason:?}: {error:#}"
+            );
+        }
+        assert_eq!(
+            String::from_utf8(fs.read_file_sync(path!("/test/.git/config")).unwrap()).unwrap(),
+            "[core]\n"
+        );
+        assert_eq!(
+            String::from_utf8(fs.read_file_sync(path!("/outside/secret.txt")).unwrap()).unwrap(),
+            "secret\n"
+        );
+        assert!(
+            !fs.is_file(Path::new(path!("/test/sub/.git/hooks/pre-commit")))
+                .await
+        );
+        assert!(!fs.is_file(Path::new(path!("/outside/escape.txt"))).await);
+        thread.read_with(cx, |thread, _| {
+            assert!(thread.entries.is_empty(), "a refusal asks nothing");
+        });
+
+        thread
+            .update(cx, |thread, cx| {
+                thread.write_text_file(
+                    PathBuf::from(path!("/test/src/main.rs")),
+                    "fn main() { println!(\"hi\"); }\n".to_string(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            String::from_utf8(fs.read_file_sync(path!("/test/src/main.rs")).unwrap()).unwrap(),
+            "fn main() { println!(\"hi\"); }\n"
+        );
+        thread.read_with(cx, |thread, _| {
+            assert!(thread.entries.is_empty(), "an ordinary write asks nothing");
+        });
+    }
+
+    /// ADR-F49: a write to a project's `.zed` settings asks the user every time,
+    /// on a card that auto-approval can't answer; a denial reaches the agent as
+    /// an error and leaves the file alone.
+    #[gpui::test]
+    async fn test_agent_writes_to_project_settings_ask_every_time(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ ".zed": { "settings.json": "{}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+        let settings_path = PathBuf::from(path!("/test/.zed/settings.json"));
+
+        let denied = thread.update(cx, |thread, cx| {
+            thread.write_text_file(
+                settings_path.clone(),
+                "{ \"tab_size\": 8 }\n".to_string(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let (tool_call_id, title) = waiting_zed_confirmation(&thread, cx);
+        assert!(title.contains("プロジェクトの設定"), "{title}");
+        thread.update(cx, |thread, cx| {
+            thread.authorize_tool_call(
+                tool_call_id,
+                SelectedPermissionOutcome::new(
+                    acp::PermissionOptionId::new("deny"),
+                    acp::PermissionOptionKind::RejectOnce,
+                ),
+                cx,
+            )
+        });
+        assert!(denied.await.is_err());
+        assert_eq!(
+            String::from_utf8(fs.read_file_sync(&settings_path).unwrap()).unwrap(),
+            "{}\n"
+        );
+
+        let allowed = thread.update(cx, |thread, cx| {
+            thread.write_text_file(
+                settings_path.clone(),
+                "{ \"tab_size\": 4 }\n".to_string(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let (tool_call_id, _) = waiting_zed_confirmation(&thread, cx);
+        thread.update(cx, |thread, cx| {
+            thread.authorize_tool_call(
+                tool_call_id.clone(),
+                SelectedPermissionOutcome::new(
+                    acp::PermissionOptionId::new("allow"),
+                    acp::PermissionOptionKind::AllowOnce,
+                ),
+                cx,
+            )
+        });
+        allowed.await.unwrap();
+        assert_eq!(
+            String::from_utf8(fs.read_file_sync(&settings_path).unwrap()).unwrap(),
+            "{ \"tab_size\": 4 }\n"
+        );
+        thread.read_with(cx, |thread, _| {
+            let (_, tool_call) = thread
+                .tool_call(&tool_call_id)
+                .expect("the card stays in the thread");
+            assert!(matches!(tool_call.status, ToolCallStatus::Completed));
+        });
+    }
+
+    /// ADR-F49: a card can wait long enough for a sandboxed command to swap a
+    /// folder on the way for a link. Allowing the card then must not write
+    /// where the link leads.
+    #[gpui::test]
+    async fn test_agent_write_is_refused_when_its_path_changes_while_the_card_waits(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({
+                ".git": { "config": "[core]\n" },
+                ".zed": { "settings.json": "{}\n" },
+            }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+
+        let write = thread.update(cx, |thread, cx| {
+            thread.write_text_file(
+                PathBuf::from(path!("/test/.zed/config")),
+                "[core]\n\tfsmonitor = touch pwned\n".to_string(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let (tool_call_id, _) = waiting_zed_confirmation(&thread, cx);
+
+        fs.remove_dir(
+            Path::new(path!("/test/.zed")),
+            RemoveOptions {
+                recursive: true,
+                ignore_if_not_exists: false,
+            },
+        )
+        .await
+        .unwrap();
+        fs.insert_symlink(path!("/test/.zed"), PathBuf::from(path!("/test/.git")))
+            .await;
+        cx.run_until_parked();
+
+        thread.update(cx, |thread, cx| {
+            thread.authorize_tool_call(
+                tool_call_id.clone(),
+                SelectedPermissionOutcome::new(
+                    acp::PermissionOptionId::new("allow"),
+                    acp::PermissionOptionKind::AllowOnce,
+                ),
+                cx,
+            )
+        });
+        let Err(error) = write.await else {
+            panic!("the write must be refused");
+        };
+        assert!(error.to_string().contains("Git metadata"), "{error:#}");
+        assert_eq!(
+            String::from_utf8(fs.read_file_sync(path!("/test/.git/config")).unwrap()).unwrap(),
+            "[core]\n"
+        );
+        thread.read_with(cx, |thread, _| {
+            let (_, tool_call) = thread
+                .tool_call(&tool_call_id)
+                .expect("the card stays in the thread");
+            assert!(matches!(tool_call.status, ToolCallStatus::Failed));
+        });
     }
 
     #[gpui::test]

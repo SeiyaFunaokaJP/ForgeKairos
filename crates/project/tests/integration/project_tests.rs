@@ -17743,3 +17743,38 @@ async fn code_action_project(
 
     (project, buffer, handle, fake_servers)
 }
+
+/// ADR-F49: a remote server from before verified saves can't decode the
+/// request, so it never answers (or, knowing the message but not handling it,
+/// says so). Either way the save fails and the agent is told why, while the
+/// server's own refusal reaches it unchanged.
+#[gpui::test]
+async fn test_verified_save_fails_closed_on_an_old_remote_server(_cx: &mut gpui::TestAppContext) {
+    let never_answered =
+        project::buffer_store::await_verified_save(future::pending(), future::ready(())).await;
+    assert!(
+        format!("{:#}", never_answered.unwrap_err()).contains("did not confirm"),
+        "no answer must refuse the save"
+    );
+
+    let unhandled = project::buffer_store::await_verified_save(
+        future::ready(Err(anyhow::anyhow!(
+            "no handler registered for SaveBufferVerified"
+        ))),
+        future::pending(),
+    )
+    .await;
+    assert!(
+        format!("{:#}", unhandled.unwrap_err()).contains("did not confirm"),
+        "an unhandled request must refuse the save"
+    );
+
+    let refused = project::buffer_store::await_verified_save(
+        future::ready(Err(anyhow::anyhow!(
+            "`d` is a symbolic link, junction or other redirection"
+        ))),
+        future::pending(),
+    )
+    .await;
+    assert!(format!("{:#}", refused.unwrap_err()).contains("symbolic link"));
+}

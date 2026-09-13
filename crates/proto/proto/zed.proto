@@ -527,7 +527,9 @@ message Envelope {
     InstallDevTool install_dev_tool = 495;
     InstallDevToolResponse install_dev_tool_response = 496;
     RescanProjectWorktree rescan_project_worktree = 497;
-    RescanProjectWorktreeResponse rescan_project_worktree_response = 498; // current max
+    RescanProjectWorktreeResponse rescan_project_worktree_response = 498;
+    // 499-504: ADR-F50 (remote launch approvals and what follows them).
+    SaveBufferVerified save_buffer_verified = 505; // current max
   }
 
   reserved 87 to 88;

