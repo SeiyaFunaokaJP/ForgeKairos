@@ -53,35 +53,42 @@ pub struct IdeServerDiff {
     outcome: Option<oneshot::Sender<IdeServerDiffOutcome>>,
 }
 
+/// `openDiff` で開く差分の中身。
+pub(crate) struct ProposedDiff {
+    pub tab_name: String,
+    /// 旧内容 (左)。
+    pub old_buffer: Entity<Buffer>,
+    /// 提案された新内容 (右)。ユーザーが手直ししてから採用できる。
+    pub new_buffer: Entity<Buffer>,
+    pub new_file_path: PathBuf,
+    pub take_focus: bool,
+}
+
 impl IdeServerDiff {
     /// 差分タブを開き、ユーザーの決定を待つ受信端を返す。
-    pub fn open(
+    ///
+    /// `register` はタブをペインに出す直前に呼ぶ。出してから登録すると、そのあいだに
+    /// 呼び出し元 (セッション) が終わったとき、誰にも閉じられないタブが残る。登録を
+    /// 断られたらタブは出さない。
+    pub(crate) fn open(
         workspace: WeakEntity<Workspace>,
-        tab_name: String,
-        old_file_path: PathBuf,
-        new_file_path: PathBuf,
-        new_contents: String,
+        proposal: ProposedDiff,
+        register: impl FnOnce(&Entity<Self>, &mut App) -> Result<()> + 'static,
         cx: &mut AsyncApp,
-    ) -> Task<Result<(Entity<Self>, oneshot::Receiver<IdeServerDiffOutcome>)>> {
+    ) -> Task<Result<oneshot::Receiver<IdeServerDiffOutcome>>> {
         cx.spawn(async move |cx| {
+            let ProposedDiff {
+                tab_name,
+                old_buffer,
+                new_buffer,
+                new_file_path,
+                take_focus,
+            } = proposal;
             let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
-            let old_buffer = open_buffer(&project, &old_file_path, cx)
-                .await
-                .with_context(|| format!("opening {} for the diff", old_file_path.display()))?;
-            let language = old_buffer.read_with(cx, |buffer, _| buffer.language().cloned());
-            // `create_local_buffer` はリモートプロジェクトで panic するので、
-            // ローカル・リモート双方で動く `create_buffer` に本文を流し込む。
-            let new_buffer = project
-                .update(cx, |project, cx| project.create_buffer(language, false, cx))
-                .await
-                .context("creating the scratch buffer for the proposed contents")?;
-            new_buffer.update(cx, |buffer, cx| {
-                buffer.set_text(new_contents, cx);
-            });
             let diff = build_buffer_diff(&old_buffer, &new_buffer, cx).await?;
 
             let (outcome_tx, outcome_rx) = oneshot::channel();
-            let diff_tab = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.update_in(cx, |workspace, window, cx| {
                 let workspace_entity = cx.entity();
                 let diff_view = cx.new(|cx| {
                     FileDiffView::new(
@@ -101,16 +108,30 @@ impl IdeServerDiff {
                     new_buffer,
                     outcome: Some(outcome_tx),
                 });
-                workspace.add_item_to_active_pane(
-                    Box::new(diff_tab.clone()),
-                    None,
-                    true,
-                    window,
-                    cx,
-                );
-                diff_tab
-            })?;
-            Ok((diff_tab, outcome_rx))
+                register(&diff_tab, cx)?;
+                if take_focus {
+                    workspace.add_item_to_active_pane(Box::new(diff_tab), None, true, window, cx);
+                } else {
+                    // フォーカスのあるタブと同じペインで差分を前面に出すと、隠れたタブから
+                    // ペインへ戻ったフォーカスを、ペインが新しい前面のタブ (差分) へ渡して
+                    // しまう。その場合はタブを足すだけにして、ユーザーのタブを前面に残す。
+                    let pane = workspace.active_pane().clone();
+                    let activate = !pane.read(cx).focus_handle(cx).contains_focused(window, cx);
+                    pane.update(cx, |pane, cx| {
+                        pane.add_item_inner(
+                            Box::new(diff_tab),
+                            false,
+                            false,
+                            activate,
+                            None,
+                            window,
+                            cx,
+                        )
+                    });
+                }
+                anyhow::Ok(())
+            })??;
+            Ok(outcome_rx)
         })
     }
 
@@ -145,7 +166,7 @@ impl IdeServerDiff {
 /// `open_local_buffer` はワークツリー外のパスにも隠しワークツリーを作って対応するが、
 /// リモートプロジェクトではその作成がホスト側に行ってしまう。リモートのときは
 /// 既存のワークツリー配下に解決できたものだけを開き、外れていればエラーにする。
-async fn open_buffer(
+pub(crate) async fn open_buffer(
     project: &Entity<Project>,
     path: &Path,
     cx: &mut AsyncApp,

@@ -3,9 +3,12 @@
 //! MCP の型 (`Tool` / `CallToolParams` / …) は `context_server::types` を再利用し、
 //! ここには「あちらに `pub` で出ていないもの」だけを置く。
 
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context as _, Result};
+use gpui::BackgroundExecutor;
 use serde::{Deserialize, Serialize};
 
 /// JSON-RPC の識別子。数値と文字列の両方が来る。
@@ -55,6 +58,7 @@ struct OutgoingNotification<'a> {
 }
 
 pub const METHOD_NOT_FOUND: i32 = -32601;
+pub const INVALID_PARAMS: i32 = -32602;
 pub const INTERNAL_ERROR: i32 = -32603;
 pub const PARSE_ERROR: i32 = -32700;
 
@@ -123,15 +127,18 @@ pub struct LockFileContents {
 
 impl LockFileContents {
     pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(&serde_json::json!({
+        serde_json::to_string(&self.to_value()).context("serializing the Claude Code IDE lock file")
+    }
+
+    pub fn to_value(&self) -> serde_json::Value {
+        serde_json::json!({
             "pid": self.pid,
             "workspaceFolders": self.workspace_folders,
             "ideName": self.ide_name,
             "transport": self.transport,
             "runningInWindows": self.running_in_windows,
             "authToken": self.auth_token,
-        }))
-        .context("serializing the Claude Code IDE lock file")
+        })
     }
 
     pub fn from_json(text: &str) -> Result<Self> {
@@ -174,4 +181,111 @@ pub fn lock_file_directory() -> PathBuf {
 
 pub fn lock_file_path(directory: &Path, port: u16) -> PathBuf {
     directory.join(format!("{port}.lock"))
+}
+
+/// Windows の `FILE_FLAG_OPEN_REPARSE_POINT`。`windows` クレートに依存しないよう値で持つ。
+#[cfg(windows)]
+pub(crate) const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+/// Windows の `ERROR_SHARING_VIOLATION`。
+#[cfg(windows)]
+const ERROR_SHARING_VIOLATION: i32 = 32;
+const LOCK_RENAME_ATTEMPTS: u32 = 5;
+const LOCK_RENAME_BACKOFF: Duration = Duration::from_millis(50);
+
+/// ロックファイルを書く。
+///
+/// ロックの置き場所は他のプロセスからも書けるので、`<port>.lock` の名前でシンボリック
+/// リンクを仕込まれても、その先を上書きしてはいけない。新しい一時ファイルをリンクを
+/// たどらずに作って書き、同じディレクトリの中で名前を付け替える (`rename` は宛先が
+/// リンクでもリンクそのものを置き換え、既存の通常ファイルもそのまま置き換える)。
+pub async fn write_lock_file(
+    path: &Path,
+    contents: &[u8],
+    executor: &BackgroundExecutor,
+) -> Result<()> {
+    let directory = path
+        .parent()
+        .context("the lock file path has no directory")?;
+    let file_name = path
+        .file_name()
+        .context("the lock file path has no file name")?;
+    // CLI は `*.lock` だけを読むので、書きかけの一時ファイルはその形にしない。
+    let temporary_path = directory.join(format!(
+        ".{}.{}.tmp",
+        file_name.to_string_lossy(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    let result = match write_new_file(&temporary_path, contents) {
+        Ok(()) => rename_with_retry(&temporary_path, path, executor).await,
+        Err(error) => Err(error),
+    }
+    .with_context(|| format!("writing {}", path.display()));
+    if result.is_err()
+        && let Err(error) = std::fs::remove_file(&temporary_path)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        log::error!(
+            "ide_server: could not remove {}: {error}",
+            temporary_path.display()
+        );
+    }
+    result
+}
+
+/// Windows では、CLI やウイルス対策ソフトがロックファイルを開いている一瞬、置き換えが
+/// 共有違反やアクセス拒否で失敗する。少し待てば通るので、間を空けて何度か試す。
+async fn rename_with_retry(
+    from: &Path,
+    to: &Path,
+    executor: &BackgroundExecutor,
+) -> std::io::Result<()> {
+    let mut attempt = 1;
+    loop {
+        match std::fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < LOCK_RENAME_ATTEMPTS && is_transient_rename_error(&error) => {
+                executor.timer(LOCK_RENAME_BACKOFF * attempt).await;
+                attempt += 1;
+            }
+            Err(error) => {
+                if is_transient_rename_error(&error) {
+                    log::warn!(
+                        "ide_server: could not replace {} after {attempt} attempts: {error}",
+                        to.display()
+                    );
+                }
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn is_transient_rename_error(error: &std::io::Error) -> bool {
+    #[cfg(windows)]
+    if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) {
+        return true;
+    }
+    error.kind() == std::io::ErrorKind::PermissionDenied
+}
+
+fn write_new_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    // Unix の `create_new` は O_CREAT|O_EXCL で、最後の成分がシンボリックリンクなら
+    // (壊れたリンクでも) 失敗する。
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        // 認証トークンが入るので本人だけが読めるようにする。
+        options.mode(0o600);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        // CREATE_NEW だけでは、その名前が壊れたシンボリックリンクだとリンク先に
+        // 新しく作ってしまう。
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(contents)
 }

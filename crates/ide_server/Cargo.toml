@@ -24,6 +24,7 @@ async-tungstenite.workspace = true
 collections.workspace = true
 context_server.workspace = true
 editor.workspace = true
+fs.workspace = true
 futures.workspace = true
 git_ui_core.workspace = true
 gpui.workspace = true
@@ -42,6 +43,9 @@ util.workspace = true
 uuid.workspace = true
 workspace.workspace = true
 zed_actions.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
 editor = { workspace = true, features = ["test-support"] }

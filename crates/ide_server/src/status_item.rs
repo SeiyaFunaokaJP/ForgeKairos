@@ -17,7 +17,9 @@ use zed_actions::ide_server::{
     CopyMcpConfiguration, RevealLockFile, SendSelectionToClaudeCode, ToggleIdeServer,
 };
 
-use crate::{IdeServer, IdeServerSettings, server_for, server_for_workspace_id, tools};
+use crate::{
+    IdeServer, IdeServerSettings, sandbox_client, server_for, server_for_workspace_id, tools,
+};
 
 /// トーストはどの操作でも 1 つに畳む。連打しても積み上がらない。
 struct IdeServerNotification;
@@ -100,9 +102,15 @@ fn send_selection_to_claude_code(workspace: &mut Workspace, cx: &mut Context<Wor
         );
         return;
     };
-    let sent = server.update(cx, |server, cx| {
+    let mut sent = server.update(cx, |server, cx| {
         server.send_at_mention(&file_path, start_line, end_line, cx)
     });
+    // サンドボックスの中の CLI にも送る。ワークツリーの外のファイルはセッションが断る。
+    for session in sandbox_client::sessions_for_workspace(cx.entity_id(), cx) {
+        sent |= session.update(cx, |session, cx| {
+            session.send_at_mention(&file_path, start_line, end_line, cx)
+        });
+    }
     if !sent {
         notify(workspace, "Claude Code が接続していません", cx);
     }

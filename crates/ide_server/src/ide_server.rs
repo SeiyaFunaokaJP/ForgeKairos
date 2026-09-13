@@ -20,37 +20,48 @@
 //!   自分の cwd と照合できないし、リモートのターミナルには `CLAUDE_CODE_SSE_PORT` も
 //!   注げないので、置いても誤検出の種にしかならない。サーバー自体は動かしたままなので、
 //!   `.mcp.json` 断片を貼れば HTTP からは今までどおり使える
+//! - サンドボックス (WSL) の中で動く CLI には、TCP もロックファイルも使わない別の口を
+//!   出す ([`start_sandbox_session`]、ADR-F49)
 
 mod diff_view;
+mod path_mapping;
 mod protocol;
+mod sandbox_client;
 mod status_item;
 mod tools;
 mod transport;
 
+use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use anyhow::Context as _;
 use collections::HashMap;
 use editor::{Editor, EditorEvent};
-use futures::StreamExt as _;
-use futures::channel::mpsc::{UnboundedSender, unbounded};
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
+use futures::stream::FuturesUnordered;
+use futures::{AsyncRead, AsyncWrite, FutureExt as _, StreamExt as _};
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, BorrowAppContext as _, Entity, EntityId,
     Global, Subscription, Task, TaskExt as _, WeakEntity,
 };
 use project::Project;
 use settings::{RegisterSetting, Settings, SettingsStore};
+use smol::lock::{Semaphore, SemaphoreGuardArc};
 use smol::net::{TcpListener, TcpStream};
 use util::ResultExt as _;
 use workspace::Workspace;
 
 pub use diff_view::{IdeServerDiff, IdeServerDiffOutcome};
+pub use path_mapping::{IdentityPathMapper, PathMapper, WslPathMapper};
 pub use protocol::{LockFileContents, lock_file_directory, lock_file_path};
+pub use sandbox_client::{
+    SandboxIdeSessionHandle, SandboxSessionInfo, sandbox_lock_file_contents, start_sandbox_session,
+};
 pub use status_item::IdeServerStatusItem;
-pub(crate) use tools::SelectionSnapshot;
+pub(crate) use tools::{SelectionSnapshot, ToolHost};
 
 /// Claude Code CLI が「どのインスタンスに繋げばよいか」を決めるための環境変数。
 ///
@@ -126,6 +137,9 @@ struct IdeServerRegistry {
     /// ロックファイルを置くディレクトリ。テストが本物の `~/.claude/ide` を汚さずに
     /// 済むよう、グローバルに持たせて差し替えられるようにしてある。
     lock_directory: std::path::PathBuf,
+    /// 動いているサンドボックスのセッション。右クリックの「選択範囲を送る」と、接続中の
+    /// 表示で使う。
+    sandbox_sessions: Vec<WeakEntity<sandbox_client::SandboxIdeSession>>,
 }
 
 impl Default for IdeServerRegistry {
@@ -134,6 +148,7 @@ impl Default for IdeServerRegistry {
             servers: HashMap::default(),
             workspaces_by_project: HashMap::default(),
             lock_directory: protocol::lock_file_directory(),
+            sandbox_sessions: Vec::new(),
         }
     }
 }
@@ -168,6 +183,18 @@ fn server_for_project(project: &Entity<Project>, cx: &App) -> Option<Entity<IdeS
     let registry = cx.try_global::<IdeServerRegistry>()?;
     let workspace_id = registry.workspaces_by_project.get(&project.entity_id())?;
     registry.servers.get(workspace_id).cloned()
+}
+
+/// このプロジェクトのホストの IDE サーバーに WebSocket で繋がっている CLI の数。
+fn host_connection_count(project_id: EntityId, cx: &App) -> usize {
+    let Some(registry) = cx.try_global::<IdeServerRegistry>() else {
+        return 0;
+    };
+    registry
+        .workspaces_by_project
+        .get(&project_id)
+        .and_then(|workspace_id| registry.servers.get(workspace_id))
+        .map_or(0, |server| server.read(cx).connected_client_count())
 }
 
 /// このプロジェクトのローカルターミナルに注入する環境変数。
@@ -220,7 +247,7 @@ struct RunningServer {
     auth_token: Arc<str>,
     /// リモートのワークスペースではロックファイルを書かないので `None`。
     lock_path: Option<std::path::PathBuf>,
-    connections: Vec<UnboundedSender<String>>,
+    connections: Vec<Arc<transport::Outbox>>,
     _accept_task: Task<()>,
 }
 
@@ -253,7 +280,7 @@ pub struct IdeServer {
     starting: bool,
     latest_selection: Option<SelectionSnapshot>,
     selection_subscription: Option<Subscription>,
-    open_diffs: HashMap<String, Entity<IdeServerDiff>>,
+    open_diffs: tools::OpenDiffs,
     _settings_subscription: Subscription,
     _quit_subscription: Subscription,
     _workspace_subscription: Option<Subscription>,
@@ -293,7 +320,7 @@ impl IdeServer {
             starting: false,
             latest_selection: None,
             selection_subscription: None,
-            open_diffs: HashMap::default(),
+            open_diffs: tools::OpenDiffs::default(),
             _settings_subscription: settings_subscription,
             _quit_subscription: quit_subscription,
             _workspace_subscription: workspace_subscription,
@@ -321,26 +348,6 @@ impl IdeServer {
 
     pub fn lock_file_path(&self) -> Option<&Path> {
         self.running.as_ref()?.lock_path.as_deref()
-    }
-
-    pub(crate) fn workspace(&self) -> &WeakEntity<Workspace> {
-        &self.workspace
-    }
-
-    pub(crate) fn latest_selection(&self) -> Option<&SelectionSnapshot> {
-        self.latest_selection.as_ref()
-    }
-
-    pub(crate) fn register_diff(&mut self, tab_name: String, diff: Entity<IdeServerDiff>) {
-        self.open_diffs.insert(tab_name, diff);
-    }
-
-    pub(crate) fn take_diff(&mut self, tab_name: &str) -> Option<Entity<IdeServerDiff>> {
-        self.open_diffs.remove(tab_name)
-    }
-
-    pub(crate) fn take_all_diffs(&mut self) -> Vec<Entity<IdeServerDiff>> {
-        std::mem::take(&mut self.open_diffs).into_values().collect()
     }
 
     fn on_workspace_event(
@@ -381,8 +388,11 @@ impl IdeServer {
         let Some(json) = contents.to_json().log_err() else {
             return;
         };
+        let executor = cx.background_executor().clone();
         cx.background_spawn(async move {
-            std::fs::write(&lock_path, json).log_err();
+            protocol::write_lock_file(&lock_path, json.as_bytes(), &executor)
+                .await
+                .log_err();
         })
         .detach();
     }
@@ -401,8 +411,8 @@ impl IdeServer {
             (true, false) => self.start(cx),
             (false, true) => {
                 self.stop();
-                zed_actions::ide_server::set_claude_code_connected(self.project_id, false, cx);
-                cx.notify();
+                // サンドボックスのセッションは設定と無関係に動くので、単に「未接続」にはしない。
+                self.publish_connection_state(cx);
             }
             _ => {}
         }
@@ -497,7 +507,7 @@ impl IdeServer {
                 async move {
                     std::fs::create_dir_all(&directory)?;
                     remove_stale_lock_files(&directory, &executor).await;
-                    std::fs::write(&lock_path, json)?;
+                    protocol::write_lock_file(&lock_path, json.as_bytes(), &executor).await?;
                     anyhow::Ok(())
                 }
             })
@@ -530,7 +540,7 @@ impl IdeServer {
         };
         self.selection_subscription = None;
         self.latest_selection = None;
-        self.open_diffs.clear();
+        self.open_diffs = tools::OpenDiffs::default();
         log::info!(
             "ide_server: stopped listening on 127.0.0.1:{}",
             running.port
@@ -538,132 +548,23 @@ impl IdeServer {
     }
 
     fn serve(this: Entity<Self>, stream: TcpStream, auth_token: Arc<str>, cx: &mut AsyncApp) {
-        let (incoming_tx, mut incoming_rx) = unbounded::<String>();
-        let (outgoing_tx, outgoing_rx) = unbounded::<String>();
-        let (kind_tx, kind_rx) = oneshot::channel();
-        let io_task = cx.background_spawn(async move {
-            if let Err(error) =
-                transport::serve_connection(stream, auth_token, incoming_tx, outgoing_rx, kind_tx)
-                    .await
-            {
-                log::debug!("ide_server: connection ended: {error:#}");
-            }
-        });
-
-        cx.spawn(async move |cx| {
-            let kind = kind_rx.await.ok();
-            let is_websocket = kind == Some(transport::ConnectionKind::WebSocket);
-            if is_websocket {
-                this.update(cx, |this, cx| {
-                    if let Some(running) = this.running.as_mut() {
-                        running.connections.push(outgoing_tx.clone());
-                    }
-                    this.publish_connection_state(cx);
-                });
-            }
-            // 1 件ずつ順に処理すると `openDiff` がユーザーの決定を待つあいだ後続の
-            // 要求 (CLI が差分タブを畳む `close_tab` を含む) が止まってしまうので、
-            // 要求ごとにタスクを起こす。JSON-RPC の応答は `id` で対応が付くため
-            // 順序が入れ替わってよい。
-            while let Some(text) = incoming_rx.next().await {
-                cx.spawn({
-                    let this = this.clone();
-                    let outgoing_tx = outgoing_tx.clone();
-                    async move |cx| {
-                        if let Some(response) = IdeServer::handle_message(&this, &text, cx).await {
-                            outgoing_tx.unbounded_send(response).ok();
-                        }
-                    }
-                })
-                .detach();
-            }
-            drop(outgoing_tx);
-            if is_websocket {
-                this.update(cx, |this, cx| {
-                    if let Some(running) = this.running.as_mut() {
-                        running
-                            .connections
-                            .retain(|connection| !connection.is_closed());
-                    }
-                    this.publish_connection_state(cx);
-                });
-            }
-            drop(io_task);
-        })
-        .detach();
+        let connection = run_connection(this, stream, auth_token, None, cx.clone());
+        cx.spawn(async move |_| connection.await).detach();
     }
 
-    /// 1 件の JSON-RPC メッセージを処理する。応答が要らない (通知) なら `None`。
-    pub(crate) async fn handle_message(
-        this: &Entity<Self>,
-        text: &str,
-        cx: &mut AsyncApp,
-    ) -> Option<String> {
-        let message: protocol::IncomingMessage = match serde_json::from_str(text) {
-            Ok(message) => message,
-            Err(error) => {
-                log::warn!("ide_server: could not parse an incoming message: {error}");
-                return Some(protocol::error_response(
-                    protocol::RequestId::Int(0),
-                    protocol::PARSE_ERROR,
-                    format!("{error}"),
-                ));
-            }
-        };
-        let method = message.method.unwrap_or_default();
-        let params = message.params.unwrap_or(serde_json::Value::Null);
-        let Some(id) = message.id else {
-            Self::handle_notification(&method, &params);
-            return None;
-        };
-
-        Some(match method.as_str() {
-            "initialize" => protocol::success_response(id, tools::initialize_result(&params)),
-            "ping" => protocol::success_response(id, serde_json::json!({})),
-            "tools/list" => protocol::success_response(id, tools::list_tools_result()),
-            "tools/call" => match tools::call_tool(this, params, cx).await {
-                Ok(result) => protocol::success_response(id, result),
-                Err(error) => {
-                    protocol::error_response(id, protocol::INTERNAL_ERROR, format!("{error:#}"))
-                }
-            },
-            "resources/list" => {
-                protocol::success_response(id, serde_json::json!({ "resources": [] }))
-            }
-            "prompts/list" => protocol::success_response(id, serde_json::json!({ "prompts": [] })),
-            other => protocol::error_response(
-                id,
-                protocol::METHOD_NOT_FOUND,
-                format!("unhandled method {other}"),
-            ),
-        })
-    }
-
-    fn handle_notification(method: &str, params: &serde_json::Value) {
-        match method {
-            "notifications/initialized" | "experiment_gates" | "notifications/cancelled" => {}
-            "ide_connected" => {
-                let pid = params.get("pid").and_then(serde_json::Value::as_i64);
-                log::info!("ide_server: a Claude Code CLI connected (pid {pid:?})");
-            }
-            other => log::debug!("ide_server: ignoring the notification {other}"),
-        }
-    }
-
-    fn broadcast(&mut self, method: &str, params: serde_json::Value) {
+    /// 1 本にでも積めたら `true`。
+    fn broadcast(&mut self, method: &str, params: serde_json::Value) -> bool {
         let Some(running) = self.running.as_mut() else {
-            return;
+            return false;
         };
-        let message = protocol::notification(method, params);
-        running
-            .connections
-            .retain(|connection| connection.unbounded_send(message.clone()).is_ok());
+        broadcast_notification(&mut running.connections, method, params)
     }
 
     /// 接続数が変わったことを、ステータスバーと (右クリックメニューが読む) グローバルに
     /// 反映する。
     fn publish_connection_state(&mut self, cx: &mut gpui::Context<Self>) {
-        let connected = self.connected_client_count() > 0;
+        let connected = self.connected_client_count() > 0
+            || sandbox_client::has_connected_session(self.project_id, None, cx);
         zed_actions::ide_server::set_claude_code_connected(self.project_id, connected, cx);
         cx.notify();
     }
@@ -682,16 +583,10 @@ impl IdeServer {
         if self.connected_client_count() == 0 {
             return false;
         }
-        self.broadcast(
+        let sent = self.broadcast(
             "at_mentioned",
-            serde_json::json!({
-                "filePath": file_path.to_string_lossy(),
-                "lineStart": start_line,
-                "lineEnd": end_line,
-            }),
+            tools::at_mention_params(&file_path.to_string_lossy(), start_line, end_line),
         );
-        // 送信先が閉じていれば `broadcast` が刈り取っているので、その結果で判定する。
-        let sent = self.connected_client_count() > 0;
         self.publish_connection_state(cx);
         sent
     }
@@ -741,6 +636,281 @@ impl IdeServer {
 impl Drop for IdeServer {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+impl ToolHost for IdeServer {
+    fn workspace(&self) -> Option<WeakEntity<Workspace>> {
+        Some(self.workspace.clone())
+    }
+
+    fn tool_scope(&self) -> tools::ToolScope {
+        tools::ToolScope::Full
+    }
+
+    fn latest_selection(&self) -> Option<&SelectionSnapshot> {
+        self.latest_selection.as_ref()
+    }
+
+    fn open_diffs(&mut self) -> &mut tools::OpenDiffs {
+        &mut self.open_diffs
+    }
+
+    fn add_connection(&mut self, connection: Arc<transport::Outbox>, cx: &mut gpui::Context<Self>) {
+        if let Some(running) = self.running.as_mut() {
+            running.connections.push(connection);
+        }
+        self.publish_connection_state(cx);
+    }
+
+    fn remove_connection(
+        &mut self,
+        connection: &Arc<transport::Outbox>,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        if let Some(running) = self.running.as_mut() {
+            running
+                .connections
+                .retain(|existing| !Arc::ptr_eq(existing, connection) && !existing.is_closed());
+        }
+        self.publish_connection_state(cx);
+    }
+}
+
+/// 接続中の全員に通知を撃ち、閉じた接続を刈り取る。`selection_changed` は、相手が読むまで
+/// 最新の 1 件だけを残す。1 本にでも積めたら `true` (溜まりすぎて捨てた分は数えない)。
+pub(crate) fn broadcast_notification(
+    connections: &mut Vec<Arc<transport::Outbox>>,
+    method: &str,
+    params: serde_json::Value,
+) -> bool {
+    let message = protocol::notification(method, params);
+    let mut queued = false;
+    connections.retain(|connection| {
+        let delivery = if method == "selection_changed" {
+            connection.send_selection(message.clone())
+        } else {
+            connection.send_notification(message.clone())
+        };
+        queued |= delivery == transport::Delivery::Queued;
+        delivery != transport::Delivery::Closed
+    });
+    queued
+}
+
+/// 1 本の接続 (ホストの TCP でも、サンドボックスから転送されてきたストリームでも) を
+/// 最後まで処理する。
+pub(crate) async fn run_connection<S, H>(
+    this: Entity<H>,
+    stream: S,
+    auth_token: Arc<str>,
+    open_transport: Option<OpenTransport>,
+    mut cx: AsyncApp,
+) where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    H: ToolHost,
+{
+    // 受け取った要求を溜めておくのは 1 件だけにする。同時実行の枠が空くまで、残りは相手の
+    // 送信を (トランスポートの読み込みを止めて) 待たせる。
+    let (incoming_tx, mut incoming_rx) = mpsc::channel::<String>(0);
+    let (outbox, outgoing) = transport::outbox();
+    let (kind_tx, kind_rx) = oneshot::channel();
+    let (session_permits, undelivered_limit, max_message_bytes) = this.read_with(&cx, |this, _| {
+        (
+            this.request_permits(),
+            this.max_undelivered_responses(),
+            this.max_message_bytes(),
+        )
+    });
+    let handshake_deadline = cx.background_executor().timer(transport::HANDSHAKE_TIMEOUT);
+    let io_task = cx.background_spawn(async move {
+        // トランスポートが閉じるまで、開いている接続として数える。
+        let _open_transport = open_transport;
+        if let Err(error) = transport::serve_connection(
+            stream,
+            auth_token,
+            max_message_bytes,
+            incoming_tx,
+            outgoing,
+            kind_tx,
+            handshake_deadline,
+        )
+        .await
+        {
+            log::debug!("ide_server: connection ended: {error:#}");
+        }
+    });
+    let connection_permits = undelivered_limit.map(|limit| Arc::new(Semaphore::new(limit)));
+    let is_websocket = kind_rx.await.ok() == Some(transport::ConnectionKind::WebSocket);
+    if is_websocket {
+        this.update(&mut cx, |this, cx| this.add_connection(outbox.clone(), cx));
+    }
+
+    // 1 件ずつ順に処理すると `openDiff` がユーザーの決定を待つあいだ後続の要求 (CLI が
+    // 差分タブを畳む `close_tab` を含む) が止まってしまうので、並行に処理する。
+    // JSON-RPC の応答は `id` で対応が付くため順序が入れ替わってよい。
+    let connection = tools::ConnectionId::next();
+    let mut pending = FuturesUnordered::new();
+    loop {
+        futures::select_biased! {
+            (response, permit) = pending.select_next_some() => {
+                if let Some(response) = response {
+                    outbox.send_response(response, permit);
+                }
+            }
+            text = incoming_rx.next() => match text {
+                Some(text) => {
+                    // 枠は要求が届いてから取る。読む前に取ると、何も送ってこない接続が枠を
+                    // 抱えたまま、セッションの CLI の接続を待たせる。接続ごとの枠は応答を
+                    // 相手に渡すまで、セッションの枠は処理が終わるまで持つ。
+                    let connection_permit = match &connection_permits {
+                        Some(permits) => {
+                            Some(wait_for_permit(permits, &mut pending, &outbox).await)
+                        }
+                        None => None,
+                    };
+                    let session_permit = match &session_permits {
+                        Some(permits) => {
+                            Some(wait_for_permit(permits, &mut pending, &outbox).await)
+                        }
+                        None => None,
+                    };
+                    pending.push({
+                        let this = this.clone();
+                        let mut cx = cx.clone();
+                        async move {
+                            let response = handle_message(&this, &text, connection, &mut cx).await;
+                            drop(session_permit);
+                            (response, connection_permit)
+                        }
+                    });
+                }
+                None => break,
+            },
+        }
+    }
+    if is_websocket {
+        this.update(&mut cx, |this, cx| this.remove_connection(&outbox, cx));
+    }
+    // 接続が切れても、ユーザーの決定を待っている `openDiff` は最後まで待つ (タブは開いた
+    // ままなので)。HTTP ではここで送る応答がそのまま本文になる。
+    while let Some((response, permit)) = pending.next().await {
+        if let Some(response) = response {
+            outbox.send_response(response, permit);
+        }
+    }
+    outbox.finish();
+    // HTTP の応答はトランスポートがまだ書いている途中かもしれないので、落とさずに待つ。
+    io_task.await;
+}
+
+/// 相手との接続 (トランスポート) が開いているあいだ数に入る。io タスクが終わると外れる。
+pub(crate) struct OpenTransport(Arc<AtomicUsize>);
+
+impl OpenTransport {
+    pub(crate) fn new(count: &Arc<AtomicUsize>) -> Self {
+        count.fetch_add(1, Ordering::SeqCst);
+        Self(count.clone())
+    }
+}
+
+impl Drop for OpenTransport {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// 枠が空くのを待つ。待つあいだも、処理を終えた要求の応答は届け続ける (接続ごとの枠は、
+/// 応答を相手に渡したときに空く)。
+async fn wait_for_permit<F>(
+    permits: &Arc<Semaphore>,
+    pending: &mut FuturesUnordered<F>,
+    outbox: &transport::Outbox,
+) -> SemaphoreGuardArc
+where
+    F: Future<Output = (Option<String>, Option<SemaphoreGuardArc>)>,
+{
+    let acquire = permits.acquire_arc().fuse();
+    futures::pin_mut!(acquire);
+    loop {
+        futures::select_biased! {
+            permit = acquire => return permit,
+            (response, permit) = pending.select_next_some() => {
+                if let Some(response) = response {
+                    outbox.send_response(response, permit);
+                }
+            }
+        }
+    }
+}
+
+/// 1 件の JSON-RPC メッセージを処理する。応答が要らない (通知) なら `None`。
+pub(crate) async fn handle_message<H: ToolHost>(
+    this: &Entity<H>,
+    text: &str,
+    connection: tools::ConnectionId,
+    cx: &mut AsyncApp,
+) -> Option<String> {
+    let message: protocol::IncomingMessage = match serde_json::from_str(text) {
+        Ok(message) => message,
+        Err(error) => {
+            log::warn!("ide_server: could not parse an incoming message: {error}");
+            return Some(protocol::error_response(
+                protocol::RequestId::Int(0),
+                protocol::PARSE_ERROR,
+                format!("{error}"),
+            ));
+        }
+    };
+    let method = message.method.unwrap_or_default();
+    let params = message.params.unwrap_or(serde_json::Value::Null);
+    let Some(id) = message.id else {
+        handle_notification(&method, &params);
+        return None;
+    };
+
+    Some(match method.as_str() {
+        "initialize" => protocol::success_response(id, tools::initialize_result(&params)),
+        "ping" => protocol::success_response(id, serde_json::json!({})),
+        "tools/list" => {
+            let scope = this.read_with(cx, |this, _| this.tool_scope());
+            protocol::success_response(id, tools::list_tools_result(&scope))
+        }
+        "tools/call" => match tools::parse_call_params(params) {
+            Ok(params) => {
+                let name = params.name.clone();
+                match tools::call_tool(this, params, connection, cx).await {
+                    Some(result) => protocol::success_response(id, result),
+                    // MCP の仕様どおり、出していないツールは JSON-RPC のエラーで答える。
+                    None => protocol::error_response(
+                        id,
+                        protocol::INVALID_PARAMS,
+                        format!("the tool {name} is not available in this session"),
+                    ),
+                }
+            }
+            Err(error) => {
+                protocol::error_response(id, protocol::INVALID_PARAMS, format!("{error:#}"))
+            }
+        },
+        "resources/list" => protocol::success_response(id, serde_json::json!({ "resources": [] })),
+        "prompts/list" => protocol::success_response(id, serde_json::json!({ "prompts": [] })),
+        other => protocol::error_response(
+            id,
+            protocol::METHOD_NOT_FOUND,
+            format!("unhandled method {other}"),
+        ),
+    })
+}
+
+fn handle_notification(method: &str, params: &serde_json::Value) {
+    match method {
+        "notifications/initialized" | "experiment_gates" | "notifications/cancelled" => {}
+        "ide_connected" => {
+            let pid = params.get("pid").and_then(serde_json::Value::as_i64);
+            log::info!("ide_server: a Claude Code CLI connected (pid {pid:?})");
+        }
+        other => log::debug!("ide_server: ignoring the notification {other}"),
     }
 }
 

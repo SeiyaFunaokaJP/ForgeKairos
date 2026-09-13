@@ -1,19 +1,34 @@
+use std::collections::VecDeque;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Poll, Waker};
+use std::time::Duration;
 
+use async_tungstenite::WebSocketStream;
+use async_tungstenite::tungstenite::Error as WebSocketError;
 use editor::Editor;
-use futures::channel::mpsc::unbounded;
+use futures::channel::mpsc::{self, UnboundedSender, unbounded};
 use futures::channel::oneshot;
-use futures::{AsyncReadExt as _, AsyncWriteExt as _, StreamExt as _};
-use gpui::{AppContext as _, Entity, TestAppContext, UpdateGlobal as _};
+use futures::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _, StreamExt as _};
+use gpui::{
+    AppContext as _, Entity, Focusable as _, TestAppContext, UpdateGlobal as _, WindowHandle,
+};
+use language::{Diagnostic, DiagnosticEntry, DiagnosticSeverity, DiagnosticSourceKind, PointUtf16};
+use lsp::LanguageServerId;
 use project::{FakeFs, Fs as _, Project};
 use serde_json::{Value, json};
 use smol::net::{TcpListener, TcpStream};
-use util::path;
+use text::Unclipped;
+use util::{path, uri};
 use workspace::{MultiWorkspace, Workspace};
 
-use crate::protocol::LockFileContents;
-use crate::{IdeServer, McpEndpoint, tools, transport};
+use crate::protocol::{self, LockFileContents};
+use crate::{
+    IdeServer, IdeServerDiff, IdentityPathMapper, McpEndpoint, PathMapper, SandboxIdeSessionHandle,
+    ToolHost as _, WslPathMapper, tools, transport,
+};
 
 // ---------------------------------------------------------------------------
 // ロックファイル
@@ -91,21 +106,27 @@ fn spawn_test_server(
     let auth_token: Arc<str> = auth_token.into();
     smol::spawn(async move {
         let (stream, _peer) = listener.accept().await?;
-        let (incoming_tx, mut incoming_rx) = unbounded::<String>();
-        let (outgoing_tx, outgoing_rx) = unbounded::<String>();
+        let (incoming_tx, mut incoming_rx) = mpsc::channel::<String>(0);
+        let (outbox, outgoing) = transport::outbox();
         let (kind_tx, _kind_rx) = oneshot::channel();
         let pump = smol::spawn(async move {
             while let Some(text) = incoming_rx.next().await {
-                if let Some(response) = responder(text)
-                    && outgoing_tx.unbounded_send(response).is_err()
-                {
-                    break;
+                if let Some(response) = responder(text) {
+                    outbox.send_response(response, None);
                 }
             }
+            outbox.finish();
         });
-        let result =
-            transport::serve_connection(stream, auth_token, incoming_tx, outgoing_rx, kind_tx)
-                .await;
+        let result = transport::serve_connection(
+            stream,
+            auth_token,
+            transport::HOST_MAX_MESSAGE_BYTES,
+            incoming_tx,
+            outgoing,
+            kind_tx,
+            futures::future::pending(),
+        )
+        .await;
         drop(pump);
         result
     })
@@ -398,9 +419,10 @@ async fn keeps_one_lock_file_and_removes_it_when_the_workspace_goes_away(cx: &mu
 
 async fn request(server: &Entity<IdeServer>, message: Value, cx: &mut TestAppContext) -> Value {
     let mut async_cx = cx.to_async();
-    let raw = IdeServer::handle_message(
+    let raw = crate::handle_message(
         server,
         &serde_json::to_string(&message).expect("the request serializes"),
+        tools::ConnectionId::next(),
         &mut async_cx,
     )
     .await
@@ -713,12 +735,14 @@ async fn accepting_a_diff_reports_the_contents_without_writing_the_file(cx: &mut
     // `openDiff` はユーザーの決定を待つので、待っているあいだにこちらから採用する。
     let response = cx.spawn({
         let server = server.clone();
-        async move |mut cx| IdeServer::handle_message(&server, &message, &mut cx).await
+        async move |mut cx| {
+            crate::handle_message(&server, &message, tools::ConnectionId::next(), &mut cx).await
+        }
     });
     cx.run_until_parked();
 
     let diff = server
-        .update(cx, |server, _| server.take_diff("main.rs"))
+        .update(cx, |server, _| server.open_diffs().oldest_named("main.rs"))
         .expect("the diff tab is registered while the CLI waits");
     diff.update(cx, |diff, cx| diff.accept(cx));
     cx.run_until_parked();
@@ -737,4 +761,1682 @@ async fn accepting_a_diff_reports_the_contents_without_writing_the_file(cx: &mut
         on_disk_before,
         "the IDE must leave the write to the CLI"
     );
+}
+
+// ---------------------------------------------------------------------------
+// ロックファイルの書き込み
+// ---------------------------------------------------------------------------
+
+fn temporary_files(directory: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(directory)
+        .expect("the lock directory is readable")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "tmp"))
+        .collect()
+}
+
+#[gpui::test]
+async fn replaces_an_existing_lock_file(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().expect("a temporary lock directory");
+    let lock_path = crate::lock_file_path(directory.path(), 41234);
+    std::fs::write(&lock_path, "old").expect("writing the old lock file");
+
+    protocol::write_lock_file(&lock_path, b"new", &cx.executor())
+        .await
+        .expect("the lock file is replaced");
+
+    assert_eq!(
+        std::fs::read_to_string(&lock_path).expect("the lock file is readable"),
+        "new"
+    );
+    assert_eq!(temporary_files(directory.path()), Vec::<PathBuf>::new());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&lock_path)
+            .expect("the lock file has metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "the auth token is only for the owner");
+    }
+}
+
+/// ロックの置き場所に `<port>.lock` という名前のリンクを仕込まれても、その先を書き換えない。
+#[gpui::test]
+async fn does_not_follow_a_symlink_planted_at_the_lock_path(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().expect("a temporary lock directory");
+    let victim = directory.path().join("victim.txt");
+    std::fs::write(&victim, "original").expect("writing the victim file");
+    let lock_path = crate::lock_file_path(directory.path(), 41234);
+
+    #[cfg(unix)]
+    let planted = std::os::unix::fs::symlink(&victim, &lock_path);
+    #[cfg(windows)]
+    let planted = std::os::windows::fs::symlink_file(&victim, &lock_path);
+    if let Err(error) = planted {
+        // Windows では開発者モードか管理者でないとシンボリックリンクを作れない。
+        eprintln!("skipping: could not create a symlink to plant: {error}");
+        return;
+    }
+
+    protocol::write_lock_file(&lock_path, b"{\"pid\":1}", &cx.executor())
+        .await
+        .expect("the lock file is written");
+
+    assert_eq!(
+        std::fs::read_to_string(&victim).expect("the victim is readable"),
+        "original",
+        "the symlink's target must not be written"
+    );
+    let metadata = std::fs::symlink_metadata(&lock_path).expect("the lock file exists");
+    assert!(
+        metadata.file_type().is_file(),
+        "the planted link is replaced by a regular file"
+    );
+    assert_eq!(
+        std::fs::read(&lock_path).expect("the lock file is readable"),
+        b"{\"pid\":1}"
+    );
+    assert_eq!(temporary_files(directory.path()), Vec::<PathBuf>::new());
+}
+
+/// 書き込みがリンク先に届かないことは、特権の要らないハードリンクでも確かめられる
+/// (シンボリックリンクを作れない Windows の環境でも必ず走る)。
+#[gpui::test]
+async fn does_not_write_through_a_hard_link_planted_at_the_lock_path(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().expect("a temporary lock directory");
+    let victim = directory.path().join("victim.txt");
+    std::fs::write(&victim, "original").expect("writing the victim file");
+    let lock_path = crate::lock_file_path(directory.path(), 41234);
+    std::fs::hard_link(&victim, &lock_path).expect("planting a hard link");
+
+    protocol::write_lock_file(&lock_path, b"{\"pid\":1}", &cx.executor())
+        .await
+        .expect("the lock file is written");
+
+    assert_eq!(
+        std::fs::read_to_string(&victim).expect("the victim is readable"),
+        "original",
+        "the planted file must not be written"
+    );
+    assert_eq!(
+        std::fs::read(&lock_path).expect("the lock file is readable"),
+        b"{\"pid\":1}"
+    );
+    assert_eq!(temporary_files(directory.path()), Vec::<PathBuf>::new());
+}
+
+#[test]
+fn writes_the_sandbox_lock_file_the_cli_reads() {
+    let bytes =
+        crate::sandbox_lock_file_contents("sandbox-token", &["/mnt/i/zed-jp-llm".to_string()]);
+    let json: Value = serde_json::from_slice(&bytes).expect("the lock file is valid JSON");
+
+    let mut keys = json
+        .as_object()
+        .expect("the lock file is a JSON object")
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    keys.sort();
+    assert_eq!(
+        keys,
+        vec![
+            "authToken".to_string(),
+            "ideName".to_string(),
+            "pid".to_string(),
+            "runningInWindows".to_string(),
+            "transport".to_string(),
+            "workspaceFolders".to_string(),
+        ]
+    );
+    // CLI をサンドボックスの `127.0.0.1` に繋がせ、パスは Linux の形のまま送らせる。
+    assert_eq!(json["runningInWindows"], json!(false));
+    // pid が偽なら、CLI は古いロックの掃除でポートに繋いで生死を決める。
+    assert_eq!(json["pid"], json!(0));
+    assert_eq!(json["transport"], json!("ws"));
+    assert_eq!(json["ideName"], json!("Zed"));
+    assert_eq!(json["authToken"], json!("sandbox-token"));
+    assert_eq!(json["workspaceFolders"], json!(["/mnt/i/zed-jp-llm"]));
+
+    let contents =
+        LockFileContents::from_json(std::str::from_utf8(&bytes).expect("the lock file is UTF-8"))
+            .expect("the CLI-shaped reader accepts it");
+    assert!(!contents.running_in_windows);
+}
+
+// ---------------------------------------------------------------------------
+// サンドボックスのセッション (ADR-F49)
+// ---------------------------------------------------------------------------
+
+/// ヘルパーのブリッジが運んでくる 1 本の接続の代わり。片方が書いたバイトをもう片方が読む。
+#[derive(Debug)]
+struct MemoryStream {
+    incoming: Arc<Mutex<Pipe>>,
+    outgoing: Arc<Mutex<Pipe>>,
+}
+
+#[derive(Debug, Default)]
+struct Pipe {
+    bytes: VecDeque<u8>,
+    closed: bool,
+    reader: Option<Waker>,
+}
+
+fn memory_stream_pair() -> (MemoryStream, MemoryStream) {
+    let first_to_second = Arc::new(Mutex::new(Pipe::default()));
+    let second_to_first = Arc::new(Mutex::new(Pipe::default()));
+    (
+        MemoryStream {
+            incoming: second_to_first.clone(),
+            outgoing: first_to_second.clone(),
+        },
+        MemoryStream {
+            incoming: first_to_second,
+            outgoing: second_to_first,
+        },
+    )
+}
+
+fn close_pipe(pipe: &Mutex<Pipe>) {
+    let mut pipe = pipe.lock().expect("the pipe lock is not poisoned");
+    pipe.closed = true;
+    if let Some(reader) = pipe.reader.take() {
+        reader.wake();
+    }
+}
+
+impl Drop for MemoryStream {
+    fn drop(&mut self) {
+        close_pipe(&self.incoming);
+        close_pipe(&self.outgoing);
+    }
+}
+
+impl AsyncRead for MemoryStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        let mut pipe = self.incoming.lock().expect("the pipe lock is not poisoned");
+        if pipe.bytes.is_empty() {
+            if pipe.closed {
+                return Poll::Ready(Ok(0));
+            }
+            pipe.reader = Some(cx.waker().clone());
+            return Poll::Pending;
+        }
+        let length = buffer.len().min(pipe.bytes.len());
+        for (slot, byte) in buffer.iter_mut().zip(pipe.bytes.drain(..length)) {
+            *slot = byte;
+        }
+        Poll::Ready(Ok(length))
+    }
+}
+
+impl AsyncWrite for MemoryStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let mut pipe = self.outgoing.lock().expect("the pipe lock is not poisoned");
+        if pipe.closed {
+            return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
+        }
+        pipe.bytes.extend(buffer);
+        if let Some(reader) = pipe.reader.take() {
+            reader.wake();
+        }
+        Poll::Ready(Ok(buffer.len()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> Poll<io::Result<()>> {
+        close_pipe(&self.outgoing);
+        Poll::Ready(Ok(()))
+    }
+}
+
+/// サンドボックスの中から見たワークツリー `/test` と、その外の `/outside`。
+const CLIENT_ROOT: &str = if cfg!(windows) {
+    "/mnt/c/test"
+} else {
+    "/test"
+};
+const CLIENT_OUTSIDE: &str = if cfg!(windows) {
+    "/mnt/c/outside"
+} else {
+    "/outside"
+};
+
+fn sandbox_mapper() -> Arc<dyn PathMapper> {
+    if cfg!(windows) {
+        Arc::new(WslPathMapper {
+            distro: "Ubuntu".to_string(),
+        })
+    } else {
+        Arc::new(IdentityPathMapper)
+    }
+}
+
+struct SandboxFixture {
+    fs: Arc<FakeFs>,
+    project: Entity<Project>,
+    window: WindowHandle<MultiWorkspace>,
+    workspace: Entity<Workspace>,
+    connections: UnboundedSender<MemoryStream>,
+    session: Option<SandboxIdeSessionHandle>,
+    auth_token: String,
+}
+
+/// `ide_server.enabled` は既定の false のまま、サンドボックスのセッションだけを始める。
+async fn start_sandbox_fixture(cx: &mut TestAppContext) -> SandboxFixture {
+    start_sandbox_fixture_with_roots(vec![PathBuf::from(path!("/test"))], cx).await
+}
+
+async fn start_sandbox_fixture_with_roots(
+    roots: Vec<PathBuf>,
+    cx: &mut TestAppContext,
+) -> SandboxFixture {
+    init_test(cx);
+    cx.update(crate::init);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/test"),
+        json!({ "main.rs": "fn main() {\n    println!(\"hi\");\n}\n" }),
+    )
+    .await;
+    fs.insert_tree(
+        path!("/outside"),
+        json!({ "secret.rs": "const SECRET: &str = \"hunter2\";\n" }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+    let window = cx.add_window({
+        let project = project.clone();
+        move |window, cx| MultiWorkspace::test_new(project, window, cx)
+    });
+    let workspace = window
+        .update(cx, |multi_workspace, _, _| {
+            multi_workspace.workspace().clone()
+        })
+        .expect("the window is open");
+    cx.run_until_parked();
+
+    let (connections, incoming_connections) = unbounded::<MemoryStream>();
+    let weak_workspace = workspace.downgrade();
+    let (session, info) = cx.update(|cx| {
+        crate::start_sandbox_session(
+            weak_workspace,
+            incoming_connections,
+            sandbox_mapper(),
+            roots,
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    SandboxFixture {
+        fs,
+        project,
+        window,
+        workspace,
+        connections,
+        session: Some(session),
+        auth_token: info.auth_token,
+    }
+}
+
+fn upgrade_request(token: &str) -> async_tungstenite::tungstenite::http::Request<()> {
+    async_tungstenite::tungstenite::http::Request::builder()
+        .method("GET")
+        .uri("ws://127.0.0.1:41234/")
+        .header("Host", "127.0.0.1:41234")
+        .header("Connection", "Upgrade")
+        .header("Upgrade", "websocket")
+        .header("Sec-WebSocket-Version", "13")
+        .header("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+        .header("Sec-WebSocket-Protocol", "mcp")
+        .header(transport::CLAUDE_CODE_AUTH_HEADER, token)
+        .body(())
+        .expect("building the upgrade request")
+}
+
+/// ブリッジに新しい接続を 1 本渡し、CLI と同じ WebSocket の握手をする。
+async fn open_websocket(
+    fixture: &SandboxFixture,
+    token: &str,
+) -> Result<WebSocketStream<MemoryStream>, WebSocketError> {
+    let (server_end, client_end) = memory_stream_pair();
+    fixture
+        .connections
+        .unbounded_send(server_end)
+        .expect("the session accepts connections");
+    async_tungstenite::client_async(upgrade_request(token), client_end)
+        .await
+        .map(|(socket, _response)| socket)
+}
+
+async fn connect(fixture: &SandboxFixture, cx: &mut TestAppContext) -> SandboxClient {
+    let socket = open_websocket(fixture, &fixture.auth_token)
+        .await
+        .expect("the session's own token is accepted");
+    cx.run_until_parked();
+    SandboxClient {
+        socket,
+        unclaimed: Vec::new(),
+        next_id: 0,
+    }
+}
+
+/// サンドボックスの CLI 役。待っていない応答や通知は `unclaimed` に溜めておく。
+struct SandboxClient {
+    socket: WebSocketStream<MemoryStream>,
+    unclaimed: Vec<Value>,
+    next_id: u64,
+}
+
+impl SandboxClient {
+    async fn send(&mut self, method: &str, params: Value) -> u64 {
+        self.next_id += 1;
+        let id = self.next_id;
+        let request = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        self.socket
+            .send(async_tungstenite::tungstenite::Message::text(
+                request.to_string(),
+            ))
+            .await
+            .expect("sending a request");
+        id
+    }
+
+    async fn next_message(&mut self) -> Value {
+        let frame = self
+            .socket
+            .next()
+            .await
+            .expect("the session keeps the connection open")
+            .expect("the frame is valid");
+        serde_json::from_str(frame.to_text().expect("the frame is text"))
+            .expect("the frame is JSON")
+    }
+
+    async fn message_matching(&mut self, matches: impl Fn(&Value) -> bool) -> Value {
+        if let Some(index) = self.unclaimed.iter().position(&matches) {
+            return self.unclaimed.remove(index);
+        }
+        loop {
+            let message = self.next_message().await;
+            if matches(&message) {
+                return message;
+            }
+            self.unclaimed.push(message);
+        }
+    }
+
+    async fn response(&mut self, id: u64) -> Value {
+        self.message_matching(|message| message.get("id") == Some(&json!(id)))
+            .await
+    }
+
+    async fn request(&mut self, method: &str, params: Value) -> Value {
+        let id = self.send(method, params).await;
+        self.response(id).await
+    }
+
+    async fn call_tool(&mut self, name: &str, arguments: Value) -> Value {
+        self.request(
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+        )
+        .await
+    }
+
+    async fn notification(&mut self, method: &str, matches: impl Fn(&Value) -> bool) -> Value {
+        self.message_matching(|message| {
+            message["method"] == json!(method) && matches(&message["params"])
+        })
+        .await
+    }
+}
+
+async fn open_path(fixture: &SandboxFixture, path: &str, cx: &mut TestAppContext) {
+    let workspace = fixture.workspace.clone();
+    let open = fixture
+        .window
+        .update(cx, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.open_abs_path(
+                    PathBuf::from(path),
+                    workspace::OpenOptions::default(),
+                    window,
+                    cx,
+                )
+            })
+        })
+        .expect("the window is open");
+    open.await.expect("the file opens");
+    cx.run_until_parked();
+}
+
+fn set_diagnostic(project: &Entity<Project>, path: &str, message: &str, cx: &mut TestAppContext) {
+    project
+        .update(cx, |project, cx| {
+            project.lsp_store().update(cx, |lsp_store, cx| {
+                lsp_store.update_diagnostic_entries(
+                    LanguageServerId(0),
+                    PathBuf::from(path),
+                    None,
+                    None,
+                    vec![DiagnosticEntry::new(
+                        Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 2)),
+                        Diagnostic {
+                            severity: DiagnosticSeverity::ERROR,
+                            message: message.to_string(),
+                            source_kind: DiagnosticSourceKind::Pushed,
+                            ..Diagnostic::default()
+                        },
+                    )],
+                    cx,
+                )
+            })
+        })
+        .expect("the diagnostics apply");
+}
+
+fn open_diff_tabs(
+    workspace: &Entity<Workspace>,
+    cx: &mut TestAppContext,
+) -> Vec<Entity<IdeServerDiff>> {
+    workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .panes()
+            .iter()
+            .flat_map(|pane| {
+                pane.read(cx)
+                    .items()
+                    .filter_map(|item| item.downcast::<IdeServerDiff>())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    })
+}
+
+fn has_editor_tab(workspace: &Entity<Workspace>, tab_name: &str, cx: &mut TestAppContext) -> bool {
+    workspace.read_with(cx, |workspace, cx| {
+        workspace.panes().iter().any(|pane| {
+            pane.read(cx).items().any(|item| {
+                item.act_as::<Editor>(cx).is_some()
+                    && item.tab_content_text(0, cx).as_ref() == tab_name
+            })
+        })
+    })
+}
+
+fn is_claude_code_connected(project: &Entity<Project>, cx: &mut TestAppContext) -> bool {
+    let project_id = project.entity_id();
+    cx.update(|cx| zed_actions::ide_server::is_claude_code_connected(project_id, cx))
+}
+
+fn open_diff_arguments(path: &str, tab_name: &str) -> Value {
+    json!({
+        "old_file_path": path,
+        "new_file_path": path,
+        "new_file_contents": "fn main() {}\n",
+        "tab_name": tab_name,
+    })
+}
+
+#[gpui::test]
+async fn sandbox_session_checks_the_token_and_offers_only_the_cli_tools(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+
+    match open_websocket(&fixture, "wrong-token").await {
+        Ok(_) => panic!("a connection with the wrong token must be refused"),
+        Err(WebSocketError::Http(response)) => assert_eq!(response.status(), 401),
+        Err(error) => panic!("expected a 401, got {error}"),
+    }
+
+    // CLI の古いロックの掃除は、繋いですぐ切るだけの生存確認をする。
+    let (server_end, client_end) = memory_stream_pair();
+    fixture
+        .connections
+        .unbounded_send(server_end)
+        .expect("the session accepts connections");
+    drop(client_end);
+    cx.run_until_parked();
+
+    let mut client = connect(&fixture, cx).await;
+    assert!(
+        is_claude_code_connected(&fixture.project, cx),
+        "a sandboxed CLI counts as connected even with ide_server.enabled off"
+    );
+
+    let response = client
+        .request(
+            "initialize",
+            json!({
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": "claude-code", "version": "2.1.269" }
+            }),
+        )
+        .await;
+    assert_eq!(response["result"]["serverInfo"]["name"], json!("Zed"));
+
+    let response = client.request("tools/list", json!({})).await;
+    let mut names = response["result"]["tools"]
+        .as_array()
+        .expect("tools is an array")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str().map(str::to_string))
+        .collect::<Vec<_>>();
+    names.sort();
+    assert_eq!(
+        names,
+        vec![
+            "closeAllDiffTabs",
+            "close_tab",
+            "getDiagnostics",
+            "openDiff"
+        ]
+    );
+
+    for tool in [
+        "openFile",
+        "saveDocument",
+        "checkDocumentDirty",
+        "getWorkspaceFolders",
+        "getOpenEditors",
+        "getCurrentSelection",
+        "getLatestSelection",
+        "executeCode",
+        "noSuchTool",
+    ] {
+        let response = client
+            .call_tool(tool, json!({ "filePath": path!("/test/main.rs") }))
+            .await;
+        assert_eq!(
+            response["error"]["code"],
+            json!(protocol::INVALID_PARAMS),
+            "{tool}: {response}"
+        );
+        assert!(response.get("result").is_none(), "{tool}: {response}");
+    }
+    assert!(
+        !has_editor_tab(&fixture.workspace, "main.rs", cx),
+        "a refused openFile must not open anything"
+    );
+}
+
+#[gpui::test]
+async fn sandbox_session_maps_diagnostic_paths_both_ways(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    set_diagnostic(
+        &fixture.project,
+        path!("/test/main.rs"),
+        "unknown macro",
+        cx,
+    );
+    // ワークツリーの外のファイルにも診断があるが、サンドボックスには見せない。
+    open_path(&fixture, path!("/outside/secret.rs"), cx).await;
+    set_diagnostic(
+        &fixture.project,
+        path!("/outside/secret.rs"),
+        "hunter2 leaked",
+        cx,
+    );
+    cx.run_until_parked();
+
+    let mut client = connect(&fixture, cx).await;
+    let main_uri = format!("file://{CLIENT_ROOT}/main.rs");
+
+    // 開いていないファイルは、URI を指定されても開かない (サンドボックスが書いたファイルで
+    // ホストの言語サーバーを起こさない)。
+    let response = client
+        .call_tool("getDiagnostics", json!({ "uri": main_uri }))
+        .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    assert_eq!(first_text_as_json(&response), json!([]), "{response}");
+    assert!(!is_open(&fixture.project, path!("/test/main.rs"), cx));
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let response = client
+        .call_tool("getDiagnostics", json!({ "uri": main_uri }))
+        .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    let files = first_text_as_json(&response);
+    assert_eq!(files[0]["uri"], json!(main_uri), "{files}");
+    assert_eq!(
+        files[0]["diagnostics"][0]["message"],
+        json!("unknown macro")
+    );
+    assert_eq!(files[0]["diagnostics"][0]["severity"], json!("Error"));
+
+    // URI を指定しない問い合わせも、すでに開いているバッファーの診断だけを返す。
+    fixture
+        .fs
+        .insert_file(path!("/test/other.rs"), b"fn other() {}\n".to_vec())
+        .await;
+    cx.run_until_parked();
+    set_diagnostic(
+        &fixture.project,
+        path!("/test/other.rs"),
+        "never opened",
+        cx,
+    );
+    let response = client.call_tool("getDiagnostics", json!({})).await;
+    assert!(!response.to_string().contains("never opened"), "{response}");
+    assert!(
+        !is_open(&fixture.project, path!("/test/other.rs"), cx),
+        "the sandbox cannot make Zed open files"
+    );
+    let uris = first_text_as_json(&response)
+        .as_array()
+        .expect("the diagnostics are an array")
+        .iter()
+        .filter_map(|file| file["uri"].as_str().map(str::to_string))
+        .collect::<Vec<_>>();
+    assert_eq!(uris, vec![main_uri.clone()]);
+    assert!(!response.to_string().contains("hunter2"), "{response}");
+
+    for uri in [
+        format!("file://{CLIENT_OUTSIDE}/secret.rs"),
+        format!("file://{CLIENT_ROOT}/../outside/secret.rs"),
+        "file:///C:/test/main.rs".to_string(),
+        "main.rs".to_string(),
+    ] {
+        let response = client
+            .call_tool("getDiagnostics", json!({ "uri": uri }))
+            .await;
+        assert_eq!(
+            response["result"]["isError"],
+            json!(true),
+            "{uri}: {response}"
+        );
+        assert!(!response.to_string().contains("hunter2"), "{response}");
+    }
+}
+
+#[gpui::test]
+async fn sandbox_session_opens_diffs_only_inside_the_worktree(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    // サンドボックスはワークツリーに書けるので、外を指すリンクを置ける。
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/link.rs"),
+            PathBuf::from(path!("/outside/secret.rs")),
+        )
+        .await;
+    cx.run_until_parked();
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+
+    // 採用しても本文を返すだけで、ディスクには書かない (ホストの IDE サーバーと同じ)。
+    let id = client
+        .send(
+            "tools/call",
+            json!({ "name": "openDiff", "arguments": open_diff_arguments(&main_path, "proposal") }),
+        )
+        .await;
+    cx.run_until_parked();
+    let diffs = open_diff_tabs(&fixture.workspace, cx);
+    let diff = diffs
+        .first()
+        .expect("the diff tab opens in the sandbox's workspace");
+    diff.update(cx, |diff, cx| diff.accept(cx));
+    let response = client.response(id).await;
+    assert_eq!(
+        response["result"]["content"][0]["text"],
+        json!("FILE_SAVED")
+    );
+    assert_eq!(
+        response["result"]["content"][1]["text"],
+        json!("fn main() {}\n")
+    );
+    assert_eq!(
+        fixture
+            .fs
+            .load(path!("/test/main.rs").as_ref())
+            .await
+            .expect("the file is readable"),
+        "fn main() {\n    println!(\"hi\");\n}\n"
+    );
+    cx.run_until_parked();
+
+    for path in [
+        format!("{CLIENT_OUTSIDE}/secret.rs"),
+        format!("{CLIENT_ROOT}/../outside/secret.rs"),
+        format!("{CLIENT_ROOT}/link.rs"),
+    ] {
+        let response = client
+            .call_tool("openDiff", open_diff_arguments(&path, "escape"))
+            .await;
+        assert_eq!(
+            response["result"]["isError"],
+            json!(true),
+            "{path}: {response}"
+        );
+    }
+    cx.run_until_parked();
+    assert!(
+        open_diff_tabs(&fixture.workspace, cx).is_empty(),
+        "a refused path opens no tab"
+    );
+
+    // `close_tab` はセッションが開いた差分タブだけを閉じ、ユーザーのタブには触らない。
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let id = client
+        .send(
+            "tools/call",
+            json!({ "name": "openDiff", "arguments": open_diff_arguments(&main_path, "proposal") }),
+        )
+        .await;
+    cx.run_until_parked();
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
+
+    let response = client
+        .call_tool("close_tab", json!({ "tab_name": "main.rs" }))
+        .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    cx.run_until_parked();
+    assert!(has_editor_tab(&fixture.workspace, "main.rs", cx));
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
+
+    let response = client
+        .call_tool("close_tab", json!({ "tab_name": "proposal" }))
+        .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    let response = client.response(id).await;
+    assert_eq!(
+        response["result"]["content"][0]["text"],
+        json!("DIFF_REJECTED")
+    );
+    cx.run_until_parked();
+    assert!(open_diff_tabs(&fixture.workspace, cx).is_empty());
+}
+
+#[gpui::test]
+async fn sandbox_session_sends_notifications_in_the_client_form(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let notification = client
+        .notification("selection_changed", |params| {
+            params["filePath"] == json!(main_path)
+        })
+        .await;
+    assert_eq!(notification["params"]["text"], json!(""));
+
+    // ワークツリーの外のファイルに移ったら、パスも本文も見せずに選択を消す。
+    open_path(&fixture, path!("/outside/secret.rs"), cx).await;
+    let notification = client
+        .notification("selection_changed", |params| params["filePath"].is_null())
+        .await;
+    assert_eq!(notification["params"]["text"], json!(""));
+
+    let session = cx
+        .update(|cx| {
+            crate::sandbox_client::sessions_for_workspace(fixture.workspace.entity_id(), cx)
+        })
+        .into_iter()
+        .next()
+        .expect("the session is attached to the workspace");
+    let sent = session.update(cx, |session, cx| {
+        session.send_at_mention(Path::new(path!("/test/main.rs")), 0, 1, cx)
+    });
+    assert!(sent);
+    let notification = client.notification("at_mentioned", |_| true).await;
+    assert_eq!(
+        notification["params"],
+        json!({ "filePath": main_path, "lineStart": 0, "lineEnd": 1 })
+    );
+    let sent = session.update(cx, |session, cx| {
+        session.send_at_mention(Path::new(path!("/outside/secret.rs")), 0, 0, cx)
+    });
+    assert!(!sent, "a file outside the worktree is not mentioned");
+}
+
+#[gpui::test]
+async fn dropping_the_sandbox_session_closes_its_connections_and_diff_tabs(
+    cx: &mut TestAppContext,
+) {
+    let mut fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    assert!(is_claude_code_connected(&fixture.project, cx));
+
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+    client
+        .send(
+            "tools/call",
+            json!({ "name": "openDiff", "arguments": open_diff_arguments(&main_path, "proposal") }),
+        )
+        .await;
+    cx.run_until_parked();
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
+
+    drop(fixture.session.take());
+    cx.run_until_parked();
+    // 解放された Entity の後始末は、次の更新の終わりに走る。
+    cx.update(|_| {});
+    cx.run_until_parked();
+
+    assert!(
+        open_diff_tabs(&fixture.workspace, cx).is_empty(),
+        "ending the session closes the diff tabs it opened"
+    );
+    assert!(!is_claude_code_connected(&fixture.project, cx));
+    assert!(
+        !matches!(client.socket.next().await, Some(Ok(_))),
+        "the forwarded connection is closed"
+    );
+}
+
+#[gpui::test]
+async fn sandbox_session_ends_when_the_bridge_goes_away(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    assert!(is_claude_code_connected(&fixture.project, cx));
+
+    drop(fixture.connections);
+    cx.run_until_parked();
+
+    assert!(!is_claude_code_connected(&fixture.project, cx));
+    assert!(
+        !matches!(client.socket.next().await, Some(Ok(_))),
+        "the forwarded connection is closed"
+    );
+}
+
+/// HTTP の応答はトランスポートが書き終えるまで接続を落とさない。
+#[gpui::test]
+async fn sandbox_session_answers_streamable_http_with_the_restricted_tools(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let (server_end, mut client_end) = memory_stream_pair();
+    fixture
+        .connections
+        .unbounded_send(server_end)
+        .expect("the session accepts connections");
+
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }).to_string();
+    client_end
+        .write_all(
+            format!(
+                "POST /mcp HTTP/1.1\r\n\
+                 Host: 127.0.0.1\r\n\
+                 Authorization: Bearer {}\r\n\
+                 Content-Type: application/json\r\n\
+                 Content-Length: {}\r\n\r\n{body}",
+                fixture.auth_token,
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .await
+        .expect("writing the request");
+    let mut response = String::new();
+    client_end
+        .read_to_string(&mut response)
+        .await
+        .expect("reading the response");
+
+    assert!(
+        response.starts_with("HTTP/1.1 200 OK"),
+        "expected a 200, got {response:?}"
+    );
+    let (_, body) = response
+        .split_once("\r\n\r\n")
+        .expect("the response has a body");
+    let body: Value = serde_json::from_str(body).expect("the body is JSON");
+    assert_eq!(
+        body["result"]["tools"].as_array().map(Vec::len),
+        Some(4),
+        "{body}"
+    );
+}
+
+async fn send_open_diff(client: &mut SandboxClient, path: &str, tab_name: &str) -> u64 {
+    client
+        .send(
+            "tools/call",
+            json!({ "name": "openDiff", "arguments": open_diff_arguments(path, tab_name) }),
+        )
+        .await
+}
+
+fn first_text(response: &Value) -> String {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+async fn end_session(fixture: &mut SandboxFixture, cx: &mut TestAppContext) {
+    drop(fixture.session.take());
+    cx.run_until_parked();
+    // 解放された Entity の後始末は、次の更新の終わりに走る。
+    cx.update(|_| {});
+    cx.run_until_parked();
+}
+
+/// 同じタブ名の提案が 2 度来たら、古いタブを閉じて (待っている要求には拒否として返して)
+/// 置き換える。どちらにしても、セッションを落とせばタブは 1 枚も残らない。
+#[gpui::test]
+async fn sandbox_session_replaces_a_duplicate_diff_tab_and_closes_everything_on_drop(
+    cx: &mut TestAppContext,
+) {
+    let mut fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+
+    let first = send_open_diff(&mut client, &main_path, "proposal").await;
+    cx.run_until_parked();
+    send_open_diff(&mut client, &main_path, "proposal").await;
+    cx.run_until_parked();
+
+    let response = client.response(first).await;
+    assert_eq!(first_text(&response), "DIFF_REJECTED", "{response}");
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
+
+    // 置き換えられた提案について CLI が送る `close_tab` は、置き換えた提案を閉じない。
+    let response = client
+        .call_tool("close_tab", json!({ "tab_name": "proposal" }))
+        .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    cx.run_until_parked();
+    assert_eq!(
+        open_diff_tabs(&fixture.workspace, cx).len(),
+        1,
+        "the replacement stays open"
+    );
+
+    end_session(&mut fixture, cx).await;
+    assert!(
+        open_diff_tabs(&fixture.workspace, cx).is_empty(),
+        "no proposal tab outlives the session"
+    );
+}
+
+#[gpui::test]
+async fn sandbox_session_limits_open_diff_tabs(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+    for index in 0..4 {
+        send_open_diff(&mut client, &main_path, &format!("proposal {index}")).await;
+    }
+    cx.run_until_parked();
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 4);
+
+    let response = client
+        .call_tool("openDiff", open_diff_arguments(&main_path, "one too many"))
+        .await;
+    assert_eq!(response["result"]["isError"], json!(true), "{response}");
+    assert!(first_text(&response).contains("close one"), "{response}");
+    cx.run_until_parked();
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 4);
+}
+
+fn active_item_id(fixture: &SandboxFixture, cx: &mut TestAppContext) -> Option<gpui::EntityId> {
+    fixture.workspace.read_with(cx, |workspace, cx| {
+        workspace.active_item(cx).map(|item| item.item_id())
+    })
+}
+
+/// サンドボックスの提案は、ユーザーがフォーカスしているタブと同じペインでもキーボードの
+/// フォーカスを取らない。前面に出すと、ペインがフォーカスを新しい前面のタブへ渡してしまう
+/// ので、そのときはタブを足すだけにする。
+#[gpui::test]
+async fn sandbox_diff_tabs_do_not_take_keyboard_focus(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let editor = fixture
+        .workspace
+        .read_with(cx, |workspace, cx| {
+            workspace
+                .active_item(cx)
+                .and_then(|item| item.act_as::<Editor>(cx))
+        })
+        .expect("the file opened in an editor");
+
+    send_open_diff(&mut client, &main_path, "beside the focused tab").await;
+    cx.run_until_parked();
+    let first = open_diff_tabs(&fixture.workspace, cx)
+        .into_iter()
+        .next()
+        .expect("the proposal opens");
+    let (editor_focused, proposal_focused) = fixture
+        .window
+        .update(cx, |_, window, cx| {
+            (
+                editor
+                    .read(cx)
+                    .focus_handle(cx)
+                    .contains_focused(window, cx),
+                first.read(cx).focus_handle(cx).contains_focused(window, cx),
+            )
+        })
+        .expect("the window is open");
+    assert!(
+        editor_focused,
+        "the tab the user is typing in keeps the keyboard focus"
+    );
+    assert!(
+        !proposal_focused,
+        "keystrokes meant for the terminal must not land in the proposal"
+    );
+    assert_eq!(
+        active_item_id(&fixture, cx),
+        Some(editor.entity_id()),
+        "the user's tab stays in front"
+    );
+
+    // 2 枚目の提案が来ても同じく、フォーカスもユーザーのタブも動かない。
+    send_open_diff(&mut client, &main_path, "a second proposal").await;
+    cx.run_until_parked();
+    let second = open_diff_tabs(&fixture.workspace, cx)
+        .into_iter()
+        .find(|diff| diff.entity_id() != first.entity_id())
+        .expect("the second proposal opens");
+    assert_eq!(
+        active_item_id(&fixture, cx),
+        Some(editor.entity_id()),
+        "the user's tab still stays in front"
+    );
+    let proposal_focused = fixture
+        .window
+        .update(cx, |_, window, cx| {
+            second
+                .read(cx)
+                .focus_handle(cx)
+                .contains_focused(window, cx)
+        })
+        .expect("the window is open");
+    assert!(!proposal_focused);
+}
+
+#[gpui::test]
+async fn sandbox_session_limits_its_connections(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut clients = Vec::new();
+    for _ in 0..4 {
+        clients.push(connect(&fixture, cx).await);
+    }
+
+    let (server_end, mut client_end) = memory_stream_pair();
+    fixture
+        .connections
+        .unbounded_send(server_end)
+        .expect("the session accepts connections");
+    cx.run_until_parked();
+    let mut byte = [0u8; 1];
+    assert_eq!(
+        client_end
+            .read(&mut byte)
+            .await
+            .expect("reading the refused connection"),
+        0,
+        "the fifth connection is closed at once"
+    );
+    assert_eq!(clients.len(), 4);
+}
+
+#[gpui::test]
+async fn a_client_that_never_finishes_the_handshake_is_disconnected(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let (server_end, mut client_end) = memory_stream_pair();
+    fixture
+        .connections
+        .unbounded_send(server_end)
+        .expect("the session accepts connections");
+    client_end
+        .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+        .await
+        .expect("writing half a request");
+    cx.run_until_parked();
+
+    cx.executor()
+        .advance_clock(transport::HANDSHAKE_TIMEOUT + Duration::from_secs(1));
+    cx.run_until_parked();
+    let mut byte = [0u8; 1];
+    assert_eq!(
+        client_end.read(&mut byte).await.expect("reading"),
+        0,
+        "the silent connection is closed"
+    );
+}
+
+#[gpui::test]
+async fn sandbox_session_closes_a_connection_that_sends_an_oversized_message(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    client
+        .socket
+        .send(async_tungstenite::tungstenite::Message::text(
+            "x".repeat(17 * 1024 * 1024),
+        ))
+        .await
+        .expect("the client can send");
+    cx.run_until_parked();
+    assert!(
+        !matches!(client.socket.next().await, Some(Ok(message)) if !message.is_close()),
+        "the connection is closed"
+    );
+}
+
+#[gpui::test]
+async fn sandbox_session_refuses_directories_and_oversized_files(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_file(path!("/test/huge.txt"), vec![b'a'; 9 * 1024 * 1024])
+        .await;
+    fixture
+        .fs
+        .insert_tree(path!("/test/folder"), json!({}))
+        .await;
+    cx.run_until_parked();
+    let mut client = connect(&fixture, cx).await;
+
+    for (name, reason) in [
+        ("huge.txt", "larger than"),
+        ("folder", "not a regular file"),
+    ] {
+        let path = format!("{CLIENT_ROOT}/{name}");
+        let response = client
+            .call_tool("openDiff", open_diff_arguments(&path, name))
+            .await;
+        assert_eq!(
+            response["result"]["isError"],
+            json!(true),
+            "{name}: {response}"
+        );
+        assert!(first_text(&response).contains(reason), "{name}: {response}");
+        // 診断の問い合わせはファイルを開かないので、断るまでもなく空で返る。
+        let response = client
+            .call_tool("getDiagnostics", json!({ "uri": format!("file://{path}") }))
+            .await;
+        assert_eq!(
+            first_text_as_json(&response),
+            json!([]),
+            "{name}: {response}"
+        );
+    }
+    cx.run_until_parked();
+    assert!(open_diff_tabs(&fixture.workspace, cx).is_empty());
+}
+
+/// ワークツリーの中を指すリンクでもたどらない。WSL 側で作られたリンクは Windows の
+/// `canonicalize` では解決できないことがあるので、リンクそのものを通さない。
+#[gpui::test]
+async fn sandbox_session_does_not_follow_links_inside_the_worktree(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_tree(path!("/test/sub"), json!({ "inner.rs": "fn inner() {}\n" }))
+        .await;
+    fixture
+        .fs
+        .insert_symlink(path!("/test/alias"), PathBuf::from(path!("/test/sub")))
+        .await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/dangling.rs"),
+            PathBuf::from(path!("/nowhere/missing.rs")),
+        )
+        .await;
+    cx.run_until_parked();
+    let mut client = connect(&fixture, cx).await;
+
+    for name in ["alias/inner.rs", "dangling.rs"] {
+        let path = format!("{CLIENT_ROOT}/{name}");
+        let response = client
+            .call_tool("openDiff", open_diff_arguments(&path, name))
+            .await;
+        assert_eq!(
+            response["result"]["isError"],
+            json!(true),
+            "{name}: {response}"
+        );
+        assert!(first_text(&response).contains("link"), "{name}: {response}");
+    }
+
+    // 同じファイルでも、リンクを通らない道なら開ける。
+    send_open_diff(
+        &mut client,
+        &format!("{CLIENT_ROOT}/sub/inner.rs"),
+        "direct",
+    )
+    .await;
+    cx.run_until_parked();
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
+}
+
+/// ワークツリーの中にあっても外を指すリンクのファイルは、選択の本文もパスも送らない。
+#[gpui::test]
+async fn sandbox_session_hides_the_selection_in_a_file_that_links_outside(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/link.rs"),
+            PathBuf::from(path!("/outside/secret.rs")),
+        )
+        .await;
+    cx.run_until_parked();
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    client
+        .notification("selection_changed", |params| {
+            params["filePath"] == json!(main_path)
+        })
+        .await;
+    open_path(&fixture, path!("/test/link.rs"), cx).await;
+    let notification = client
+        .notification("selection_changed", |params| params["filePath"].is_null())
+        .await;
+    assert_eq!(notification["params"]["text"], json!(""));
+}
+
+#[gpui::test]
+async fn sandbox_session_refuses_roots_the_workspace_does_not_have_open(cx: &mut TestAppContext) {
+    let fixture =
+        start_sandbox_fixture_with_roots(vec![PathBuf::from(path!("/outside"))], cx).await;
+    let (server_end, _client_end) = memory_stream_pair();
+    assert!(
+        fixture.connections.unbounded_send(server_end).is_err(),
+        "a refused session takes no connections"
+    );
+    assert!(!is_claude_code_connected(&fixture.project, cx));
+}
+
+/// CLI は自分の cwd の下の絶対パスと突き合わせるので、ホストの診断も絶対パスの URI で返す。
+#[gpui::test]
+async fn host_diagnostics_report_absolute_file_uris(cx: &mut TestAppContext) {
+    let (_fs, workspace, server) = test_workspace_with_fs(cx).await;
+    let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+    set_diagnostic(&project, path!("/test/main.rs"), "unknown macro", cx);
+    cx.run_until_parked();
+
+    let response = request(
+        &server,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": "getDiagnostics", "arguments": {} }
+        }),
+        cx,
+    )
+    .await;
+    let files = first_text_as_json(&response);
+    assert_eq!(
+        files[0]["uri"],
+        json!(uri!("file:///test/main.rs")),
+        "{files}"
+    );
+}
+
+fn is_open(project: &Entity<Project>, path: &str, cx: &mut TestAppContext) -> bool {
+    project.read_with(cx, |project, cx| {
+        project
+            .find_project_path(Path::new(path), cx)
+            .and_then(|project_path| project.get_open_buffer(&project_path, cx))
+            .is_some()
+    })
+}
+
+fn open_diff_message(id: u64, path: &str, tab_name: &str) -> String {
+    serde_json::to_string(&json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": {
+            "name": "openDiff",
+            "arguments": {
+                "old_file_path": path,
+                "new_file_path": path,
+                "new_file_contents": "edited\n",
+                "tab_name": tab_name,
+            }
+        }
+    }))
+    .expect("the request serializes")
+}
+
+/// CLI はタブにファイル名だけを付けるので、ホストでは同じ名前の提案が並びうる。一方をタブで
+/// 採用したあとに CLI が送る `close_tab` は、もう一方の (まだ決まっていない) 提案を閉じない。
+#[gpui::test]
+async fn host_diffs_with_the_same_tab_name_coexist(cx: &mut TestAppContext) {
+    let (fs, workspace, server) = test_workspace_with_fs(cx).await;
+    fs.insert_tree(path!("/test/a"), json!({ "index.ts": "a\n" }))
+        .await;
+    fs.insert_tree(path!("/test/b"), json!({ "index.ts": "b\n" }))
+        .await;
+    cx.run_until_parked();
+
+    let first = cx.spawn({
+        let server = server.clone();
+        let message = open_diff_message(1, path!("/test/a/index.ts"), "index.ts");
+        async move |mut cx| {
+            crate::handle_message(&server, &message, tools::ConnectionId::next(), &mut cx).await
+        }
+    });
+    cx.run_until_parked();
+    let second = cx.spawn({
+        let server = server.clone();
+        let message = open_diff_message(2, path!("/test/b/index.ts"), "index.ts");
+        async move |mut cx| {
+            crate::handle_message(&server, &message, tools::ConnectionId::next(), &mut cx).await
+        }
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        open_diff_tabs(&workspace, cx).len(),
+        2,
+        "both proposals are shown"
+    );
+
+    let first_diff = server
+        .update(cx, |server, _| server.open_diffs().oldest_named("index.ts"))
+        .expect("the first proposal is registered");
+    first_diff.update(cx, |diff, cx| diff.accept(cx));
+    cx.run_until_parked();
+    let response: Value =
+        serde_json::from_str(&first.await.expect("openDiff answers")).expect("valid JSON");
+    assert_eq!(
+        response["result"]["content"][0]["text"],
+        json!("FILE_SAVED")
+    );
+
+    // CLI は答えを受け取ると、そのタブ名で `close_tab` を送ってくる。
+    let close = request(
+        &server,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": { "name": "close_tab", "arguments": { "tab_name": "index.ts" } }
+        }),
+        cx,
+    )
+    .await;
+    assert_eq!(close["result"]["isError"], json!(false), "{close}");
+    cx.run_until_parked();
+    assert_eq!(
+        open_diff_tabs(&workspace, cx).len(),
+        1,
+        "the other proposal stays open"
+    );
+
+    let second_diff = server
+        .update(cx, |server, _| server.open_diffs().oldest_named("index.ts"))
+        .expect("the second proposal is still registered");
+    second_diff.update(cx, |diff, cx| diff.accept(cx));
+    cx.run_until_parked();
+    let response: Value =
+        serde_json::from_str(&second.await.expect("openDiff answers")).expect("valid JSON");
+    assert_eq!(
+        response["result"]["content"][0]["text"],
+        json!("FILE_SAVED"),
+        "the second edit is not reported as rejected"
+    );
+}
+
+fn close_tab_message(id: u64, tab_name: &str) -> String {
+    serde_json::to_string(&json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": { "name": "close_tab", "arguments": { "tab_name": tab_name } }
+    }))
+    .expect("the request serializes")
+}
+
+/// `close_tab` は、同じ接続が開いた差分と覚えた名前を先に見る。別の CLI (接続) が同じ名前の
+/// 提案をタブで決めたあとでも、自分の提案を閉じられる。
+#[gpui::test]
+async fn close_tab_prefers_the_diffs_of_its_own_connection(cx: &mut TestAppContext) {
+    let (fs, workspace, server) = test_workspace_with_fs(cx).await;
+    fs.insert_tree(path!("/test/a"), json!({ "index.ts": "a\n" }))
+        .await;
+    fs.insert_tree(path!("/test/b"), json!({ "index.ts": "b\n" }))
+        .await;
+    cx.run_until_parked();
+    let first_connection = tools::ConnectionId::next();
+    let second_connection = tools::ConnectionId::next();
+
+    let first = cx.spawn({
+        let server = server.clone();
+        let message = open_diff_message(1, path!("/test/a/index.ts"), "index.ts");
+        async move |mut cx| {
+            crate::handle_message(&server, &message, first_connection, &mut cx).await
+        }
+    });
+    cx.run_until_parked();
+    let second = cx.spawn({
+        let server = server.clone();
+        let message = open_diff_message(2, path!("/test/b/index.ts"), "index.ts");
+        async move |mut cx| {
+            crate::handle_message(&server, &message, second_connection, &mut cx).await
+        }
+    });
+    cx.run_until_parked();
+    assert_eq!(open_diff_tabs(&workspace, cx).len(), 2);
+
+    // 1 つめの接続の提案をタブで採用する。その CLI の `close_tab` はまだ届いていない。
+    let first_diff = server
+        .update(cx, |server, _| server.open_diffs().oldest_named("index.ts"))
+        .expect("the first proposal is registered");
+    first_diff.update(cx, |diff, cx| diff.accept(cx));
+    cx.run_until_parked();
+    first.await.expect("openDiff answers");
+
+    // 2 つめの接続の CLI が、ターミナルで決まった自分の提案のタブを閉じる。
+    let close = cx.spawn({
+        let server = server.clone();
+        let message = close_tab_message(3, "index.ts");
+        async move |mut cx| {
+            crate::handle_message(&server, &message, second_connection, &mut cx).await
+        }
+    });
+    cx.run_until_parked();
+    close.await.expect("close_tab answers");
+    let response: Value =
+        serde_json::from_str(&second.await.expect("openDiff answers")).expect("valid JSON");
+    assert_eq!(
+        response["result"]["content"][0]["text"],
+        json!("DIFF_REJECTED")
+    );
+    assert!(open_diff_tabs(&workspace, cx).is_empty());
+
+    // 1 つめの接続の `close_tab` は、覚えておいた名前を消し込むだけ。
+    let close = cx.spawn({
+        let server = server.clone();
+        let message = close_tab_message(4, "index.ts");
+        async move |mut cx| {
+            crate::handle_message(&server, &message, first_connection, &mut cx).await
+        }
+    });
+    cx.run_until_parked();
+    let response: Value =
+        serde_json::from_str(&close.await.expect("close_tab answers")).expect("valid JSON");
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+}
+
+/// サンドボックスの差分の上限は、旧内容を読む前に数える。まだ登録していない準備中の
+/// `openDiff` も (同じ名前で置き換えるものも) 数に入る。
+#[test]
+fn diffs_being_prepared_count_toward_the_limit() {
+    let open_diffs = tools::OpenDiffs::default();
+    let reservations = (0..4)
+        .map(|_| open_diffs.reserve(4).expect("below the limit"))
+        .collect::<Vec<_>>();
+    assert!(
+        open_diffs.reserve(4).is_err(),
+        "four proposals are being prepared"
+    );
+    drop(reservations);
+    assert!(
+        open_diffs.reserve(4).is_ok(),
+        "finished preparations free their slots"
+    );
+}
+
+/// 接続を数えるのはトランスポートが開いているものだけ。差分の決定を待っているだけの接続が、
+/// CLI の繋ぎ直しを締め出さない。
+#[gpui::test]
+async fn a_connection_waiting_on_a_diff_does_not_block_a_reconnect(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut clients = Vec::new();
+    for _ in 0..4 {
+        clients.push(connect(&fixture, cx).await);
+    }
+    let mut waiting = clients.pop().expect("four clients are connected");
+    send_open_diff(&mut waiting, &format!("{CLIENT_ROOT}/main.rs"), "proposal").await;
+    cx.run_until_parked();
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
+
+    // CLI が落ちても、その `openDiff` はユーザーの決定を待ち続ける。
+    drop(waiting);
+    cx.run_until_parked();
+    let mut reconnected = connect(&fixture, cx).await;
+    let response = reconnected.request("tools/list", json!({})).await;
+    assert!(response["result"]["tools"].is_array(), "{response}");
+    assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
+    assert_eq!(clients.len(), 3);
+}
+
+/// 読まない相手に溜めすぎた通知は捨てるが、その接続は切らない。捨てたときは送れたことにしない。
+#[test]
+fn a_dropped_notification_does_not_count_as_sent() {
+    let (outbox, _receiver) = transport::outbox();
+    let mut connections = vec![outbox];
+    for _ in 0..transport::MAX_QUEUED_NOTIFICATIONS {
+        assert!(crate::broadcast_notification(
+            &mut connections,
+            "at_mentioned",
+            json!({})
+        ));
+    }
+    assert!(
+        !crate::broadcast_notification(&mut connections, "at_mentioned", json!({})),
+        "the queue is full"
+    );
+    assert_eq!(connections.len(), 1, "a slow client is not treated as gone");
+}
+
+async fn make_directory_link(target: &Path, link: &Path) -> bool {
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(target, link).is_ok();
+    // ジャンクションは管理者でなくても作れる。
+    #[cfg(windows)]
+    let linked = smol::process::Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(link)
+        .arg(target)
+        .output()
+        .await
+        .is_ok_and(|output| output.status.success());
+    linked
+}
+
+/// サンドボックスの求めでファイルを読むときは、1 つのハンドルを開いて、その実体の場所と種類を
+/// 確かめてから同じハンドルで読む (実ファイルで確かめる)。
+#[gpui::test]
+async fn reads_a_sandbox_file_from_one_verified_handle(cx: &mut TestAppContext) {
+    use crate::path_mapping::{SandboxFile, read_file_through_handle};
+
+    // リンクを作る子プロセスを待つ。
+    cx.executor().allow_parking();
+
+    // 実ファイルのハンドルは `fs` を使わないので、何でもよい。
+    let fs: Arc<dyn project::Fs> = FakeFs::new(cx.executor());
+    let directory = tempfile::tempdir().expect("a temporary worktree");
+    let root = directory.path();
+    std::fs::create_dir(root.join("real")).expect("creating a directory");
+    std::fs::write(root.join("real").join("file.txt"), "contents").expect("writing a file");
+    let real_root = std::fs::canonicalize(root).expect("the root resolves");
+    let read = |relative: &str, limit: u64| {
+        read_file_through_handle(&root.join(relative), &real_root.join(relative), limit, &fs)
+    };
+
+    assert_eq!(
+        read("real/file.txt", 100).expect("the file is read"),
+        SandboxFile::Text("contents".to_string())
+    );
+    assert_eq!(
+        read("real/file.txt", 4).expect("the file is inspected"),
+        SandboxFile::TooLarge
+    );
+    assert_eq!(
+        read("real/missing.txt", 100).expect("a missing file is fine"),
+        SandboxFile::Missing
+    );
+    assert!(
+        !matches!(read("real", 100), Ok(SandboxFile::Text(_))),
+        "a directory is not read"
+    );
+
+    // ワークツリーの中のリンク (Windows ではジャンクション) を通って開いたものは、行き着いた
+    // 先がワークツリーの中でも、行き着くはずの場所と違うので読まない。
+    if make_directory_link(&root.join("real"), &root.join("alias")).await {
+        assert_eq!(
+            read("alias/file.txt", 100).expect("the file is inspected"),
+            SandboxFile::Redirected
+        );
+    } else {
+        eprintln!("skipping the link case: could not create a directory link");
+    }
+
+    // 最後の成分がリンクのファイルも読まない。Unix では `O_NOFOLLOW` で開けず、Windows では
+    // たどった先が行き着くはずの場所と違う。
+    let link_target = root.join("real").join("file.txt");
+    let link = root.join("real").join("link.txt");
+    #[cfg(unix)]
+    let file_linked = std::os::unix::fs::symlink(&link_target, &link).is_ok();
+    #[cfg(windows)]
+    let file_linked = std::os::windows::fs::symlink_file(&link_target, &link).is_ok();
+    if file_linked {
+        assert_eq!(
+            read("real/link.txt", 100).expect("the link is inspected"),
+            SandboxFile::Redirected
+        );
+    } else {
+        eprintln!("skipping the file link case: could not create a symbolic link");
+    }
+
+    // FIFO は開いても書き手を待たず、通常のファイルでないので読まない。
+    #[cfg(unix)]
+    {
+        let created = smol::process::Command::new("mkfifo")
+            .arg(root.join("real").join("fifo"))
+            .status()
+            .await
+            .is_ok_and(|status| status.success());
+        assert!(created, "mkfifo creates a FIFO");
+        assert_eq!(
+            read("real/fifo", 100).expect("the FIFO is inspected"),
+            SandboxFile::NotRegular
+        );
+    }
 }

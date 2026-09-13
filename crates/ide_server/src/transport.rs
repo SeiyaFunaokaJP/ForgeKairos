@@ -11,22 +11,38 @@
 //! HTTP/1.1 の要求行とヘッダーだけを自前で読み、WebSocket の 101 応答も自前で書く。
 //! フレーミングから先は `async-tungstenite` に渡す (`from_raw_socket`)。新しい重量級の
 //! HTTP 依存を足さないための判断。
+//!
+//! 受けるのはバイト列なら何でもよい。ホストでは loopback の TCP、サンドボックスの
+//! セッション (ADR-F49) ではヘルパーのブリッジが接続ごとに運んでくるストリーム。
 
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
 use async_tungstenite::WebSocketStream;
 use async_tungstenite::tungstenite::handshake::derive_accept_key;
-use async_tungstenite::tungstenite::protocol::{Message, Role};
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use futures::channel::oneshot;
-use futures::{AsyncReadExt, AsyncWriteExt, StreamExt as _};
-use smol::net::TcpStream;
+use async_tungstenite::tungstenite::protocol::{Message, Role, WebSocketConfig};
+use futures::channel::{mpsc, oneshot};
+use futures::future::Either;
+use futures::{
+    AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt as _, Stream, StreamExt as _,
+};
+use smol::lock::SemaphoreGuardArc;
 
 /// 要求ヘッダーの上限。これを超えたら切る。
 const MAX_HEAD_BYTES: usize = 16 * 1024;
-/// `POST /mcp` の本文の上限。
-const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
+/// ホストの接続で受ける `POST /mcp` の本文と、WebSocket の 1 メッセージの上限。大きな
+/// ファイル (ロックファイルなど) の編集提案も `openDiff` の本文で運ばれてくるので、大きめに取る。
+pub const HOST_MAX_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
+/// 要求ヘッダー (HTTP なら本文も) を受け取り終えるまでの猶予。黙って繋ぎっぱなしにする
+/// 相手に接続を持たれ続けないため。
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+/// 相手が読まないあいだに溜めておく通知の上限。超えた分は捨てる。
+pub const MAX_QUEUED_NOTIFICATIONS: usize = 64;
 
 pub const CLAUDE_CODE_AUTH_HEADER: &str = "x-claude-code-ide-authorization";
 
@@ -146,7 +162,191 @@ pub fn http_response(status_line: &str, content_type: Option<&str>, body: &str) 
     response
 }
 
-async fn read_head(stream: &mut TcpStream) -> Result<(HttpHead, Vec<u8>)> {
+/// Zed から 1 本の接続へ送るもの。応答は必ず届け、通知は相手が読まずに溜まりすぎたら
+/// 捨て、`selection_changed` は最新の 1 件だけを残す。読まない相手のせいで Zed の
+/// メモリが増え続けないようにするため。
+pub struct Outbox {
+    state: Mutex<OutboxState>,
+}
+
+#[derive(Default)]
+struct OutboxState {
+    /// 応答と、その要求が握っていた同時実行の枠。枠は送り出した時点で返す。
+    responses: VecDeque<(String, Option<SemaphoreGuardArc>)>,
+    notifications: VecDeque<String>,
+    selection: Option<String>,
+    finished: bool,
+    receiver_dropped: bool,
+    waker: Option<Waker>,
+}
+
+pub fn outbox() -> (Arc<Outbox>, OutboxReceiver) {
+    let outbox = Arc::new(Outbox {
+        state: Mutex::new(OutboxState::default()),
+    });
+    (outbox.clone(), OutboxReceiver { outbox })
+}
+
+impl Outbox {
+    fn lock(&self) -> MutexGuard<'_, OutboxState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub fn send_response(&self, text: String, permit: Option<SemaphoreGuardArc>) {
+        let waker = {
+            let mut state = self.lock();
+            if state.receiver_dropped {
+                return;
+            }
+            state.responses.push_back((text, permit));
+            state.waker.take()
+        };
+        wake(waker);
+    }
+
+    pub fn send_notification(&self, text: String) -> Delivery {
+        let waker = {
+            let mut state = self.lock();
+            if state.receiver_dropped || state.finished {
+                return Delivery::Closed;
+            }
+            if state.notifications.len() >= MAX_QUEUED_NOTIFICATIONS {
+                log::debug!("ide_server: dropped a notification for a client that is not reading");
+                return Delivery::Dropped;
+            }
+            state.notifications.push_back(text);
+            state.waker.take()
+        };
+        wake(waker);
+        Delivery::Queued
+    }
+
+    /// まだ送っていない `selection_changed` を最新のものに置き換える。
+    pub fn send_selection(&self, text: String) -> Delivery {
+        let waker = {
+            let mut state = self.lock();
+            if state.receiver_dropped || state.finished {
+                return Delivery::Closed;
+            }
+            state.selection = Some(text);
+            state.waker.take()
+        };
+        wake(waker);
+        Delivery::Queued
+    }
+
+    /// これ以上は送らない。溜まっている分を送り切ったら受け手の側が終わる。
+    pub fn finish(&self) {
+        let waker = {
+            let mut state = self.lock();
+            state.finished = true;
+            state.waker.take()
+        };
+        wake(waker);
+    }
+
+    pub fn is_closed(&self) -> bool {
+        let state = self.lock();
+        state.receiver_dropped || state.finished
+    }
+}
+
+/// 通知を積めたかどうか。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Delivery {
+    Queued,
+    /// 相手が読まずに溜まっているので捨てた。接続は生きている。
+    Dropped,
+    /// 相手がもう居ない。
+    Closed,
+}
+
+fn wake(waker: Option<Waker>) {
+    if let Some(waker) = waker {
+        waker.wake();
+    }
+}
+
+pub struct OutboxReceiver {
+    outbox: Arc<Outbox>,
+}
+
+impl Stream for OutboxReceiver {
+    type Item = String;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<String>> {
+        let mut state = self.outbox.lock();
+        if let Some((text, permit)) = state.responses.pop_front() {
+            drop(state);
+            drop(permit);
+            return Poll::Ready(Some(text));
+        }
+        if let Some(text) = state.selection.take() {
+            return Poll::Ready(Some(text));
+        }
+        if let Some(text) = state.notifications.pop_front() {
+            return Poll::Ready(Some(text));
+        }
+        if state.finished {
+            return Poll::Ready(None);
+        }
+        state.waker = Some(cx.waker().clone());
+        Poll::Pending
+    }
+}
+
+impl Drop for OutboxReceiver {
+    fn drop(&mut self) {
+        // 捨てる応答が握っている同時実行の枠は、ここで返さないとセッションが詰まる。
+        let responses = {
+            let mut state = self.outbox.lock();
+            state.receiver_dropped = true;
+            state.notifications.clear();
+            state.selection = None;
+            std::mem::take(&mut state.responses)
+        };
+        drop(responses);
+    }
+}
+
+async fn before_deadline<T>(
+    future: impl Future<Output = T>,
+    deadline: Pin<&mut impl Future<Output = ()>>,
+) -> Result<T> {
+    futures::pin_mut!(future);
+    match futures::future::select(future, deadline).await {
+        Either::Left((output, _)) => Ok(output),
+        Either::Right(((), _)) => Err(anyhow!("the client did not send its request in time")),
+    }
+}
+
+async fn read_body<S: AsyncRead + Unpin>(
+    stream: &mut S,
+    mut body: Vec<u8>,
+    content_length: usize,
+) -> Result<Vec<u8>> {
+    if body.len() < content_length {
+        let remaining = u64::try_from(content_length - body.len())?;
+        (&mut *stream)
+            .take(remaining)
+            .read_to_end(&mut body)
+            .await?;
+    }
+    anyhow::ensure!(
+        body.len() >= content_length,
+        "the connection closed before the request body"
+    );
+    body.truncate(content_length);
+    Ok(body)
+}
+
+fn websocket_config(max_message_bytes: usize) -> WebSocketConfig {
+    WebSocketConfig::default()
+        .max_message_size(Some(max_message_bytes))
+        .max_frame_size(Some(max_message_bytes))
+}
+
+async fn read_head<S: AsyncRead + Unpin>(stream: &mut S) -> Result<(HttpHead, Vec<u8>)> {
     let mut buffer = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
     loop {
@@ -164,17 +364,25 @@ async fn read_head(stream: &mut TcpStream) -> Result<(HttpHead, Vec<u8>)> {
     }
 }
 
-/// 1 本の接続を処理する。受信した JSON-RPC のテキストを `incoming_tx` に流し、
-/// `outgoing_rx` から来たテキストを送り返す。接続の種類が決まった時点で `kind_tx`
-/// に知らせる (WebSocket のときだけサーバー側から通知を撃てるため)。
-pub async fn serve_connection(
-    mut stream: TcpStream,
+/// 1 本の接続を処理する。受信した JSON-RPC のテキストを `incoming_tx` に流し (受け手が
+/// 詰まっていれば、相手からの読み込みを止めて待たせる)、`outgoing` から来たテキストを
+/// 送り返す。接続の種類が決まった時点で `kind_tx` に知らせる (WebSocket のときだけ
+/// サーバー側から通知を撃てるため)。`handshake_deadline` までに要求を受け取り終えなければ切る。
+pub async fn serve_connection<S>(
+    mut stream: S,
     auth_token: Arc<str>,
-    incoming_tx: UnboundedSender<String>,
-    outgoing_rx: UnboundedReceiver<String>,
+    max_message_bytes: usize,
+    incoming_tx: mpsc::Sender<String>,
+    outgoing: OutboxReceiver,
     kind_tx: oneshot::Sender<ConnectionKind>,
-) -> Result<()> {
-    let (head, leftover) = read_head(&mut stream).await?;
+    handshake_deadline: impl Future<Output = ()>,
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    futures::pin_mut!(handshake_deadline);
+    let (head, leftover) =
+        before_deadline(read_head(&mut stream), handshake_deadline.as_mut()).await??;
 
     if head.presented_token() != Some(&*auth_token) {
         let body = "{\"error\":\"unauthorized\"}";
@@ -187,20 +395,41 @@ pub async fn serve_connection(
 
     if head.is_websocket_upgrade() {
         kind_tx.send(ConnectionKind::WebSocket).ok();
-        serve_websocket(stream, head, leftover, incoming_tx, outgoing_rx).await
+        serve_websocket(
+            stream,
+            head,
+            leftover,
+            max_message_bytes,
+            incoming_tx,
+            outgoing,
+        )
+        .await
     } else {
         kind_tx.send(ConnectionKind::Http).ok();
-        serve_http(stream, head, leftover, incoming_tx, outgoing_rx).await
+        serve_http(
+            stream,
+            head,
+            leftover,
+            max_message_bytes,
+            incoming_tx,
+            outgoing,
+            handshake_deadline,
+        )
+        .await
     }
 }
 
-async fn serve_websocket(
-    mut stream: TcpStream,
+async fn serve_websocket<S>(
+    mut stream: S,
     head: HttpHead,
     leftover: Vec<u8>,
-    incoming_tx: UnboundedSender<String>,
-    mut outgoing_rx: UnboundedReceiver<String>,
-) -> Result<()> {
+    max_message_bytes: usize,
+    mut incoming_tx: mpsc::Sender<String>,
+    mut outgoing: OutboxReceiver,
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     anyhow::ensure!(
         leftover.is_empty(),
         "the WebSocket client sent frames before the handshake completed"
@@ -209,14 +438,19 @@ async fn serve_websocket(
     stream.write_all(response.as_bytes()).await?;
     stream.flush().await?;
 
-    let socket = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+    let socket = WebSocketStream::from_raw_socket(
+        stream,
+        Role::Server,
+        Some(websocket_config(max_message_bytes)),
+    )
+    .await;
     // `async-tungstenite` の固有の `split` は送受信を `Arc` で共有した
     // `WebSocketSender` / `WebSocketReceiver` に分ける (`futures` の `StreamExt::split`
     // ではない)。どちらも自前の `send` / `close` を持つ。
     let (mut sender, mut receiver) = socket.split();
 
     let write_task = async move {
-        while let Some(text) = outgoing_rx.next().await {
+        while let Some(text) = outgoing.next().await {
             sender.send(Message::text(text)).await?;
         }
         sender.close(None).await?;
@@ -227,14 +461,14 @@ async fn serve_websocket(
         while let Some(message) = receiver.next().await {
             match message? {
                 Message::Text(text) => {
-                    if incoming_tx.unbounded_send(text.to_string()).is_err() {
+                    if incoming_tx.send(text.to_string()).await.is_err() {
                         break;
                     }
                 }
                 Message::Binary(bytes) => {
                     let text = String::from_utf8(bytes.to_vec())
                         .context("a binary WebSocket frame was not UTF-8 JSON")?;
-                    if incoming_tx.unbounded_send(text).is_err() {
+                    if incoming_tx.send(text).await.is_err() {
                         break;
                     }
                 }
@@ -253,13 +487,19 @@ async fn serve_websocket(
     }
 }
 
-async fn serve_http(
-    mut stream: TcpStream,
+async fn serve_http<S, D>(
+    mut stream: S,
     head: HttpHead,
     leftover: Vec<u8>,
-    incoming_tx: UnboundedSender<String>,
-    mut outgoing_rx: UnboundedReceiver<String>,
-) -> Result<()> {
+    max_message_bytes: usize,
+    mut incoming_tx: mpsc::Sender<String>,
+    mut outgoing: OutboxReceiver,
+    deadline: Pin<&mut D>,
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    D: Future<Output = ()>,
+{
     let path = head.path.split('?').next().unwrap_or(&head.path);
     if path != "/mcp" {
         stream
@@ -288,25 +528,21 @@ async fn serve_http(
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(0);
     anyhow::ensure!(
-        content_length <= MAX_BODY_BYTES,
+        content_length <= max_message_bytes,
         "the POST /mcp body is too large"
     );
-    let mut body = leftover;
-    while body.len() < content_length {
-        let mut chunk = vec![0u8; content_length - body.len()];
-        let read = stream.read(&mut chunk).await?;
-        anyhow::ensure!(read > 0, "the connection closed before the request body");
-        body.extend_from_slice(&chunk[..read]);
-    }
+    let body =
+        before_deadline(read_body(&mut stream, leftover, content_length), deadline).await??;
     let body = String::from_utf8(body).context("the POST /mcp body was not UTF-8")?;
 
     incoming_tx
-        .unbounded_send(body)
+        .send(body)
+        .await
         .map_err(|_| anyhow!("the IDE server stopped before handling the request"))?;
     drop(incoming_tx);
 
     // 通知だけの POST (`id` 無し) には返す本文が無いので 202 を返す。
-    let response = match outgoing_rx.next().await {
+    let response = match outgoing.next().await {
         Some(text) => http_response("200 OK", Some("application/json"), &text),
         None => http_response("202 Accepted", None, ""),
     };
@@ -377,5 +613,66 @@ mod tests {
              Authorization: secret-token\r\n\r\n",
         );
         assert_eq!(head.presented_token(), None);
+    }
+
+    #[test]
+    fn outbox_keeps_responses_caps_notifications_and_coalesces_selections() {
+        let (outbox, receiver) = outbox();
+        for index in 0..MAX_QUEUED_NOTIFICATIONS {
+            assert_eq!(
+                outbox.send_notification(format!("notification {index}")),
+                Delivery::Queued
+            );
+        }
+        assert_eq!(
+            outbox.send_notification("one too many".to_string()),
+            Delivery::Dropped,
+            "a dropped notification is not reported as sent"
+        );
+        assert_eq!(
+            outbox.send_selection("old selection".to_string()),
+            Delivery::Queued
+        );
+        assert_eq!(
+            outbox.send_selection("new selection".to_string()),
+            Delivery::Queued
+        );
+        outbox.send_response("response".to_string(), None);
+        outbox.finish();
+
+        let received = smol::block_on(receiver.collect::<Vec<_>>());
+        assert_eq!(
+            received.first().map(String::as_str),
+            Some("response"),
+            "responses are never dropped and go first"
+        );
+        assert_eq!(
+            received.get(1).map(String::as_str),
+            Some("new selection"),
+            "only the latest selection is kept"
+        );
+        assert_eq!(received.len(), 2 + MAX_QUEUED_NOTIFICATIONS);
+    }
+
+    #[test]
+    fn dropping_the_receiver_returns_the_request_permits() {
+        let permits = Arc::new(smol::lock::Semaphore::new(1));
+        let (outbox, receiver) = outbox();
+        outbox.send_response("response".to_string(), permits.try_acquire_arc());
+        assert!(
+            permits.try_acquire_arc().is_none(),
+            "the queued response holds the only permit"
+        );
+
+        drop(receiver);
+        assert!(
+            permits.try_acquire_arc().is_some(),
+            "a closed connection must not keep the session's permits"
+        );
+        assert_eq!(
+            outbox.send_notification("too late".to_string()),
+            Delivery::Closed
+        );
+        assert!(outbox.is_closed());
     }
 }
