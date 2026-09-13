@@ -9,10 +9,10 @@ use futures::{
 };
 use gpui::AsyncApp;
 
-use util::TryFutureExt as _;
 use util::process::Child;
 use util::shell::Shell;
 use util::shell_builder::ShellBuilder;
+use util::{ResultExt as _, TryFutureExt as _};
 
 use crate::client::ModelContextServerBinary;
 use crate::transport::Transport;
@@ -143,6 +143,136 @@ impl Transport for StdioTransport {
 
 impl Drop for StdioTransport {
     fn drop(&mut self) {
-        let _ = self.server.kill();
+        self.server.kill().log_err();
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use crate::{ContextServer, ContextServerCommand, ContextServerId};
+    use gpui::TestAppContext;
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    /// Arguments for `powershell.exe` that make a server which never answers:
+    /// it writes its own pid to `pid_file` and sleeps. Started through the
+    /// system shell like any stdio server, it runs as a grandchild of the
+    /// spawned process, and when the system shell is the Microsoft Store
+    /// build of PowerShell, outside the job the spawned process is in.
+    fn hanging_server_args(pid_file: &Path) -> Vec<String> {
+        vec![
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            format!(
+                "Set-Content -LiteralPath '{}' -Value ([System.Diagnostics.Process]::GetCurrentProcess().Id); Start-Sleep -Seconds 600",
+                pid_file.display()
+            ),
+        ]
+    }
+
+    fn process_is_alive(pid: u32) -> bool {
+        use windows::Win32::{
+            Foundation::{CloseHandle, STILL_ACTIVE},
+            System::Threading::{
+                GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+            },
+        };
+
+        unsafe {
+            let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+                return false;
+            };
+            let mut exit_code = 0u32;
+            let alive = GetExitCodeProcess(handle, &mut exit_code).is_ok()
+                && exit_code == STILL_ACTIVE.0 as u32;
+            CloseHandle(handle).expect("failed to close process handle");
+            alive
+        }
+    }
+
+    fn wait_for_server_pid(pid_file: &Path) -> u32 {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Ok(contents) = std::fs::read_to_string(pid_file)
+                && let Ok(pid) = contents.trim().parse::<u32>()
+            {
+                assert!(process_is_alive(pid), "server should be running");
+                return pid;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for the server to start"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn assert_process_exits(pid: u32) {
+        // `TerminateProcess` returns before the process is gone.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while process_is_alive(pid) {
+            assert!(
+                Instant::now() < deadline,
+                "server (pid {pid}) outlived its transport"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    #[gpui::test]
+    async fn test_dropping_the_transport_terminates_the_server(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let pid_file = temp_dir.path().join("server_pid");
+        let transport = StdioTransport::new(
+            ModelContextServerBinary {
+                executable: "powershell.exe".into(),
+                args: hanging_server_args(&pid_file),
+                env: None,
+                timeout: None,
+            },
+            &None,
+            &cx.to_async(),
+        )
+        .unwrap();
+        let server_pid = wait_for_server_pid(&pid_file);
+
+        drop(transport);
+
+        assert_process_exits(server_pid);
+    }
+
+    #[gpui::test]
+    async fn test_start_timeout_terminates_the_server(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let pid_file = temp_dir.path().join("server_pid");
+        let server = ContextServer::stdio(
+            ContextServerId("hanging".into()),
+            ContextServerCommand {
+                path: "powershell.exe".into(),
+                args: hanging_server_args(&pid_file),
+                env: None,
+                timeout: Some(5),
+            },
+            None,
+        );
+        let start = cx.spawn(|cx| async move { server.start(&cx).await });
+        cx.run_until_parked();
+        let server_pid = wait_for_server_pid(&pid_file);
+
+        cx.executor().advance_clock(Duration::from_secs(6));
+        let error = start
+            .await
+            .expect_err("a server that never answers should time out");
+        assert!(
+            error.to_string().contains("timeout"),
+            "unexpected error: {error:#}"
+        );
+        // Lets the cancelled I/O tasks drop their handles on the transport.
+        cx.run_until_parked();
+
+        assert_process_exits(server_pid);
     }
 }
