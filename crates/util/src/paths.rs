@@ -17,6 +17,7 @@ use std::{
 use path::rel_path::RelPath;
 use path::rel_path::RelPathBuf;
 
+pub use gpui_util::is_local_absolute_path;
 pub use path::PathStyle;
 
 /// Returns the path to the user's home directory.

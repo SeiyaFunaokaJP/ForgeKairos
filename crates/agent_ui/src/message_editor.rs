@@ -1754,12 +1754,16 @@ impl MessageEditor {
         let mention_set = self.mention_set.clone();
         let workspace = self.workspace.clone();
 
-        let paths_receiver = cx.prompt_for_paths(gpui::PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: true,
-            prompt: Some("画像を選択".into()),
-        });
+        let paths_receiver = window.prompt_for_paths(
+            gpui::PathPromptOptions {
+                files: true,
+                directories: false,
+                multiple: true,
+                prompt: Some("画像を選択".into()),
+                starting_directory: None,
+            },
+            cx,
+        );
 
         window
             .spawn(cx, async move |cx| {

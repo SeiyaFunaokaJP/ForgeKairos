@@ -14,12 +14,16 @@ pub fn clone_and_open(
         dyn Fn(&mut Workspace, &mut Window, &mut Context<Workspace>) + Send + Sync + 'static,
     >,
 ) {
-    let destination_prompt = cx.prompt_for_paths(gpui::PathPromptOptions {
-        files: false,
-        directories: true,
-        multiple: false,
-        prompt: Some("クローン先として選択".into()),
-    });
+    let destination_prompt = window.prompt_for_paths(
+        gpui::PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("クローン先として選択".into()),
+            starting_directory: None,
+        },
+        cx,
+    );
 
     window
         .spawn(cx, async move |cx| {

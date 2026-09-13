@@ -1,18 +1,19 @@
 use crate::{
     AnyWindowHandle, AtlasKey, AtlasTextureId, AtlasTile, Bounds, DevicePixels,
-    DispatchEventResult, GpuSpecs, Pixels, PlatformAtlas, PlatformDisplay,
+    DispatchEventResult, GpuSpecs, PathPromptOptions, Pixels, PlatformAtlas, PlatformDisplay,
     PlatformHeadlessRenderer, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
     PromptButton, RequestFrameOptions, Scene, Size, TestPlatform, TileId, WindowAppearance,
     WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowParams,
 };
 use collections::HashMap;
+use futures::channel::oneshot;
 use gpui_util::ResultExt as _;
 use image::RgbaImage;
 use parking_lot::Mutex;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     cell::Cell,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::{Rc, Weak},
     sync::{self, Arc},
 };
@@ -246,6 +247,25 @@ impl PlatformWindow for TestWindow {
                 .expect("platform dropped")
                 .prompt(msg, detail, answers),
         )
+    }
+
+    fn prompt_for_paths(
+        &self,
+        options: &PathPromptOptions,
+    ) -> Option<oneshot::Receiver<anyhow::Result<Option<Vec<PathBuf>>>>> {
+        let state = self.0.lock();
+        let platform = state.platform.upgrade().expect("platform dropped");
+        Some(platform.push_paths_prompt(options.clone(), Some(state.handle)))
+    }
+
+    fn prompt_for_new_path(
+        &self,
+        directory: &Path,
+        _suggested_name: Option<&str>,
+    ) -> Option<oneshot::Receiver<anyhow::Result<Option<PathBuf>>>> {
+        let state = self.0.lock();
+        let platform = state.platform.upgrade().expect("platform dropped");
+        Some(platform.push_new_path_prompt(directory, Some(state.handle)))
     }
 
     fn activate(&self) {

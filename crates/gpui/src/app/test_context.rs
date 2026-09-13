@@ -351,6 +351,22 @@ impl TestAppContext {
         self.test_platform.did_prompt_for_paths()
     }
 
+    /// Returns the options of the oldest pending `prompt_for_paths` ("Open")
+    /// dialog and the window it is attached to, which is `None` for a dialog
+    /// shown for the whole application.
+    pub fn pending_path_prompt(
+        &self,
+    ) -> Option<(crate::PathPromptOptions, Option<AnyWindowHandle>)> {
+        self.test_platform.pending_path_prompt()
+    }
+
+    /// Returns the directory of the oldest pending `prompt_for_new_path`
+    /// ("Save") dialog and the window it is attached to, which is `None` for a
+    /// dialog shown for the whole application.
+    pub fn pending_new_path_prompt(&self) -> Option<(std::path::PathBuf, Option<AnyWindowHandle>)> {
+        self.test_platform.pending_new_path_prompt()
+    }
+
     /// Simulates clicking a button in an platform-level alert dialog.
     #[track_caller]
     pub fn simulate_prompt_answer(&self, button: &str) {
@@ -1300,6 +1316,7 @@ mod tests {
                 directories: true,
                 multiple: true,
                 prompt: None,
+                starting_directory: None,
             })
         });
         assert!(cx.did_prompt_for_paths());
@@ -1326,6 +1343,7 @@ mod tests {
                 directories: false,
                 multiple: false,
                 prompt: None,
+                starting_directory: None,
             })
         });
 
@@ -1333,5 +1351,87 @@ mod tests {
 
         let response = receiver.await.unwrap().unwrap();
         assert_eq!(response, None);
+    }
+
+    #[gpui::test]
+    async fn test_app_path_prompt_forwards_starting_directory_without_an_owner(
+        cx: &mut TestAppContext,
+    ) {
+        let starting_directory = PathBuf::from("/projects/tools");
+        let _receiver = cx.update(|cx| {
+            cx.prompt_for_paths(PathPromptOptions {
+                files: true,
+                directories: false,
+                multiple: false,
+                prompt: None,
+                starting_directory: Some(starting_directory.clone()),
+            })
+        });
+
+        let (options, owner) = cx
+            .pending_path_prompt()
+            .expect("the app should have prompted for paths");
+        assert_eq!(owner, None);
+        assert_eq!(options.starting_directory, Some(starting_directory));
+    }
+
+    #[gpui::test]
+    async fn test_window_path_prompt_is_attached_to_its_window(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        let starting_directory = PathBuf::from("/projects/tools");
+        let (window_handle, receiver) = cx.update(|window, cx| {
+            let receiver = window.prompt_for_paths(
+                PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: false,
+                    prompt: Some("Select".into()),
+                    starting_directory: Some(starting_directory.clone()),
+                },
+                cx,
+            );
+            (window.window_handle(), receiver)
+        });
+
+        let (options, owner) = cx
+            .pending_path_prompt()
+            .expect("the window should have prompted for paths");
+        assert_eq!(owner, Some(window_handle));
+        assert_eq!(options.starting_directory, Some(starting_directory));
+        assert_eq!(options.prompt, Some("Select".into()));
+        assert!(options.files && !options.directories && !options.multiple);
+
+        let selected = vec![PathBuf::from("/projects/tools/server")];
+        cx.simulate_path_prompt_response({
+            let selected = selected.clone();
+            move |_options| Some(selected)
+        });
+        let response = receiver
+            .await
+            .expect("the prompt should answer")
+            .expect("the prompt should not fail");
+        assert_eq!(response, Some(selected));
+    }
+
+    #[gpui::test]
+    async fn test_window_new_path_prompt_is_attached_to_its_window(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        let directory = PathBuf::from("/projects/notes");
+        let (window_handle, receiver) = cx.update(|window, cx| {
+            let receiver = window.prompt_for_new_path(&directory, Some("todo.md"), cx);
+            (window.window_handle(), receiver)
+        });
+
+        assert_eq!(
+            cx.pending_new_path_prompt(),
+            Some((directory.clone(), Some(window_handle)))
+        );
+
+        cx.simulate_new_path_selection(|directory| Some(directory.join("todo.md")));
+        let response = receiver
+            .await
+            .expect("the prompt should answer")
+            .expect("the prompt should not fail");
+        assert_eq!(response, Some(directory.join("todo.md")));
     }
 }

@@ -783,44 +783,7 @@ impl Platform for MacPlatform {
         let (done_tx, done_rx) = oneshot::channel();
         self.foreground_executor()
             .spawn(async move {
-                unsafe {
-                    let panel = NSOpenPanel::openPanel(nil);
-                    panel.setCanChooseDirectories_(options.directories.to_objc());
-                    panel.setCanChooseFiles_(options.files.to_objc());
-                    panel.setAllowsMultipleSelection_(options.multiple.to_objc());
-
-                    panel.setCanCreateDirectories(true.to_objc());
-                    panel.setResolvesAliases_(false.to_objc());
-                    let done_tx = Cell::new(Some(done_tx));
-                    let block = ConcreteBlock::new(move |response: NSModalResponse| {
-                        let result = if response == NSModalResponse::NSModalResponseOk {
-                            let mut result = Vec::new();
-                            let urls = panel.URLs();
-                            for i in 0..urls.count() {
-                                let url = urls.objectAtIndex(i);
-                                if url.isFileURL() == YES
-                                    && let Ok(path) = ns_url_to_path(url)
-                                {
-                                    result.push(path)
-                                }
-                            }
-                            Some(result)
-                        } else {
-                            None
-                        };
-
-                        if let Some(done_tx) = done_tx.take() {
-                            let _ = done_tx.send(Ok(result));
-                        }
-                    });
-                    let block = block.copy();
-
-                    if let Some(prompt) = options.prompt {
-                        let _: () = msg_send![panel, setPrompt: ns_string(&prompt)];
-                    }
-
-                    let _: () = msg_send![panel, beginWithCompletionHandler: block];
-                }
+                unsafe { begin_open_panel(options, None, done_tx) };
             })
             .detach();
         done_rx
@@ -836,62 +799,7 @@ impl Platform for MacPlatform {
         let (done_tx, done_rx) = oneshot::channel();
         self.foreground_executor()
             .spawn(async move {
-                unsafe {
-                    let panel = NSSavePanel::savePanel(nil);
-                    let path = ns_string(directory.to_string_lossy().as_ref());
-                    let url = NSURL::fileURLWithPath_isDirectory_(nil, path, true.to_objc());
-                    panel.setDirectoryURL(url);
-
-                    if let Some(suggested_name) = suggested_name {
-                        let name_string = ns_string(&suggested_name);
-                        let _: () = msg_send![panel, setNameFieldStringValue: name_string];
-                    }
-
-                    let done_tx = Cell::new(Some(done_tx));
-                    let block = ConcreteBlock::new(move |response: NSModalResponse| {
-                        let mut result = None;
-                        if response == NSModalResponse::NSModalResponseOk {
-                            let url = panel.URL();
-                            if url.isFileURL() == YES {
-                                result = ns_url_to_path(panel.URL()).ok().map(|mut result| {
-                                    let Some(filename) = result.file_name() else {
-                                        return result;
-                                    };
-                                    let chunks = filename
-                                        .as_bytes()
-                                        .split(|&b| b == b'.')
-                                        .collect::<Vec<_>>();
-
-                                    // https://github.com/zed-industries/zed/issues/16969
-                                    // Workaround a bug in macOS Sequoia that adds an extra file-extension
-                                    // sometimes. e.g. `a.sql` becomes `a.sql.s` or `a.txtx` becomes `a.txtx.txt`
-                                    //
-                                    // This is conditional on OS version because I'd like to get rid of it, so that
-                                    // you can manually create a file called `a.sql.s`. That said it seems better
-                                    // to break that use-case than breaking `a.sql`.
-                                    if chunks.len() == 3
-                                        && chunks[1].starts_with(chunks[2])
-                                        && Self::os_version() >= Version::new(15, 0, 0)
-                                    {
-                                        let new_filename = OsStr::from_bytes(
-                                            &filename.as_bytes()
-                                                [..chunks[0].len() + 1 + chunks[1].len()],
-                                        )
-                                        .to_owned();
-                                        result.set_file_name(&new_filename);
-                                    }
-                                    result
-                                })
-                            }
-                        }
-
-                        if let Some(done_tx) = done_tx.take() {
-                            let _ = done_tx.send(Ok(result));
-                        }
-                    });
-                    let block = block.copy();
-                    let _: () = msg_send![panel, beginWithCompletionHandler: block];
-                }
+                unsafe { begin_save_panel(directory, suggested_name, None, done_tx) };
             })
             .detach();
 
@@ -1500,6 +1408,155 @@ extern "C" fn handle_dock_menu(this: &mut Object, _: Sel, _: id) -> id {
             id
         } else {
             nil
+        }
+    }
+}
+
+/// Shows an `NSOpenPanel`, as a sheet on `parent_window` when one is given.
+///
+/// # Safety
+///
+/// Must be called on the main thread, and `parent_window` must be an open
+/// `NSWindow`.
+pub(crate) unsafe fn begin_open_panel(
+    options: PathPromptOptions,
+    parent_window: Option<id>,
+    done_tx: oneshot::Sender<Result<Option<Vec<PathBuf>>>>,
+) {
+    unsafe {
+        let panel = NSOpenPanel::openPanel(nil);
+        panel.setCanChooseDirectories_(options.directories.to_objc());
+        panel.setCanChooseFiles_(options.files.to_objc());
+        panel.setAllowsMultipleSelection_(options.multiple.to_objc());
+
+        panel.setCanCreateDirectories(true.to_objc());
+        panel.setResolvesAliases_(false.to_objc());
+        if let Some(directory) = &options.starting_directory {
+            let path = ns_string(directory.to_string_lossy().as_ref());
+            let url = NSURL::fileURLWithPath_isDirectory_(nil, path, true.to_objc());
+            panel.setDirectoryURL(url);
+        }
+        let done_tx = Cell::new(Some(done_tx));
+        let block = ConcreteBlock::new(move |response: NSModalResponse| {
+            let result = if response == NSModalResponse::NSModalResponseOk {
+                let mut result = Vec::new();
+                let urls = panel.URLs();
+                for i in 0..urls.count() {
+                    let url = urls.objectAtIndex(i);
+                    if url.isFileURL() == YES
+                        && let Ok(path) = ns_url_to_path(url)
+                    {
+                        result.push(path)
+                    }
+                }
+                Some(result)
+            } else {
+                None
+            };
+
+            if let Some(done_tx) = done_tx.take() {
+                done_tx.send(Ok(result)).ok();
+            }
+        });
+        let block = block.copy();
+
+        if let Some(prompt) = options.prompt {
+            let _: () = msg_send![panel, setPrompt: ns_string(&prompt)];
+        }
+
+        match parent_window {
+            Some(parent_window) => {
+                let _: () = msg_send![
+                    panel,
+                    beginSheetModalForWindow: parent_window
+                    completionHandler: block
+                ];
+            }
+            None => {
+                let _: () = msg_send![panel, beginWithCompletionHandler: block];
+            }
+        }
+    }
+}
+
+/// Shows an `NSSavePanel` opened in `directory`, as a sheet on `parent_window`
+/// when one is given.
+///
+/// # Safety
+///
+/// Must be called on the main thread, and `parent_window` must be an open
+/// `NSWindow`.
+pub(crate) unsafe fn begin_save_panel(
+    directory: PathBuf,
+    suggested_name: Option<String>,
+    parent_window: Option<id>,
+    done_tx: oneshot::Sender<Result<Option<PathBuf>>>,
+) {
+    unsafe {
+        let panel = NSSavePanel::savePanel(nil);
+        let path = ns_string(directory.to_string_lossy().as_ref());
+        let url = NSURL::fileURLWithPath_isDirectory_(nil, path, true.to_objc());
+        panel.setDirectoryURL(url);
+
+        if let Some(suggested_name) = suggested_name {
+            let name_string = ns_string(&suggested_name);
+            let _: () = msg_send![panel, setNameFieldStringValue: name_string];
+        }
+
+        let done_tx = Cell::new(Some(done_tx));
+        let block = ConcreteBlock::new(move |response: NSModalResponse| {
+            let mut result = None;
+            if response == NSModalResponse::NSModalResponseOk {
+                let url = panel.URL();
+                if url.isFileURL() == YES {
+                    result = ns_url_to_path(panel.URL()).ok().map(|mut result| {
+                        let Some(filename) = result.file_name() else {
+                            return result;
+                        };
+                        let chunks = filename
+                            .as_bytes()
+                            .split(|&b| b == b'.')
+                            .collect::<Vec<_>>();
+
+                        // https://github.com/zed-industries/zed/issues/16969
+                        // Workaround a bug in macOS Sequoia that adds an extra file-extension
+                        // sometimes. e.g. `a.sql` becomes `a.sql.s` or `a.txtx` becomes `a.txtx.txt`
+                        //
+                        // This is conditional on OS version because I'd like to get rid of it, so that
+                        // you can manually create a file called `a.sql.s`. That said it seems better
+                        // to break that use-case than breaking `a.sql`.
+                        if chunks.len() == 3
+                            && chunks[1].starts_with(chunks[2])
+                            && MacPlatform::os_version() >= Version::new(15, 0, 0)
+                        {
+                            let new_filename = OsStr::from_bytes(
+                                &filename.as_bytes()[..chunks[0].len() + 1 + chunks[1].len()],
+                            )
+                            .to_owned();
+                            result.set_file_name(&new_filename);
+                        }
+                        result
+                    })
+                }
+            }
+
+            if let Some(done_tx) = done_tx.take() {
+                done_tx.send(Ok(result)).ok();
+            }
+        });
+        let block = block.copy();
+
+        match parent_window {
+            Some(parent_window) => {
+                let _: () = msg_send![
+                    panel,
+                    beginSheetModalForWindow: parent_window
+                    completionHandler: block
+                ];
+            }
+            None => {
+                let _: () = msg_send![panel, beginWithCompletionHandler: block];
+            }
         }
     }
 }

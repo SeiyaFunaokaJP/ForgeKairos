@@ -48,6 +48,124 @@ pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
 const FILE_PICKER_PORTAL_MISSING: &str =
     "Couldn't open file picker due to missing xdg-desktop-portal implementation.";
 
+/// Asks xdg-desktop-portal for files or folders on behalf of the window that
+/// `identifier` resolves to.
+#[cfg(any(feature = "wayland", feature = "x11"))]
+pub(crate) fn prompt_for_paths_with_portal(
+    executor: &ForegroundExecutor,
+    identifier: impl Future<Output = Option<ashpd::WindowIdentifier>> + 'static,
+    options: PathPromptOptions,
+    done_tx: oneshot::Sender<Result<Option<Vec<PathBuf>>>>,
+) {
+    executor
+        .spawn(async move {
+            let title = if options.directories {
+                "Open Folder"
+            } else {
+                "Open File"
+            };
+
+            let new_request = || {
+                ashpd::desktop::file_chooser::OpenFileRequest::default()
+                    .modal(true)
+                    .title(title)
+                    .accept_label(options.prompt.as_ref().map(gpui::SharedString::as_str))
+                    .multiple(options.multiple)
+                    .directory(options.directories)
+            };
+            // Not checked for existence first: that would touch the file system
+            // on the main thread, and the portal copes with a missing folder.
+            // One it can't be handed at all (a NUL byte in it) is logged and
+            // left out rather than failing the dialog.
+            let request = options
+                .starting_directory
+                .as_ref()
+                .and_then(|directory| new_request().current_folder(directory).log_err())
+                .unwrap_or_else(new_request);
+            let request = match request.identifier(identifier.await).send().await {
+                Ok(request) => request,
+                Err(err) => {
+                    let result = match err {
+                        ashpd::Error::PortalNotFound(_) => anyhow!(FILE_PICKER_PORTAL_MISSING),
+                        err => err.into(),
+                    };
+                    done_tx.send(Err(result)).ok();
+                    return;
+                }
+            };
+
+            let result = match request.response() {
+                Ok(response) => Ok(Some(
+                    response
+                        .uris()
+                        .iter()
+                        .filter_map(|uri: &ashpd::Uri| url::Url::parse(uri.as_str()).ok())
+                        .filter_map(|uri: url::Url| uri.to_file_path().ok())
+                        .collect::<Vec<_>>(),
+                )),
+                Err(ashpd::Error::Response(_)) => Ok(None),
+                Err(e) => Err(e.into()),
+            };
+            done_tx.send(result).ok();
+        })
+        .detach();
+}
+
+/// Asks xdg-desktop-portal where to save a file on behalf of the window that
+/// `identifier` resolves to.
+#[cfg(any(feature = "wayland", feature = "x11"))]
+pub(crate) fn prompt_for_new_path_with_portal(
+    executor: &ForegroundExecutor,
+    identifier: impl Future<Output = Option<ashpd::WindowIdentifier>> + 'static,
+    directory: PathBuf,
+    suggested_name: Option<String>,
+    done_tx: oneshot::Sender<Result<Option<PathBuf>>>,
+) {
+    executor
+        .spawn(async move {
+            let new_request = || {
+                ashpd::desktop::file_chooser::SaveFileRequest::default()
+                    .modal(true)
+                    .title("Save File")
+            };
+            // A folder the portal can't be handed (a NUL byte in it) is logged
+            // and left out rather than failing the dialog.
+            let mut request_builder = new_request()
+                .current_folder(&directory)
+                .log_err()
+                .unwrap_or_else(new_request)
+                .identifier(identifier.await);
+
+            if let Some(suggested_name) = suggested_name {
+                request_builder = request_builder.current_name(suggested_name.as_str());
+            }
+
+            let request = match request_builder.send().await {
+                Ok(request) => request,
+                Err(err) => {
+                    let result = match err {
+                        ashpd::Error::PortalNotFound(_) => anyhow!(FILE_PICKER_PORTAL_MISSING),
+                        err => err.into(),
+                    };
+                    done_tx.send(Err(result)).ok();
+                    return;
+                }
+            };
+
+            let result = match request.response() {
+                Ok(response) => Ok(response
+                    .uris()
+                    .first()
+                    .and_then(|uri: &ashpd::Uri| url::Url::parse(uri.as_str()).ok())
+                    .and_then(|uri: url::Url| uri.to_file_path().ok())),
+                Err(ashpd::Error::Response(_)) => Ok(None),
+                Err(e) => Err(e.into()),
+            };
+            done_tx.send(result).ok();
+        })
+        .detach();
+}
+
 pub(crate) trait LinuxClient {
     fn compositor_name(&self) -> &'static str;
     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R;
@@ -408,53 +526,13 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         let _ = (done_tx.send(Ok(None)), options);
 
         #[cfg(any(feature = "wayland", feature = "x11"))]
-        let identifier = self.inner.window_identifier();
+        prompt_for_paths_with_portal(
+            &self.foreground_executor(),
+            self.inner.window_identifier(),
+            options,
+            done_tx,
+        );
 
-        #[cfg(any(feature = "wayland", feature = "x11"))]
-        self.foreground_executor()
-            .spawn(async move {
-                let title = if options.directories {
-                    "Open Folder"
-                } else {
-                    "Open File"
-                };
-
-                let request = match ashpd::desktop::file_chooser::OpenFileRequest::default()
-                    .identifier(identifier.await)
-                    .modal(true)
-                    .title(title)
-                    .accept_label(options.prompt.as_ref().map(gpui::SharedString::as_str))
-                    .multiple(options.multiple)
-                    .directory(options.directories)
-                    .send()
-                    .await
-                {
-                    Ok(request) => request,
-                    Err(err) => {
-                        let result = match err {
-                            ashpd::Error::PortalNotFound(_) => anyhow!(FILE_PICKER_PORTAL_MISSING),
-                            err => err.into(),
-                        };
-                        let _ = done_tx.send(Err(result));
-                        return;
-                    }
-                };
-
-                let result = match request.response() {
-                    Ok(response) => Ok(Some(
-                        response
-                            .uris()
-                            .iter()
-                            .filter_map(|uri: &ashpd::Uri| url::Url::parse(uri.as_str()).ok())
-                            .filter_map(|uri: url::Url| uri.to_file_path().ok())
-                            .collect::<Vec<_>>(),
-                    )),
-                    Err(ashpd::Error::Response(_)) => Ok(None),
-                    Err(e) => Err(e.into()),
-                };
-                let _ = done_tx.send(result);
-            })
-            .detach();
         done_rx
     }
 
@@ -469,54 +547,13 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         let _ = (done_tx.send(Ok(None)), directory, suggested_name);
 
         #[cfg(any(feature = "wayland", feature = "x11"))]
-        let identifier = self.inner.window_identifier();
-
-        #[cfg(any(feature = "wayland", feature = "x11"))]
-        self.foreground_executor()
-            .spawn({
-                let directory = directory.to_owned();
-                let suggested_name = suggested_name.map(|s| s.to_owned());
-
-                async move {
-                    let mut request_builder =
-                        ashpd::desktop::file_chooser::SaveFileRequest::default()
-                            .identifier(identifier.await)
-                            .modal(true)
-                            .title("Save File")
-                            .current_folder(directory)
-                            .expect("pathbuf should not be nul terminated");
-
-                    if let Some(suggested_name) = suggested_name {
-                        request_builder = request_builder.current_name(suggested_name.as_str());
-                    }
-
-                    let request = match request_builder.send().await {
-                        Ok(request) => request,
-                        Err(err) => {
-                            let result = match err {
-                                ashpd::Error::PortalNotFound(_) => {
-                                    anyhow!(FILE_PICKER_PORTAL_MISSING)
-                                }
-                                err => err.into(),
-                            };
-                            let _ = done_tx.send(Err(result));
-                            return;
-                        }
-                    };
-
-                    let result = match request.response() {
-                        Ok(response) => Ok(response
-                            .uris()
-                            .first()
-                            .and_then(|uri: &ashpd::Uri| url::Url::parse(uri.as_str()).ok())
-                            .and_then(|uri: url::Url| uri.to_file_path().ok())),
-                        Err(ashpd::Error::Response(_)) => Ok(None),
-                        Err(e) => Err(e.into()),
-                    };
-                    let _ = done_tx.send(result);
-                }
-            })
-            .detach();
+        prompt_for_new_path_with_portal(
+            &self.foreground_executor(),
+            self.inner.window_identifier(),
+            directory.to_owned(),
+            suggested_name.map(ToOwned::to_owned),
+            done_tx,
+        );
 
         done_rx
     }

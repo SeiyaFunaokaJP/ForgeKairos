@@ -26,11 +26,11 @@ use dispatch2::DispatchQueue;
 use gpui::{
     AnyWindowHandle, BackgroundExecutor, Bounds, Capslock, CursorStyle, ExternalDragPayload,
     ExternalPaths, FileDropEvent, ForegroundExecutor, KeyDownEvent, Keystroke, Modifiers,
-    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PromptButton, PromptLevel, RequestFrameOptions, SharedString, Size, SystemWindowTab,
-    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowKind,
-    WindowParams, point, px, size,
+    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    PathPromptOptions, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler,
+    PlatformWindow, Point, PromptButton, PromptLevel, RequestFrameOptions, SharedString, Size,
+    SystemWindowTab, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea,
+    WindowKind, WindowParams, point, px, size,
 };
 #[cfg(any(test, feature = "test-support"))]
 use image::RgbaImage;
@@ -1292,6 +1292,23 @@ impl MacWindow {
     }
 }
 
+/// `NSModalResponseAbort`: neither OK nor any alert button's tag, so every
+/// completion handler reads a sheet ended with it as dismissed.
+const NS_MODAL_RESPONSE_ABORT: NSInteger = -1001;
+
+/// `window` when it has no sheet attached. A window shows one sheet at a
+/// time: one begun on top of another may be refused, leaving its prompt
+/// unanswered, or queued behind it and orphaned when the window closes, so a
+/// panel asked for then floats free instead.
+///
+/// # Safety
+///
+/// Must be called on the main thread with an open `NSWindow`.
+unsafe fn sheet_parent_if_free(window: id) -> Option<id> {
+    let attached_sheet: id = unsafe { msg_send![window, attachedSheet] };
+    (attached_sheet == nil).then_some(window)
+}
+
 impl Drop for MacWindow {
     fn drop(&mut self) {
         let mut this = self.0.lock();
@@ -1308,6 +1325,17 @@ impl Drop for MacWindow {
                 unsafe {
                     if let Some(parent) = sheet_parent {
                         let _: () = msg_send![parent, endSheet: window];
+                    }
+                    // Ended here so that its completion handler runs and the
+                    // prompt waiting on it resolves, rather than going away
+                    // with the window.
+                    let attached_sheet: id = msg_send![window, attachedSheet];
+                    if attached_sheet != nil {
+                        let _: () = msg_send![
+                            window,
+                            endSheet: attached_sheet
+                            returnCode: NS_MODAL_RESPONSE_ABORT
+                        ];
                     }
                     window.close();
                     window.autorelease();
@@ -1556,8 +1584,12 @@ impl PlatformWindow for MacWindow {
             let done_tx = Cell::new(Some(done_tx));
             let block = ConcreteBlock::new(move |answer: NSInteger| {
                 let _: () = msg_send![alert, release];
-                if let Some(done_tx) = done_tx.take() {
-                    let _ = done_tx.send(answer.try_into().unwrap());
+                // A sheet ended because its window closed answers with no
+                // button's tag, which leaves the prompt unanswered.
+                if let Ok(answer) = usize::try_from(answer)
+                    && let Some(done_tx) = done_tx.take()
+                {
+                    done_tx.send(answer).ok();
                 }
             });
             let block = block.copy();
@@ -1581,6 +1613,73 @@ impl PlatformWindow for MacWindow {
 
             Some(done_rx)
         }
+    }
+
+    fn prompt_for_paths(
+        &self,
+        options: &PathPromptOptions,
+    ) -> Option<oneshot::Receiver<anyhow::Result<Option<Vec<PathBuf>>>>> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let options = options.clone();
+        let (native_window, closed, executor) = {
+            let lock = self.0.lock();
+            (
+                lock.native_window,
+                lock.closed.clone(),
+                lock.foreground_executor.clone(),
+            )
+        };
+        executor
+            .spawn(async move {
+                if closed.load(Ordering::Acquire) {
+                    done_tx.send(Ok(None)).ok();
+                } else {
+                    unsafe {
+                        crate::platform::begin_open_panel(
+                            options,
+                            sheet_parent_if_free(native_window),
+                            done_tx,
+                        )
+                    };
+                }
+            })
+            .detach();
+        Some(done_rx)
+    }
+
+    fn prompt_for_new_path(
+        &self,
+        directory: &std::path::Path,
+        suggested_name: Option<&str>,
+    ) -> Option<oneshot::Receiver<anyhow::Result<Option<PathBuf>>>> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let directory = directory.to_owned();
+        let suggested_name = suggested_name.map(ToOwned::to_owned);
+        let (native_window, closed, executor) = {
+            let lock = self.0.lock();
+            (
+                lock.native_window,
+                lock.closed.clone(),
+                lock.foreground_executor.clone(),
+            )
+        };
+        executor
+            .spawn(async move {
+                if closed.load(Ordering::Acquire) {
+                    done_tx.send(Ok(None)).ok();
+                } else {
+                    unsafe {
+                        crate::platform::begin_save_panel(
+                            directory,
+                            suggested_name,
+                            sheet_parent_if_free(native_window),
+                            done_tx,
+                        )
+                    };
+                }
+            })
+            .detach();
+        Some(done_rx)
     }
 
     fn activate(&self) {

@@ -1,6 +1,7 @@
 mod launch_approval_prompts;
 mod mcp_json_import;
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use collections::HashMap;
@@ -2801,8 +2802,8 @@ fn render_command_field(
         } else {
             "ファイルを選択"
         }))
-        .on_click(cx.listener(|_this, _event, window, cx| {
-            pick_command_file(window, cx);
+        .on_click(cx.listener(|this, _event, window, cx| {
+            pick_command_file(this, window, cx);
         }));
     let control = h_flex()
         .w_64()
@@ -2827,14 +2828,53 @@ fn render_command_field(
     .into_any_element()
 }
 
-fn pick_command_file(window: &mut Window, cx: &mut Context<SettingsWindow>) {
-    let paths = cx.prompt_for_paths(gpui::PathPromptOptions {
-        files: true,
-        directories: false,
-        multiple: false,
-        prompt: Some("選択".into()),
-    });
+/// Where the command picker opens: the folder holding the command already
+/// entered when that is a folder on this machine that exists, and the home
+/// folder otherwise.
+async fn command_picker_starting_directory(command: &str, fs: &dyn fs::Fs) -> PathBuf {
+    let command = Path::new(command.trim());
+    // The command may come from a pasted snippet, and looking up a UNC path
+    // would send the user's credentials to the host it names.
+    if util::paths::is_local_absolute_path(command)
+        && let Some(folder) = command.parent()
+        && fs.is_dir(folder).await
+    {
+        return folder.to_path_buf();
+    }
+    paths::home_dir().clone()
+}
+
+fn pick_command_file(
+    settings_window: &SettingsWindow,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(form) = settings_window.mcp_server_form.as_ref() else {
+        return;
+    };
+    let command = form.command.read(cx).text(cx);
+    let fs = <dyn fs::Fs>::global(cx);
     cx.spawn_in(window, async move |this, cx| {
+        let starting_directory = command_picker_starting_directory(&command, fs.as_ref()).await;
+        // Attached to the settings window: a dialog shown for the whole
+        // application goes to whichever window happens to be active.
+        let Some(paths) = this
+            .update_in(cx, |_, window, cx| {
+                window.prompt_for_paths(
+                    gpui::PathPromptOptions {
+                        files: true,
+                        directories: false,
+                        multiple: false,
+                        prompt: Some("選択".into()),
+                        starting_directory: Some(starting_directory),
+                    },
+                    cx,
+                )
+            })
+            .log_err()
+        else {
+            return;
+        };
         let picked = match paths.await {
             Ok(Ok(Some(paths))) => paths.into_iter().next(),
             // Dismissed, or the dialog went away with the window.
@@ -3888,6 +3928,10 @@ fn collect_kv(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fs::{FakeFs, Fs as _};
+    use gpui::TestAppContext;
+    use serde_json::json;
+    use util::path;
 
     fn values(transport: McpTransport) -> McpServerFormValues {
         let mut values = McpServerFormValues::empty(transport);
@@ -3897,6 +3941,128 @@ mod tests {
 
     fn id(name: &str) -> ContextServerId {
         ContextServerId(name.into())
+    }
+
+    fn init_command_picker_test(cx: &mut TestAppContext) -> Arc<FakeFs> {
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+            menu::init();
+            let queue = crate::ProjectSettingsUpdateQueue::new(cx);
+            cx.set_global(queue);
+        });
+        let fs = FakeFs::new(cx.executor());
+        cx.update(|cx| <dyn fs::Fs>::set_global(fs.clone(), cx));
+        fs
+    }
+
+    #[gpui::test]
+    async fn command_picker_opens_in_the_commands_folder_attached_to_the_settings_window(
+        cx: &mut TestAppContext,
+    ) {
+        let fs = init_command_picker_test(cx);
+        fs.insert_tree(path!("/tools/bin"), json!({ "server": "" }))
+            .await;
+        let (settings_window, cx) = cx.add_window_view(|window, cx| {
+            let mut settings_window = SettingsWindow::test(window, cx);
+            let mut values = McpServerFormValues::empty(McpTransport::Stdio);
+            values.command = path!("/tools/bin/server").into();
+            settings_window.mcp_server_form =
+                Some(McpServerForm::from_values(values, None, window, cx));
+            settings_window
+        });
+
+        let settings_window_handle =
+            settings_window.update_in(cx, |settings_window, window, cx| {
+                pick_command_file(settings_window, window, cx);
+                window.window_handle()
+            });
+        cx.run_until_parked();
+
+        let (options, owner) = cx
+            .pending_path_prompt()
+            .expect("the command picker should be open");
+        assert_eq!(owner, Some(settings_window_handle));
+        assert_eq!(
+            options.starting_directory,
+            Some(PathBuf::from(path!("/tools/bin")))
+        );
+        assert!(options.files && !options.directories && !options.multiple);
+
+        let picked = PathBuf::from(path!("/tools/bin/other-server"));
+        cx.simulate_path_prompt_response({
+            let picked = picked.clone();
+            move |_options| Some(vec![picked])
+        });
+        cx.run_until_parked();
+
+        let command = settings_window.read_with(cx, |settings_window, cx| {
+            settings_window
+                .mcp_server_form
+                .as_ref()
+                .map(|form| form.command.read(cx).text(cx))
+        });
+        assert_eq!(command, Some(picked.to_string_lossy().into_owned()));
+    }
+
+    #[gpui::test]
+    async fn command_picker_starts_in_the_home_folder_without_a_usable_command(
+        cx: &mut TestAppContext,
+    ) {
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/tools"), json!({ "server": "" }))
+            .await;
+        let home = paths::home_dir().clone();
+
+        for command in [
+            "",
+            "   ",
+            "server",
+            "bin/server",
+            path!("/missing/bin/server"),
+        ] {
+            assert_eq!(
+                command_picker_starting_directory(command, fs.as_ref()).await,
+                home,
+                "{command:?}"
+            );
+        }
+        assert_eq!(
+            command_picker_starting_directory(
+                &format!("  {}  ", path!("/tools/server")),
+                fs.as_ref()
+            )
+            .await,
+            PathBuf::from(path!("/tools"))
+        );
+
+        #[cfg(windows)]
+        {
+            // The fake file system ignores the prefix and would report each of
+            // these folders as present, so only the prefix keeps the picker
+            // from looking at another host.
+            assert!(fs.is_dir(Path::new(r"\\host\share\tools")).await);
+            for command in [
+                r"\\host\share\tools\server.exe",
+                r"\\host@SSL\DavWWWRoot\tools\server.exe",
+                r"\\?\UNC\host\share\tools\server.exe",
+                r"C:tools\server.exe",
+            ] {
+                assert_eq!(
+                    command_picker_starting_directory(command, fs.as_ref()).await,
+                    home,
+                    "{command:?}"
+                );
+            }
+            // A mapped drive is a drive letter like any other, and its folder
+            // is used as typed rather than resolved to the share behind it.
+            assert_eq!(
+                command_picker_starting_directory(r"Z:\tools\server.exe", fs.as_ref()).await,
+                PathBuf::from(r"Z:\tools")
+            );
+        }
     }
 
     #[test]

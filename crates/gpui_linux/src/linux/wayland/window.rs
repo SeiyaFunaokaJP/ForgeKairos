@@ -1568,6 +1568,40 @@ impl PlatformWindow for WaylandWindow {
         None
     }
 
+    fn prompt_for_paths(
+        &self,
+        options: &gpui::PathPromptOptions,
+    ) -> Option<Receiver<anyhow::Result<Option<Vec<std::path::PathBuf>>>>> {
+        let (done_tx, done_rx) = futures::channel::oneshot::channel();
+        let state = self.borrow();
+        let surface = state.surface.clone();
+        crate::linux::prompt_for_paths_with_portal(
+            &state.globals.executor,
+            async move { ashpd::WindowIdentifier::from_wayland(&surface).await },
+            options.clone(),
+            done_tx,
+        );
+        Some(done_rx)
+    }
+
+    fn prompt_for_new_path(
+        &self,
+        directory: &std::path::Path,
+        suggested_name: Option<&str>,
+    ) -> Option<Receiver<anyhow::Result<Option<std::path::PathBuf>>>> {
+        let (done_tx, done_rx) = futures::channel::oneshot::channel();
+        let state = self.borrow();
+        let surface = state.surface.clone();
+        crate::linux::prompt_for_new_path_with_portal(
+            &state.globals.executor,
+            async move { ashpd::WindowIdentifier::from_wayland(&surface).await },
+            directory.to_owned(),
+            suggested_name.map(ToOwned::to_owned),
+            done_tx,
+        );
+        Some(done_rx)
+    }
+
     fn activate(&self) {
         // Try to request an activation token. Even though the activation is likely going to be rejected,
         // KWin and Mutter can use the app_id to visually indicate we're requesting attention.

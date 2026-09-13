@@ -6,6 +6,7 @@ use std::{
     ffi::OsStr,
     ops::AddAssign,
     panic::Location,
+    path::{Component, Path, Prefix},
     pin::Pin,
     sync::OnceLock,
     task::{Context, Poll},
@@ -143,6 +144,56 @@ pub fn get_windows_system_shell() -> String {
     });
 
     (*SYSTEM_SHELL).clone()
+}
+
+/// Whether `path` is absolute and names a place on this machine's own drives.
+/// On Windows that takes a drive letter (`C:\…`, `\\?\C:\…`): asked about a UNC
+/// path (`\\host\share`, WebDAV's `\\host@SSL\…`, `\\?\UNC\…`), Windows
+/// connects to that host and hands it the user's credentials. Device paths
+/// (`\\.\…`) are refused as well.
+pub fn is_local_absolute_path(path: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    if cfg!(windows) {
+        matches!(
+            path.components().next(),
+            Some(Component::Prefix(prefix))
+                if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        )
+    } else {
+        true
+    }
+}
+
+#[test]
+fn only_paths_on_a_drive_count_as_local() {
+    for elsewhere in [
+        r"\\host\share",
+        r"\\host\share\tools\server.exe",
+        r"\\host@SSL\DavWWWRoot",
+        r"\\?\UNC\host\share",
+        r"\\.\pipe\x",
+        r"C:tools",
+        "tools",
+        r"tools\server.exe",
+        "",
+    ] {
+        assert!(
+            !is_local_absolute_path(Path::new(elsewhere)),
+            "{elsewhere:?}"
+        );
+    }
+    #[cfg(windows)]
+    {
+        for local in [r"C:\x", r"\\?\C:\x", r"Z:\", r"z:\tools\server.exe"] {
+            assert!(is_local_absolute_path(Path::new(local)), "{local:?}");
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        assert!(is_local_absolute_path(Path::new("/tools/server")));
+    }
 }
 
 pub fn post_inc<T: From<u8> + AddAssign<T> + Copy>(value: &mut T) -> T {

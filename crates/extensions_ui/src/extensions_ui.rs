@@ -175,6 +175,7 @@ pub fn init(cx: &mut App) {
                         directories: true,
                         multiple: false,
                         prompt: None,
+                        starting_directory: None,
                     },
                     DirectoryLister::Local(
                         workspace.project().clone(),

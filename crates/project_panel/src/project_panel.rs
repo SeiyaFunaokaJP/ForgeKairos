@@ -3741,12 +3741,16 @@ impl ProjectPanel {
         let total_files = files_to_download.len();
         let workspace = self.workspace.clone();
 
-        let destination_dir = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: Some("ダウンロード".into()),
-        });
+        let destination_dir = window.prompt_for_paths(
+            PathPromptOptions {
+                files: false,
+                directories: true,
+                multiple: false,
+                prompt: Some("ダウンロード".into()),
+                starting_directory: None,
+            },
+            cx,
+        );
 
         let fs = self.fs.clone();
         let notification_id =

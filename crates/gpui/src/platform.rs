@@ -848,6 +848,25 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         detail: Option<&str>,
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>>;
+    /// Shows the platform's "Open" dialog attached to this window. Returns
+    /// `None` where the platform can only show it for the whole application,
+    /// and [`Platform::prompt_for_paths`] is used instead.
+    fn prompt_for_paths(
+        &self,
+        _options: &PathPromptOptions,
+    ) -> Option<oneshot::Receiver<Result<Option<Vec<PathBuf>>>>> {
+        None
+    }
+    /// Shows the platform's "Save" dialog attached to this window. Returns
+    /// `None` where the platform can only show it for the whole application,
+    /// and [`Platform::prompt_for_new_path`] is used instead.
+    fn prompt_for_new_path(
+        &self,
+        _directory: &Path,
+        _suggested_name: Option<&str>,
+    ) -> Option<oneshot::Receiver<Result<Option<PathBuf>>>> {
+        None
+    }
     fn activate(&self);
     /// Requests that the operating system draw attention to this window.
     fn request_attention(&self) {}
@@ -2172,6 +2191,11 @@ pub struct PathPromptOptions {
     pub multiple: bool,
     /// The prompt to show to a user when selecting a path
     pub prompt: Option<SharedString>,
+    /// The folder the dialog opens in. When this is `None`, or the folder does
+    /// not exist, the platform picks the folder the way it always does. On
+    /// Windows only a folder behind a drive letter is used, because looking up
+    /// a UNC path makes Windows connect to that host.
+    pub starting_directory: Option<PathBuf>,
 }
 
 /// What kind of prompt styling to show

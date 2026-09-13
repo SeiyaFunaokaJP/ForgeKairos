@@ -1337,7 +1337,7 @@ fn open_target_in_explorer(target: &Path) -> Result<()> {
     })
 }
 
-fn file_open_dialog(
+pub(crate) fn file_open_dialog(
     options: PathPromptOptions,
     window: Option<HWND>,
 ) -> Result<Option<Vec<PathBuf>>> {
@@ -1358,6 +1358,17 @@ fn file_open_dialog(
         if let Some(prompt) = options.prompt {
             let prompt: &str = &prompt;
             folder_dialog.SetOkButtonLabel(&HSTRING::from(prompt))?;
+        }
+
+        if let Some(folder) = options
+            .starting_directory
+            .as_deref()
+            .and_then(existing_folder_item)
+        {
+            folder_dialog
+                .SetFolder(&folder)
+                .context("failed to set dialog folder")
+                .log_err();
         }
 
         if folder_dialog.Show(window).is_err() {
@@ -1382,7 +1393,32 @@ fn file_open_dialog(
     Ok(Some(paths))
 }
 
-fn file_save_dialog(
+/// The shell item for `directory` when it is a folder on this machine that
+/// exists. Otherwise the dialog is left to open wherever Windows would open it
+/// anyway.
+fn existing_folder_item(directory: &Path) -> Option<IShellItem> {
+    let directory = existing_directory(directory)?;
+    let item: windows::core::Result<IShellItem> =
+        unsafe { SHCreateItemFromParsingName(&HSTRING::from(directory.as_path()), None) };
+    item.context("failed to create a shell item for the dialog folder")
+        .log_err()
+}
+
+fn existing_directory(directory: &Path) -> Option<PathBuf> {
+    // Made absolute without touching the file system. Canonicalizing would
+    // follow junctions and turn `subst` and mapped drives into their targets,
+    // so the path picked in the dialog would no longer start with the folder
+    // the caller named.
+    let directory = std::path::absolute(directory).ok()?;
+    if !gpui_util::is_local_absolute_path(&directory) {
+        return None;
+    }
+    // The shell parses plain paths, not the verbatim `\\?\` form.
+    let directory = dunce::simplified(&directory).to_path_buf();
+    directory.is_dir().then_some(directory)
+}
+
+pub(crate) fn file_save_dialog(
     directory: PathBuf,
     suggested_name: Option<String>,
     window: Option<HWND>,
@@ -1603,7 +1639,34 @@ mod tests {
     use crate::{read_from_clipboard, write_to_clipboard};
     use gpui::ClipboardItem;
 
-    use super::encode_restart_arguments;
+    use std::path::{Path, PathBuf};
+
+    use super::{encode_restart_arguments, existing_directory};
+
+    #[test]
+    fn test_dialog_folder_must_be_an_existing_local_directory() {
+        let temp_directory = std::env::temp_dir();
+        let resolved = existing_directory(&temp_directory).expect("the temp folder exists");
+        assert_eq!(
+            resolved,
+            std::path::absolute(&temp_directory).expect("the temp folder has an absolute path"),
+            "the folder is kept as named, not resolved"
+        );
+
+        let verbatim = PathBuf::from(format!(r"\\?\{}", resolved.display()));
+        assert_eq!(existing_directory(&verbatim), Some(resolved));
+
+        let current_directory = std::env::current_dir().expect("the test has a current folder");
+        assert_eq!(
+            existing_directory(Path::new(".")),
+            Some(current_directory),
+            "a relative folder is taken from the current one"
+        );
+
+        assert!(existing_directory(&temp_directory.join("gpui-no-such-folder-5e1f")).is_none());
+        let executable = std::env::current_exe().expect("the test binary has a path");
+        assert!(existing_directory(&executable).is_none());
+    }
 
     #[test]
     fn test_encode_restart_arguments() {

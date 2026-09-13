@@ -799,7 +799,7 @@ impl TerminalView {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned());
         let options = TerminalSettings::get_global(cx).session_log.options();
-        let prompt = cx.prompt_for_new_path(&directory, file_name.as_deref());
+        let prompt = window.prompt_for_new_path(&directory, file_name.as_deref(), cx);
 
         cx.spawn_in(window, async move |this, cx| {
             let path = match prompt.await {

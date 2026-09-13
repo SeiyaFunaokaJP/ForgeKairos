@@ -1464,6 +1464,42 @@ impl PlatformWindow for X11Window {
         None
     }
 
+    fn prompt_for_paths(
+        &self,
+        options: &gpui::PathPromptOptions,
+    ) -> Option<futures::channel::oneshot::Receiver<anyhow::Result<Option<Vec<std::path::PathBuf>>>>>
+    {
+        let (done_tx, done_rx) = futures::channel::oneshot::channel();
+        let executor = self.0.state.borrow().executor.clone();
+        let identifier = ashpd::WindowIdentifier::from_xid(self.0.x_window.into());
+        crate::linux::prompt_for_paths_with_portal(
+            &executor,
+            std::future::ready(Some(identifier)),
+            options.clone(),
+            done_tx,
+        );
+        Some(done_rx)
+    }
+
+    fn prompt_for_new_path(
+        &self,
+        directory: &std::path::Path,
+        suggested_name: Option<&str>,
+    ) -> Option<futures::channel::oneshot::Receiver<anyhow::Result<Option<std::path::PathBuf>>>>
+    {
+        let (done_tx, done_rx) = futures::channel::oneshot::channel();
+        let executor = self.0.state.borrow().executor.clone();
+        let identifier = ashpd::WindowIdentifier::from_xid(self.0.x_window.into());
+        crate::linux::prompt_for_new_path_with_portal(
+            &executor,
+            std::future::ready(Some(identifier)),
+            directory.to_owned(),
+            suggested_name.map(ToOwned::to_owned),
+            done_tx,
+        );
+        Some(done_rx)
+    }
+
     fn activate(&self) {
         let data = [1, xproto::Time::CURRENT_TIME.into(), 0, 0, 0];
         let message = xproto::ClientMessageEvent::new(

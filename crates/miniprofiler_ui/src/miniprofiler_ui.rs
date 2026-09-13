@@ -565,7 +565,7 @@ impl Render for ProfilerWindow {
                             .child(
                                 Button::new("export-data", "Save")
                                     .style(ButtonStyle::Filled)
-                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                    .on_click(cx.listener(|this, _, window, cx| {
                                         let Some(workspace) = this.workspace.as_ref() else {
                                             return;
                                         };
@@ -598,9 +598,10 @@ impl Render for ProfilerWindow {
                                             .and_then(|p| p.parent().map(|p| p.to_owned()))
                                             .unwrap_or_else(PathBuf::default);
 
-                                        let path = cx.prompt_for_new_path(
+                                        let path = window.prompt_for_new_path(
                                             &active_path,
                                             Some("performance_profile.miniprof.json"),
+                                            cx,
                                         );
 
                                         cx.background_spawn(async move {

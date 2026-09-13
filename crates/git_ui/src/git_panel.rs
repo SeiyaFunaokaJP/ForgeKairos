@@ -4654,6 +4654,7 @@ impl GitPanel {
                     directories: false,
                     multiple: false,
                     prompt: Some("適用するパッチファイルを選択".into()),
+                    starting_directory: None,
                 },
                 Self::patch_directory_lister(workspace, cx),
                 window,

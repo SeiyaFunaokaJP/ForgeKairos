@@ -12,10 +12,10 @@ use crate::{
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
     Hsla, InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke,
     KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite,
-    MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas,
-    PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PolychromeSprite,
-    Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams, RenderImage,
-    RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
+    MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, PathPromptOptions, Pixels,
+    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
+    PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
+    RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
     StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRenderingMode, TextStyle,
@@ -5882,6 +5882,39 @@ impl Window {
     /// [`App::set_prompt_builder`]), not for platform-native prompt dialogs.
     pub fn has_active_prompt(&self) -> bool {
         self.prompt.is_some()
+    }
+
+    /// Displays the platform's "Open" dialog attached to this window where the
+    /// platform supports that, and otherwise the application-wide one that
+    /// [`App::prompt_for_paths`] shows.
+    ///
+    /// The selected paths are relayed through the returned channel, or `None`
+    /// if the dialog is dismissed.
+    pub fn prompt_for_paths(
+        &self,
+        options: PathPromptOptions,
+        cx: &App,
+    ) -> oneshot::Receiver<Result<Option<Vec<std::path::PathBuf>>>> {
+        self.platform_window
+            .prompt_for_paths(&options)
+            .unwrap_or_else(|| cx.prompt_for_paths(options))
+    }
+
+    /// Displays the platform's "Save" dialog, opened in `directory`, attached to
+    /// this window where the platform supports that, and otherwise the
+    /// application-wide one that [`App::prompt_for_new_path`] shows.
+    ///
+    /// The chosen path is relayed through the returned channel, or `None` if
+    /// the dialog is dismissed.
+    pub fn prompt_for_new_path(
+        &self,
+        directory: &std::path::Path,
+        suggested_name: Option<&str>,
+        cx: &App,
+    ) -> oneshot::Receiver<Result<Option<std::path::PathBuf>>> {
+        self.platform_window
+            .prompt_for_new_path(directory, suggested_name)
+            .unwrap_or_else(|| cx.prompt_for_new_path(directory, suggested_name))
     }
 
     /// Returns the current context stack.

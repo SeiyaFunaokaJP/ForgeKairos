@@ -837,6 +837,52 @@ impl PlatformWindow for WindowsWindow {
         Some(done_rx)
     }
 
+    fn prompt_for_paths(
+        &self,
+        options: &PathPromptOptions,
+    ) -> Option<Receiver<Result<Option<Vec<PathBuf>>>>> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let options = options.clone();
+        let owner = self.0.hwnd;
+        self.0
+            .executor
+            .spawn(async move {
+                // The window may have closed before this runs.
+                let result = if unsafe { IsWindow(Some(owner)) }.as_bool() {
+                    file_open_dialog(options, Some(owner))
+                } else {
+                    Ok(None)
+                };
+                done_tx.send(result).ok();
+            })
+            .detach();
+        Some(done_rx)
+    }
+
+    fn prompt_for_new_path(
+        &self,
+        directory: &std::path::Path,
+        suggested_name: Option<&str>,
+    ) -> Option<Receiver<Result<Option<PathBuf>>>> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let directory = directory.to_owned();
+        let suggested_name = suggested_name.map(ToOwned::to_owned);
+        let owner = self.0.hwnd;
+        self.0
+            .executor
+            .spawn(async move {
+                // The window may have closed before this runs.
+                let result = if unsafe { IsWindow(Some(owner)) }.as_bool() {
+                    file_save_dialog(directory, suggested_name, Some(owner))
+                } else {
+                    Ok(None)
+                };
+                done_tx.send(result).ok();
+            })
+            .detach();
+        Some(done_rx)
+    }
+
     fn activate(&self) {
         let hwnd = self.0.hwnd;
         let this = self.0.clone();

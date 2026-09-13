@@ -1026,6 +1026,7 @@ fn prompt_for_open_path_on_remote_connection(
                         directories: true,
                         multiple: true,
                         prompt: None,
+                        starting_directory: None,
                     },
                     DirectoryLister::Project(project.clone()),
                     window,
@@ -1103,6 +1104,7 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
                     directories: true,
                     multiple: true,
                     prompt: None,
+                    starting_directory: None,
                 },
                 create_new_window,
                 cx,
@@ -1118,6 +1120,7 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
                     directories,
                     multiple: true,
                     prompt: None,
+                    starting_directory: None,
                 },
                 true,
                 cx,
@@ -3907,7 +3910,7 @@ impl Workspace {
             rx
         } else {
             let (tx, rx) = oneshot::channel();
-            let abs_path = cx.prompt_for_paths(path_prompt_options);
+            let abs_path = window.prompt_for_paths(path_prompt_options, cx);
 
             cx.spawn_in(window, async move |workspace, cx| {
                 let Ok(result) = abs_path.await else {
@@ -3973,7 +3976,7 @@ impl Workspace {
 
         let (tx, rx) = oneshot::channel();
         cx.spawn_in(window, async move |workspace, cx| {
-            let abs_path = workspace.update(cx, |workspace, cx| {
+            let abs_path = workspace.update_in(cx, |workspace, window, cx| {
                 let relative_to = start_directory
                     .clone()
                     .or_else(|| {
@@ -3989,7 +3992,7 @@ impl Workspace {
                     })
                     .or_else(std::env::home_dir)
                     .unwrap_or_else(|| PathBuf::from(""));
-                cx.prompt_for_new_path(&relative_to, suggested_name.as_deref())
+                window.prompt_for_new_path(&relative_to, suggested_name.as_deref(), cx)
             })?;
             let abs_path = match abs_path.await? {
                 Ok(path) => path,
@@ -4798,6 +4801,7 @@ impl Workspace {
                 directories: true,
                 multiple: true,
                 prompt: None,
+                starting_directory: None,
             },
             DirectoryLister::Project(self.project.clone()),
             window,
@@ -4856,6 +4860,7 @@ impl Workspace {
                 directories: true,
                 multiple: false,
                 prompt: None,
+                starting_directory: None,
             },
             DirectoryLister::Project(self.project.clone()),
             window,

@@ -93,14 +93,25 @@ pub(crate) struct TestSystemNotifications {
     response_callback: Option<Box<dyn FnMut(SystemNotificationResponse)>>,
 }
 
+struct TestNewPathPrompt {
+    directory: PathBuf,
+    /// `None` for a prompt shown for the whole application.
+    owner: Option<AnyWindowHandle>,
+    tx: oneshot::Sender<Result<Option<PathBuf>>>,
+}
+
+struct TestPathsPrompt {
+    options: PathPromptOptions,
+    /// `None` for a prompt shown for the whole application.
+    owner: Option<AnyWindowHandle>,
+    tx: oneshot::Sender<Result<Option<Vec<PathBuf>>>>,
+}
+
 #[derive(Default)]
 pub(crate) struct TestPrompts {
     multiple_choice: VecDeque<TestPrompt>,
-    new_path: VecDeque<(PathBuf, oneshot::Sender<Result<Option<PathBuf>>>)>,
-    paths: VecDeque<(
-        PathPromptOptions,
-        oneshot::Sender<Result<Option<Vec<PathBuf>>>>,
-    )>,
+    new_path: VecDeque<TestNewPathPrompt>,
+    paths: VecDeque<TestPathsPrompt>,
 }
 
 impl TestPlatform {
@@ -155,28 +166,28 @@ impl TestPlatform {
         &self,
         select_path: impl FnOnce(&std::path::Path) -> Option<std::path::PathBuf>,
     ) {
-        let (path, tx) = self
+        let prompt = self
             .prompts
             .borrow_mut()
             .new_path
             .pop_front()
             .expect("no pending new path prompt");
-        tx.send(Ok(select_path(&path))).ok();
+        prompt.tx.send(Ok(select_path(&prompt.directory))).ok();
     }
 
     pub(crate) fn simulate_path_prompt_response(
         &self,
         select_paths: impl FnOnce(&PathPromptOptions) -> Option<Vec<std::path::PathBuf>>,
     ) {
-        let (options, tx) = self
+        let prompt = self
             .prompts
             .borrow_mut()
             .paths
             .pop_front()
             .expect("no pending paths prompt");
-        let selection = select_paths(&options);
+        let selection = select_paths(&prompt.options);
         if let Some(paths) = &selection
-            && !options.multiple
+            && !prompt.options.multiple
             && paths.len() > 1
         {
             panic!(
@@ -184,11 +195,55 @@ impl TestPlatform {
                 paths.len()
             );
         }
-        tx.send(Ok(selection)).ok();
+        prompt.tx.send(Ok(selection)).ok();
     }
 
     pub(crate) fn did_prompt_for_paths(&self) -> bool {
         !self.prompts.borrow().paths.is_empty()
+    }
+
+    pub(crate) fn pending_path_prompt(
+        &self,
+    ) -> Option<(PathPromptOptions, Option<AnyWindowHandle>)> {
+        let prompts = self.prompts.borrow();
+        let prompt = prompts.paths.front()?;
+        Some((prompt.options.clone(), prompt.owner))
+    }
+
+    pub(crate) fn pending_new_path_prompt(&self) -> Option<(PathBuf, Option<AnyWindowHandle>)> {
+        let prompts = self.prompts.borrow();
+        let prompt = prompts.new_path.front()?;
+        Some((prompt.directory.clone(), prompt.owner))
+    }
+
+    pub(crate) fn push_paths_prompt(
+        &self,
+        options: PathPromptOptions,
+        owner: Option<AnyWindowHandle>,
+    ) -> oneshot::Receiver<Result<Option<Vec<PathBuf>>>> {
+        let (tx, rx) = oneshot::channel();
+        self.prompts
+            .borrow_mut()
+            .paths
+            .push_back(TestPathsPrompt { options, owner, tx });
+        rx
+    }
+
+    pub(crate) fn push_new_path_prompt(
+        &self,
+        directory: &Path,
+        owner: Option<AnyWindowHandle>,
+    ) -> oneshot::Receiver<Result<Option<PathBuf>>> {
+        let (tx, rx) = oneshot::channel();
+        self.prompts
+            .borrow_mut()
+            .new_path
+            .push_back(TestNewPathPrompt {
+                directory: directory.to_path_buf(),
+                owner,
+                tx,
+            });
+        rx
     }
 
     #[track_caller]
@@ -428,9 +483,7 @@ impl Platform for TestPlatform {
         &self,
         options: crate::PathPromptOptions,
     ) -> oneshot::Receiver<Result<Option<Vec<std::path::PathBuf>>>> {
-        let (tx, rx) = oneshot::channel();
-        self.prompts.borrow_mut().paths.push_back((options, tx));
-        rx
+        self.push_paths_prompt(options, None)
     }
 
     fn prompt_for_new_path(
@@ -438,12 +491,7 @@ impl Platform for TestPlatform {
         directory: &std::path::Path,
         _suggested_name: Option<&str>,
     ) -> oneshot::Receiver<Result<Option<std::path::PathBuf>>> {
-        let (tx, rx) = oneshot::channel();
-        self.prompts
-            .borrow_mut()
-            .new_path
-            .push_back((directory.to_path_buf(), tx));
-        rx
+        self.push_new_path_prompt(directory, None)
     }
 
     fn can_select_mixed_files_and_dirs(&self) -> bool {
