@@ -1621,6 +1621,12 @@ impl AgentPanel {
     /// 復元しなかったアイテムの行の掃除は、中央とすべてのパネルの復元が揃って
     /// からワークスペースが 1 回だけ走らせる (ADR-F37)。ここでやることは
     /// 待ち合わせへの参加だけで、失敗しても必ず抜ける。
+    ///
+    /// The first time that bookkeeping drains also ends the workspace's dock
+    /// startup phase (ADR-F48). This runs again whenever the panel is loaded
+    /// later - AI turned back on, the active workspace changing, the sidebar
+    /// loading it into a workspace - and if that workspace's startup is
+    /// already over, taking part again does not bring it back.
     pub fn load(
         workspace: WeakEntity<Workspace>,
         cx: AsyncWindowContext,
@@ -6416,6 +6422,10 @@ impl Panel for AgentPanel {
                 .get_or_insert_default()
                 .set_flexible_size(flexible);
         });
+    }
+
+    fn starts_open(&self, _window: &Window, cx: &App) -> bool {
+        AgentSettings::get_global(cx).starts_open
     }
 
     fn set_active(&mut self, active: bool, window: &mut Window, cx: &mut Context<Self>) {

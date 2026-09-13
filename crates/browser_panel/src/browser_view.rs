@@ -236,7 +236,7 @@ impl BrowserView {
     }
 
     /// タブを別ウィンドウへ移したときに持ち主が張り替える。モーダル判定
-    /// ([`Self::surface_hidden_reason`]) が消えたウィンドウを見に行かないように。
+    /// ([`Self::surface_presentation`]) が消えたウィンドウを見に行かないように。
     pub(crate) fn set_workspace(&mut self, workspace: WeakEntity<Workspace>) {
         self.workspace = workspace;
     }
@@ -798,12 +798,6 @@ impl BrowserView {
 
     // -- 表示 ----------------------------------------------------------------
 
-    /// 子 HWND は自分の矩形でマウス入力を受け取り続けるので、GPUI 側が
-    /// その上に何かを出している間は隠す (ADR-F19)。判定そのものは
-    /// [`surface_hidden_reason_for`]。
-    ///
-    /// **このメソッドが呼ばれている = ビューが描画されている** ので、ホストは
-    /// このビューを表示している。はっきり検出できた条件でだけ隠す。
     /// GPUI がこのホストで子 HWND の**手前**に合成しているか (= 透過穴で見せている)。
     /// 穴が無いホストでは子 HWND が常に手前なので、隠す判断を遅らせる意味が無い。
     pub(crate) fn host_is_composited(&self) -> bool {
@@ -816,11 +810,17 @@ impl BrowserView {
         self.host_is_composited = composited;
     }
 
-    fn surface_hidden_reason(&self, window: &mut Window, cx: &mut App) -> Option<&'static str> {
+    /// 子 HWND は自分の矩形でマウス入力を受け取り続けるので、GPUI 側が
+    /// その上に何かを出している間は隠すか、入力を止める (ADR-F19 / ADR-F48)。
+    /// 判定そのものは [`surface_presentation_for`]。
+    ///
+    /// **このメソッドが呼ばれている = ビューが描画されている** ので、ホストは
+    /// このビューを表示している。はっきり検出できた条件でだけ隠す。
+    fn surface_presentation(&self, window: &mut Window, cx: &mut App) -> SurfacePresentation {
         let modal_is_open = self.workspace.upgrade().is_some_and(|workspace| {
             workspace.update(cx, |workspace, cx| workspace.has_active_modal(window, cx))
         });
-        surface_hidden_reason_for(cx.has_active_drag(), self.host_is_composited, modal_is_open)
+        surface_presentation_for(cx.has_active_drag(), self.host_is_composited, modal_is_open)
     }
 
     fn render_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -1519,7 +1519,7 @@ impl BrowserView {
                 offer_runtime_download,
             } => self.render_unavailable(message.clone(), *offer_runtime_download, cx),
             SurfaceState::Idle | SurfaceState::Starting | SurfaceState::Ready => {
-                let hidden_reason = self.surface_hidden_reason(window, cx);
+                let presentation = self.surface_presentation(window, cx);
                 // 穴を開けてよいのは実際にページが載っているときだけ。ページの
                 // 無い矩形を透明にすると、ウィンドウの背後 (デスクトップ) が
                 // そのまま見えてしまう。
@@ -1530,6 +1530,7 @@ impl BrowserView {
                 // にクリックが渡らないので、そもそも切り抜く必要がない。
                 let cut_overlays = !cx.has_active_drag();
                 let webview = self.webview.clone();
+                let focus_handle = self.focus_handle.clone();
                 div()
                     .relative()
                     .size_full()
@@ -1557,10 +1558,11 @@ impl BrowserView {
                     .child(
                         canvas(
                             |_, _, _| (),
-                            move |bounds, _, window, _| {
+                            move |bounds, _, window, cx| {
                                 let Some(webview) = webview else {
                                     return;
                                 };
+                                let view_focused = focus_handle.contains_focused(window, cx);
                                 sync_surface_viewport(
                                     &webview,
                                     Viewport {
@@ -1569,20 +1571,22 @@ impl BrowserView {
                                         width: f32::from(bounds.size.width),
                                         height: f32::from(bounds.size.height),
                                         scale_factor: window.scale_factor(),
-                                        hidden_reason,
+                                        hidden_reason: presentation.hidden_reason,
+                                        input_blocked: presentation.input_blocked,
                                         overlays: if cut_overlays {
                                             overlay_rects(window)
                                         } else {
                                             Vec::new()
                                         },
                                     },
+                                    view_focused,
                                     window,
                                 );
                                 // 子 HWND は gpui の合成面の「後ろ」に居るので、
                                 // ページの矩形だけ透明に抜いて見せる。この後に
                                 // 描かれるツールチップ / ポップオーバー / モーダルは
                                 // 普通に手前へ出る (ADR-F19)。
-                                if surface_is_up && hidden_reason.is_none() {
+                                if surface_is_up && presentation.hidden_reason.is_none() {
                                     window.paint_punch_through(bounds);
                                 }
                                 // Windows はクリックが親のクライアント領域に落ちても
@@ -1767,38 +1771,75 @@ fn overlay_rects(window: &Window) -> Vec<OverlayRect> {
 /// ウィンドウ (背景ブラシは黒) が覗いて一瞬ちらつく。切り抜きが必要になった
 /// フレームだけ `on_next_frame` に回す — 保留中のコールバックがあると gpui は
 /// フレームレート制限を外すので、変化が無いフレームでは登録しない。
+///
+/// `view_focused` はビューが GPUI のフォーカスを持っているか。ページの入力を
+/// 止めている間に来たフォーカス要求は、これが立っている間しか後から流さない
+/// (よそへ移ったフォーカスをページが奪わないように)。
 #[cfg(windows)]
-fn sync_surface_viewport(webview: &Rc<WebView>, viewport: Viewport, window: &mut Window) {
-    if webview.sync_viewport(viewport) {
+fn sync_surface_viewport(
+    webview: &Rc<WebView>,
+    viewport: Viewport,
+    view_focused: bool,
+    window: &mut Window,
+) {
+    if webview.sync_viewport(viewport, view_focused) {
         let webview = webview.clone();
         window.on_next_frame(move |_, _| webview.apply_deferred_clip());
     }
 }
 
 #[cfg(not(windows))]
-fn sync_surface_viewport(webview: &Rc<WebView>, viewport: Viewport, _: &mut Window) {
+fn sync_surface_viewport(webview: &Rc<WebView>, viewport: Viewport, _: bool, _: &mut Window) {
     webview.sync_viewport(viewport);
 }
 
-/// 子 HWND を隠す理由。純粋関数にして判定を表で確かめられるようにしてある。
+/// このフレームで子 HWND をどう扱うか。[`surface_presentation_for`] が決める。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SurfacePresentation {
+    /// `None` なら見せる。`Some` なら隠す理由 (ログにだけ使う)。
+    hidden_reason: Option<&'static str>,
+    /// 見せたまま子 HWND を無効にして、ページへのマウス入力を止める。隠すときは
+    /// 立てない (隠れた子 HWND はそもそも入力を受けない)。
+    input_blocked: bool,
+}
+
+/// 子 HWND を隠すか、入力を止めるか。純粋関数にして判定を表で確かめられるように
+/// してある。
 ///
 /// - **モーダル**は deferred draw ではないので [`Window::overlay_bounds`] に載らず、
-///   穴が開かない = 子 HWND がクリックを飲む。隠すしかない (ADR-F32)。
+///   穴が開かない = そのままでは子 HWND が、モーダル自身と「外側クリックで閉じる」
+///   背景宛てのクリックを飲む。DirectComposition が効いていればモーダルは穴の上に
+///   描かれるので、ページは見せたまま (穴も開けたまま) 入力だけ止める。無効な子
+///   ウィンドウは Windows のヒットテストで飛ばされ、クリックは GPUI に届く
+///   (ADR-F48)。DComp 無効時は子 HWND が手前に出てモーダルを覆うので隠す (ADR-F32)。
 /// - **ドラッグ**は DirectComposition が効いているなら隠さない。プレビューは穴の
 ///   あとに描かれるので手前に出るし、ドラッグ中はウィンドウがマウスをキャプチャ
 ///   しているので子 HWND がドロップを横取りすることもない。DComp 無効時だけは
 ///   子 HWND が手前に出てプレビューを覆うので従来どおり隠す。
 ///   タブは 2px 動かしただけでもドラッグ扱いになるので、ここで隠すと
 ///   「タブをクリックしただけでページが一瞬暗くなる」ことになる。
-fn surface_hidden_reason_for(
+fn surface_presentation_for(
     dragging: bool,
     host_is_composited: bool,
     modal_is_open: bool,
-) -> Option<&'static str> {
-    if dragging && !host_is_composited {
-        return Some("a drag is in progress");
+) -> SurfacePresentation {
+    if host_is_composited {
+        return SurfacePresentation {
+            hidden_reason: None,
+            input_blocked: modal_is_open,
+        };
     }
-    modal_is_open.then_some("a modal is open")
+    let hidden_reason = if dragging {
+        Some("a drag is in progress")
+    } else if modal_is_open {
+        Some("a modal is open")
+    } else {
+        None
+    };
+    SurfacePresentation {
+        hidden_reason,
+        input_blocked: false,
+    }
 }
 
 /// テーマのエディター背景を 8 ビット 3 原色に落とす。WebView2 に渡せるのは
@@ -1881,31 +1922,63 @@ mod tests {
         assert_eq!(tab_label(&exact, ""), SharedString::from(exact.clone()));
     }
 
+    const SHOWN: SurfacePresentation = SurfacePresentation {
+        hidden_reason: None,
+        input_blocked: false,
+    };
+
+    const SHOWN_WITHOUT_INPUT: SurfacePresentation = SurfacePresentation {
+        hidden_reason: None,
+        input_blocked: true,
+    };
+
+    fn hidden(reason: &'static str) -> SurfacePresentation {
+        SurfacePresentation {
+            hidden_reason: Some(reason),
+            input_blocked: false,
+        }
+    }
+
     #[test]
-    fn a_modal_always_hides_the_surface() {
+    fn a_modal_keeps_the_page_visible_but_blocks_its_input_with_direct_composition() {
+        // モーダルは穴の上に描かれるので、ページは見せたまま入力だけ止める。
         assert_eq!(
-            surface_hidden_reason_for(false, true, true),
-            Some("a modal is open")
+            surface_presentation_for(false, true, true),
+            SHOWN_WITHOUT_INPUT
         );
+        // モーダルの中でドラッグしていても同じ。
         assert_eq!(
-            surface_hidden_reason_for(false, false, true),
-            Some("a modal is open")
+            surface_presentation_for(true, true, true),
+            SHOWN_WITHOUT_INPUT
+        );
+    }
+
+    #[test]
+    fn a_modal_hides_the_surface_without_direct_composition() {
+        // 子 HWND が手前に出てモーダルを覆うので、隠すしかない。
+        assert_eq!(
+            surface_presentation_for(false, false, true),
+            hidden("a modal is open")
         );
     }
 
     #[test]
     fn a_drag_only_hides_the_surface_without_direct_composition() {
         // 合成しているなら、ドラッグプレビューは穴の上に出るので隠さない。
-        assert_eq!(surface_hidden_reason_for(true, true, false), None);
+        assert_eq!(surface_presentation_for(true, true, false), SHOWN);
         assert_eq!(
-            surface_hidden_reason_for(true, false, false),
-            Some("a drag is in progress")
+            surface_presentation_for(true, false, false),
+            hidden("a drag is in progress")
+        );
+        assert_eq!(
+            surface_presentation_for(true, false, true),
+            hidden("a drag is in progress")
         );
     }
 
     #[test]
     fn nothing_hides_a_plain_visible_surface() {
-        assert_eq!(surface_hidden_reason_for(false, true, false), None);
-        assert_eq!(surface_hidden_reason_for(false, false, false), None);
+        assert_eq!(surface_presentation_for(false, true, false), SHOWN);
+        assert_eq!(surface_presentation_for(false, false, false), SHOWN);
     }
 }

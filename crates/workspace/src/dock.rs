@@ -33,14 +33,65 @@ fn clamp_secondary_ratio(ratio: f32) -> f32 {
     ratio.clamp(MIN_SECONDARY_RATIO, MAX_SECONDARY_RATIO)
 }
 
-/// Half of a stacked pair that the user hid by clicking its status bar button.
-/// Remembering it lets the same button put the panel back where it was instead
-/// of falling back to the "switch panels" click, so a stacked pair behaves as
-/// two independent show/hide toggles.
+/// Half of a stacked pair that is off screen: the user hid it by clicking its
+/// status bar button, or the dock opened at startup for the other half only
+/// (ADR-F48). Remembering it lets the same button put the panel back where it
+/// was instead of falling back to the "switch panels" click, so a stacked pair
+/// behaves as two independent show/hide toggles.
 #[derive(Clone, Copy)]
 struct HiddenStackedPanel {
     index: usize,
     was_primary: bool,
+}
+
+/// What a dock shows: whether it is open, the panels in its two slots, and
+/// the half of a pair kept off screen for its button to stack again. Every
+/// change to a dock's arrangement is worked out as one of these and applied
+/// with [`Dock::arrange`].
+#[derive(Clone, Copy)]
+struct Arrangement {
+    open: bool,
+    active: Option<usize>,
+    secondary: Option<usize>,
+    hidden: Option<HiddenStackedPanel>,
+}
+
+impl Arrangement {
+    /// Whether `index` is on screen once the dock is open: the primary panel,
+    /// or the one stacked beside it. The dock draws nothing without a primary
+    /// panel, so a stacked panel on its own does not count.
+    fn shows(&self, index: usize) -> bool {
+        self.active.is_some() && (self.active == Some(index) || self.secondary == Some(index))
+    }
+
+    /// Makes `index` the primary panel the way activating it does: a stacked
+    /// panel swaps slots with the primary one, so both stay on screen, and
+    /// any other panel replaces it.
+    fn promote(&mut self, index: usize) {
+        if self.secondary == Some(index) {
+            self.secondary = self.active;
+        }
+        self.active = Some(index);
+    }
+
+    /// Puts `index` on top with the panel that had the primary slot stacked
+    /// below it, so that one stays on screen.
+    fn move_in_above(&mut self, index: usize) {
+        self.secondary = self.active.filter(|active| *active != index);
+        self.active = Some(index);
+    }
+
+    /// Keeps `index` off screen the way a click on half of a pair hides it,
+    /// so a click on its button stacks it again, on top if `was_primary`. A
+    /// different panel already kept off screen that way keeps its place.
+    fn keep_off_screen(&mut self, index: usize, was_primary: bool) {
+        let other_panel_kept = self
+            .hidden
+            .is_some_and(|hidden| hidden.index != index && !self.shows(hidden.index));
+        if !other_panel_kept {
+            self.hidden = Some(HiddenStackedPanel { index, was_primary });
+        }
+    }
 }
 
 /// Drag state for the divider between two stacked panels inside a dock.
@@ -376,6 +427,12 @@ pub struct Dock {
     /// it is on screen, so the automatic open is refused there. Opening the dock
     /// by hand still works.
     starts_open_suppressed: bool,
+    /// Set once anything but the startup rules changes what the dock shows: a
+    /// click, a toggle, a drop, a panel showing itself. The startup rules
+    /// leave such a dock alone from then on, so the saved state or
+    /// `Panel::starts_open` never undo it. Restoring the saved state clears
+    /// it, since that replaces whatever the dock had.
+    arranged_by_user: bool,
     focus_handle: FocusHandle,
     focus_follows_mouse: FocusFollowsMouse,
     pub(crate) serialized_dock: Option<DockData>,
@@ -454,6 +511,12 @@ pub struct PanelSizeState {
 struct PanelEntry {
     panel: Arc<dyn PanelHandle>,
     size_state: PanelSizeState,
+    /// The panel's `Panel::starts_open` answer as of the last pass that
+    /// placed panels asking to start open, so that the pass run after
+    /// startup acts only on answers that changed since. `add_panel` seeds it
+    /// with the answer the panel arrives with, which keeps a panel added after
+    /// startup out of that pass.
+    starts_open_seen: bool,
     _subscriptions: [Subscription; 4],
 }
 
@@ -526,6 +589,7 @@ impl Dock {
                 secondary_ratio: DEFAULT_SECONDARY_RATIO,
                 hidden_stacked_panel: None,
                 starts_open_suppressed: false,
+                arranged_by_user: false,
                 is_open: false,
                 focus_handle: focus_handle.clone(),
                 focus_follows_mouse: WorkspaceSettings::get_global(cx).focus_follows_mouse,
@@ -657,9 +721,11 @@ impl Dock {
     }
 
     /// The index of the panel stacked next to the active one, if any. Always
-    /// distinct from [`Dock::active_panel_index`] and always in range.
+    /// distinct from [`Dock::active_panel_index`] and always in range. `None`
+    /// without an active panel: the dock draws nothing then.
     pub fn secondary_panel_index(&self) -> Option<usize> {
         self.secondary_panel_index
+            .filter(|_| self.active_panel_index.is_some())
             .filter(|index| Some(*index) != self.active_panel_index)
             .filter(|index| *index < self.panel_entries.len())
     }
@@ -723,32 +789,21 @@ impl Dock {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.arranged_by_user = true;
         let index = index
             .filter(|index| *index < self.panel_entries.len())
             .filter(|index| Some(*index) != self.active_panel_index);
-        let previous = self.secondary_panel_index();
-        if index == previous {
+        if index == self.secondary_panel_index() {
             // Keep the stored index normalized so it can never become visible
             // again once it has been filtered out.
             self.secondary_panel_index = index;
             return;
         }
-
-        let deactivated = previous.and_then(|index| self.panel_at(index)).cloned();
-        let activated = index
-            .filter(|_| self.is_open)
-            .and_then(|index| self.panel_at(index))
-            .cloned();
-        self.secondary_panel_index = index;
+        let mut target = self.arrangement();
+        target.secondary = index;
         // Any new pairing supersedes the one the hidden panel belonged to.
-        self.hidden_stacked_panel = None;
-        if let Some(panel) = deactivated {
-            panel.set_active(false, window, cx);
-        }
-        if let Some(panel) = activated {
-            panel.set_active(true, window, cx);
-        }
-        cx.notify();
+        target.hidden = None;
+        self.arrange(target, window, cx);
     }
 
     /// The panel that [`Dock::hide_stacked_panel`] took out of a stacked pair,
@@ -777,13 +832,16 @@ impl Dock {
         if !was_primary && secondary_index != index {
             return false;
         }
+        self.arranged_by_user = true;
+        let mut target = self.arrangement();
+        // Promoting the stacked panel is what frees the primary slot; the dock
+        // keeps showing the other half either way.
         if was_primary {
-            // Promoting the stacked panel is what frees the primary slot; the
-            // dock keeps showing the other half either way.
-            self.activate_panel(secondary_index, window, cx);
+            target.active = Some(secondary_index);
         }
-        self.set_secondary_panel(None, window, cx);
-        self.hidden_stacked_panel = Some(HiddenStackedPanel { index, was_primary });
+        target.secondary = None;
+        target.hidden = Some(HiddenStackedPanel { index, was_primary });
+        self.arrange(target, window, cx);
         true
     }
 
@@ -798,13 +856,18 @@ impl Dock {
         if self.hidden_stacked_panel_index() != Some(index) {
             return false;
         }
+        self.arranged_by_user = true;
         let was_primary = self
             .hidden_stacked_panel
             .is_some_and(|hidden| hidden.was_primary);
-        self.set_secondary_panel(Some(index), window, cx);
+        let mut target = self.arrangement();
         if was_primary {
-            self.activate_panel(index, window, cx);
+            target.move_in_above(index);
+        } else {
+            target.secondary = Some(index);
         }
+        target.hidden = None;
+        self.arrange(target, window, cx);
         true
     }
 
@@ -819,30 +882,35 @@ impl Dock {
         if index >= self.panel_entries.len() {
             return false;
         }
-        match self.active_panel_index {
-            None => {
-                self.activate_panel(index, window, cx);
-                self.set_open(true, window, cx);
-            }
+        self.arranged_by_user = true;
+        let mut target = self.arrangement();
+        target.open = true;
+        match target.active {
+            None => target.promote(index),
             // Nothing to pair the dock's only visible panel with; opening it is
             // still better than the plain click's "close the dock".
-            Some(active_index) if active_index == index => self.set_open(true, window, cx),
+            Some(active_index) if active_index == index => {}
             Some(_) => {
-                self.set_open(true, window, cx);
-                self.set_secondary_panel(Some(index), window, cx);
+                target.secondary = Some(index);
+                // Any new pairing supersedes the one the hidden panel belonged to.
+                target.hidden = None;
             }
         }
+        self.arrange(target, window, cx);
         true
     }
 
-    /// Fork default for a project that has no persisted dock layout yet: show
-    /// `primary_name` with `secondary_name` stacked below it. Panels are added
-    /// asynchronously during startup, so this reports whether both were there
-    /// and the caller retries until they are.
+    /// Fork default for a project that has no persisted dock layout yet:
+    /// arranges `primary_name` with `secondary_name` stacked below it for
+    /// whenever the dock is shown. It never opens the dock; that is left to
+    /// the user and to `Panel::starts_open` (ADR-F48). Panels are added
+    /// asynchronously during startup, so this reports whether the pairing is
+    /// decided, and the caller retries until it is.
     pub(crate) fn apply_default_stacked_layout(
         &mut self,
         primary_name: &str,
         secondary_name: &str,
+        during_startup: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
@@ -855,19 +923,52 @@ impl Dock {
         if primary_index == secondary_index {
             return false;
         }
-
-        // A dock that is already showing something was opened deliberately (by
-        // `Panel::starts_open`, say), so only the pairing is ours to add.
-        if !self.is_open || self.active_panel_index.is_none() {
-            self.activate_panel(primary_index, window, cx);
+        // A dock restored open shows what it was saved with, so the pairing
+        // stays out of it; while it still waits for its saved panel, the
+        // pairing waits too rather than deciding without it.
+        if self.saved_open() {
+            return self.active_panel_index.is_some();
         }
-        self.set_open(true, window, cx);
-        let stacked_index = if self.active_panel_index == Some(secondary_index) {
-            primary_index
+
+        if during_startup && !self.arranged_by_user {
+            if self.saved_pair() {
+                return true;
+            }
+            // The pair takes the saved slots, as if the dock had been saved
+            // that way: every later startup event works the dock out again
+            // from its saved state, so this is what keeps the pair. Placing
+            // the panels that ask to start open that way also shows only
+            // those, the pair in its configured order when both ask.
+            let saved = self.serialized_dock.get_or_insert_with(DockData::default);
+            saved.active_panel = Some(primary_name.to_string());
+            saved.secondary_panel = Some(secondary_name.to_string());
+            // Saved open on no panel at all, as `toggle_dock` leaves a dock
+            // without one to show: the pair must not open it.
+            saved.visible = false;
+            self.apply_startup_arrangement(window, cx);
+            return true;
+        }
+        // A dock already showing a pair was arranged by the user (or by an
+        // earlier run of this): what it shows is theirs.
+        if self.secondary_panel_index().is_some() {
+            return true;
+        }
+        let mut target = self.arrangement();
+        if target.open {
+            // Opened by the user: what it shows stays, and a half of the pair
+            // it does not show waits behind its button, which puts the pair
+            // back together in its configured order.
+            if target.active == Some(primary_index) {
+                target.keep_off_screen(secondary_index, false);
+            } else if target.active == Some(secondary_index) {
+                target.keep_off_screen(primary_index, true);
+            }
         } else {
-            secondary_index
-        };
-        self.set_secondary_panel(Some(stacked_index), window, cx);
+            target.active = Some(primary_index);
+            target.secondary = Some(secondary_index);
+            target.hidden = None;
+        }
+        self.arrange(target, window, cx);
         true
     }
 
@@ -877,54 +978,322 @@ impl Dock {
         self.starts_open_suppressed = true;
     }
 
-    /// Opens the dock for any panel that asked to start open. `starts_open` is a
-    /// user-facing "open this at startup" switch, so it has to survive a persisted
-    /// "closed" dock state, which is applied after the panels have been added.
-    /// Returns whether such a panel was found.
+    /// Brings the dock up to date with the panels that ask to start open, for
+    /// an answer that changes after the panel is added, like the project
+    /// panel's once the first worktree scan is in. While the window starts up
+    /// this works the whole dock out again ([`Dock::startup_arrangement`]).
+    /// Afterwards only a panel whose answer turned to yes since the last pass
+    /// is placed, under the rules of [`Dock::arrangement_for_starts_open_panel`],
+    /// so whatever else changed the dock in the meantime stays. Either way a
+    /// dock the user rearranged is left alone, and so is one restored open.
+    /// Returns whether a panel of this dock asks to start open.
     pub(crate) fn ensure_starts_open_panels(
         &mut self,
+        during_startup: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.starts_open_suppressed {
-            return false;
+        let found = self.starts_open_panel_index(window, cx).is_some();
+        if during_startup {
+            self.apply_startup_arrangement(window, cx);
+            return found;
         }
-        let Some(index) = self
-            .panel_entries
-            .iter()
-            .position(|entry| entry.panel.starts_open(window, cx))
-        else {
-            return false;
-        };
+        if !self.arranged_by_user && !self.saved_open() {
+            let turned_to_start_open = self
+                .panel_entries
+                .iter()
+                .enumerate()
+                .filter(|(index, entry)| {
+                    !entry.starts_open_seen && self.panel_starts_open(*index, window, cx)
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            let mut target = self.arrangement();
+            for index in turned_to_start_open {
+                target = self.arrangement_for_starts_open_panel(target, index, window, cx);
+            }
+            self.arrange(target, window, cx);
+        }
+        self.record_starts_open_answers(window, cx);
+        found
+    }
 
-        // Never take the primary slot away from a panel the user had active in an
-        // open dock; only a closed dock (or one without any active panel) is ours
-        // to claim.
-        let claim_primary = match self.active_panel_index {
-            None => true,
-            Some(active) => active != index && !self.is_open,
+    /// The first panel of this dock that asks to start open.
+    fn starts_open_panel_index(&self, window: &Window, cx: &App) -> Option<usize> {
+        (0..self.panel_entries.len()).find(|index| self.panel_starts_open(*index, window, cx))
+    }
+
+    /// Whether `index` asks to start open, in a dock that allows that.
+    fn panel_starts_open(&self, index: usize, window: &Window, cx: &App) -> bool {
+        !self.starts_open_suppressed
+            && self
+                .panel_at(index)
+                .is_some_and(|panel| panel.starts_open(window, cx))
+    }
+
+    /// Whether the saved state restored into this dock had it open on a panel.
+    fn saved_open(&self) -> bool {
+        self.serialized_dock
+            .as_ref()
+            .is_some_and(|saved| saved.visible && saved.active_panel.is_some())
+    }
+
+    /// Whether the saved state stacks two panels in this dock.
+    fn saved_pair(&self) -> bool {
+        self.serialized_dock.as_ref().is_some_and(|saved| {
+            saved.active_panel.is_some()
+                && saved.secondary_panel.is_some()
+                && saved.active_panel != saved.secondary_panel
+        })
+    }
+
+    /// The panels the saved state has on top and stacked below it, as far as
+    /// they have been added.
+    fn saved_slots(&self, cx: &App) -> (Option<usize>, Option<usize>) {
+        let Some(saved) = self.serialized_dock.as_ref() else {
+            return (None, None);
         };
-        if claim_primary {
-            self.activate_panel(index, window, cx);
+        let index = |name: &Option<String>| {
+            name.as_deref()
+                .and_then(|name| self.panel_index_for_persistent_name(name, cx))
+        };
+        (index(&saved.active_panel), index(&saved.secondary_panel))
+    }
+
+    /// Where `index`, a panel asking to start open, goes in `target`. Only
+    /// panels that asked appear (ADR-F48). A closed dock opens for it: stacked
+    /// below a panel that did not ask, it shows alone and the other panel's
+    /// button puts that one back on top; anywhere else it takes the primary
+    /// slot, and the panel stacked there stays only if it asked to start open
+    /// too. Once an earlier panel that asked has opened the dock, the new one
+    /// stacks beside it if that slot is free, and otherwise waits for its
+    /// button. No dock open for another reason gets here: a dock restored
+    /// open shows only its saved panels, and one the user opened is theirs.
+    fn arrangement_for_starts_open_panel(
+        &self,
+        mut target: Arrangement,
+        index: usize,
+        window: &Window,
+        cx: &App,
+    ) -> Arrangement {
+        if target.open {
+            if target.active.is_none() {
+                target.promote(index);
+            } else if !target.shows(index) && target.secondary.is_none() {
+                target.secondary = Some(index);
+            }
+            return target;
         }
-        self.set_open(true, window, cx);
-        true
+        target.open = true;
+        if let Some(primary_index) = target.active
+            && target.secondary == Some(index)
+        {
+            if !self.panel_starts_open(primary_index, window, cx) {
+                target.active = Some(index);
+                target.secondary = None;
+                target.keep_off_screen(primary_index, true);
+            }
+            return target;
+        }
+        target.promote(index);
+        if let Some(secondary_index) = target.secondary
+            && !self.panel_starts_open(secondary_index, window, cx)
+        {
+            target.secondary = None;
+            target.keep_off_screen(secondary_index, false);
+        }
+        target
+    }
+
+    /// `target` with every panel of this dock that asks to start open placed,
+    /// in the order the panels are in.
+    fn arrangement_with_starts_open_panels(
+        &self,
+        mut target: Arrangement,
+        window: &Window,
+        cx: &App,
+    ) -> Arrangement {
+        for index in 0..self.panel_entries.len() {
+            if self.panel_starts_open(index, window, cx) {
+                target = self.arrangement_for_starts_open_panel(target, index, window, cx);
+            }
+        }
+        target
+    }
+
+    /// What the dock shows while the window starts up, worked out from
+    /// scratch from its saved state, the panels it has and whether each asks
+    /// to start open, so that the order these arrive in does not matter
+    /// (ADR-F48). A dock restored open shows exactly the panels it was saved
+    /// with, waiting closed for the first of them until startup is over
+    /// ([`Dock::stop_waiting_for_saved_panels`]), and a panel asking to start
+    /// open waits for its button there. Any other dock keeps the saved panels
+    /// in their slots for whenever it is opened, and opens for the panels
+    /// that ask to start open. When a half of the fork's default pair is one
+    /// of those, the pair takes the slots instead, whatever was saved: the
+    /// hidden half of a pair is not saved, so the saved slots cannot say how
+    /// the pair goes back together.
+    fn startup_arrangement(&self, window: &Window, cx: &App) -> Arrangement {
+        let (saved_top, saved_stacked) = self.saved_slots(cx);
+        // The stacked panel stands in for a top one that has not arrived.
+        let active = saved_top.or(saved_stacked);
+        let mut slots = Arrangement {
+            open: false,
+            active,
+            secondary: saved_top.and(saved_stacked),
+            hidden: None,
+        };
+        if self.saved_open() {
+            return Arrangement {
+                open: active.is_some(),
+                ..slots
+            };
+        }
+        if let Some((primary_index, secondary_index)) = self.default_pair_indices(cx)
+            && (self.panel_starts_open(primary_index, window, cx)
+                || self.panel_starts_open(secondary_index, window, cx))
+        {
+            slots.active = Some(primary_index);
+            slots.secondary = Some(secondary_index);
+        }
+        self.arrangement_with_starts_open_panels(slots, window, cx)
+    }
+
+    /// The panels of the fork's default pair, top one first, when the pair is
+    /// configured for this dock and both of them are here.
+    fn default_pair_indices(&self, cx: &App) -> Option<(usize, usize)> {
+        let (position, primary_name, secondary_name) = Workspace::default_stacked_layout(cx)?;
+        if position != self.position {
+            return None;
+        }
+        let primary_index = self.panel_index_for_persistent_name(primary_name, cx)?;
+        let secondary_index = self.panel_index_for_persistent_name(secondary_name, cx)?;
+        (primary_index != secondary_index).then_some((primary_index, secondary_index))
+    }
+
+    /// Moves the dock to its [`Dock::startup_arrangement`], unless something
+    /// else has rearranged it, and zooms the saved top panel back in.
+    fn apply_startup_arrangement(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.arranged_by_user {
+            return;
+        }
+        let target = self.startup_arrangement(window, cx);
+        self.arrange(target, window, cx);
+        self.record_starts_open_answers(window, cx);
+        let (saved_top, _) = self.saved_slots(cx);
+        if self
+            .serialized_dock
+            .as_ref()
+            .is_some_and(|saved| saved.zoom)
+            && saved_top.is_some()
+            && self.active_panel_index == saved_top
+            && let Some(panel) = self.active_panel().cloned()
+            && !panel.is_zoomed(window, cx)
+        {
+            panel.set_zoomed(true, window, cx);
+        }
+    }
+
+    /// Run once the workspace has started up. A dock restored open whose
+    /// saved panels never arrived - removed from Zed, renamed, or failed to
+    /// load - is taken as saved closed from then on, so the panels that ask
+    /// to start open open it after all, now or once their answer changes.
+    pub(crate) fn stop_waiting_for_saved_panels(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.saved_open() || self.active_panel_index.is_some() {
+            return;
+        }
+        if let Some(saved) = self.serialized_dock.as_mut() {
+            saved.visible = false;
+        }
+        self.apply_startup_arrangement(window, cx);
+    }
+
+    fn record_starts_open_answers(&mut self, window: &Window, cx: &App) {
+        let answers = (0..self.panel_entries.len())
+            .map(|index| self.panel_starts_open(index, window, cx))
+            .collect::<Vec<_>>();
+        for (entry, answer) in self.panel_entries.iter_mut().zip(answers) {
+            entry.starts_open_seen = answer;
+        }
+    }
+
+    fn arrangement(&self) -> Arrangement {
+        Arrangement {
+            open: self.is_open,
+            active: self.active_panel_index,
+            secondary: self.secondary_panel_index(),
+            hidden: self.hidden_stacked_panel,
+        }
+    }
+
+    /// Moves the dock to `target` in one step, telling only the panels whose
+    /// visibility changes, each of them once: the ones leaving the screen
+    /// first, then the ones entering it. Going through the individual steps
+    /// one after another can show a panel and hide it again, or the reverse,
+    /// within one update, and such a round trip is not free: the browser panel
+    /// hides its WebView and loads its home page, the terminal panel spawns a
+    /// shell nobody sees.
+    fn arrange(&mut self, target: Arrangement, window: &mut Window, cx: &mut Context<Self>) {
+        let panel_count = self.panel_entries.len();
+        let active = target.active.filter(|index| *index < panel_count);
+        let previously_visible = self.visible_panels().cloned().collect::<Vec<_>>();
+        self.is_open = target.open;
+        self.active_panel_index = active;
+        self.secondary_panel_index = target
+            .secondary
+            .filter(|index| active.is_some() && *index < panel_count && Some(*index) != active);
+        self.hidden_stacked_panel = target.hidden;
+        let visible = self.visible_panels().cloned().collect::<Vec<_>>();
+        for panel in &previously_visible {
+            if !visible
+                .iter()
+                .any(|shown| shown.panel_id() == panel.panel_id())
+            {
+                panel.set_active(false, window, cx);
+            }
+        }
+        for panel in &visible {
+            if !previously_visible
+                .iter()
+                .any(|shown| shown.panel_id() == panel.panel_id())
+            {
+                panel.set_active(true, window, cx);
+            }
+        }
+        cx.notify();
+    }
+
+    /// Opens the dock on `index`. The panel takes the primary slot, unless it
+    /// is already stacked on screen and `promote_stacked` is false.
+    pub(crate) fn show_panel(
+        &mut self,
+        index: usize,
+        promote_stacked: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if index >= self.panel_entries.len() {
+            return;
+        }
+        self.arranged_by_user = true;
+        let mut target = self.arrangement();
+        target.open = true;
+        if promote_stacked || target.secondary != Some(index) {
+            target.promote(index);
+        }
+        self.arrange(target, window, cx);
     }
 
     pub fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.arranged_by_user = true;
         if open != self.is_open {
-            self.is_open = open;
-            let panels = self
-                .stacked_panel_indices()
-                .into_iter()
-                .flatten()
-                .filter_map(|index| self.panel_at(index).cloned())
-                .collect::<Vec<_>>();
-            for panel in panels {
-                panel.set_active(open, window, cx);
-            }
-
-            cx.notify();
+            let mut target = self.arrangement();
+            target.open = open;
+            self.arrange(target, window, cx);
         }
     }
 
@@ -935,6 +1304,7 @@ impl Dock {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.arranged_by_user = true;
         // Zoom shows a single panel, so a stacked secondary has to become the
         // primary before it can take over the dock.
         if zoomed
@@ -973,10 +1343,14 @@ impl Dock {
         }
     }
 
+    /// Adds `panel` to the dock. `during_startup` says whether the window is
+    /// still starting up (`Workspace::is_starting_up`): only then do the saved
+    /// state and `Panel::starts_open` give the panel a place on screen.
     pub(crate) fn add_panel<T: Panel>(
         &mut self,
         panel: Entity<T>,
         workspace: WeakEntity<Workspace>,
+        during_startup: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> usize {
@@ -988,25 +1362,49 @@ impl Dock {
 
                 move |this, window, cx| {
                     let new_position = panel.read(cx).position(window, cx);
+                    let panel_id = Entity::entity_id(&panel);
                     if new_position == this.position {
+                        // A drop that asked to move this panel elsewhere and
+                        // left it here - a project setting pins its dock, say -
+                        // must not leave its drop state behind for a later
+                        // move to pick up. The settings change that should
+                        // have moved it is the only one expected meanwhile.
+                        let position = this.position;
+                        let stale_drop = workspace
+                            .read_with(cx, |workspace, _| {
+                                workspace.dropping_panel.is_some_and(|(id, target)| {
+                                    id == panel_id && target != position
+                                })
+                            })
+                            .unwrap_or(false);
+                        if stale_drop {
+                            workspace
+                                .update(cx, |workspace, _| workspace.forget_panel_drop())
+                                .ok();
+                        }
                         return;
                     }
 
-                    let Ok(new_dock) = workspace.update(cx, |workspace, cx| {
-                        if panel.is_zoomed(window, cx) {
-                            workspace.zoomed_position = Some(new_position);
-                        }
-                        match new_position {
-                            DockPosition::Left => &workspace.left_dock,
-                            DockPosition::Bottom => &workspace.bottom_dock,
-                            DockPosition::Right => &workspace.right_dock,
-                        }
-                        .clone()
-                    }) else {
+                    let Ok((new_dock, being_dropped, during_startup)) =
+                        workspace.update(cx, |workspace, cx| {
+                            if panel.is_zoomed(window, cx) {
+                                workspace.zoomed_position = Some(new_position);
+                            }
+                            let new_dock = match new_position {
+                                DockPosition::Left => &workspace.left_dock,
+                                DockPosition::Bottom => &workspace.bottom_dock,
+                                DockPosition::Right => &workspace.right_dock,
+                            }
+                            .clone();
+                            let being_dropped = workspace
+                                .dropping_panel
+                                .is_some_and(|(id, _)| id == panel_id);
+                            (new_dock, being_dropped, workspace.is_starting_up())
+                        })
+                    else {
                         return;
                     };
 
-                    let panel_id = Entity::entity_id(&panel);
                     let was_visible = this
                         .visible_panels()
                         .any(|visible_panel| visible_panel.panel_id() == panel_id);
@@ -1025,20 +1423,48 @@ impl Dock {
                         PanelSizeState::default()
                     };
 
+                    // A panel moved while the window starts up - by a project's
+                    // own settings, say - out of a dock the startup rules
+                    // arranged is placed by them in both docks, like any panel
+                    // added then. One the user arranged, or is working in,
+                    // keeps what they see, and a drop gives the panel its slot
+                    // itself.
+                    let focused =
+                        PanelHandle::panel_focus_handle(&panel, cx).contains_focused(window, cx);
+                    let placed_by_startup_rules =
+                        during_startup && !being_dropped && !this.arranged_by_user && !focused;
                     if !this.remove_panel(&panel, window, cx) {
                         // Panel was already moved from this dock
                         return;
                     }
+                    if placed_by_startup_rules {
+                        this.apply_startup_arrangement(window, cx);
+                    }
 
                     new_dock.update(cx, |new_dock, cx| {
-                        let index =
-                            new_dock.add_panel(panel.clone(), workspace.clone(), window, cx);
+                        let index = new_dock.add_panel(
+                            panel.clone(),
+                            workspace.clone(),
+                            placed_by_startup_rules,
+                            window,
+                            cx,
+                        );
                         if let Some(added_panel) = new_dock.panel_for_id(panel_id).cloned() {
                             new_dock.set_panel_size_state(added_panel.as_ref(), size_state, cx);
                         }
-                        if was_visible {
-                            new_dock.set_open(true, window, cx);
-                            new_dock.activate_panel(index, window, cx);
+                        // A panel that was on screen stays on screen in its new
+                        // dock, unless the startup rules or a drop place it.
+                        if was_visible && !being_dropped && !placed_by_startup_rules {
+                            new_dock.show_panel(index, true, window, cx);
+                        } else if placed_by_startup_rules
+                            && was_visible
+                            && !new_dock
+                                .visible_panels()
+                                .any(|visible_panel| visible_panel.panel_id() == panel_id)
+                        {
+                            // Leaving the old dock took it off screen without
+                            // telling it.
+                            panel.set_active(false, window, cx);
                         }
                     });
 
@@ -1110,12 +1536,9 @@ impl Dock {
                             .iter()
                             .position(|entry| entry.panel.panel_id() == Entity::entity_id(panel))
                         {
-                            this.set_open(true, window, cx);
                             // A stacked panel is already on screen, so focus it
                             // instead of swapping it into the primary slot.
-                            if this.secondary_panel_index() != Some(ix) {
-                                this.activate_panel(ix, window, cx);
-                            }
+                            this.show_panel(ix, false, window, cx);
                             window.focus(&panel.read(cx).activation_focus_handle(cx), cx);
                         }
                     }
@@ -1170,54 +1593,49 @@ impl Dock {
             hidden.index += 1;
         }
         let size_state = panel.read(cx).initial_size_state(window, cx);
+        let starts_open_seen =
+            !self.starts_open_suppressed && panel.read(cx).starts_open(window, cx);
 
         self.panel_entries.insert(
             index,
             PanelEntry {
                 panel: Arc::new(panel.clone()),
                 size_state,
+                starts_open_seen,
                 _subscriptions: subscriptions,
             },
         );
 
-        self.restore_state(window, cx);
-
-        if panel.read(cx).starts_open(window, cx) && !self.starts_open_suppressed {
-            self.activate_panel(index, window, cx);
-            self.set_open(true, window, cx);
+        // The saved state and `Panel::starts_open` only decide what the dock
+        // shows while the window starts up. A panel added later - moved here,
+        // or the agent panel coming back when AI is turned on again - leaves
+        // the dock as it is.
+        if during_startup {
+            self.apply_startup_arrangement(window, cx);
         }
 
         cx.notify();
         index
     }
 
+    /// Applies [`Dock::serialized_dock`], the state saved for this dock, when
+    /// a workspace is restored, together with the panels that ask to start
+    /// open, in one step ([`Dock::startup_arrangement`]). The saved state
+    /// replaces whatever the dock had, a click made before it arrived
+    /// included. A panel asking to start open that arrived before it may
+    /// already have opened the dock, though, and a dock saved open without
+    /// that panel takes it off screen again here: nothing tells the dock that
+    /// a restore is coming until it comes.
     pub fn restore_state(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if let Some(serialized) = self.serialized_dock.clone() {
-            if let Some(active_panel) = serialized.active_panel.filter(|_| serialized.visible)
-                && let Some(idx) = self.panel_index_for_persistent_name(active_panel.as_str(), cx)
-            {
-                self.activate_panel(idx, window, cx);
-            }
-
-            if serialized.zoom
-                && let Some(panel) = self.active_panel()
-            {
-                panel.set_zoomed(true, window, cx)
-            }
-            self.set_open(serialized.visible, window, cx);
-            if let Some(ratio) = serialized.secondary_ratio {
-                self.secondary_ratio = clamp_secondary_ratio(ratio);
-            }
-            // Applied after `set_open` so the stacked panel is activated only when
-            // the dock is actually showing.
-            let secondary_index = serialized
-                .secondary_panel
-                .as_deref()
-                .and_then(|name| self.panel_index_for_persistent_name(name, cx));
-            self.set_secondary_panel(secondary_index, window, cx);
-            return true;
+        let Some(saved) = self.serialized_dock.as_ref() else {
+            return false;
+        };
+        if let Some(ratio) = saved.secondary_ratio {
+            self.secondary_ratio = clamp_secondary_ratio(ratio);
         }
-        false
+        self.arranged_by_user = false;
+        self.apply_startup_arrangement(window, cx);
+        true
     }
 
     pub fn remove_panel<T: Panel>(
@@ -1257,7 +1675,11 @@ impl Dock {
 
             self.panel_entries.remove(panel_ix);
             if close_dock {
-                self.set_open(false, window, cx);
+                // Not `set_open`: losing a panel is not the user rearranging
+                // the dock.
+                let mut target = self.arrangement();
+                target.open = false;
+                self.arrange(target, window, cx);
             }
             cx.notify();
 
@@ -1278,29 +1700,16 @@ impl Dock {
     }
 
     pub fn activate_panel(&mut self, panel_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.arranged_by_user = true;
         if Some(panel_ix) == self.active_panel_index {
             return;
         }
-
         // Activating the stacked panel promotes it rather than hiding it: both
-        // panels stay on screen, they just swap slots.
-        if self.secondary_panel_index() == Some(panel_ix) {
-            self.secondary_panel_index = self.active_panel_index;
-            self.active_panel_index = Some(panel_ix);
-            cx.notify();
-            return;
-        }
-
-        if let Some(active_panel) = self.active_panel_entry() {
-            active_panel.panel.set_active(false, window, cx);
-        }
-
-        self.active_panel_index = Some(panel_ix);
-        if let Some(active_panel) = self.active_panel_entry() {
-            active_panel.panel.set_active(true, window, cx);
-        }
-
-        cx.notify();
+        // panels stay on screen, they just swap slots. In a closed dock this
+        // only picks the panel the dock will open on.
+        let mut target = self.arrangement();
+        target.promote(panel_ix);
+        self.arrange(target, window, cx);
     }
 
     pub fn visible_panel(&self) -> Option<&Arc<dyn PanelHandle>> {
@@ -2258,6 +2667,8 @@ pub mod test {
         pub flexible: bool,
         pub starts_open: bool,
         pub activation_priority: u32,
+        /// Every value `set_active` received, in order.
+        pub set_active_calls: Vec<bool>,
     }
     actions!(test_only, [ToggleTestPanel]);
 
@@ -2275,6 +2686,7 @@ pub mod test {
                 flexible: false,
                 starts_open: false,
                 activation_priority,
+                set_active_calls: Vec::new(),
             }
         }
 
@@ -2405,6 +2817,7 @@ pub mod test {
 
         fn set_active(&mut self, active: bool, _window: &mut Window, _cx: &mut Context<Self>) {
             self.active = active;
+            self.set_active_calls.push(active);
         }
 
         fn activation_priority(&self) -> u32 {
@@ -2418,9 +2831,9 @@ pub mod test {
         }
     }
 
-    /// Stand-ins for the panels the fork's default right dock layout names. That
-    /// layout resolves panels through [`Panel::persistent_name`], so only a panel
-    /// carrying the real name exercises it.
+    /// Stand-ins for real panels. The saved dock state and the fork's default
+    /// right dock layout resolve panels through [`Panel::persistent_name`], so
+    /// only a panel carrying the real name exercises them.
     macro_rules! named_test_panel {
         ($type_name:ident, $panel_name:literal) => {
             pub struct $type_name {
@@ -2431,6 +2844,16 @@ pub mod test {
                 pub fn new(position: DockPosition, activation_priority: u32, cx: &mut App) -> Self {
                     Self {
                         panel: TestPanel::new(position, activation_priority, cx),
+                    }
+                }
+
+                pub fn new_starts_open(
+                    position: DockPosition,
+                    activation_priority: u32,
+                    cx: &mut App,
+                ) -> Self {
+                    Self {
+                        panel: TestPanel::new_starts_open(position, activation_priority, cx),
                     }
                 }
             }
@@ -2496,6 +2919,23 @@ pub mod test {
                     ToggleTestPanel.boxed_clone()
                 }
 
+                fn is_zoomed(&self, _window: &Window, _: &App) -> bool {
+                    self.panel.zoomed
+                }
+
+                fn set_zoomed(
+                    &mut self,
+                    zoomed: bool,
+                    _window: &mut Window,
+                    _cx: &mut Context<Self>,
+                ) {
+                    self.panel.zoomed = zoomed;
+                }
+
+                fn starts_open(&self, _window: &Window, _: &App) -> bool {
+                    self.panel.starts_open
+                }
+
                 fn set_active(
                     &mut self,
                     active: bool,
@@ -2503,6 +2943,7 @@ pub mod test {
                     _cx: &mut Context<Self>,
                 ) {
                     self.panel.active = active;
+                    self.panel.set_active_calls.push(active);
                 }
 
                 fn activation_priority(&self) -> u32 {
@@ -2514,4 +2955,8 @@ pub mod test {
 
     named_test_panel!(TestAgentPanel, "AgentPanel");
     named_test_panel!(TestBrowserPanel, "BrowserPanel");
+    named_test_panel!(TestTerminalPanel, "TerminalPanel");
+    named_test_panel!(TestDebugPanel, "DebugPanel");
+    named_test_panel!(TestGitPanel, "GitPanel");
+    named_test_panel!(TestProjectPanel, "Project Panel");
 }

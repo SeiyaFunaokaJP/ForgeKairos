@@ -663,6 +663,7 @@ mod tests {
             enabled: true,
             button: true,
             dock: DockPosition::Right,
+            starts_open: false,
             flexible: true,
             default_width: px(300.),
             default_height: px(600.),

@@ -741,6 +741,12 @@ pub struct BrowserSettingsContent {
     /// Default: right
     pub dock: Option<DockPosition>,
 
+    /// Whether the browser panel should open on startup, even if its dock was
+    /// closed last time.
+    ///
+    /// Default: false
+    pub starts_open: Option<bool>,
+
     /// Default width in pixels when the browser panel is docked to the left or right.
     ///
     /// Default: 480

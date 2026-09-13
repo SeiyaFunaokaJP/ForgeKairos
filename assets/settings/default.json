@@ -102,9 +102,10 @@
   // Layout mode of the bottom dock. Defaults to "contained"
   //   choices: contained, full, left_aligned, right_aligned
   "bottom_dock_layout": "contained",
-  // フォーク既定: プロジェクトを初めて開いたときに、パネルを 2 枚並べて表示する
+  // フォーク既定: プロジェクトを初めて開いたときに、パネルを 2 枚並べておく
   // ドックと、その 2 枚 (DESIGN.md ADR-F30 / ADR-F40)。保存済みレイアウトがある
-  // プロジェクトでは、そちらが優先される。
+  // プロジェクトでは、そちらが優先される。ドック自体は開かない。起動時に開くには
+  // 各パネルの `starts_open` を使う (ADR-F48)。
   //   default_stacked_dock choices: left, right, bottom
   //   panel choices: none, agent, browser, terminal, project, git, outline, debug
   "default_stacked_dock": "right",
@@ -1027,6 +1028,9 @@
     "button": true,
     // ブラウザーパネルをドッキングする位置。'left'、'right' または 'bottom'。
     "dock": "right",
+    // 起動時にブラウザーパネルを開くかどうか (前回ドックを閉じていても開く)。
+    // 既定のレイアウトはパネルを並べておくだけで、ドックは開かない (ADR-F48)。
+    "starts_open": false,
     // 左右にドッキングしたときのブラウザーパネルの既定の幅。
     "default_width": 480,
     // 下にドッキングしたときのブラウザーパネルの既定の高さ。
@@ -1157,6 +1161,11 @@
     // Where to dock the agent panel. Can be 'left', 'right' or 'bottom'.
     // Right in this fork: see `project_panel.dock`.
     "dock": "right",
+    // Whether the agent panel should open on startup, even if its dock was
+    // closed last time.
+    // The fork's default layout (`default_stacked_panel`) only arranges the
+    // agent panel in its dock and leaves the dock closed (ADR-F48).
+    "starts_open": false,
     // Whether the agent panel should use flexible (proportional) sizing.
     //
     // Default: true

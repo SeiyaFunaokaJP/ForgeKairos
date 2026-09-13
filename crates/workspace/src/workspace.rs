@@ -95,7 +95,10 @@ pub use persistence::{
     },
     read_serialized_multi_workspaces,
 };
-use persistence::{SerializedWindowBounds, model::SerializedWorkspace};
+use persistence::{
+    SerializedWindowBounds,
+    model::{DefaultDockLayout, SerializedWorkspace},
+};
 use postage::stream::Stream;
 use project::{
     DirectoryLister, Project, ProjectEntryId, ProjectPath, ResolvedPath, Worktree, WorktreeId,
@@ -359,8 +362,7 @@ fn show_panel_in_dock(
         if stack {
             dock.stack_panel_beside_primary(index, window, cx);
         } else {
-            dock.activate_panel(index, window, cx);
-            dock.set_open(true, window, cx);
+            dock.show_panel(index, true, window, cx);
         }
     });
     true
@@ -1725,10 +1727,10 @@ pub struct Workspace {
     /// first worktree scan has produced entries, which can happen after the docks
     /// were restored, so the startup pass is retried while a scan is outstanding.
     starts_open_pending: bool,
-    /// Set once the fork's default right dock layout has been settled, either by
+    /// How far the fork's default dock layout has been settled, either by
     /// applying it or by finding a persisted layout that wins over it. The panels
     /// it names are added asynchronously, so it is retried until then.
-    default_dock_layout_settled: bool,
+    default_dock_layout: DefaultDockLayout,
     /// The tab the pointer is currently carrying, kept so the mouse up that
     /// ends the drag outside the window still knows what was dragged. Cleared
     /// on every mouse up, so a stale tab can never be torn off by a later drag
@@ -1816,6 +1818,10 @@ pub struct Workspace {
     /// write comes back through the store, so the slot the drop asked for
     /// (shown, or stacked beside what is already there) is given then (ADR-F40).
     dropped_panel_placement: Option<Subscription>,
+    /// The panel a drop is moving to another dock, and that dock. The move
+    /// does not show it by itself then; [`Workspace::place_dropped_panel`]
+    /// gives it the slot the drop asked for.
+    dropping_panel: Option<(EntityId, DockPosition)>,
 }
 
 /// 復元しなかったアイテムの行を落とす後始末の待ち合わせ (ADR-F37)。
@@ -1831,6 +1837,10 @@ struct SerializableItemCleanup {
     /// 復元を 1 つでも登録したか。誰も復元しないウィンドウでは掃除もしない。
     armed: bool,
     pending: usize,
+    /// Set the first time the count drains after being armed. That also ends
+    /// this workspace's dock startup phase for good (ADR-F48,
+    /// [`Workspace::is_starting_up`]); a window holding several workspaces
+    /// has one such phase for each.
     done: bool,
 }
 
@@ -2235,7 +2245,7 @@ impl Workspace {
             maximized_pane: None,
             previous_dock_drag_coordinates: None,
             starts_open_pending: true,
-            default_dock_layout_settled: false,
+            default_dock_layout: DefaultDockLayout::Pending,
             center,
             dragged_tab: None,
             external_drag_hint: None,
@@ -2302,6 +2312,7 @@ impl Workspace {
             deferred_save_items: Vec::new(),
             item_cleanup: SerializableItemCleanup::default(),
             dropped_panel_placement: None,
+            dropping_panel: None,
         }
     }
 
@@ -2518,61 +2529,37 @@ impl Workspace {
                 .map(|ws| !ws.paths.is_empty())
                 .unwrap_or(false);
 
+            // Restore default dock state for empty workspaces
+            // Only restore if:
+            // 1. This is an empty workspace (no paths), AND
+            // 2. The serialized workspace either doesn't exist or has no paths
+            let restores_default_docks = is_empty_workspace && !serialized_workspace_has_paths;
             let opened_items = window
                 .update(cx, |_, window, cx| {
-                    workspace.update(cx, |_workspace: &mut Workspace, cx| {
+                    workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        // The window starts up until the dock state is restored
+                        // too, as `load_workspace` has it for a project's.
+                        if restores_default_docks {
+                            workspace.begin_item_restore();
+                        }
                         open_items(serialized_workspace, project_paths, window, cx)
                     })
                 })?
                 .await
                 .unwrap_or_default();
 
-            // Restore default dock state for empty workspaces
-            // Only restore if:
-            // 1. This is an empty workspace (no paths), AND
-            // 2. The serialized workspace either doesn't exist or has no paths
-            if is_empty_workspace && !serialized_workspace_has_paths {
-                if let Some(default_docks) = persistence::read_default_dock_state(&kvp) {
-                    window
-                        .update(cx, |_, window, cx| {
-                            workspace.update(cx, |workspace, cx| {
-                                let mut default_docks = default_docks;
-                                // Fork default: pair the second panel with
-                                // whatever the user has active in the dock the
-                                // pairing is configured for, instead of hiding
-                                // it behind a panel switch. Never forces the
-                                // dock open, and an unknown panel name is
-                                // ignored when the state is restored.
-                                if let Some((position, _, secondary_panel)) =
-                                    Self::default_stacked_layout(cx)
-                                {
-                                    let dock_data = match position {
-                                        DockPosition::Left => &mut default_docks.left,
-                                        DockPosition::Bottom => &mut default_docks.bottom,
-                                        DockPosition::Right => &mut default_docks.right,
-                                    };
-                                    dock_data
-                                        .secondary_panel
-                                        .get_or_insert_with(|| secondary_panel.to_string());
-                                }
-                                for (dock, serialized_dock) in [
-                                    (&workspace.right_dock, &default_docks.right),
-                                    (&workspace.left_dock, &default_docks.left),
-                                    (&workspace.bottom_dock, &default_docks.bottom),
-                                ] {
-                                    dock.update(cx, |dock, cx| {
-                                        dock.serialized_dock = Some(serialized_dock.clone());
-                                        dock.restore_state(window, cx);
-                                    });
-                                }
-                                workspace.apply_starts_open_docks(window, cx);
-                                workspace.starts_open_pending =
-                                    workspace.has_unscanned_visible_worktree(cx);
-                                cx.notify();
-                            });
-                        })
-                        .log_err();
-                }
+            if restores_default_docks {
+                window
+                    .update(cx, |_, window, cx| {
+                        workspace.update(cx, |workspace, cx| {
+                            if let Some(default_docks) = persistence::read_default_dock_state(&kvp)
+                            {
+                                workspace.restore_default_dock_state(default_docks, window, cx);
+                            }
+                            workspace.end_item_restore(window, cx);
+                        });
+                    })
+                    .log_err();
             }
 
             window
@@ -2669,23 +2656,120 @@ impl Workspace {
             left: capture(&self.left_dock, DockPosition::Left),
             right: capture(&self.right_dock, DockPosition::Right),
             bottom: capture(&self.bottom_dock, DockPosition::Bottom),
-            default_layout_applied: self.default_dock_layout_settled,
+            default_layout: self.default_dock_layout,
         }
     }
 
-    /// Re-opens every dock holding a panel that asked to start open. Serialized
-    /// dock state is applied after the panels have been added and unconditionally
-    /// forces `is_open`, so without this pass a workspace saved with the dock
-    /// closed would keep overriding the user's `starts_open` setting on every
-    /// launch. Returns whether such a panel was found.
+    /// Restores the dock state kept for empty windows, the key-value store's
+    /// counterpart of a project's saved docks.
+    fn restore_default_dock_state(
+        &mut self,
+        default_docks: DockStructure,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.restore_saved_docks(default_docks, true, window, cx) {
+            self.serialize_workspace(window, cx);
+        }
+    }
+
+    /// Restores saved docks: a project's, or for an empty window the
+    /// key-value store's counterpart of them. Every restore goes through here,
+    /// so its steps always run in this order. Returns whether the saved docks
+    /// needed [`Workspace::migrate_layout_saved_by_old_default`], for the
+    /// caller to save them again.
+    fn restore_saved_docks(
+        &mut self,
+        mut docks: DockStructure,
+        empty_window: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let migrated = Self::migrate_layout_saved_by_old_default(&mut docks, cx);
+        if empty_window {
+            // Every empty window decides the default layout for itself, so
+            // only the saved docks are migrated, not this window's own
+            // decision. Fork default: a dock saved closed gets the configured
+            // pair's second panel stacked below whatever it had on top, ready
+            // for when the user opens it. A dock saved open shows what it was
+            // saved with; otherwise every new empty window would open with the
+            // second panel beside the user's own. An unknown panel name is
+            // ignored when the state is restored.
+            if let Some((position, _, secondary_panel)) = Self::default_stacked_layout(cx) {
+                let dock_data = match position {
+                    DockPosition::Left => &mut docks.left,
+                    DockPosition::Bottom => &mut docks.bottom,
+                    DockPosition::Right => &mut docks.right,
+                };
+                if !dock_data.visible {
+                    dock_data
+                        .secondary_panel
+                        .get_or_insert_with(|| secondary_panel.to_string());
+                }
+            }
+        } else {
+            // The stored state is what decides the fork's default pairing, so
+            // it has to replace whatever a panel that arrived before this
+            // restore had already concluded.
+            self.default_dock_layout = docks.default_layout;
+        }
+        for (dock, dock_data) in [
+            (&self.left_dock, docks.left),
+            (&self.bottom_dock, docks.bottom),
+            (&self.right_dock, docks.right),
+        ] {
+            dock.update(cx, |dock, cx| {
+                dock.serialized_dock = Some(dock_data);
+                dock.restore_state(window, cx);
+            });
+        }
+        self.starts_open_pending = self.has_unscanned_visible_worktree(cx);
+        self.apply_default_dock_layout(window, cx);
+        cx.notify();
+        migrated
+    }
+
+    /// Whether this workspace is still starting up: some of its initial panels
+    /// have yet to be added, or its saved state has yet to be restored. Each
+    /// workspace of a window holding several starts up on its own. Only
+    /// then does a panel's saved slot or `Panel::starts_open` decide what a
+    /// dock shows (ADR-F48); a panel added later, like the agent panel coming
+    /// back when AI is turned on again, leaves the docks alone. zed registers
+    /// both with the bookkeeping that holds back the cleanup of unrestored
+    /// items (ADR-F37) and ends the panels' part once the last initial panel
+    /// is in, so that bookkeeping also says when startup is over: the first
+    /// time it drains, for good. A panel loaded again later registers with it
+    /// again, as `AgentPanel::load` does on a settings change, without
+    /// starting the workspace up again.
+    pub(crate) fn is_starting_up(&self) -> bool {
+        !self.item_cleanup.done
+    }
+
+    /// Run once, when this workspace stops starting up.
+    fn finish_dock_startup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for dock in self.all_docks() {
+            dock.update(cx, |dock, cx| {
+                dock.stop_waiting_for_saved_panels(window, cx)
+            });
+        }
+    }
+
+    /// Brings every dock up to date with the panels that ask to start open;
+    /// see [`Dock::ensure_starts_open_panels`]. A restore already applies them
+    /// together with the saved state; this pass is for a panel whose answer
+    /// changes afterwards, like the project panel once the first worktree scan
+    /// is in. Returns whether such a panel was found.
     fn apply_starts_open_docks(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let during_startup = self.is_starting_up();
         let mut found = false;
         for dock in [
             self.left_dock.clone(),
             self.bottom_dock.clone(),
             self.right_dock.clone(),
         ] {
-            found |= dock.update(cx, |dock, cx| dock.ensure_starts_open_panels(window, cx));
+            found |= dock.update(cx, |dock, cx| {
+                dock.ensure_starts_open_panels(during_startup, window, cx)
+            });
         }
         found
     }
@@ -2706,15 +2790,16 @@ impl Workspace {
         Some((settings.default_stacked_dock.into(), panel, secondary_panel))
     }
 
-    /// Fork default: one dock shows a pair of panels - out of the box the agent
+    /// Fork default: one dock holds a pair of panels - out of the box the agent
     /// panel with the browser panel stacked below it - so both are reachable
     /// without knowing about the stacking commands. This is applied once per
     /// workspace - to a project opened for the first time, and to one saved
-    /// before the pairing existed (`DockStructure::default_layout_applied`) -
-    /// and never again, so a user who takes the pair apart keeps it apart.
-    /// Returns whether it was applied.
+    /// before the pairing existed (`DefaultDockLayout::Pending`) - and never
+    /// again, so a user who takes the pair apart keeps it apart. It leaves the
+    /// dock closed: opening it is up to the user and to `Panel::starts_open`
+    /// (ADR-F48). Returns whether the pairing is decided.
     fn apply_default_dock_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.default_dock_layout_settled {
+        if self.default_dock_layout != DefaultDockLayout::Pending {
             return false;
         }
 
@@ -2722,23 +2807,56 @@ impl Workspace {
             self.settle_default_dock_layout(window, cx);
             return false;
         };
-        let dock = self.dock_at_position(position).clone();
-
-        // A dock that already shows a pair was arranged by the user (or by an
-        // earlier run of this), so there is nothing left to decide.
-        if dock.read(cx).secondary_panel_index().is_some() {
-            self.settle_default_dock_layout(window, cx);
-            return false;
-        }
-
-        let applied = dock.update(cx, |dock, cx| {
-            dock.apply_default_stacked_layout(panel, secondary_panel, window, cx)
-        });
-        if applied {
+        let during_startup = self.is_starting_up();
+        let decided = self
+            .dock_at_position(position)
+            .clone()
+            .update(cx, |dock, cx| {
+                dock.apply_default_stacked_layout(
+                    panel,
+                    secondary_panel,
+                    during_startup,
+                    window,
+                    cx,
+                )
+            });
+        if decided {
             self.settle_default_dock_layout(window, cx);
             cx.notify();
         }
-        applied
+        decided
+    }
+
+    /// Follow-up for docks saved by a build from before ADR-F48, whose default
+    /// also opened the dock (`DefaultDockLayout::AppliedOpeningDock`): the
+    /// configured dock saved open on exactly the default pair is restored
+    /// closed, and every other arrangement is the user's and is restored as
+    /// saved. Either way the layout counts as settled. Deciding from the saved
+    /// state, before anything is restored, keeps the migrating launch from
+    /// activating either panel and from waiting for a panel that may never
+    /// arrive; a panel that asks to start open still opens the dock through
+    /// the usual startup pass. This runs once per upgrade from such a build: a
+    /// downgrade and a later upgrade on the same database repeat it. Returns
+    /// whether the saved docks needed it.
+    fn migrate_layout_saved_by_old_default(docks: &mut DockStructure, cx: &App) -> bool {
+        if docks.default_layout != DefaultDockLayout::AppliedOpeningDock {
+            return false;
+        }
+        if let Some((position, panel, secondary_panel)) = Self::default_stacked_layout(cx) {
+            let dock_data = match position {
+                DockPosition::Left => &mut docks.left,
+                DockPosition::Bottom => &mut docks.bottom,
+                DockPosition::Right => &mut docks.right,
+            };
+            if dock_data.visible
+                && dock_data.active_panel.as_deref() == Some(panel)
+                && dock_data.secondary_panel.as_deref() == Some(secondary_panel)
+            {
+                dock_data.visible = false;
+            }
+        }
+        docks.default_layout = DefaultDockLayout::Applied;
+        true
     }
 
     /// Records that the fork's default dock pairing is decided for this
@@ -2749,10 +2867,10 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.default_dock_layout_settled {
+        if self.default_dock_layout == DefaultDockLayout::Applied {
             return;
         }
-        self.default_dock_layout_settled = true;
+        self.default_dock_layout = DefaultDockLayout::Applied;
         self.serialize_workspace(window, cx);
     }
 
@@ -2772,18 +2890,9 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.default_dock_layout_settled = docks.default_layout_applied;
-        for (dock, data) in [
-            (&self.left_dock, docks.left),
-            (&self.bottom_dock, docks.bottom),
-            (&self.right_dock, docks.right),
-        ] {
-            dock.update(cx, |dock, cx| {
-                dock.serialized_dock = Some(data);
-                dock.restore_state(window, cx);
-            });
+        if self.restore_saved_docks(docks, false, window, cx) {
+            self.serialize_workspace(window, cx);
         }
-        self.apply_default_dock_layout(window, cx);
     }
 
     /// Returns which dock currently has focus, or `None` if focus is in the
@@ -2924,12 +3033,33 @@ impl Workspace {
             return;
         }
         let stack = window.modifiers().shift;
+        self.drop_panel_into_dock(panel, zone.position, stack, window, cx);
+    }
+
+    /// Moves `panel` to the dock at `position` and gives it the slot a drop
+    /// there asks for: shown, or stacked beside what the dock shows.
+    fn drop_panel_into_dock(
+        &mut self,
+        panel: Arc<dyn PanelHandle>,
+        position: DockPosition,
+        stack: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Dropping a panel on the dock it is already in still means "show it
         // here", which is what a panel whose dock was closed is dropped for.
-        if panel.position(window, cx) != zone.position {
-            panel.set_position(zone.position, window, cx);
+        if panel.position(window, cx) != position {
+            self.dropping_panel = Some((panel.panel_id(), position));
+            panel.set_position(position, window, cx);
         }
-        self.place_dropped_panel(panel, zone.position, stack, window, cx);
+        self.place_dropped_panel(panel, position, stack, window, cx);
+    }
+
+    /// Drops what [`Workspace::drop_panel_into_dock`] keeps while a dropped
+    /// panel is on its way to its new dock.
+    pub(crate) fn forget_panel_drop(&mut self) {
+        self.dropping_panel = None;
+        self.dropped_panel_placement = None;
     }
 
     /// Gives a dropped panel the slot it was dropped on, once it is actually in
@@ -2949,6 +3079,7 @@ impl Workspace {
         let panel_id = panel.panel_id();
         if show_panel_in_dock(&dock, panel_id, stack, window, cx) {
             self.dropped_panel_placement = None;
+            self.dropping_panel = None;
             self.serialize_workspace(window, cx);
             return;
         }
@@ -2957,6 +3088,7 @@ impl Workspace {
                 cx.observe_in(&dock, window, move |workspace, dock, window, cx| {
                     if show_panel_in_dock(&dock, panel_id, stack, window, cx) {
                         workspace.dropped_panel_placement = None;
+                        workspace.dropping_panel = None;
                         workspace.serialize_workspace(window, cx);
                     }
                 }),
@@ -3033,11 +3165,10 @@ impl Workspace {
                         let mut workspace = Workspace::new(None, project, app_state, window, cx);
                         // The torn-off panel is all the window shows, so every
                         // pass that would fill the docks in is turned off: the
-                        // startup sweep for panels asking to start open, the
-                        // fork's default right dock layout, and the open each
-                        // panel performs for itself as it is added.
+                        // startup rules that open a dock for panels asking to
+                        // start open, and the fork's default right dock layout.
                         workspace.starts_open_pending = false;
-                        workspace.default_dock_layout_settled = true;
+                        workspace.default_dock_layout = DefaultDockLayout::Applied;
                         workspace.suppress_dock_auto_open(cx);
                         workspace
                     });
@@ -3455,8 +3586,15 @@ impl Workspace {
                     })
                 });
 
+        let during_startup = self.is_starting_up();
         dock.update(cx, |dock, cx| {
-            let index = dock.add_panel(panel.clone(), self.weak_self.clone(), window, cx);
+            let index = dock.add_panel(
+                panel.clone(),
+                self.weak_self.clone(),
+                during_startup,
+                window,
+                cx,
+            );
             if let Some(size_state) = persisted_size_state {
                 dock.set_panel_size_state(&panel, size_state, cx);
             }
@@ -6436,11 +6574,11 @@ impl Workspace {
                         let mut workspace = Workspace::new(None, project, app_state, window, cx);
                         // A torn-off tab is all the window shows. Every pass
                         // that fills a fresh window's docks in is turned off
-                        // here: the startup sweep for panels asking to start
-                        // open, the fork's default right dock layout, and the
-                        // open each panel performs for itself as it is added.
+                        // here: the startup rules that open a dock for panels
+                        // asking to start open, and the fork's default right
+                        // dock layout.
                         workspace.starts_open_pending = false;
-                        workspace.default_dock_layout_settled = true;
+                        workspace.default_dock_layout = DefaultDockLayout::Applied;
                         workspace.suppress_dock_auto_open(cx);
                         workspace
                     });
@@ -8941,6 +9079,11 @@ impl Workspace {
     /// 保存したアイテムを復元し始める前に呼ぶ (ADR-F37)。中央もドックのパネルも、
     /// 自分の復元が終わったら必ず [`Workspace::end_item_restore`] を呼ぶこと
     /// (失敗した場合も。呼ばないとこのウィンドウでは以後 1 度も掃除が走らない)。
+    ///
+    /// The first time the count drains after being armed also ends this
+    /// workspace's dock startup phase for good (ADR-F48,
+    /// [`Workspace::is_starting_up`]). A restore registered after that, like a
+    /// panel loaded again while Zed runs, does not bring it back.
     pub fn begin_item_restore(&mut self) {
         self.item_cleanup.armed = true;
         self.item_cleanup.pending += 1;
@@ -8954,7 +9097,11 @@ impl Workspace {
     /// 数えて、全部載るまで掃除を止めている。
     pub fn end_item_restore(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.item_cleanup.pending = self.item_cleanup.pending.saturating_sub(1);
+        let was_starting_up = self.is_starting_up();
         self.cleanup_serializable_items(window, cx);
+        if was_starting_up && !self.is_starting_up() {
+            self.finish_dock_startup(window, cx);
+        }
     }
 
     /// 復元しなかったアイテムの行を落とす。ItemId は起動をまたいで安定しないので、
@@ -9075,30 +9222,9 @@ impl Workspace {
                     }
                 }
 
-                let docks = serialized_workspace.docks;
-                // The stored flag is what decides the fork's default pairing, so
-                // it has to replace whatever a panel that arrived before this
-                // restore had already concluded.
-                workspace.default_dock_layout_settled = docks.default_layout_applied;
-
-                for (dock, serialized_dock) in [
-                    (&mut workspace.right_dock, docks.right),
-                    (&mut workspace.left_dock, docks.left),
-                    (&mut workspace.bottom_dock, docks.bottom),
-                ]
-                .iter_mut()
-                {
-                    dock.update(cx, |dock, cx| {
-                        dock.serialized_dock = Some(serialized_dock.clone());
-                        dock.restore_state(window, cx);
-                    });
-                }
-
-                workspace.apply_starts_open_docks(window, cx);
-                workspace.starts_open_pending = workspace.has_unscanned_visible_worktree(cx);
-                workspace.apply_default_dock_layout(window, cx);
-
-                cx.notify();
+                // A layout saved by a build from before ADR-F48 is saved again,
+                // migrated, with everything else once this restore is done.
+                workspace.restore_saved_docks(serialized_workspace.docks, false, window, cx);
             })?;
 
             project
@@ -13420,7 +13546,10 @@ mod tests {
     use crate::{
         dock::{
             PanelEvent,
-            test::{TestAgentPanel, TestBrowserPanel, TestPanel},
+            test::{
+                TestAgentPanel, TestBrowserPanel, TestDebugPanel, TestGitPanel, TestPanel,
+                TestProjectPanel, TestTerminalPanel,
+            },
         },
         invalid_item_view::InvalidItemView,
         item::{
@@ -17743,8 +17872,9 @@ mod tests {
             assert!(workspace.bottom_dock().read(cx).is_open());
         });
 
-        // A workspace serialized while the dock was closed would otherwise keep it
-        // closed forever, even though the panel asks to start open.
+        // Restoring a workspace serialized while the dock was closed keeps it
+        // open for the panel that asks to start open, without deactivating the
+        // panel in between.
         workspace.update_in(cx, |workspace, window, cx| {
             workspace.set_dock_structure(
                 DockStructure {
@@ -17760,12 +17890,15 @@ mod tests {
                 window,
                 cx,
             );
-            assert!(!workspace.bottom_dock().read(cx).is_open());
+            assert!(workspace.bottom_dock().read(cx).is_open());
 
             assert!(workspace.apply_starts_open_docks(window, cx));
             assert!(workspace.bottom_dock().read(cx).is_open());
         });
-        panel.read_with(cx, |panel, _| assert!(panel.active));
+        panel.read_with(cx, |panel, _| {
+            assert!(panel.active);
+            assert_eq!(panel.set_active_calls, [true]);
+        });
     }
 
     #[gpui::test]
@@ -17793,10 +17926,11 @@ mod tests {
             assert!(workspace.apply_starts_open_docks(window, cx));
         });
 
-        // The dock stays open on the panel the user had chosen.
+        // The dock stays open on the panel the user had chosen, alone.
         dock.read_with(cx, |dock, _| {
             assert!(dock.is_open());
             assert_eq!(dock.active_panel_index(), Some(1));
+            assert_eq!(dock.secondary_panel_index(), None);
         });
     }
 
@@ -17809,13 +17943,15 @@ mod tests {
             cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
 
         // Panels are added one at a time at startup, in no particular order.
-        workspace.update_in(cx, |workspace, window, cx| {
+        let browser = workspace.update_in(cx, |workspace, window, cx| {
             let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
-            workspace.add_panel(browser, window, cx);
+            workspace.add_panel(browser.clone(), window, cx);
+            browser
         });
         workspace.read_with(cx, |workspace, cx| {
-            assert!(
-                !workspace.right_dock().read(cx).is_open(),
+            assert_eq!(
+                workspace.right_dock().read(cx).secondary_panel_index(),
+                None,
                 "the layout needs both of its panels before it can be applied"
             );
         });
@@ -17826,24 +17962,44 @@ mod tests {
             agent
         });
 
+        // The pair is arranged, but the dock stays closed and neither panel is
+        // made active behind it.
         let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
-        dock.read_with(cx, |dock, cx| {
-            assert!(dock.is_open());
-            assert_eq!(dock.visible_panels().count(), 2);
+        dock.read_with(cx, |dock, _| {
+            assert!(!dock.is_open());
             assert_eq!(
-                dock.visible_panel().map(|panel| panel.persistent_name()),
+                dock.active_panel().map(|panel| panel.persistent_name()),
                 Some("AgentPanel")
             );
             assert_eq!(
                 dock.secondary_panel().map(|panel| panel.persistent_name()),
                 Some("BrowserPanel")
             );
-            assert!(
-                dock.panel::<TestBrowserPanel>()
-                    .is_some_and(|panel| panel.read(cx).panel.active)
+        });
+        agent.read_with(cx, |agent, _| assert!(!agent.panel.active));
+        browser.read_with(cx, |browser, _| assert!(!browser.panel.active));
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert_eq!(
+                workspace.capture_dock_state(window, cx).default_layout,
+                DefaultDockLayout::Applied
+            );
+        });
+
+        // Opening the dock shows both, the agent panel on top.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+        });
+        dock.read_with(cx, |dock, _| {
+            assert!(dock.is_open());
+            assert_eq!(
+                dock.visible_panels()
+                    .map(|panel| panel.persistent_name())
+                    .collect::<Vec<_>>(),
+                ["AgentPanel", "BrowserPanel"]
             );
         });
         agent.read_with(cx, |agent, _| assert!(agent.panel.active));
+        browser.read_with(cx, |browser, _| assert!(browser.panel.active));
 
         // The layout is a one-off: taking the pair apart afterwards sticks.
         dock.update_in(cx, |dock, window, cx| {
@@ -17882,7 +18038,7 @@ mod tests {
                         secondary_panel: None,
                         secondary_ratio: None,
                     },
-                    default_layout_applied: false,
+                    default_layout: DefaultDockLayout::Pending,
                     ..Default::default()
                 },
                 window,
@@ -17892,9 +18048,9 @@ mod tests {
 
         workspace.read_with(cx, |workspace, cx| {
             let dock = workspace.right_dock().read(cx);
-            assert!(dock.is_open());
+            assert!(!dock.is_open());
             assert_eq!(
-                dock.visible_panel().map(|panel| panel.persistent_name()),
+                dock.active_panel().map(|panel| panel.persistent_name()),
                 Some("AgentPanel")
             );
             assert_eq!(
@@ -17905,10 +18061,9 @@ mod tests {
 
         // The decision is recorded, so the next launch restores what is there now.
         workspace.update_in(cx, |workspace, window, cx| {
-            assert!(
-                workspace
-                    .capture_dock_state(window, cx)
-                    .default_layout_applied
+            assert_eq!(
+                workspace.capture_dock_state(window, cx).default_layout,
+                DefaultDockLayout::Applied
             );
         });
     }
@@ -17934,7 +18089,7 @@ mod tests {
                 .update(cx, |dock, cx| dock.set_secondary_panel(None, window, cx));
             workspace.capture_dock_state(window, cx)
         });
-        assert!(docks.default_layout_applied);
+        assert_eq!(docks.default_layout, DefaultDockLayout::Applied);
         assert_eq!(docks.right.secondary_panel, None);
 
         // Restoring that state, as the next launch does, leaves the pair apart.
@@ -17973,7 +18128,7 @@ mod tests {
                         secondary_panel: Some("AgentPanel".to_string()),
                         secondary_ratio: Some(0.4),
                     },
-                    default_layout_applied: false,
+                    default_layout: DefaultDockLayout::Pending,
                     ..Default::default()
                 },
                 window,
@@ -17991,10 +18146,9 @@ mod tests {
                 dock.secondary_panel().map(|panel| panel.persistent_name()),
                 Some("AgentPanel")
             );
-            assert!(
-                workspace
-                    .capture_dock_state(window, cx)
-                    .default_layout_applied
+            assert_eq!(
+                workspace.capture_dock_state(window, cx).default_layout,
+                DefaultDockLayout::Applied
             );
         });
     }
@@ -18028,6 +18182,1551 @@ mod tests {
             assert!(!dock.is_open());
             assert_eq!(dock.secondary_panel_index(), None);
         });
+
+        // Without a configured pair there is nothing to recognize in a dock an
+        // older build's default opened, so it stays open; only the version moves on.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.set_dock_structure(
+                DockStructure {
+                    right: DockData {
+                        visible: true,
+                        active_panel: Some("AgentPanel".to_string()),
+                        zoom: false,
+                        secondary_panel: Some("BrowserPanel".to_string()),
+                        secondary_ratio: None,
+                    },
+                    default_layout: DefaultDockLayout::AppliedOpeningDock,
+                    ..Default::default()
+                },
+                window,
+                cx,
+            );
+            assert!(workspace.right_dock().read(cx).is_open());
+            assert_eq!(
+                workspace.capture_dock_state(window, cx).default_layout,
+                DefaultDockLayout::Applied
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_initial_restore_still_closes_a_dock_saved_closed(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (agent, browser) = workspace.update_in(cx, |workspace, window, cx| {
+            let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent.clone(), window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser.clone(), window, cx);
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            assert!(workspace.right_dock().read(cx).is_open());
+
+            // What the database restore does with a project saved with that
+            // dock closed, when no panel asks to start open.
+            workspace.set_dock_structure(
+                DockStructure {
+                    right: DockData {
+                        visible: false,
+                        active_panel: Some("AgentPanel".to_string()),
+                        zoom: false,
+                        secondary_panel: Some("BrowserPanel".to_string()),
+                        secondary_ratio: None,
+                    },
+                    default_layout: DefaultDockLayout::Applied,
+                    ..Default::default()
+                },
+                window,
+                cx,
+            );
+            assert!(!workspace.apply_starts_open_docks(window, cx));
+            (agent, browser)
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            assert!(!workspace.right_dock().read(cx).is_open());
+        });
+        agent.read_with(cx, |agent, _| assert!(!agent.panel.active));
+        browser.read_with(cx, |browser, _| assert!(!browser.panel.active));
+    }
+
+    #[gpui::test]
+    async fn test_adding_a_panel_keeps_a_dock_the_user_opened(cx: &mut gpui::TestAppContext) {
+        fn assert_shows_the_pair(dock: &Dock) {
+            assert!(dock.is_open());
+            assert_eq!(
+                dock.visible_panels()
+                    .map(|panel| panel.persistent_name())
+                    .collect::<Vec<_>>(),
+                ["AgentPanel", "BrowserPanel"]
+            );
+        }
+
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        // A project reopened with its right dock saved closed, which the user
+        // then opens by hand.
+        let moved_panel = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.set_dock_structure(
+                DockStructure {
+                    right: DockData {
+                        visible: false,
+                        active_panel: Some("AgentPanel".to_string()),
+                        zoom: false,
+                        secondary_panel: Some("BrowserPanel".to_string()),
+                        secondary_ratio: None,
+                    },
+                    default_layout: DefaultDockLayout::Applied,
+                    ..Default::default()
+                },
+                window,
+                cx,
+            );
+            let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent, window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser, window, cx);
+            let moved_panel = cx.new(|cx| TestPanel::new(DockPosition::Left, 103, cx));
+            workspace.add_panel(moved_panel.clone(), window, cx);
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            moved_panel
+        });
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+        dock.read_with(cx, |dock, _| assert_shows_the_pair(dock));
+
+        // A panel added while Zed runs, as when AI is turned on.
+        workspace.update_in(cx, |workspace, window, cx| {
+            let late_panel = cx.new(|cx| TestPanel::new(DockPosition::Right, 102, cx));
+            workspace.add_panel(late_panel, window, cx);
+        });
+        dock.read_with(cx, |dock, _| assert_shows_the_pair(dock));
+
+        // A panel moved into the dock (ADR-F40).
+        moved_panel.update_in(cx, |panel, window, cx| {
+            panel.set_position(DockPosition::Right, window, cx)
+        });
+        dock.read_with(cx, |dock, _| {
+            assert_eq!(dock.panels_len(), 4);
+            assert_shows_the_pair(dock);
+        });
+    }
+
+    /// The right dock saved with the agent panel on top and the browser panel
+    /// stacked below it.
+    fn saved_default_pair(visible: bool, default_layout: DefaultDockLayout) -> DockStructure {
+        DockStructure {
+            right: DockData {
+                visible,
+                active_panel: Some("AgentPanel".to_string()),
+                zoom: false,
+                secondary_panel: Some("BrowserPanel".to_string()),
+                secondary_ratio: None,
+            },
+            default_layout,
+            ..Default::default()
+        }
+    }
+
+    fn visible_panel_names(dock: &Dock) -> Vec<&'static str> {
+        dock.visible_panels()
+            .map(|panel| panel.persistent_name())
+            .collect()
+    }
+
+    /// What a plain click on a panel's status bar button does to a stacked
+    /// pair (see `PanelButtons`): hide that half, or put a hidden half back.
+    /// Returns whether the click was handled that way.
+    fn click_stacking_button(
+        dock: &mut Dock,
+        panel_name: &str,
+        window: &mut Window,
+        cx: &mut Context<Dock>,
+    ) -> bool {
+        dock.panel_index_for_persistent_name(panel_name, cx)
+            .is_some_and(|index| {
+                dock.hide_stacked_panel(index, window, cx)
+                    || dock.restack_hidden_panel(index, window, cx)
+            })
+    }
+
+    #[gpui::test]
+    async fn test_empty_window_pairs_the_second_panel_only_into_a_closed_dock(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let saved_right_dock = |visible: bool, active_panel: &str| DockData {
+            visible,
+            active_panel: Some(active_panel.to_string()),
+            zoom: false,
+            secondary_panel: None,
+            secondary_ratio: None,
+        };
+        let cases = [
+            // Left open on the user's own panel: nothing is stacked beside it.
+            (saved_right_dock(true, "TestPanel"), vec!["TestPanel"]),
+            // Left closed: the pair is ready for when the dock is opened.
+            (
+                saved_right_dock(false, "AgentPanel"),
+                vec!["AgentPanel", "BrowserPanel"],
+            ),
+        ];
+
+        for (right, expected_panels) in cases {
+            let fs = FakeFs::new(cx.executor());
+            let project = Project::test(fs, [], cx).await;
+            let (workspace, window_cx) =
+                cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+            let shown_panels = workspace.update_in(window_cx, |workspace, window, cx| {
+                workspace.restore_default_dock_state(
+                    DockStructure {
+                        right: right.clone(),
+                        default_layout: DefaultDockLayout::Applied,
+                        ..Default::default()
+                    },
+                    window,
+                    cx,
+                );
+                let user_panel = cx.new(|cx| TestPanel::new(DockPosition::Right, 102, cx));
+                workspace.add_panel(user_panel, window, cx);
+                let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+                workspace.add_panel(agent, window, cx);
+                let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+                workspace.add_panel(browser, window, cx);
+                if !workspace.right_dock().read(cx).is_open() {
+                    workspace.toggle_dock(DockPosition::Right, window, cx);
+                }
+                visible_panel_names(workspace.right_dock().read(cx))
+            });
+            assert_eq!(shown_panels, expected_panels, "{right:?}");
+        }
+    }
+
+    /// Ends the window's startup the way zed does once the last of its
+    /// initial panels is in.
+    fn finish_starting_up(
+        workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        workspace.begin_item_restore();
+        workspace.end_item_restore(window, cx);
+        assert!(!workspace.is_starting_up());
+    }
+
+    /// The panels the dock startup tests add. Each carries the persistent name
+    /// of the real panel it stands in for, which is how the saved state and
+    /// the default pairing find panels.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum StartupPanel {
+        Agent,
+        Browser,
+        Terminal,
+        Debug,
+        Git,
+        Project,
+    }
+
+    enum AddedStartupPanel {
+        Agent(Entity<TestAgentPanel>),
+        Browser(Entity<TestBrowserPanel>),
+        Terminal(Entity<TestTerminalPanel>),
+        Debug(Entity<TestDebugPanel>),
+        Git(Entity<TestGitPanel>),
+        Project(Entity<TestProjectPanel>),
+    }
+
+    impl StartupPanel {
+        fn name(self) -> &'static str {
+            match self {
+                Self::Agent => "AgentPanel",
+                Self::Browser => "BrowserPanel",
+                Self::Terminal => "TerminalPanel",
+                Self::Debug => "DebugPanel",
+                Self::Git => "GitPanel",
+                Self::Project => "Project Panel",
+            }
+        }
+
+        fn add(
+            self,
+            position: DockPosition,
+            starts_open: bool,
+            workspace: &mut Workspace,
+            window: &mut Window,
+            cx: &mut Context<Workspace>,
+        ) -> AddedStartupPanel {
+            macro_rules! add {
+                ($panel_type:ident, $activation_priority:literal, $variant:ident) => {{
+                    let panel = cx.new(|cx| {
+                        if starts_open {
+                            $panel_type::new_starts_open(position, $activation_priority, cx)
+                        } else {
+                            $panel_type::new(position, $activation_priority, cx)
+                        }
+                    });
+                    workspace.add_panel(panel.clone(), window, cx);
+                    AddedStartupPanel::$variant(panel)
+                }};
+            }
+            match self {
+                Self::Agent => add!(TestAgentPanel, 100, Agent),
+                Self::Browser => add!(TestBrowserPanel, 101, Browser),
+                Self::Terminal => add!(TestTerminalPanel, 102, Terminal),
+                Self::Debug => add!(TestDebugPanel, 103, Debug),
+                Self::Git => add!(TestGitPanel, 104, Git),
+                Self::Project => add!(TestProjectPanel, 105, Project),
+            }
+        }
+    }
+
+    impl AddedStartupPanel {
+        fn test_panel<'a>(&self, cx: &'a App) -> &'a TestPanel {
+            match self {
+                Self::Agent(panel) => &panel.read(cx).panel,
+                Self::Browser(panel) => &panel.read(cx).panel,
+                Self::Terminal(panel) => &panel.read(cx).panel,
+                Self::Debug(panel) => &panel.read(cx).panel,
+                Self::Git(panel) => &panel.read(cx).panel,
+                Self::Project(panel) => &panel.read(cx).panel,
+            }
+        }
+
+        /// Makes the panel ask to start open from now on, as the project panel
+        /// does once the first worktree scan is in.
+        fn start_asking_to_start_open(&self, cx: &mut App) {
+            match self {
+                Self::Agent(panel) => panel.update(cx, |panel, _| panel.panel.starts_open = true),
+                Self::Browser(panel) => panel.update(cx, |panel, _| panel.panel.starts_open = true),
+                Self::Terminal(panel) => {
+                    panel.update(cx, |panel, _| panel.panel.starts_open = true)
+                }
+                Self::Debug(panel) => panel.update(cx, |panel, _| panel.panel.starts_open = true),
+                Self::Git(panel) => panel.update(cx, |panel, _| panel.panel.starts_open = true),
+                Self::Project(panel) => panel.update(cx, |panel, _| panel.panel.starts_open = true),
+            }
+        }
+    }
+
+    fn set_active_call_counts(added: &[(StartupPanel, AddedStartupPanel)], cx: &App) -> Vec<usize> {
+        added
+            .iter()
+            .map(|(_, panel)| panel.test_panel(cx).set_active_calls.len())
+            .collect()
+    }
+
+    /// One way a dock can start up, checked for every order its panels can
+    /// arrive in and every point the saved state can be restored at. With all
+    /// of them the dock has to end the same way, and no panel may be shown
+    /// and then hidden, or shown at all if it ends off screen.
+    struct DockStartupCase {
+        description: &'static str,
+        dock: DockPosition,
+        /// What was saved for `dock`; `None` for a project opened for the
+        /// first time.
+        saved: Option<(DockData, DefaultDockLayout)>,
+        /// Restores through the empty-window path rather than the database one.
+        empty_window: bool,
+        /// The panels that arrive in `dock`, and whether each asks to start
+        /// open.
+        panels: Vec<(StartupPanel, bool)>,
+        /// One of `panels` that only asks to start open once they are all in
+        /// and the saved state is restored, followed by the pass the first
+        /// worktree scan triggers, both while the window starts up and after.
+        late_starts_open: Option<StartupPanel>,
+        visible: Vec<StartupPanel>,
+        hidden: Option<StartupPanel>,
+    }
+
+    fn startup_case(
+        description: &'static str,
+        dock: DockPosition,
+        saved: Option<(DockData, DefaultDockLayout)>,
+        panels: Vec<(StartupPanel, bool)>,
+        visible: Vec<StartupPanel>,
+        hidden: Option<StartupPanel>,
+    ) -> DockStartupCase {
+        DockStartupCase {
+            description,
+            dock,
+            saved,
+            empty_window: false,
+            panels,
+            late_starts_open: None,
+            visible,
+            hidden,
+        }
+    }
+
+    fn saved_dock(
+        visible: bool,
+        active_panel: StartupPanel,
+        secondary_panel: Option<StartupPanel>,
+    ) -> DockData {
+        DockData {
+            visible,
+            active_panel: Some(active_panel.name().to_string()),
+            zoom: false,
+            secondary_panel: secondary_panel.map(|panel| panel.name().to_string()),
+            secondary_ratio: None,
+        }
+    }
+
+    /// Every order `count` panels can arrive in.
+    fn arrival_orders(count: usize) -> Vec<Vec<usize>> {
+        let mut orders = vec![Vec::new()];
+        for panel in 0..count {
+            orders = orders
+                .into_iter()
+                .flat_map(|order: Vec<usize>| {
+                    (0..=order.len()).map(move |position| {
+                        let mut order = order.clone();
+                        order.insert(position, panel);
+                        order
+                    })
+                })
+                .collect();
+        }
+        orders
+    }
+
+    fn restore_saved_dock(
+        case: &DockStartupCase,
+        workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let Some((dock_data, default_layout)) = case.saved.clone() else {
+            return;
+        };
+        let mut docks = DockStructure {
+            default_layout,
+            ..Default::default()
+        };
+        match case.dock {
+            DockPosition::Left => docks.left = dock_data,
+            DockPosition::Bottom => docks.bottom = dock_data,
+            DockPosition::Right => docks.right = dock_data,
+        }
+        workspace.restore_saved_docks(docks, case.empty_window, window, cx);
+    }
+
+    async fn assert_dock_startup(case: &DockStartupCase, cx: &mut gpui::TestAppContext) {
+        let restore_points = if case.saved.is_some() {
+            0..=case.panels.len()
+        } else {
+            0..=0
+        };
+        let late_after_startup_points: &[bool] = if case.late_starts_open.is_some() {
+            &[false, true]
+        } else {
+            &[false]
+        };
+        // A panel asking to start open that arrives before the saved state is
+        // restored may be on screen until the restore takes it off again, in a
+        // dock saved open without it (see `Dock::restore_state`).
+        let restore_may_hide = |panel: StartupPanel| {
+            case.saved.as_ref().is_some_and(|(dock_data, _)| {
+                dock_data.visible
+                    && dock_data.active_panel.as_deref() != Some(panel.name())
+                    && dock_data.secondary_panel.as_deref() != Some(panel.name())
+            })
+        };
+        for order in arrival_orders(case.panels.len()) {
+            for restore_at in restore_points.clone() {
+                for &late_after_startup in late_after_startup_points {
+                    let arrivals = order
+                        .iter()
+                        .map(|index| case.panels[*index].0)
+                        .collect::<Vec<_>>();
+                    let run = format!(
+                        "{}: {arrivals:?} arriving, restored after {restore_at} of them{}",
+                        case.description,
+                        if late_after_startup {
+                            ", the late answer coming after startup"
+                        } else {
+                            ""
+                        }
+                    );
+                    let fs = FakeFs::new(cx.executor());
+                    let project = Project::test(fs, [], cx).await;
+                    let (workspace, window_cx) =
+                        cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+                    let (added, calls_before_restore) =
+                        workspace.update_in(window_cx, |workspace, window, cx| {
+                            let mut added = Vec::new();
+                            let mut calls_before_restore = Vec::new();
+                            for (step, index) in order.iter().enumerate() {
+                                if step == restore_at {
+                                    calls_before_restore = set_active_call_counts(&added, cx);
+                                    restore_saved_dock(case, workspace, window, cx);
+                                }
+                                let (panel, starts_open) = case.panels[*index];
+                                let added_panel =
+                                    panel.add(case.dock, starts_open, workspace, window, cx);
+                                added.push((panel, added_panel));
+                            }
+                            if restore_at == order.len() {
+                                calls_before_restore = set_active_call_counts(&added, cx);
+                                restore_saved_dock(case, workspace, window, cx);
+                            }
+                            if let Some(late_panel) = case.late_starts_open {
+                                if late_after_startup {
+                                    finish_starting_up(workspace, window, cx);
+                                }
+                                for (panel, added_panel) in &added {
+                                    if *panel == late_panel {
+                                        added_panel.start_asking_to_start_open(cx);
+                                    }
+                                }
+                                workspace.apply_starts_open_docks(window, cx);
+                            }
+                            (added, calls_before_restore)
+                        });
+
+                    let dock = workspace.read_with(window_cx, |workspace, _| {
+                        workspace.dock_at_position(case.dock).clone()
+                    });
+                    dock.read_with(window_cx, |dock, _| {
+                        let visible = case
+                            .visible
+                            .iter()
+                            .map(|panel| panel.name())
+                            .collect::<Vec<_>>();
+                        assert_eq!(visible_panel_names(dock), visible, "{run}");
+                        let hidden = dock
+                            .hidden_stacked_panel_index()
+                            .and_then(|index| dock.panel_at(index))
+                            .map(|panel| panel.persistent_name());
+                        assert_eq!(hidden, case.hidden.map(StartupPanel::name), "{run}");
+                    });
+                    for (position, (panel, added_panel)) in added.iter().enumerate() {
+                        let calls = workspace.read_with(window_cx, |_, cx| {
+                            added_panel.test_panel(cx).set_active_calls.clone()
+                        });
+                        let checked_from = if restore_may_hide(*panel) {
+                            calls_before_restore.get(position).copied().unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        let checked = calls.get(checked_from..).unwrap_or_default();
+                        assert!(
+                            !checked.windows(2).any(|pair| pair[0] && !pair[1]),
+                            "{run}: {panel:?} was shown and hidden again: {calls:?}"
+                        );
+                        if case.visible.contains(panel) {
+                            assert_eq!(calls.last(), Some(&true), "{run}: {panel:?}: {calls:?}");
+                        } else {
+                            assert!(
+                                !checked.contains(&true),
+                                "{run}: {panel:?} ends off screen but was shown: {calls:?}"
+                            );
+                        }
+                    }
+                    if case.saved.is_some() && !case.empty_window {
+                        let docks = workspace.update_in(window_cx, |workspace, window, cx| {
+                            workspace.capture_dock_state(window, cx)
+                        });
+                        assert_eq!(docks.default_layout, DefaultDockLayout::Applied, "{run}");
+                    }
+                    // One click on the hidden half brings back the configured
+                    // order, the agent panel on top, or stacks it below the
+                    // panel shown.
+                    if let Some(hidden) = case.hidden {
+                        let expected = if hidden == StartupPanel::Agent {
+                            std::iter::once(hidden)
+                                .chain(case.visible.iter().copied())
+                                .collect::<Vec<_>>()
+                        } else {
+                            case.visible
+                                .iter()
+                                .copied()
+                                .chain(std::iter::once(hidden))
+                                .collect::<Vec<_>>()
+                        };
+                        dock.update_in(window_cx, |dock, window, cx| {
+                            assert!(
+                                click_stacking_button(dock, hidden.name(), window, cx),
+                                "{run}"
+                            );
+                            assert_eq!(
+                                visible_panel_names(dock),
+                                expected
+                                    .iter()
+                                    .map(|panel| panel.name())
+                                    .collect::<Vec<_>>(),
+                                "{run}: after one click on {hidden:?}"
+                            );
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    #[gpui::test]
+    async fn test_dock_startup_arrangements(cx: &mut gpui::TestAppContext) {
+        use StartupPanel::{Agent, Browser, Git, Project, Terminal};
+        init_test(cx);
+        let left = DockPosition::Left;
+        let right = DockPosition::Right;
+        let bottom = DockPosition::Bottom;
+        let applied = |dock_data: DockData| Some((dock_data, DefaultDockLayout::Applied));
+        let legacy = |dock_data: DockData| Some((dock_data, DefaultDockLayout::AppliedOpeningDock));
+        let pair = |visible: bool| applied(saved_dock(visible, Agent, Some(Browser)));
+        let old_default_pair = || legacy(saved_dock(true, Agent, Some(Browser)));
+        let the_pair = || vec![(Agent, false), (Browser, false)];
+
+        let mut cases = vec![
+            startup_case("a new project", right, None, the_pair(), vec![], None),
+            startup_case(
+                "a new project, the agent panel starting open",
+                right,
+                None,
+                vec![(Agent, true), (Browser, false)],
+                vec![Agent],
+                Some(Browser),
+            ),
+            startup_case(
+                "a new project, the browser panel starting open",
+                right,
+                None,
+                vec![(Agent, false), (Browser, true)],
+                vec![Browser],
+                Some(Agent),
+            ),
+            startup_case(
+                "a new project, both starting open",
+                right,
+                None,
+                vec![(Agent, true), (Browser, true)],
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "a new project, another panel of that dock starting open",
+                right,
+                None,
+                vec![(Agent, false), (Browser, false), (Terminal, true)],
+                vec![Terminal],
+                Some(Browser),
+            ),
+            startup_case(
+                "the pair saved closed",
+                right,
+                pair(false),
+                the_pair(),
+                vec![],
+                None,
+            ),
+            startup_case(
+                "the pair saved closed, the agent panel starting open",
+                right,
+                pair(false),
+                vec![(Agent, true), (Browser, false)],
+                vec![Agent],
+                Some(Browser),
+            ),
+            startup_case(
+                "the pair saved closed, the browser panel starting open",
+                right,
+                pair(false),
+                vec![(Agent, false), (Browser, true)],
+                vec![Browser],
+                Some(Agent),
+            ),
+            startup_case(
+                "the pair saved closed, both starting open",
+                right,
+                pair(false),
+                vec![(Agent, true), (Browser, true)],
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "saved closed on the browser panel alone, both starting open",
+                right,
+                applied(saved_dock(false, Browser, None)),
+                vec![(Agent, true), (Browser, true)],
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "saved closed on the browser panel alone, the agent panel starting open",
+                right,
+                applied(saved_dock(false, Browser, None)),
+                vec![(Agent, true), (Browser, false)],
+                vec![Agent],
+                Some(Browser),
+            ),
+            startup_case(
+                "saved closed on the agent panel alone, the browser panel starting open",
+                right,
+                applied(saved_dock(false, Agent, None)),
+                vec![(Agent, false), (Browser, true)],
+                vec![Browser],
+                Some(Agent),
+            ),
+            startup_case(
+                "saved closed with the browser panel on top of the agent panel, both starting \
+                 open",
+                right,
+                applied(saved_dock(false, Browser, Some(Agent))),
+                vec![(Agent, true), (Browser, true)],
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "the pair saved open",
+                right,
+                pair(true),
+                the_pair(),
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "the pair saved open, the browser panel starting open",
+                right,
+                pair(true),
+                vec![(Agent, false), (Browser, true)],
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "saved open on the agent panel alone",
+                right,
+                applied(saved_dock(true, Agent, None)),
+                the_pair(),
+                vec![Agent],
+                None,
+            ),
+            startup_case(
+                "saved open on the browser panel alone",
+                right,
+                applied(saved_dock(true, Browser, None)),
+                the_pair(),
+                vec![Browser],
+                None,
+            ),
+            startup_case(
+                "the pair saved open, the agent panel never arriving",
+                right,
+                pair(true),
+                vec![(Browser, false)],
+                vec![Browser],
+                None,
+            ),
+            startup_case(
+                "the pair the old default opened",
+                right,
+                old_default_pair(),
+                the_pair(),
+                vec![],
+                None,
+            ),
+            startup_case(
+                "the pair the old default opened, the browser panel starting open",
+                right,
+                old_default_pair(),
+                vec![(Agent, false), (Browser, true)],
+                vec![Browser],
+                Some(Agent),
+            ),
+            startup_case(
+                "the pair the old default opened, the agent panel never arriving",
+                right,
+                old_default_pair(),
+                vec![(Browser, false)],
+                vec![],
+                None,
+            ),
+            startup_case(
+                "the pair the old default opened, a third panel arriving too",
+                right,
+                old_default_pair(),
+                vec![(Agent, false), (Browser, false), (Terminal, false)],
+                vec![],
+                None,
+            ),
+            startup_case(
+                "an older build's pair with the browser panel put on top",
+                right,
+                legacy(saved_dock(true, Browser, Some(Agent))),
+                the_pair(),
+                vec![Browser, Agent],
+                None,
+            ),
+            startup_case(
+                "the pair saved open, a third panel of that dock starting open",
+                right,
+                pair(true),
+                vec![(Agent, false), (Browser, false), (Terminal, true)],
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "the pair saved closed, a third panel of that dock starting open",
+                right,
+                pair(false),
+                vec![(Agent, false), (Browser, false), (Terminal, true)],
+                vec![Terminal],
+                Some(Browser),
+            ),
+            startup_case(
+                "the left dock saved open on the git panel, the project panel starting open",
+                left,
+                applied(saved_dock(true, Git, None)),
+                vec![(Git, false), (Project, true)],
+                vec![Git],
+                None,
+            ),
+            DockStartupCase {
+                late_starts_open: Some(Project),
+                ..startup_case(
+                    "the left dock saved open on the git panel, the project panel starting \
+                     open once scanned",
+                    left,
+                    applied(saved_dock(true, Git, None)),
+                    vec![(Git, false), (Project, false)],
+                    vec![Git],
+                    None,
+                )
+            },
+            DockStartupCase {
+                late_starts_open: Some(Project),
+                ..startup_case(
+                    "the left dock saved closed on the git panel, the project panel starting \
+                     open once scanned",
+                    left,
+                    applied(saved_dock(false, Git, None)),
+                    vec![(Git, false), (Project, false)],
+                    vec![Project],
+                    None,
+                )
+            },
+            startup_case(
+                "the bottom dock saved open on the debug panel, the terminal starting open",
+                bottom,
+                applied(saved_dock(true, StartupPanel::Debug, None)),
+                vec![(StartupPanel::Debug, false), (Terminal, true)],
+                vec![StartupPanel::Debug],
+                None,
+            ),
+            startup_case(
+                "the bottom dock saved closed on the debug panel, the terminal starting open",
+                bottom,
+                applied(saved_dock(false, StartupPanel::Debug, None)),
+                vec![(StartupPanel::Debug, false), (Terminal, true)],
+                vec![Terminal],
+                None,
+            ),
+            startup_case(
+                "the bottom dock saved open on the terminal with the debug panel stacked",
+                bottom,
+                applied(saved_dock(true, Terminal, Some(StartupPanel::Debug))),
+                vec![(StartupPanel::Debug, false), (Terminal, true)],
+                vec![Terminal, StartupPanel::Debug],
+                None,
+            ),
+        ];
+        let empty_window_cases = [
+            startup_case(
+                "an empty window saved open on the agent panel alone",
+                right,
+                applied(saved_dock(true, Agent, None)),
+                the_pair(),
+                vec![Agent],
+                None,
+            ),
+            startup_case(
+                "an empty window saved open on a panel yet to arrive",
+                right,
+                applied(saved_dock(true, StartupPanel::Debug, None)),
+                vec![
+                    (Agent, false),
+                    (Browser, false),
+                    (StartupPanel::Debug, false),
+                ],
+                vec![StartupPanel::Debug],
+                None,
+            ),
+            startup_case(
+                "an empty window saved with the pair open",
+                right,
+                pair(true),
+                the_pair(),
+                vec![Agent, Browser],
+                None,
+            ),
+            startup_case(
+                "an empty window with the pair the old default opened",
+                right,
+                old_default_pair(),
+                the_pair(),
+                vec![],
+                None,
+            ),
+            startup_case(
+                "an empty window saved open on the debug panel, the terminal starting open",
+                bottom,
+                applied(saved_dock(true, StartupPanel::Debug, None)),
+                vec![(StartupPanel::Debug, false), (Terminal, true)],
+                vec![StartupPanel::Debug],
+                None,
+            ),
+        ];
+        cases.extend(empty_window_cases.into_iter().map(|case| DockStartupCase {
+            empty_window: true,
+            ..case
+        }));
+        for case in &cases {
+            assert_dock_startup(case, cx).await;
+        }
+    }
+
+    #[gpui::test]
+    async fn test_hidden_half_of_the_default_pair_comes_back_with_one_click(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use StartupPanel::{Agent, Browser, Terminal};
+        init_test(cx);
+        // A panel that did not ask to start open waits behind its button, and
+        // one click on it brings back the configured order - or, beside a
+        // panel outside the pair, stacks it below that one.
+        for (starts_open, clicked, expected) in [
+            (Agent, Browser, [Agent, Browser]),
+            (Browser, Agent, [Agent, Browser]),
+            (Terminal, Browser, [Terminal, Browser]),
+        ] {
+            let case = format!("{starts_open:?} starting open, {clicked:?} clicked");
+            let fs = FakeFs::new(cx.executor());
+            let project = Project::test(fs, [], cx).await;
+            let (workspace, window_cx) =
+                cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+            workspace.update_in(window_cx, |workspace, window, cx| {
+                for panel in [Agent, Browser, Terminal] {
+                    panel.add(
+                        DockPosition::Right,
+                        panel == starts_open,
+                        workspace,
+                        window,
+                        cx,
+                    );
+                }
+            });
+            let dock =
+                workspace.read_with(window_cx, |workspace, _| workspace.right_dock().clone());
+            dock.update_in(window_cx, |dock, window, cx| {
+                assert_eq!(visible_panel_names(dock), [starts_open.name()], "{case}");
+                assert!(
+                    click_stacking_button(dock, clicked.name(), window, cx),
+                    "{case}"
+                );
+                assert_eq!(
+                    visible_panel_names(dock),
+                    expected.map(StartupPanel::name),
+                    "{case}"
+                );
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn test_restore_zooms_only_the_saved_top_panel(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        for (agent_arrives, restore_first) in
+            [(true, true), (true, false), (false, true), (false, false)]
+        {
+            let case =
+                format!("agent panel arriving: {agent_arrives}, restored first: {restore_first}");
+            let fs = FakeFs::new(cx.executor());
+            let project = Project::test(fs, [], cx).await;
+            let (workspace, window_cx) =
+                cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+            let (agent, browser) = workspace.update_in(window_cx, |workspace, window, cx| {
+                let mut saved_docks = saved_default_pair(true, DefaultDockLayout::Applied);
+                saved_docks.right.zoom = true;
+                if restore_first {
+                    workspace.set_dock_structure(saved_docks.clone(), window, cx);
+                }
+                let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+                workspace.add_panel(browser.clone(), window, cx);
+                let agent = if agent_arrives {
+                    let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+                    workspace.add_panel(agent.clone(), window, cx);
+                    Some(agent)
+                } else {
+                    None
+                };
+                if !restore_first {
+                    workspace.set_dock_structure(saved_docks, window, cx);
+                }
+                (agent, browser)
+            });
+
+            // The stacked panel only stands in for the missing top one, so it
+            // does not take over the zoom.
+            browser.read_with(window_cx, |browser, _| {
+                assert!(!browser.panel.zoomed, "{case}")
+            });
+            if let Some(agent) = agent {
+                agent.read_with(window_cx, |agent, _| assert!(agent.panel.zoomed, "{case}"));
+            }
+        }
+    }
+
+    #[gpui::test]
+    async fn test_late_panels_do_not_reapply_the_saved_open_state_or_pairing(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (agent, browser) = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.set_dock_structure(
+                saved_default_pair(true, DefaultDockLayout::Applied),
+                window,
+                cx,
+            );
+            let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent.clone(), window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser.clone(), window, cx);
+            (agent, browser)
+        });
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+        dock.read_with(cx, |dock, _| {
+            assert_eq!(visible_panel_names(dock), ["AgentPanel", "BrowserPanel"])
+        });
+
+        // The user closes the dock: a panel arriving later leaves it closed.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            let late_panel = cx.new(|cx| TestPanel::new(DockPosition::Right, 102, cx));
+            workspace.add_panel(late_panel, window, cx);
+        });
+        dock.read_with(cx, |dock, _| assert!(!dock.is_open()));
+
+        // The user opens it again and hides the stacked browser panel: a late
+        // panel does not stack it again.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            workspace.right_dock().clone().update(cx, |dock, cx| {
+                assert!(click_stacking_button(dock, "BrowserPanel", window, cx));
+            });
+            let late_panel = cx.new(|cx| TestPanel::new(DockPosition::Right, 103, cx));
+            workspace.add_panel(late_panel, window, cx);
+        });
+        dock.read_with(cx, |dock, _| {
+            assert_eq!(visible_panel_names(dock), ["AgentPanel"])
+        });
+
+        // Once startup is over, the user brings the browser panel back and
+        // hides the agent panel instead. AI turned off and on again takes the
+        // agent panel out of the dock and adds it back, which must not put it
+        // on screen again, and a panel asking to start open that arrives now
+        // does not open its dock either.
+        workspace.update_in(cx, |workspace, window, cx| {
+            finish_starting_up(workspace, window, cx);
+            workspace.right_dock().clone().update(cx, |dock, cx| {
+                assert!(click_stacking_button(dock, "BrowserPanel", window, cx));
+                assert!(click_stacking_button(dock, "AgentPanel", window, cx));
+            });
+            workspace.remove_panel(&agent, window, cx);
+            workspace.add_panel(agent.clone(), window, cx);
+            let terminal =
+                cx.new(|cx| TestTerminalPanel::new_starts_open(DockPosition::Bottom, 104, cx));
+            workspace.add_panel(terminal, window, cx);
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+        });
+        dock.read_with(cx, |dock, _| {
+            assert!(dock.is_open());
+            assert_eq!(visible_panel_names(dock), ["BrowserPanel"]);
+        });
+        agent.read_with(cx, |agent, _| assert!(!agent.panel.active));
+        browser.read_with(cx, |browser, _| assert!(browser.panel.active));
+    }
+
+    #[gpui::test]
+    async fn test_moving_a_starts_open_panel_leaves_the_target_dock_alone(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (agent, browser, terminal) = workspace.update_in(cx, |workspace, window, cx| {
+            let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent.clone(), window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser.clone(), window, cx);
+            let terminal =
+                cx.new(|cx| TestTerminalPanel::new_starts_open(DockPosition::Bottom, 102, cx));
+            workspace.add_panel(terminal.clone(), window, cx);
+            finish_starting_up(workspace, window, cx);
+            // The terminal is out of sight when the user moves it.
+            workspace.toggle_dock(DockPosition::Bottom, window, cx);
+            (agent, browser, terminal)
+        });
+
+        terminal.update_in(cx, |terminal, window, cx| {
+            terminal.set_position(DockPosition::Right, window, cx)
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            let dock = workspace.right_dock().read(cx);
+            assert!(!dock.is_open());
+            assert_eq!(dock.panels_len(), 3);
+            assert_eq!(
+                dock.active_panel().map(|panel| panel.persistent_name()),
+                Some("AgentPanel")
+            );
+            assert_eq!(
+                dock.secondary_panel().map(|panel| panel.persistent_name()),
+                Some("BrowserPanel")
+            );
+        });
+        agent.read_with(cx, |agent, _| {
+            assert!(agent.panel.set_active_calls.is_empty())
+        });
+        browser.read_with(cx, |browser, _| {
+            assert!(browser.panel.set_active_calls.is_empty())
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_panel_loaded_after_startup_gets_no_startup_placement(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let terminal = workspace.update_in(cx, |workspace, window, cx| {
+            finish_starting_up(workspace, window, cx);
+            // A panel loaded while Zed runs, as `AgentPanel::load` is when AI
+            // is turned back on, holds the bookkeeping that ended startup.
+            workspace.begin_item_restore();
+            assert!(!workspace.is_starting_up());
+            let terminal =
+                cx.new(|cx| TestTerminalPanel::new_starts_open(DockPosition::Bottom, 100, cx));
+            workspace.add_panel(terminal.clone(), window, cx);
+            assert!(workspace.apply_starts_open_docks(window, cx));
+            workspace.end_item_restore(window, cx);
+            assert!(!workspace.is_starting_up());
+            terminal
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+        });
+        terminal.read_with(cx, |terminal, _| {
+            assert!(terminal.panel.set_active_calls.is_empty())
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_drop_that_moves_nothing_is_forgotten(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let terminal = workspace.update_in(cx, |workspace, window, cx| {
+            let terminal =
+                cx.new(|cx| TestTerminalPanel::new_starts_open(DockPosition::Bottom, 100, cx));
+            workspace.add_panel(terminal.clone(), window, cx);
+            finish_starting_up(workspace, window, cx);
+            // The terminal was dropped on the right dock, but the settings
+            // change that follows leaves it where it is, as a project setting
+            // pinning it to the bottom dock does.
+            workspace.dropping_panel = Some((terminal.entity_id(), DockPosition::Right));
+            cx.update_global::<SettingsStore, _>(|_, _| {});
+            terminal
+        });
+        cx.run_until_parked();
+        workspace.read_with(cx, |workspace, _| {
+            assert!(workspace.dropping_panel.is_none())
+        });
+
+        // Moved later while on screen, the terminal stays on screen, as any
+        // panel that is not being dropped does.
+        terminal.update_in(cx, |terminal, window, cx| {
+            terminal.set_position(DockPosition::Right, window, cx)
+        });
+        cx.run_until_parked();
+        workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(
+                visible_panel_names(workspace.right_dock().read(cx)),
+                ["TerminalPanel"]
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_panel_moved_at_startup_is_placed_by_the_startup_rules(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (agent, browser, terminal) = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.set_dock_structure(
+                saved_default_pair(true, DefaultDockLayout::Applied),
+                window,
+                cx,
+            );
+            let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent.clone(), window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser.clone(), window, cx);
+            let terminal =
+                cx.new(|cx| TestTerminalPanel::new_starts_open(DockPosition::Bottom, 102, cx));
+            workspace.add_panel(terminal.clone(), window, cx);
+            assert!(workspace.bottom_dock().read(cx).is_open());
+            (agent, browser, terminal)
+        });
+
+        // A project's own settings move the terminal into the right dock while
+        // the window starts up: that dock was saved open without it, so it
+        // keeps showing what it was saved with, as it does for a terminal
+        // added there.
+        terminal.update_in(cx, |terminal, window, cx| {
+            terminal.set_position(DockPosition::Right, window, cx)
+        });
+        cx.run_until_parked();
+
+        workspace.read_with(cx, |workspace, cx| {
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+            assert_eq!(
+                visible_panel_names(workspace.right_dock().read(cx)),
+                ["AgentPanel", "BrowserPanel"]
+            );
+        });
+        agent.read_with(cx, |agent, _| {
+            assert_eq!(agent.panel.set_active_calls, [true])
+        });
+        browser.read_with(cx, |browser, _| {
+            assert_eq!(browser.panel.set_active_calls, [true])
+        });
+        terminal.read_with(cx, |terminal, _| assert!(!terminal.panel.active));
+    }
+
+    #[gpui::test]
+    async fn test_a_dock_saved_open_on_a_missing_panel_opens_for_starts_open_panels(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        // The saved panel is gone - removed from Zed, renamed, or it failed to
+        // load - so the dock waits for it until startup is over, and then opens
+        // for the project panel as if it had been saved closed, whether that
+        // asks to start open from the start or once its worktree is scanned.
+        for asks_late in [false, true] {
+            let fs = FakeFs::new(cx.executor());
+            let project = Project::test(fs, [], cx).await;
+            let (workspace, window_cx) =
+                cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+            workspace.update_in(window_cx, |workspace, window, cx| {
+                workspace.set_dock_structure(
+                    DockStructure {
+                        left: DockData {
+                            visible: true,
+                            active_panel: Some("CollabPanel".to_string()),
+                            zoom: false,
+                            secondary_panel: None,
+                            secondary_ratio: None,
+                        },
+                        default_layout: DefaultDockLayout::Applied,
+                        ..Default::default()
+                    },
+                    window,
+                    cx,
+                );
+                StartupPanel::Git.add(DockPosition::Left, false, workspace, window, cx);
+                let project_panel = StartupPanel::Project.add(
+                    DockPosition::Left,
+                    !asks_late,
+                    workspace,
+                    window,
+                    cx,
+                );
+                assert!(!workspace.left_dock().read(cx).is_open());
+                finish_starting_up(workspace, window, cx);
+                if asks_late {
+                    project_panel.start_asking_to_start_open(cx);
+                    workspace.apply_starts_open_docks(window, cx);
+                }
+                assert_eq!(
+                    visible_panel_names(workspace.left_dock().read(cx)),
+                    ["Project Panel"],
+                    "asking late: {asks_late}"
+                );
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn test_pairing_a_dock_the_user_opened_keeps_the_missing_half_behind_its_button(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use StartupPanel::{Agent, Browser};
+        init_test(cx);
+        // A new project: the user opens the first half of the pair to arrive
+        // with its button before the other half is in.
+        for (first, second) in [(Browser, Agent), (Agent, Browser)] {
+            let fs = FakeFs::new(cx.executor());
+            let project = Project::test(fs, [], cx).await;
+            let (workspace, window_cx) =
+                cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+            workspace.update_in(window_cx, |workspace, window, cx| {
+                first.add(DockPosition::Right, false, workspace, window, cx);
+                workspace.right_dock().clone().update(cx, |dock, cx| {
+                    dock.activate_panel(0, window, cx);
+                    dock.set_open(true, window, cx);
+                });
+                second.add(DockPosition::Right, false, workspace, window, cx);
+                assert_eq!(
+                    workspace.capture_dock_state(window, cx).default_layout,
+                    DefaultDockLayout::Applied
+                );
+                workspace.right_dock().clone().update(cx, |dock, cx| {
+                    assert_eq!(visible_panel_names(dock), [first.name()]);
+                    assert!(
+                        click_stacking_button(dock, second.name(), window, cx),
+                        "{second:?} waits behind its button"
+                    );
+                    assert_eq!(visible_panel_names(dock), ["AgentPanel", "BrowserPanel"]);
+                });
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn test_default_pairing_keeps_closed_a_dock_saved_open_on_no_panel(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            // `toggle_dock` on a dock with no panel to show saves it open on
+            // nothing, and a project saved before the pairing existed gets it.
+            workspace.set_dock_structure(
+                DockStructure {
+                    right: DockData {
+                        visible: true,
+                        active_panel: None,
+                        zoom: false,
+                        secondary_panel: None,
+                        secondary_ratio: None,
+                    },
+                    default_layout: DefaultDockLayout::Pending,
+                    ..Default::default()
+                },
+                window,
+                cx,
+            );
+            StartupPanel::Agent.add(DockPosition::Right, false, workspace, window, cx);
+            StartupPanel::Browser.add(DockPosition::Right, false, workspace, window, cx);
+            StartupPanel::Terminal.add(DockPosition::Right, false, workspace, window, cx);
+            let dock = workspace.right_dock().read(cx);
+            assert!(!dock.is_open());
+            assert_eq!(
+                dock.active_panel().map(|panel| panel.persistent_name()),
+                Some("AgentPanel")
+            );
+            assert_eq!(
+                dock.secondary_panel().map(|panel| panel.persistent_name()),
+                Some("BrowserPanel")
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_focused_panel_moved_at_startup_stays_on_screen(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let terminal = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.set_dock_structure(
+                saved_default_pair(true, DefaultDockLayout::Applied),
+                window,
+                cx,
+            );
+            StartupPanel::Agent.add(DockPosition::Right, false, workspace, window, cx);
+            StartupPanel::Browser.add(DockPosition::Right, false, workspace, window, cx);
+            let terminal =
+                cx.new(|cx| TestTerminalPanel::new_starts_open(DockPosition::Bottom, 102, cx));
+            workspace.add_panel(terminal.clone(), window, cx);
+            // The user has clicked into the terminal.
+            window.focus(&terminal.read(cx).focus_handle(cx), cx);
+            terminal
+        });
+
+        // Project settings move it while the window still starts up: it stays
+        // in front of the user rather than being put behind its button.
+        terminal.update_in(cx, |terminal, window, cx| {
+            terminal.set_position(DockPosition::Right, window, cx)
+        });
+        cx.run_until_parked();
+
+        workspace.read_with(cx, |workspace, cx| {
+            assert!(
+                visible_panel_names(workspace.right_dock().read(cx)).contains(&"TerminalPanel")
+            );
+        });
+        terminal.read_with(cx, |terminal, _| assert!(terminal.panel.active));
+    }
+
+    #[gpui::test]
+    async fn test_shift_dropping_a_panel_on_screen_stacks_it_beside_the_primary(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (agent, terminal) = workspace.update_in(cx, |workspace, window, cx| {
+            let agent = cx.new(|cx| TestAgentPanel::new_starts_open(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent.clone(), window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser, window, cx);
+            let terminal =
+                cx.new(|cx| TestTerminalPanel::new_starts_open(DockPosition::Bottom, 102, cx));
+            workspace.add_panel(terminal.clone(), window, cx);
+            finish_starting_up(workspace, window, cx);
+            (agent, terminal)
+        });
+
+        // Shift-drop the terminal, which the bottom dock shows, beside the
+        // agent panel.
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert_eq!(
+                visible_panel_names(workspace.right_dock().read(cx)),
+                ["AgentPanel"]
+            );
+            workspace.drop_panel_into_dock(
+                Arc::new(terminal.clone()),
+                DockPosition::Right,
+                true,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(
+                visible_panel_names(workspace.right_dock().read(cx)),
+                ["AgentPanel", "TerminalPanel"]
+            );
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+        });
+        agent.read_with(cx, |agent, _| {
+            assert_eq!(agent.panel.set_active_calls, [true])
+        });
+        terminal.read_with(cx, |terminal, _| assert!(terminal.panel.active));
+    }
+
+    #[gpui::test]
+    async fn test_default_dock_layout_migration_runs_once(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+
+        // A project: the pair the old default opened is restored closed, and
+        // once the user opens it again it is restored open.
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, window_cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+        let docks = workspace.update_in(window_cx, |workspace, window, cx| {
+            workspace.set_dock_structure(
+                saved_default_pair(true, DefaultDockLayout::AppliedOpeningDock),
+                window,
+                cx,
+            );
+            let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent, window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser, window, cx);
+            assert!(!workspace.right_dock().read(cx).is_open());
+            workspace.toggle_dock(DockPosition::Right, window, cx);
+            workspace.capture_dock_state(window, cx)
+        });
+        assert!(docks.right.visible);
+        assert_eq!(docks.default_layout, DefaultDockLayout::Applied);
+        workspace.update_in(window_cx, |workspace, window, cx| {
+            workspace.set_dock_structure(docks, window, cx);
+            assert_eq!(
+                visible_panel_names(workspace.right_dock().read(cx)),
+                ["AgentPanel", "BrowserPanel"]
+            );
+        });
+
+        // An empty window: the state an older build kept in the key-value
+        // store, with only the old flag, is migrated the same way, and what
+        // this build writes back is not migrated again.
+        let saved_by_older_build = serde_json::json!({
+            "left": { "visible": false, "active_panel": null, "zoom": false },
+            "right": {
+                "visible": true,
+                "active_panel": "AgentPanel",
+                "zoom": false,
+                "secondary_panel": "BrowserPanel",
+                "secondary_ratio": null,
+            },
+            "bottom": { "visible": false, "active_panel": null, "zoom": false },
+            "default_layout_applied": true,
+        });
+        let mut saved_docks =
+            serde_json::from_value::<DockStructure>(saved_by_older_build).unwrap();
+        for opened_by_the_restore in [false, true] {
+            let fs = FakeFs::new(cx.executor());
+            let project = Project::test(fs, [], cx).await;
+            let (workspace, window_cx) =
+                cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+            let docks = workspace.update_in(window_cx, |workspace, window, cx| {
+                workspace.restore_default_dock_state(saved_docks.clone(), window, cx);
+                let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+                workspace.add_panel(agent, window, cx);
+                let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+                workspace.add_panel(browser, window, cx);
+                assert_eq!(
+                    workspace.right_dock().read(cx).is_open(),
+                    opened_by_the_restore
+                );
+                if !opened_by_the_restore {
+                    workspace.toggle_dock(DockPosition::Right, window, cx);
+                }
+                workspace.capture_dock_state(window, cx)
+            });
+            saved_docks = serde_json::from_value(serde_json::to_value(&docks).unwrap()).unwrap();
+        }
     }
 
     #[gpui::test]
@@ -18091,7 +19790,7 @@ mod tests {
         // A panel that isn't part of the pair keeps the upstream behaviour.
         dock.update_in(cx, |dock, window, cx| {
             let other = cx.new(|cx| TestPanel::new(DockPosition::Right, 102, cx));
-            dock.add_panel(other, workspace.downgrade(), window, cx);
+            dock.add_panel(other, workspace.downgrade(), false, window, cx);
             assert!(!dock.hide_stacked_panel(2, window, cx));
             assert!(!dock.restack_hidden_panel(2, window, cx));
         });
@@ -18153,6 +19852,7 @@ mod tests {
             workspace.add_panel(agent, window, cx);
             let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
             workspace.add_panel(browser, window, cx);
+            workspace.toggle_dock(DockPosition::Right, window, cx);
         });
 
         let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());

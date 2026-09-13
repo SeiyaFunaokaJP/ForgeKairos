@@ -206,6 +206,11 @@ pub struct AgentSettingsContent {
     ///
     /// Default: left (Agentic layout), right (Classic layout)
     pub dock: Option<DockPosition>,
+    /// Whether the agent panel should open on startup, even if its dock was
+    /// closed last time.
+    ///
+    /// Default: false
+    pub starts_open: Option<bool>,
     /// Whether the agent panel should use flexible (proportional) sizing.
     ///
     /// Default: true

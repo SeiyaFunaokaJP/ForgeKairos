@@ -988,6 +988,7 @@ mod tests {
             enabled: true,
             button: true,
             dock: DockPosition::Right,
+            starts_open: false,
             flexible: true,
             panel_thread_history: true,
             default_width: px(300.),

@@ -144,9 +144,10 @@ pub struct WorkspaceSettingsContent {
     /// Whether the focused panel follows the mouse location
     /// Default: false
     pub focus_follows_mouse: Option<FocusFollowsMouse>,
-    /// Which dock shows a pair of panels the first time a project is opened.
-    /// Once a project has a saved dock layout, that layout is restored instead
-    /// and this setting no longer applies to it.
+    /// Which dock gets a pair of panels arranged in it the first time a project
+    /// is opened. The dock itself is not opened for it; each panel's
+    /// `starts_open` decides that. Once a project has a saved dock layout, that
+    /// layout is restored instead and this setting no longer applies to it.
     ///
     /// Default: right
     pub default_stacked_dock: Option<DockPosition>,

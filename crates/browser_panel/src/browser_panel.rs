@@ -126,6 +126,7 @@ pub use zed_actions::browser::{AskCopilot, SearchSelection};
 pub struct BrowserSettings {
     pub button: bool,
     pub dock: DockPosition,
+    pub starts_open: bool,
     pub default_width: Pixels,
     pub default_height: Pixels,
     pub home_url: String,
@@ -144,6 +145,7 @@ impl Settings for BrowserSettings {
         Self {
             button: browser.button.unwrap_or(true),
             dock: browser.dock.map(Into::into).unwrap_or(DockPosition::Right),
+            starts_open: browser.starts_open.unwrap_or(false),
             default_width: browser
                 .default_width
                 .map(|width| width.into_gpui())
@@ -348,6 +350,10 @@ impl BrowserPanel {
     /// ここで数えを戻した時点ではまだタブが「どのペインにも居ない」ように見える。
     /// 掃除が実際に走るのは zed の `initialize_panels` が全パネルを載せ終えてから
     /// (向こうでもう 1 つ数えている) なので、この順序に依存している。
+    ///
+    /// The first time that bookkeeping drains also ends the workspace's dock
+    /// startup phase (ADR-F48), for good: a load that takes part in it after
+    /// that does not bring startup back.
     pub async fn load(
         workspace: WeakEntity<Workspace>,
         mut cx: AsyncWindowContext,
@@ -1234,6 +1240,10 @@ impl Panel for BrowserPanel {
         Box::new(ToggleFocus)
     }
 
+    fn starts_open(&self, _: &Window, cx: &App) -> bool {
+        BrowserSettings::get_global(cx).starts_open
+    }
+
     fn pane(&self) -> Option<Entity<Pane>> {
         Some(self.active_pane.clone())
     }
@@ -1710,6 +1720,7 @@ pub(crate) mod webview_unsupported {
         pub(crate) height: f32,
         pub(crate) scale_factor: f32,
         pub(crate) hidden_reason: Option<&'static str>,
+        pub(crate) input_blocked: bool,
         pub(crate) overlays: Vec<OverlayRect>,
     }
 
@@ -1868,6 +1879,7 @@ mod tests {
         assert_eq!(settings.copilot_url, DEFAULT_COPILOT_URL);
         assert_eq!(settings.dock, DockPosition::Right);
         assert!(settings.button);
+        assert!(!settings.starts_open);
         assert!(!settings.use_egress_proxy);
     }
     // -- ペイン化したパネル ---------------------------------------------------

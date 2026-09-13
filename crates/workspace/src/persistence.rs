@@ -2814,8 +2814,8 @@ mod tests {
         multi_workspace::MultiWorkspace,
         persistence::{
             model::{
-                DockData, SerializedItem, SerializedPane, SerializedPaneGroup, SerializedWorkspace,
-                SessionWorkspace,
+                DefaultDockLayout, DockData, SerializedItem, SerializedPane, SerializedPaneGroup,
+                SerializedWorkspace, SessionWorkspace,
             },
             read_multi_workspace_state,
         },
@@ -3442,7 +3442,7 @@ mod tests {
                 secondary_panel: None,
                 secondary_ratio: None,
             },
-            default_layout_applied: true,
+            default_layout: DefaultDockLayout::Applied,
         };
 
         let workspace = SerializedWorkspace {
@@ -3477,13 +3477,168 @@ mod tests {
         let mut older = workspace.clone();
         older.id = WorkspaceId(12);
         older.paths = PathList::new(&["/tmp-secondary-older"]);
-        older.docks.default_layout_applied = false;
+        older.docks.default_layout = DefaultDockLayout::Pending;
         db.save_workspace(older).await;
-        assert!(
-            !db.workspace_for_id(WorkspaceId(12))
+        assert_eq!(
+            db.workspace_for_id(WorkspaceId(12))
                 .unwrap()
                 .docks
-                .default_layout_applied
+                .default_layout,
+            DefaultDockLayout::Pending
+        );
+    }
+
+    #[gpui::test]
+    async fn test_default_dock_layout_versions_round_trip() {
+        zlog::init_test();
+
+        let db = WorkspaceDb::open_test_db("test_default_dock_layout_versions_round_trip").await;
+        let workspace_id = WorkspaceId(21);
+        let workspace = SerializedWorkspace {
+            id: workspace_id,
+            paths: PathList::new(&["/tmp-default-dock-layout"]),
+            identity_paths: None,
+            location: SerializedWorkspaceLocation::Local,
+            center_group: Default::default(),
+            window_bounds: Default::default(),
+            bookmarks: Default::default(),
+            breakpoints: Default::default(),
+            display: Default::default(),
+            docks: Default::default(),
+            centered_layout: false,
+            session_id: None,
+            window_id: Some(21),
+            user_toolchains: Default::default(),
+        };
+
+        for default_layout in [
+            DefaultDockLayout::Pending,
+            DefaultDockLayout::AppliedOpeningDock,
+            DefaultDockLayout::Applied,
+        ] {
+            let mut workspace = workspace.clone();
+            workspace.docks.default_layout = default_layout;
+            db.save_workspace(workspace).await;
+            assert_eq!(
+                db.workspace_for_id(workspace_id)
+                    .unwrap()
+                    .docks
+                    .default_layout,
+                default_layout
+            );
+        }
+
+        // What each stored value means to this build, and to a build from
+        // before the version that still reads the column as a bool.
+        for (stored, default_layout, applied_for_older_builds) in [
+            (None, DefaultDockLayout::Pending, None),
+            (Some(0), DefaultDockLayout::Pending, Some(false)),
+            (Some(1), DefaultDockLayout::AppliedOpeningDock, Some(true)),
+            (Some(2), DefaultDockLayout::Applied, Some(true)),
+        ] {
+            db.write(move |conn| {
+                conn.exec_bound(sql!(
+                    UPDATE workspaces SET default_dock_layout_applied = ? WHERE workspace_id = ?
+                ))
+                .unwrap()((stored, workspace_id))
+                .unwrap()
+            })
+            .await;
+            assert_eq!(
+                db.workspace_for_id(workspace_id)
+                    .unwrap()
+                    .docks
+                    .default_layout,
+                default_layout,
+                "stored {stored:?}"
+            );
+            assert_eq!(
+                db.select_row_bound::<WorkspaceId, Option<bool>>(sql!(
+                    SELECT default_dock_layout_applied FROM workspaces WHERE workspace_id = ?
+                ))
+                .unwrap()(workspace_id)
+                .unwrap()
+                .flatten(),
+                applied_for_older_builds,
+                "stored {stored:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_dock_state_json_stays_readable_across_builds() {
+        /// What builds from before `DefaultDockLayout` deserialize the
+        /// key-value store's default dock state into.
+        #[derive(serde::Deserialize)]
+        struct OlderDockStructure {
+            left: DockData,
+            right: DockData,
+            bottom: DockData,
+            #[serde(default)]
+            default_layout_applied: bool,
+        }
+
+        let docks = DockStructure {
+            right: DockData {
+                visible: true,
+                active_panel: Some("AgentPanel".to_string()),
+                zoom: false,
+                secondary_panel: Some("BrowserPanel".to_string()),
+                secondary_ratio: Some(0.5),
+            },
+            ..Default::default()
+        };
+
+        for (default_layout, applied_for_older_builds) in [
+            (DefaultDockLayout::Pending, false),
+            (DefaultDockLayout::AppliedOpeningDock, true),
+            (DefaultDockLayout::Applied, true),
+        ] {
+            let docks = DockStructure {
+                default_layout,
+                ..docks.clone()
+            };
+            let json = serde_json::to_string(&docks).unwrap();
+            assert_eq!(serde_json::from_str::<DockStructure>(&json).unwrap(), docks);
+
+            let older = serde_json::from_str::<OlderDockStructure>(&json).unwrap();
+            assert_eq!(older.left, docks.left);
+            assert_eq!(older.right, docks.right);
+            assert_eq!(older.bottom, docks.bottom);
+            assert_eq!(older.default_layout_applied, applied_for_older_builds);
+        }
+
+        let written_by_older_build = |default_layout_applied: Option<bool>| {
+            let mut json = json!({
+                "left": { "visible": false, "active_panel": null, "zoom": false },
+                "right": serde_json::to_value(&docks.right).unwrap(),
+                "bottom": { "visible": false, "active_panel": null, "zoom": false },
+            });
+            if let Some(applied) = default_layout_applied {
+                json["default_layout_applied"] = applied.into();
+            }
+            json
+        };
+        for (default_layout_applied, default_layout) in [
+            (None, DefaultDockLayout::Pending),
+            (Some(false), DefaultDockLayout::Pending),
+            (Some(true), DefaultDockLayout::AppliedOpeningDock),
+        ] {
+            let restored = serde_json::from_value::<DockStructure>(written_by_older_build(
+                default_layout_applied,
+            ))
+            .unwrap();
+            assert_eq!(restored.default_layout, default_layout);
+            assert_eq!(restored.right, docks.right);
+        }
+
+        let mut written_by_newer_build = written_by_older_build(Some(true));
+        written_by_newer_build["default_layout_version"] = 3.into();
+        assert_eq!(
+            serde_json::from_value::<DockStructure>(written_by_newer_build)
+                .unwrap()
+                .default_layout,
+            DefaultDockLayout::Applied
         );
     }
 

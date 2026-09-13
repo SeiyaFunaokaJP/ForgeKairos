@@ -150,16 +150,96 @@ pub(crate) struct SerializedWorkspace {
 }
 
 #[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize)]
+#[serde(from = "SerializedDockStructure", into = "SerializedDockStructure")]
 pub struct DockStructure {
     pub left: DockData,
     pub right: DockData,
     pub bottom: DockData,
-    /// Whether this fork's default right dock pairing has already been settled
-    /// for this workspace, either by applying it or by finding a layout the user
-    /// arranged. A workspace saved before the pairing existed stores NULL, which
-    /// is how it gets the layout once and only once.
+    pub(crate) default_layout: DefaultDockLayout,
+}
+
+/// How far this fork's default dock pairing has been settled for a workspace,
+/// either by applying it or by finding a layout the user arranged.
+///
+/// Persisted as a version number in the column (and JSON field) that used to
+/// hold a bool rather than as a new column: builds from before the version
+/// read any non-zero value as "applied", so a workspace saved by this build
+/// still counts as settled for them.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DefaultDockLayout {
+    /// Not applied yet, stored as NULL or 0: a workspace saved before the
+    /// pairing existed gets it once and only once.
+    #[default]
+    Pending,
+    /// Stored as 1 by the builds from before ADR-F48, whose default also
+    /// opened the dock. Restoring such a layout closes the dock if it was
+    /// saved showing exactly that pair, once per upgrade from such a build: a
+    /// downgrade and a later upgrade on the same database repeat it.
+    AppliedOpeningDock,
+    /// Stored as 2: applied without deciding whether the dock is open.
+    Applied,
+}
+
+impl DefaultDockLayout {
+    fn from_version(version: i64) -> Self {
+        match version {
+            ..=0 => Self::Pending,
+            1 => Self::AppliedOpeningDock,
+            // A newer build's decision is final for this one too.
+            _ => Self::Applied,
+        }
+    }
+
+    fn version(self) -> i32 {
+        match self {
+            Self::Pending => 0,
+            Self::AppliedOpeningDock => 1,
+            Self::Applied => 2,
+        }
+    }
+}
+
+/// The JSON shape of [`DockStructure`], kept in the key-value store for empty
+/// windows. Builds from before [`DefaultDockLayout`] drop the whole state when
+/// `default_layout_applied` is not a bool, so it stays one and the version
+/// travels in a field they ignore.
+#[derive(Serialize, Deserialize)]
+struct SerializedDockStructure {
+    left: DockData,
+    right: DockData,
+    bottom: DockData,
     #[serde(default)]
-    pub default_layout_applied: bool,
+    default_layout_applied: bool,
+    #[serde(default)]
+    default_layout_version: Option<i64>,
+}
+
+impl From<SerializedDockStructure> for DockStructure {
+    fn from(serialized: SerializedDockStructure) -> Self {
+        let default_layout = match serialized.default_layout_version {
+            Some(version) => DefaultDockLayout::from_version(version),
+            None if serialized.default_layout_applied => DefaultDockLayout::AppliedOpeningDock,
+            None => DefaultDockLayout::Pending,
+        };
+        Self {
+            left: serialized.left,
+            right: serialized.right,
+            bottom: serialized.bottom,
+            default_layout,
+        }
+    }
+}
+
+impl From<DockStructure> for SerializedDockStructure {
+    fn from(docks: DockStructure) -> Self {
+        Self {
+            left: docks.left,
+            right: docks.right,
+            bottom: docks.bottom,
+            default_layout_applied: docks.default_layout != DefaultDockLayout::Pending,
+            default_layout_version: Some(docks.default_layout.version().into()),
+        }
+    }
 }
 
 impl RemoteConnectionKind {
@@ -186,13 +266,15 @@ impl Column for DockStructure {
         let (left, next_index) = DockData::column(statement, start_index)?;
         let (right, next_index) = DockData::column(statement, next_index)?;
         let (bottom, next_index) = DockData::column(statement, next_index)?;
-        let (default_layout_applied, next_index) = Option::<bool>::column(statement, next_index)?;
+        let (default_layout_version, next_index) = Option::<i64>::column(statement, next_index)?;
         Ok((
             DockStructure {
                 left,
                 right,
                 bottom,
-                default_layout_applied: default_layout_applied.unwrap_or(false),
+                default_layout: DefaultDockLayout::from_version(
+                    default_layout_version.unwrap_or(0),
+                ),
             },
             next_index,
         ))
@@ -204,7 +286,7 @@ impl Bind for DockStructure {
         let next_index = statement.bind(&self.left, start_index)?;
         let next_index = statement.bind(&self.right, next_index)?;
         let next_index = statement.bind(&self.bottom, next_index)?;
-        statement.bind(&self.default_layout_applied, next_index)
+        statement.bind(&self.default_layout.version(), next_index)
     }
 }
 

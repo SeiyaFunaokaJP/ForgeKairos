@@ -4893,7 +4893,7 @@ fn window_and_layout_page() -> SettingsPage {
             SettingsPageItem::SectionHeader("レイアウト"),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "既定でパネルを 2 枚並べるドック",
-                description: "プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べて表示するドックです。以降はプロジェクトごとに保存されたレイアウトが優先されます。",
+                description: "プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べておくドックです。ドック自体は開きません (起動時に開くかどうかは各パネルの「起動時に開く」で設定します)。以降はプロジェクトごとに保存されたレイアウトが優先されます。",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("default_stacked_dock"),
@@ -6610,7 +6610,7 @@ fn panels_page() -> SettingsPage {
         ]
     }
 
-    fn agent_panel_section() -> [SettingsPageItem; 7] {
+    fn agent_panel_section() -> [SettingsPageItem; 8] {
         [
             SettingsPageItem::SectionHeader("エージェントパネル"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -6636,6 +6636,20 @@ fn panels_page() -> SettingsPage {
                     pick: |settings_content| settings_content.agent.as_ref()?.dock.as_ref(),
                     write: |settings_content, value, _| {
                         settings_content.agent.get_or_insert_default().dock = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "起動時に開く",
+                description: "起動時にエージェントパネルを開くかどうかを設定します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.starts_open"),
+                    pick: |settings_content| settings_content.agent.as_ref()?.starts_open.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.agent.get_or_insert_default().starts_open = value;
                     },
                 }),
                 metadata: None,
@@ -11467,7 +11481,7 @@ fn browser_page() -> SettingsPage {
         ]
     }
 
-    fn panel_section() -> [SettingsPageItem; 5] {
+    fn panel_section() -> [SettingsPageItem; 6] {
         [
             SettingsPageItem::SectionHeader("ブラウザーパネル"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -11493,6 +11507,22 @@ fn browser_page() -> SettingsPage {
                     pick: |settings_content| settings_content.browser.as_ref()?.dock.as_ref(),
                     write: |settings_content, value, _| {
                         settings_content.browser.get_or_insert_default().dock = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "起動時に開く",
+                description: "起動時にブラウザーパネルを開くかどうかを設定します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.starts_open"),
+                    pick: |settings_content| {
+                        settings_content.browser.as_ref()?.starts_open.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.browser.get_or_insert_default().starts_open = value;
                     },
                 }),
                 metadata: None,
