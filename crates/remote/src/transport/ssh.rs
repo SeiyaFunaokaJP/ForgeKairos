@@ -2887,10 +2887,7 @@ const SERVER_BINARY_NAME_PREFIX: &str = "zed-remote-server-";
 /// one release channel — the glob
 /// [`SshRemoteConnection::remove_stale_server_files`] sweeps with.
 fn server_binary_name_prefix(release_channel: ReleaseChannel) -> String {
-    format!(
-        "{SERVER_BINARY_NAME_PREFIX}{}-",
-        release_channel.dev_name()
-    )
+    format!("{SERVER_BINARY_NAME_PREFIX}{}-", release_channel.dev_name())
 }
 
 /// Renders a byte count for the connection dialog. Binary units, because that is
@@ -3786,7 +3783,8 @@ mod tests {
     fn test_other_channel_sweep_keeps_its_own_channel() -> Result<()> {
         for channel in [ReleaseChannel::Dev, ReleaseChannel::Stable] {
             let prefix = server_binary_name_prefix(channel);
-            let script = other_channel_server_binaries_cleanup_script_posix(".zed_server", &prefix)?;
+            let script =
+                other_channel_server_binaries_cleanup_script_posix(".zed_server", &prefix)?;
             assert!(
                 script.contains(&format!("in {prefix}*) ;;")),
                 "{channel:?}: {script}"
