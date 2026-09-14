@@ -133,6 +133,10 @@ impl Render for Toolbar {
                     h_flex()
                         .items_start()
                         .justify_between()
+                        // With nothing on the left there is no gap for
+                        // `justify_between` to open, and the right hand items
+                        // would sit against the left edge instead of the right.
+                        .when(!has_left_items, |this| this.justify_end())
                         .gap(DynamicSpacing::Base08.rems(cx))
                         .when(has_left_items, |this| {
                             this.child(

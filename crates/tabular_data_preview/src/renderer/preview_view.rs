@@ -11,6 +11,9 @@ use crate::{TabularDataPreviewPane, grid::cell_text_style};
 const IDLE_EDITOR_SIZE: Pixels = px(1.);
 /// A cell narrower than this is still given room to type in.
 const MINIMUM_EDITOR_WIDTH: Pixels = px(48.);
+/// How wide the editor opens over a file that has no columns yet, where there is
+/// no cell to take a width from. Matches the width a new column is given.
+const FIRST_CELL_EDITOR_WIDTH: Pixels = px(150.);
 
 impl Render for TabularDataPreviewPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -166,20 +169,39 @@ impl TabularDataPreviewPane {
 
         let placement = root
             .zip(cell)
-            .map(|(root, cell)| (cell.origin - root.origin, cell.size));
+            .map(|(root, cell)| (cell.origin - root.origin, cell.size))
+            // A file with no columns yet draws a message instead of a table, so
+            // there is no cell for the editor to sit over. Without a placement
+            // it would stay the one pixel it idles at, and typing the first
+            // value of a new file would show nothing at all, so it opens where
+            // that first cell is about to appear.
+            .or_else(|| {
+                if self.grid_column_count() > 0 {
+                    return None;
+                }
+                let body = self.grid.body_bounds.measured(generation)?;
+                let root = root?;
+                Some((
+                    body.origin - root.origin,
+                    size(FIRST_CELL_EDITOR_WIDTH, self.row_height),
+                ))
+            });
         let (origin, cell_size) = placement.unwrap_or_else(|| {
             (
                 point(px(0.), px(0.)),
                 size(IDLE_EDITOR_SIZE, IDLE_EDITOR_SIZE),
             )
         });
+        let visible = editing && placement.is_some();
+        #[cfg(test)]
+        self.grid.cell_editor_was_drawn.set(visible);
 
         div()
             .absolute()
             .left(origin.x)
             .top(origin.y)
             .map(|this| {
-                if editing && placement.is_some() {
+                if visible {
                     this.w(cell_size.width.max(MINIMUM_EDITOR_WIDTH))
                         .min_h(cell_size.height)
                         .px_1()

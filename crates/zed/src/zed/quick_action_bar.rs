@@ -795,6 +795,11 @@ impl ToolbarItemView for QuickActionBar {
         cx: &mut Context<Self>,
     ) -> ToolbarItemLocation {
         self.active_item = active_pane_item.map(ItemHandle::boxed_clone);
+        // The toolbar reuses each item's cached element, so a bar that is not
+        // told its own state changed keeps drawing the buttons of the item the
+        // pane has just left - and over a grid, which subscribes to nothing
+        // here, it would keep drawing them until something else redrew it.
+        cx.notify();
         self.observe_format_target(active_pane_item, cx);
         if let Some(active_item) = active_pane_item {
             self._inlay_hints_enabled_subscription.take();

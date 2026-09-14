@@ -145,6 +145,19 @@ impl BoundsProbe {
         }
     }
 
+    /// The bounds measured during the frame `generation` itself.
+    ///
+    /// This is what a reader running between frames - a key handler - has to
+    /// ask for, where [`Self::measured`] answers for the frame before the one
+    /// being laid out, which is what an element asks for while it is built.
+    pub(crate) fn painted(&self, generation: u64) -> Option<Bounds<Pixels>> {
+        if self.measured_at.get() == generation {
+            self.value.get()
+        } else {
+            None
+        }
+    }
+
     /// Records a measurement, reporting whether the reader needs another frame.
     ///
     /// An element that comes back after a gap counts as moved even when it
@@ -193,6 +206,10 @@ pub(crate) struct GridState {
     pub(crate) root_bounds: Rc<BoundsProbe>,
     pub(crate) body_bounds: Rc<BoundsProbe>,
     pub(crate) render_generation: u64,
+    /// Whether the last frame drew the overlay editor at a size the user can
+    /// see, rather than the pixel it hides at while no cell is open.
+    #[cfg(test)]
+    pub(crate) cell_editor_was_drawn: MutableCell<bool>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -236,6 +253,8 @@ impl GridState {
             root_bounds: Rc::default(),
             body_bounds: Rc::default(),
             render_generation: 0,
+            #[cfg(test)]
+            cell_editor_was_drawn: MutableCell::new(false),
             _subscriptions: subscriptions,
         }
     }
@@ -254,6 +273,15 @@ pub(crate) fn cell_text_style(cx: &App) -> TextStyleRefinement {
         ..Default::default()
     }
 }
+
+/// How many rows a page key covers before the body has ever been laid out.
+pub(crate) const ROWS_PER_PAGE_BEFORE_LAYOUT: usize = 10;
+
+/// What the table draws around a row's line of text: the two pixel border every
+/// cell carries so that highlighting the caret's cell does not nudge the text of
+/// its neighbours, plus the line between two rows. Only used until the list has
+/// drawn a row to measure.
+const ROW_BORDER_HEIGHT: Pixels = px(5.);
 
 /// Largest number of cells one grid operation may touch. Past this the vector
 /// of cells the operation builds costs more than the edit is worth, so the grid
@@ -618,18 +646,34 @@ impl TabularDataPreviewPane {
 
     ///// Movement /////
 
-    /// How many rows one PageUp or PageDown covers, from the height the body
-    /// last laid out at.
-    fn rows_per_page(&self) -> usize {
-        let generation = self.grid.render_generation;
-        let height = self
-            .grid
-            .body_bounds
-            .measured(generation)
-            .map(|bounds| bounds.size.height)
-            .unwrap_or_else(|| self.row_height * 10.);
-        let rows = (height / self.row_height.max(px(1.))).floor() as usize;
+    /// How many rows the scrolling body shows, which is what one PageUp or
+    /// PageDown covers and how far a jump has to scroll.
+    ///
+    /// Read from the list rather than from a [`BoundsProbe`], whose reading is
+    /// only valid while a frame is being built: this runs from key handlers,
+    /// which is after the frame that measured it, not during the next one.
+    pub(crate) fn rows_per_page(&self) -> usize {
+        let height = self.list_state.viewport_bounds().size.height;
+        if height <= px(0.) {
+            // Nothing has been laid out yet, so a page is whatever the grid used
+            // to assume before it could measure one.
+            return ROWS_PER_PAGE_BEFORE_LAYOUT;
+        }
+        let rows = (height / self.drawn_row_height()).floor() as usize;
         rows.max(1)
+    }
+
+    /// How tall a row of the body actually is, taken from one the list has
+    /// drawn. `row_height` is the height of the line of text alone, and
+    /// dividing the viewport by that counts rows that are not there: the table
+    /// draws several pixels of border around every line.
+    fn drawn_row_height(&self) -> Pixels {
+        self.list_state
+            .bounds_for_item(self.list_state.logical_scroll_top().item_ix)
+            .map(|bounds| bounds.size.height)
+            .filter(|height| *height > px(0.))
+            .unwrap_or(self.row_height + ROW_BORDER_HEIGHT)
+            .max(px(1.))
     }
 
     pub(crate) fn move_cursor(
@@ -677,13 +721,49 @@ impl TabularDataPreviewPane {
 
     pub(crate) fn scroll_cursor_into_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.grid.cursor.row {
-            GridRow::Body(display_row) => self.list_state.scroll_to_reveal_item(display_row.get()),
+            GridRow::Body(display_row) => self.scroll_row_into_view(display_row.get()),
             // The header row is drawn in the table's sticky header rather than
             // in the list, so there is no item to reveal; the list still has to
             // go back to its top, or Ctrl+Home leaves the caret's row offscreen.
             GridRow::Header => self.list_state.scroll_to(ListOffset::default()),
         }
         self.scroll_column_into_view(window, cx);
+    }
+
+    /// Brings a row of the scrolling body into view, by its index.
+    ///
+    /// `ListState::scroll_to_reveal_item` works the distance out by adding up
+    /// the heights of every row in between, and a virtualized list only knows
+    /// those for the rows it has drawn: the rest count as nothing at all once a
+    /// change of the list's width has dropped their height hints. Revealing a
+    /// row far away then moves the view by the height of the few drawn rows
+    /// rather than reaching the row. A row index, on the other hand, places the
+    /// viewport whether or not anything has been measured.
+    fn scroll_row_into_view(&mut self, row: usize) {
+        let top = self.list_state.logical_scroll_top();
+        // A viewport scrolled part way into its first row shows one row less of
+        // the rows below it.
+        let rows_shown = self.rows_per_page() - usize::from(top.offset_in_item > px(0.));
+        let first_row_below = top.item_ix + rows_shown;
+        if row >= top.item_ix && row < first_row_below {
+            return;
+        }
+        // Walking one row off the bottom moves the view by that one row, the way
+        // an arrow key scrolls a spreadsheet. Anything further away goes to the
+        // top of the view instead: landing it at the bottom would take a row
+        // height that is exact to the pixel, and a page key or a search hit that
+        // stops just short of the view is worse than one that arrives at the
+        // top. The list clamps its scroll to the end of its content, so the last
+        // rows of the file still fill the view from the bottom.
+        let item_ix = if row == first_row_below {
+            row.saturating_sub(rows_shown.saturating_sub(1))
+        } else {
+            row
+        };
+        self.list_state.scroll_to(ListOffset {
+            item_ix,
+            offset_in_item: px(0.),
+        });
     }
 
     /// Brings the caret's column inside the horizontally scrolling part of the
@@ -856,6 +936,11 @@ impl TabularDataPreviewPane {
         .absolute()
         .size_full()
         .into_any_element()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cell_editor_is_visible(&self) -> bool {
+        self.grid.cell_editor_was_drawn.get()
     }
 
     pub(crate) fn focus_cell_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {

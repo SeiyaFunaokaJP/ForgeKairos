@@ -1368,12 +1368,22 @@
       "shift-enter": "tabular_data::CommitAndMoveUp",
       "alt-enter": "tabular_data::InsertLineBreak",
       "f2": "tabular_data::StartEditing",
-      "ctrl-shift-=": "tabular_data::InsertRowsOrColumns",
-      "ctrl--": "tabular_data::DeleteRowsOrColumns",
       "shift-space": "tabular_data::SelectRow",
       "ctrl-space": "tabular_data::SelectColumn",
       "ctrl-f": "buffer_search::Deploy",
       "ctrl-h": "buffer_search::DeployReplace",
+    },
+  },
+  // Keys that a block above binds with no context at all. A binding without a
+  // context counts as matching at the depth of the *innermost* element, so
+  // `"TabularDataGrid"` - an ancestor of the focused cell editor - always loses
+  // to one. Naming the cell editor puts these at that same depth, where the
+  // binding written later in the file wins, which is this one.
+  {
+    "context": "TabularDataGrid > Editor",
+    "bindings": {
+      "ctrl-shift-=": "tabular_data::InsertRowsOrColumns",
+      "ctrl--": "tabular_data::DeleteRowsOrColumns",
     },
   },
   {

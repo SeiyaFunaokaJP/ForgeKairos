@@ -805,7 +805,8 @@ mod tests {
     }
 
     /// An empty file draws a message instead of a table, and the grid still has
-    /// to be able to take what the user types without being clicked first.
+    /// to be able to take what the user types - and show it - without being
+    /// clicked first.
     #[gpui::test]
     async fn an_empty_file_can_be_typed_into_right_away(cx: &mut TestAppContext) {
         let (workspace, _project, worktree_id, cx) = open_test_workspace(cx).await;
@@ -813,6 +814,8 @@ mod tests {
             .await
             .downcast::<TabularDataPreviewPane>()
             .unwrap();
+        // Keys only reach the element that holds the focus once a frame has
+        // been drawn with it in the tree.
         cx.run_until_parked();
 
         assert!(
@@ -828,7 +831,18 @@ mod tests {
                 "x",
                 "the key should have reached the cell editor"
             );
+            assert!(
+                grid.cell_editor_is_visible(),
+                "a file with no columns has no cell for the editor to sit over, \
+                 and typing into a one pixel box shows the user nothing"
+            );
         });
+
+        grid.update_in(cx, |grid, window, cx| grid.commit_editing(window, cx));
+        cx.run_until_parked();
+
+        let buffer = cx.update(|_, cx| grid.read(cx).buffer(cx)).unwrap();
+        assert_eq!(buffer_text(&buffer, cx), "x");
     }
 
     #[gpui::test]

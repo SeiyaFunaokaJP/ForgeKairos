@@ -623,12 +623,12 @@ impl TabularDataPreviewPane {
         let position = self
             .grid
             .active_cell_bounds
-            .measured(generation)
+            .painted(generation)
             .map(|bounds| point(bounds.origin.x, bounds.origin.y + bounds.size.height))
             .or_else(|| {
                 self.grid
                     .root_bounds
-                    .measured(generation)
+                    .painted(generation)
                     .map(|bounds| bounds.origin)
             })
             .unwrap_or_else(|| point(px(0.), px(0.)));
@@ -1071,14 +1071,22 @@ impl TabularDataPreviewPane {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::{grid::GridRow, types::DisplayRow};
+    use crate::{
+        grid::{GridRow, ROWS_PER_PAGE_BEFORE_LAYOUT},
+        types::DisplayRow,
+    };
     use editor::Editor;
     use fs::FakeFs;
-    use gpui::{Entity, KeyBinding, TestAppContext, VisualTestContext};
+    use gpui::{Entity, KeyBinding, TestAppContext, VisualTestContext, actions, size};
     use project::Project;
     use serde_json::json;
+    use std::{cell::Cell, rc::Rc};
     use util::path;
     use workspace::{AppState, MultiWorkspace, Workspace};
+
+    // Stands in for the keymap's own context free bindings, whose actions this
+    // test binary does not link and which are therefore skipped outright.
+    actions!(tabular_data_test, [ContextFreeBinding]);
 
     #[test]
     fn test_single_value_fills_the_selection() {
@@ -1109,7 +1117,10 @@ pub(crate) mod tests {
     /// of the overlay editor, so only the real file proves they are reached at
     /// all. Actions of crates this test binary does not link (`vim::`, `agent::`
     /// and so on) simply fail to resolve and are skipped.
-    fn init_test(cx: &mut TestAppContext) {
+    ///
+    /// `global_bindings` are installed ahead of that keymap, which is where its
+    /// own context free bindings sit relative to the grid's.
+    fn init_test_with_global_bindings(cx: &mut TestAppContext, global_bindings: Vec<KeyBinding>) {
         cx.update(|cx| {
             AppState::test(cx);
             // Without a per-`App` database every test in the process shares one
@@ -1117,6 +1128,7 @@ pub(crate) mod tests {
             // a fixture path that all of them use.
             cx.set_global(db::AppDatabase::test_new());
             editor::init(cx);
+            cx.bind_keys(global_bindings);
             let bindings =
                 settings::KeymapFile::load_asset_cached("keymaps/default-windows.json", cx)
                     .expect("the shipped Windows keymap should load");
@@ -1149,7 +1161,20 @@ pub(crate) mod tests {
         Entity<Editor>,
         VisualTestContext,
     ) {
-        init_test(cx);
+        open_grid_in_workspace_with(contents, Vec::new(), cx).await
+    }
+
+    async fn open_grid_in_workspace_with(
+        contents: &str,
+        global_bindings: Vec<KeyBinding>,
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<Workspace>,
+        Entity<TabularDataPreviewPane>,
+        Entity<Editor>,
+        VisualTestContext,
+    ) {
+        init_test_with_global_bindings(cx, global_bindings);
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree(path!("/project"), json!({ "data.csv": contents }))
             .await;
@@ -1866,5 +1891,247 @@ c,d"
                 "the TabularDataGrid block should bind {binding}"
             );
         }
+    }
+
+    /// Ctrl+- and Ctrl+Shift+= are bound with no context at all by the same
+    /// keymap, to the buffer font size. A binding without a context matches at
+    /// the depth of the innermost element, which is the cell editor holding the
+    /// focus, so a binding on `TabularDataGrid` - one of that editor's
+    /// ancestors - is out-ranked by it however late in the file it is written.
+    #[gpui::test]
+    async fn test_the_row_keys_beat_a_context_free_binding(cx: &mut TestAppContext) {
+        let (_workspace, pane, editor, mut cx) = open_grid_in_workspace_with(
+            "a,b\nc,d\ne,f",
+            vec![
+                KeyBinding::new("ctrl--", ContextFreeBinding, None),
+                KeyBinding::new("ctrl-shift-=", ContextFreeBinding, None),
+            ],
+            cx,
+        )
+        .await;
+
+        // A binding whose action nothing handles falls through to the next
+        // binding, so the shadowing only counts while something takes it.
+        let taken = Rc::new(Cell::new(0usize));
+        cx.update(|_window, cx| {
+            cx.on_action({
+                let taken = taken.clone();
+                move |_: &ContextFreeBinding, _cx| taken.set(taken.get() + 1)
+            });
+        });
+
+        cx.simulate_keystrokes("down down");
+        cx.simulate_keystrokes("ctrl-shift-=");
+        cx.run_until_parked();
+        assert_eq!(buffer_text(&editor, &mut cx), "a,b\nc,d\n,\ne,f");
+
+        cx.simulate_keystrokes("ctrl--");
+        cx.run_until_parked();
+        assert_eq!(buffer_text(&editor, &mut cx), "a,b\nc,d\ne,f");
+
+        assert_eq!(
+            taken.get(),
+            0,
+            "the context free binding must not take the keys off the grid"
+        );
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.status_message, None);
+        });
+    }
+
+    /// The other side of the same coin: the grid captures a long list of the
+    /// text editor's actions and now holds a block of its own on the cell
+    /// editor, and a key that belongs to the workspace has to get past both.
+    #[gpui::test]
+    async fn test_a_key_of_the_workspace_passes_through_the_grid(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace_with(
+            "a,b\nc,d",
+            vec![KeyBinding::new("ctrl-,", ContextFreeBinding, None)],
+            cx,
+        )
+        .await;
+
+        let taken = Rc::new(Cell::new(0usize));
+        cx.update(|_window, cx| {
+            cx.on_action({
+                let taken = taken.clone();
+                move |_: &ContextFreeBinding, _cx| taken.set(taken.get() + 1)
+            });
+        });
+
+        cx.simulate_keystrokes("ctrl-,");
+        cx.run_until_parked();
+        assert_eq!(
+            taken.get(),
+            1,
+            "the grid swallowed the key on its way out of the pane"
+        );
+    }
+
+    /// The menu key opens the grid's menu under the caret, and the only record
+    /// of where the caret's cell was drawn is the one the frame that has just
+    /// been painted left behind.
+    #[gpui::test]
+    async fn test_the_menu_key_opens_the_menu_under_the_caret(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b\nc,d\ne,f", cx).await;
+
+        cx.simulate_keystrokes("down down");
+        cx.run_until_parked();
+        cx.dispatch_action(OpenContextMenu);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            let (_menu, position, _subscription) = pane
+                .grid
+                .context_menu
+                .as_ref()
+                .expect("the menu key should have opened the grid's menu");
+            assert!(
+                position.y > px(0.),
+                "the menu opened in the window's corner rather than under the caret: {position:?}"
+            );
+        });
+    }
+
+    /// The fixture is big enough that the row jumped to lies far outside every
+    /// row the virtualized list has drawn, which is what breaks a scroll worked
+    /// out from measured heights.
+    async fn open_tall_grid(
+        rows: usize,
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<TabularDataPreviewPane>,
+        Entity<Editor>,
+        VisualTestContext,
+    ) {
+        let mut contents = String::from("a,b,c,d\n");
+        for row in 0..rows {
+            contents.push_str(&format!("{row},x,y,z\n"));
+        }
+        let (pane, editor, cx) = open_grid(&contents, cx).await;
+        // Changing the list's width makes it drop every height it has not
+        // measured itself, which is how the app arrives at a list that knows
+        // the height of the drawn rows and nothing else.
+        cx.simulate_resize(size(px(1600.), px(1053.)));
+        cx.run_until_parked();
+        (pane, editor, cx)
+    }
+
+    /// Whether the list is showing the whole of `row`, which is the only thing
+    /// the caret's row has to satisfy: how far the view scrolled to get there is
+    /// the list's business.
+    pub(crate) fn body_row_is_visible(pane: &TabularDataPreviewPane, row: usize) -> bool {
+        let viewport = pane.list_state.viewport_bounds();
+        pane.list_state.bounds_for_item(row).is_some_and(|bounds| {
+            bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom()
+        })
+    }
+
+    #[gpui::test]
+    async fn test_ctrl_end_scrolls_to_the_last_row_of_a_large_file(cx: &mut TestAppContext) {
+        const ROWS: usize = 50_000;
+        let (pane, _editor, mut cx) = open_tall_grid(ROWS, cx).await;
+
+        cx.simulate_keystrokes("ctrl-end");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.row, GridRow::Body(DisplayRow(ROWS - 1)));
+            let page = pane.rows_per_page();
+            assert!(page > 1, "the body should have measured more than one row");
+            assert!(
+                body_row_is_visible(pane, ROWS - 1),
+                "the caret's row is the last one, and it has to be on screen; \
+                 the view sits at {:?}",
+                pane.list_state.logical_scroll_top()
+            );
+            assert!(
+                !body_row_is_visible(pane, 0),
+                "the view never left the top of the file"
+            );
+        });
+
+        cx.simulate_keystrokes("ctrl-home");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.row, GridRow::Header);
+            assert_eq!(pane.list_state.logical_scroll_top().item_ix, 0);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_page_key_covers_the_rows_the_body_shows(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_tall_grid(500, cx).await;
+
+        let page = pane.read_with(&cx, |pane, _| pane.rows_per_page());
+        assert!(
+            page > ROWS_PER_PAGE_BEFORE_LAYOUT,
+            "the fixture window should show more rows than the unmeasured default, \
+             or this proves nothing; it showed {page}"
+        );
+        // A page worked out from the height of a line of text rather than of a
+        // drawn row counts rows that are not on screen, and the caret then lands
+        // below the last one the user can see.
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                body_row_is_visible(pane, page - 1),
+                "a page is {page} rows, and the last of them is not on screen"
+            );
+            assert!(
+                !body_row_is_visible(pane, page),
+                "a page is {page} rows, and one past them is still on screen"
+            );
+        });
+
+        cx.simulate_keystrokes("down");
+        cx.simulate_keystrokes("pagedown");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.row, GridRow::Body(DisplayRow(page)));
+            assert!(
+                body_row_is_visible(pane, page),
+                "the caret went a page down and has to have come with the view"
+            );
+        });
+
+        cx.simulate_keystrokes("pageup");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.row, GridRow::Body(DisplayRow(0)));
+            assert!(body_row_is_visible(pane, 0));
+        });
+    }
+
+    /// Walking off the bottom of the view with an arrow key scrolls a row at a
+    /// time, rather than the page a far away jump moves.
+    #[gpui::test]
+    async fn test_walking_off_the_bottom_scrolls_one_row(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_tall_grid(500, cx).await;
+        let page = pane.read_with(&cx, |pane, _| pane.rows_per_page());
+
+        // The caret starts on the header row, so this leaves it on the last body
+        // row the view shows.
+        for _ in 0..page {
+            cx.simulate_keystrokes("down");
+        }
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.row, GridRow::Body(DisplayRow(page - 1)));
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                0,
+                "the caret reached the bottom of the view without it scrolling"
+            );
+        });
+
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                1,
+                "one row past the bottom is one row of scrolling"
+            );
+            assert!(body_row_is_visible(pane, page));
+        });
     }
 }

@@ -5649,6 +5649,64 @@ mod tests {
         );
     }
 
+    /// The actions the shipped Windows keymap resolves for `keystroke`, with
+    /// `contexts` as the stack of elements from the outermost inwards.
+    fn windows_bindings_for(
+        keystroke: &str,
+        contexts: &[&str],
+        cx: &mut TestAppContext,
+    ) -> Vec<String> {
+        cx.update(|cx| {
+            let bindings = settings::KeymapFile::load_asset_allow_partial_failure(
+                "keymaps/default-windows.json",
+                cx,
+            )
+            .unwrap();
+            let contexts = contexts
+                .iter()
+                .map(|context| gpui::KeyContext::parse(context).unwrap())
+                .collect::<Vec<_>>();
+            gpui::Keymap::new(bindings)
+                .bindings_for_input(&[gpui::Keystroke::parse(keystroke).unwrap()], &contexts)
+                .0
+                .iter()
+                .map(|binding| binding.action().name().to_string())
+                .collect()
+        })
+    }
+
+    /// The grid's second block names the cell editor so that its keys reach the
+    /// depth the keymap's context free bindings match at and win there on being
+    /// written later. That has to hold for the keys the grid means to take, and
+    /// stop there: a key it does not bind still belongs to whoever bound it.
+    #[gpui::test]
+    fn test_the_grid_takes_its_own_keys_and_no_others(cx: &mut TestAppContext) {
+        init_keymap_test(cx);
+        let grid = ["Workspace", "Pane", "TabularDataGrid", "Editor"];
+
+        assert_eq!(
+            windows_bindings_for("ctrl--", &grid, cx).first(),
+            Some(&"tabular_data::DeleteRowsOrColumns".to_string()),
+            "ctrl-- belongs to the grid rather than to the buffer font size"
+        );
+        assert_eq!(
+            windows_bindings_for("ctrl-shift-=", &grid, cx).first(),
+            Some(&"tabular_data::InsertRowsOrColumns".to_string())
+        );
+        assert_eq!(
+            windows_bindings_for("ctrl-,", &grid, cx).first(),
+            Some(&"zed::OpenSettings".to_string()),
+            "the settings key is nobody's but the workspace's"
+        );
+
+        let editor = ["Workspace", "Pane", "Editor"];
+        assert_eq!(
+            windows_bindings_for("ctrl--", &editor, cx).first(),
+            Some(&"zed::DecreaseBufferFontSize".to_string()),
+            "outside the grid the key still sizes the buffer font"
+        );
+    }
+
     #[gpui::test]
     async fn test_base_keymap(cx: &mut gpui::TestAppContext) {
         let executor = cx.executor();
@@ -6222,8 +6280,14 @@ mod tests {
     /// so it takes a branch of `QuickActionBar::render` that draws only the
     /// button back to the text, and it is easy to lose that branch along with
     /// the editor's own buttons.
+    ///
+    /// The bar is also a cached view sitting in a toolbar that redraws without
+    /// it: unless it is told that the pane's item changed it keeps drawing the
+    /// buttons of the tab the pane has just left, which is why the grid is
+    /// opened here on top of a text tab rather than into an empty workspace.
     #[gpui::test]
     async fn test_the_grid_keeps_its_quick_action_bar(cx: &mut TestAppContext) {
+        use std::{cell::Cell, rc::Rc};
         use workspace::{ToolbarItemLocation, ToolbarItemView as _};
 
         let app_state = init_test(cx);
@@ -6231,7 +6295,10 @@ mod tests {
         app_state
             .fs
             .as_fake()
-            .insert_tree(path!("/root"), json!({ "data.csv": "a,b\nc,d" }))
+            .insert_tree(
+                path!("/root"),
+                json!({ "data.csv": "a,b\nc,d", "notes.txt": "plain text\n" }),
+            )
             .await;
 
         let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
@@ -6240,19 +6307,59 @@ mod tests {
             .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
             .unwrap();
 
-        let path = cx.read(|cx| workspace.file_project_paths(cx))[0].clone();
-        window
-            .update(cx, |_, window, cx| {
-                workspace.update(cx, |workspace, cx| {
-                    workspace.open_path(path, None, true, window, cx)
-                })
+        let paths = cx.read(|cx| workspace.file_project_paths(cx));
+        let grid_path = paths
+            .iter()
+            .find(|path| path.path.as_unix_str().ends_with(".csv"))
+            .expect("the fixture should hold a CSV")
+            .clone();
+        let text_path = paths
+            .iter()
+            .find(|path| path.path.as_unix_str().ends_with(".txt"))
+            .expect("the fixture should hold a text file")
+            .clone();
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.open_path(text_path, None, true, window, cx)
             })
-            .unwrap()
             .await
             .unwrap();
         cx.run_until_parked();
 
-        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let quick_action_bar = cx.update(|_window, cx| {
+            workspace.read_with(cx, |workspace, cx| {
+                workspace
+                    .active_pane()
+                    .read(cx)
+                    .toolbar()
+                    .read(cx)
+                    .item_of_type::<QuickActionBar>()
+                    .expect("the pane's toolbar should carry a quick action bar")
+            })
+        });
+        let redraws = Rc::new(Cell::new(0usize));
+        let _redraw_observation = cx.update(|_window, cx| {
+            cx.observe(&quick_action_bar, {
+                let redraws = redraws.clone();
+                move |_bar, _cx| redraws.set(redraws.get() + 1)
+            })
+        });
+
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.open_path(grid_path, None, true, window, cx)
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert!(
+            redraws.get() > 0,
+            "the bar has to be told the pane's item changed, or it keeps drawing \
+             the buttons of the text tab over the grid"
+        );
 
         cx.update(|window, cx| {
             let (item, quick_action_bar) = workspace.read_with(cx, |workspace, cx| {
@@ -6294,9 +6401,20 @@ mod tests {
         // `FileTextOutlined` reaches this window through no other `IconButton`:
         // the grid's own toolbar carries it on a labelled `Button`, which
         // registers no selector.
+        let button = cx
+            .debug_bounds("ICON-FileTextOutlined")
+            .expect("the grid's quick action bar should draw the button back to the text");
         assert!(
-            cx.debug_bounds("ICON-FileTextOutlined").is_some(),
-            "the grid's quick action bar should draw the button back to the text"
+            button.size.width > px(0.) && button.size.height > px(0.),
+            "a button squeezed to nothing is not on screen; it was drawn at {:?}",
+            button.size
+        );
+        let viewport = cx.update(|window, _| window.viewport_size());
+        assert!(
+            button.origin.x > viewport.width / 2.,
+            "the grid has no breadcrumbs to push the bar over, and it still \
+             belongs at the right end of the toolbar; it was drawn at {:?}",
+            button.origin
         );
     }
 

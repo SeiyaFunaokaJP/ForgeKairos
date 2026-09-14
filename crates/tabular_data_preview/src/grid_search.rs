@@ -1476,6 +1476,38 @@ mod tests {
         );
     }
 
+    /// The caret walking onto a hit far down a large file has to take the view
+    /// with it, and the list only knows the height of the rows it has drawn.
+    #[gpui::test]
+    async fn test_a_hit_far_down_the_file_is_scrolled_to(cx: &mut TestAppContext) {
+        const HIT_ROW: usize = 4_000;
+        let mut contents = String::from("a,b\n");
+        for row in 0..5_000 {
+            let value = if row == HIT_ROW { "needle" } else { "hay" };
+            contents.push_str(&format!("{row},{value}\n"));
+        }
+        let (pane, _editor, search_bar, mut cx) = open_grid_with_search(&contents, cx).await;
+        // A width the list has not measured its rows at is what drops the height
+        // hints it would otherwise scroll by.
+        cx.simulate_resize(gpui::size(px(1600.), px(1053.)));
+        cx.run_until_parked();
+
+        deploy_search(&mut cx, Deploy::find());
+        search_for(&search_bar, "needle", BarOptions::NONE, &mut cx);
+
+        assert_eq!(
+            cursor_cell(&pane, &cx),
+            GridCell::new(GridRow::Body(DisplayRow(HIT_ROW)), AnyColumn(1))
+        );
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                crate::grid_editing::tests::body_row_is_visible(pane, HIT_ROW),
+                "the hit's row is off screen; the view sits at {:?}",
+                pane.list_state.logical_scroll_top()
+            );
+        });
+    }
+
     #[test]
     fn test_the_grid_keymap_deploys_the_search_bar() {
         let keymap = include_str!(concat!(
