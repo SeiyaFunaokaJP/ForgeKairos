@@ -1,8 +1,9 @@
 //! ステータスバーの「IDE サーバー」項目と、ワークスペースに登録するアクション。
 //!
-//! 表示するのはサーバーが有効なあいだだけ (ADR-F09「AI 機能は既定オフ」)。有効化は
-//! 設定 GUI の「外部通信と AI」から行い、ここからは無効化と、外部エージェント向けの
-//! 設定断片のコピー・ロックファイルの場所を開く操作を出す。
+//! 表示するのはサーバーが有効なあいだ (ADR-F09「AI 機能は既定オフ」) と、サンドボックスの
+//! 中の CLI が接続しているあいだだけ。有効化は設定 GUI の「外部通信と AI」から行い、
+//! ここからは無効化と、外部エージェント向けの設定断片のコピー・ロックファイルの場所を
+//! 開く操作を出す。
 
 use std::path::Path;
 
@@ -158,13 +159,57 @@ impl IdeServerStatusItem {
             subscriptions: Vec::new(),
         }
     }
+
+    pub(crate) fn shown(&self, cx: &App) -> Option<Shown> {
+        if IdeServerSettings::get_global(cx).enabled {
+            Some(Shown::HostServer)
+        } else if self.claude_code_connected(cx) {
+            Some(Shown::SandboxConnection)
+        } else {
+            None
+        }
+    }
+
+    /// ホストのサーバーとサンドボックスのセッションを合わせて、CLI が 1 本でも繋がっているか。
+    fn claude_code_connected(&self, cx: &App) -> bool {
+        self.server.as_ref().is_some_and(|server| {
+            zed_actions::ide_server::is_claude_code_connected(server.read(cx).project_id, cx)
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum Shown {
+    /// ホストのサーバーと、その操作メニュー。
+    HostServer,
+    /// サーバーは無効だが、サンドボックスの中の CLI が繋がっている。サンドボックスの
+    /// セッションは `ide_server.enabled` と無関係に動くので (ADR-F49)、接続中であることだけは出す。
+    SandboxConnection,
 }
 
 impl Render for IdeServerStatusItem {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !IdeServerSettings::get_global(cx).enabled {
-            return Empty.into_any_element();
+        match self.shown(cx) {
+            None => return Empty.into_any_element(),
+            Some(Shown::SandboxConnection) => {
+                return Button::new(
+                    "ide-server-status-trigger",
+                    "Claude Code (サンドボックス): 接続中",
+                )
+                .label_size(LabelSize::Small)
+                .start_icon(
+                    Icon::new(IconName::Server)
+                        .size(IconSize::Small)
+                        .color(Color::Accent),
+                )
+                .tooltip(Tooltip::text(
+                    "サンドボックスの中の Claude Code がこのプロジェクトに接続しています",
+                ))
+                .into_any_element();
+            }
+            Some(Shown::HostServer) => {}
         }
+        let claude_code_connected = self.claude_code_connected(cx);
         let (port, connected_clients, has_lock_file) = match self.server.as_ref() {
             Some(server) => {
                 let server = server.read(cx);
@@ -203,7 +248,7 @@ impl Render for IdeServerStatusItem {
                     .label_size(LabelSize::Small)
                     .tab_index(0isize)
                     .start_icon(Icon::new(IconName::Server).size(IconSize::Small).color(
-                        if connected_clients > 0 {
+                        if connected_clients > 0 || claude_code_connected {
                             Color::Accent
                         } else {
                             Color::Muted
@@ -241,7 +286,7 @@ impl StatusItemView for IdeServerStatusItem {
     ) {
     }
 
-    /// この項目自体は `ide_server.enabled` に完全に従うので、独立した非表示設定は持たない。
+    /// 出し入れは `ide_server.enabled` と接続の有無だけで決まるので、独立した非表示設定は持たない。
     fn hide_setting(&self, _cx: &App) -> Option<workspace::HideStatusItem> {
         None
     }

@@ -1337,6 +1337,50 @@ fn open_target_in_explorer(target: &Path) -> Result<()> {
     })
 }
 
+/// A native modal dialog shown on this thread, from just before it is shown
+/// until it has closed; see [`gpui::profiler::native_modal_opened`].
+pub(crate) struct NativeModal {
+    _profiler_guard: gpui::profiler::NativeModalGuard,
+    heartbeat: usize,
+}
+
+/// Well inside the second without a message after which the profiler stops
+/// excusing an open dialog.
+const MODAL_LOOP_HEARTBEAT_MS: u32 = 250;
+
+impl NativeModal {
+    pub(crate) fn open() -> Self {
+        let profiler_guard = gpui::profiler::native_modal_opened();
+        // The dialog's loop dispatches this timer like any other message, so a
+        // thread that keeps pumping keeps saying so even when none of our
+        // windows gets a message (a minimized window is never painted).
+        let heartbeat =
+            unsafe { SetTimer(None, 0, MODAL_LOOP_HEARTBEAT_MS, Some(modal_loop_heartbeat)) };
+        if heartbeat == 0 {
+            log::error!(
+                "unable to create the modal loop heartbeat: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        Self {
+            _profiler_guard: profiler_guard,
+            heartbeat,
+        }
+    }
+}
+
+impl Drop for NativeModal {
+    fn drop(&mut self) {
+        if self.heartbeat != 0 {
+            unsafe { KillTimer(None, self.heartbeat) }.log_err();
+        }
+    }
+}
+
+unsafe extern "system" fn modal_loop_heartbeat(_: HWND, _: u32, _: usize, _: u32) {
+    gpui::profiler::note_message_handled();
+}
+
 pub(crate) fn file_open_dialog(
     options: PathPromptOptions,
     window: Option<HWND>,
@@ -1371,7 +1415,10 @@ pub(crate) fn file_open_dialog(
                 .log_err();
         }
 
-        if folder_dialog.Show(window).is_err() {
+        let native_modal = NativeModal::open();
+        let shown = folder_dialog.Show(window);
+        drop(native_modal);
+        if shown.is_err() {
             // User cancelled
             return Ok(None);
         }
@@ -1456,7 +1503,10 @@ pub(crate) fn file_save_dialog(
             pszName: windows::core::w!("All files"),
             pszSpec: windows::core::w!("*.*"),
         }])?;
-        if dialog.Show(window).is_err() {
+        let native_modal = NativeModal::open();
+        let shown = dialog.Show(window);
+        drop(native_modal);
+        if shown.is_err() {
             // User cancelled
             return Ok(None);
         }
@@ -1576,6 +1626,9 @@ unsafe extern "system" fn window_procedure(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    // A native dialog's modal loop runs this too; hang detection excuses an
+    // open dialog only while messages keep being handled.
+    gpui::profiler::note_message_handled();
     if msg == WM_NCCREATE {
         let params = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
         let creation_context = params.lpCreateParams as *mut PlatformWindowCreateContext;
@@ -1681,6 +1734,38 @@ mod tests {
         assert_eq!(
             encode_restart_arguments(&[OsString::from(r"C:\")]),
             OsStr::new(r#""C:\\""#)
+        );
+    }
+
+    #[test]
+    fn the_modal_loop_heartbeat_marks_messages_as_handled() {
+        use std::time::{Duration, Instant};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            DispatchMessageW, MSG, PM_REMOVE, PeekMessageW,
+        };
+
+        let opened = Instant::now();
+        let modal = super::NativeModal::open();
+        // The heartbeat fires 250 ms in, so a time from before that is not its.
+        let heartbeat_ran = || {
+            gpui::profiler::last_message_handled()
+                .is_some_and(|handled| handled >= opened + Duration::from_millis(200))
+        };
+        let mut message = MSG::default();
+        // What a dialog's modal loop does, without the dialog.
+        while !heartbeat_ran() && opened.elapsed() < Duration::from_secs(5) {
+            while unsafe { PeekMessageW(&mut message, None, 0, 0, PM_REMOVE) }.as_bool() {
+                unsafe { DispatchMessageW(&message) };
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        drop(modal);
+
+        assert!(
+            heartbeat_ran(),
+            "the heartbeat did not move the last-message time within 5 s \
+             (last handled {:?} after opening)",
+            gpui::profiler::last_message_handled().map(|handled| handled.duration_since(opened))
         );
     }
 

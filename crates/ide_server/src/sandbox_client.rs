@@ -293,6 +293,11 @@ impl SandboxIdeSession {
             || crate::host_connection_count(project_id, cx) > 0
             || has_connected_session(project_id, Some(self.entity_id), cx);
         zed_actions::ide_server::set_claude_code_connected(project_id, connected, cx);
+        // ステータスバーの項目が観測しているのはワークスペースの `IdeServer` なので、
+        // サンドボックスの接続の変化もそこへ知らせる。
+        if let Some(server) = crate::server_for_project_id(project_id, cx) {
+            cx.notify(server.entity_id());
+        }
     }
 
     fn watch_active_editor(&mut self, cx: &mut Context<Self>) {

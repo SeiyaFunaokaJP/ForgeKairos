@@ -774,17 +774,22 @@ impl PlatformWindow for WindowsWindow {
                     config.hwndParent = handle;
                     let title;
                     let main_icon;
+                    // Callers word the message and the buttons, but the title
+                    // bar is this code's alone, so it speaks the UI's language.
                     match level {
                         PromptLevel::Info => {
-                            title = windows::core::w!("Info");
+                            title = windows::core::w!("情報");
                             main_icon = TD_INFORMATION_ICON;
                         }
                         PromptLevel::Warning => {
-                            title = windows::core::w!("Warning");
+                            title = windows::core::w!("警告");
                             main_icon = TD_WARNING_ICON;
                         }
+                        // Critical also asks before destructive actions (replacing a
+                        // file, discarding changes), where "error" would read wrong;
+                        // the icon still sets it apart from a plain warning.
                         PromptLevel::Critical => {
-                            title = windows::core::w!("Critical");
+                            title = windows::core::w!("警告");
                             main_icon = TD_ERROR_ICON;
                         }
                     };
@@ -821,9 +826,11 @@ impl PlatformWindow for WindowsWindow {
 
                     config.pfCallback = None;
                     let mut res = std::mem::zeroed();
+                    let native_modal = NativeModal::open();
                     let _ = TaskDialogIndirect(&config, Some(&mut res), None, None)
                         .context("unable to create task dialog")
                         .log_err();
+                    drop(native_modal);
 
                     if let Some(clicked) =
                         button_id_map.iter().position(|&button_id| button_id == res)
@@ -1499,6 +1506,9 @@ unsafe extern "system" fn window_procedure(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    // A native dialog's modal loop runs this too; hang detection excuses an
+    // open dialog only while messages keep being handled.
+    gpui::profiler::note_message_handled();
     if msg == WM_NCCREATE {
         let window_params = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
         let window_creation_context = window_params.lpCreateParams as *mut WindowCreateContext;

@@ -1089,12 +1089,13 @@ shift 3
 
     struct AlreadyRunning;
 
+    pub(super) fn already_running_id() -> NotificationId {
+        NotificationId::unique::<AlreadyRunning>()
+    }
+
     fn show_already_running(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
         workspace.show_toast(
-            Toast::new(
-                NotificationId::unique::<AlreadyRunning>(),
-                ALREADY_RUNNING_MESSAGE.to_string(),
-            ),
+            Toast::new(already_running_id(), ALREADY_RUNNING_MESSAGE.to_string()).autohide(),
             cx,
         );
     }
@@ -1117,7 +1118,7 @@ shift 3
 
     /// The project's slot, or `None` after saying that its session already
     /// runs and showing that session's tab.
-    fn take_session_slot(
+    pub(super) fn take_session_slot(
         key: String,
         workspace: &WeakEntity<Workspace>,
         window: &mut Window,
@@ -1581,10 +1582,14 @@ shift 3
                 })
                 .ok()
                 .flatten();
-            if let Some(message) = message {
-                workspace
-                    .update(cx, |workspace, cx| workspace.show_error(message, cx))
-                    .log_err();
+            if let Some(workspace) = workspace.upgrade() {
+                workspace.update(cx, |workspace, cx| {
+                    // Saying that the session runs is wrong once it has ended.
+                    workspace.dismiss_toast(&already_running_id(), cx);
+                    if let Some(message) = message {
+                        workspace.show_error(message, cx);
+                    }
+                });
             }
         })
         .detach();
@@ -2159,6 +2164,35 @@ mod tests {
             assert_eq!(launches.borrow().len(), launch);
         }
         assert_eq!(launches.borrow().last(), Some(&Some("high".to_string())));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn saying_that_the_session_already_runs_goes_away_by_itself(cx: &mut TestAppContext) {
+        use super::launch::{already_running_id, take_session_slot};
+
+        let (_project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
+        let weak_workspace = workspace.downgrade();
+        let key = "ubuntu/0123456789abcdef".to_string();
+        let slot =
+            cx.update(|window, cx| take_session_slot(key.clone(), &weak_workspace, window, cx));
+        assert!(slot.is_some(), "the first launch takes the project's slot");
+        let second = cx.update(|window, cx| take_session_slot(key, &weak_workspace, window, cx));
+        assert!(second.is_none(), "the second launch finds it taken");
+        let says_already_running = |cx: &mut VisualTestContext| {
+            workspace.read_with(cx, |workspace, _| {
+                workspace.notification_ids().contains(&already_running_id())
+            })
+        };
+        assert!(says_already_running(&mut cx));
+
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(6));
+        cx.run_until_parked();
+        assert!(
+            !says_already_running(&mut cx),
+            "the notice hides itself after a few seconds"
+        );
     }
 
     #[gpui::test]

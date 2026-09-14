@@ -180,20 +180,18 @@ fn server_for_workspace_id(workspace_id: EntityId, cx: &App) -> Option<Entity<Id
 }
 
 fn server_for_project(project: &Entity<Project>, cx: &App) -> Option<Entity<IdeServer>> {
+    server_for_project_id(project.entity_id(), cx)
+}
+
+fn server_for_project_id(project_id: EntityId, cx: &App) -> Option<Entity<IdeServer>> {
     let registry = cx.try_global::<IdeServerRegistry>()?;
-    let workspace_id = registry.workspaces_by_project.get(&project.entity_id())?;
+    let workspace_id = registry.workspaces_by_project.get(&project_id)?;
     registry.servers.get(workspace_id).cloned()
 }
 
 /// このプロジェクトのホストの IDE サーバーに WebSocket で繋がっている CLI の数。
 fn host_connection_count(project_id: EntityId, cx: &App) -> usize {
-    let Some(registry) = cx.try_global::<IdeServerRegistry>() else {
-        return 0;
-    };
-    registry
-        .workspaces_by_project
-        .get(&project_id)
-        .and_then(|workspace_id| registry.servers.get(workspace_id))
+    server_for_project_id(project_id, cx)
         .map_or(0, |server| server.read(cx).connected_client_count())
 }
 

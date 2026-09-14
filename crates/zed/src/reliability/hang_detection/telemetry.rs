@@ -34,6 +34,11 @@ struct HangReport {
     p75: MicroSeconds,
     /// 95% of bad polls where faster then this value
     p95: MicroSeconds,
+
+    /// A slow poll here hung with a native dialog it opened still open, so
+    /// Windows' own dialog code (a slow network folder, a shell extension) may
+    /// be what was slow.
+    inside_native_dialog: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -48,6 +53,7 @@ struct Item<T: Hang> {
     slowest_poll: T,
     /// saturates if more then 256 measurements end up in the same bin
     histogram: Histogram<u8>,
+    inside_native_dialog: bool,
 }
 
 impl<T: Hang> Item<T> {
@@ -70,6 +76,7 @@ impl<T: Hang> Item<T> {
             p50: self.histogram.value_at_quantile(0.5),
             p75: self.histogram.value_at_quantile(0.75),
             p95: self.histogram.value_at_quantile(0.95),
+            inside_native_dialog: self.inside_native_dialog,
         }
     }
 }
@@ -86,6 +93,9 @@ trait Hang: Clone {
     fn format_location(location: &Self::Descriptor) -> String;
     fn start(&self) -> Instant;
     fn end(&self) -> Instant;
+    fn inside_native_dialog(&self) -> bool {
+        false
+    }
 }
 
 impl Hang for gpui::TaskTiming {
@@ -133,6 +143,38 @@ impl Hang for gpui::ActionTiming {
     }
 }
 
+/// A foreground poll, timed without the waits in native modal dialogs it
+/// opened: the user answering a dialog is not a hang.
+#[derive(Clone)]
+struct ForegroundPoll {
+    timing: gpui::TaskTiming,
+    busy: Duration,
+    inside_native_dialog: bool,
+}
+
+impl Hang for ForegroundPoll {
+    type Descriptor = std::panic::Location<'static>;
+
+    fn poll_duration(&self) -> Duration {
+        self.busy
+    }
+    fn descriptor(&self) -> Self::Descriptor {
+        *self.timing.location
+    }
+    fn format_location(location: &Self::Descriptor) -> String {
+        <gpui::TaskTiming as Hang>::format_location(location)
+    }
+    fn start(&self) -> Instant {
+        self.timing.start
+    }
+    fn end(&self) -> Instant {
+        self.timing.end.0
+    }
+    fn inside_native_dialog(&self) -> bool {
+        self.inside_native_dialog
+    }
+}
+
 impl<T: Hang> Hangs<T> {
     fn new() -> Self {
         Self {
@@ -148,9 +190,11 @@ impl<T: Hang> Hangs<T> {
             return;
         }
 
+        let inside_native_dialog = new.inside_native_dialog();
         self.hangs
             .entry(new.descriptor())
             .and_modify(|item| {
+                item.inside_native_dialog |= inside_native_dialog;
                 item.total_hanged += new.poll_duration();
                 item.histogram
                     .saturating_record(new.poll_duration().as_micros() as u64);
@@ -162,6 +206,7 @@ impl<T: Hang> Hangs<T> {
                 Item {
                     total_hanged: new.poll_duration(),
                     slowest_poll: new,
+                    inside_native_dialog,
                     histogram: Histogram::new_with_bounds(min_recorded_us, MICROSECONDS_MINUTE, 3)
                         .expect("function parameters are constants and correct"),
                 }
@@ -200,7 +245,7 @@ pub struct Reporter {
     foreground_thread: ThreadId,
     last_send: Instant,
 
-    foreground: Hangs<gpui::TaskTiming>,
+    foreground: Hangs<ForegroundPoll>,
     background: Hangs<gpui::TaskTiming>,
     actions: Hangs<gpui::ActionTiming>,
 }
@@ -256,14 +301,19 @@ impl Reporter {
             return;
         };
 
-        for hang in foreground
-            .stats
-            .longest_poll_times
-            .into_iter()
-            .filter(|task| task.poll_duration() > self.record_slower_then)
-        {
-            self.foreground
-                .add(hang, self.record_slower_then.as_micros() as u64);
+        for timing in foreground.stats.longest_poll_times {
+            let wait = timing.native_modal_wait(foreground_thread);
+            let busy = timing.poll_duration().saturating_sub(wait.waited);
+            if busy > self.record_slower_then {
+                self.foreground.add(
+                    ForegroundPoll {
+                        timing,
+                        busy,
+                        inside_native_dialog: wait.stuck_inside,
+                    },
+                    self.record_slower_then.as_micros() as u64,
+                );
+            }
         }
     }
     fn process_background(&mut self, task_stats: &[gpui::ThreadTaskStatistics]) {

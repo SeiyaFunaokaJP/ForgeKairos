@@ -1,7 +1,9 @@
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::task::{Poll, Waker};
 use std::time::Duration;
@@ -25,9 +27,10 @@ use util::{path, uri};
 use workspace::{MultiWorkspace, Workspace};
 
 use crate::protocol::{self, LockFileContents};
+use crate::status_item::Shown;
 use crate::{
-    IdeServer, IdeServerDiff, IdentityPathMapper, McpEndpoint, PathMapper, SandboxIdeSessionHandle,
-    ToolHost as _, WslPathMapper, tools, transport,
+    IdeServer, IdeServerDiff, IdeServerStatusItem, IdentityPathMapper, McpEndpoint, PathMapper,
+    SandboxIdeSessionHandle, ToolHost as _, WslPathMapper, tools, transport,
 };
 
 // ---------------------------------------------------------------------------
@@ -1654,6 +1657,37 @@ async fn sandbox_session_ends_when_the_bridge_goes_away(cx: &mut TestAppContext)
         !matches!(client.socket.next().await, Some(Ok(_))),
         "the forwarded connection is closed"
     );
+}
+
+#[gpui::test]
+async fn the_status_item_shows_a_sandbox_connection_with_the_server_off(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let status_item = fixture.workspace.update(cx, |workspace, cx| {
+        cx.new(|cx| IdeServerStatusItem::new(workspace, cx))
+    });
+    cx.run_until_parked();
+    let shown = |cx: &mut TestAppContext| status_item.read_with(cx, |item, cx| item.shown(cx));
+    assert_eq!(
+        shown(cx),
+        None,
+        "nothing is connected and ide_server.enabled is off"
+    );
+
+    let redraws = Rc::new(Cell::new(0));
+    let _observation = cx.update(|cx| {
+        let redraws = redraws.clone();
+        cx.observe(&status_item, move |_, _| redraws.set(redraws.get() + 1))
+    });
+    let _client = connect(&fixture, cx).await;
+    assert_eq!(shown(cx), Some(Shown::SandboxConnection));
+    assert!(
+        redraws.get() > 0,
+        "the item redraws when the sandboxed CLI connects"
+    );
+
+    drop(fixture.connections);
+    cx.run_until_parked();
+    assert_eq!(shown(cx), None, "the item goes away with the session");
 }
 
 /// HTTP の応答はトランスポートが書き終えるまで接続を落とさない。

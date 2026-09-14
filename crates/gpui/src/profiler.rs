@@ -9,7 +9,7 @@ use std::{
     collections::{HashMap, VecDeque},
     hash::{DefaultHasher, Hash, Hasher},
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicU64, Ordering},
     },
     thread::ThreadId,
@@ -117,6 +117,195 @@ impl TaskTiming {
     #[inline(always)]
     fn since_spawn(&self) -> Duration {
         self.end.0 - self.spawned.0
+    }
+
+    /// How the poll relates to the native modal dialogs it opened on
+    /// `thread_id` (see [`native_modal_opened`]).
+    pub fn native_modal_wait(&self, thread_id: ThreadId) -> NativeModalWait {
+        NATIVE_MODALS
+            .lock()
+            .wait_within(thread_id, self.start, self.end.0, last_message_handled())
+    }
+
+    /// [`Self::poll_duration`] less the time [`Self::native_modal_wait`] excuses.
+    pub fn busy_duration(&self, thread_id: ThreadId) -> Duration {
+        self.poll_duration()
+            .saturating_sub(self.native_modal_wait(thread_id).waited)
+    }
+}
+
+/// The part of a poll spent in native modal dialogs it opened.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NativeModalWait {
+    /// Time excused as waiting for the user to answer.
+    pub waited: Duration,
+    /// A dialog was still open when the thread stopped handling messages, so
+    /// its excuse was cut short: the thread is stuck in something the dialog's
+    /// loop called, which may be Windows' own dialog code rather than the app's.
+    pub stuck_inside: bool,
+}
+
+/// Marks a native modal dialog (a message box, a file picker) as open on this
+/// thread until it is dropped.
+///
+/// The OS runs the dialog's modal loop inside the task poll that opened it, so
+/// that poll lasts as long as the user takes to answer. Hang detection takes
+/// that wait out with [`TaskTiming::busy_duration`]. The loop still calls the
+/// app's window procedures, which can hang as well, so an open dialog is only
+/// excused while the thread keeps handling messages ([`note_message_handled`]).
+#[must_use = "the dialog counts as open only while the guard lives"]
+pub struct NativeModalGuard {
+    id: u64,
+}
+
+/// Call right before showing a native modal dialog; drop the guard once it
+/// has closed.
+pub fn native_modal_opened() -> NativeModalGuard {
+    let opened = Instant::now();
+    let id = NATIVE_MODALS
+        .lock()
+        .open(std::thread::current().id(), opened);
+    NativeModalGuard { id }
+}
+
+impl Drop for NativeModalGuard {
+    fn drop(&mut self) {
+        let closed = Instant::now();
+        NATIVE_MODALS.lock().close(self.id, closed);
+    }
+}
+
+/// Records that the thread showing native dialogs has just handled a window
+/// message. Call it from the window procedures; see [`NativeModalGuard`].
+pub fn note_message_handled() {
+    let nanos = u64::try_from(MESSAGE_CLOCK.elapsed().as_nanos()).unwrap_or(u64::MAX);
+    // Zero stands for "never".
+    LAST_MESSAGE_HANDLED.store(nanos.max(1), Ordering::Relaxed);
+}
+
+/// When the thread showing native dialogs last handled a window message, if it
+/// ever did (see [`note_message_handled`]).
+pub fn last_message_handled() -> Option<Instant> {
+    match LAST_MESSAGE_HANDLED.load(Ordering::Relaxed) {
+        0 => None,
+        nanos => Some(*MESSAGE_CLOCK + Duration::from_nanos(nanos)),
+    }
+}
+
+static MESSAGE_CLOCK: LazyLock<Instant> = LazyLock::new(Instant::now);
+static LAST_MESSAGE_HANDLED: AtomicU64 = AtomicU64::new(0);
+
+/// A modal loop that is not stuck handles a message at least every frame (the
+/// windows are redrawn every vsync) or platform heartbeat, so a second without
+/// one means the thread is stuck in something the loop called.
+const MODAL_LOOP_SLACK: Duration = Duration::from_secs(1);
+
+static NATIVE_MODALS: spin::Mutex<NativeModals> = spin::Mutex::new(NativeModals::new());
+
+/// Hang detection checks the polls of the last second, so closed dialogs only
+/// matter for a short while; this many is far more than a second can hold.
+const MAX_CLOSED_NATIVE_MODALS: usize = 64;
+
+#[derive(Clone, Copy, Debug)]
+struct NativeModalPeriod {
+    id: u64,
+    thread_id: ThreadId,
+    opened: Instant,
+    closed: Option<Instant>,
+}
+
+struct NativeModals {
+    next_id: u64,
+    periods: VecDeque<NativeModalPeriod>,
+}
+
+impl NativeModals {
+    const fn new() -> Self {
+        Self {
+            next_id: 0,
+            periods: VecDeque::new(),
+        }
+    }
+
+    fn open(&mut self, thread_id: ThreadId, opened: Instant) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.periods.push_back(NativeModalPeriod {
+            id,
+            thread_id,
+            opened,
+            closed: None,
+        });
+        id
+    }
+
+    fn close(&mut self, id: u64, closed: Instant) {
+        if let Some(period) = self.periods.iter_mut().find(|period| period.id == id) {
+            period.closed = Some(closed);
+        }
+        let closed_count = self
+            .periods
+            .iter()
+            .filter(|period| period.closed.is_some())
+            .count();
+        if closed_count > MAX_CLOSED_NATIVE_MODALS
+            && let Some(oldest) = self
+                .periods
+                .iter()
+                .position(|period| period.closed.is_some())
+        {
+            self.periods.remove(oldest);
+        }
+    }
+
+    /// The part of `start..end` that `thread_id` spent in native modal dialogs
+    /// opened within it. One opened before `start` does not count: a poll that
+    /// began inside a dialog's modal loop is work of its own, not the wait.
+    /// A dialog still open counts only up to [`MODAL_LOOP_SLACK`] past
+    /// `last_message` (or past its opening, if later): a thread that stopped
+    /// handling messages is stuck in something the loop called, not waiting.
+    fn wait_within(
+        &self,
+        thread_id: ThreadId,
+        start: Instant,
+        end: Instant,
+        last_message: Option<Instant>,
+    ) -> NativeModalWait {
+        let mut stuck_inside = false;
+        let mut spans = self
+            .periods
+            .iter()
+            .filter(|period| {
+                period.thread_id == thread_id && start <= period.opened && period.opened < end
+            })
+            .map(|period| {
+                let waited_until = match period.closed {
+                    Some(closed) => closed,
+                    None => {
+                        let alive_at = last_message
+                            .map_or(period.opened, |handled| handled.max(period.opened));
+                        let excused_until = alive_at + MODAL_LOOP_SLACK;
+                        stuck_inside |= excused_until < end;
+                        excused_until
+                    }
+                };
+                (period.opened, waited_until.min(end))
+            })
+            .collect::<Vec<_>>();
+        spans.sort_by_key(|(opened, _)| *opened);
+        let mut waited = Duration::ZERO;
+        let mut covered_until = start;
+        for (opened, closed) in spans {
+            let from = opened.max(covered_until);
+            if closed > from {
+                waited += closed - from;
+                covered_until = closed;
+            }
+        }
+        NativeModalWait {
+            waited,
+            stuck_inside,
+        }
     }
 }
 
@@ -1126,6 +1315,194 @@ impl FrameTimingCollector {
             .collect();
         self.cursor = frames.total_pushed;
         unseen
+    }
+}
+
+#[cfg(test)]
+mod native_modal_tests {
+    use super::*;
+
+    const MILLISECOND: Duration = Duration::from_millis(1);
+
+    fn other_thread_id() -> ThreadId {
+        std::thread::spawn(|| std::thread::current().id())
+            .join()
+            .expect("the thread returns its id")
+    }
+
+    #[test]
+    fn a_poll_is_busy_only_outside_the_dialog_it_opened() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        let dialog = modals.open(thread_id, start + 10 * MILLISECOND);
+        modals.close(dialog, start + 5000 * MILLISECOND);
+
+        assert_eq!(
+            modals.wait_within(thread_id, start, start + 5020 * MILLISECOND, None),
+            NativeModalWait {
+                waited: 4990 * MILLISECOND,
+                stuck_inside: false,
+            },
+            "a closed dialog counts whole: its loop returned, so the thread was not stuck"
+        );
+    }
+
+    #[test]
+    fn a_dialog_still_open_counts_up_to_the_end_of_the_running_poll() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        modals.open(thread_id, start + MILLISECOND);
+
+        assert_eq!(
+            modals.wait_within(
+                thread_id,
+                start,
+                start + 30_000 * MILLISECOND,
+                Some(start + 29_990 * MILLISECOND)
+            ),
+            NativeModalWait {
+                waited: 29_999 * MILLISECOND,
+                stuck_inside: false,
+            }
+        );
+    }
+
+    #[test]
+    fn an_open_dialog_counts_only_while_its_thread_handles_messages() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        modals.open(thread_id, start + MILLISECOND);
+
+        assert_eq!(
+            modals.wait_within(
+                thread_id,
+                start,
+                start + 30_000 * MILLISECOND,
+                Some(start + 2000 * MILLISECOND)
+            ),
+            NativeModalWait {
+                waited: 2999 * MILLISECOND,
+                stuck_inside: true,
+            },
+            "the wait stops a second after the last message handled"
+        );
+    }
+
+    #[test]
+    fn an_open_dialog_without_a_message_since_it_opened_counts_only_briefly() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        modals.open(thread_id, start + 1000 * MILLISECOND);
+
+        for last_message in [None, Some(start)] {
+            assert_eq!(
+                modals.wait_within(thread_id, start, start + 30_000 * MILLISECOND, last_message),
+                NativeModalWait {
+                    waited: 1000 * MILLISECOND,
+                    stuck_inside: true,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn a_poll_that_began_inside_a_dialog_is_not_excused() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        let dialog = modals.open(thread_id, start);
+        modals.close(dialog, start + 10_000 * MILLISECOND);
+
+        assert_eq!(
+            modals.wait_within(
+                thread_id,
+                start + 1000 * MILLISECOND,
+                start + 3000 * MILLISECOND,
+                None
+            ),
+            NativeModalWait::default()
+        );
+    }
+
+    #[test]
+    fn dialogs_on_other_threads_do_not_count() {
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        let dialog = modals.open(other_thread_id(), start + MILLISECOND);
+        modals.close(dialog, start + 2000 * MILLISECOND);
+
+        assert_eq!(
+            modals.wait_within(
+                std::thread::current().id(),
+                start,
+                start + 3000 * MILLISECOND,
+                None
+            ),
+            NativeModalWait::default()
+        );
+    }
+
+    #[test]
+    fn overlapping_dialogs_are_counted_once() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        let outer = modals.open(thread_id, start + 1000 * MILLISECOND);
+        let inner = modals.open(thread_id, start + 2000 * MILLISECOND);
+        modals.close(inner, start + 5000 * MILLISECOND);
+        modals.close(outer, start + 10_000 * MILLISECOND);
+
+        assert_eq!(
+            modals.wait_within(thread_id, start, start + 11_000 * MILLISECOND, None),
+            NativeModalWait {
+                waited: 9000 * MILLISECOND,
+                stuck_inside: false,
+            }
+        );
+    }
+
+    #[test]
+    fn only_recent_closed_dialogs_are_kept() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let mut modals = NativeModals::new();
+        let still_open = modals.open(thread_id, start);
+        for index in 1..=(MAX_CLOSED_NATIVE_MODALS as u32 * 2) {
+            let dialog = modals.open(thread_id, start + index * MILLISECOND);
+            modals.close(dialog, start + index * MILLISECOND);
+        }
+
+        assert_eq!(modals.periods.len(), MAX_CLOSED_NATIVE_MODALS + 1);
+        assert!(
+            modals
+                .periods
+                .iter()
+                .any(|period| period.id == still_open && period.closed.is_none()),
+            "a dialog that is still open is never forgotten"
+        );
+    }
+
+    #[test]
+    fn the_guard_takes_the_dialog_out_of_the_poll_that_opened_it() {
+        let thread_id = std::thread::current().id();
+        let start = Instant::now();
+        let dialog = native_modal_opened();
+        std::thread::sleep(20 * MILLISECOND);
+        drop(dialog);
+        let mut timing = TaskTiming::placeholder();
+        timing.start = start;
+        timing.end = YieldTime(Instant::now());
+
+        assert!(timing.poll_duration() >= 20 * MILLISECOND);
+        assert!(timing.busy_duration(thread_id) + 20 * MILLISECOND <= timing.poll_duration());
+        assert_eq!(
+            timing.busy_duration(other_thread_id()),
+            timing.poll_duration()
+        );
     }
 }
 
