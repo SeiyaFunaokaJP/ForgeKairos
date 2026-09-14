@@ -18,6 +18,7 @@ mod favorite_models;
 mod inline_assistant;
 mod inline_prompt_editor;
 mod language_model_selector;
+mod managed_claude_binary;
 mod mention_set;
 mod message_editor;
 mod mode_selector;
@@ -85,6 +86,10 @@ pub use agent_diff::{AgentDiffPane, AgentDiffToolbar};
 pub use conversation_view::open_markdown_in_workspace;
 pub use conversation_view::{ConversationView, StateChange};
 pub use external_source_prompt::ExternalSourcePrompt;
+pub use managed_claude_binary::{
+    ClaudeReleaseChannel, ManagedClaudeBinary, ManagedClaudeProgress, ensure_managed_claude_binary,
+    update_managed_claude_binary,
+};
 pub(crate) use mode_selector::ModeSelector;
 pub(crate) use model_selector::ModelSelector;
 pub(crate) use model_selector_popover::ModelSelectorPopover;

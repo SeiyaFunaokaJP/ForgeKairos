@@ -510,6 +510,7 @@ dependencies = [
  "gpui",
  "gpui_tokio",
  "heapless",
+ "hex",
  "html_to_markdown",
  "http_client",
  "idna",
@@ -546,6 +547,7 @@ dependencies = [
  "remote_server",
  "reqwest_client",
  "rope",
+ "rsa",
  "sandbox",
  "schemars 1.0.4",
  "search",
@@ -554,6 +556,8 @@ dependencies = [
  "serde_json",
  "serde_json_lenient",
  "settings",
+ "sha1",
+ "sha2",
  "shlex 1.3.0",
  "streaming_diff",
  "task",
@@ -578,6 +582,7 @@ dependencies = [
  "watch",
  "workspace",
  "zed_actions",
+ "zstd",
 ]
 
 [[package]]

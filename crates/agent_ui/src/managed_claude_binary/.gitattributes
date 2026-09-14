@@ -1,0 +1,3 @@
+# The signing key and the signed test vectors are verified byte for byte, so git
+# must never rewrite their line endings.
+* -text

@@ -37,6 +37,9 @@ extend-exclude = [
     "crates/git/test_data/golden/blame_incremental_complex.json",
     # We have some base64-encoded data that is incorrectly being flagged.
     "crates/rpc/src/auth.rs",
+    # ASCII-armored OpenPGP keys and signed release test vectors (ADR-F49).
+    "crates/agent_ui/src/managed_claude_binary/anthropic-claude-code-release.asc",
+    "crates/agent_ui/src/managed_claude_binary/test_fixtures/",
     # glsl isn't recognized by this tool.
     "extensions/glsl/languages/glsl/",
     # Protols is the name of the language server.

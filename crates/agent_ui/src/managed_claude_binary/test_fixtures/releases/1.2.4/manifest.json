@@ -1,0 +1,18 @@
+{
+  "version": "1.2.4",
+  "manifestSignatureEnforcement": "flag",
+  "commit": "0000000000000000000000000000000000000000",
+  "buildDate": "2026-09-14T00:00:00Z",
+  "platforms": {
+    "linux-x64": {
+      "binary": "claude",
+      "checksum": "62a5efe815ef09e310ad55a6e0d43c58d3d7adf056fabc56f17a3b34a5c7ed9e",
+      "size": 2088
+    },
+    "linux-arm64": {
+      "binary": "claude",
+      "checksum": "a812102a47b229af3e4a2799f1eb7076d6a6b54cfb5dfb22b17cba4075d66546",
+      "size": 2090
+    }
+  }
+}
