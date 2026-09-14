@@ -1,6 +1,7 @@
 use editor::{Editor, EditorEvent};
 use gpui::{
-    AppContext, Entity, EventEmitter, FocusHandle, Focusable, ListAlignment, Task, actions,
+    AppContext, Entity, EventEmitter, FocusHandle, Focusable, ListAlignment, Subscription, Task,
+    actions,
 };
 use std::{
     collections::HashMap,
@@ -12,7 +13,7 @@ use ui::{
     AbsoluteLength, ResizableColumnsState, SharedString, TableInteractionState,
     TableResizeBehavior, prelude::*,
 };
-use workspace::{Pane, Workspace};
+use workspace::{Pane, Workspace, searchable::SearchEvent};
 
 use crate::{
     parser::EditorState, settings::TabularDataPreviewSettings,
@@ -23,6 +24,8 @@ use ::settings::Settings as _;
 mod edit_engine;
 mod grid;
 mod grid_editing;
+mod grid_search;
+mod grid_styles;
 mod parser;
 mod renderer;
 mod settings;
@@ -31,6 +34,8 @@ pub mod tabular_data_settings;
 mod types;
 mod workspace_item;
 
+pub use crate::grid_search::GridMatch;
+pub use crate::grid_styles::{CellColor, ClearCellColors, SetFillColor, SetTextColor};
 pub use crate::workspace_item::TabularBuffer;
 
 actions!(
@@ -70,6 +75,10 @@ pub struct TabularDataPreviewPane {
     pub(crate) engine: TableDataEngine,
 
     pub(crate) grid: grid::GridState,
+    /// The fill and text colors painted onto this file, addressed by physical
+    /// row and column. Kept out of the file itself, which has nowhere for them,
+    /// and shared with every other grid open on the same file.
+    pub(crate) styles: Entity<grid_styles::GridStylesModel>,
     pub(crate) focus_handle: FocusHandle,
     active_editor_state: EditorState,
     pub(crate) table_interaction_state: Entity<TableInteractionState>,
@@ -92,6 +101,8 @@ pub struct TabularDataPreviewPane {
     /// Set by the pane; leaving the tab pushes an entry so that "go back" and "reopen
     /// closed tab" reach the grid the same way they reach an editor.
     nav_history: Option<workspace::ItemNavHistory>,
+    /// Redraws the grid when another grid on the same file repaints a cell.
+    _styles_subscription: Subscription,
 }
 
 pub fn init(cx: &mut App) {
@@ -100,6 +111,7 @@ pub fn init(cx: &mut App) {
     // the text editor.
     workspace::register_project_item::<TabularDataPreviewPane>(cx);
     workspace::register_serializable_item::<TabularDataPreviewPane>(cx);
+    grid_styles::hide_color_actions_from_the_command_palette(cx);
 
     cx.observe_new(|workspace: &mut Workspace, _, _| {
         TabularDataPreviewPane::register(workspace);
@@ -184,6 +196,9 @@ impl TabularDataPreviewPane {
         let target_pane = if open_in_same_pane {
             origin_pane
         } else {
+            if workspace_item::activate_existing_item::<Editor>(workspace, entry_id, window, cx) {
+                return;
+            }
             workspace.adjacent_pane_of(&origin_pane, window, cx)
         };
 
@@ -214,6 +229,10 @@ impl TabularDataPreviewPane {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
+        let entry_id = Self::entry_id_for_editor(&editor, cx);
+        if workspace_item::activate_existing_item::<Self>(workspace, entry_id, window, cx) {
+            return;
+        }
         let target_pane = workspace.adjacent_pane_of(&origin_pane, window, cx);
         Self::activate_or_add_preview(editor, target_pane, false, window, cx);
     }
@@ -274,6 +293,11 @@ impl TabularDataPreviewPane {
                     | EditorEvent::DirtyChanged => {
                         this.parse_from_active_editor(true, cx);
                     }
+                    // "Save as" gave the buffer a new path, and the colors are
+                    // stored under the path rather than in the file.
+                    EditorEvent::FileHandleChanged => {
+                        this.on_file_path_changed(cx);
+                    }
                     _ => {}
                 };
                 // Forwarded so that the tab reacts to the buffer exactly as an editor tab
@@ -282,9 +306,15 @@ impl TabularDataPreviewPane {
             },
         );
 
+        // Shared with any other grid already open on this file, so that the two
+        // paint and store the same colors instead of overwriting each other's.
+        let styles = grid_styles::GridStylesModel::for_editor(&editor, cx);
+        let styles_subscription = cx.observe(&styles, |_this, _styles, cx| cx.notify());
+
         let row_height = window.pixel_snap(window.line_height());
         let mut view = TabularDataPreviewPane {
             grid: grid::GridState::new(window, cx),
+            styles,
             focus_handle: cx.focus_handle(),
             active_editor_state: EditorState {
                 editor,
@@ -306,6 +336,7 @@ impl TabularDataPreviewPane {
             last_parse_end_time: None,
             engine: TableDataEngine::default(),
             nav_history: None,
+            _styles_subscription: styles_subscription,
         };
 
         view.parse_from_active_editor(false, cx);
@@ -356,6 +387,7 @@ impl TabularDataPreviewPane {
                 sorting,
             ));
             self.sync_list_state();
+            self.invalidate_search_matches(cx);
             cx.notify();
             return;
         }
@@ -370,6 +402,7 @@ impl TabularDataPreviewPane {
             this.update(cx, |view, cx| {
                 view.engine.set_d2d_mapping(mapping);
                 view.sync_list_state();
+                view.invalidate_search_matches(cx);
                 cx.notify();
             })
             .ok();
@@ -433,6 +466,8 @@ impl Focusable for TabularDataPreviewPane {
 }
 
 impl EventEmitter<EditorEvent> for TabularDataPreviewPane {}
+
+impl EventEmitter<SearchEvent> for TabularDataPreviewPane {}
 
 #[derive(Debug, Default)]
 pub struct PerformanceMetrics {

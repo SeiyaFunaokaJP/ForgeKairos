@@ -6218,6 +6218,88 @@ mod tests {
         cx.run_until_parked();
     }
 
+    /// The grid has no `Editor` of its own for the quick action bar to act on,
+    /// so it takes a branch of `QuickActionBar::render` that draws only the
+    /// button back to the text, and it is easy to lose that branch along with
+    /// the editor's own buttons.
+    #[gpui::test]
+    async fn test_the_grid_keeps_its_quick_action_bar(cx: &mut TestAppContext) {
+        use workspace::{ToolbarItemLocation, ToolbarItemView as _};
+
+        let app_state = init_test(cx);
+        cx.update(init);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(path!("/root"), json!({ "data.csv": "a,b\nc,d" }))
+            .await;
+
+        let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+        let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace = window
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .unwrap();
+
+        let path = cx.read(|cx| workspace.file_project_paths(cx))[0].clone();
+        window
+            .update(cx, |_, window, cx| {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.open_path(path, None, true, window, cx)
+                })
+            })
+            .unwrap()
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+        cx.update(|window, cx| {
+            let (item, quick_action_bar) = workspace.read_with(cx, |workspace, cx| {
+                let pane = workspace.active_pane().read(cx);
+                let item = pane
+                    .active_item()
+                    .expect("the pane should have an active item");
+                assert!(
+                    item.downcast::<tabular_data_preview::TabularDataPreviewPane>()
+                        .is_some(),
+                    "the CSV should have opened as a grid"
+                );
+                assert!(
+                    !pane.toolbar().read(cx).hidden(),
+                    "the grid must not hide the pane's toolbar"
+                );
+                let quick_action_bar = pane
+                    .toolbar()
+                    .read(cx)
+                    .item_of_type::<QuickActionBar>()
+                    .expect("the pane's toolbar should carry a quick action bar");
+                (item, quick_action_bar)
+            });
+
+            quick_action_bar.update(cx, |bar, cx| {
+                assert_eq!(
+                    bar.set_active_pane_item(Some(item.as_ref()), window, cx),
+                    ToolbarItemLocation::PrimaryRight,
+                    "the quick action bar should stay visible over a grid"
+                );
+            });
+        });
+
+        // The toolbar's items are cached views, so a frame that reuses the cache
+        // records no debug selector; one forced redraw puts them back.
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+
+        // `FileTextOutlined` reaches this window through no other `IconButton`:
+        // the grid's own toolbar carries it on a labelled `Button`, which
+        // registers no selector.
+        assert!(
+            cx.debug_bounds("ICON-FileTextOutlined").is_some(),
+            "the grid's quick action bar should draw the button back to the text"
+        );
+    }
+
     pub(crate) fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {
         init_test_with_state(cx, cx.update(AppState::test))
     }

@@ -1865,6 +1865,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "tabular_data::ToggleHeaderRow",
         "表 (CSV / TSV): 見出し行の切り替え",
     ),
+    (
+        "tabular_data::ClearCellColors",
+        "表 (CSV / TSV): セルの色をクリア",
+    ),
 ];
 
 #[cfg(test)]

@@ -14,6 +14,7 @@ use workspace::{
         Item, ItemBufferKind, ItemEvent, ProjectItem, SaveOptions, SerializableItem,
         TabContentParams,
     },
+    searchable::SearchableItemHandle,
 };
 
 use crate::{
@@ -160,6 +161,38 @@ pub(crate) fn activate_or_replace_in_pane<T: Item>(
     });
 }
 
+/// Brings a tab of type `T` that some pane already holds for `entry_id` to the
+/// front, reporting whether it found one.
+///
+/// A pane's neighbour is only ever looked for to its right, so the grid and the
+/// text tab of one file, sitting side by side, would otherwise split a third
+/// pane the moment the button on the right hand one is pressed - and fill it
+/// with a second copy of the tab standing to its left.
+pub(crate) fn activate_existing_item<T: Item>(
+    workspace: &mut Workspace,
+    entry_id: Option<ProjectEntryId>,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> bool {
+    let Some(entry_id) = entry_id else {
+        return false;
+    };
+    let existing = workspace.panes().iter().find_map(|pane| {
+        pane.read(cx)
+            .items()
+            .find(|item| {
+                item.downcast::<T>().is_some()
+                    && item.buffer_kind(cx) == ItemBufferKind::Singleton
+                    && item.project_entry_ids(cx).first() == Some(&entry_id)
+            })
+            .map(|item| item.boxed_clone())
+    });
+    let Some(item) = existing else {
+        return false;
+    };
+    workspace.activate_item(item.as_ref(), true, true, window, cx)
+}
+
 impl Item for TabularDataPreviewPane {
     type Event = EditorEvent;
 
@@ -177,6 +210,14 @@ impl Item for TabularDataPreviewPane {
             }
             _ => {}
         }
+    }
+
+    fn as_searchable(
+        &self,
+        handle: &Entity<Self>,
+        _: &App,
+    ) -> Option<Box<dyn SearchableItemHandle>> {
+        Some(Box::new(handle.clone()))
     }
 
     fn tab_icon(&self, _window: &Window, cx: &App) -> Option<Icon> {
@@ -468,7 +509,7 @@ pub(crate) mod persistence {
 mod tests {
     use std::{any::TypeId, cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 
-    use gpui::{BorrowAppContext as _, TestAppContext, VisualTestContext};
+    use gpui::{BorrowAppContext as _, Focusable as _, TestAppContext, VisualTestContext};
     use project::WorktreeId;
     use serde_json::json;
     use settings::SettingsStore;
@@ -506,6 +547,7 @@ mod tests {
                 path!("/root"),
                 json!({
                     "data.csv": "name,count\nalpha,1\n",
+                    "empty.csv": "",
                     "notes.txt": "plain text\n",
                 }),
             )
@@ -693,6 +735,102 @@ mod tests {
         assert_eq!(editor_buffer, grid_buffer);
     }
 
+    /// The pane a neighbour is looked for in is always the one to the right, so
+    /// the button on the right hand tab of a pair used to split a third pane and
+    /// fill it with a copy of the tab already standing on the left.
+    #[gpui::test]
+    async fn the_side_by_side_buttons_walk_between_the_two_panes(cx: &mut TestAppContext) {
+        let (workspace, _project, worktree_id, cx) = open_test_workspace(cx).await;
+        let grid = open_file(&workspace, worktree_id, "data.csv", cx)
+            .await
+            .downcast::<TabularDataPreviewPane>()
+            .unwrap();
+        let grid_pane = workspace.update(cx, |workspace, _| workspace.active_pane().clone());
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let pane = workspace.active_pane().clone();
+            TabularDataPreviewPane::open_as_text(workspace, grid.clone(), pane, false, window, cx);
+        });
+        cx.run_until_parked();
+
+        let (text_pane, editor) = workspace.update(cx, |workspace, cx| {
+            (
+                workspace.active_pane().clone(),
+                workspace
+                    .active_item(cx)
+                    .unwrap()
+                    .downcast::<Editor>()
+                    .unwrap(),
+            )
+        });
+        assert_ne!(text_pane, grid_pane);
+
+        // The grid is now to the left of the text, where no neighbour is ever
+        // looked for: the button has to find the pane rather than make one.
+        workspace.update_in(cx, |workspace, window, cx| {
+            TabularDataPreviewPane::open_preview_to_the_side_of_pane(
+                workspace,
+                editor.clone(),
+                text_pane.clone(),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        workspace.update(cx, |workspace, cx| {
+            assert_eq!(workspace.panes().len(), 2, "no third pane may be split off");
+            assert_eq!(workspace.active_pane(), &grid_pane);
+            assert_eq!(
+                workspace.active_item(cx).unwrap().item_id(),
+                grid.item_id(),
+                "the grid that was already open should have come to the front"
+            );
+        });
+
+        // And back again, onto the text tab that is already open.
+        workspace.update_in(cx, |workspace, window, cx| {
+            TabularDataPreviewPane::open_as_text(workspace, grid, grid_pane, false, window, cx);
+        });
+        cx.run_until_parked();
+
+        workspace.update(cx, |workspace, cx| {
+            assert_eq!(workspace.panes().len(), 2);
+            assert_eq!(workspace.active_pane(), &text_pane);
+            assert_eq!(
+                workspace.active_item(cx).unwrap().item_id(),
+                editor.item_id()
+            );
+        });
+    }
+
+    /// An empty file draws a message instead of a table, and the grid still has
+    /// to be able to take what the user types without being clicked first.
+    #[gpui::test]
+    async fn an_empty_file_can_be_typed_into_right_away(cx: &mut TestAppContext) {
+        let (workspace, _project, worktree_id, cx) = open_test_workspace(cx).await;
+        let grid = open_file(&workspace, worktree_id, "empty.csv", cx)
+            .await
+            .downcast::<TabularDataPreviewPane>()
+            .unwrap();
+        cx.run_until_parked();
+
+        assert!(
+            cx.update(|window, cx| grid.focus_handle(cx).is_focused(window)),
+            "opening the grid should put the caret in it"
+        );
+
+        cx.simulate_input("x");
+        cx.run_until_parked();
+        grid.read_with(cx, |grid, cx| {
+            assert_eq!(
+                grid.grid.cell_editor.read(cx).text(cx),
+                "x",
+                "the key should have reached the cell editor"
+            );
+        });
+    }
+
     #[gpui::test]
     async fn a_serialized_grid_is_restored_for_the_same_file(cx: &mut TestAppContext) {
         let (workspace, project, worktree_id, cx) = open_test_workspace(cx).await;
@@ -860,7 +998,13 @@ mod tests {
             "the text tab already beside the grid should be reused"
         );
 
-        // A grid asked for on that same entry replaces the text tab sitting there.
+        // With no grid left to come back to, a grid asked for on that same entry
+        // replaces the text tab sitting there.
+        origin_pane.update_in(cx, |pane, window, cx| {
+            pane.remove_item(grid.item_id(), false, false, window, cx);
+        });
+        cx.run_until_parked();
+
         workspace.update_in(cx, |workspace, window, cx| {
             TabularDataPreviewPane::open_preview_to_the_side_of_pane(
                 workspace,

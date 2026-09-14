@@ -1354,9 +1354,15 @@
       "ctrl-f": "buffer_search::Deploy",
     },
   },
+  // `use_key_equivalents` is deliberately off here. On Windows it makes a
+  // binding's key be looked up in a *US* layout and then re-read as whatever
+  // character the user's layout puts on that physical key, which on a JIS
+  // keyboard turns `ctrl-shift-=` into Ctrl+Shift+";" - the "+" key - while the
+  // key that actually types "=" (Shift+"-") reaches no binding at all. Without
+  // the flag the key is looked up in the layout in use, so `ctrl-shift-=` is the
+  // key that types "=" on every layout.
   {
     "context": "TabularDataGrid",
-    "use_key_equivalents": true,
     "bindings": {
       "enter": "tabular_data::CommitAndMoveDown",
       "shift-enter": "tabular_data::CommitAndMoveUp",
@@ -1366,6 +1372,8 @@
       "ctrl--": "tabular_data::DeleteRowsOrColumns",
       "shift-space": "tabular_data::SelectRow",
       "ctrl-space": "tabular_data::SelectColumn",
+      "ctrl-f": "buffer_search::Deploy",
+      "ctrl-h": "buffer_search::DeployReplace",
     },
   },
   {

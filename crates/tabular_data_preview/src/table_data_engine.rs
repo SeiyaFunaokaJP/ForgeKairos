@@ -30,6 +30,7 @@ pub(crate) struct TableDataEngine {
     all_filters: HashMap<AnyColumn, Vec<FilterEntry>>,
     pub applied_sorting: Option<AppliedSorting>,
     d2d_mapping: DisplayToDataMapping,
+    d2d_generation: u64,
     pub contents: Arc<TableLikeContent>,
 }
 
@@ -38,8 +39,15 @@ impl TableDataEngine {
         &self.d2d_mapping
     }
 
+    /// Bumped whenever the mapping is replaced, which is what anything holding
+    /// a view derived from it compares against to tell that view is stale.
+    pub(crate) fn d2d_generation(&self) -> u64 {
+        self.d2d_generation
+    }
+
     pub(crate) fn set_d2d_mapping(&mut self, mapping: DisplayToDataMapping) {
         self.d2d_mapping = mapping;
+        self.d2d_generation = self.d2d_generation.wrapping_add(1);
     }
 
     /// Recomputes the unique filter entries for every column from the current table data.
@@ -100,6 +108,12 @@ impl DisplayToDataMapping {
         self.mapping.get(&display_row).copied()
     }
 
+    /// Whether every display row is simply its own data row, which it is while
+    /// neither sorting nor filtering is active.
+    pub(crate) fn is_identity(&self) -> bool {
+        self.identity_len.is_some()
+    }
+
     /// Get the number of filtered rows
     pub fn visible_row_count(&self) -> usize {
         self.identity_len.unwrap_or_else(|| self.mapping.len())
@@ -120,11 +134,6 @@ impl DisplayToDataMapping {
 
     fn apply_filtering(&mut self, filter_stack: &FilterStack, rows: &[TableRow<TableCell>]) {
         self.retained_rows = retain_rows(rows, filter_stack, None);
-    }
-
-    #[cfg(test)]
-    fn holds_an_explicit_mapping(&self) -> bool {
-        self.identity_len.is_none()
     }
 
     /// Merges pre-computed sorting and filtering into the final display mapping
@@ -157,7 +166,7 @@ mod tests {
         let engine = engine_for("h\na\nb\nc");
         let mapping = DisplayToDataMapping::compute(&engine.contents, &engine.filter_stack, None);
 
-        assert!(!mapping.holds_an_explicit_mapping());
+        assert!(mapping.is_identity());
         assert_eq!(mapping.visible_row_count(), 3);
         assert_eq!(mapping.get_data_row(DisplayRow(0)), Some(DataRow(0)));
         assert_eq!(mapping.get_data_row(DisplayRow(2)), Some(DataRow(2)));
@@ -172,7 +181,7 @@ mod tests {
             .expect("the column has an `a` entry to filter on");
         let mapping = DisplayToDataMapping::compute(&engine.contents, &engine.filter_stack, None);
 
-        assert!(mapping.holds_an_explicit_mapping());
+        assert!(!mapping.is_identity());
         assert_eq!(mapping.visible_row_count(), 2);
         assert_eq!(mapping.get_data_row(DisplayRow(0)), Some(DataRow(0)));
         assert_eq!(mapping.get_data_row(DisplayRow(1)), Some(DataRow(2)));

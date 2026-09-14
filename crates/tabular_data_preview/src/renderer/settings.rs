@@ -31,12 +31,12 @@ impl TabularDataPreviewPane {
             .child(
                 Button::new(
                     ElementId::Name("tabular-open-as-text".into()),
-                    "テキストとして表示",
+                    "テキストを横に開く",
                 )
                 .style(ButtonStyle::Subtle)
                 .size(ButtonSize::Compact)
                 .start_icon(Icon::new(IconName::FileTextOutlined).size(IconSize::Small))
-                .tooltip(Tooltip::text("元のテキストとして開きます"))
+                .tooltip(Tooltip::text("元のテキストを隣のペインで開きます"))
                 .on_click(|_event, window, cx| {
                     window.dispatch_action(OpenAsText.boxed_clone(), cx);
                 }),
@@ -57,6 +57,7 @@ impl TabularDataPreviewPane {
                 }),
             )
             .child(self.render_row_and_column_buttons())
+            .child(self.render_color_buttons(cx))
             .child(self.render_view_menu(window, cx))
             .child(div().flex_1())
             .child(self.render_grid_status(cx))

@@ -1434,6 +1434,7 @@
       "cmd--": "tabular_data::DeleteRowsOrColumns",
       "shift-space": "tabular_data::SelectRow",
       "ctrl-space": "tabular_data::SelectColumn",
+      "cmd-f": "buffer_search::Deploy",
     },
   },
   {

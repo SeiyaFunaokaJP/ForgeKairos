@@ -16776,6 +16776,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clock",
+ "command_palette_hooks",
  "db",
  "editor",
  "fs",
@@ -16786,6 +16787,9 @@ dependencies = [
  "picker",
  "project",
  "proptest",
+ "schemars 1.0.4",
+ "search",
+ "serde",
  "serde_json",
  "settings",
  "text",

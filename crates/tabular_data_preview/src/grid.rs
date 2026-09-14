@@ -8,7 +8,7 @@ use std::{cell::Cell as MutableCell, ops::Range, rc::Rc, sync::Arc};
 
 use editor::{Editor, EditorEvent};
 use gpui::{
-    AnyElement, Bounds, Entity, Focusable as _, MouseButton, Point, Subscription,
+    AnyElement, Bounds, Entity, Focusable as _, ListOffset, MouseButton, Point, Subscription,
     TextStyleRefinement, canvas,
 };
 use ui::{ContextMenu, prelude::*};
@@ -16,6 +16,7 @@ use ui::{ContextMenu, prelude::*};
 use crate::{
     TabularDataPreviewPane,
     edit_engine::RowRef,
+    grid_search::GridSearchState,
     types::{AnyColumn, DisplayRow, TableCell},
 };
 
@@ -178,6 +179,14 @@ pub(crate) struct GridState {
     pub(crate) editing_cell: Option<GridCell>,
     /// A message shown in the toolbar, e.g. when an operation was refused.
     pub(crate) status_message: Option<SharedString>,
+    /// Whether that message stands until the state behind it changes rather
+    /// than until the user's next move. A refused operation is only about the
+    /// key that was just pressed, so it has to go once the user does something
+    /// else; the search bar's "too many matches" describes the search itself
+    /// and has to stay while the user walks the hits.
+    pub(crate) status_message_is_sticky: bool,
+    /// What the buffer search bar is currently highlighting.
+    pub(crate) search: GridSearchState,
     pub(crate) drag: Option<GridDrag>,
     pub(crate) context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     pub(crate) active_cell_bounds: Rc<BoundsProbe>,
@@ -219,6 +228,8 @@ impl GridState {
             editing_target: None,
             editing_cell: None,
             status_message: None,
+            status_message_is_sticky: false,
+            search: GridSearchState::default(),
             drag: None,
             context_menu: None,
             active_cell_bounds: Rc::default(),
@@ -248,6 +259,19 @@ pub(crate) fn cell_text_style(cx: &App) -> TextStyleRefinement {
 /// of cells the operation builds costs more than the edit is worth, so the grid
 /// refuses and points at the text editor instead.
 pub(crate) const MAX_GRID_OPERATION_CELLS: usize = 200_000;
+
+/// A count as the user reads it, in groups of three digits: `200,000`.
+pub(crate) fn grouped_digits(value: usize) -> String {
+    let digits = value.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.char_indices() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
 
 /// The spreadsheet name of a column: A, B, … Z, AA, AB, …
 pub(crate) fn column_label(index: usize) -> String {
@@ -457,13 +481,13 @@ impl TabularDataPreviewPane {
         if cells <= MAX_GRID_OPERATION_CELLS {
             return true;
         }
-        self.grid.status_message = Some(
+        let limit = grouped_digits(MAX_GRID_OPERATION_CELLS);
+        self.set_status_message(
             format!(
-                "選択範囲が大きすぎます (最大 {MAX_GRID_OPERATION_CELLS} セル)。テキストとして表示で編集してください"
-            )
-            .into(),
+                "選択範囲が大きすぎます (最大 {limit} セル)。テキストを横に開いて編集してください"
+            ),
+            cx,
         );
-        cx.notify();
         false
     }
 
@@ -473,11 +497,34 @@ impl TabularDataPreviewPane {
         cx: &mut Context<Self>,
     ) {
         self.grid.status_message = Some(message.into());
+        self.grid.status_message_is_sticky = false;
+        cx.notify();
+    }
+
+    /// A message that describes a state the user is still in, rather than the
+    /// operation they just tried. It survives moving the caret.
+    pub(crate) fn set_sticky_status_message(
+        &mut self,
+        message: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) {
+        self.grid.status_message = Some(message.into());
+        self.grid.status_message_is_sticky = true;
         cx.notify();
     }
 
     pub(crate) fn clear_status_message(&mut self) {
         self.grid.status_message = None;
+        self.grid.status_message_is_sticky = false;
+    }
+
+    /// Takes away a message that was only about an operation the grid refused,
+    /// which every move of the caret and every edit that went through makes
+    /// stale.
+    pub(crate) fn clear_stale_status_message(&mut self) {
+        if !self.grid.status_message_is_sticky {
+            self.grid.status_message = None;
+        }
     }
 
     /// The address shown in the toolbar, e.g. `B3`. Row 1 is the header when
@@ -494,6 +541,7 @@ impl TabularDataPreviewPane {
             return;
         }
         let cell = self.clamp_cell(cell);
+        self.clear_stale_status_message();
         if extend {
             self.grid.anchor.get_or_insert(self.grid.cursor);
             if self.grid.selection_kind == GridSelectionKind::All {
@@ -504,6 +552,9 @@ impl TabularDataPreviewPane {
             self.grid.selection_kind = GridSelectionKind::Cells;
         }
         self.grid.cursor = cell;
+        // The search bar counts hits relative to the caret, so every move of it
+        // is a change of which hit is the active one.
+        self.notify_search_of_caret(cx);
         cx.notify();
     }
 
@@ -519,6 +570,7 @@ impl TabularDataPreviewPane {
         // cell of a selected row where it was; the selection covers every
         // column regardless, through `GridSelectionKind::Rows`.
         let col = AnyColumn(self.grid.cursor.col.get().min(self.last_col_index()));
+        self.clear_stale_status_message();
         if extend {
             self.grid.anchor.get_or_insert(self.grid.cursor);
         } else {
@@ -526,6 +578,7 @@ impl TabularDataPreviewPane {
         }
         self.grid.cursor = GridCell::new(row, col);
         self.grid.selection_kind = GridSelectionKind::Rows;
+        self.notify_search_of_caret(cx);
         cx.notify();
     }
 
@@ -541,6 +594,7 @@ impl TabularDataPreviewPane {
                 .index()
                 .clamp(self.first_row_index(), self.last_row_index()),
         );
+        self.clear_stale_status_message();
         if extend {
             self.grid.anchor.get_or_insert(self.grid.cursor);
         } else {
@@ -548,6 +602,7 @@ impl TabularDataPreviewPane {
         }
         self.grid.cursor = GridCell::new(row, col);
         self.grid.selection_kind = GridSelectionKind::Columns;
+        self.notify_search_of_caret(cx);
         cx.notify();
     }
 
@@ -555,6 +610,7 @@ impl TabularDataPreviewPane {
         if self.grid_is_empty() {
             return;
         }
+        self.clear_stale_status_message();
         self.grid.anchor = Some(self.grid.cursor);
         self.grid.selection_kind = GridSelectionKind::All;
         cx.notify();
@@ -620,8 +676,12 @@ impl TabularDataPreviewPane {
     ///// Scrolling /////
 
     pub(crate) fn scroll_cursor_into_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let GridRow::Body(display_row) = self.grid.cursor.row {
-            self.list_state.scroll_to_reveal_item(display_row.get());
+        match self.grid.cursor.row {
+            GridRow::Body(display_row) => self.list_state.scroll_to_reveal_item(display_row.get()),
+            // The header row is drawn in the table's sticky header rather than
+            // in the list, so there is no item to reveal; the list still has to
+            // go back to its top, or Ctrl+Home leaves the caret's row offscreen.
+            GridRow::Header => self.list_state.scroll_to(ListOffset::default()),
         }
         self.scroll_column_into_view(window, cx);
     }
@@ -820,6 +880,16 @@ mod tests {
         assert_eq!(column_label(53), "BB");
         assert_eq!(column_label(701), "ZZ");
         assert_eq!(column_label(702), "AAA");
+    }
+
+    #[test]
+    fn test_grouped_digits() {
+        assert_eq!(grouped_digits(0), "0");
+        assert_eq!(grouped_digits(999), "999");
+        assert_eq!(grouped_digits(1_000), "1,000");
+        assert_eq!(grouped_digits(12_345), "12,345");
+        assert_eq!(grouped_digits(MAX_GRID_OPERATION_CELLS), "200,000");
+        assert_eq!(grouped_digits(1_234_567), "1,234,567");
     }
 
     #[test]

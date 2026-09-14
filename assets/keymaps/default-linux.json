@@ -1350,6 +1350,8 @@
       "ctrl--": "tabular_data::DeleteRowsOrColumns",
       "shift-space": "tabular_data::SelectRow",
       "ctrl-space": "tabular_data::SelectColumn",
+      "ctrl-f": "buffer_search::Deploy",
+      "ctrl-h": "buffer_search::DeployReplace",
     },
   },
   {

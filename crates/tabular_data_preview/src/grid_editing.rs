@@ -30,18 +30,20 @@ use ui::{ContextMenu, prelude::*};
 use zed_actions::editor::{MoveDown, MoveUp};
 
 use crate::{
-    CancelEditing, ClearCells, CommitAndMoveDown, CommitAndMoveLeft, CommitAndMoveRight,
-    CommitAndMoveUp, CommitEditing, CopyCells, CutCells, DeleteColumns, DeleteRows,
-    DeleteRowsOrColumns, InsertColumnLeft, InsertColumnRight, InsertLineBreak, InsertRowAbove,
-    InsertRowBelow, InsertRowsOrColumns, PasteCells, SelectAllCells, SelectColumn, SelectRow,
-    StartEditing, TabularDataPreviewPane, ToggleHeaderRow,
+    CancelEditing, ClearCellColors, ClearCells, CommitAndMoveDown, CommitAndMoveLeft,
+    CommitAndMoveRight, CommitAndMoveUp, CommitEditing, CopyCells, CutCells, DeleteColumns,
+    DeleteRows, DeleteRowsOrColumns, InsertColumnLeft, InsertColumnRight, InsertLineBreak,
+    InsertRowAbove, InsertRowBelow, InsertRowsOrColumns, PasteCells, SelectAllCells, SelectColumn,
+    SelectRow, SetFillColor, SetTextColor, StartEditing, TabularDataPreviewPane, ToggleHeaderRow,
     edit_engine::{
         BufferEdit, CellBlock, EditEngine, RowInsertPosition, RowRef, block_to_clipboard_text,
         clipboard_text_to_block,
     },
     grid::{CellEditMode, GridCell, GridMotion, GridRow, GridSelectionKind},
+    grid_styles::{CellColor, StyleField, StyleShift, extend_with_color_palette},
     types::AnyColumn,
 };
+use text::TransactionId;
 
 /// The tallest a cell editor grows to before it scrolls its own text.
 const MAX_CELL_EDITOR_LINES: usize = 8;
@@ -236,7 +238,11 @@ impl TabularDataPreviewPane {
 
     ///// Buffer writes /////
 
-    fn with_edit_engine<R>(&self, cx: &App, build: impl FnOnce(&EditEngine) -> R) -> Option<R> {
+    pub(crate) fn with_edit_engine<R>(
+        &self,
+        cx: &App,
+        build: impl FnOnce(&EditEngine) -> R,
+    ) -> Option<R> {
         let snapshot = self
             .editor_state()
             .editor
@@ -253,9 +259,16 @@ impl TabularDataPreviewPane {
 
     /// Applies one operation's edits as a single transaction, so that one grid
     /// operation is one undo step.
-    fn apply_buffer_edits(&mut self, edits: Vec<BufferEdit>, cx: &mut Context<Self>) {
+    ///
+    /// Reports that transaction, which is what a structural operation records
+    /// its color shift against so that undoing the edit takes the colors back.
+    pub(crate) fn apply_buffer_edits(
+        &mut self,
+        edits: Vec<BufferEdit>,
+        cx: &mut Context<Self>,
+    ) -> Option<TransactionId> {
         if edits.is_empty() {
-            return;
+            return None;
         }
         let Some(buffer) = self
             .editor_state()
@@ -266,13 +279,17 @@ impl TabularDataPreviewPane {
             .as_singleton()
         else {
             log::error!("tabular data preview: the previewed editor has no singleton buffer");
-            return;
+            return None;
         };
-        buffer.update(cx, |buffer, cx| {
+        let transaction_id = buffer.update(cx, |buffer, cx| {
             buffer.edit(edits, None, cx);
-            buffer.finalize_last_transaction();
+            buffer
+                .finalize_last_transaction()
+                .map(|transaction| transaction.id)
         });
         self.reparse_now(cx);
+        self.clear_stale_status_message();
+        transaction_id
     }
 
     fn write_cell(&mut self, row: RowRef, col: AnyColumn, value: &str, cx: &mut Context<Self>) {
@@ -294,10 +311,11 @@ impl TabularDataPreviewPane {
         else {
             return;
         };
-        buffer.update(cx, |buffer, cx| {
-            buffer.undo(cx);
-        });
+        let transaction_id = buffer.update(cx, |buffer, cx| buffer.undo(cx));
         self.reparse_now(cx);
+        if let Some(transaction_id) = transaction_id {
+            self.undo_style_shift(transaction_id, cx);
+        }
         cx.notify();
     }
 
@@ -312,10 +330,11 @@ impl TabularDataPreviewPane {
         else {
             return;
         };
-        buffer.update(cx, |buffer, cx| {
-            buffer.redo(cx);
-        });
+        let transaction_id = buffer.update(cx, |buffer, cx| buffer.redo(cx));
         self.reparse_now(cx);
+        if let Some(transaction_id) = transaction_id {
+            self.redo_style_shift(transaction_id, cx);
+        }
         cx.notify();
     }
 
@@ -448,7 +467,11 @@ impl TabularDataPreviewPane {
             .with_edit_engine(cx, |engine| engine.insert_rows(position, count))
             .unwrap_or_default();
         self.clear_status_message();
-        self.apply_buffer_edits(edits, cx);
+        // Resolved before the edit, while the physical rows still mean what the
+        // stored colors were addressed against.
+        let at = self.physical_insert_position(position);
+        let transaction_id = self.apply_buffer_edits(edits, cx);
+        self.record_style_shift(transaction_id, StyleShift::InsertRows { at, count }, cx);
 
         let target = if above {
             rect.first_row
@@ -469,7 +492,9 @@ impl TabularDataPreviewPane {
         let edits = self
             .with_edit_engine(cx, |engine| engine.delete_rows(&rows))
             .unwrap_or_default();
-        self.apply_buffer_edits(edits, cx);
+        let physical_rows = rows.iter().map(|&row| self.physical_row(row)).collect();
+        let transaction_id = self.apply_buffer_edits(edits, cx);
+        self.record_style_shift(transaction_id, StyleShift::delete_rows(physical_rows), cx);
 
         self.grid.cursor = GridCell::new(
             GridRow::from_index(rect.first_row.max(self.first_row_index())),
@@ -491,7 +516,12 @@ impl TabularDataPreviewPane {
         let edits = self
             .with_edit_engine(cx, |engine| engine.insert_columns(index, count))
             .unwrap_or_default();
-        self.apply_buffer_edits(edits, cx);
+        let transaction_id = self.apply_buffer_edits(edits, cx);
+        self.record_style_shift(
+            transaction_id,
+            StyleShift::InsertColumns { at: index, count },
+            cx,
+        );
 
         self.grid.cursor = GridCell::new(self.grid.cursor.row, AnyColumn(index));
         self.grid.anchor = None;
@@ -507,7 +537,13 @@ impl TabularDataPreviewPane {
         let edits = self
             .with_edit_engine(cx, |engine| engine.delete_columns(&cols))
             .unwrap_or_default();
-        self.apply_buffer_edits(edits, cx);
+        let physical_cols = cols.iter().map(|col| col.get()).collect();
+        let transaction_id = self.apply_buffer_edits(edits, cx);
+        self.record_style_shift(
+            transaction_id,
+            StyleShift::delete_columns(physical_cols),
+            cx,
+        );
 
         self.grid.cursor = GridCell::new(self.grid.cursor.row, AnyColumn(rect.first_col));
         self.grid.anchor = None;
@@ -530,7 +566,10 @@ impl TabularDataPreviewPane {
         cx: &mut Context<Self>,
     ) {
         let dispatch_context = self.grid.cell_editor.focus_handle(cx);
+        let view = cx.entity();
         let menu = ContextMenu::build(window, cx, move |menu, _window, _cx| {
+            let fill_view = view.clone();
+            let text_view = view;
             menu.context(dispatch_context)
                 .action("切り取り", Box::new(CutCells))
                 .action("コピー", Box::new(CopyCells))
@@ -543,6 +582,14 @@ impl TabularDataPreviewPane {
                 .action("左に列を挿入", Box::new(InsertColumnLeft))
                 .action("右に列を挿入", Box::new(InsertColumnRight))
                 .action("列を削除", Box::new(DeleteColumns))
+                .separator()
+                .submenu("塗りつぶしの色", move |menu, _window, _cx| {
+                    extend_with_color_palette(menu, &fill_view, StyleField::Fill)
+                })
+                .submenu("文字の色", move |menu, _window, _cx| {
+                    extend_with_color_palette(menu, &text_view, StyleField::Text)
+                })
+                .action("色をクリア", Box::new(ClearCellColors))
                 .separator()
                 .action("内容を消去", Box::new(ClearCells))
         });
@@ -698,6 +745,15 @@ impl TabularDataPreviewPane {
             }))
             .on_action(cx.listener(|this, _: &ToggleHeaderRow, _window, cx| {
                 this.toggle_header_row(cx);
+            }))
+            .on_action(cx.listener(|this, action: &SetFillColor, _window, cx| {
+                this.set_selection_color(StyleField::Fill, action.color, cx);
+            }))
+            .on_action(cx.listener(|this, action: &SetTextColor, _window, cx| {
+                this.set_selection_color(StyleField::Text, action.color, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ClearCellColors, _window, cx| {
+                this.set_selection_color(StyleField::Both, CellColor::None, cx);
             }))
     }
 
@@ -1013,7 +1069,7 @@ impl TabularDataPreviewPane {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::{grid::GridRow, types::DisplayRow};
     use editor::Editor;
@@ -1022,7 +1078,7 @@ mod tests {
     use project::Project;
     use serde_json::json;
     use util::path;
-    use workspace::{AppState, MultiWorkspace};
+    use workspace::{AppState, MultiWorkspace, Workspace};
 
     #[test]
     fn test_single_value_fills_the_selection() {
@@ -1046,29 +1102,49 @@ mod tests {
         assert_eq!(expand_block_to_selection(block.clone(), 4, 4), block);
     }
 
+    /// The keymap the app itself ships on Windows.
+    ///
+    /// Hand written bindings would only prove that the handlers work when they
+    /// are reached; the grid's keys are all shadowed by the `"Editor"` context
+    /// of the overlay editor, so only the real file proves they are reached at
+    /// all. Actions of crates this test binary does not link (`vim::`, `agent::`
+    /// and so on) simply fail to resolve and are skipped.
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
             AppState::test(cx);
+            // Without a per-`App` database every test in the process shares one
+            // connection, where the key value rows the grid writes are keyed by
+            // a fixture path that all of them use.
+            cx.set_global(db::AppDatabase::test_new());
             editor::init(cx);
-            cx.bind_keys([
-                KeyBinding::new("down", zed_actions::editor::MoveDown, Some("Editor")),
-                KeyBinding::new("up", zed_actions::editor::MoveUp, Some("Editor")),
-                KeyBinding::new("right", editor::actions::MoveRight, Some("Editor")),
-                KeyBinding::new("left", editor::actions::MoveLeft, Some("Editor")),
-                KeyBinding::new("tab", editor::actions::Tab, Some("Editor")),
-                KeyBinding::new("shift-tab", editor::actions::Backtab, Some("Editor")),
-                KeyBinding::new("escape", editor::actions::Cancel, Some("Editor")),
-                KeyBinding::new("enter", CommitAndMoveDown, Some("TabularDataGrid")),
-            ]);
+            let bindings =
+                settings::KeymapFile::load_asset_cached("keymaps/default-windows.json", cx)
+                    .expect("the shipped Windows keymap should load");
+            cx.bind_keys(bindings);
         });
     }
 
     /// Opens `contents` as a CSV preview that is the active item of a real
     /// workspace, so that focus and key dispatch behave as they do in the app.
-    async fn open_grid(
+    pub(crate) async fn open_grid(
         contents: &str,
         cx: &mut TestAppContext,
     ) -> (
+        Entity<TabularDataPreviewPane>,
+        Entity<Editor>,
+        VisualTestContext,
+    ) {
+        let (_workspace, pane, editor, cx) = open_grid_in_workspace(contents, cx).await;
+        (pane, editor, cx)
+    }
+
+    /// The same, for a test that has to reach the workspace itself - to close
+    /// the grid's tab, say.
+    pub(crate) async fn open_grid_in_workspace(
+        contents: &str,
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<Workspace>,
         Entity<TabularDataPreviewPane>,
         Entity<Editor>,
         VisualTestContext,
@@ -1101,7 +1177,7 @@ mod tests {
             workspace.add_item_to_active_pane(Box::new(pane.clone()), None, true, window, cx);
         });
         cx.run_until_parked();
-        (pane, editor, cx)
+        (workspace, pane, editor, cx)
     }
 
     fn buffer_text(editor: &Entity<Editor>, cx: &mut VisualTestContext) -> String {
@@ -1664,6 +1740,108 @@ c,d", cx,
             "a,b
 c,d"
         );
+    }
+
+    #[gpui::test]
+    async fn test_shift_arrows_extend_the_selection(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\nd,e,f\ng,h,i", cx).await;
+
+        cx.simulate_keystrokes("down");
+        pane.read_with(&cx, |pane, _| assert_eq!(pane.grid.anchor, None));
+
+        cx.simulate_keystrokes("shift-right shift-down");
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.anchor,
+                Some(GridCell::new(GridRow::Body(DisplayRow(0)), AnyColumn(0)))
+            );
+            assert_eq!(pane.grid.cursor.row, GridRow::Body(DisplayRow(1)));
+            assert_eq!(pane.grid.cursor.col, AnyColumn(1));
+            let rect = pane.selection_rect();
+            assert_eq!((rect.first_row, rect.last_row), (1, 2));
+            assert_eq!((rect.first_col, rect.last_col), (0, 1));
+        });
+
+        cx.simulate_keystrokes("shift-up shift-left");
+        pane.read_with(&cx, |pane, _| {
+            let rect = pane.selection_rect();
+            assert_eq!((rect.first_row, rect.last_row), (1, 1));
+            assert_eq!((rect.first_col, rect.last_col), (0, 0));
+        });
+
+        // A plain arrow collapses the range again.
+        cx.simulate_keystrokes("down");
+        pane.read_with(&cx, |pane, _| assert_eq!(pane.grid.anchor, None));
+    }
+
+    #[gpui::test]
+    async fn test_insert_and_delete_row_keys_reach_the_grid(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("a,b\nc,d\ne,f", cx).await;
+
+        cx.simulate_keystrokes("down down");
+        cx.simulate_keystrokes("ctrl-shift-=");
+        cx.run_until_parked();
+        assert_eq!(buffer_text(&editor, &mut cx), "a,b\nc,d\n,\ne,f");
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.status_message, None);
+        });
+
+        cx.simulate_keystrokes("ctrl--");
+        cx.run_until_parked();
+        assert_eq!(buffer_text(&editor, &mut cx), "a,b\nc,d\ne,f");
+    }
+
+    #[gpui::test]
+    async fn test_ctrl_home_brings_the_list_back_to_the_top(cx: &mut TestAppContext) {
+        let mut contents = String::from("a,b\n");
+        for row in 0..500 {
+            contents.push_str(&format!("{row},x\n"));
+        }
+        let (pane, _editor, mut cx) = open_grid(&contents, cx).await;
+
+        pane.update(&mut cx, |pane, _| {
+            pane.list_state.scroll_to(gpui::ListOffset {
+                item_ix: 400,
+                offset_in_item: px(0.),
+            });
+        });
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                pane.list_state.logical_scroll_top().item_ix > 0,
+                "the fixture should start scrolled away from the top"
+            );
+        });
+
+        cx.simulate_keystrokes("ctrl-home");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.row, GridRow::Header);
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                0,
+                "the caret went to the header row, so the list has to follow it to the top"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_refused_operation_stops_warning_once_the_caret_moves(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b\nc,d", cx).await;
+
+        // The caret starts on the header row, above which nothing can be inserted.
+        cx.simulate_keystrokes("ctrl-shift-=");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.status_message.as_deref(),
+                Some("見出し行の上には行を挿入できません")
+            );
+        });
+
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| assert_eq!(pane.grid.status_message, None));
     }
 
     #[test]

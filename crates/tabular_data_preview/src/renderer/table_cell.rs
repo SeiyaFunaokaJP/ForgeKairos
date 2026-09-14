@@ -34,6 +34,7 @@ impl TabularDataPreviewPane {
         let needs_probe = self.overlay_cell() == cell;
         let is_selected = self.selection_rect().contains(cell.row, cell.col);
         let colors = cx.theme().colors();
+        let paint = self.cell_paint(cell, is_selected, is_active, cx);
         // Only a cell that is clipped has anything left to show on hover; a
         // spreadsheet does not put a tooltip on every value.
         let is_clipped =
@@ -54,11 +55,11 @@ impl TabularDataPreviewPane {
             .border_color(if is_active {
                 colors.border_focused
             } else {
-                transparent_black()
+                self.search_range_border(cell, cx)
+                    .unwrap_or_else(transparent_black)
             })
-            .when(is_selected && !is_active, |this| {
-                this.bg(colors.element_selected.opacity(0.5))
-            })
+            .when_some(paint.background, |this, background| this.bg(background))
+            .when_some(paint.text, |this, color| this.text_color(color))
             .map(|this| match vertical_alignment {
                 VerticalAlignment::Top => this.items_start(),
                 VerticalAlignment::Center => this.items_center(),

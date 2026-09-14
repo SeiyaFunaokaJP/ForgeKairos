@@ -540,6 +540,7 @@ impl TabularDataPreviewPane {
         let is_active_cell = self.grid.cursor == header_cell && self.grid.context_menu.is_none();
         let needs_probe = self.overlay_cell() == header_cell;
         let is_selected = self.selection_rect().contains_col(col_idx);
+        let search_range_border = self.search_range_border(header_cell, cx);
         let header_text = if self.settings.first_row_is_header {
             self.cell_value(GridRow::Header, col_idx)
         } else {
@@ -547,7 +548,10 @@ impl TabularDataPreviewPane {
         };
 
         let colors = cx.theme().colors();
-        let base_bg = colors.editor_background;
+        let paint = self.cell_paint(header_cell, is_selected, is_active_cell, cx);
+        // The fade at the right edge hides the heading's text behind the sort
+        // and filter buttons, so it has to be the same color the cell is.
+        let base_bg = paint.background.unwrap_or(colors.editor_background);
         let grad_width_hovered = px(100.);
         let grad_width = if always_show_buttons {
             grad_width_hovered
@@ -566,11 +570,10 @@ impl TabularDataPreviewPane {
             .border_color(if is_active_cell {
                 colors.border_focused
             } else {
-                transparent_black()
+                search_range_border.unwrap_or_else(transparent_black)
             })
-            .when(is_selected && !is_active_cell, |this| {
-                this.bg(colors.element_selected.opacity(0.5))
-            })
+            .when_some(paint.background, |this, background| this.bg(background))
+            .when_some(paint.text, |this, color| this.text_color(color))
             .child(
                 div()
                     .id(ElementId::NamedInteger(
