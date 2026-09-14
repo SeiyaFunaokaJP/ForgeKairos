@@ -1421,6 +1421,22 @@
     },
   },
   {
+    "context": "TabularDataGrid",
+    "use_key_equivalents": true,
+    "bindings": {
+      "enter": "tabular_data::CommitAndMoveDown",
+      "shift-enter": "tabular_data::CommitAndMoveUp",
+      "alt-enter": "tabular_data::InsertLineBreak",
+      "f2": "tabular_data::StartEditing",
+      "ctrl-shift-=": "tabular_data::InsertRowsOrColumns",
+      "cmd-shift-=": "tabular_data::InsertRowsOrColumns",
+      "ctrl--": "tabular_data::DeleteRowsOrColumns",
+      "cmd--": "tabular_data::DeleteRowsOrColumns",
+      "shift-space": "tabular_data::SelectRow",
+      "ctrl-space": "tabular_data::SelectColumn",
+    },
+  },
+  {
     "context": "KeymapEditor",
     "use_key_equivalents": true,
     "bindings": {

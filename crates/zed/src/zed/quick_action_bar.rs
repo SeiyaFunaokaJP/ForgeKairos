@@ -23,6 +23,7 @@ use project::{
 };
 use search::{BufferSearchBar, buffer_search};
 use settings::{GitDiffBaseSetting, Settings, SettingsStore, update_settings_file};
+use tabular_data_preview::TabularDataPreviewPane;
 use ui::{
     ButtonStyle, ContextMenu, ContextMenuEntry, DocumentationSide, IconButton, IconName, IconSize,
     PopoverMenu, PopoverMenuHandle, Tooltip, prelude::*,
@@ -101,8 +102,14 @@ impl QuickActionBar {
         }
     }
 
+    fn active_tabular_grid(&self) -> Option<Entity<TabularDataPreviewPane>> {
+        self.active_item
+            .as_ref()
+            .and_then(|item| item.downcast::<TabularDataPreviewPane>())
+    }
+
     fn get_toolbar_item_location(&self) -> ToolbarItemLocation {
-        if self.show && self.active_editor().is_some() {
+        if self.show && (self.active_editor().is_some() || self.active_tabular_grid().is_some()) {
             ToolbarItemLocation::PrimaryRight
         } else {
             ToolbarItemLocation::Hidden
@@ -113,7 +120,10 @@ impl QuickActionBar {
 impl Render for QuickActionBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(editor) = self.active_editor() else {
-            return div().id("empty quick action bar");
+            return h_flex()
+                .id("empty quick action bar")
+                .gap(DynamicSpacing::Base01.rems(cx))
+                .children(self.render_open_as_text_button());
         };
 
         let supports_inlay_hints = editor.update(cx, |editor, cx| editor.supports_inlay_hints(cx));

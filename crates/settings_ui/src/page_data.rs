@@ -10694,7 +10694,7 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
         ]
     }
 
-    fn global_only_miscellaneous_sub_section() -> [SettingsPageItem; 3] {
+    fn global_only_miscellaneous_sub_section() -> [SettingsPageItem; 5] {
         [
             SettingsPageItem::SettingItem(SettingItem {
                 title: "画像ビューアー",
@@ -10773,6 +10773,52 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
                         metadata: None,
                     }],
                 ],
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "CSV / TSV を表として開く",
+                description: "オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。",
+                field: Box::new(SettingField::<bool> {
+                    organization_override: None,
+                    json_path: Some("tabular_data.open_as_grid"),
+                    pick: |settings_content| {
+                        settings_content
+                            .tabular_data
+                            .as_ref()?
+                            .open_as_grid
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .tabular_data
+                            .get_or_insert_default()
+                            .open_as_grid = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "複数行のセルをすべて表示",
+                description: "表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。",
+                field: Box::new(SettingField::<bool> {
+                    organization_override: None,
+                    json_path: Some("tabular_data.multiline_cells"),
+                    pick: |settings_content| {
+                        settings_content
+                            .tabular_data
+                            .as_ref()?
+                            .multiline_cells
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .tabular_data
+                            .get_or_insert_default()
+                            .multiline_cells = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "ドロップ領域のサイズ",

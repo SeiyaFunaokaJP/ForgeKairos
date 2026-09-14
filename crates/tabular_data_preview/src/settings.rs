@@ -20,9 +20,10 @@ pub enum VerticalAlignment {
 #[derive(Default, Clone, Copy)]
 pub enum RowIdentifiers {
     /// Show original line numbers from the source file
-    #[default]
     SrcLines,
-    /// Show sequential row numbers starting from 1
+    /// Show sequential row numbers starting from 1, the way a spreadsheet
+    /// numbers its rows.
+    #[default]
     RowNum,
 }
 
@@ -35,7 +36,7 @@ pub enum FilterSortOrder {
     CountThenAlpha,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct TabularDataPreviewSettings {
     pub(crate) rendering_with: RowRenderMechanism,
     pub(crate) vertical_alignment: VerticalAlignment,
@@ -45,6 +46,25 @@ pub(crate) struct TabularDataPreviewSettings {
     #[cfg(feature = "dev-tools")]
     pub(crate) show_perf_metrics_overlay: bool,
     pub(crate) multiline_cells_enabled: bool,
+    /// Whether the first line of the file is shown as the (editable) header
+    /// row instead of as an ordinary data row.
+    pub(crate) first_row_is_header: bool,
+}
+
+impl Default for TabularDataPreviewSettings {
+    fn default() -> Self {
+        Self {
+            rendering_with: RowRenderMechanism::default(),
+            vertical_alignment: VerticalAlignment::default(),
+            numbering_type: RowIdentifiers::default(),
+            filter_sort_order: FilterSortOrder::default(),
+            show_debug_info: false,
+            #[cfg(feature = "dev-tools")]
+            show_perf_metrics_overlay: false,
+            multiline_cells_enabled: true,
+            first_row_is_header: true,
+        }
+    }
 }
 
 impl TabularDataPreviewSettings {

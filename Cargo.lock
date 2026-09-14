@@ -16775,15 +16775,25 @@ name = "tabular_data_preview"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clock",
+ "db",
  "editor",
+ "fs",
  "fuzzy",
  "gpui",
+ "language",
  "log",
  "picker",
+ "project",
  "proptest",
+ "serde_json",
+ "settings",
  "text",
+ "theme",
  "ui",
+ "util",
  "workspace",
+ "zed_actions",
 ]
 
 [[package]]

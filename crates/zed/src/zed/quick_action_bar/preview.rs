@@ -39,23 +39,29 @@ impl QuickActionBar {
 
         // The button opens the preview beside the source, so both stay visible;
         // the tooltip therefore advertises the "to the side" action's binding.
-        let (button_id, tooltip_text, open_action_for_tooltip) = match &preview_target {
-            PreviewTarget::Markdown(_) => (
-                "toggle-markdown-preview",
-                "Markdown をプレビュー",
-                &markdown_preview::OpenPreviewToTheSide as &dyn gpui::Action,
-            ),
-            PreviewTarget::Svg(_) => (
-                "toggle-svg-preview",
-                "SVG をプレビュー",
-                &svg_preview::OpenPreviewToTheSide as &dyn gpui::Action,
-            ),
-            PreviewTarget::TabularData(_) => (
-                "toggle-tabular-preview",
-                "表形式データをプレビュー",
-                &tabular_data_preview::OpenPreviewToTheSide as &dyn gpui::Action,
-            ),
-        };
+        let (button_id, tooltip_text, open_action_for_tooltip, alt_click_meta) =
+            match &preview_target {
+                PreviewTarget::Markdown(_) => (
+                    "toggle-markdown-preview",
+                    "Markdown をプレビュー",
+                    &markdown_preview::OpenPreviewToTheSide as &dyn gpui::Action,
+                    "{} で同じタブグループに開く",
+                ),
+                PreviewTarget::Svg(_) => (
+                    "toggle-svg-preview",
+                    "SVG をプレビュー",
+                    &svg_preview::OpenPreviewToTheSide as &dyn gpui::Action,
+                    "{} で同じタブグループに開く",
+                ),
+                // A grid and a text tab for one file cannot share a pane, so Alt swaps this
+                // tab instead of adding one next to it.
+                PreviewTarget::TabularData(_) => (
+                    "toggle-tabular-preview",
+                    "表を横に開く",
+                    &tabular_data_preview::OpenPreviewToTheSide as &dyn gpui::Action,
+                    "{} でこのタブを切り替える",
+                ),
+            };
 
         let alt_click = gpui::Keystroke {
             key: "click".into(),
@@ -70,9 +76,9 @@ impl QuickActionBar {
                 Tooltip::with_meta(
                     tooltip_text,
                     Some(open_action_for_tooltip),
-                    format!(
-                        "{} で同じタブグループに開く",
-                        text_for_keystroke(&alt_click.modifiers, &alt_click.key, cx)
+                    alt_click_meta.replace(
+                        "{}",
+                        &text_for_keystroke(&alt_click.modifiers, &alt_click.key, cx),
                     ),
                     cx,
                 )
@@ -129,6 +135,59 @@ impl QuickActionBar {
                                 }
                             }
                         }
+                    });
+                }
+            });
+
+        Some(button.into_any_element())
+    }
+
+    /// The counterpart of the preview button, shown while a grid is the active item so
+    /// that the same file can be reopened as plain text.
+    pub fn render_open_as_text_button(&self) -> Option<AnyElement> {
+        let active_item = self.active_item.as_ref()?;
+        let grid = active_item.downcast::<TabularDataPreviewPane>()?;
+
+        let alt_click = gpui::Keystroke {
+            key: "click".into(),
+            modifiers: Modifiers::alt(),
+            ..Default::default()
+        };
+
+        let button = IconButton::new("open-tabular-as-text", IconName::FileTextOutlined)
+            .icon_size(IconSize::Small)
+            .style(ButtonStyle::Subtle)
+            .tooltip(move |_window, cx| {
+                Tooltip::with_meta(
+                    "テキストを横に開く",
+                    Some(&tabular_data_preview::OpenAsText),
+                    format!(
+                        "{} でこのタブを切り替える",
+                        text_for_keystroke(&alt_click.modifiers, &alt_click.key, cx)
+                    ),
+                    cx,
+                )
+            })
+            .on_click({
+                let workspace_handle = self.workspace.clone();
+                let active_item = active_item.boxed_clone();
+                move |_, window, cx| {
+                    let Some(workspace) = workspace_handle.upgrade() else {
+                        return;
+                    };
+                    workspace.update(cx, |workspace, cx| {
+                        let Some(pane) = workspace.pane_for(active_item.as_ref()) else {
+                            return;
+                        };
+                        let open_in_same_pane = window.modifiers().alt;
+                        TabularDataPreviewPane::open_as_text(
+                            workspace,
+                            grid.clone(),
+                            pane,
+                            open_in_same_pane,
+                            window,
+                            cx,
+                        );
                     });
                 }
             });

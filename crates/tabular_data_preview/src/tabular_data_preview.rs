@@ -12,21 +12,64 @@ use ui::{
     AbsoluteLength, ResizableColumnsState, SharedString, TableInteractionState,
     TableResizeBehavior, prelude::*,
 };
-use workspace::{Item, Pane, Workspace};
+use workspace::{Pane, Workspace};
 
-use crate::{parser::EditorState, settings::TabularDataPreviewSettings, types::TableLikeContent};
+use crate::{
+    parser::EditorState, settings::TabularDataPreviewSettings,
+    tabular_data_settings::TabularDataSettings, types::TableLikeContent,
+};
+use ::settings::Settings as _;
 
+mod edit_engine;
+mod grid;
+mod grid_editing;
 mod parser;
 mod renderer;
 mod settings;
 mod table_data_engine;
+pub mod tabular_data_settings;
 mod types;
+mod workspace_item;
 
-actions!(tabular_data, [OpenPreview, OpenPreviewToTheSide]);
+pub use crate::workspace_item::TabularBuffer;
+
+actions!(
+    tabular_data,
+    [
+        OpenPreview,
+        OpenPreviewToTheSide,
+        OpenAsText,
+        StartEditing,
+        CommitEditing,
+        CommitAndMoveDown,
+        CommitAndMoveUp,
+        CommitAndMoveRight,
+        CommitAndMoveLeft,
+        CancelEditing,
+        InsertLineBreak,
+        InsertRowAbove,
+        InsertRowBelow,
+        DeleteRows,
+        InsertColumnLeft,
+        InsertColumnRight,
+        DeleteColumns,
+        InsertRowsOrColumns,
+        DeleteRowsOrColumns,
+        ClearCells,
+        SelectRow,
+        SelectColumn,
+        SelectAllCells,
+        CopyCells,
+        CutCells,
+        PasteCells,
+        ToggleHeaderRow,
+    ]
+);
 
 pub struct TabularDataPreviewPane {
     pub(crate) engine: TableDataEngine,
 
+    pub(crate) grid: grid::GridState,
     pub(crate) focus_handle: FocusHandle,
     active_editor_state: EditorState,
     pub(crate) table_interaction_state: Entity<TableInteractionState>,
@@ -46,9 +89,18 @@ pub struct TabularDataPreviewPane {
     pub(crate) row_height: Pixels,
     /// Time when the last parsing operation ended, used for smart debouncing
     pub(crate) last_parse_end_time: Option<std::time::Instant>,
+    /// Set by the pane; leaving the tab pushes an entry so that "go back" and "reopen
+    /// closed tab" reach the grid the same way they reach an editor.
+    nav_history: Option<workspace::ItemNavHistory>,
 }
 
 pub fn init(cx: &mut App) {
+    // Registered after `editor::init`, so that the registry - which tries the most
+    // recently registered project item first - offers tabular files to the grid before
+    // the text editor.
+    workspace::register_project_item::<TabularDataPreviewPane>(cx);
+    workspace::register_serializable_item::<TabularDataPreviewPane>(cx);
+
     cx.observe_new(|workspace: &mut Workspace, _, _| {
         TabularDataPreviewPane::register(workspace);
     })
@@ -58,11 +110,11 @@ pub fn init(cx: &mut App) {
 impl TabularDataPreviewPane {
     pub(crate) fn sync_column_widths(&self, cx: &mut Context<Self>) {
         // plus 1 for the row identifier column
-        let cols = self.engine.contents.headers.cols() + 1;
+        let cols = self.engine.contents.number_of_cols + 1;
         let line_number_width = self.calculate_row_identifier_column_width();
 
-        let mut widths: Vec<AbsoluteLength> = vec![AbsoluteLength::Pixels(px(150.)); cols];
-        widths[0] = AbsoluteLength::Pixels(px(line_number_width));
+        let mut widths: Vec<AbsoluteLength> = self.calculate_data_column_widths();
+        widths.insert(0, AbsoluteLength::Pixels(px(line_number_width)));
 
         let mut resize_behaviors = vec![TableResizeBehavior::Resizable; cols];
         resize_behaviors[0] = TableResizeBehavior::None;
@@ -90,17 +142,60 @@ impl TabularDataPreviewPane {
                     Self::open_preview_in_pane(editor, pane, window, cx);
                 }
             }))
-            .on_action(cx.listener(
-                |workspace, _: &OpenPreviewToTheSide, window, cx| {
+            .on_action(
+                cx.listener(|workspace, _: &OpenPreviewToTheSide, window, cx| {
                     if let Some(editor) =
                         Self::resolve_active_item_as_tabular_data_editor(workspace, cx)
                     {
                         let pane = workspace.active_pane().clone();
                         Self::open_preview_to_the_side_of_pane(workspace, editor, pane, window, cx);
                     }
-                },
-            ))
+                }),
+            )
+            .on_action(cx.listener(|workspace, _: &OpenAsText, window, cx| {
+                let Some(grid) = workspace
+                    .active_item(cx)
+                    .and_then(|item| item.downcast::<TabularDataPreviewPane>())
+                else {
+                    return;
+                };
+                let pane = workspace.active_pane().clone();
+                Self::open_as_text(workspace, grid, pane, false, window, cx);
+            }))
         });
+    }
+
+    /// Opens the grid's buffer in a text editor, by default beside the grid so that both
+    /// views of the same file stay visible. In the grid's own pane the two cannot coexist,
+    /// so there the grid tab is swapped for the text tab.
+    pub fn open_as_text(
+        workspace: &mut Workspace,
+        grid: Entity<TabularDataPreviewPane>,
+        origin_pane: Entity<Pane>,
+        open_in_same_pane: bool,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let Some(buffer) = grid.read(cx).buffer(cx) else {
+            return;
+        };
+        let entry_id = grid.read(cx).entry_id(cx);
+        let project = workspace.project().clone();
+        let target_pane = if open_in_same_pane {
+            origin_pane
+        } else {
+            workspace.adjacent_pane_of(&origin_pane, window, cx)
+        };
+
+        workspace_item::activate_or_replace_in_pane::<Editor>(
+            target_pane,
+            entry_id,
+            true,
+            move |window, cx| cx.new(|cx| Editor::for_buffer(buffer, Some(project), window, cx)),
+            window,
+            cx,
+        );
+        cx.notify();
     }
 
     pub fn open_preview_in_pane(
@@ -130,31 +225,37 @@ impl TabularDataPreviewPane {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        let existing_view_idx = Self::find_existing_preview_item_idx(pane.read(cx), &editor, cx);
-        if let Some(existing_view_idx) = existing_view_idx {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(existing_view_idx, focus, focus, window, cx);
-            });
-        } else {
-            let preview_pane = Self::new(&editor, window, cx);
-            pane.update(cx, |pane, cx| {
-                pane.add_item(Box::new(preview_pane), focus, focus, None, window, cx);
-            });
-        }
+        // Matching on the file rather than on the editor entity: a grid opened as the
+        // file's own workspace item owns a different, never-rendered editor, so comparing
+        // the handles would open a second grid for a file that already has one.
+        let entry_id = Self::entry_id_for_editor(&editor, cx);
+        workspace_item::activate_or_replace_in_pane::<TabularDataPreviewPane>(
+            pane,
+            entry_id,
+            focus,
+            move |window, cx| Self::new(&editor, window, cx),
+            window,
+            cx,
+        );
         cx.notify();
     }
 
-    fn find_existing_preview_item_idx(
-        pane: &Pane,
-        editor: &Entity<Editor>,
-        cx: &App,
-    ) -> Option<usize> {
-        pane.items_of_type::<TabularDataPreviewPane>()
-            .find(|view| &view.read(cx).active_editor_state.editor == editor)
-            .and_then(|view| pane.index_for_item(&view))
+    fn entry_id_for_editor(editor: &Entity<Editor>, cx: &App) -> Option<project::ProjectEntryId> {
+        let buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
+        project::ProjectItem::entry_id(buffer.read(cx), cx)
     }
 
-    fn new(editor: &Entity<Editor>, window: &Window, cx: &mut Context<Workspace>) -> Entity<Self> {
+    fn new(editor: &Entity<Editor>, window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::build(editor.clone(), window, cx))
+    }
+
+    /// Shared by the preview opened beside a text editor and by the grid opened as the
+    /// file's own workspace item, so that both are wired to their editor identically.
+    pub(crate) fn build(
+        editor: Entity<Editor>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let contents = TableLikeContent::default();
         let table_interaction_state = cx.new(|cx| {
             TableInteractionState::new(cx).with_custom_scrollbar(ui::Scrollbars::for_settings::<
@@ -162,43 +263,53 @@ impl TabularDataPreviewPane {
             >())
         });
 
-        cx.new(|cx| {
-            let subscription = cx.subscribe(
+        let subscription = cx.subscribe(
+            &editor,
+            |this: &mut TabularDataPreviewPane, _editor, event: &EditorEvent, cx| {
+                match event {
+                    // `Edited` only fires for transactions this editor itself performed, so
+                    // edits made in the file's text tab arrive as `BufferEdited`.
+                    EditorEvent::Edited { .. }
+                    | EditorEvent::BufferEdited
+                    | EditorEvent::DirtyChanged => {
+                        this.parse_from_active_editor(true, cx);
+                    }
+                    _ => {}
+                };
+                // Forwarded so that the tab reacts to the buffer exactly as an editor tab
+                // does: unsaved dot, title, save prompts and serialization.
+                cx.emit(event.clone());
+            },
+        );
+
+        let row_height = window.pixel_snap(window.line_height());
+        let mut view = TabularDataPreviewPane {
+            grid: grid::GridState::new(window, cx),
+            focus_handle: cx.focus_handle(),
+            active_editor_state: EditorState {
                 editor,
-                |this: &mut TabularDataPreviewPane, _editor, event: &EditorEvent, cx| {
-                    match event {
-                        EditorEvent::Edited { .. } | EditorEvent::DirtyChanged => {
-                            this.parse_from_active_editor(true, cx);
-                        }
-                        _ => {}
-                    };
-                },
-            );
+                _subscription: subscription,
+            },
+            table_interaction_state,
+            column_widths: ColumnWidths::new(cx, 1),
+            parsing_task: None,
+            is_parsing: false,
+            filter_sort_task: None,
+            performance_metrics: PerformanceMetrics::default(),
+            list_state: gpui::ListState::new(contents.rows.len(), ListAlignment::Top, px(1.))
+                .with_uniform_item_height(row_height),
+            row_height,
+            settings: TabularDataPreviewSettings {
+                multiline_cells_enabled: TabularDataSettings::get_global(cx).multiline_cells,
+                ..TabularDataPreviewSettings::default()
+            },
+            last_parse_end_time: None,
+            engine: TableDataEngine::default(),
+            nav_history: None,
+        };
 
-            let row_height = window.pixel_snap(window.line_height());
-            let mut view = TabularDataPreviewPane {
-                focus_handle: cx.focus_handle(),
-                active_editor_state: EditorState {
-                    editor: editor.clone(),
-                    _subscription: subscription,
-                },
-                table_interaction_state,
-                column_widths: ColumnWidths::new(cx, 1),
-                parsing_task: None,
-                is_parsing: false,
-                filter_sort_task: None,
-                performance_metrics: PerformanceMetrics::default(),
-                list_state: gpui::ListState::new(contents.rows.len(), ListAlignment::Top, px(1.))
-                    .with_uniform_item_height(row_height),
-                row_height,
-                settings: TabularDataPreviewSettings::default(),
-                last_parse_end_time: None,
-                engine: TableDataEngine::default(),
-            };
-
-            view.parse_from_active_editor(false, cx);
-            view
-        })
+        view.parse_from_active_editor(false, cx);
+        view
     }
 
     pub(crate) fn editor_state(&self) -> &EditorState {
@@ -233,6 +344,22 @@ impl TabularDataPreviewPane {
         let filter_stack = self.engine.filter_stack.clone();
         let sorting = self.engine.applied_sorting;
 
+        // A grid edit must not leave the table one tick behind the buffer, so anything the parse
+        // itself handled synchronously is mapped synchronously too. Sorting is O(n log n), but on
+        // a buffer this small the foreground can afford it, and a mapping that lands a frame after
+        // the contents would point display rows at rows that no longer exist.
+        if contents.source_byte_len <= parser::MAX_SYNC_PARSE_BYTES {
+            self.filter_sort_task = None;
+            self.engine.set_d2d_mapping(DisplayToDataMapping::compute(
+                &contents,
+                &filter_stack,
+                sorting,
+            ));
+            self.sync_list_state();
+            cx.notify();
+            return;
+        }
+
         self.filter_sort_task = Some(cx.spawn(async move |this, cx| {
             let mapping = cx
                 .background_spawn(async move {
@@ -242,15 +369,36 @@ impl TabularDataPreviewPane {
 
             this.update(cx, |view, cx| {
                 view.engine.set_d2d_mapping(mapping);
-                let visible_rows = view.engine.d2d_mapping().visible_row_count();
-                // Uses the row height measured on the last render. Cheaper than a full
-                // `.measure_all()` pass; exact row heights are re-measured on scrolling.
-                view.list_state
-                    .reset_with_uniform_height(visible_rows, view.row_height);
+                view.sync_list_state();
                 cx.notify();
             })
             .ok();
         }));
+    }
+
+    /// Re-syncs the list with the current number of visible rows while holding on to the scroll
+    /// position. `ListState::reset` throws `logical_scroll_top` away, so calling it after every
+    /// edit would snap the viewport back to the first row on each keystroke.
+    fn sync_list_state(&self) {
+        let visible_rows = self.engine.d2d_mapping().visible_row_count();
+        if self.list_state.item_count() == visible_rows {
+            // The list re-renders its visible items on notify anyway. Only variable-height rows can
+            // have a stale measurement, and re-measuring costs one pass over every row, which is
+            // too much to pay after each keystroke on a large file.
+            if self.settings.multiline_cells_effectively_enabled() {
+                self.list_state.remeasure_items(0..visible_rows);
+            }
+            return;
+        }
+
+        let scroll_top = self.list_state.logical_scroll_top();
+        // Uses the row height measured on the last render. Cheaper than a full `.measure_all()`
+        // pass; exact row heights are re-measured on scrolling.
+        self.list_state
+            .reset_with_uniform_height(visible_rows, self.row_height);
+        // `scroll_to` clamps to the new row count, so a shrinking table lands on its last row
+        // instead of jumping to the top.
+        self.list_state.scroll_to(scroll_top);
     }
 
     pub fn resolve_active_item_as_tabular_data_editor(
@@ -277,38 +425,14 @@ impl TabularDataPreviewPane {
 }
 
 impl Focusable for TabularDataPreviewPane {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    /// The cell editor is what actually receives keys and input method events,
+    /// so activating the tab has to land focus there rather than on the pane.
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.grid.cell_editor.focus_handle(cx)
     }
 }
 
-impl EventEmitter<()> for TabularDataPreviewPane {}
-
-impl Item for TabularDataPreviewPane {
-    type Event = ();
-
-    fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
-        Some(Icon::new(IconName::Table))
-    }
-
-    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
-        self.editor_state()
-            .editor
-            .read(cx)
-            .buffer()
-            .read(cx)
-            .as_singleton()
-            .and_then(|b| {
-                let file = b.read(cx).file()?;
-                let local_file = file.as_local()?;
-                local_file
-                    .abs_path(cx)
-                    .file_name()
-                    .map(|name| format!("Preview {}", name.to_string_lossy()).into())
-            })
-            .unwrap_or_else(|| SharedString::from("Tabular Data Preview"))
-    }
-}
+impl EventEmitter<EditorEvent> for TabularDataPreviewPane {}
 
 #[derive(Debug, Default)]
 pub struct PerformanceMetrics {

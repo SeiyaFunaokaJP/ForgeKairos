@@ -139,6 +139,15 @@
     // limit_content_width is enabled.
     "max_width": 800,
   },
+  // CSV / TSV などの表形式ファイルの設定
+  "tabular_data": {
+    // 表形式のファイルを表 (グリッド) で開くかどうか。オフにすると
+    // テキストエディターで開く。どちらからでも横に切り替えられる。
+    "open_as_grid": true,
+    // 改行を含むセルを、行の高さを広げてすべて表示するかどうか。オフにすると
+    // 1 行に切り詰めて表示する。
+    "multiline_cells": true,
+  },
   // Determines the modifier to be used to add multiple cursors with the mouse. The open hover link mouse gestures will adapt such that it do not conflict with the multicursor modifier.
   //
   // 1. Maps to `Alt` on Linux and Windows and to `Option` on MacOS:

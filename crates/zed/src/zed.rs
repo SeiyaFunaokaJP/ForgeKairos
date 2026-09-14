@@ -6282,6 +6282,7 @@ mod tests {
                 cx,
             );
             image_viewer::init(cx);
+            tabular_data_preview::init(cx);
             language_model::init(cx);
             client::RefreshLlmTokenListener::register(
                 app_state.client.clone(),

@@ -102,26 +102,3 @@ impl From<AnyColumn> for usize {
         *value
     }
 }
-
-///// Cells /////
-/// Visual cell position in rendered table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DisplayCellId {
-    pub row: DisplayRow,
-    pub col: AnyColumn,
-}
-
-impl DisplayCellId {
-    /// Create a new display cell ID
-    pub fn new(row: impl Into<DisplayRow>, col: impl Into<AnyColumn>) -> Self {
-        Self {
-            row: row.into(),
-            col: col.into(),
-        }
-    }
-
-    /// Returns (row, column)
-    pub fn to_raw(&self) -> (usize, usize) {
-        (self.row.0, self.col.0)
-    }
-}

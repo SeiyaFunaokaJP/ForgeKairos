@@ -45,6 +45,12 @@ pub(crate) struct FilterStack {
     retention_config: HashMap<AnyColumn, HashSet<Option<SharedString>>>,
 }
 
+impl FilterStack {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.retention_config.is_empty()
+    }
+}
+
 impl TableDataEngine {
     pub(crate) fn has_active_filters(&self, col: AnyColumn) -> bool {
         self.filter_stack.retention_config.contains_key(&col)
@@ -280,7 +286,7 @@ mod tests {
 
     fn build_engine(table_text: &str) -> TableDataEngine {
         let mut engine = TableDataEngine::default();
-        engine.contents = Arc::new(TableLikeContent::from_str(table_text.to_string()));
+        engine.contents = Arc::new(TableLikeContent::from_str(table_text.to_string(), true));
         engine.calculate_available_filters();
         engine
     }

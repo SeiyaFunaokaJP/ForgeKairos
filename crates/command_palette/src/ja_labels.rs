@@ -1789,6 +1789,82 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "browser_panel::FocusNextPaneGroup",
         "ブラウザー: 次のペインにフォーカス",
     ),
+    // tabular_data (CSV / TSV の表)
+    ("tabular_data::OpenPreview", "CSV / TSV: 表として開く"),
+    (
+        "tabular_data::OpenPreviewToTheSide",
+        "CSV / TSV: 表を横に開く",
+    ),
+    ("tabular_data::OpenAsText", "CSV / TSV: テキストを横に開く"),
+    ("tabular_data::StartEditing", "表 (CSV / TSV): セルを編集"),
+    ("tabular_data::CommitEditing", "表 (CSV / TSV): 編集を確定"),
+    (
+        "tabular_data::CommitAndMoveDown",
+        "表 (CSV / TSV): 確定して下のセルへ",
+    ),
+    (
+        "tabular_data::CommitAndMoveUp",
+        "表 (CSV / TSV): 確定して上のセルへ",
+    ),
+    (
+        "tabular_data::CommitAndMoveRight",
+        "表 (CSV / TSV): 確定して右のセルへ",
+    ),
+    (
+        "tabular_data::CommitAndMoveLeft",
+        "表 (CSV / TSV): 確定して左のセルへ",
+    ),
+    (
+        "tabular_data::CancelEditing",
+        "表 (CSV / TSV): 編集を取り消す",
+    ),
+    (
+        "tabular_data::InsertLineBreak",
+        "表 (CSV / TSV): セル内で改行",
+    ),
+    (
+        "tabular_data::InsertRowAbove",
+        "表 (CSV / TSV): 上に行を挿入",
+    ),
+    (
+        "tabular_data::InsertRowBelow",
+        "表 (CSV / TSV): 下に行を挿入",
+    ),
+    ("tabular_data::DeleteRows", "表 (CSV / TSV): 行を削除"),
+    (
+        "tabular_data::InsertColumnLeft",
+        "表 (CSV / TSV): 左に列を挿入",
+    ),
+    (
+        "tabular_data::InsertColumnRight",
+        "表 (CSV / TSV): 右に列を挿入",
+    ),
+    ("tabular_data::DeleteColumns", "表 (CSV / TSV): 列を削除"),
+    (
+        "tabular_data::InsertRowsOrColumns",
+        "表 (CSV / TSV): 選択に合わせて行または列を挿入",
+    ),
+    (
+        "tabular_data::DeleteRowsOrColumns",
+        "表 (CSV / TSV): 選択した行または列を削除",
+    ),
+    (
+        "tabular_data::ClearCells",
+        "表 (CSV / TSV): セルの内容を消去",
+    ),
+    ("tabular_data::SelectRow", "表 (CSV / TSV): 行を選択"),
+    ("tabular_data::SelectColumn", "表 (CSV / TSV): 列を選択"),
+    (
+        "tabular_data::SelectAllCells",
+        "表 (CSV / TSV): すべてのセルを選択",
+    ),
+    ("tabular_data::CopyCells", "表 (CSV / TSV): セルをコピー"),
+    ("tabular_data::CutCells", "表 (CSV / TSV): セルを切り取り"),
+    ("tabular_data::PasteCells", "表 (CSV / TSV): セルを貼り付け"),
+    (
+        "tabular_data::ToggleHeaderRow",
+        "表 (CSV / TSV): 見出し行の切り替え",
+    ),
 ];
 
 #[cfg(test)]

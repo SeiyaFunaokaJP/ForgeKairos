@@ -255,6 +255,9 @@ pub struct SettingsContent {
     /// The settings for the markdown preview.
     pub markdown_preview: Option<MarkdownPreviewSettingsContent>,
 
+    /// CSV / TSV などの表形式ファイルの設定です。
+    pub tabular_data: Option<TabularDataSettingsContent>,
+
     pub repl: Option<ReplSettingsContent>,
 
     /// Whether or not to enable Helix mode.
@@ -1325,6 +1328,22 @@ pub struct MarkdownPreviewSettingsContent {
     ///
     /// Default: 800
     pub max_width: Option<PixelSetting>,
+}
+
+/// CSV / TSV などの表形式ファイルの設定です。
+#[with_fallible_options]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, MergeFrom, Default, PartialEq)]
+pub struct TabularDataSettingsContent {
+    /// CSV / TSV などの表形式ファイルを、表 (グリッド) で開くかどうかを設定します。
+    /// オフにするとテキストエディターで開きます。
+    ///
+    /// Default: true
+    pub open_as_grid: Option<bool>,
+    /// 改行を含むセルを、行の高さを広げてすべて表示するかどうかを設定します。
+    /// オフにすると 1 行に切り詰めて表示します。
+    ///
+    /// Default: true
+    pub multiline_cells: Option<bool>,
 }
 
 /// The settings for the image viewer.

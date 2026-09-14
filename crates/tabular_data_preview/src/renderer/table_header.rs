@@ -8,7 +8,8 @@ use std::{
 
 use fuzzy::{StringMatch, StringMatchCandidate, match_strings};
 use gpui::{
-    BackgroundExecutor, DismissEvent, ElementId, Entity, Focusable, ForegroundExecutor, Task,
+    BackgroundExecutor, DismissEvent, ElementId, Entity, Focusable, ForegroundExecutor,
+    MouseButton, MouseDownEvent, MouseMoveEvent, Task, transparent_black,
 };
 use picker::{Picker, PickerDelegate};
 use ui::{
@@ -18,7 +19,7 @@ use ui::{
 
 use crate::{
     TabularDataPreviewPane,
-    renderer::table_cell::with_copy_on_right_click,
+    grid::{CellEditMode, GridCell, GridRow, column_label},
     settings::FilterSortOrder,
     table_data_engine::{
         filtering_by_column::{FilterEntry, FilterEntryState},
@@ -26,6 +27,9 @@ use crate::{
     },
     types::AnyColumn,
 };
+
+/// Stands in for a cell with no value at all in the filter list.
+const NULL_VALUE_LABEL: &str = "(空白)";
 
 struct ColumnFilterRow {
     entry: FilterEntry,
@@ -155,14 +159,14 @@ impl ColumnFilterDelegate {
     fn display_text(entry: &FilterEntry) -> String {
         match &entry.content {
             Some(s) => s.as_ref().to_owned(),
-            None => "<null>".to_owned(),
+            None => NULL_VALUE_LABEL.to_owned(),
         }
     }
 
     /// Assembles the flat list shown to the user from matched
     /// `(row_index, positions)` pairs (which must be sorted ascending by
     /// `row_index`, matching `rows`' available-then-hidden order), inserting a
-    /// "Hidden by other filters" header before the first hidden row.
+    /// "hidden by other filters" header before the first hidden row.
     fn build_entries(
         rows: &[ColumnFilterRow],
         matches: Vec<(usize, Vec<usize>)>,
@@ -171,9 +175,7 @@ impl ColumnFilterDelegate {
         let mut header_inserted = false;
         for (row_index, positions) in matches {
             if rows[row_index].hidden_by.is_some() && !header_inserted {
-                entries.push(ColumnFilterListEntry::Header(
-                    "Hidden by other filters".into(),
-                ));
+                entries.push(ColumnFilterListEntry::Header("他の絞り込みで非表示".into()));
                 header_inserted = true;
             }
             entries.push(ColumnFilterListEntry::Row {
@@ -306,7 +308,7 @@ impl PickerDelegate for ColumnFilterDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        format!("Search {} unique values…", self.available_count).into()
+        format!("{} 件の値から検索…", self.available_count).into()
     }
 
     fn update_matches(
@@ -412,7 +414,7 @@ impl PickerDelegate for ColumnFilterDelegate {
                 let row = &self.rows[*row_index];
                 let value_text: SharedString = match &row.entry.content {
                     Some(s) => s.clone(),
-                    None => "<null>".into(),
+                    None => NULL_VALUE_LABEL.into(),
                 };
                 let count_text = SharedString::from(row.entry.occurred_times().to_string());
                 let label = HighlightedLabel::new(value_text.clone(), positions.clone())
@@ -490,7 +492,7 @@ impl PickerDelegate for ColumnFilterDelegate {
                 .justify_between()
                 .items_center()
                 .child(
-                    Label::new(format!("{selected_rows} / {total_rows} rows selected"))
+                    Label::new(format!("{total_rows} 行中 {selected_rows} 行を選択中"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -499,7 +501,7 @@ impl PickerDelegate for ColumnFilterDelegate {
                         .id("table-filter-clear-all")
                         .cursor_pointer()
                         .child(
-                            Label::new("Clear all")
+                            Label::new("すべて解除")
                                 .size(LabelSize::Small)
                                 .color(Color::Accent),
                         )
@@ -519,10 +521,10 @@ impl PickerDelegate for ColumnFilterDelegate {
 }
 
 impl TabularDataPreviewPane {
-    /// Create header for data, which is orderable with text on the left and sort button on the right
+    /// The column heading: its spreadsheet letter, the value of the header row
+    /// when there is one, and the sort and filter buttons.
     pub(crate) fn create_header_element_with_sort_button(
         &self,
-        header_text: SharedString,
         cx: &mut Context<'_, TabularDataPreviewPane>,
         col_idx: AnyColumn,
     ) -> AnyElement {
@@ -533,6 +535,16 @@ impl TabularDataPreviewPane {
             .is_some_and(|o| o.col_idx == col_idx);
         let always_show_buttons = has_active_filter || has_active_sort;
         let group_name = SharedString::from(format!("table-col-header-{}", col_idx.get()));
+
+        let header_cell = GridCell::new(GridRow::Header, col_idx);
+        let is_active_cell = self.grid.cursor == header_cell && self.grid.context_menu.is_none();
+        let needs_probe = self.overlay_cell() == header_cell;
+        let is_selected = self.selection_rect().contains_col(col_idx);
+        let header_text = if self.settings.first_row_is_header {
+            self.cell_value(GridRow::Header, col_idx)
+        } else {
+            SharedString::default()
+        };
 
         let colors = cx.theme().colors();
         let base_bg = colors.editor_background;
@@ -550,8 +562,17 @@ impl TabularDataPreviewPane {
             .items_center()
             .font_buffer(cx)
             .text_buffer(cx)
-            .child({
-                let header_text_cell = div()
+            .border_2()
+            .border_color(if is_active_cell {
+                colors.border_focused
+            } else {
+                transparent_black()
+            })
+            .when(is_selected && !is_active_cell, |this| {
+                this.bg(colors.element_selected.opacity(0.5))
+            })
+            .child(
+                div()
                     .id(ElementId::NamedInteger(
                         "table-col-header-text".into(),
                         col_idx.get() as u64,
@@ -559,14 +580,57 @@ impl TabularDataPreviewPane {
                     .flex_1()
                     .min_w_0()
                     .overflow_hidden()
-                    .whitespace_nowrap();
-                with_copy_on_right_click(
-                    header_text_cell,
-                    header_text.clone(),
-                    "Right click to copy column name",
-                )
-                .child(header_text)
-            })
+                    .whitespace_nowrap()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                            if event.click_count > 1 && this.has_header_row() {
+                                this.select_cell(header_cell, false, cx);
+                                this.start_editing(CellEditMode::Edit, window, cx);
+                                return;
+                            }
+                            this.on_column_mouse_down(
+                                col_idx,
+                                MouseButton::Left,
+                                event.modifiers.shift,
+                                event.position,
+                                window,
+                                cx,
+                            );
+                        }),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                            this.on_column_mouse_down(
+                                col_idx,
+                                MouseButton::Right,
+                                event.modifiers.shift,
+                                event.position,
+                                window,
+                                cx,
+                            );
+                        }),
+                    )
+                    .on_mouse_move(
+                        cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
+                            if event.pressed_button == Some(MouseButton::Left) {
+                                this.on_column_drag(col_idx, cx);
+                            }
+                        }),
+                    )
+                    .child(
+                        Label::new(column_label(col_idx.get()))
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .child(header_text),
+            )
+            .when(needs_probe, |this| this.child(self.active_cell_probe(cx)))
             .child(
                 GradientFade::new(base_bg, base_bg, base_bg)
                     .width(grad_width)
@@ -621,10 +685,10 @@ impl TabularDataPreviewPane {
         )
         .tooltip(Tooltip::text(match self.engine.applied_sorting {
             Some(ordering) if ordering.col_idx == col_idx => match ordering.direction {
-                SortDirection::Asc => "Sorted A-Z. Click to sort Z-A",
-                SortDirection::Desc => "Sorted Z-A. Click to disable sorting",
+                SortDirection::Asc => "昇順で並べ替え中。クリックで降順",
+                SortDirection::Desc => "降順で並べ替え中。クリックで解除",
             },
-            _ => "Not sorted. Click to sort A-Z",
+            _ => "並べ替えなし。クリックで昇順",
         }))
         .on_click(cx.listener(move |this, _event, _window, cx| {
             let new_sorting = match this.engine.applied_sorting {
@@ -671,9 +735,9 @@ impl TabularDataPreviewPane {
             })
             .toggle_state(has_active_filters),
             Tooltip::text(if has_active_filters {
-                "Column has active filters. Click to manage"
+                "この列を絞り込み中。クリックで変更"
             } else {
-                "No filters applied. Click to add filters"
+                "絞り込みなし。クリックで絞り込み"
             }),
         )
         .menu({

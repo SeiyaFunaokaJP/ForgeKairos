@@ -1,13 +1,16 @@
+use editor::markdown_actions::display_width;
+use gpui::{AbsoluteLength, MouseButton, MouseDownEvent, MouseMoveEvent};
 use ui::{
-    ActiveTheme as _, AnyElement, Button, ButtonCommon as _, ButtonSize, ButtonStyle,
-    Clickable as _, Context, ElementId, IntoElement as _, ParentElement as _, SharedString,
-    Styled as _, StyledTypography as _, Tooltip, div,
+    ActiveTheme as _, AnyElement, Context, ElementId, InteractiveElement as _, IntoElement as _,
+    ParentElement as _, StatefulInteractiveElement as _, Styled as _, StyledTypography as _,
+    Tooltip, div, px,
 };
 
 use crate::{
     TabularDataPreviewPane,
+    grid::GridRow,
     settings::RowIdentifiers,
-    types::{DataRow, DisplayRow, LineNumber},
+    types::{AnyColumn, DataRow, DisplayRow, LineNumber},
 };
 
 pub enum RowIdentDisplayMode {
@@ -45,6 +48,16 @@ impl LineNumber {
     }
 }
 
+/// Rows sampled to size a column. Enough to catch the shape of the data without
+/// walking a file of millions of rows on every reparse.
+const COLUMN_WIDTH_SAMPLE_ROWS: usize = 200;
+/// Rough advance of one character in the buffer font. Column widths are only a
+/// starting point that the user can drag, so an estimate is enough.
+const COLUMN_WIDTH_PER_CHARACTER: f32 = 8.0;
+const COLUMN_WIDTH_PADDING: f32 = 16.0;
+const MINIMUM_COLUMN_WIDTH: f32 = 64.0;
+const MAXIMUM_COLUMN_WIDTH: f32 = 480.0;
+
 impl TabularDataPreviewPane {
     /// Calculate the optimal width for the row identifier column (line numbers or row numbers).
     ///
@@ -55,6 +68,32 @@ impl TabularDataPreviewPane {
             RowIdentifiers::SrcLines => self.calculate_line_number_width(),
             RowIdentifiers::RowNum => self.calculate_row_number_width(),
         }
+    }
+
+    /// Starting widths for the data columns, taken from the widest value each
+    /// one actually holds.
+    pub(crate) fn calculate_data_column_widths(&self) -> Vec<AbsoluteLength> {
+        (0..self.engine.contents.number_of_cols)
+            .map(|col| {
+                let col = AnyColumn(col);
+                let widest = std::iter::once(&self.engine.contents.headers)
+                    .chain(
+                        self.engine
+                            .contents
+                            .rows
+                            .iter()
+                            .take(COLUMN_WIDTH_SAMPLE_ROWS),
+                    )
+                    .filter_map(|row| row.get(col))
+                    .filter_map(|cell| cell.display_value())
+                    .map(|value| value.lines().map(display_width).max().unwrap_or(0))
+                    .max()
+                    .unwrap_or(0);
+                let width = (widest as f32 * COLUMN_WIDTH_PER_CHARACTER + COLUMN_WIDTH_PADDING)
+                    .clamp(MINIMUM_COLUMN_WIDTH, MAXIMUM_COLUMN_WIDTH);
+                AbsoluteLength::Pixels(px(width))
+            })
+            .collect()
     }
 
     /// Calculate width needed for line numbers (can be multi-line)
@@ -102,42 +141,26 @@ impl TabularDataPreviewPane {
         (base_width + padding).max(min_width)
     }
 
+    /// The corner above the row identifiers, which selects the whole sheet.
     pub(crate) fn create_row_identifier_header(
         &self,
         cx: &mut Context<'_, TabularDataPreviewPane>,
     ) -> AnyElement {
-        // First column: row identifier (clickable to toggle between Lines and Rows)
-        let row_identifier_text = match self.settings.numbering_type {
-            RowIdentifiers::SrcLines => "Lines",
-            RowIdentifiers::RowNum => "Rows",
-        };
-
-        let view = cx.entity();
-        let value = div()
+        div()
+            .id(ElementId::Name("tabular-grid-select-all".into()))
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_pointer()
+            .text_color(cx.theme().colors().text_muted)
             .font_buffer(cx)
-            .child(
-                Button::new(
-                    ElementId::Name("row-identifier-toggle".into()),
-                    row_identifier_text,
-                )
-                .style(ButtonStyle::Subtle)
-                .size(ButtonSize::Compact)
-                .tooltip(Tooltip::text(
-                    "Toggle between: file line numbers or sequential row numbers",
-                ))
-                .on_click(move |_event, _window, cx| {
-                    view.update(cx, |this, cx| {
-                        this.settings.numbering_type = match this.settings.numbering_type {
-                            RowIdentifiers::SrcLines => RowIdentifiers::RowNum,
-                            RowIdentifiers::RowNum => RowIdentifiers::SrcLines,
-                        };
-                        this.sync_column_widths(cx);
-                        cx.notify();
-                    });
-                }),
-            )
-            .into_any_element();
-        value
+            .child("◤")
+            .tooltip(Tooltip::text("すべてのセルを選択"))
+            .on_click(cx.listener(|this, _event, _window, cx| {
+                this.select_all_cells(cx);
+            }))
+            .into_any_element()
     }
 
     pub(crate) fn create_row_identifier_cell(
@@ -146,7 +169,7 @@ impl TabularDataPreviewPane {
         data_row: DataRow,
         cx: &Context<'_, TabularDataPreviewPane>,
     ) -> Option<AnyElement> {
-        let row_identifier: SharedString = match self.settings.numbering_type {
+        let row_identifier: ui::SharedString = match self.settings.numbering_type {
             RowIdentifiers::SrcLines => self
                 .engine
                 .contents
@@ -161,17 +184,67 @@ impl TabularDataPreviewPane {
             RowIdentifiers::RowNum => (*display_row + 1).to_string().into(),
         };
 
+        let grid_row = GridRow::Body(display_row);
+        let selected = self.selection_rect().contains_row(grid_row);
+        let colors = cx.theme().colors();
+
         let value = div()
+            .id(ElementId::NamedInteger(
+                "tabular-grid-row-header".into(),
+                *display_row as u64,
+            ))
             .flex()
             .px_1()
-            .border_color(cx.theme().colors().border_variant)
-            .bg(cx.theme().colors().panel_background)
+            .border_color(colors.border_variant)
+            .bg(if selected {
+                colors.element_selected
+            } else {
+                colors.panel_background
+            })
             .h_full()
-            .text_color(cx.theme().colors().text_muted)
+            .text_color(if selected {
+                colors.text_accent
+            } else {
+                colors.text_muted
+            })
             .justify_center()
             .items_center()
             .font_buffer(cx)
             .text_ui(cx)
+            .cursor_pointer()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    this.on_row_mouse_down(
+                        grid_row,
+                        MouseButton::Left,
+                        event.modifiers.shift,
+                        event.position,
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    this.on_row_mouse_down(
+                        grid_row,
+                        MouseButton::Right,
+                        event.modifiers.shift,
+                        event.position,
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .on_mouse_move(
+                cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
+                    if event.pressed_button == Some(MouseButton::Left) {
+                        this.on_row_drag(grid_row, cx);
+                    }
+                }),
+            )
             .child(row_identifier)
             .into_any_element();
         Some(value)

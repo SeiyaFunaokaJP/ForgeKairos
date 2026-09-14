@@ -5,8 +5,9 @@ use ui::{ColumnWidthConfig, ResizableColumnsState, Table, UncheckedTableRow, div
 
 use crate::{
     TabularDataPreviewPane,
+    grid::{GridCell, GridRow},
     settings::RowRenderMechanism,
-    types::{AnyColumn, DisplayCellId, DisplayRow},
+    types::{AnyColumn, DisplayRow},
 };
 
 impl TabularDataPreviewPane {
@@ -17,7 +18,7 @@ impl TabularDataPreviewPane {
         current_widths: &Entity<ResizableColumnsState>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        self.create_table_inner(self.engine.contents.rows.len(), current_widths, cx)
+        self.create_table_inner(self.body_row_count(), current_widths, cx)
     }
 
     fn create_table_inner(
@@ -33,20 +34,8 @@ impl TabularDataPreviewPane {
         headers.push(self.create_row_identifier_header(cx));
 
         // Add the actual data headers with sort buttons
-        for i in 0..(cols - 1) {
-            let header_text = self
-                .engine
-                .contents
-                .headers
-                .get(AnyColumn(i))
-                .and_then(|h| h.display_value().cloned())
-                .unwrap_or_else(|| format!("Col {}", i + 1).into());
-
-            headers.push(self.create_header_element_with_sort_button(
-                header_text,
-                cx,
-                AnyColumn::from(i),
-            ));
+        for i in 0..cols.saturating_sub(1) {
+            headers.push(self.create_header_element_with_sort_button(cx, AnyColumn::from(i)));
         }
 
         Table::new(cols)
@@ -72,7 +61,7 @@ impl TabularDataPreviewPane {
                                     this.row_height,
                                     cx,
                                 )
-                                .unwrap_or_else(|| panic!("Expected to render a table row"))
+                                .unwrap_or_else(|| Self::render_blank_table_row(cols))
                             })
                         })
                     }
@@ -105,6 +94,18 @@ impl TabularDataPreviewPane {
             .into_any_element()
     }
 
+    /// An empty stand-in for a row the table cannot render.
+    ///
+    /// The display mapping is recomputed a moment after the contents on a large
+    /// file, so a list sized by the old mapping can ask for a row the table no
+    /// longer has. The next frame draws the real thing; blanking the row keeps
+    /// that from taking the window down with it.
+    fn render_blank_table_row(cols: usize) -> UncheckedTableRow<AnyElement> {
+        (0..cols)
+            .map(|_| div().size_full().into_any_element())
+            .collect()
+    }
+
     /// Render a single table row
     ///
     /// Used both by UniformList and VariableRowHeightList
@@ -123,14 +124,23 @@ impl TabularDataPreviewPane {
         let mut elements = Vec::with_capacity(cols);
         elements.push(this.create_row_identifier_cell(display_row, data_row, cx)?);
 
-        // Remaining columns: actual table data
-        for col in (0..this.engine.contents.number_of_cols).map(AnyColumn) {
-            let table_cell = row.expect_get(col);
+        // Remaining columns: actual table data. The column widths are resynced
+        // from the contents on every parse, but a frame can still land between
+        // the two, so the row is built from what the contents hold and trimmed
+        // to the width the table was created with.
+        for col in (0..this
+            .engine
+            .contents
+            .number_of_cols
+            .min(cols.saturating_sub(1)))
+            .map(AnyColumn)
+        {
+            let Some(table_cell) = row.get(col) else {
+                continue;
+            };
 
             // TODO: Introduce `<null>` cell type
             let cell_content = table_cell.display_value().cloned().unwrap_or_default();
-
-            let display_cell_id = DisplayCellId::new(display_row, col);
 
             let cell = div()
                 .size_full()
@@ -143,8 +153,8 @@ impl TabularDataPreviewPane {
                             .overflow_hidden()
                     },
                 )
-                .child(TabularDataPreviewPane::create_selectable_cell(
-                    display_cell_id,
+                .child(this.create_selectable_cell(
+                    GridCell::new(GridRow::Body(display_row), col),
                     cell_content,
                     this.settings.vertical_alignment,
                     cx,
@@ -172,6 +182,11 @@ impl TabularDataPreviewPane {
             );
         }
 
+        // `TableRow` asserts the row's width, so a row that came out short of
+        // the table's column count is padded rather than taken as a panic.
+        while elements.len() < cols {
+            elements.push(div().size_full().into_any_element());
+        }
         Some(elements)
     }
 }

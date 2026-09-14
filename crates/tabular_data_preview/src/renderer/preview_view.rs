@@ -1,12 +1,20 @@
 use std::time::Instant;
 
+use gpui::{AnyElement, MouseButton, anchored, deferred, point, size};
 use ui::{SpinnerLabel, div, prelude::*};
 
-use crate::TabularDataPreviewPane;
+use crate::{TabularDataPreviewPane, grid::cell_text_style};
+
+/// How wide the overlay editor is while it sits idle over the caret's cell: big
+/// enough for an input method's candidate window to be anchored there, small
+/// enough to show nothing.
+const IDLE_EDITOR_SIZE: Pixels = px(1.);
+/// A cell narrower than this is still given room to type in.
+const MINIMUM_EDITOR_WIDTH: Pixels = px(48.);
 
 impl Render for TabularDataPreviewPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let editor_background = cx.theme().colors().editor_background;
         let row_height = window.pixel_snap(window.line_height());
         if row_height != self.row_height {
             self.row_height = row_height;
@@ -16,37 +24,33 @@ impl Render for TabularDataPreviewPane {
             // item's prior size as a hint rather than dropping straight to a fresh guess.
             self.list_state.remeasure();
         }
+        self.grid.render_generation = self.grid.render_generation.wrapping_add(1);
+        self.clamp_cursor();
+        self.sync_cell_editor_style(cx);
+
         let render_prep_start = Instant::now();
         let table_with_settings = v_flex()
             .size_full()
-            .bg(theme.colors().editor_background)
-            .track_focus(&self.focus_handle)
+            .bg(editor_background)
             .child(self.render_settings_panel(window, cx))
-            .child({
-                let is_parsing = self.is_parsing;
-                if is_parsing || self.engine.contents.number_of_cols == 0 {
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .h_32()
-                        .text_ui(cx)
-                        .font_buffer(cx)
-                        .text_color(cx.theme().colors().text_muted)
-                        .when(is_parsing, |div| {
-                            div.child(
-                                h_flex()
-                                    .gap_2()
-                                    .child(SpinnerLabel::new())
-                                    .child("Loading…"),
-                            )
-                        })
-                        .when(!is_parsing, |div| div.child("No data to display"))
-                        .into_any_element()
-                } else {
-                    self.create_table(&self.column_widths.widths, cx)
-                }
-            });
+            .child(
+                div()
+                    .relative()
+                    .flex_grow_1()
+                    .w_full()
+                    .overflow_hidden()
+                    // Clicking anywhere in the grid puts the caret back in the
+                    // cell editor, which the table's own focus tracking would
+                    // otherwise take away.
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _event, window, cx| {
+                            this.focus_cell_editor(window, cx);
+                        }),
+                    )
+                    .child(self.render_grid_body(cx))
+                    .child(self.bounds_probe(&self.grid.body_bounds.clone(), cx)),
+            );
 
         let render_prep_duration = render_prep_start.elapsed();
         self.performance_metrics.timings.insert(
@@ -54,11 +58,38 @@ impl Render for TabularDataPreviewPane {
             (render_prep_duration, std::time::Instant::now()),
         );
 
-        let div = div()
+        let root = div()
+            .key_context("TabularDataGrid")
+            .track_focus(&self.focus_handle)
             .relative()
             .w_full()
-            .h_full()
-            .child(table_with_settings);
+            .h_full();
+        let root = self.register_grid_actions(root, cx);
+        let root = self.capture_editor_actions(root, cx);
+
+        let div = root
+            // The overlay editor is positioned against this wrapper, and clipped
+            // by it so that a cell scrolled sideways out of view cannot paint
+            // over the rest of the window. The context menu is deliberately a
+            // sibling of it, so that it can still open past the pane's edge.
+            .child(
+                div()
+                    .relative()
+                    .size_full()
+                    .overflow_hidden()
+                    .child(self.bounds_probe(&self.grid.root_bounds.clone(), cx))
+                    .child(table_with_settings)
+                    .child(self.render_cell_editor_overlay(cx)),
+            )
+            .children(self.grid.context_menu.as_ref().map(|(menu, position, _)| {
+                deferred(
+                    anchored()
+                        .position(*position)
+                        .anchor(gpui::Anchor::TopLeft)
+                        .child(menu.clone()),
+                )
+                .with_priority(3)
+            }));
 
         #[cfg(feature = "dev-tools")]
         let show_perf_metrics_overlay = self.settings.show_perf_metrics_overlay;
@@ -77,5 +108,91 @@ impl Render for TabularDataPreviewPane {
         self.performance_metrics.rendered_indices.clear();
 
         div
+    }
+}
+
+impl TabularDataPreviewPane {
+    /// Re-applies the buffer font to the overlay editor, so that changing the
+    /// font size keeps what is typed the same size as what the cells show.
+    fn sync_cell_editor_style(&self, cx: &mut Context<Self>) {
+        let style = cell_text_style(cx);
+        self.grid.cell_editor.update(cx, |editor, _cx| {
+            editor.set_text_style_refinement(style);
+        });
+    }
+
+    /// The table, or the message that stands in for it. A reparse in flight
+    /// keeps the table it already has rather than blanking the grid.
+    fn render_grid_body(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.engine.contents.number_of_cols > 0 {
+            return self.create_table(&self.column_widths.widths, cx);
+        }
+
+        let message = div()
+            .flex()
+            .items_center()
+            .justify_center()
+            .h_32()
+            .text_ui(cx)
+            .font_buffer(cx)
+            .text_color(cx.theme().colors().text_muted);
+        if self.is_parsing {
+            message
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(SpinnerLabel::new())
+                        .child("読み込み中…"),
+                )
+                .into_any_element()
+        } else {
+            message
+                .child("空のファイルです。セルに入力すると 1 行目が作られます")
+                .into_any_element()
+        }
+    }
+
+    /// The single editor every cell is typed into, moved over the caret's cell.
+    ///
+    /// It is mounted here rather than inside a row so that the virtualized list
+    /// can never drop the focused element out of the tree, which would leave
+    /// the grid unable to receive keys at all.
+    fn render_cell_editor_overlay(&self, cx: &Context<Self>) -> AnyElement {
+        let generation = self.grid.render_generation;
+        let root = self.grid.root_bounds.measured(generation);
+        let cell = self.grid.active_cell_bounds.measured(generation);
+        let editing = self.grid.editing.is_some();
+        let colors = cx.theme().colors();
+
+        let placement = root
+            .zip(cell)
+            .map(|(root, cell)| (cell.origin - root.origin, cell.size));
+        let (origin, cell_size) = placement.unwrap_or_else(|| {
+            (
+                point(px(0.), px(0.)),
+                size(IDLE_EDITOR_SIZE, IDLE_EDITOR_SIZE),
+            )
+        });
+
+        div()
+            .absolute()
+            .left(origin.x)
+            .top(origin.y)
+            .map(|this| {
+                if editing && placement.is_some() {
+                    this.w(cell_size.width.max(MINIMUM_EDITOR_WIDTH))
+                        .min_h(cell_size.height)
+                        .px_1()
+                        .bg(colors.editor_background)
+                        .border_2()
+                        .border_color(colors.border_focused)
+                } else {
+                    this.w(IDLE_EDITOR_SIZE)
+                        .h(IDLE_EDITOR_SIZE)
+                        .overflow_hidden()
+                }
+            })
+            .child(self.grid.cell_editor.clone())
+            .into_any_element()
     }
 }
