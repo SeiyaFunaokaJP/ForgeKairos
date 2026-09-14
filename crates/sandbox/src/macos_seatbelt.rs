@@ -94,21 +94,26 @@ impl SeatbeltConfigFile {
     /// `allowed_unix_socket_paths` lists Unix domain sockets the command may
     /// connect to for local IPC even when IP network access is otherwise
     /// disabled. This does not permit sending packets to other machines.
+    ///
+    /// `read_hidden_paths` lists paths whose contents the command may not read
+    /// at all (ADR-F49 decision 11); see [`read_hidden_rules`].
     pub fn new(
         writable_directories: &[&Path],
         protected_paths: &[&Path],
         allowed_unix_socket_paths: &[&Path],
+        read_hidden_paths: &[&Path],
         permissions: SandboxPermissions,
     ) -> Result<Self> {
         let mut file =
             NamedTempFile::new().context("failed to create temporary Seatbelt config file")?;
 
-        let config = generate_seatbelt_config(
+        let mut config = generate_seatbelt_config(
             writable_directories,
             protected_paths,
             allowed_unix_socket_paths,
             permissions,
         )?;
+        config.push_str(&read_hidden_rules(read_hidden_paths)?);
         file.write_all(config.as_bytes())
             .context("failed to write Seatbelt config")?;
         file.flush().context("failed to flush Seatbelt config")?;
@@ -142,6 +147,8 @@ impl SeatbeltConfigFile {
 /// * `allowed_unix_socket_paths` - Unix domain sockets the command may
 ///   connect to for local IPC even when IP network access is otherwise
 ///   disabled. This does not permit sending packets to other machines.
+/// * `read_hidden_paths` - Paths whose contents the command may not read at
+///   all: credential stores and agent configurations (ADR-F49 decision 11).
 /// * `permissions` - Sandbox relaxations requested for this command.
 ///
 /// # Returns
@@ -153,12 +160,14 @@ pub fn wrap_invocation(
     writable_directories: &[&Path],
     protected_paths: &[&Path],
     allowed_unix_socket_paths: &[&Path],
+    read_hidden_paths: &[&Path],
     permissions: SandboxPermissions,
 ) -> Result<(String, Vec<String>, SeatbeltConfigFile)> {
     let config_file = SeatbeltConfigFile::new(
         writable_directories,
         protected_paths,
         allowed_unix_socket_paths,
+        read_hidden_paths,
         permissions,
     )?;
 
@@ -439,6 +448,29 @@ fn generate_seatbelt_config(
     Ok(config)
 }
 
+/// ADR-F49 decision 11: rules denying every read of each of
+/// `read_hidden_paths` — a credential store or agent configuration — and of
+/// everything beneath it. Appended after the whole generated profile, so they
+/// win over its blanket `(allow file-read*)` the same way the protected-path
+/// denies win over the writable-directory allows: the last matching rule
+/// decides.
+fn read_hidden_rules(read_hidden_paths: &[&Path]) -> Result<String> {
+    let mut rules = String::new();
+    for hidden_path in read_hidden_paths {
+        let escaped_path = escape_sandbox_path(hidden_path)?;
+        // `subpath` matches the path itself too, so a file entry needs no
+        // separate `literal`.
+        rules.push_str(&format!(
+            r#"
+; Block reading a credential store or agent configuration
+(deny file-read*
+    (subpath "{escaped_path}"))
+"#
+        ));
+    }
+    Ok(rules)
+}
+
 /// Escape a path for use in a Seatbelt config string.
 ///
 /// Seatbelt configs use a Scheme-like syntax where certain characters need
@@ -644,6 +676,7 @@ mod tests {
             &[temp_dir.path()],
             &[],
             &[socket_path.as_path(), canonical_socket_path.as_path()],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -659,6 +692,56 @@ mod tests {
             "sandbox should allow connecting to the allow-listed unix socket: stderr={} stdout={}",
             String::from_utf8_lossy(&output.stderr),
             String::from_utf8_lossy(&output.stdout),
+        );
+    }
+
+    /// ADR-F49 decision 11: each read-hidden path gets a `deny file-read*`
+    /// rule, placed after the blanket read allow so it wins, with the path
+    /// escaped like every other rule literal; without any, nothing is denied.
+    #[test]
+    fn test_seatbelt_config_denies_reading_read_hidden_paths() {
+        let project = PathBuf::from("/Users/test/projects/myproject");
+        let ssh = PathBuf::from("/Users/test/.ssh");
+        let npmrc = PathBuf::from("/Users/test/.npmrc");
+        let quoted = PathBuf::from("/Users/test/odd\"name");
+        let config_file = SeatbeltConfigFile::new(
+            &[project.as_path()],
+            &[],
+            &[],
+            &[ssh.as_path(), npmrc.as_path(), quoted.as_path()],
+            SandboxPermissions::default(),
+        )
+        .unwrap();
+        let config = seatbelt_rules_only(&std::fs::read_to_string(&config_file.path).unwrap());
+
+        let blanket = config
+            .find("(allow file-read*)")
+            .expect("reads are allowed by default");
+        for hidden in [
+            "/Users/test/.ssh",
+            "/Users/test/.npmrc",
+            "/Users/test/odd\\\"name",
+        ] {
+            let rule = format!("(deny file-read*\n    (subpath \"{hidden}\"))");
+            let at = config
+                .find(&rule)
+                .unwrap_or_else(|| panic!("missing `{rule}` in:\n{config}"));
+            assert!(at > blanket, "the deny must come after the blanket allow");
+        }
+
+        let unhidden = SeatbeltConfigFile::new(
+            &[project.as_path()],
+            &[],
+            &[],
+            &[],
+            SandboxPermissions::default(),
+        )
+        .unwrap();
+        assert!(
+            !std::fs::read_to_string(&unhidden.path)
+                .unwrap()
+                .contains("(deny file-read*"),
+            "nothing is hidden when nothing is asked for"
         );
     }
 
@@ -707,6 +790,7 @@ mod tests {
             &[dir.as_path()],
             &[protected_file.as_path()],
             &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -751,6 +835,7 @@ mod tests {
             ],
             &[dir.as_path()],
             &[protected_file.as_path()],
+            &[],
             &[],
             SandboxPermissions {
                 network: NetworkAccess::None,
@@ -861,6 +946,7 @@ mod tests {
             &[temp_dir.path()],
             &[],
             &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -882,6 +968,7 @@ mod tests {
             "/bin/sh",
             &["-c".to_string(), "cat /etc/hosts".to_string()],
             &[temp_dir.path()],
+            &[],
             &[],
             &[],
             SandboxPermissions::default(),
@@ -911,6 +998,7 @@ mod tests {
             &[temp_dir.path()],
             &[],
             &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -936,6 +1024,7 @@ mod tests {
             "/bin/sh",
             &["-c".to_string(), "echo test 2>/dev/null".to_string()],
             &[temp_dir.path()],
+            &[],
             &[],
             &[],
             SandboxPermissions {
@@ -971,6 +1060,7 @@ mod tests {
                 format!("echo 'hello' > '{}'", test_file.display()),
             ],
             &[temp_dir.path()],
+            &[],
             &[],
             &[],
             SandboxPermissions {
@@ -1014,6 +1104,7 @@ mod tests {
             &[project_path.as_path(), scratch_path.as_path()],
             &[],
             &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -1050,6 +1141,7 @@ mod tests {
             &[dir.as_path()],
             &[],
             &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -1082,6 +1174,7 @@ mod tests {
                 format!("echo 'hello' > '{}'", test_file.display()),
             ],
             &[project_dir.path()],
+            &[],
             &[],
             &[],
             SandboxPermissions {
@@ -1122,6 +1215,7 @@ mod tests {
                 format!("echo 'hello' > '{}'", forbidden_file.display()),
             ],
             &[project_dir.path()],
+            &[],
             &[],
             &[],
             SandboxPermissions::default(),

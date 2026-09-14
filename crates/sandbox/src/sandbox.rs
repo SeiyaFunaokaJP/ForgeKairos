@@ -41,11 +41,20 @@ mod macos_seatbelt;
 #[cfg(target_os = "windows")]
 mod windows_wsl;
 
+/// ADR-F49: the IDE channel from inside the sandbox back to Zed — its frame
+/// protocol, Zed's demultiplexer, and on Linux the bridge process itself.
+pub mod ide_bridge;
+pub use ide_bridge::{
+    BridgeConnection, BridgeConnections, BridgeFrame, BridgeFrameDecoder, BridgeFrameKind,
+    BridgeMuxHandle, MAX_BRIDGE_CONNECTIONS, MAX_BRIDGE_FRAME_PAYLOAD, MAX_IDE_LOCK_CONTENT,
+    encode_frame, encode_ide_lock_preamble, spawn_bridge_mux,
+};
+
 /// ADR-F18: the locations every sandbox protects regardless of what the caller
 /// asked for. Shared by [`Sandbox::new`] (the local backends) and the SSH-remote
 /// helper.
 mod protected_paths;
-pub use protected_paths::APP_DIRECTORY_NAME;
+pub use protected_paths::{APP_DIRECTORY_NAME, builtin_protected_paths, builtin_read_hidden_paths};
 
 mod util;
 
@@ -58,7 +67,10 @@ pub use util::{
     resolve_canonical,
 };
 #[cfg(target_os = "windows")]
-pub use windows_wsl::{ResolvedGrant, is_forwardable_env_var, resolve_canonical_for_grant};
+pub use windows_wsl::{
+    ResolvedGrant, ide_bridge_invocation, ide_rendezvous_path, is_forwardable_env_var,
+    resolve_canonical_for_grant, stage_agent_binary, staged_agent_binary, wsl_distro_for_path,
+};
 
 #[cfg(target_os = "windows")]
 pub(crate) const WSL_SANDBOX_UNAVAILABLE_PREFIX: &str =
@@ -453,9 +465,11 @@ fn add_builtin_protected_paths(
                 .to_string(),
         ));
     };
-    let application_directories = protected_paths::app_state_directories_from_environment();
-    let builtin_paths =
-        protected_paths::local_builtin_protected_paths(&home, &application_directories);
+    let worktree_roots: Vec<PathBuf> = writable_paths
+        .iter()
+        .filter_map(writable_directory_path)
+        .collect();
+    let builtin_paths = protected_paths::builtin_protected_paths(&home, &worktree_roots);
     let requested_count = requested.len();
     let merged = merge_protected_paths(requested, writable_paths, builtin_paths)?;
 
@@ -466,6 +480,64 @@ fn add_builtin_protected_paths(
         home.display()
     );
     Ok(merged)
+}
+
+/// ADR-F49 decision 11: what the command may not read on the local Bubblewrap
+/// and Seatbelt backends — [`protected_paths::builtin_read_hidden_paths`]
+/// split around the roots the command may write, canonical where an entry
+/// exists so a symlinked `~/.ssh` is hidden where it really lies, and never one
+/// that lands on a root. Nothing from the environment: a variable a project can
+/// set would be a way to un-hide a credential store.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn local_read_hidden_paths(writable: &[&Path]) -> Result<Vec<PathBuf>, SandboxError> {
+    let Some(home) = protected_paths::home_dir_from_environment() else {
+        return Err(SandboxError::Other(
+            "ホームディレクトリを特定できないため、読み取りを禁止するパス (認証情報・\
+             エージェント設定) を確定できません。サンドボックスを構築せずに中止します。"
+                .to_string(),
+        ));
+    };
+    // Resolved, so that an entry holding a root is recognised as such and split
+    // around it even when the home is reached through a symlink.
+    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    let mut reachable: Vec<PathBuf> = writable.iter().map(|path| path.to_path_buf()).collect();
+    let canonical_reachable: Vec<PathBuf> = reachable
+        .iter()
+        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .collect();
+    reachable.extend(canonical_reachable);
+    // Each entry resolved before it is split, so one reached through a symlink
+    // (`~/.config` kept elsewhere) is split around a root inside it rather than
+    // dropped whole by the last check.
+    let entries: Vec<PathBuf> = protected_paths::builtin_read_hidden_paths(&home, &[])
+        .into_iter()
+        .map(|path| std::fs::canonicalize(&path).unwrap_or(path))
+        .collect();
+    let hidden = protected_paths::around_reachable(entries, &reachable)
+        .into_iter()
+        .map(|path| std::fs::canonicalize(&path).unwrap_or(path))
+        .collect();
+    Ok(protected_paths::without_reachable(hidden, &reachable))
+}
+
+/// Where a writable grant lies on the host when it is a directory — a worktree
+/// root, which the built-in worktree entries are resolved against. On Windows a
+/// grant inside WSL (a `/…` path) is left to the helper there, which adds those
+/// entries for every root it may write itself, missing ones included.
+fn writable_directory_path(location: &HostFilesystemLocation) -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    let path = location.linux_canonical_path();
+    #[cfg(target_os = "macos")]
+    let path = location.macos_canonical_path();
+    #[cfg(target_os = "windows")]
+    let path = location.windows_canonical_path();
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    let path = location.untrusted_raw_path();
+    #[cfg(target_os = "windows")]
+    if path.to_string_lossy().starts_with('/') {
+        return None;
+    }
+    path.is_dir().then(|| path.to_path_buf())
 }
 
 /// The capture-and-merge half of [`add_builtin_protected_paths`], split out so
@@ -621,10 +693,7 @@ mod builtin_protected_paths_tests {
         .expect("the built-in set must resolve");
 
         let protected = sandbox.protected_paths();
-        for path in protected_paths::local_builtin_protected_paths(
-            &home,
-            &protected_paths::app_state_directories_from_environment(),
-        ) {
+        for path in protected_paths::builtin_protected_paths(&home, &[]) {
             if !PROTECTS_NOT_YET_EXISTING_PATHS && !path.exists() {
                 continue;
             }
@@ -637,6 +706,44 @@ mod builtin_protected_paths_tests {
                 path.display()
             );
         }
+    }
+
+    /// The agent configurations a host agent acts on are protected in every
+    /// worktree root the command may write, as its `.git` is (ADR-F49).
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn agent_configurations_in_a_writable_root_are_protected() {
+        let root = tempfile::tempdir().expect("create a worktree");
+        std::fs::create_dir(root.path().join(".claude")).expect("create .claude");
+        std::fs::write(root.path().join(".claude").join("settings.json"), "{}")
+            .expect("write .claude/settings.json");
+        std::fs::write(root.path().join(".mcp.json"), "{}").expect("write .mcp.json");
+        std::fs::create_dir(root.path().join(".codex")).expect("create .codex");
+        std::fs::write(root.path().join("notes.txt"), "x").expect("write notes.txt");
+
+        let sandbox = Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Restricted {
+                writable_paths: vec![capture(root.path())],
+                protected_paths: Vec::new(),
+            },
+            network: SandboxNetPolicy::Blocked,
+        })
+        .expect("a worktree holding agent configurations is a valid grant");
+
+        let protected = sandbox.protected_paths();
+        // The whole `.claude` directory is protected (hooks and skills scripts
+        // under it run on the host), along with the other agent configs.
+        for relative in [".claude", ".mcp.json", ".codex"] {
+            let path = root.path().join(relative);
+            assert!(
+                protected.contains(&capture(&path)),
+                "{relative} must be protected"
+            );
+        }
+        assert!(
+            !protected.contains(&capture(&root.path().join("notes.txt"))),
+            "an ordinary file of the worktree is not"
+        );
     }
 }
 
@@ -740,6 +847,41 @@ pub struct WrappedCommand {
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
     pub cwd: Option<PathBuf>,
+}
+
+/// ADR-F49: what a long-running interactive program — an agent CLI on a
+/// terminal — needs from the sandbox beyond what a one-shot command gets.
+///
+/// Its standard input is live: the helper passes its own stdin (the terminal)
+/// straight through, so the caller must not redirect it to `/dev/null` the way
+/// it does for one-shot agent commands. The program stays in the terminal's
+/// foreground process group, so Ctrl+C, Ctrl+Z and window-size changes reach
+/// it directly. The helper outside the sandbox — one-shot or not — ignores
+/// SIGINT / SIGQUIT / SIGTSTP, passes SIGHUP / SIGTERM on to the program,
+/// exits when the program does, and first stops whatever the program left
+/// running.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct InteractiveSession {
+    /// The IDE channel, when the program has one.
+    pub ide_forward: Option<IdeForward>,
+}
+
+/// ADR-F49: the IDE channel of an [`InteractiveSession`].
+///
+/// The sandboxed program connects to `127.0.0.1:inner_port` on its own
+/// loopback; the helper, from outside the namespaces, splices each connection
+/// to the Unix socket at `rendezvous_path`, where the IDE bridge listens and
+/// multiplexes the connections over its standard I/O for
+/// [`spawn_bridge_mux`]. Nothing listens on the host.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdeForward {
+    /// The port the program connects to. Any port will do: the sandbox's
+    /// network namespace is its own.
+    pub inner_port: u16,
+    /// Absolute path, inside the WSL distro, of the bridge's socket. It has to
+    /// be in a directory the sandbox protects (the Windows
+    /// `ide_rendezvous_path` names one), or the helper refuses to start.
+    pub rendezvous_path: String,
 }
 
 /// Errors returned by the sandbox abstraction.
@@ -854,6 +996,9 @@ pub struct Sandbox {
     /// See [`Sandbox::set_editor_network_allowlist`].
     #[cfg(target_os = "windows")]
     editor_network_allowlist: Option<Vec<String>>,
+    /// See [`Sandbox::set_interactive_session`].
+    #[cfg(target_os = "windows")]
+    interactive_session: Option<InteractiveSession>,
 }
 
 impl Sandbox {
@@ -910,6 +1055,8 @@ impl Sandbox {
             seatbelt_config: None,
             #[cfg(target_os = "windows")]
             editor_network_allowlist: None,
+            #[cfg(target_os = "windows")]
+            interactive_session: None,
         })
     }
     /// Check whether the platform sandbox can be created on this host without
@@ -952,6 +1099,14 @@ impl Sandbox {
     #[cfg(target_os = "windows")]
     pub fn set_editor_network_allowlist(&mut self, entries: Vec<String>) {
         self.editor_network_allowlist = Some(entries);
+    }
+
+    /// Windows only: wrap the command as a long-running interactive session
+    /// (ADR-F49; see [`InteractiveSession`]) rather than as a one-shot
+    /// command. Spawn the result on a terminal without redirecting its input.
+    #[cfg(target_os = "windows")]
+    pub fn set_interactive_session(&mut self, session: InteractiveSession) {
+        self.interactive_session = Some(session);
     }
 
     /// Transform `command` into the invocation that runs it inside this sandbox.
@@ -1119,6 +1274,8 @@ impl Sandbox {
             .map(|location| location.linux_canonical_path().to_path_buf())
             .collect();
         let protected_paths: Vec<&Path> = protected_owned.iter().map(PathBuf::as_path).collect();
+        let read_hidden_owned = local_read_hidden_paths(&writable)?;
+        let read_hidden: Vec<&Path> = read_hidden_owned.iter().map(PathBuf::as_path).collect();
 
         // Stand up the host endpoint that sends the captured fds to the
         // in-sandbox validator, when this run has writable binds to verify. It's
@@ -1156,6 +1313,7 @@ impl Sandbox {
             permissions,
             &writable,
             &protected_paths,
+            &read_hidden,
             command.cwd.as_deref(),
             &command.program,
             &command.args,
@@ -1212,6 +1370,8 @@ impl Sandbox {
             .iter()
             .map(HostFilesystemLocation::macos_canonical_path)
             .collect();
+        let read_hidden_owned = local_read_hidden_paths(&writable)?;
+        let read_hidden: Vec<&Path> = read_hidden_owned.iter().map(PathBuf::as_path).collect();
 
         // The command's environment is applied by `/usr/bin/env` inside the
         // sandbox, so `sandbox-exec` itself is started with none of it.
@@ -1228,6 +1388,7 @@ impl Sandbox {
             &writable,
             &protected,
             &[],
+            &read_hidden,
             permissions,
         )
         .map_err(map_anyhow_error)?;
@@ -1256,6 +1417,7 @@ impl Sandbox {
             ),
             network,
             allow_fs_write: self.fs.allow_fs_write,
+            interactive_session: self.interactive_session.clone(),
         };
         let writable_paths = self
             .fs
@@ -1326,6 +1488,9 @@ pub(crate) const WSL_PROBE_RESULT_PREFIX: &str = "zed-wsl-probe:";
 /// Selects the helper's local-WSL behavior (see `linux_remote_helper`).
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) const WSL_HELPER_MODE_FLAG: &str = "--wsl";
+/// ADR-F49: runs the same binary as the IDE bridge (see [`ide_bridge`]).
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) const IDE_BRIDGE_FLAG: &str = "--ide-bridge";
 /// Handle a possible re-exec of this binary as the in-sandbox launcher (bind
 /// validator + restricted-network bridge) that bwrap runs before the real
 /// command. Does not return if it matched.
@@ -1405,6 +1570,8 @@ pub(crate) struct WslHelperOptions<'a> {
     pub(crate) environment: &'a [(String, String)],
     /// Then removed from it.
     pub(crate) unset_environment: &'a [&'a str],
+    /// ADR-F49: run as an interactive session, with its IDE channel.
+    pub(crate) interactive_session: Option<&'a InteractiveSession>,
 }
 
 /// ADR-F46: the argv for the same helper when the local Windows backend runs it
@@ -1442,6 +1609,17 @@ pub(crate) fn build_wsl_sandbox_helper_argv(
     }
     for name in options.unset_environment {
         argv.extend(["--unsetenv".to_string(), name.to_string()]);
+    }
+    if let Some(session) = options.interactive_session {
+        argv.push("--interactive".to_string());
+        if let Some(forward) = &session.ide_forward {
+            argv.extend([
+                "--ide-listen".to_string(),
+                forward.inner_port.to_string(),
+                "--ide-rendezvous".to_string(),
+                forward.rendezvous_path.clone(),
+            ]);
+        }
     }
     argv.push("--".to_string());
     argv
@@ -2120,6 +2298,57 @@ mod windows_tests {
         assert_eq!(
             argv(None),
             ["--remote-sandbox-helper", "--net", "any", "--wsl", "--"]
+        );
+    }
+
+    /// An interactive session is marked as one, and its IDE channel reaches
+    /// the helper just before the command.
+    #[test]
+    fn wsl_helper_argv_carries_the_interactive_session() {
+        let argv = |session: &InteractiveSession| {
+            build_wsl_sandbox_helper_argv(
+                &[],
+                &[],
+                &RemoteSandboxNetwork::Blocked,
+                false,
+                None,
+                &WslHelperOptions {
+                    interactive_session: Some(session),
+                    ..WslHelperOptions::default()
+                },
+            )
+        };
+        assert_eq!(
+            argv(&InteractiveSession::default()),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "blocked",
+                "--wsl",
+                "--interactive",
+                "--",
+            ]
+        );
+        let with_ide = InteractiveSession {
+            ide_forward: Some(IdeForward {
+                inner_port: 45123,
+                rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock".to_string(),
+            }),
+        };
+        assert_eq!(
+            argv(&with_ide),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "blocked",
+                "--wsl",
+                "--interactive",
+                "--ide-listen",
+                "45123",
+                "--ide-rendezvous",
+                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                "--",
+            ]
         );
     }
 

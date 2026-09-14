@@ -45,26 +45,49 @@
 //! and can run ordinary Rust — applying the FS backend (Landlock or mount jail)
 //! and the seccomp filter itself, then finally `exec`ing the untrusted command
 //! (the only point at which its capabilities drop).
+//!
+//! # Signals and leftovers (ADR-F49, ADR-F50)
+//!
+//! The parent outlives the command in every mode: it owns the egress and IDE
+//! relays and the scratch directories. It ignores SIGINT / SIGQUIT / SIGTSTP —
+//! a terminal sends those to its whole foreground process group, the command
+//! included — and passes SIGHUP / SIGTERM on to the command. It is also a
+//! `PR_SET_CHILD_SUBREAPER`: there is no PID namespace (Bubblewrap's took
+//! everything down with it), so whatever the command leaves running, daemons
+//! that `setsid` away included, is reparented to the parent and killed once
+//! the command has exited.
+//!
+//! # IDE forward (ADR-F49)
+//!
+//! For an interactive session the holder also listens on a fixed port of the
+//! namespace's loopback, and the parent splices each connection to the IDE
+//! bridge's Unix socket (see `crate::ide_bridge`), which must lie in a
+//! directory the command cannot write to.
 
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use std::ffi::{CString, OsStr, OsString};
 use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt as _;
+use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::RemoteSandboxNetwork;
 use crate::linux_bubblewrap::install_command_seccomp_filter;
 use crate::protected_paths::{
-    UNIX_PROTECTED_HOME_RELATIVE, WSL_SANDBOX_HELPER_HOME_RELATIVE, home_dir_from_account,
-    merge_remote_builtin_protected_paths, zsh_startup_files_from_environment,
+    UNIX_PROTECTED_HOME_RELATIVE, WSL_SANDBOX_HELPER_HOME_RELATIVE,
+    app_state_directories_from_environment, around_reachable,
+    git_config_directory_from_environment, home_dir_from_account,
+    merge_remote_builtin_protected_paths, read_hidden_home_paths, worktree_protected_paths,
+    zsh_startup_files_from_environment,
 };
 use crate::util::CanonicalPathBuf;
 use crate::{
-    REMOTE_SANDBOX_HELPER_FLAG, WSL_HELPER_MODE_FLAG, WSL_PROBE_RESULT_PREFIX,
+    IDE_BRIDGE_FLAG, REMOTE_SANDBOX_HELPER_FLAG, WSL_HELPER_MODE_FLAG, WSL_PROBE_RESULT_PREFIX,
     WSL_SANDBOX_PROBE_FLAG, WSL_SANDBOX_RESOLVE_FLAG,
 };
 
@@ -92,11 +115,12 @@ static WSL_MODE: AtomicBool = AtomicBool::new(false);
 // Entry point
 // ===========================================================================
 
-/// Handle a possible re-exec of this binary as the remote sandbox helper, or as
+/// Handle a possible re-exec of this binary as the remote sandbox helper, as
 /// one of the two short-lived WSL utilities the Windows backend runs
-/// ([`WSL_SANDBOX_RESOLVE_FLAG`], [`WSL_SANDBOX_PROBE_FLAG`]). None of them
-/// returns if it matched. Called from
-/// [`crate::run_remote_sandbox_helper_if_invoked`] at the top of `main`.
+/// ([`WSL_SANDBOX_RESOLVE_FLAG`], [`WSL_SANDBOX_PROBE_FLAG`]), or as the IDE
+/// bridge ([`IDE_BRIDGE_FLAG`], ADR-F49). None of them returns if it matched.
+/// Called from [`crate::run_remote_sandbox_helper_if_invoked`] at the top of
+/// `main`.
 pub(crate) fn run_if_invoked() {
     let args: Vec<OsString> =
         crate::expand_remote_sandbox_helper_argv(std::env::args_os().skip(1).collect());
@@ -106,10 +130,14 @@ pub(crate) fn run_if_invoked() {
     if flag != WSL_SANDBOX_RESOLVE_FLAG
         && flag != WSL_SANDBOX_PROBE_FLAG
         && flag != REMOTE_SANDBOX_HELPER_FLAG
+        && flag != IDE_BRIDGE_FLAG
     {
         return;
     }
     close_verified_exec_descriptor();
+    if flag == IDE_BRIDGE_FLAG {
+        crate::ide_bridge::run_ide_bridge(rest);
+    }
     if flag == WSL_SANDBOX_RESOLVE_FLAG {
         run_wsl_resolve(rest);
     }
@@ -209,7 +237,7 @@ impl log::Log for HelperLogger {
 
 static HELPER_LOGGER: HelperLogger = HelperLogger;
 
-fn init_helper_logging() {
+pub(crate) fn init_helper_logging() {
     if std::env::var_os("ZED_REMOTE_SANDBOX_LOG").is_none() {
         return;
     }
@@ -258,8 +286,21 @@ struct Stage1Invocation {
     set_environment: Vec<(OsString, OsString)>,
     /// Variables to remove from the command's environment.
     unset_environment: Vec<OsString>,
+    /// ADR-F49: the IDE channel of an interactive session (`--interactive`,
+    /// which nothing else needs to know about: the signal policy and the
+    /// clean-up are the same for every command).
+    ide_forward: Option<IdeForwardRequest>,
     program: OsString,
     args: Vec<OsString>,
+}
+
+/// `--ide-listen` and `--ide-rendezvous` (ADR-F49).
+#[derive(Debug, PartialEq)]
+struct IdeForwardRequest {
+    /// The port the holder listens on inside the network namespace.
+    port: u16,
+    /// The IDE bridge's Unix socket, outside the sandbox.
+    rendezvous: PathBuf,
 }
 
 fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1Invocation> {
@@ -274,6 +315,9 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
     let mut slirp_sha256 = None;
     let mut set_environment = Vec::new();
     let mut unset_environment = Vec::new();
+    let mut interactive = false;
+    let mut ide_listen: Option<u16> = None;
+    let mut ide_rendezvous: Option<PathBuf> = None;
     let mut program = None;
     let mut trailing = Vec::new();
 
@@ -327,6 +371,26 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
                 ensure_environment_name(&name)?;
                 unset_environment.push(name);
             }
+            "--interactive" => interactive = true,
+            "--ide-listen" => {
+                let value = args.next().context("--ide-listen requires a port")?;
+                let port = value
+                    .to_str()
+                    .and_then(|value| value.parse::<u16>().ok())
+                    .filter(|port| *port != 0)
+                    .with_context(|| format!("invalid --ide-listen port {value:?}"))?;
+                ide_listen = Some(port);
+            }
+            "--ide-rendezvous" => {
+                let value = args.next().context("--ide-rendezvous requires a path")?;
+                let path = PathBuf::from(value);
+                ensure!(
+                    path.is_absolute(),
+                    "--ide-rendezvous must be an absolute path, not {}",
+                    path.display()
+                );
+                ide_rendezvous = Some(path);
+            }
             "--" => {
                 program = args.next();
                 trailing = args.collect();
@@ -346,6 +410,17 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
         .map(|entries| crate::EditorAllowlistCeiling::parse(&entries).map(Arc::new))
         .transpose()?;
     let program = program.context("missing program after `--`")?;
+    let ide_forward = match (ide_listen, ide_rendezvous) {
+        (Some(port), Some(rendezvous)) => {
+            ensure!(
+                interactive,
+                "an IDE forward is only for an --interactive session"
+            );
+            Some(IdeForwardRequest { port, rendezvous })
+        }
+        (None, None) => None,
+        _ => bail!("--ide-listen and --ide-rendezvous go together"),
+    };
 
     Ok(Stage1Invocation {
         network,
@@ -359,6 +434,7 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
         slirp_sha256,
         set_environment,
         unset_environment,
+        ide_forward,
         program,
         args: trailing,
     })
@@ -412,18 +488,40 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     };
     invocation.protected_paths =
         merge_remote_builtin_protected_paths(invocation.protected_paths, &home);
-    for path in zsh_startup_files_from_environment() {
+    // The client names each root's `.git`; the agent configurations beside it
+    // (ADR-F49) come from the roots the command may write, so that no client
+    // can forget them. The environment can only add protection here.
+    let additions = zsh_startup_files_from_environment()
+        .into_iter()
+        .chain(git_config_directory_from_environment())
+        .chain(worktree_protected_paths(&invocation.writable_paths));
+    for path in additions {
         if !invocation.protected_paths.contains(&path) {
             invocation.protected_paths.push(path);
         }
     }
-    if invocation.wsl {
-        // Where the Windows side installs this very binary; overwriting it runs
-        // code outside the sandbox on the next command (the WSL counterpart of
-        // `.zed_server`, which the list above already covers).
+    if invocation.on_wsl {
+        // Where the Windows side installs this very binary, stages agent
+        // binaries, and keeps the IDE bridge's sockets and lock files:
+        // overwriting any of it runs code outside the sandbox on the next
+        // command (the WSL counterpart of `.zed_server`, which the list above
+        // already covers). Protected whenever the helper runs on a WSL kernel,
+        // `--wsl` or not — a WSL-remote project comes in over the SSH protocol
+        // without `--wsl` yet shares the same install root.
         let install_root = home.join(WSL_SANDBOX_HELPER_HOME_RELATIVE);
         if !invocation.protected_paths.contains(&install_root) {
             invocation.protected_paths.push(install_root);
+        }
+    }
+    // ADR-F49 decision 11: what the command may not read, taken here from the
+    // environment the caller gave, like the protected set above; init covers
+    // them once the filesystem backend's own mounts are in place, split around
+    // the roots the command has to keep reaching.
+    let reachable = reachable_paths(&invocation, &home);
+    let mut read_hidden = read_hidden_home_paths(&read_hidden_home(&home), false);
+    for directory in app_state_directories_from_environment() {
+        if !read_hidden.contains(&directory) {
+            read_hidden.push(directory);
         }
     }
     log::info!(
@@ -435,7 +533,10 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
 
     let self_exe = std::env::current_exe().unwrap_or_default();
     let network_on = network_requested(&invocation.network);
-    let slirp = if network_on {
+    // The egress listener and the IDE listener both need the namespace's
+    // loopback up, and only slirp4netns can bring it up there.
+    let loopback_needed = network_on || invocation.ide_forward.is_some();
+    let slirp = if loopback_needed {
         let Some(path) = locate_slirp4netns(&self_exe) else {
             fail_closed(
                 "slirp-missing",
@@ -479,6 +580,32 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         FsBackend::MountJail => FilesystemPlan::default(),
     };
 
+    let ide_rendezvous = match &invocation.ide_forward {
+        Some(forward) => match IdeRendezvous::open(&forward.rendezvous, &protected, &writable_pins)
+        {
+            Ok(rendezvous) => Some(rendezvous),
+            Err(error) => fail_closed("ide-forward-invalid", &format!("{error:#}")),
+        },
+        None => None,
+    };
+    let ide_port = invocation
+        .ide_forward
+        .as_ref()
+        .map_or(0, |forward| forward.port);
+
+    // Before the fork, so that whatever the command leaves behind is ours to
+    // stop from its very start.
+    if let Err(error) = become_child_subreaper() {
+        fail_closed("subreaper-failed", &format!("{error:#}"));
+    }
+    // Held back until the fork is done and the parent knows whom to pass them
+    // on to. Every thread the parent starts later inherits the block, which
+    // leaves them to the thread that waits for the command.
+    let original_signal_mask = match block_command_signals() {
+        Ok(mask) => mask,
+        Err(error) => fail_closed("signals-failed", &format!("{error:#}")),
+    };
+
     // Handshake pipes. Crucially, no thread — in particular the egress proxy — is
     // started before the fork, so the holder inherits a single-threaded address
     // space and may run ordinary Rust after the fork. That matters because the
@@ -503,6 +630,9 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     let ready_write_fd = ready.write.as_raw_fd();
     let go_read_fd = go.read.as_raw_fd();
     let relay_holder_fd = relay.holder.as_raw_fd();
+    let terminal = foreground_terminal();
+    // SAFETY: `getpid` takes no arguments and cannot fail.
+    let parent_pid = unsafe { libc::getpid() };
 
     // SAFETY: a single `fork` from a single-threaded process. The holder becomes
     // its own process; it and the parent coordinate only through the pipes.
@@ -521,6 +651,11 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
                 protected: &protected,
                 plan: &plan,
                 original_open_file_limit,
+                original_signal_mask,
+                parent_pid,
+                terminal: terminal.map(|(descriptor, _)| descriptor),
+                read_hidden: &read_hidden,
+                reachable: &reachable,
             },
             ready_write_fd,
             go_read_fd,
@@ -529,6 +664,9 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     }
 
     // --- Parent -----------------------------------------------------------
+    if let Err(error) = install_command_signal_policy(child_pid) {
+        abort_holder(child_pid, "signals-failed", &format!("{error:#}"));
+    }
     // Close the ends we don't use so the holder's copies become the sole
     // remaining ones (EOF semantics if it dies).
     drop(ready.write);
@@ -542,6 +680,12 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     // EOF means it couldn't).
     match read_one_byte(ready_read.as_raw_fd()) {
         Ok(HOLDER_OK) => {}
+        Ok(HOLDER_NO_PID_NAMESPACE) => abort_holder(
+            child_pid,
+            "pidns-failed",
+            "the host refused a PID namespace for the command, without which it could \
+             signal the helper and outlive it",
+        ),
         _ => abort_holder(
             child_pid,
             "userns-failed",
@@ -582,68 +726,64 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         Err(error) => abort_holder(child_pid, "slirp-failed", &format!("{error:#}")),
     };
 
-    // Release the holder, handing it the proxy port (0 = no proxy).
-    if let Err(error) = write_all_bytes(go_write.as_raw_fd(), &proxy_port.to_le_bytes()) {
+    // Release the holder with the ports it is to listen on (0 = none).
+    if let Err(error) = write_all_bytes(
+        go_write.as_raw_fd(),
+        &encode_holder_release(proxy_port, ide_port),
+    ) {
         abort_holder(child_pid, "handshake-failed", &error.to_string());
     }
 
-    // Take over the listening socket the holder created inside the network
-    // namespace, start splicing it to the proxy, and only then let the command
-    // run.
-    if network_on {
-        match receive_relay_listener(relay_parent.as_raw_fd()) {
-            Ok(listener) => {
-                if let Err(error) = spawn_egress_relay(listener, proxy_port) {
-                    abort_holder(
-                        child_pid,
-                        "relay-failed",
-                        &format!("starting the egress relay: {error}"),
-                    );
-                }
-                // slirp has now done its one remaining job: configuring the
-                // namespace (bringing its loopback up) so the listener above
-                // could be bound. Stop it before the command starts. Even with
-                // `--disable-host-loopback` its NAT can still reach any address
-                // the *host itself* owns — a socket bound to `127.0.0.1` is
-                // free to connect to the host's own LAN address, which is how
-                // `192.168.x.x:22` answered from inside the sandbox. With slirp
-                // gone the namespace keeps nothing but its own loopback, so the
-                // relayed proxy is the only endpoint that exists.
-                if let Some(slirp_process) = slirp_child.as_mut() {
-                    stop_slirp(slirp_process);
-                }
-                slirp_child = None;
-                // Release the holder only now, so the command can never observe
-                // an outbound path that is about to be taken away.
-                if let Err(error) = write_all_bytes(go_write.as_raw_fd(), &[HOLDER_OK]) {
-                    abort_holder(child_pid, "handshake-failed", &error.to_string());
-                }
-            }
-            // The holder reaches this point unless it failed closed on its own,
-            // in which case it has already printed its reason and will exit
-            // 126: surface that rather than inventing a second one.
-            Err(error) => {
-                log::warn!("[remote-sandbox] the holder sent no egress listener: {error:#}")
-            }
+    // Take over the listening sockets the holder created inside the network
+    // namespace, start serving them, and only then let the command run.
+    if loopback_needed {
+        let listeners_arrived = take_over_namespace_listeners(
+            relay_parent.as_raw_fd(),
+            ide_rendezvous,
+            network_on.then_some(proxy_port),
+            child_pid,
+        );
+        // slirp has now done its one remaining job: configuring the namespace
+        // (bringing its loopback up) so the listeners above could be bound.
+        // Stop it before the command starts. Even with `--disable-host-loopback`
+        // its NAT can still reach any address the *host itself* owns — a socket
+        // bound to `127.0.0.1` is free to connect to the host's own LAN address,
+        // which is how `192.168.x.x:22` answered from inside the sandbox. With
+        // slirp gone the namespace keeps nothing but its own loopback, so the
+        // relays are the only way out.
+        if let Some(slirp_process) = slirp_child.as_mut() {
+            stop_slirp(slirp_process);
+        }
+        // Release the holder only now, so the command can never observe an
+        // outbound path that is about to be taken away. A listener that did not
+        // arrive means the holder failed closed on its own and printed its
+        // reason; it exits 126, which the wait below passes on.
+        if listeners_arrived && let Err(error) = write_all_bytes(go_write.as_raw_fd(), &[HOLDER_OK])
+        {
+            abort_holder(child_pid, "handshake-failed", &error.to_string());
         }
     }
+    drop(slirp_child);
     drop(go_write);
     drop(relay_parent);
 
-    let status = wait_pid(child_pid);
+    // From here on this thread takes the signals held back since the fork; the
+    // relay and proxy threads started above keep them blocked.
+    restore_signal_mask(&original_signal_mask);
+    let status = wait_for_command(child_pid);
+    if let Some((descriptor, group)) = terminal {
+        reclaim_terminal(descriptor, group);
+    }
+    terminate_remaining_descendants();
     // Only now; see `FilesystemPlan` for why the parent holds these open.
     drop(plan);
     drop(protected);
     drop(writable_pins);
 
-    // Tear down slirp and the proxy now the command has finished.
-    if let Some(slirp_process) = slirp_child.as_mut() {
-        stop_slirp(slirp_process);
-    }
     drop(slirp);
     drop(proxy);
-    // The holder created its scratch directories under its own pid and then
-    // `exec`ed the command, so we are the one left to remove them — on every
+    // Init created the scratch directories under the holder's pid, and neither
+    // outlives the command, so we are the one left to remove them — on every
     // path, including the failing ones below.
     remove_command_temp_dirs(child_pid);
 
@@ -653,23 +793,57 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     }
 }
 
-/// Reap the holder, remove anything it left under `/tmp`, and fail closed.
-/// Every post-`fork` parent failure goes through here so no path can leak the
-/// per-command scratch directories. Never returns.
+/// Stop and reap the holder — it has not started the command yet wherever
+/// this is called — stop anything else still running (slirp4netns may be),
+/// remove what it left under `/tmp`, and fail closed. Every post-`fork` parent
+/// failure goes through here so no path can leak the per-command scratch
+/// directories. Never returns.
 #[allow(
     clippy::disallowed_methods,
     reason = "the remote sandbox helper is a standalone process, not the GPUI app; \
               blocking on the holder is correct here"
 )]
 fn abort_holder(child_pid: libc::pid_t, code: &str, detail: &str) -> ! {
+    // A holder blocked on the handshake would wait for its release forever: it
+    // holds its own copy of the pipe's write end, so it never sees EOF.
+    // SAFETY: `kill` with scalar arguments; the holder is our unreaped child,
+    // so the pid is still its own.
+    if unsafe { libc::kill(child_pid, libc::SIGKILL) } != 0 {
+        log::debug!(
+            "[remote-sandbox] stopping the holder: {}",
+            std::io::Error::last_os_error()
+        );
+    }
     if let Err(error) = wait_pid(child_pid) {
         log::warn!("[remote-sandbox] could not reap the holder: {error:#}");
     }
+    terminate_remaining_descendants();
     remove_command_temp_dirs(child_pid);
     fail_closed(code, detail)
 }
 
 const HOLDER_OK: u8 = 1;
+/// Sent instead of [`HOLDER_OK`] when the user and network namespaces are
+/// there but the PID namespace is not.
+const HOLDER_NO_PID_NAMESPACE: u8 = 2;
+
+/// Length of the message that releases the holder: the proxy port, then the
+/// IDE port, both little-endian and 0 for none.
+const HOLDER_RELEASE_LENGTH: usize = 4;
+
+fn encode_holder_release(proxy_port: u16, ide_port: u16) -> [u8; HOLDER_RELEASE_LENGTH] {
+    let [proxy_low, proxy_high] = proxy_port.to_le_bytes();
+    let [ide_low, ide_high] = ide_port.to_le_bytes();
+    [proxy_low, proxy_high, ide_low, ide_high]
+}
+
+fn decode_holder_release(release: [u8; HOLDER_RELEASE_LENGTH]) -> (u16, u16) {
+    let [proxy_low, proxy_high, ide_low, ide_high] = release;
+    (
+        u16::from_le_bytes([proxy_low, proxy_high]),
+        u16::from_le_bytes([ide_low, ide_high]),
+    )
+}
 
 /// The forked holder. Runs after the parent has mapped its ids and stood up the
 /// network. It still holds full capabilities inside its own user namespace (it
@@ -697,31 +871,125 @@ struct HolderSetup<'a> {
     /// The soft open-file limit to hand back to the command (see
     /// [`raise_open_file_limit`]).
     original_open_file_limit: Option<libc::rlimit>,
+    /// The signal mask to hand back to the command: the parent blocked the
+    /// signals it takes over across the fork (see [`block_command_signals`]).
+    original_signal_mask: libc::sigset_t,
+    /// The parent's pid, for the holder to notice a parent that died before
+    /// its parent-death signal was set.
+    parent_pid: libc::pid_t,
+    /// The descriptor of the controlling terminal to hand to the command's
+    /// process group, when the helper's group had it in the foreground (see
+    /// [`foreground_terminal`]).
+    terminal: Option<RawFd>,
+    /// ADR-F49 decision 11: the Linux home's entries the command may not read.
+    /// On WSL init finds the Windows homes' itself.
+    read_hidden: &'a [PathBuf],
+    /// What stays reachable however it lies among them (see
+    /// [`reachable_paths`]).
+    reachable: &'a [PathBuf],
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the remote sandbox helper is a standalone process, not the GPUI app; \
-              `CommandExt::exec` of the untrusted command is exactly what it must do"
-)]
 fn run_holder_inner(
     setup: HolderSetup<'_>,
     ready_write_fd: RawFd,
     go_read_fd: RawFd,
     relay_socket_fd: RawFd,
 ) -> std::result::Result<std::convert::Infallible, (&'static str, anyhow::Error)> {
-    let HolderSetup {
-        invocation,
-        fs_backend,
-        writable_pins,
-        protected,
-        plan,
-        original_open_file_limit,
-    } = setup;
-    // Create the user + network namespaces (unprivileged NEWNET is only allowed
-    // together with NEWUSER). As the creator we hold every capability inside the
-    // new user namespace until we `exec`.
+    // A holder that outlived the parent would keep the namespace, and with it
+    // the command, running with nobody left to clean up after it.
+    die_with_parent(setup.parent_pid).map_err(|error| ("signals-failed", error))?;
+    enter_command_namespaces(ready_write_fd)?;
+    // Report readiness, then block until the parent maps our ids and hands us the
+    // ports to listen on. A short read means the parent aborted.
+    write_all_bytes(ready_write_fd, &[HOLDER_OK])
+        .map_err(|error| ("handshake-failed", anyhow::Error::new(error)))?;
+    let mut release = [0u8; HOLDER_RELEASE_LENGTH];
+    read_exact_bytes(go_read_fd, &mut release).map_err(|error| {
+        (
+            "handshake-failed",
+            anyhow!("parent aborted before release: {error}"),
+        )
+    })?;
+    let (proxy_port, ide_port) = decode_holder_release(release);
+
+    // Publish the listeners *inside* the namespace. slirp has no host-loopback
+    // forwarding and no working NAT, so nothing here can reach the host on its
+    // own; the parent (which is outside) accepts on these sockets and splices
+    // them to the proxy and to the IDE bridge. Created before the FS jail and
+    // the seccomp filter, both of which the command must not be able to work
+    // around. The IDE one first: its port is fixed, and the egress one then
+    // takes any port that is left.
+    if ide_port != 0 {
+        publish_listener(relay_socket_fd, ide_port).map_err(|error| ("relay-failed", error))?;
+    }
+    let relay_port = if proxy_port != 0 {
+        Some(publish_listener(relay_socket_fd, 0).map_err(|error| ("relay-failed", error))?)
+    } else {
+        None
+    };
+    if ide_port != 0 || proxy_port != 0 {
+        // Then wait for the parent to finish taking the namespace's network
+        // apart again (see `stop_slirp` there): until that byte arrives, slirp
+        // is still running and its NAT can still reach addresses the host owns.
+        let mut released = [0u8; 1];
+        read_exact_bytes(go_read_fd, &mut released).map_err(|error| {
+            (
+                "handshake-failed",
+                anyhow!("parent aborted before the network was final: {error}"),
+            )
+        })?;
+    }
+
+    launch_namespace_init(setup, relay_port)
+}
+
+/// Have the kernel SIGKILL this process when its parent dies, and exit at once
+/// when the parent is gone already — it may have died before the request, and
+/// then no signal comes.
+fn die_with_parent(parent_pid: libc::pid_t) -> Result<()> {
+    set_parent_death_signal()?;
+    // SAFETY: `getppid` takes no arguments and cannot fail.
+    if unsafe { libc::getppid() } != parent_pid {
+        std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
+    }
+    Ok(())
+}
+
+fn set_parent_death_signal() -> Result<()> {
+    // SAFETY: `prctl` with scalar arguments only.
+    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0) } != 0 {
+        bail!(
+            "prctl(PR_SET_PDEATHSIG): {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    Ok(())
+}
+
+/// Create the command's user, network and PID namespaces (unprivileged NEWNET
+/// and NEWPID are only allowed together with NEWUSER). As the creator the
+/// holder holds every capability inside the new user namespace, and so does
+/// the init it forks.
+///
+/// The PID namespace is what keeps the command — same uid as the helper, and
+/// on WSL's 6.6 kernel without Landlock's ABI-6 signal scoping — from
+/// signalling the helper parent, the IDE bridge or another session's helper,
+/// and it lets the kernel stop everything the command leaves behind when the
+/// namespace's init exits. `unshare(CLONE_NEWPID)` only arms it: the next fork
+/// becomes the namespace's init. There is no running without it.
+fn enter_command_namespaces(
+    ready_write_fd: RawFd,
+) -> std::result::Result<(), (&'static str, anyhow::Error)> {
     // SAFETY: `unshare` with these flags reads no memory.
+    if unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNET | libc::CLONE_NEWPID) } == 0
+    {
+        return Ok(());
+    }
+    let pid_namespace_error = std::io::Error::last_os_error();
+    // `unshare` is all or nothing, so nothing was entered above. A host without
+    // user namespaces at all needs different advice than one refusing only the
+    // PID namespace.
+    // SAFETY: as above.
     if unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNET) } != 0 {
         // Returning here drops the holder's `ready` write end when the process
         // exits via `fail_closed`, so the parent's read sees EOF and doesn't
@@ -734,69 +1002,80 @@ fn run_holder_inner(
             ),
         ));
     }
-    // Report readiness, then block until the parent maps our ids and hands us the
-    // proxy port. A short read means the parent aborted.
-    write_all_bytes(ready_write_fd, &[HOLDER_OK])
-        .map_err(|error| ("handshake-failed", anyhow::Error::new(error)))?;
-    let mut port_bytes = [0u8; 2];
-    read_exact_bytes(go_read_fd, &mut port_bytes).map_err(|error| {
-        (
-            "handshake-failed",
-            anyhow!("parent aborted before release: {error}"),
-        )
-    })?;
-    let proxy_port = u16::from_le_bytes(port_bytes);
+    log::warn!("[remote-sandbox] unshare(CLONE_NEWPID): {pid_namespace_error}");
+    // The parent prints the marker line for this one: the client reads only the
+    // first, and a line from here would come before the parent's.
+    if let Err(error) = write_all_bytes(ready_write_fd, &[HOLDER_NO_PID_NAMESPACE]) {
+        log::warn!("[remote-sandbox] could not report the missing PID namespace: {error}");
+    }
+    std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
+}
 
-    // Publish the proxy *inside* the namespace. slirp has no host-loopback
-    // forwarding and no working NAT, so nothing here can reach the host on its
-    // own; the parent (which is outside) accepts on this socket and splices to
-    // the proxy. Created before the FS jail and the seccomp filter, both of
-    // which the command must not be able to work around.
-    let relay_port = if proxy_port != 0 {
-        let port = publish_relay_listener(relay_socket_fd).map_err(|e| ("relay-failed", e))?;
-        // Then wait for the parent to finish taking the namespace's network
-        // apart again (see the `slirp_child.kill()` there): until that byte
-        // arrives, slirp is still running and its NAT can still reach addresses
-        // the host owns.
-        let mut released = [0u8; 1];
-        read_exact_bytes(go_read_fd, &mut released).map_err(|error| {
-            (
-                "handshake-failed",
-                anyhow!("parent aborted before the network was final: {error}"),
-            )
-        })?;
-        Some(port)
-    } else {
-        None
-    };
-
-    // Apply the filesystem backend to what the parent pinned and planned. Each
-    // branch yields the directory the command's `TMPDIR` should point at.
-    let tmpdir: PathBuf = match fs_backend {
+/// Apply the filesystem backend to what the parent pinned and planned,
+/// returning the directory the command's `TMPDIR` should name. `scratch_pid`
+/// names the per-command scratch directories, as the parent removes them.
+fn apply_filesystem_backend(
+    fs_backend: FsBackend,
+    invocation: &Stage1Invocation,
+    writable_pins: &[CanonicalPathBuf],
+    protected: &[ProtectedEntry],
+    plan: &FilesystemPlan,
+    scratch_pid: libc::pid_t,
+    read_hidden: &[PathBuf],
+    reachable: &[PathBuf],
+) -> std::result::Result<PathBuf, (&'static str, anyhow::Error)> {
+    match fs_backend {
         FsBackend::Landlock(abi) => {
             let mut temporary_writable = Vec::new();
             let tmpdir = if invocation.wsl {
-                enter_private_mount_namespace().map_err(|e| ("mount-failed", e))?;
+                enter_private_mount_namespace().map_err(|error| ("mount-failed", error))?;
+                // First, so that the read-only binds of protected entries in a
+                // worktree on a Windows drive land on what this binds back.
+                cover_windows_drives(writable_pins, invocation, &mut Vec::new()).map_err(
+                    |error| {
+                        let code = if error.is::<WindowsHomeRoot>() {
+                            "windows-home-root"
+                        } else {
+                            "mount-failed"
+                        };
+                        (code, error)
+                    },
+                )?;
                 let tmpdir = provide_private_tmp(
                     writable_pins,
                     plan,
                     invocation.allow_fs_write,
                     &mut temporary_writable,
+                    scratch_pid,
                 )
-                .map_err(|e| ("mount-failed", e))?;
+                .map_err(|error| ("mount-failed", error))?;
                 provide_private_dev_shm(writable_pins, &mut temporary_writable);
                 for pin in &plan.binds {
-                    bind_read_only(pin).map_err(|e| ("mount-failed", e))?;
+                    bind_read_only(pin).map_err(|error| ("mount-failed", error))?;
                 }
+                hide_read_hidden_entries(read_hidden, reachable, writable_pins, None, false)
+                    .or_else(|error| read_hiding_refused(invocation.wsl, error))?;
                 tmpdir
             } else {
-                let private_tmp = create_private_tmpdir().map_err(|e| ("mkdtemp-failed", e))?;
+                let private_tmp = create_private_tmpdir(scratch_pid)
+                    .map_err(|error| ("mkdtemp-failed", error))?;
                 temporary_writable.push(private_tmp.clone());
+                // Nothing else here needs a mount namespace of the command's
+                // own, the hiding does: entered only when there is something
+                // to hide.
+                hide_read_hidden_entries(
+                    read_hidden,
+                    reachable,
+                    writable_pins,
+                    invocation.on_wsl.then_some(invocation),
+                    true,
+                )
+                .or_else(|error| read_hiding_refused(invocation.wsl, error))?;
                 private_tmp
             };
             apply_landlock(abi, &plan.grants, &temporary_writable, invocation.on_wsl)
-                .map_err(|e| ("landlock-failed", e))?;
-            tmpdir
+                .map_err(|error| ("landlock-failed", error))?;
+            Ok(tmpdir)
         }
         FsBackend::MountJail => {
             // The jail can only re-bind what exists, so a missing protected
@@ -805,14 +1084,30 @@ fn run_holder_inner(
                 .iter()
                 .filter_map(|entry| entry.pin().cloned())
                 .collect();
-            apply_mount_jail(writable_pins, &protected_pins, invocation.allow_fs_write)
-                .map_err(|e| ("mount-failed", e))?;
-            PathBuf::from("/tmp")
+            apply_mount_jail(
+                writable_pins,
+                &protected_pins,
+                invocation.allow_fs_write,
+                scratch_pid,
+            )
+            .map_err(|error| ("mount-failed", error))?;
+            // Inside the jail's own mount namespace, after `pivot_root`.
+            hide_read_hidden_entries(
+                read_hidden,
+                reachable,
+                writable_pins,
+                invocation.on_wsl.then_some(invocation),
+                false,
+            )
+            .or_else(|error| read_hiding_refused(invocation.wsl, error))?;
+            Ok(PathBuf::from("/tmp"))
         }
-    };
+    }
+}
 
-    // The caller's environment first, so that the sandbox's own temp-dir and
-    // proxy settings below always win over it.
+/// The command's environment: the caller's settings, then the sandbox's own
+/// temp-dir and proxy settings, which always win over them.
+fn set_command_environment(invocation: &Stage1Invocation, tmpdir: &Path, relay_port: Option<u16>) {
     // SAFETY: single-threaded here (a forked, not-yet-exec'd child), so
     // `set_var` / `remove_var` are sound; the names were validated at parse time.
     for (name, value) in &invocation.set_environment {
@@ -830,15 +1125,12 @@ fn run_holder_inner(
             unsafe { std::env::remove_var(name) };
         }
     }
-
-    // Point the command's temp-dir env at the writable temp location.
-    // SAFETY: single-threaded here (a forked, not-yet-exec'd child), so `set_var`
-    // is sound.
     for key in ["TMPDIR", "TMP", "TEMP"] {
-        unsafe { std::env::set_var(key, &tmpdir) };
+        // SAFETY: as above.
+        unsafe { std::env::set_var(key, tmpdir) };
     }
-    // Point the command's proxy env at the in-namespace relay listener (the
-    // sandbox's own loopback, not the host's).
+    // The in-namespace relay listener: the sandbox's own loopback, not the
+    // host's.
     if let Some(relay_port) = relay_port {
         let url = format!("http://127.0.0.1:{relay_port}");
         for key in [
@@ -849,23 +1141,28 @@ fn run_holder_inner(
             "ALL_PROXY",
             "all_proxy",
         ] {
+            // SAFETY: as above.
             unsafe { std::env::set_var(key, &url) };
         }
         for key in ["NO_PROXY", "no_proxy"] {
+            // SAFETY: as above.
             unsafe { std::env::set_var(key, "") };
         }
     }
+}
 
-    // chdir into the working directory *after* the FS jail is in place (so the
-    // path resolves inside the jail).
-    if let Some(dir) = &invocation.chdir {
-        std::env::set_current_dir(dir)
-            .with_context(|| format!("chdir into {}", dir.display()))
-            .map_err(|e| ("chdir-failed", e))?;
-    }
-
-    restore_open_file_limit(original_open_file_limit);
-
+/// Drop capabilities, install the seccomp filter, restore the signal mask and
+/// `exec` the command. The filter survives `exec`; the command reaches the
+/// proxy over TCP (AF_INET), which the filter allows. Only returns on failure.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the remote sandbox helper is a standalone process, not the GPUI app; \
+              `CommandExt::exec` of the untrusted command is exactly what it must do"
+)]
+fn finalize_and_exec_command(
+    invocation: &Stage1Invocation,
+    original_signal_mask: &libc::sigset_t,
+) -> (&'static str, anyhow::Error) {
     // WSL runs commands as root by default, as can a dev container's
     // `remoteUser`, and root in this user namespace would keep every capability
     // across `exec` — `CAP_SYS_ADMIN` over the mount namespace holding the
@@ -873,20 +1170,357 @@ fn run_holder_inner(
     // same way). Anyone else loses them at `exec` anyway.
     // SAFETY: `geteuid` takes no arguments and cannot fail.
     if invocation.on_wsl || unsafe { libc::geteuid() } == 0 {
-        drop_all_capabilities().map_err(|e| ("caps-failed", e))?;
+        if let Err(error) = drop_all_capabilities() {
+            return ("caps-failed", error);
+        }
     }
-
-    // Install the AF_UNIX-blocking seccomp filter (shared with the Bubblewrap
-    // backend) and exec. The filter survives exec; the command reaches the proxy
-    // over TCP (AF_INET), which the filter allows.
-    install_command_seccomp_filter().map_err(|e| ("seccomp-failed", e))?;
+    if let Err(error) = install_command_seccomp_filter() {
+        return ("seccomp-failed", error);
+    }
+    // A handler init or the holder installed is inherited as `SIG_IGN` across
+    // the fork, and `exec` keeps an ignored disposition — so a command would
+    // otherwise never see SIGINT. Put the signals we touch back to their
+    // default, then unblock (the parent blocked them across the fork so it
+    // could decide whom to hand them to).
+    reset_touched_signals_to_default();
+    restore_signal_mask(original_signal_mask);
     let error = Command::new(&invocation.program)
         .args(&invocation.args)
         .exec();
-    Err((
+    (
         "exec-failed",
         anyhow!("exec {:?}: {error}", invocation.program),
-    ))
+    )
+}
+
+/// Fork the command's PID-namespace init and wait for it. Init sets up the
+/// filesystem, the environment and the terminal and runs the command; the
+/// holder only passes signals on to it and exits with its status. When init
+/// exits the kernel kills whatever else is left in the namespace. Only returns
+/// when the fork fails.
+fn launch_namespace_init(
+    setup: HolderSetup<'_>,
+    relay_port: Option<u16>,
+) -> std::result::Result<std::convert::Infallible, (&'static str, anyhow::Error)> {
+    // The scratch directories carry the holder's pid, which is what the parent
+    // knows to remove afterwards; init's own pid, inside the namespace, is 1.
+    // SAFETY: `getpid` takes no arguments and cannot fail.
+    let scratch_pid = unsafe { libc::getpid() };
+    // `getppid` cannot tell init whether the holder is still there — the
+    // holder is outside init's namespace, so the answer is always 0 — but this
+    // pipe's write end closing can.
+    let holder_alive = Pipe::new().map_err(|error| ("pipe-failed", anyhow::Error::new(error)))?;
+    // SAFETY: a single `fork` from a single-threaded process (no thread has
+    // been started in the holder). The child is the new namespace's init.
+    let init = unsafe { libc::fork() };
+    if init < 0 {
+        return Err((
+            "fork-failed",
+            anyhow!(
+                "fork() for the PID-namespace init: {}",
+                std::io::Error::last_os_error()
+            ),
+        ));
+    }
+    if init == 0 {
+        drop(holder_alive.write);
+        run_namespace_init(setup, relay_port, scratch_pid, holder_alive.read);
+    }
+    drop(holder_alive.read);
+    if let Err(error) = install_command_signal_policy(init) {
+        log::warn!("[remote-sandbox] could not install the holder signal policy: {error:#}");
+    }
+    restore_signal_mask(&setup.original_signal_mask);
+    // Init's death by a signal is the namespace being torn down (PDEATHSIG, an
+    // OOM kill), not the command dying — otherwise init would exit with the
+    // command's code. Note it so a `128 + signal` status is not read as the
+    // command having caught that signal.
+    let mut raw_status = 0;
+    // SAFETY: `raw_status` is a valid out-parameter; `init` is our direct child.
+    let waited = unsafe { libc::waitpid(init, &mut raw_status, 0) };
+    if waited < 0 {
+        fail_closed("wait-failed", "failed to wait for the sandbox init");
+    }
+    if libc::WIFSIGNALED(raw_status) {
+        eprintln!(
+            "[remote-sandbox] the sandbox init was killed by signal {}, not the command",
+            libc::WTERMSIG(raw_status)
+        );
+    }
+    let code = if libc::WIFEXITED(raw_status) {
+        libc::WEXITSTATUS(raw_status)
+    } else if libc::WIFSIGNALED(raw_status) {
+        128 + libc::WTERMSIG(raw_status)
+    } else {
+        SANDBOX_SETUP_FAILED_EXIT_CODE
+    };
+    std::process::exit(code);
+}
+
+/// PID 1 of the command's namespace. Never returns.
+fn run_namespace_init(
+    setup: HolderSetup<'_>,
+    relay_port: Option<u16>,
+    scratch_pid: libc::pid_t,
+    holder_alive: OwnedFd,
+) -> ! {
+    match prepare_and_run_command(setup, relay_port, scratch_pid, holder_alive) {
+        Ok(never) => match never {},
+        Err((code, error)) => fail_closed(code, &format!("{error:#}")),
+    }
+}
+
+/// Init's work: die with the holder, mount the namespace's own `/proc` —
+/// before the filesystem backend, because Landlock refuses every mount once it
+/// is enforced — apply the backend, set up the command's environment, then fork
+/// the command into a process group of its own, hand it the terminal, and reap
+/// until it exits.
+fn prepare_and_run_command(
+    setup: HolderSetup<'_>,
+    relay_port: Option<u16>,
+    scratch_pid: libc::pid_t,
+    holder_alive: OwnedFd,
+) -> std::result::Result<std::convert::Infallible, (&'static str, anyhow::Error)> {
+    let HolderSetup {
+        invocation,
+        fs_backend,
+        writable_pins,
+        protected,
+        plan,
+        original_open_file_limit,
+        original_signal_mask,
+        parent_pid: _,
+        terminal,
+        read_hidden,
+        reachable,
+    } = setup;
+    set_parent_death_signal().map_err(|error| ("signals-failed", error))?;
+    // Checked after the request, so a holder that died before it is seen here
+    // and one that dies after it sends the signal.
+    if pipe_writers_are_gone(&holder_alive) {
+        std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
+    }
+    drop(holder_alive);
+
+    mount_private_proc();
+    let tmpdir = apply_filesystem_backend(
+        fs_backend,
+        &invocation,
+        writable_pins,
+        protected,
+        plan,
+        scratch_pid,
+        read_hidden,
+        reachable,
+    )?;
+    set_command_environment(&invocation, &tmpdir, relay_port);
+    // After the FS jail is in place, so the path resolves inside the jail.
+    if let Some(dir) = &invocation.chdir {
+        std::env::set_current_dir(dir)
+            .with_context(|| format!("chdir into {}", dir.display()))
+            .map_err(|error| ("chdir-failed", error))?;
+    }
+    restore_open_file_limit(original_open_file_limit);
+
+    // SAFETY: single-threaded (init has started no thread); the child becomes
+    // the command.
+    let command = unsafe { libc::fork() };
+    if command < 0 {
+        return Err((
+            "fork-failed",
+            anyhow!(
+                "fork() for the sandboxed command: {}",
+                std::io::Error::last_os_error()
+            ),
+        ));
+    }
+    if command == 0 {
+        let (code, error) = become_command(&invocation, &original_signal_mask, terminal);
+        fail_closed(code, &format!("{error:#}"));
+    }
+    // Done on both sides of the fork, whichever gets there first, as a shell
+    // does for a job: the command may read the terminal the moment it runs.
+    move_to_own_process_group(command, terminal);
+    if let Err(error) = install_command_signal_policy(command) {
+        log::warn!("[remote-sandbox] could not install the init signal policy: {error:#}");
+    }
+    restore_signal_mask(&original_signal_mask);
+    // Reaps the command's orphans, which the kernel hands to init, and keeps a
+    // stopped command from hanging. Once init exits the kernel kills everything
+    // else in the namespace.
+    let code = wait_for_command(command).unwrap_or(SANDBOX_SETUP_FAILED_EXIT_CODE);
+    std::process::exit(code);
+}
+
+/// Whether every write end of the pipe `read_end` belongs to has closed.
+fn pipe_writers_are_gone(read_end: &OwnedFd) -> bool {
+    let mut poll_fd = libc::pollfd {
+        fd: read_end.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: one valid `pollfd`; a zero timeout never blocks.
+    let ready = unsafe { libc::poll(&mut poll_fd, 1, 0) };
+    ready > 0 && poll_fd.revents & libc::POLLHUP != 0
+}
+
+/// The command's side of the fork: a process group of its own and, when the
+/// helper had it, the terminal; then `exec`. Only returns on failure.
+fn become_command(
+    invocation: &Stage1Invocation,
+    original_signal_mask: &libc::sigset_t,
+    terminal: Option<RawFd>,
+) -> (&'static str, anyhow::Error) {
+    // `kill(0, …)` reaches the caller's whole process group, and a process
+    // group is not confined to a PID namespace: left in the helper's group, the
+    // command could stop or kill the parent, the holder and init with it.
+    // SAFETY: `setpgid` with scalar arguments.
+    if unsafe { libc::setpgid(0, 0) } != 0 {
+        return (
+            "signals-failed",
+            anyhow!("setpgid: {}", std::io::Error::last_os_error()),
+        );
+    }
+    if let Some(terminal) = terminal {
+        // SAFETY: `getpid` takes no arguments and cannot fail.
+        hand_terminal_to(terminal, unsafe { libc::getpid() });
+    }
+    finalize_and_exec_command(invocation, original_signal_mask)
+}
+
+/// Init's half of putting the command in a process group of its own and
+/// handing it the terminal, so that Ctrl+C, Ctrl+Z and window-size changes
+/// reach the command's group and nothing else.
+fn move_to_own_process_group(command: libc::pid_t, terminal: Option<RawFd>) {
+    // SAFETY: `setpgid` with scalar arguments. Once the command has `exec`ed
+    // this fails with `EACCES`, and by then it has done it itself.
+    let made_group = unsafe { libc::setpgid(command, command) } == 0;
+    if !made_group {
+        log::debug!(
+            "[remote-sandbox] setpgid for the command: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    if let Some(terminal) = terminal {
+        // SAFETY: `tcgetpgrp` with a scalar argument.
+        let foreground = unsafe { libc::tcgetpgrp(terminal) };
+        // Inside this PID namespace a group outside it has no id, so 0 is the
+        // helper's group: the terminal still waiting to be handed over. The
+        // command's own group (the one set up above) has it already, and any
+        // other group is a job the command started, which keeps it. Right
+        // after `setpgid` succeeded the command has not run, so there is no
+        // such job yet.
+        let hand_over = foreground >= 0 && foreground != command && (made_group || foreground == 0);
+        if hand_over {
+            hand_terminal_to(terminal, command);
+        }
+    }
+}
+
+/// Make `group` the terminal's foreground process group. Called from outside
+/// that group, which the terminal allows only while SIGTTOU is blocked or
+/// ignored: blocked since before the fork in init and the command, ignored by
+/// the parent when it takes the terminal back.
+fn hand_terminal_to(terminal: RawFd, group: libc::pid_t) {
+    // SAFETY: `tcsetpgrp` with scalar arguments.
+    if unsafe { libc::tcsetpgrp(terminal, group) } != 0 {
+        log::warn!(
+            "[remote-sandbox] could not hand the terminal to process group {group}: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+/// Take the terminal back for the helper's own `group` once the command is
+/// done, but only if its foreground group is gone (the command's, now dead) —
+/// never steal it from a live job that legitimately became the foreground.
+fn reclaim_terminal(terminal: RawFd, group: libc::pid_t) {
+    // SAFETY: `tcgetpgrp` with a scalar argument.
+    let foreground = unsafe { libc::tcgetpgrp(terminal) };
+    if foreground < 0 || foreground == group {
+        return;
+    }
+    // The group, not a process with the group's id: the leader may be gone
+    // while the rest of its job still runs.
+    // SAFETY: `kill` with signal 0 only probes; `EPERM` still means it is alive.
+    let alive = unsafe { libc::kill(-foreground, 0) } == 0
+        || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+    if !alive {
+        hand_terminal_to(terminal, group);
+    }
+}
+
+/// The descriptor among stdin, stdout and stderr that is this process's
+/// controlling terminal with this process's group in the foreground, and that
+/// group: the terminal the command is to get, and whom to give it back to. A
+/// helper in a background job, or without a terminal, hands nothing over.
+fn foreground_terminal() -> Option<(RawFd, libc::pid_t)> {
+    // SAFETY: `getpgrp` takes no arguments and cannot fail.
+    let own_group = unsafe { libc::getpgrp() };
+    [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO]
+        .into_iter()
+        // SAFETY: `tcgetpgrp` with a scalar argument; -1 for anything that is
+        // not this process's controlling terminal.
+        .find(|&descriptor| unsafe { libc::tcgetpgrp(descriptor) } == own_group)
+        .map(|descriptor| (descriptor, own_group))
+}
+
+/// Mount a private `/proc` reflecting the current PID namespace. Done in a
+/// fresh mount namespace so it never touches the host's `/proc`, and left best
+/// effort (the command runs regardless).
+fn mount_private_proc() {
+    // SAFETY: `unshare` with this flag reads no memory.
+    if unsafe { libc::unshare(libc::CLONE_NEWNS) } != 0 {
+        log::warn!(
+            "[remote-sandbox] no private mount namespace for /proc: {}",
+            std::io::Error::last_os_error()
+        );
+        return;
+    }
+    if let Err(error) = mount(
+        None,
+        Path::new("/"),
+        None,
+        libc::MS_REC | libc::MS_PRIVATE,
+        None,
+    ) {
+        log::warn!("[remote-sandbox] could not make / private for a fresh /proc: {error:#}");
+        return;
+    }
+    if let Err(error) = mount(
+        Some(Path::new("proc")),
+        Path::new("/proc"),
+        Some("proc"),
+        libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC,
+        None,
+    ) {
+        log::warn!("[remote-sandbox] could not mount a fresh /proc: {error:#}");
+    }
+}
+
+/// Set the signals the helper parent, the holder and init touch back to their
+/// default disposition, so the command starts with normal behavior (`exec`
+/// would otherwise keep an inherited `SIG_IGN`).
+///
+/// SIGTTIN and SIGTTOU are deliberately *left ignored*: if the command is not
+/// the terminal's foreground group (a helper launched in the background, or one
+/// with a console it is not the foreground of — the common non-interactive
+/// `wsl.exe` case), a background terminal read or write would otherwise stop
+/// the command with nobody in the sandbox to continue it, hanging init. Ignored,
+/// those operations return `EIO` instead of stopping — non-blocking, and a
+/// sandboxed command has no business reading the user's terminal from the
+/// background anyway. When the command *is* the foreground group (an interactive
+/// pty session), these never fire regardless.
+fn reset_touched_signals_to_default() {
+    let reset = FORWARDED_SIGNALS
+        .into_iter()
+        .chain(IGNORED_SIGNALS)
+        .filter(|signal| !matches!(*signal, libc::SIGTTIN | libc::SIGTTOU));
+    for signal in reset {
+        if let Err(error) = set_signal_disposition(signal, libc::SIG_DFL, 0) {
+            log::debug!("[remote-sandbox] could not reset signal {signal}: {error:#}");
+        }
+    }
 }
 
 /// Read exactly `buf.len()` bytes from `fd`, failing on an early EOF.
@@ -968,22 +1602,22 @@ impl SocketPair {
     }
 }
 
-/// Bind the sandbox's egress entry point on the namespace's own loopback and
-/// hand the listening socket to the parent, which is the only participant that
-/// can still reach the host. Returns the port the command's `HTTP(S)_PROXY`
-/// must name.
+/// Bind one of the sandbox's ways out — the egress entry point (`port` 0: any
+/// free port) or the IDE port — on the namespace's own loopback, and hand the
+/// listening socket to the parent, which is the only participant that can
+/// still reach the host. Returns the port it listens on.
 ///
 /// Binding here — inside the namespace, before any restriction is applied — is
 /// what makes the tighter slirp configuration possible: the parent cannot
 /// create a socket in a namespace it is not in, and joining one would mean
 /// entering the holder's user namespace and losing the ability to come back
 /// out.
-fn publish_relay_listener(socket_fd: RawFd) -> Result<u16> {
-    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-        .context("binding the in-sandbox egress listener")?;
+fn publish_listener(socket_fd: RawFd, port: u16) -> Result<u16> {
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
+        .with_context(|| format!("binding the in-sandbox listener on port {port}"))?;
     let port = listener
         .local_addr()
-        .context("reading the in-sandbox egress listener address")?
+        .context("reading the in-sandbox listener address")?
         .port();
     send_relay_listener(socket_fd, listener.as_raw_fd(), port)?;
     // The parent's copy is what serves the sandbox from now on; ours would only
@@ -1043,74 +1677,619 @@ fn receive_relay_listener(socket_fd: RawFd) -> Result<OwnedFd> {
     listener.context("the holder sent no in-sandbox egress listener")
 }
 
-/// Accept on the sandbox-side listener and splice each connection to the egress
-/// proxy on the host's loopback. This is the whole of the sandbox's outbound
-/// path: it can reach the proxy's allowlist decision and nothing else.
+/// Accept on the sandbox-side egress listener and splice each connection to
+/// the egress proxy on the host's loopback. This is the whole of the sandbox's
+/// outbound path: it can reach the proxy's allowlist decision and nothing else.
 fn spawn_egress_relay(listener: OwnedFd, proxy_port: u16) -> std::io::Result<()> {
+    spawn_relay(
+        listener,
+        "egress",
+        MAX_EGRESS_RELAY_CONNECTIONS,
+        move |inbound| match std::net::TcpStream::connect((
+            std::net::Ipv4Addr::LOCALHOST,
+            proxy_port,
+        )) {
+            Ok(outbound) => splice_connection(inbound, outbound, "egress"),
+            Err(error) => {
+                log::warn!("[remote-sandbox] egress relay could not reach the proxy: {error}")
+            }
+        },
+    )
+}
+
+/// ADR-F49: accept on the sandbox-side IDE listener and splice each connection
+/// to the IDE bridge's socket.
+fn spawn_ide_relay(listener: OwnedFd, rendezvous: IdeRendezvous) -> std::io::Result<()> {
+    let rendezvous = Arc::new(rendezvous);
+    spawn_relay(
+        listener,
+        "ide",
+        MAX_IDE_RELAY_CONNECTIONS,
+        move |inbound| match rendezvous.connect() {
+            Ok(outbound) => splice_connection(inbound, outbound, "ide"),
+            Err(error) => {
+                log::warn!("[remote-sandbox] ide relay could not reach the bridge: {error}")
+            }
+        },
+    )
+}
+
+/// The most IDE connections the helper relays at once, as many as the bridge
+/// and Zed take.
+const MAX_IDE_RELAY_CONNECTIONS: usize = crate::MAX_BRIDGE_CONNECTIONS;
+/// The most egress connections the helper relays at once. Higher than the IDE
+/// cap because parallel downloads legitimately open many; it only bounds the
+/// threads (two per connection) a command can make the helper start.
+const MAX_EGRESS_RELAY_CONNECTIONS: usize = 256;
+
+/// Accept on `listener` and hand each connection to `serve` on a thread of its
+/// own, never more than `max_connections` at once: one beyond that is closed
+/// as soon as it is accepted.
+fn spawn_relay(
+    listener: OwnedFd,
+    relay: &'static str,
+    max_connections: usize,
+    serve: impl Fn(std::net::TcpStream) + Clone + Send + 'static,
+) -> std::io::Result<()> {
     let listener = std::net::TcpListener::from(listener);
+    let open_connections = Arc::new(AtomicUsize::new(0));
     std::thread::Builder::new()
-        .name("zed-remote-sandbox-egress".into())
+        .name(format!("zed-remote-sandbox-{relay}"))
         .spawn(move || {
             loop {
                 let inbound = match listener.accept() {
                     Ok((inbound, _peer)) => inbound,
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                     Err(error) => {
-                        log::warn!("[remote-sandbox] egress relay stopped accepting: {error}");
+                        log::warn!("[remote-sandbox] {relay} relay stopped accepting: {error}");
                         break;
                     }
                 };
+                // Only this thread adds, so the count cannot pass the cap
+                // between the check and the increment.
+                if open_connections.load(Ordering::SeqCst) >= max_connections {
+                    log::warn!(
+                        "[remote-sandbox] {relay} relay refused a connection: \
+                         {max_connections} are open"
+                    );
+                    drop(inbound);
+                    continue;
+                }
+                open_connections.fetch_add(1, Ordering::SeqCst);
+                let slot = RelaySlot(open_connections.clone());
+                let serve = serve.clone();
+                // A failed spawn drops the closure, and with it the slot.
                 if let Err(error) = std::thread::Builder::new()
-                    .name("zed-remote-sandbox-egress-conn".into())
-                    .spawn(move || relay_connection(inbound, proxy_port))
+                    .name(format!("zed-remote-sandbox-{relay}-conn"))
+                    .spawn(move || {
+                        let _slot = slot;
+                        serve(inbound)
+                    })
                 {
-                    log::warn!("[remote-sandbox] could not relay a connection: {error}");
+                    log::warn!(
+                        "[remote-sandbox] {relay} relay could not take a connection: {error}"
+                    );
                 }
             }
         })?;
     Ok(())
 }
 
-/// Pump one accepted sandbox connection to and from the proxy until both
-/// directions end.
-fn relay_connection(inbound: std::net::TcpStream, proxy_port: u16) {
-    use std::net::{Ipv4Addr, Shutdown, TcpStream};
+/// One of a relay's open connections; frees its place when dropped.
+struct RelaySlot(Arc<AtomicUsize>);
 
-    let outbound = match TcpStream::connect((Ipv4Addr::LOCALHOST, proxy_port)) {
-        Ok(outbound) => outbound,
-        Err(error) => {
-            log::warn!("[remote-sandbox] egress relay could not reach the proxy: {error}");
-            return;
-        }
-    };
+impl Drop for RelaySlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// A connected stream the relays splice. Each direction is copied on a thread
+/// of its own, so the stream has to be duplicable and half-closable.
+trait RelayStream: std::io::Read + std::io::Write + Send + Sized + 'static {
+    fn duplicate(&self) -> std::io::Result<Self>;
+    fn shutdown_write(&self) -> std::io::Result<()>;
+}
+
+impl RelayStream for std::net::TcpStream {
+    fn duplicate(&self) -> std::io::Result<Self> {
+        self.try_clone()
+    }
+
+    fn shutdown_write(&self) -> std::io::Result<()> {
+        self.shutdown(std::net::Shutdown::Write)
+    }
+}
+
+impl RelayStream for UnixStream {
+    fn duplicate(&self) -> std::io::Result<Self> {
+        self.try_clone()
+    }
+
+    fn shutdown_write(&self) -> std::io::Result<()> {
+        self.shutdown(std::net::Shutdown::Write)
+    }
+}
+
+/// Pump one accepted sandbox connection to and from `outbound` until both
+/// directions end.
+fn splice_connection(inbound: impl RelayStream, outbound: impl RelayStream, relay: &'static str) {
     let (mut inbound_reader, mut outbound_writer) =
-        match (inbound.try_clone(), outbound.try_clone()) {
+        match (inbound.duplicate(), outbound.duplicate()) {
             (Ok(inbound_reader), Ok(outbound_writer)) => (inbound_reader, outbound_writer),
             _ => {
-                log::warn!("[remote-sandbox] egress relay could not duplicate a relayed socket");
+                log::warn!("[remote-sandbox] {relay} relay could not duplicate a relayed socket");
                 return;
             }
         };
 
-    let to_proxy = std::thread::spawn(move || {
-        // A relayed connection normally ends with a reset or a half-close from
-        // one side, so a copy error here is expected traffic, not a fault.
-        if let Err(error) = std::io::copy(&mut inbound_reader, &mut outbound_writer) {
-            log::debug!("[remote-sandbox] egress relay request stream ended: {error}");
+    let forward = std::thread::Builder::new()
+        .name(format!("zed-remote-sandbox-{relay}-out"))
+        .spawn(move || {
+            // A relayed connection normally ends with a reset or a half-close
+            // from one side, so a copy error here is expected traffic, not a
+            // fault.
+            if let Err(error) = std::io::copy(&mut inbound_reader, &mut outbound_writer) {
+                log::debug!("[remote-sandbox] {relay} relay request stream ended: {error}");
+            }
+            if let Err(error) = outbound_writer.shutdown_write() {
+                log::debug!("[remote-sandbox] {relay} relay could not half-close: {error}");
+            }
+        });
+    let forward = match forward {
+        Ok(forward) => forward,
+        Err(error) => {
+            log::warn!("[remote-sandbox] {relay} relay could not start: {error}");
+            return;
         }
-        let _ = outbound_writer.shutdown(Shutdown::Write);
-    });
+    };
 
     let mut outbound_reader = outbound;
     let mut inbound_writer = inbound;
     if let Err(error) = std::io::copy(&mut outbound_reader, &mut inbound_writer) {
-        log::debug!("[remote-sandbox] egress relay response stream ended: {error}");
+        log::debug!("[remote-sandbox] {relay} relay response stream ended: {error}");
     }
-    if let Err(error) = inbound_writer.shutdown(Shutdown::Write) {
-        log::debug!("[remote-sandbox] egress relay could not half-close: {error}");
+    if let Err(error) = inbound_writer.shutdown_write() {
+        log::debug!("[remote-sandbox] {relay} relay could not half-close: {error}");
     }
-    if to_proxy.join().is_err() {
-        log::warn!("[remote-sandbox] egress relay request thread panicked");
+    if forward.join().is_err() {
+        log::warn!("[remote-sandbox] {relay} relay request thread panicked");
     }
+}
+
+/// Take over the listeners the holder created inside the network namespace —
+/// the IDE one first, then the egress one, in the order it sends them — and
+/// start serving them. Returns whether they all arrived: one that did not
+/// means the holder failed closed on its own. Failing to serve one that did
+/// arrive fails the command closed.
+fn take_over_namespace_listeners(
+    relay_socket_fd: RawFd,
+    ide_rendezvous: Option<IdeRendezvous>,
+    egress_proxy_port: Option<u16>,
+    child_pid: libc::pid_t,
+) -> bool {
+    if let Some(rendezvous) = ide_rendezvous {
+        match receive_relay_listener(relay_socket_fd) {
+            Ok(listener) => {
+                if let Err(error) = spawn_ide_relay(listener, rendezvous) {
+                    abort_holder(
+                        child_pid,
+                        "relay-failed",
+                        &format!("starting the IDE relay: {error}"),
+                    );
+                }
+            }
+            Err(error) => {
+                log::warn!("[remote-sandbox] the holder sent no IDE listener: {error:#}");
+                return false;
+            }
+        }
+    }
+    if let Some(proxy_port) = egress_proxy_port {
+        match receive_relay_listener(relay_socket_fd) {
+            Ok(listener) => {
+                if let Err(error) = spawn_egress_relay(listener, proxy_port) {
+                    abort_holder(
+                        child_pid,
+                        "relay-failed",
+                        &format!("starting the egress relay: {error}"),
+                    );
+                }
+            }
+            Err(error) => {
+                log::warn!("[remote-sandbox] the holder sent no egress listener: {error:#}");
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// The IDE bridge's socket as the helper's parent connects to it (ADR-F49).
+///
+/// The parent connects from outside every namespace, so a socket the command
+/// could put there — or a symlink to one, WSL's interop socket say — would be
+/// reached with the parent's reach. Only a directory inside the protected set
+/// will do, which the command cannot write to however its writable roots lie,
+/// and the socket is looked at, without following a symlink, before every
+/// connection.
+struct IdeRendezvous {
+    directory: OwnedFd,
+    socket_name: CString,
+}
+
+impl IdeRendezvous {
+    fn open(
+        path: &Path,
+        protected: &[ProtectedEntry],
+        writable_pins: &[CanonicalPathBuf],
+    ) -> Result<Self> {
+        let socket_name = match path.file_name() {
+            Some(name) => CString::new(name.as_bytes())
+                .with_context(|| format!("{} contains a NUL byte", path.display()))?,
+            None => bail!("{} does not name a socket", path.display()),
+        };
+        let parent = path
+            .parent()
+            .with_context(|| format!("{} has no directory", path.display()))?;
+        let directory_path = std::fs::canonicalize(parent)
+            .with_context(|| format!("resolving {}", parent.display()))?;
+        ensure!(
+            protected
+                .iter()
+                .filter_map(ProtectedEntry::pin)
+                .any(|pin| directory_path.starts_with(pin.path())),
+            "{} is not inside a protected directory, so the sandboxed command could \
+             replace the socket the helper connects to",
+            directory_path.display()
+        );
+        // A protected directory is never also a writable grant (the two may not
+        // overlap), but check anyway: the parent connects from outside every
+        // namespace, so a rendezvous the command can write to is a way to aim
+        // that connection.
+        ensure!(
+            !writable_pins
+                .iter()
+                .any(|pin| directory_path.starts_with(pin.path())),
+            "{} is inside a writable grant, so the sandboxed command could replace \
+             the socket the helper connects to",
+            directory_path.display()
+        );
+        let directory = crate::util::open_o_path(&directory_path, crate::util::FollowSymlinks::No)
+            .with_context(|| format!("opening {}", directory_path.display()))?;
+        let status = nix::sys::stat::fstat(directory.as_raw_fd())
+            .map_err(|errno| anyhow!("examining {}: {errno}", directory_path.display()))?;
+        // SAFETY: `geteuid` takes no arguments and cannot fail.
+        let own_uid = unsafe { libc::geteuid() };
+        ensure!(
+            status.st_mode & libc::S_IFMT == libc::S_IFDIR
+                && status.st_uid == own_uid
+                && status.st_mode & 0o077 == 0,
+            "{} is not a private directory of this account",
+            directory_path.display()
+        );
+        Ok(Self {
+            directory,
+            socket_name,
+        })
+    }
+
+    /// Connect to the bridge without a path re-resolution the command could
+    /// race: open the socket itself relative to the pinned directory with
+    /// `O_PATH | O_NOFOLLOW` (so a symlink planted at the name fails, and the
+    /// directory is not walked again), confirm through that very descriptor
+    /// that it is a socket of this account's, then `connect` to
+    /// `/proc/self/fd/<that descriptor>` — the same inode, not a name resolved
+    /// a second time.
+    fn connect(&self) -> std::io::Result<UnixStream> {
+        // SAFETY: `directory` is open and `socket_name` is NUL-terminated; an
+        // `O_PATH` open takes no mode and performs no I/O on the socket.
+        let raw = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                self.socket_name.as_ptr(),
+                libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if raw < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: freshly opened by us and owned by nothing else.
+        let socket = unsafe { OwnedFd::from_raw_fd(raw) };
+        let status = nix::sys::stat::fstat(socket.as_raw_fd()).map_err(std::io::Error::from)?;
+        // SAFETY: `geteuid` takes no arguments and cannot fail.
+        let own_uid = unsafe { libc::geteuid() };
+        if status.st_mode & libc::S_IFMT != libc::S_IFSOCK || status.st_uid != own_uid {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "the IDE rendezvous is not a socket of this account",
+            ));
+        }
+        UnixStream::connect(format!("/proc/self/fd/{}", socket.as_raw_fd()))
+    }
+}
+
+/// The command, which SIGHUP / SIGTERM are passed on to; 0 while there is none
+/// — before the fork, and once it has been reaped and its pid may be someone
+/// else's.
+static COMMAND_PID: AtomicI32 = AtomicI32::new(0);
+
+/// Passed on to the command: a hangup (its terminal went away) or a request to
+/// terminate is meant for it, and the parent has to outlive it to clean up.
+const FORWARDED_SIGNALS: [libc::c_int; 2] = [libc::SIGHUP, libc::SIGTERM];
+/// Ignored by the parent, the holder and init. The terminal sends the first
+/// three to its foreground group, which is the command's own once init has
+/// handed it over; sent to the helper by anything else, they are not meant for
+/// the sandbox's plumbing either. SIGTTOU / SIGTTIN would stop them for writing
+/// to the terminal from the background, which they are once the command has it.
+const IGNORED_SIGNALS: [libc::c_int; 5] = [
+    libc::SIGINT,
+    libc::SIGQUIT,
+    libc::SIGTSTP,
+    libc::SIGTTOU,
+    libc::SIGTTIN,
+];
+
+fn become_child_subreaper() -> Result<()> {
+    // SAFETY: `prctl` with scalar arguments only.
+    if unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) } != 0 {
+        bail!(
+            "prctl(PR_SET_CHILD_SUBREAPER): {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    Ok(())
+}
+
+/// Block the signals the parent takes over, returning the mask to restore.
+fn block_command_signals() -> Result<libc::sigset_t> {
+    // SAFETY: both sets are initialized (by `sigemptyset` and by
+    // `pthread_sigmask`) before anything reads them.
+    unsafe {
+        let mut blocked: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut blocked);
+        for signal in FORWARDED_SIGNALS.into_iter().chain(IGNORED_SIGNALS) {
+            libc::sigaddset(&mut blocked, signal);
+        }
+        let mut original: libc::sigset_t = std::mem::zeroed();
+        let result = libc::pthread_sigmask(libc::SIG_BLOCK, &blocked, &mut original);
+        if result != 0 {
+            bail!(
+                "pthread_sigmask: {}",
+                std::io::Error::from_raw_os_error(result)
+            );
+        }
+        Ok(original)
+    }
+}
+
+fn restore_signal_mask(mask: &libc::sigset_t) {
+    // SAFETY: `mask` is a signal set `pthread_sigmask` filled in.
+    let result = unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, mask, std::ptr::null_mut()) };
+    if result != 0 {
+        log::warn!(
+            "[remote-sandbox] could not restore the signal mask: {}",
+            std::io::Error::from_raw_os_error(result)
+        );
+    }
+}
+
+/// Pass SIGHUP / SIGTERM on to `command`, and ignore SIGINT / SIGQUIT /
+/// SIGTSTP.
+fn install_command_signal_policy(command: libc::pid_t) -> Result<()> {
+    COMMAND_PID.store(command, Ordering::SeqCst);
+    for signal in FORWARDED_SIGNALS {
+        set_signal_disposition(
+            signal,
+            forward_to_command as extern "C" fn(libc::c_int) as libc::sighandler_t,
+            libc::SA_RESTART,
+        )?;
+    }
+    for signal in IGNORED_SIGNALS {
+        set_signal_disposition(signal, libc::SIG_IGN, 0)?;
+    }
+    Ok(())
+}
+
+fn set_signal_disposition(
+    signal: libc::c_int,
+    handler: libc::sighandler_t,
+    flags: libc::c_int,
+) -> Result<()> {
+    // SAFETY: an all-zero `sigaction` is a valid value; it is completed below.
+    let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+    action.sa_sigaction = handler;
+    action.sa_flags = flags;
+    // SAFETY: `action.sa_mask` is a valid signal set to empty, and the handler
+    // is either `SIG_IGN` or `forward_to_command`, which is async-signal-safe.
+    unsafe {
+        libc::sigemptyset(&mut action.sa_mask);
+        if libc::sigaction(signal, &action, std::ptr::null_mut()) != 0 {
+            bail!("sigaction({signal}): {}", std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
+extern "C" fn forward_to_command(signal: libc::c_int) {
+    let command = COMMAND_PID.load(Ordering::SeqCst);
+    if command > 0 {
+        // SAFETY: `kill` is async-signal-safe, and `errno` is put back so the
+        // code this handler interrupted never sees ours. Should the command be
+        // gone already, there is nobody left to tell.
+        unsafe {
+            let errno = libc::__errno_location();
+            let saved = *errno;
+            libc::kill(command, signal);
+            *errno = saved;
+        }
+    }
+}
+
+/// Wait for the command, reaping on the way the orphans it leaves behind — so
+/// none lingers as a zombie while it runs (the subreaper inherits them on the
+/// stage-1 parent; the namespace init is handed them as PID 1). A command that
+/// stops (Ctrl+Z sends SIGTSTP to the terminal's foreground group) is continued
+/// at once, since nothing here would ever continue it: Ctrl+Z does nothing.
+/// The command is observed before it is reaped, so its pid stays its own until
+/// nothing can pass a signal on to it any more.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the remote sandbox helper is a standalone process, not the GPUI app; \
+              blocking on its children is correct here"
+)]
+fn wait_for_command(command: libc::pid_t) -> Result<i32> {
+    loop {
+        // SAFETY: an all-zero `siginfo_t` is a valid value for `waitid` to fill.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // `WNOWAIT` leaves the state change in place: a stop can be answered
+        // with SIGCONT without consuming it, and an exit is reaped explicitly
+        // below so the code is read from `wait_pid`.
+        // SAFETY: `info` is a valid out-parameter.
+        let result = unsafe {
+            libc::waitid(
+                libc::P_ALL,
+                0,
+                &mut info,
+                libc::WEXITED | libc::WSTOPPED | libc::WNOWAIT,
+            )
+        };
+        if result != 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            bail!("waitid: {error}");
+        }
+        // SAFETY: `waitid` reported a child; the union carries its pid.
+        let reported = unsafe { info.si_pid() };
+        if info.si_code == libc::CLD_STOPPED {
+            // SAFETY: a `CLD_STOPPED` report carries the stop signal.
+            let stop_signal = unsafe { info.si_status() };
+            if reported == command && !matches!(stop_signal, libc::SIGTTIN | libc::SIGTTOU) {
+                // Continue the command's whole process group (its pid is the
+                // group id), so a stopped pipeline — `sh -c 'cat | grep x'`, an
+                // agent CLI's tool subprocess — resumes as a whole, not just its
+                // leader. SIGTTIN/SIGTTOU stops are left alone: continuing one
+                // would only loop into the same stop.
+                // SAFETY: `kill` with scalar arguments; the command is our
+                // unreaped child, so its pid — and its group — is still its own.
+                if unsafe { libc::kill(-command, libc::SIGCONT) } != 0 {
+                    log::debug!(
+                        "[remote-sandbox] continuing the command's group: {}",
+                        std::io::Error::last_os_error()
+                    );
+                }
+            } else {
+                // `WNOWAIT` left the stop in place, and the next wait would
+                // report it again at once: consumed here instead. A stopped
+                // orphan stays stopped until the namespace goes. A command
+                // stopped for using the terminal from the background waits, as
+                // under any shell, rather than being woken into the same stop
+                // over and over.
+                let mut status = 0;
+                // SAFETY: `status` is a valid out-parameter; `reported` is our
+                // unreaped child.
+                if unsafe { libc::waitpid(reported, &mut status, libc::WUNTRACED | libc::WNOHANG) }
+                    < 0
+                {
+                    log::debug!(
+                        "[remote-sandbox] consuming the stop of {reported}: {}",
+                        std::io::Error::last_os_error()
+                    );
+                }
+            }
+            continue;
+        }
+        if reported == command {
+            COMMAND_PID.store(0, Ordering::SeqCst);
+            return wait_pid(command);
+        }
+        if let Err(error) = wait_pid(reported) {
+            log::debug!("[remote-sandbox] reaping an orphan of the command: {error:#}");
+        }
+    }
+}
+
+/// Stop everything the command left running once it has exited — daemons that
+/// `setsid` away included. As the subreaper we inherit each orphan when its
+/// parent dies, so killing our children over and over reaches the whole tree.
+/// A child's pid stays ours until we reap it, so none can have been reused by
+/// the time we signal it.
+fn terminate_remaining_descendants() {
+    const GIVE_UP_AFTER: Duration = Duration::from_secs(5);
+    let started = Instant::now();
+    loop {
+        reap_exited_children();
+        let children = living_children();
+        if children.is_empty() {
+            return;
+        }
+        if started.elapsed() > GIVE_UP_AFTER {
+            log::warn!(
+                "[remote-sandbox] {} processes the command left behind did not stop",
+                children.len()
+            );
+            return;
+        }
+        for child in children {
+            // SAFETY: `kill` with scalar arguments; `child` is our unreaped
+            // child, so the pid is still its own.
+            if unsafe { libc::kill(child, libc::SIGKILL) } != 0 {
+                log::debug!(
+                    "[remote-sandbox] stopping {child}: {}",
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn reap_exited_children() {
+    loop {
+        let mut status = 0;
+        // SAFETY: `status` is a valid out-parameter.
+        let reaped = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
+        // 0: none has exited; -1: none is left (or the wait failed, which
+        // leaves nothing to do either).
+        if reaped <= 0 {
+            return;
+        }
+    }
+}
+
+/// Our children that are still running, from `/proc` (a zombie is done).
+fn living_children() -> Vec<libc::pid_t> {
+    let own_pid = std::process::id();
+    let entries = match std::fs::read_dir("/proc") {
+        Ok(entries) => entries,
+        Err(error) => {
+            log::warn!("[remote-sandbox] cannot list processes: {error}");
+            return Vec::new();
+        }
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let pid: libc::pid_t = entry.file_name().to_str()?.parse().ok()?;
+            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            let (state, parent) = parse_process_state_and_parent(&stat)?;
+            (u32::try_from(parent).ok() == Some(own_pid) && !matches!(state, 'Z' | 'X'))
+                .then_some(pid)
+        })
+        .collect()
+}
+
+/// The state and the parent pid from a `/proc/<pid>/stat` line.
+fn parse_process_state_and_parent(stat: &str) -> Option<(char, libc::pid_t)> {
+    // The command name comes in parentheses and may itself hold spaces and
+    // parentheses, so the fields are read after the last `)`.
+    let after_command = stat.get(stat.rfind(')')? + 1..)?;
+    let mut fields = after_command.split_whitespace();
+    let state = fields.next()?.chars().next()?;
+    let parent = fields.next()?.parse().ok()?;
+    Some((state, parent))
 }
 
 fn read_one_byte(fd: RawFd) -> std::io::Result<u8> {
@@ -2134,9 +3313,9 @@ fn sweep_stale_temp_dirs() {
 
 /// Create a private, owner-only per-command temp directory (for the Landlock
 /// backend's `TMPDIR`; mount-jail uses its own private tmpfs at `/tmp` instead).
-fn create_private_tmpdir() -> Result<PathBuf> {
+fn create_private_tmpdir(scratch_pid: libc::pid_t) -> Result<PathBuf> {
     use std::os::unix::fs::DirBuilderExt as _;
-    let dir = PathBuf::from(format!("/tmp/zed-remote-sandbox-{}", std::process::id()));
+    let dir = PathBuf::from(format!("/tmp/zed-remote-sandbox-{scratch_pid}"));
     // Clear a stale dir left by a recycled pid; only succeeds for one we own.
     remove_owned_temp_dir(&dir);
     std::fs::DirBuilder::new()
@@ -2268,6 +3447,7 @@ fn provide_private_tmp(
     plan: &FilesystemPlan,
     allow_fs_write: bool,
     temporary_writable: &mut Vec<PathBuf>,
+    scratch_pid: libc::pid_t,
 ) -> Result<PathBuf> {
     let tmp = std::fs::canonicalize("/tmp").context("resolving /tmp")?;
     let shared_tmp_writable = allow_fs_write
@@ -2285,7 +3465,7 @@ fn provide_private_tmp(
                 "[remote-sandbox] keeping the shared /tmp: a writable root below it is carved"
             );
         }
-        let private_tmp = create_private_tmpdir()?;
+        let private_tmp = create_private_tmpdir(scratch_pid)?;
         temporary_writable.push(private_tmp.clone());
         return Ok(private_tmp);
     }
@@ -2328,7 +3508,7 @@ fn provide_private_tmp(
             "[remote-sandbox] no private tmpfs for /tmp ({error:#}); \
              binding the per-command directory over it"
         );
-        let private_tmp = create_private_tmpdir()?;
+        let private_tmp = create_private_tmpdir(scratch_pid)?;
         mount(
             Some(private_tmp.as_path()),
             &tmp,
@@ -2362,6 +3542,674 @@ fn provide_private_tmp(
     }
     temporary_writable.push(tmp.clone());
     Ok(tmp)
+}
+
+/// The home whose read-hidden entries are covered: the account's own. The test
+/// helper may point it at a fake home so the hiding can be exercised without
+/// touching a real one; a production build ignores the override.
+fn read_hidden_home(home: &Path) -> PathBuf {
+    #[cfg(feature = "remote-sandbox-test")]
+    if let Some(home) = std::env::var_os("ZED_SANDBOX_READ_HIDDEN_HOME_FOR_TESTS") {
+        return PathBuf::from(home);
+    }
+    home.to_path_buf()
+}
+
+/// Where the Windows drives are in the command's mount namespace.
+struct WindowsDrives {
+    /// What gets covered: `/mnt` — WSL's default automount root, where Docker
+    /// Desktop also binds each distro's root (`/mnt/wsl`) — and every drive
+    /// mounted outside it (`[automount] root = /` puts them at `/c`, `/d`).
+    covers: Vec<PathBuf>,
+    /// Every drive's mount point, which Windows homes are found under.
+    mounts: Vec<PathBuf>,
+}
+
+/// The Windows drives, found in `/proc/self/mountinfo` by filesystem type (see
+/// [`drive_mount_points`]) rather than assumed at `/mnt`. The test helper may
+/// point it at a fake tree, each directory of which stands for a drive, so the
+/// hiding can be exercised without touching a real Windows home; a production
+/// build ignores the override.
+fn windows_drives() -> Result<WindowsDrives> {
+    #[cfg(feature = "remote-sandbox-test")]
+    if let Some(root) = std::env::var_os("ZED_WSL_HIDE_DRIVES_ROOT_FOR_TESTS") {
+        let root = PathBuf::from(root);
+        let mut mounts: Vec<PathBuf> = std::fs::read_dir(&root)
+            .with_context(|| format!("listing the fake drives in {}", root.display()))?
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .collect();
+        mounts.sort();
+        return Ok(WindowsDrives {
+            covers: vec![root],
+            mounts,
+        });
+    }
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo")
+        .context("reading /proc/self/mountinfo to find the Windows drives")?;
+    let mounts = drive_mount_points(&mountinfo);
+    let mut covers: Vec<PathBuf> = Vec::new();
+    let automount_root = Path::new("/mnt");
+    if automount_root.is_dir() {
+        covers.push(automount_root.to_path_buf());
+    }
+    for mount in &mounts {
+        if !covers.iter().any(|cover| mount.starts_with(cover)) {
+            covers.push(mount.clone());
+        }
+    }
+    Ok(WindowsDrives { covers, mounts })
+}
+
+/// The mount points of the Windows drives in `mountinfo`, outermost first:
+/// DrvFs over 9p (`aname=drvfs` — WSL mounts its driver store over 9p too),
+/// `drvfs` itself, and virtiofs, which WSL can mount the drives with instead —
+/// the types [`path_is_on_windows_fs`] tells a Windows file by.
+fn drive_mount_points(mountinfo: &str) -> Vec<PathBuf> {
+    let mut drives: Vec<PathBuf> = Vec::new();
+    for line in mountinfo.lines() {
+        let fields: Vec<&str> = line.split(' ').collect();
+        // Optional fields come between the mount options and a lone `-`.
+        let Some(separator) = fields
+            .iter()
+            .skip(6)
+            .position(|field| *field == "-")
+            .map(|position| position + 6)
+        else {
+            continue;
+        };
+        let (Some(mount_point), Some(filesystem)) = (fields.get(4), fields.get(separator + 1))
+        else {
+            continue;
+        };
+        let options = fields.get(separator + 3).copied().unwrap_or_default();
+        let drive = match *filesystem {
+            "9p" => options
+                .split(',')
+                .any(|option| option.starts_with("aname=drvfs")),
+            "drvfs" | "virtiofs" => true,
+            _ => false,
+        };
+        let mount_point = unescape_mount_point(mount_point);
+        if drive && !drives.contains(&mount_point) {
+            drives.push(mount_point);
+        }
+    }
+    drives.sort_by_key(|drive| drive.components().count());
+    drives
+}
+
+/// A path as `/proc/self/mountinfo` writes it, where a space, tab, newline or
+/// backslash is escaped as `\ooo`.
+fn unescape_mount_point(field: &str) -> PathBuf {
+    let mut unescaped = Vec::with_capacity(field.len());
+    let mut rest = field.as_bytes();
+    while let Some((&byte, tail)) = rest.split_first() {
+        let escaped = tail
+            .get(..3)
+            .filter(|_| byte == b'\\')
+            .and_then(|digits| std::str::from_utf8(digits).ok())
+            .and_then(|digits| u8::from_str_radix(digits, 8).ok());
+        match escaped {
+            Some(escaped) => {
+                unescaped.push(escaped);
+                rest = tail.get(3..).unwrap_or_default();
+            }
+            None => {
+                unescaped.push(byte);
+                rest = tail;
+            }
+        }
+    }
+    PathBuf::from(OsStr::from_bytes(&unescaped))
+}
+
+/// ADR-F49 decision 11 on WSL: cover every place the Windows drives show (see
+/// [`windows_drives`]) with an empty read-only tmpfs, and bind back only what
+/// the command must reach there — its writable roots, both where the session
+/// asked for them and where they resolved, and the directory it starts in (see
+/// [`starting_directory`]). Whole trees rather than one cover per credential:
+/// on case-insensitive DrvFs a path has many spellings
+/// (`/mnt/c/users/u/appdata`, `.SSH`, 8.3 names), and Docker Desktop binds each
+/// distro's root under `/mnt/wsl`, so covering names one by one can always be
+/// walked around. Each mount made is added to `mounted`, for a caller to take
+/// off again should a later one fail.
+///
+/// A writable root that would bring a Windows home's credentials back with it
+/// (see [`windows_home_exposure`]) is refused with [`WindowsHomeRoot`] before
+/// anything is mounted: hiding them inside it would need the Landlock grants
+/// split around them as well, and a cover over one spelling of an entry leaves
+/// its other spellings readable. Any other root that is one of the covered
+/// trees or holds it leaves that tree as it is.
+fn cover_windows_drives(
+    writable_pins: &[CanonicalPathBuf],
+    invocation: &Stage1Invocation,
+    mounted: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let drives = windows_drives()?;
+    let mut spellings: Vec<PathBuf> = writable_pins
+        .iter()
+        .map(|pin| pin.path().to_path_buf())
+        .chain(invocation.writable_paths.iter().cloned())
+        .collect();
+    spellings.sort();
+    spellings.dedup();
+    if let Some(refusal) = spellings
+        .iter()
+        .find_map(|path| windows_home_exposure(path, &drives.mounts))
+    {
+        return Err(refusal.into());
+    }
+    let covers: Vec<PathBuf> = drives
+        .covers
+        .into_iter()
+        .filter(|cover| cover.is_dir() && !spellings.iter().any(|path| cover.starts_with(path)))
+        .collect();
+    if covers.is_empty() {
+        return Ok(());
+    }
+    let approved: Vec<(u64, u64)> = writable_pins
+        .iter()
+        .filter_map(|pin| crate::util::linux_fd_identity(pin.fd().as_raw_fd()))
+        .collect();
+    spellings.retain(|path| covers.iter().any(|cover| path.starts_with(cover)));
+    spellings.sort_by_key(|path| path.components().count());
+    // Opened while the drives still show them, and bound back only when they
+    // are a root the user approved: a spelling that leads somewhere else by now
+    // is left out.
+    let mut binds: Vec<DrivesBind> = Vec::new();
+    for path in spellings {
+        if binds.iter().any(|outer| path.starts_with(&outer.target)) {
+            continue;
+        }
+        let Ok(source) = crate::util::open_o_path(&path, crate::util::FollowSymlinks::No) else {
+            log::warn!(
+                "[remote-sandbox] leaving {} out of the drives: it cannot be opened",
+                path.display()
+            );
+            continue;
+        };
+        let approved_root = crate::util::linux_fd_identity(source.as_raw_fd())
+            .is_some_and(|identity| approved.contains(&identity));
+        if !approved_root {
+            log::warn!(
+                "[remote-sandbox] leaving {} out of the drives: it is not the writable root \
+                 it was approved as",
+                path.display()
+            );
+            continue;
+        }
+        binds.push(DrivesBind {
+            target: path,
+            source,
+            read_only: false,
+        });
+    }
+    if let Some(start) = starting_directory(invocation, &covers, &drives.mounts, &binds)? {
+        binds.push(start);
+    }
+    // Outermost first, so a writable root inside the starting directory is
+    // bound over it rather than hidden under it.
+    binds.sort_by_key(|bind| bind.target.components().count());
+
+    for cover in &covers {
+        mount(
+            Some(Path::new("tmpfs")),
+            cover,
+            Some("tmpfs"),
+            libc::MS_NOSUID | libc::MS_NODEV,
+            Some("mode=755"),
+        )
+        .with_context(|| format!("covering {}", cover.display()))?;
+        mounted.push(cover.clone());
+        for bind in binds.iter().filter(|bind| bind.target.starts_with(cover)) {
+            let target = &bind.target;
+            // One inside the starting directory has its mount point there
+            // already, and making it again could empty a file of the user's.
+            let mount_point = if target.symlink_metadata().is_ok() {
+                Ok(())
+            } else if fd_is_dir(bind.source.as_raw_fd())? {
+                std::fs::create_dir_all(target)
+            } else {
+                target
+                    .parent()
+                    .map_or(Ok(()), |parent| std::fs::create_dir_all(parent))
+                    .and_then(|()| std::fs::File::create(target).map(drop))
+            };
+            mount_point.with_context(|| format!("creating mount point {}", target.display()))?;
+            let source_path = PathBuf::from(format!("/proc/self/fd/{}", bind.source.as_raw_fd()));
+            mount(
+                Some(source_path.as_path()),
+                target,
+                None,
+                libc::MS_BIND | libc::MS_REC,
+                None,
+            )
+            .with_context(|| {
+                format!("binding {} back over the covered drives", target.display())
+            })?;
+            mounted.push(target.clone());
+            if bind.read_only {
+                remount_read_only(target)
+                    .with_context(|| format!("making {} read-only", target.display()))?;
+            }
+        }
+        // Read-only once the mount points are made, so nothing can be put in
+        // the cover itself; what is bound back keeps its own access.
+        mount(
+            None,
+            cover,
+            None,
+            libc::MS_REMOUNT | libc::MS_RDONLY | libc::MS_NOSUID | libc::MS_NODEV,
+            None,
+        )
+        .with_context(|| format!("making the cover over {} read-only", cover.display()))?;
+    }
+    Ok(())
+}
+
+/// Something [`cover_windows_drives`] binds back over the covered drives.
+struct DrivesBind {
+    target: PathBuf,
+    source: OwnedFd,
+    read_only: bool,
+}
+
+/// A root that would bring a Windows home's credentials back with it, which a
+/// command in WSL mode may not be given (see [`cover_windows_drives`]). Says
+/// what it is or holds.
+#[derive(Debug)]
+struct WindowsHomeRoot(String);
+
+impl std::fmt::Display for WindowsHomeRoot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}, whose credentials the sandbox keeps unreadable",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for WindowsHomeRoot {}
+
+/// The directory the command starts in, when it lies on a covered drive
+/// outside every writable root, opened to be bound back there — read-only
+/// unless every write is allowed — so a session that may not write there can
+/// still start in it. One that would bring a Windows home's credentials back
+/// with it (see [`windows_home_exposure`]) is refused as a writable root would
+/// be; one inside a home's read-hidden entry (see
+/// [`inside_hidden_windows_entry`]) is left covered, and the command does not
+/// start.
+fn starting_directory(
+    invocation: &Stage1Invocation,
+    covers: &[PathBuf],
+    drives: &[PathBuf],
+    binds: &[DrivesBind],
+) -> Result<Option<DrivesBind>> {
+    let Some(Ok(directory)) = invocation.chdir.as_deref().map(std::fs::canonicalize) else {
+        return Ok(None);
+    };
+    if !covers.iter().any(|cover| directory.starts_with(cover))
+        || binds
+            .iter()
+            .any(|bind| directory.starts_with(&bind.target))
+    {
+        return Ok(None);
+    }
+    if let Some(refusal) = windows_home_exposure(&directory, drives) {
+        return Err(refusal.into());
+    }
+    if inside_hidden_windows_entry(&directory, drives) {
+        log::warn!(
+            "[remote-sandbox] leaving {} covered: it is inside a Windows home's read-hidden \
+             entries",
+            directory.display()
+        );
+        return Ok(None);
+    }
+    let Ok(source) = crate::util::open_o_path(&directory, crate::util::FollowSymlinks::No) else {
+        return Ok(None);
+    };
+    // What was opened is what gets bound, so it has to be what was checked: a
+    // directory moved in between is left covered.
+    let opened = std::fs::read_link(format!("/proc/self/fd/{}", source.as_raw_fd()));
+    if !opened.is_ok_and(|opened| opened == directory) || !fd_is_dir(source.as_raw_fd())? {
+        return Ok(None);
+    }
+    Ok(Some(DrivesBind {
+        target: directory,
+        source,
+        read_only: !invocation.allow_fs_write,
+    }))
+}
+
+/// Why `path` may not be bound back whole over the covered drives, if it may
+/// not: it is a Windows home or holds one (see [`holds_windows_home`]), or,
+/// inside a home, it holds one of the home's read-hidden entries (see
+/// [`held_hidden_entry`]).
+fn windows_home_exposure(path: &Path, drives: &[PathBuf]) -> Option<WindowsHomeRoot> {
+    if holds_windows_home(path, drives) {
+        return Some(WindowsHomeRoot(format!(
+            "{} is a Windows home or holds one",
+            path.display()
+        )));
+    }
+    let entry = held_hidden_entry(path, drives)?;
+    Some(WindowsHomeRoot(format!(
+        "{} holds {} of the Windows home it is in",
+        path.display(),
+        entry.display()
+    )))
+}
+
+/// Whether `path` is a Windows home or holds one: a drive with a `Users`
+/// folder or anything above one, that folder, or a home (see
+/// [`is_windows_home`]). A folder merely above a home kept outside `Users` is
+/// not recognised.
+fn holds_windows_home(path: &Path, drives: &[PathBuf]) -> bool {
+    if drives
+        .iter()
+        .any(|drive| drive.starts_with(path) && drive.join("Users").is_dir())
+    {
+        return true;
+    }
+    let Some(drive) = drive_holding(path, drives) else {
+        return false;
+    };
+    let Ok(relative) = path.strip_prefix(drive) else {
+        return false;
+    };
+    let components: Vec<&OsStr> = relative.iter().collect();
+    match components.as_slice() {
+        [folder] if folder.eq_ignore_ascii_case("users") => true,
+        _ => is_windows_home(path, drive),
+    }
+}
+
+/// The drive `path` lies on, below its mount point.
+fn drive_holding<'a>(path: &Path, drives: &'a [PathBuf]) -> Option<&'a Path> {
+    drives
+        .iter()
+        .filter(|drive| path.starts_with(drive) && path != drive.as_path())
+        .max_by_key(|drive| drive.components().count())
+        .map(PathBuf::as_path)
+}
+
+/// Whether `path`, on `drive`, is a Windows home: a folder in the drive's
+/// `Users`, or one kept elsewhere that has both a profile's `NTUSER.DAT` and
+/// its `AppData`. Compared without case, as DrvFs looks names up.
+fn is_windows_home(path: &Path, drive: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(drive) else {
+        return false;
+    };
+    let components: Vec<&OsStr> = relative.iter().collect();
+    match components.as_slice() {
+        [folder, _name] if folder.eq_ignore_ascii_case("users") => true,
+        [] => false,
+        _ => {
+            path.join("NTUSER.DAT").symlink_metadata().is_ok() && path.join("AppData").is_dir()
+        }
+    }
+}
+
+/// The Windows home on `drive` that `path` is, or lies in.
+fn enclosing_windows_home<'a>(path: &'a Path, drive: &Path) -> Option<&'a Path> {
+    path.ancestors()
+        .take_while(|ancestor| *ancestor != drive)
+        .find(|ancestor| is_windows_home(ancestor, drive))
+}
+
+/// The read-hidden entry of a Windows home that `path`, inside the home, holds
+/// — `.config` holding `.config/gh`, `.docker` its `config.json` — whether or
+/// not the entry exists yet, since a Windows program may make it while the
+/// command runs. Compared by identity, like [`inside_hidden_windows_entry`].
+fn held_hidden_entry(path: &Path, drives: &[PathBuf]) -> Option<PathBuf> {
+    let drive = drive_holding(path, drives)?;
+    let home = enclosing_windows_home(path.parent()?, drive)?;
+    let identity = path_identity(path)?;
+    read_hidden_home_paths(home, true)
+        .into_iter()
+        .find(|entry| {
+            entry
+                .ancestors()
+                .skip(1)
+                .take_while(|ancestor| *ancestor != home)
+                .any(|ancestor| path_identity(ancestor) == Some(identity))
+        })
+}
+
+/// Whether `directory`, on a covered drive, lies inside one of the read-hidden
+/// entries (`AppData`, `.ssh`, …) of the Windows home it is in. Compared by
+/// identity: on DrvFs a path can name an entry in any case, by its 8.3 name or
+/// through a junction such as `Application Data`.
+fn inside_hidden_windows_entry(directory: &Path, drives: &[PathBuf]) -> bool {
+    let Some(home) = drive_holding(directory, drives)
+        .and_then(|drive| enclosing_windows_home(directory, drive))
+    else {
+        return false;
+    };
+    let hidden: Vec<(u64, u64)> = read_hidden_home_paths(home, true)
+        .iter()
+        .filter_map(|entry| path_identity(entry))
+        .collect();
+    directory
+        .ancestors()
+        .take_while(|ancestor| *ancestor != home)
+        .any(|ancestor| path_identity(ancestor).is_some_and(|identity| hidden.contains(&identity)))
+}
+
+fn path_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt as _;
+    std::fs::metadata(path)
+        .ok()
+        .map(|metadata| (metadata.dev(), metadata.ino()))
+}
+
+/// What has to stay reachable however it lies among the read-hidden entries:
+/// the roots the command may write, and the agent binaries staged for it.
+/// Nothing from the environment: a variable a project can set would be a way
+/// to un-hide a credential store.
+fn reachable_paths(invocation: &Stage1Invocation, home: &Path) -> Vec<PathBuf> {
+    let mut reachable = invocation.writable_paths.clone();
+    reachable.push(home.join(WSL_SANDBOX_HELPER_HOME_RELATIVE).join("agents"));
+    reachable
+}
+
+/// Cover every read-hidden entry that exists with empty content so the
+/// command cannot read it (ADR-F49 decision 11): the Linux home's
+/// `read_hidden`, split around the roots kept inside one (see
+/// [`read_hidden_targets`]), and with `drives` the Windows drives first (see
+/// [`cover_windows_drives`], for that invocation). `needs_mount_namespace`
+/// enters one of the command's own first, which only the backends that set up
+/// none of their own need — and only when there is something to hide.
+///
+/// Landlock handles only writes, so reads of the whole filesystem stay allowed
+/// there and read-only binds do not help: the entries are hidden by mounting
+/// over them. All or none: when one cover is refused, the ones already made
+/// come off again, since a set only partly covered would pass for protection
+/// while leaving the rest readable. What a refusal means is the caller's
+/// decision (see [`read_hiding_refused`]); the error says what state it left.
+fn hide_read_hidden_entries(
+    read_hidden: &[PathBuf],
+    reachable: &[PathBuf],
+    writable_pins: &[CanonicalPathBuf],
+    drives: Option<&Stage1Invocation>,
+    needs_mount_namespace: bool,
+) -> Result<()> {
+    let started = Instant::now();
+    let targets = read_hidden_targets(read_hidden, reachable, writable_pins);
+    if targets.is_empty() && drives.is_none() {
+        return Ok(());
+    }
+    if needs_mount_namespace && let Err(error) = enter_private_mount_namespace() {
+        bail!("{error:#}; nothing is hidden");
+    }
+    let fail_after = forced_cover_failure_after();
+    let refused_on_purpose = |step: usize| fail_after.is_some_and(|limit| step >= limit);
+    let mut covered: Vec<PathBuf> = Vec::new();
+    let mut step = 0;
+    if let Some(invocation) = drives {
+        let covering = if refused_on_purpose(step) {
+            Err(anyhow!("refused on purpose by the test helper"))
+        } else {
+            cover_windows_drives(writable_pins, invocation, &mut covered)
+        };
+        if let Err(error) = covering {
+            return Err(refused_cover(
+                Path::new("the Windows drives"),
+                error,
+                &covered,
+            ));
+        }
+        step += 1;
+    }
+    for target in &targets {
+        let covering = if refused_on_purpose(step) {
+            Err(anyhow!("refused on purpose by the test helper"))
+        } else {
+            hide_contents(target)
+        };
+        if let Err(error) = covering {
+            return Err(refused_cover(target, error, &covered));
+        }
+        covered.push(target.clone());
+        step += 1;
+    }
+    log::info!(
+        "[remote-sandbox] made {} read-hiding mounts in {} ms",
+        covered.len(),
+        started.elapsed().as_millis()
+    );
+    Ok(())
+}
+
+/// The error for a cover that was refused, once the covers already made have
+/// come off again; it says whether they all did.
+fn refused_cover(target: &Path, error: anyhow::Error, covered: &[PathBuf]) -> anyhow::Error {
+    let stuck = uncover(covered);
+    if stuck == 0 {
+        anyhow!(
+            "covering {}: {error:#}; nothing is hidden",
+            target.display()
+        )
+    } else {
+        anyhow!(
+            "covering {}: {error:#}; {stuck} covers made before it would not come off, \
+             so some entries stay hidden",
+            target.display()
+        )
+    }
+}
+
+/// Take the covers in `covered` off again, last first. Returns how many would
+/// not come off.
+fn uncover(covered: &[PathBuf]) -> usize {
+    let mut stuck = 0;
+    for target in covered.iter().rev() {
+        if let Err(error) = umount2(target, libc::MNT_DETACH) {
+            log::warn!(
+                "[remote-sandbox] could not take the cover off {}: {error:#}",
+                target.display()
+            );
+            stuck += 1;
+        }
+    }
+    stuck
+}
+
+/// For the test helper only: how many covers may succeed before the rest are
+/// refused, to exercise [`read_hiding_refused`]. A production build never
+/// refuses one on purpose.
+fn forced_cover_failure_after() -> Option<usize> {
+    #[cfg(feature = "remote-sandbox-test")]
+    if let Some(count) = std::env::var_os("ZED_SANDBOX_READ_HIDING_FAIL_AFTER_FOR_TESTS") {
+        return count.to_str().and_then(|count| count.parse().ok());
+    }
+    None
+}
+
+/// What it means that the read-hidden entries could not be covered. In WSL
+/// mode the mounts are known to work, so the command fails closed. On an SSH
+/// host — Ubuntu 24.04 strips the capabilities of an unprivileged user
+/// namespace — the sandbox must still be creatable: the command runs without
+/// the read hiding (write protection, network isolation and the PID namespace
+/// unchanged), and one warning line on stderr, ahead of the command's own
+/// output, says so for Zed to show.
+fn read_hiding_refused(
+    wsl: bool,
+    error: anyhow::Error,
+) -> std::result::Result<(), (&'static str, anyhow::Error)> {
+    if wsl {
+        return Err(("mount-failed", error));
+    }
+    eprintln!("{REMOTE_FAILURE_MARKER}-warning: read-hiding-unavailable: {error:#}");
+    Ok(())
+}
+
+/// The entries [`hide_read_hidden_entries`] covers: each of `read_hidden` that
+/// exists, where it really lies (a dangling symlink has nothing to leak; one
+/// that resolves is hidden where it resolves to), split around a root kept
+/// inside it (see [`around_reachable`]), once each, and never one that is or
+/// holds a root the command must keep reaching.
+fn read_hidden_targets(
+    read_hidden: &[PathBuf],
+    reachable: &[PathBuf],
+    writable_pins: &[CanonicalPathBuf],
+) -> Vec<PathBuf> {
+    let mut kept = reachable.to_vec();
+    kept.extend(writable_pins.iter().map(|pin| pin.path().to_path_buf()));
+    let canonical_kept: Vec<PathBuf> = kept
+        .iter()
+        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .collect();
+    kept.extend(canonical_kept);
+
+    let mut entries: Vec<PathBuf> = Vec::new();
+    for entry in read_hidden {
+        if let Ok(entry) = std::fs::canonicalize(entry)
+            && !entries.contains(&entry)
+        {
+            entries.push(entry);
+        }
+    }
+    let mut targets: Vec<PathBuf> = Vec::new();
+    for candidate in around_reachable(entries, &kept) {
+        let Ok(target) = std::fs::canonicalize(&candidate) else {
+            continue;
+        };
+        if targets.contains(&target) || kept.iter().any(|path| path.starts_with(&target)) {
+            continue;
+        }
+        targets.push(target);
+    }
+    targets
+}
+
+/// Mount empty content over `target`: an empty read-only `tmpfs` with mode 000
+/// for a directory, `/dev/null` (which reads empty) for a file. WSL runs
+/// commands as root, which would bypass mode 000, but the command's
+/// capabilities are dropped before it runs (see
+/// [`finalize_and_exec_command`]); the emptiness hides the contents either way.
+fn hide_contents(target: &Path) -> Result<()> {
+    if target.is_dir() {
+        mount(
+            Some(Path::new("tmpfs")),
+            target,
+            Some("tmpfs"),
+            libc::MS_NOSUID | libc::MS_NODEV | libc::MS_RDONLY,
+            Some("mode=000"),
+        )
+    } else {
+        mount(
+            Some(Path::new("/dev/null")),
+            target,
+            None,
+            libc::MS_BIND,
+            None,
+        )
+    }
 }
 
 /// A private `/dev/shm` too, where POSIX shared memory and semaphores live.
@@ -2657,6 +4505,7 @@ fn apply_mount_jail(
     writable_pins: &[CanonicalPathBuf],
     protected_pins: &[CanonicalPathBuf],
     allow_fs_write: bool,
+    scratch_pid: libc::pid_t,
 ) -> Result<()> {
     // Fresh mount namespace (allowed inside our userns).
     if unsafe { libc::unshare(libc::CLONE_NEWNS) } != 0 {
@@ -2675,7 +4524,7 @@ fn apply_mount_jail(
     )
     .context("making / private")?;
 
-    let new_root = PathBuf::from(format!("/tmp/.zed-remote-jail-{}", std::process::id()));
+    let new_root = PathBuf::from(format!("/tmp/.zed-remote-jail-{scratch_pid}"));
     remove_owned_temp_dir(&new_root);
     std::fs::create_dir_all(&new_root)
         .with_context(|| format!("creating {}", new_root.display()))?;
@@ -2883,6 +4732,115 @@ mod tests {
     use crate::protected_paths::remote_builtin_protected_paths;
     use http_proxy::DestinationPolicy as _;
 
+    /// ADR-F49 decision 11 on WSL: which roots are refused for bringing a
+    /// Windows home's credentials back with them — a home, anything above one,
+    /// or a folder in one holding its entries — and which starting directories
+    /// stay covered for lying in them, however they are spelled.
+    #[test]
+    fn windows_homes_are_recognised_on_the_drives() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let root = temporary.path().join("mnt");
+        let drives = vec![root.join("c"), root.join("d")];
+        let home = root.join("c").join("Users").join("u");
+        let relocated = root.join("d").join("profiles").join("u");
+        let not_a_home = root.join("d").join("backup");
+        for directory in [
+            home.join("AppData").join("Local").join("x"),
+            home.join(".ssh"),
+            home.join(".config").join("gh"),
+            home.join(".config").join("project"),
+            home.join(".docker"),
+            home.join("projects").join("p"),
+            relocated.join("AppData").join("Roaming"),
+            relocated.join("projects"),
+            not_a_home.clone(),
+        ] {
+            std::fs::create_dir_all(&directory).expect("create");
+        }
+        std::fs::write(relocated.join("NTUSER.DAT"), "").expect("write");
+        std::fs::write(not_a_home.join("NTUSER.DAT"), "").expect("write");
+        std::os::unix::fs::symlink(home.join("AppData"), home.join("Application Data"))
+            .expect("symlink");
+        std::os::unix::fs::symlink(home.join(".config"), home.join("config-link"))
+            .expect("symlink");
+
+        for refused in [
+            temporary.path().to_path_buf(),
+            root.clone(),
+            root.join("c"),
+            root.join("c").join("users"),
+            home.clone(),
+            relocated.clone(),
+            home.join(".config"),
+            home.join("config-link"),
+            home.join(".docker"),
+        ] {
+            assert!(
+                windows_home_exposure(&refused, &drives).is_some(),
+                "{}",
+                refused.display()
+            );
+        }
+        for allowed in [
+            home.join("projects").join("p"),
+            home.join(".config").join("project"),
+            home.join(".ssh"),
+            relocated.join("projects"),
+            root.join("d"),
+            not_a_home.clone(),
+        ] {
+            assert!(
+                windows_home_exposure(&allowed, &drives).is_none(),
+                "{}",
+                allowed.display()
+            );
+        }
+
+        for hidden in [
+            home.join("AppData").join("Local").join("x"),
+            home.join("Application Data").join("Local"),
+            home.join(".ssh"),
+            relocated.join("AppData").join("Roaming"),
+        ] {
+            assert!(
+                inside_hidden_windows_entry(&hidden, &drives),
+                "{}",
+                hidden.display()
+            );
+        }
+        for project in [home.join("projects").join("p"), relocated.join("projects")] {
+            assert!(
+                !inside_hidden_windows_entry(&project, &drives),
+                "{}",
+                project.display()
+            );
+        }
+    }
+
+    /// The Windows drives are found by filesystem type wherever they are
+    /// mounted, and WSL's driver store, also over 9p, is not one of them.
+    #[test]
+    fn drives_are_found_in_mountinfo_by_filesystem_type() {
+        let mountinfo = "\
+610 1 8:48 / / rw,relatime - ext4 /dev/sdd rw,discard,errors=remount-ro
+689 610 0:36 / /usr/lib/wsl/drivers ro,nosuid,nodev,noatime - 9p drivers ro,aname=drivers;fmask=222;dmask=222,cache=0x5
+699 610 0:97 / /mnt/c rw,noatime - 9p C:\\134 rw,aname=drvfs;path=C:\\;uid=0;gid=0;symlinkroot=/mnt/,cache=0x5
+700 610 0:98 / /d rw,noatime shared:5 master:1 - 9p D:\\134 rw,aname=drvfs;path=D:\\;uid=0;gid=0
+701 610 0:99 / /mnt/my\\040drive rw,noatime - drvfs X:\\134 rw
+702 610 0:100 / /e rw,noatime - virtiofs drvfsE rw
+703 610 0:30 / /mnt/wsl rw,relatime shared:1 - tmpfs none rw
+";
+        assert_eq!(
+            drive_mount_points(mountinfo),
+            [
+                PathBuf::from("/d"),
+                PathBuf::from("/e"),
+                PathBuf::from("/mnt/c"),
+                PathBuf::from("/mnt/my drive"),
+            ]
+        );
+    }
+
     /// Round-trip the builder through the stage-1 decoder to lock the argv
     /// protocol both sides share.
     #[test]
@@ -2956,6 +4914,7 @@ mod tests {
                 slirp_sha256: Some("abc123"),
                 environment: &environment,
                 unset_environment: &["WSL_INTEROP", "WSLENV"],
+                interactive_session: None,
             },
         );
         argv.push("/bin/sh".to_string());
@@ -3771,5 +5730,230 @@ mod tests {
         // rejects the rule with EINVAL regardless of inode type.
         assert_eq!(file & !handled, 0);
         assert_eq!(dir & !handled, 0);
+    }
+
+    /// The Windows side's IDE flags decode into the forward the helper serves,
+    /// and every malformed combination is refused.
+    #[test]
+    fn ide_forward_flags_round_trip_and_are_checked() {
+        let session = crate::InteractiveSession {
+            ide_forward: Some(crate::IdeForward {
+                inner_port: 45123,
+                rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s/bridge.sock".to_string(),
+            }),
+        };
+        let mut argv = crate::build_wsl_sandbox_helper_argv(
+            &[],
+            &[],
+            &RemoteSandboxNetwork::Blocked,
+            false,
+            None,
+            &crate::WslHelperOptions {
+                interactive_session: Some(&session),
+                ..crate::WslHelperOptions::default()
+            },
+        );
+        argv.push("/bin/true".to_string());
+        let decoded = decode_for_test(&argv[1..]);
+        assert_eq!(
+            decoded.ide_forward,
+            Some(IdeForwardRequest {
+                port: 45123,
+                rendezvous: PathBuf::from("/root/.cache/zed-jp-enhance/ide/s/bridge.sock"),
+            })
+        );
+
+        let parse = |args: &[&str]| parse_stage1_args(args.iter().map(OsString::from));
+        assert!(
+            parse(&["--interactive", "--", "true"])
+                .expect("an interactive session needs no IDE forward")
+                .ide_forward
+                .is_none()
+        );
+        for invalid in [
+            &[
+                "--ide-listen",
+                "1",
+                "--ide-rendezvous",
+                "/r/s",
+                "--",
+                "true",
+            ][..],
+            &[
+                "--interactive",
+                "--ide-listen",
+                "0",
+                "--ide-rendezvous",
+                "/r/s",
+                "--",
+                "true",
+            ],
+            &[
+                "--interactive",
+                "--ide-listen",
+                "65536",
+                "--ide-rendezvous",
+                "/r/s",
+                "--",
+                "true",
+            ],
+            &["--interactive", "--ide-listen", "1", "--", "true"],
+            &["--interactive", "--ide-rendezvous", "/r/s", "--", "true"],
+            &[
+                "--interactive",
+                "--ide-listen",
+                "1",
+                "--ide-rendezvous",
+                "relative",
+                "--",
+                "true",
+            ],
+        ] {
+            assert!(parse(invalid).is_err(), "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn the_holder_release_carries_both_ports() {
+        for (proxy_port, ide_port) in [(0, 0), (8080, 0), (0, 45123), (65535, 1)] {
+            assert_eq!(
+                decode_holder_release(encode_holder_release(proxy_port, ide_port)),
+                (proxy_port, ide_port)
+            );
+        }
+    }
+
+    #[test]
+    fn process_state_and_parent_are_read_after_the_command_name() {
+        assert_eq!(
+            parse_process_state_and_parent("42 (sleep) S 7 42 42 0 -1"),
+            Some(('S', 7))
+        );
+        assert_eq!(
+            parse_process_state_and_parent("43 (a) b (c)) Z 1 0"),
+            Some(('Z', 1))
+        );
+        assert_eq!(parse_process_state_and_parent("44 (x"), None);
+        assert_eq!(parse_process_state_and_parent(""), None);
+    }
+
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test needs a real child process of its own"
+    )]
+    fn a_running_child_is_among_the_living_children() {
+        let mut child = Command::new("sleep").arg("5").spawn().expect("spawn sleep");
+        let pid = libc::pid_t::try_from(child.id()).expect("a pid");
+        let found = living_children().contains(&pid);
+        child.kill().expect("stop sleep");
+        child.wait().expect("reap sleep");
+        assert!(found, "a running child of this process is listed");
+    }
+
+    #[test]
+    fn a_relay_serves_no_more_than_its_cap_at_once() {
+        use std::io::Read as _;
+
+        let listener =
+            std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).expect("listen");
+        let address = listener.local_addr().expect("address");
+        spawn_relay(
+            OwnedFd::from(listener),
+            "test",
+            2,
+            |mut inbound: std::net::TcpStream| {
+                // Held until the client closes its end.
+                let mut byte = [0u8; 1];
+                while matches!(inbound.read(&mut byte), Ok(count) if count > 0) {}
+            },
+        )
+        .expect("start the relay");
+        let connect = |timeout: Duration| {
+            let stream = std::net::TcpStream::connect(address).expect("connect");
+            stream
+                .set_read_timeout(Some(timeout))
+                .expect("set a read timeout");
+            stream
+        };
+        let refused = |mut stream: std::net::TcpStream| {
+            let mut byte = [0u8; 1];
+            matches!(stream.read(&mut byte), Ok(0))
+        };
+
+        let first = connect(Duration::from_secs(5));
+        let _second = connect(Duration::from_secs(5));
+        assert!(
+            refused(connect(Duration::from_secs(5))),
+            "one beyond the cap is closed at once"
+        );
+        drop(first);
+        // Its place frees once its thread has seen the close.
+        let served_again = (0..100).any(|_| {
+            let served = !refused(connect(Duration::from_millis(200)));
+            if !served {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            served
+        });
+        assert!(served_again, "a closed connection gives its place back");
+    }
+
+    /// The IDE rendezvous has to be a private directory of this account's
+    /// inside the protected set, and only a real socket there is connected to.
+    #[test]
+    fn the_ide_rendezvous_is_checked_before_and_at_every_connection() {
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::os::unix::net::UnixListener;
+
+        let (_root, root) = canonical_tempdir();
+        let protected_directory = root.join("protected");
+        let rendezvous_directory = protected_directory.join("ide");
+        std::fs::create_dir_all(&rendezvous_directory).expect("create the rendezvous");
+        std::fs::create_dir(root.join("elsewhere")).expect("create elsewhere");
+        let private = std::fs::Permissions::from_mode(0o700);
+        std::fs::set_permissions(&rendezvous_directory, private.clone()).expect("chmod");
+        std::fs::set_permissions(root.join("elsewhere"), private.clone()).expect("chmod");
+        let protected =
+            classify_protected_paths(std::slice::from_ref(&protected_directory)).expect("classify");
+        let writable = pin_writable_paths(&[root.join("elsewhere")], false).expect("pin");
+        let socket = rendezvous_directory.join("bridge.sock");
+
+        assert!(
+            IdeRendezvous::open(&root.join("elsewhere/bridge.sock"), &protected, &writable)
+                .is_err(),
+            "outside the protected set"
+        );
+        // A rendezvous inside a writable grant is refused even if it is also
+        // listed as protected.
+        let also_writable =
+            pin_writable_paths(std::slice::from_ref(&protected_directory), false).expect("pin");
+        assert!(
+            IdeRendezvous::open(&socket, &protected, &also_writable).is_err(),
+            "inside a writable grant"
+        );
+        std::fs::set_permissions(
+            &rendezvous_directory,
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .expect("chmod");
+        assert!(
+            IdeRendezvous::open(&socket, &protected, &writable).is_err(),
+            "a directory other accounts can look into"
+        );
+        std::fs::set_permissions(&rendezvous_directory, private).expect("chmod");
+        let rendezvous = IdeRendezvous::open(&socket, &protected, &writable)
+            .expect("a private directory inside the protected set");
+
+        assert!(rendezvous.connect().is_err(), "nothing listens yet");
+        let listener = UnixListener::bind(&socket).expect("listen");
+        assert!(rendezvous.connect().is_ok());
+        drop(listener);
+        std::fs::remove_file(&socket).expect("remove the socket");
+        let other = root.join("other.sock");
+        let _other_listener = UnixListener::bind(&other).expect("listen elsewhere");
+        std::os::unix::fs::symlink(&other, &socket).expect("plant a symlink");
+        let error = rendezvous.connect().expect_err("never through a symlink");
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
     }
 }

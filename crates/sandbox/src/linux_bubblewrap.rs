@@ -215,6 +215,7 @@ fn probe_bwrap(bwrap: &Path, bwrap_args: &[String]) -> bool {
 pub fn build_bwrap_args(
     writable_directories: &[&Path],
     protected_paths: &[&Path],
+    read_hidden_paths: &[&Path],
     permissions: SandboxPermissions,
     cwd: Option<&Path>,
     proxy_socket_path: Option<&Path>,
@@ -225,6 +226,7 @@ pub fn build_bwrap_args(
     build_bwrap_args_with_sandbox_paths(
         writable_directories,
         protected_paths,
+        read_hidden_paths,
         permissions,
         cwd,
         proxy_socket_path,
@@ -241,6 +243,7 @@ pub fn build_bwrap_args(
 fn build_bwrap_args_with_sandbox_paths(
     writable_directories: &[&Path],
     protected_paths: &[&Path],
+    read_hidden_paths: &[&Path],
     permissions: SandboxPermissions,
     cwd: Option<&Path>,
     proxy_socket_path: Option<&Path>,
@@ -296,6 +299,27 @@ fn build_bwrap_args_with_sandbox_paths(
         }
         let path = protected_path.to_string_lossy().into_owned();
         push_bind(&mut args, "--ro-bind", &path, &path);
+    }
+
+    // ADR-F49 decision 11: hide the contents of credential stores and agent
+    // configurations — last, so they cover every bind above, a writable root
+    // they lie inside included. An empty read-only tmpfs over a directory,
+    // `/dev/null` over a file; one that does not exist has nothing to hide.
+    for hidden_path in read_hidden_paths {
+        let Ok(metadata) = std::fs::metadata(hidden_path) else {
+            continue;
+        };
+        let path = hidden_path.to_string_lossy().into_owned();
+        if metadata.is_dir() {
+            args.extend([
+                "--tmpfs".to_string(),
+                path.clone(),
+                "--remount-ro".to_string(),
+                path,
+            ]);
+        } else {
+            push_bind(&mut args, "--ro-bind", "/dev/null", &path);
+        }
     }
 
     for flag in [
@@ -542,7 +566,7 @@ fn prepare_sandbox(
     // directory. None of those affect createability, and binding them would make
     // the probe depend on per-command layout (e.g. a worktree under the `/tmp`
     // tmpfs that `--chdir` then can't reach).
-    let bwrap_args = build_bwrap_args(&[], &[], permissions, None, None);
+    let bwrap_args = build_bwrap_args(&[], &[], &[], permissions, None, None);
     if !probe_bwrap(&bwrap, &bwrap_args) {
         return Err(LauncherStatus::SandboxProbeFailed);
     }
@@ -584,6 +608,7 @@ pub fn wrap_invocation(
     permissions: SandboxPermissions,
     writable_dirs: &[&Path],
     protected_paths: &[&Path],
+    read_hidden_paths: &[&Path],
     cwd: Option<&Path>,
     program: &str,
     args: &[String],
@@ -631,6 +656,7 @@ pub fn wrap_invocation(
     let mut bwrap_args = build_bwrap_args_with_sandbox_paths(
         writable_dirs,
         protected_paths,
+        read_hidden_paths,
         permissions,
         cwd,
         proxy_socket_path,
@@ -973,17 +999,54 @@ pub(crate) fn build_command_seccomp_program() -> Result<Option<seccompiler::BpfP
             libc::AF_NETLINK as u64,
         )?,
     ])?;
-    // `socketpair(domain, ...)`: allow only `AF_UNIX`.
-    let socketpair_deny = SeccompRule::new(vec![SeccompCondition::new(
+    // `socketpair(domain, type, ...)`: only `AF_UNIX`, and not as datagram
+    // sockets (any rule below matching takes the deny action). A `SOCK_DGRAM`
+    // pair is *not* just a process-local channel: each end is an unbound
+    // datagram socket, and `sendto()` with a filesystem address then reaches any
+    // host datagram socket on the path (`/dev/log`, `/run/systemd/notify`),
+    // which is an escape even though `socket(AF_UNIX)` is blocked. `SOCK_RAW`
+    // is the same thing under another name for `AF_UNIX`. Stream and
+    // seqpacket pairs are connected to each other and ignore an address, and
+    // Chromium, Electron and Playwright need the seqpacket kind.
+    // `SOCK_TYPE_MASK` strips `SOCK_CLOEXEC` / `SOCK_NONBLOCK` off the type
+    // before the comparison.
+    const SOCK_TYPE_MASK: u64 = 0xf;
+    let mut socketpair_denies = vec![SeccompRule::new(vec![SeccompCondition::new(
         0,
         SeccompCmpArgLen::Dword,
         SeccompCmpOp::Ne,
         libc::AF_UNIX as u64,
-    )?])?;
+    )?])?];
+    for disallowed_type in [libc::SOCK_DGRAM, libc::SOCK_RAW] {
+        socketpair_denies.push(SeccompRule::new(vec![SeccompCondition::new(
+            1,
+            SeccompCmpArgLen::Dword,
+            SeccompCmpOp::MaskedEq(SOCK_TYPE_MASK),
+            disallowed_type as u64,
+        )?])?);
+    }
+    // `ioctl(fd, request, ...)`: the command may share the user's terminal, and
+    // `TIOCSTI` pushes input into it that the shell reading the terminal next
+    // runs as the user, outside the sandbox; `TIOCSETD` swaps its line
+    // discipline. Compared on the low 32 bits because the kernel truncates the
+    // request to an `unsigned int`, so a request with high bits set is the same
+    // request.
+    let ioctl_denies = [libc::TIOCSTI, libc::TIOCSETD]
+        .into_iter()
+        .map(|request| {
+            SeccompRule::new(vec![SeccompCondition::new(
+                1,
+                SeccompCmpArgLen::Dword,
+                SeccompCmpOp::Eq,
+                request as u64,
+            )?])
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
     rules.insert(libc::SYS_socket, vec![socket_deny]);
-    rules.insert(libc::SYS_socketpair, vec![socketpair_deny]);
+    rules.insert(libc::SYS_socketpair, socketpair_denies);
+    rules.insert(libc::SYS_ioctl, ioctl_denies);
     // Unconditional denials (an empty rule chain always takes the match action).
     for syscall in [
         libc::SYS_io_uring_setup,
@@ -1306,6 +1369,7 @@ mod tests {
         let args = build_bwrap_args(
             &[missing.as_path()],
             &[],
+            &[],
             SandboxPermissions::default(),
             None,
             None,
@@ -1329,6 +1393,7 @@ mod tests {
         let args = build_bwrap_args(
             &[writable.path()],
             &[],
+            &[],
             SandboxPermissions::default(),
             Some(writable.path()),
             None,
@@ -1349,10 +1414,11 @@ mod tests {
 
     #[test]
     fn test_build_bwrap_args_network_namespace_follows_permission() {
-        let denied = build_bwrap_args(&[], &[], SandboxPermissions::default(), None, None);
+        let denied = build_bwrap_args(&[], &[], &[], SandboxPermissions::default(), None, None);
         assert!(denied.iter().any(|arg| arg == "--unshare-net"));
 
         let allowed = build_bwrap_args(
+            &[],
             &[],
             &[],
             SandboxPermissions {
@@ -1368,6 +1434,7 @@ mod tests {
         let restricted = build_bwrap_args(
             &[],
             &[],
+            &[],
             SandboxPermissions {
                 network: NetworkAccess::LocalhostPort(8080),
                 allow_fs_write: false,
@@ -1381,6 +1448,59 @@ mod tests {
         assert!(sandbox_destination.starts_with(PROXY_SOCKET_SANDBOX_PATH_PREFIX));
     }
 
+    /// ADR-F49 decision 11: a read-hidden directory gets an empty read-only
+    /// tmpfs and a file `/dev/null`, after every other bind so they cover a
+    /// protected re-bind of the same path; one that does not exist is left out.
+    #[test]
+    fn test_build_bwrap_args_hides_read_hidden_entries_after_every_bind() {
+        let home = tempfile::tempdir().unwrap();
+        let home_path = home.path().canonicalize().unwrap();
+        let ssh = home_path.join(".ssh");
+        std::fs::create_dir(&ssh).unwrap();
+        let npmrc = home_path.join(".npmrc");
+        std::fs::write(&npmrc, "//registry/:_authToken=secret\n").unwrap();
+        let missing = home_path.join(".aws");
+
+        let args = build_bwrap_args(
+            &[home_path.as_path()],
+            &[ssh.as_path()],
+            &[ssh.as_path(), npmrc.as_path(), missing.as_path()],
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
+
+        let ssh_str = ssh.to_string_lossy().into_owned();
+        let npmrc_str = npmrc.to_string_lossy().into_owned();
+        let missing_str = missing.to_string_lossy().into_owned();
+        assert!(
+            windows_contains(&args, &["--tmpfs", &ssh_str, "--remount-ro", &ssh_str]),
+            "{args:?}"
+        );
+        assert!(
+            windows_contains(&args, &["--ro-bind", "/dev/null", &npmrc_str]),
+            "{args:?}"
+        );
+        assert!(
+            !args.contains(&missing_str),
+            "a missing entry is not mounted: {args:?}"
+        );
+        let position = |window: &[&str]| {
+            args.windows(window.len()).position(|candidate| {
+                candidate
+                    .iter()
+                    .zip(window)
+                    .all(|(argument, expected)| argument == expected)
+            })
+        };
+        let protected = position(&["--ro-bind", &ssh_str, &ssh_str]).expect("protected bind");
+        let hidden = position(&["--tmpfs", &ssh_str]).expect("hiding tmpfs");
+        assert!(
+            hidden > protected,
+            "the hiding comes after the protected bind: {args:?}"
+        );
+    }
+
     #[test]
     fn test_build_bwrap_args_allow_fs_write_binds_root_read_write() {
         let permissions = SandboxPermissions {
@@ -1388,7 +1508,7 @@ mod tests {
             allow_fs_write: true,
         };
         let protected = Path::new("/tmp");
-        let args = build_bwrap_args(&[], &[protected], permissions, None, None);
+        let args = build_bwrap_args(&[], &[protected], &[], permissions, None, None);
         assert!(windows_contains(&args, &["--bind", "/", "/"]));
         assert!(!windows_contains(&args, &["--ro-bind", "/", "/"]));
         assert!(windows_contains(&args, &["--ro-bind", "/tmp", "/tmp"]));
@@ -1566,6 +1686,7 @@ mod tests {
         let mut bwrap_args = build_bwrap_args_with_sandbox_paths(
             &[],
             &[],
+            &[],
             permissions,
             None,
             proxy_socket_path,
@@ -1706,12 +1827,56 @@ mod tests {
             if inet < 0 {
                 unsafe { libc::_exit(12) };
             }
-            // AF_UNIX socketpair (process-local) must still work.
+            // AF_UNIX SOCK_STREAM socketpair (connected, process-local) must
+            // still work, flags and all.
             let mut fds = [0i32; 2];
-            if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) }
-                != 0
+            if unsafe {
+                libc::socketpair(
+                    libc::AF_UNIX,
+                    libc::SOCK_STREAM | libc::SOCK_CLOEXEC,
+                    0,
+                    fds.as_mut_ptr(),
+                )
+            } != 0
             {
                 unsafe { libc::_exit(13) };
+            }
+            // A SOCK_DGRAM socketpair must be denied: its ends can `sendto` a
+            // host datagram socket by path.
+            if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_DGRAM, 0, fds.as_mut_ptr()) }
+                >= 0
+            {
+                unsafe { libc::_exit(14) };
+            }
+            // A SOCK_SEQPACKET socketpair is connected like a stream one, and
+            // Chromium-based programs need it.
+            if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0, fds.as_mut_ptr()) }
+                != 0
+            {
+                unsafe { libc::_exit(15) };
+            }
+            // TIOCSTI and TIOCSETD are denied (EPERM) rather than failing on a
+            // descriptor that is no terminal (ENOTTY) — including with bits
+            // above the 32 the kernel reads.
+            for request in [
+                libc::TIOCSTI as u64,
+                libc::TIOCSETD as u64,
+                libc::TIOCSTI as u64 | (1 << 32),
+            ] {
+                let byte = 0u8;
+                let result = unsafe { libc::ioctl(inet, request as _, &byte) };
+                if result != -1
+                    || std::io::Error::last_os_error().raw_os_error() != Some(libc::EPERM)
+                {
+                    unsafe { libc::_exit(16) };
+                }
+            }
+            // Other ioctls still pass through (ENOTTY on a socket, not EPERM).
+            let mut size: libc::winsize = unsafe { std::mem::zeroed() };
+            if unsafe { libc::ioctl(inet, libc::TIOCGWINSZ as _, &mut size) } != -1
+                || std::io::Error::last_os_error().raw_os_error() != Some(libc::ENOTTY)
+            {
+                unsafe { libc::_exit(17) };
             }
             unsafe { libc::_exit(0) };
         }
@@ -1727,7 +1892,9 @@ mod tests {
         assert_eq!(
             code, 0,
             "child reported a seccomp mismatch (exit {code}): 10=apply failed, \
-             11=AF_UNIX allowed, 12=AF_INET blocked, 13=socketpair blocked"
+             11=AF_UNIX allowed, 12=AF_INET blocked, 13=stream socketpair blocked, \
+             14=dgram socketpair allowed, 15=seqpacket socketpair blocked, \
+             16=TIOCSTI/TIOCSETD not denied, 17=other ioctls denied"
         );
     }
 
@@ -1747,6 +1914,7 @@ mod tests {
                 allow_fs_write: false,
             },
             &[unbindable.as_path()],
+            &[],
             &[],
             None,
             "/bin/true",

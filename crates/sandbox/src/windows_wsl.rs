@@ -46,7 +46,9 @@ use futures::{AsyncRead, AsyncReadExt as _, AsyncWriteExt as _};
 use sha2::{Digest as _, Sha256};
 use smol::process::{Command, Stdio};
 
-use crate::protected_paths::WSL_SANDBOX_HELPER_HOME_RELATIVE;
+use crate::protected_paths::{
+    AGENT_BINARIES_HOME_RELATIVE, IDE_RENDEZVOUS_HOME_RELATIVE, WSL_SANDBOX_HELPER_HOME_RELATIVE,
+};
 use crate::{RemoteSandboxNetwork, WSL_PROBE_RESULT_PREFIX, WSL_SANDBOX_UNAVAILABLE_PREFIX};
 
 /// Per-command relaxations of the WSL sandbox.
@@ -58,6 +60,9 @@ pub(crate) struct SandboxPermissions {
     /// when none is in force.
     pub(crate) network_ceiling: Option<Vec<String>>,
     pub(crate) allow_fs_write: bool,
+    /// ADR-F49: a long-running interactive program rather than a one-shot
+    /// command, with its IDE channel if it has one.
+    pub(crate) interactive_session: Option<crate::InteractiveSession>,
 }
 
 pub(crate) struct WritablePath {
@@ -137,15 +142,15 @@ actual=$(sha256sum <&3) || fail "cannot hash $helper"
 exec /proc/self/fd/3 "$@"
 "#;
 
-/// Copies one file into the install directory: stdin goes to a fresh temporary
-/// file there, whose size, SHA-256 (`-` without `sha256sum`) and path are
-/// reported for [`stage_file`] to check against what it sent. `$1` is the key,
-/// `$2` the install root, `$3` the file's final name.
+/// Copies one file into a directory below `$HOME`: stdin goes to a fresh
+/// temporary file there, whose size, SHA-256 (`-` without `sha256sum`) and path
+/// are reported for [`stage_file`] to check against what it sent. `$1` is the
+/// directory relative to `$HOME`, `$2` the file's final name.
 const STAGE_SCRIPT: &str = r#"
 set -eu
-dir="$HOME/$2/sandbox/$1"
+dir="$HOME/$1"
 mkdir -p "$dir"
-staged=$(mktemp "$dir/.$3.XXXXXX")
+staged=$(mktemp "$dir/.$2.XXXXXX")
 if ! cat > "$staged"; then
     rm -f "$staged"
     exit 1
@@ -595,6 +600,18 @@ pub async fn wrap_invocation<S: BuildHasher>(
     cwd: Option<PathBuf>,
     env: HashMap<String, String, S>,
 ) -> Result<(String, Vec<String>)> {
+    if let Some(forward) = permissions
+        .interactive_session
+        .as_ref()
+        .and_then(|session| session.ide_forward.as_ref())
+    {
+        ensure!(
+            forward.inner_port != 0,
+            "the IDE port inside the sandbox must not be 0"
+        );
+        ensure_linux_absolute_path(&forward.rendezvous_path, "IDE rendezvous")?;
+    }
+
     // Mapping failures are bad requests (a path that doesn't exist or has a
     // shape WSL can't address), not environment problems.
     let cwd_mapping =
@@ -691,6 +708,7 @@ pub async fn wrap_invocation<S: BuildHasher>(
                 .map(|digests| digests.slirp.as_str()),
             environment: &environment,
             unset_environment: &WSL_INTEROP_VARIABLES,
+            interactive_session: permissions.interactive_session.as_ref(),
         },
     );
     let wsl_args = helper_command_line(
@@ -867,8 +885,8 @@ async fn ensure_sandbox_helper(wsl_exe: &Path, distro: Option<&str>) -> Result<I
         Some(helper) => (helper, None),
         None => {
             let artifacts = locate_helper_artifacts()?;
-            let server_digest = file_sha256(&artifacts.server).await?;
-            let slirp_digest = file_sha256(&artifacts.slirp).await?;
+            let server_digest = file_sha256(&artifacts.server, StagedKind::SandboxHelper).await?;
+            let slirp_digest = file_sha256(&artifacts.slirp, StagedKind::SandboxHelper).await?;
             let digests = HelperDigests {
                 server: installed_content_sha256(
                     &artifacts.server,
@@ -1048,19 +1066,63 @@ fn locate_helper_artifacts() -> Result<HelperArtifacts> {
     }
 }
 
+/// What [`stage_file`] copies into the distro, for its messages.
+#[derive(Clone, Copy, Debug)]
+enum StagedKind {
+    /// The helper and `slirp4netns`, shipped with Zed.
+    SandboxHelper,
+    /// An agent binary Zed obtained for the sandbox (ADR-F49).
+    AgentBinary,
+}
+
+impl StagedKind {
+    /// The copy inside the distro, as the messages name it.
+    fn noun(self) -> &'static str {
+        match self {
+            Self::SandboxHelper => "サンドボックス用のヘルパー",
+            Self::AgentBinary => "エージェントの実行ファイル",
+        }
+    }
+
+    /// The step of copying it, as the messages name it.
+    fn copy_step(self) -> &'static str {
+        match self {
+            Self::SandboxHelper => "サンドボックス用ヘルパーのコピー",
+            Self::AgentBinary => "エージェントの実行ファイルのコピー",
+        }
+    }
+
+    /// The source file on the Windows side, as the messages name it.
+    fn source_noun(self) -> &'static str {
+        match self {
+            Self::SandboxHelper => "同梱のサンドボックス用ヘルパー",
+            Self::AgentBinary => "エージェントの実行ファイル",
+        }
+    }
+
+    /// What fixes a source file that cannot be read.
+    fn source_fix(self) -> &'static str {
+        match self {
+            Self::SandboxHelper => "Zed を再インストールしてください。",
+            Self::AgentBinary => "エージェントを取得し直してください。",
+        }
+    }
+}
+
 /// SHA-256 of a file as stored, in hex. Cached per `(path, length, modified)`
 /// for the life of the process: the artifacts only change when Zed is updated,
 /// which restarts it.
-async fn file_sha256(path: &Path) -> Result<String> {
+async fn file_sha256(path: &Path, kind: StagedKind) -> Result<String> {
     type DigestCache = HashMap<(PathBuf, u64, Option<SystemTime>), String>;
     static CACHE: OnceLock<Mutex<DigestCache>> = OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
 
     let unreadable = |error: std::io::Error| {
         unavailable(format!(
-            "同梱のサンドボックス用ヘルパー `{}` を読み取れませんでした ({error})。\
-             Zed を再インストールしてください。",
-            path.display()
+            "{} `{}` を読み取れませんでした ({error})。{}",
+            kind.source_noun(),
+            path.display(),
+            kind.source_fix()
         ))
     };
     let metadata = smol::fs::metadata(path).await.map_err(unreadable)?;
@@ -1241,11 +1303,17 @@ async fn check_helper(
 }
 
 fn parse_check_output(stdout: &str) -> Result<HelperCheck> {
+    parse_check_result(stdout, HELPER_RESULT_PREFIX)
+}
+
+/// The last line of `stdout` that starts with `prefix`, read as
+/// `ready <path>`, `missing <path>` or `unverifiable <path>`.
+fn parse_check_result(stdout: &str, prefix: &str) -> Result<HelperCheck> {
     let line = stdout
         .lines()
         .rev()
-        .find_map(|line| line.strip_prefix(HELPER_RESULT_PREFIX))
-        .with_context(|| format!("no helper check result in {stdout:?}"))?;
+        .find_map(|line| line.strip_prefix(prefix))
+        .with_context(|| format!("no check result in {stdout:?}"))?;
     let (state, path) = line
         .trim_start()
         .split_once(' ')
@@ -1258,12 +1326,14 @@ fn parse_check_output(stdout: &str) -> Result<HelperCheck> {
     }
 }
 
-/// A file copied into the install directory under a temporary name, waiting
-/// for [`FINALIZE_SCRIPT`].
+/// A file copied into its directory under a temporary name, waiting to be
+/// moved into place ([`FINALIZE_SCRIPT`], [`AGENT_FINALIZE_SCRIPT`]).
 struct StagedFile {
-    name: &'static str,
+    name: String,
     path: String,
     size: u64,
+    /// SHA-256 of what was sent, which is also what arrived.
+    sha256: String,
 }
 
 /// What [`STAGE_SCRIPT`] reports about the file it received.
@@ -1295,9 +1365,20 @@ async fn install_helper(
         ),
         (SLIRP_BINARY_NAME, artifacts.slirp.as_path(), false),
     ];
+    let directory = helper_install_directory(key);
     let mut staged = Vec::with_capacity(files.len());
     for (name, source, gzip) in files {
-        match stage_file(wsl_exe, distro, key, name, source, gzip).await {
+        match stage_file(
+            wsl_exe,
+            distro,
+            &directory,
+            name,
+            source,
+            gzip,
+            StagedKind::SandboxHelper,
+        )
+        .await
+        {
             Ok(file) => staged.push(file),
             Err(error) => {
                 discard_staged_files(
@@ -1335,7 +1416,7 @@ async fn install_helper(
             staged.iter().map(|file| file.path.as_str()),
         )
         .await;
-        return Err(copy_failure(distro, &output));
+        return Err(copy_failure(distro, &output, StagedKind::SandboxHelper));
     }
     log::info!(
         "installed the WSL sandbox helper {key} into {}",
@@ -1344,15 +1425,17 @@ async fn install_helper(
     Ok(())
 }
 
-/// Copy `source` (decompressed when `gzip`) into the install directory under a
-/// temporary name, and check that what arrived is exactly what was sent.
+/// Copy `source` (decompressed when `gzip`) into `directory`, relative to the
+/// distro account's home, under a temporary name, and check that what arrived
+/// is exactly what was sent.
 async fn stage_file(
     wsl_exe: &Path,
     distro: Option<&str>,
-    key: &str,
-    name: &'static str,
+    directory: &str,
+    name: &str,
     source: &Path,
     gzip: bool,
+    kind: StagedKind,
 ) -> Result<StagedFile> {
     use smol::process::windows::CommandExt as _;
 
@@ -1367,8 +1450,7 @@ async fn stage_file(
             "-c",
             STAGE_SCRIPT,
             "zed-wsl-stage",
-            key,
-            WSL_SANDBOX_HELPER_HOME_RELATIVE,
+            directory,
             name,
         ])
         .stdin(Stdio::piped())
@@ -1378,25 +1460,25 @@ async fn stage_file(
         .creation_flags(CREATE_NO_WINDOW);
     let mut child = command
         .spawn()
-        .map_err(|error| wsl_start_failure("サンドボックス用ヘルパーのコピー", &error))?;
+        .map_err(|error| wsl_start_failure(kind.copy_step(), &error))?;
     let stdin = child
         .stdin
         .take()
         .context("bug: wsl.exe was spawned without a stdin pipe")?;
-    let (sent, output) = futures::join!(send_file(source, gzip, stdin), child.output());
-    let output =
-        output.map_err(|error| wsl_start_failure("サンドボックス用ヘルパーのコピー", &error))?;
+    let (sent, output) = futures::join!(send_file(source, gzip, stdin, kind), child.output());
+    let output = output.map_err(|error| wsl_start_failure(kind.copy_step(), &error))?;
     let report = parse_stage_output(&String::from_utf8_lossy(&output.stdout));
 
     // A failed `wsl.exe` is the better explanation of a failed send (the pipe
     // broke because the other end went away), so it is checked first.
     let failure = if !output.status.success() {
-        Some(copy_failure(distro, &output))
+        Some(copy_failure(distro, &output, kind))
     } else {
         match (&sent, &report) {
             (Err(_), _) => None,
             (Ok(_), Err(error)) => Some(unavailable(format!(
-                "サンドボックス用のヘルパーを{}にコピーできませんでした ({error:#})。",
+                "{}を{}にコピーできませんでした ({error:#})。",
+                kind.noun(),
                 wsl_distro_label(distro)
             ))),
             (Ok(sent), Ok(report)) => {
@@ -1407,10 +1489,11 @@ async fn stage_file(
                         .is_none_or(|received| received == sent.sha256);
                 (!intact).then(|| {
                     unavailable(format!(
-                        "{}にコピーしたサンドボックス用のヘルパー `{name}` が元のファイルと一致しませんでした \
+                        "{}にコピーした{} `{name}` が元のファイルと一致しませんでした \
                          (送信 {} バイト、受信 {} バイト)。もう一度実行してください。改善しない場合は \
                          WSL 内の空き容量を確認してください。",
                         wsl_distro_label(distro),
+                        kind.noun(),
                         sent.size,
                         report.size
                     ))
@@ -1433,28 +1516,35 @@ async fn stage_file(
     };
     let report = report?;
     Ok(StagedFile {
-        name,
+        name: name.to_string(),
         path: report.path,
         size: sent.size,
+        sha256: sent.sha256,
     })
 }
 
 /// Stream `source` (decompressed when `gzip`) into `sink`, returning the size
 /// and SHA-256 of what was sent.
-async fn send_file(source: &Path, gzip: bool, sink: smol::process::ChildStdin) -> Result<SentFile> {
+async fn send_file(
+    source: &Path,
+    gzip: bool,
+    sink: smol::process::ChildStdin,
+    kind: StagedKind,
+) -> Result<SentFile> {
     let file = smol::fs::File::open(source).await.map_err(|error| {
         unavailable(format!(
-            "同梱のサンドボックス用ヘルパー `{}` を読み取れませんでした ({error})。\
-             Zed を再インストールしてください。",
-            source.display()
+            "{} `{}` を読み取れませんでした ({error})。{}",
+            kind.source_noun(),
+            source.display(),
+            kind.source_fix()
         ))
     })?;
     let reader = futures::io::BufReader::new(file);
     if gzip {
         let decoder = async_compression::futures::bufread::GzipDecoder::new(reader);
-        pump(Box::pin(decoder), source, sink).await
+        pump(Box::pin(decoder), source, sink, kind).await
     } else {
-        pump(reader, source, sink).await
+        pump(reader, source, sink, kind).await
     }
 }
 
@@ -1462,6 +1552,7 @@ async fn pump(
     mut reader: impl AsyncRead + Unpin,
     source: &Path,
     mut sink: smol::process::ChildStdin,
+    kind: StagedKind,
 ) -> Result<SentFile> {
     let mut hasher = Sha256::new();
     let mut size = 0u64;
@@ -1471,9 +1562,10 @@ async fn pump(
         // gzip checksum mismatch), so it names the file and the fix.
         let read = reader.read(&mut buffer).await.map_err(|error| {
             unavailable(format!(
-                "同梱のサンドボックス用ヘルパー `{}` が壊れています ({error})。\
-                 Zed を再インストールしてください。",
-                source.display()
+                "{} `{}` が壊れています ({error})。{}",
+                kind.source_noun(),
+                source.display(),
+                kind.source_fix()
             ))
         })?;
         if read == 0 {
@@ -1484,11 +1576,11 @@ async fn pump(
         size += read as u64;
         sink.write_all(chunk)
             .await
-            .context("writing the sandbox helper into WSL")?;
+            .with_context(|| format!("writing {} into WSL", source.display()))?;
     }
     sink.close()
         .await
-        .context("finishing the sandbox helper copy into WSL")?;
+        .with_context(|| format!("finishing the copy of {} into WSL", source.display()))?;
     Ok(SentFile {
         size,
         sha256: hex_string(hasher.finalize().as_slice()),
@@ -1537,13 +1629,425 @@ async fn discard_staged_files<'a>(
     }
 }
 
-fn copy_failure(distro: Option<&str>, output: &std::process::Output) -> anyhow::Error {
+fn copy_failure(
+    distro: Option<&str>,
+    output: &std::process::Output,
+    kind: StagedKind,
+) -> anyhow::Error {
     unavailable(format!(
-        "サンドボックス用のヘルパーを{}にコピーできませんでした{}。WSL 内の空き容量と、\
+        "{}を{}にコピーできませんでした{}。WSL 内の空き容量と、\
          ホームディレクトリへの書き込み権限を確認してください。",
+        kind.noun(),
         wsl_distro_label(distro),
         command_failure_details(output.status.code(), &output.stderr)
     ))
+}
+
+// ===========================================================================
+// ADR-F49: agent binaries and the IDE bridge
+// ===========================================================================
+
+/// Where this build's helper is installed, relative to the distro account's
+/// home.
+fn helper_install_directory(key: &str) -> String {
+    format!("{WSL_SANDBOX_HELPER_HOME_RELATIVE}/sandbox/{key}")
+}
+
+/// `wsl.exe`, or the environment error explaining that WSL is missing.
+fn installed_wsl_exe() -> Result<PathBuf> {
+    let wsl_exe = wsl_exe_path();
+    if wsl_exe.is_file() {
+        Ok(wsl_exe)
+    } else {
+        Err(unavailable(
+            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default(),
+        ))
+    }
+}
+
+/// A bad request unless `path` is an absolute Linux path.
+fn ensure_linux_absolute_path(path: &str, description: &str) -> Result<()> {
+    ensure!(
+        path.starts_with('/') && !path.contains('\0'),
+        "the {description} path `{path}` is not an absolute Linux path"
+    );
+    Ok(())
+}
+
+/// Prefix of [`AGENT_CHECK_SCRIPT`]'s result line.
+const AGENT_RESULT_PREFIX: &str = "zed-wsl-agent:";
+
+/// Reports whether an agent binary is staged. `$1` is the agents directory
+/// relative to `$HOME`, `$2` the binary's SHA-256 (the name of its own
+/// directory), `$3` its name. It counts only while it still hashes to `$2`;
+/// checking refreshes its directory's timestamp, which keeps another build's
+/// clean-up (see [`AGENT_FINALIZE_SCRIPT`]) away from it.
+const AGENT_CHECK_SCRIPT: &str = r#"
+set -u
+dir="$HOME/$1/$2"
+file="$dir/$3"
+if [ -f "$file" ] && [ -x "$file" ]; then
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        printf 'zed-wsl-agent: unverifiable %s\n' "$file"
+        exit 0
+    fi
+    sum=$(sha256sum < "$file")
+    if [ "${sum%% *}" = "$2" ]; then
+        touch "$dir"
+        printf 'zed-wsl-agent: ready %s\n' "$file"
+        exit 0
+    fi
+fi
+printf 'zed-wsl-agent: missing %s\n' "$file"
+"#;
+
+/// Moves a staged agent binary into place: `$1` is the agents directory
+/// relative to `$HOME`, `$2` the binary's SHA-256, `$3` the staged file, `$4`
+/// its name. Then removes the other agent binaries nobody checked for a day,
+/// and what interrupted copies left behind.
+const AGENT_FINALIZE_SCRIPT: &str = r#"
+set -eu
+root="$HOME/$1"
+dir="$root/$2"
+chmod 755 "$3"
+mv -f "$3" "$dir/$4"
+touch "$dir"
+if command -v find >/dev/null 2>&1; then
+    find "$root" -mindepth 1 -maxdepth 1 -type d ! -name "$2" -mmin +1440 -exec rm -rf {} + 2>/dev/null || true
+    find "$dir" -maxdepth 1 -type f -name '.*' -mmin +60 -exec rm -f {} + 2>/dev/null || true
+fi
+"#;
+
+/// ADR-F49: copy an agent binary — the Linux Claude Code CLI, say — from
+/// Windows into `distro` (`None`: the default distro) and return its absolute
+/// path there.
+///
+/// `source_windows_path` must hash to `expected_sha256`: that is checked before
+/// anything is copied, and again, inside WSL, on what arrives. The binary lands
+/// in `~/.cache/zed-jp-enhance/agents/<sha256>/<name>` with mode 755, moved
+/// into place only once complete. That is inside the directory the helper
+/// protects, so it is read-only from inside the sandbox. A binary already
+/// staged with that digest is reused.
+///
+/// To run it in the sandbox, pass the returned path as the program
+/// (`CommandAndArgs::program`) of the command to wrap; the helper `exec`s an
+/// absolute path as it is. Never look it up on `PATH`: inside WSL `PATH`
+/// reaches the Windows drives, where a `claude` shim would start a Windows
+/// program through interop. Stage it in the distro the session runs in (see
+/// [`wsl_distro_for_path`]). Like [`wrap_invocation`], this runs `wsl.exe` and
+/// can take seconds while WSL starts.
+pub async fn stage_agent_binary(
+    distro: Option<&str>,
+    name: &str,
+    source_windows_path: &Path,
+    expected_sha256: &str,
+) -> Result<String> {
+    ensure_agent_binary_name(name)?;
+    let digest = normalized_sha256(expected_sha256)?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    match check_agent_binary(&wsl_exe, distro, name, &digest).await? {
+        HelperCheck::Ready(path) => return Ok(path),
+        HelperCheck::Unverifiable => return Err(unverifiable_agent_binary(distro)),
+        HelperCheck::Missing => {}
+    }
+    // Before copying, so that a file that is not the expected one is refused
+    // without sending any of it.
+    let source_digest = file_sha256(source_windows_path, StagedKind::AgentBinary).await?;
+    ensure!(
+        source_digest == digest,
+        "`{}` does not have the expected SHA-256 {digest} (it has {source_digest})",
+        source_windows_path.display()
+    );
+    let directory = format!("{AGENT_BINARIES_HOME_RELATIVE}/{digest}");
+    let staged = stage_file(
+        &wsl_exe,
+        distro,
+        &directory,
+        name,
+        source_windows_path,
+        false,
+        StagedKind::AgentBinary,
+    )
+    .await?;
+    if staged.sha256 != digest {
+        discard_staged_files(&wsl_exe, distro, [staged.path.as_str()]).await;
+        bail!(
+            "`{}` changed while it was being copied into WSL",
+            source_windows_path.display()
+        );
+    }
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            AGENT_FINALIZE_SCRIPT,
+            "zed-wsl-agent-finalize",
+            AGENT_BINARIES_HOME_RELATIVE,
+            digest.as_str(),
+            staged.path.as_str(),
+            staged.name.as_str(),
+        ],
+        "エージェントの実行ファイルの配置",
+    )
+    .await?;
+    if !output.status.success() {
+        discard_staged_files(&wsl_exe, distro, [staged.path.as_str()]).await;
+        return Err(copy_failure(distro, &output, StagedKind::AgentBinary));
+    }
+    match check_agent_binary(&wsl_exe, distro, name, &digest).await? {
+        HelperCheck::Ready(path) => Ok(path),
+        HelperCheck::Unverifiable => Err(unverifiable_agent_binary(distro)),
+        HelperCheck::Missing => Err(unavailable(format!(
+            "エージェントの実行ファイルを{}に配置しましたが、確認できませんでした。もう一度実行してください。",
+            wsl_distro_label(distro)
+        ))),
+    }
+}
+
+/// ADR-F49: the absolute path of the agent binary [`stage_agent_binary`]
+/// staged in `distro` as `name` with this SHA-256, while it is there and
+/// intact; `None` when it has to be staged (again).
+pub async fn staged_agent_binary(
+    distro: Option<&str>,
+    name: &str,
+    expected_sha256: &str,
+) -> Result<Option<String>> {
+    ensure_agent_binary_name(name)?;
+    let digest = normalized_sha256(expected_sha256)?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    match check_agent_binary(&wsl_exe, distro, name, &digest).await? {
+        HelperCheck::Ready(path) => Ok(Some(path)),
+        HelperCheck::Missing => Ok(None),
+        HelperCheck::Unverifiable => Err(unverifiable_agent_binary(distro)),
+    }
+}
+
+async fn check_agent_binary(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    name: &str,
+    digest: &str,
+) -> Result<HelperCheck> {
+    let output = run_wsl_command(
+        wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            AGENT_CHECK_SCRIPT,
+            "zed-wsl-agent-check",
+            AGENT_BINARIES_HOME_RELATIVE,
+            digest,
+            name,
+        ],
+        "エージェントの実行ファイルの確認",
+    )
+    .await?;
+    if !output.status.success() {
+        return Err(unavailable(format!(
+            "{}でエージェントの実行ファイルを確認できませんでした{}。\
+             `wsl --update` を実行してから再試行してください。",
+            wsl_distro_label(distro),
+            command_failure_details(output.status.code(), &output.stderr)
+        )));
+    }
+    parse_check_result(
+        &String::from_utf8_lossy(&output.stdout),
+        AGENT_RESULT_PREFIX,
+    )
+    .map_err(|error| {
+        unavailable(format!(
+            "{}でエージェントの実行ファイルを確認できませんでした ({error:#})。",
+            wsl_distro_label(distro)
+        ))
+    })
+}
+
+fn unverifiable_agent_binary(distro: Option<&str>) -> anyhow::Error {
+    unavailable(format!(
+        "{}に `sha256sum` がないため、エージェントの実行ファイルが置き換えられていないことを\
+         確認できません。coreutils をインストールしてから再試行してください。",
+        wsl_distro_label(distro)
+    ))
+}
+
+/// A bad request unless `name` is a plain file name: letters, digits, `.`,
+/// `_` and `-`, not starting with `.`.
+fn ensure_agent_binary_name(name: &str) -> Result<()> {
+    ensure!(
+        !name.is_empty()
+            && name.len() <= 64
+            && !name.starts_with('.')
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')),
+        "invalid agent binary name {name:?}"
+    );
+    Ok(())
+}
+
+/// `digest` as 64 lowercase hex digits, or a bad request.
+fn normalized_sha256(digest: &str) -> Result<String> {
+    ensure!(
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "invalid SHA-256 {digest:?}"
+    );
+    Ok(digest.to_ascii_lowercase())
+}
+
+/// The bridge's socket in its session directory.
+const IDE_RENDEZVOUS_SOCKET_NAME: &str = "bridge.sock";
+
+/// ADR-F49: where the IDE bridge of session `session_id` listens in `distro`
+/// (`None`: the default distro):
+/// `~/.cache/zed-jp-enhance/ide/<session_id>/bridge.sock`. That is inside the
+/// directory the helper protects in WSL mode, which the helper insists on — it
+/// connects to the socket from outside the sandbox. `session_id` may hold
+/// letters, digits, `_` and `-`. Pass the result to [`ide_bridge_invocation`]
+/// and as `IdeForward::rendezvous_path`.
+pub async fn ide_rendezvous_path(distro: Option<&str>, session_id: &str) -> Result<String> {
+    ensure!(
+        !session_id.is_empty()
+            && session_id.len() <= 64
+            && session_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')),
+        "invalid IDE session id {session_id:?}"
+    );
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let helper = ensure_sandbox_helper(&wsl_exe, distro).await?;
+    let home = match home_from_helper_path(&helper.path) {
+        Some(home) => home.to_string(),
+        None => query_distro_home(&wsl_exe, distro).await?,
+    };
+    Ok(format!(
+        "{home}/{IDE_RENDEZVOUS_HOME_RELATIVE}/{session_id}/{IDE_RENDEZVOUS_SOCKET_NAME}"
+    ))
+}
+
+/// The distro account's home, read off the path of an installed helper
+/// (`<home>/.cache/zed-jp-enhance/sandbox/<key>/zed-remote-server`); `None`
+/// for any other shape, such as a development override.
+fn home_from_helper_path(path: &str) -> Option<&str> {
+    let directory = path.strip_suffix(HELPER_BINARY_NAME)?.strip_suffix('/')?;
+    let (installs, _key) = directory.rsplit_once('/')?;
+    installs
+        .strip_suffix("/sandbox")?
+        .strip_suffix(WSL_SANDBOX_HELPER_HOME_RELATIVE)?
+        .strip_suffix('/')
+        .filter(|home| home.starts_with('/'))
+}
+
+/// Prefix of [`HOME_SCRIPT`]'s result line.
+const HOME_RESULT_PREFIX: &str = "zed-wsl-home:";
+const HOME_SCRIPT: &str = r#"printf 'zed-wsl-home: %s\n' "$HOME""#;
+
+async fn query_distro_home(wsl_exe: &Path, distro: Option<&str>) -> Result<String> {
+    let output = run_wsl_command(
+        wsl_exe,
+        distro,
+        ["--exec", "sh", "-c", HOME_SCRIPT],
+        "ホームディレクトリの確認",
+    )
+    .await?;
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix(HOME_RESULT_PREFIX)?.strip_prefix(' '))
+        .map(|home| home.trim_end_matches('/').to_string())
+        .filter(|home| home.starts_with('/'))
+        .ok_or_else(|| {
+            unavailable(format!(
+                "{}のホームディレクトリを確認できませんでした{}。",
+                wsl_distro_label(distro),
+                command_failure_details(output.status.code(), &output.stderr)
+            ))
+        })
+}
+
+/// ADR-F49: the `wsl.exe` program and arguments that start the IDE bridge in
+/// `distro` (`None`: the default distro; use the session's, see
+/// [`wsl_distro_for_path`]).
+///
+/// The bridge listens on `rendezvous_path` (see [`ide_rendezvous_path`]),
+/// writes `lock_content` to `lock_file_path` — a new file, never through a
+/// symlink, in a directory of the distro account's reached by a per-component
+/// no-symlink walk, created if missing — and multiplexes every connection over
+/// its standard I/O for [`crate::spawn_bridge_mux`]. It is this build's helper,
+/// started through the same verified start (checked against its SHA-256 first).
+///
+/// Returns the `wsl.exe` program, its arguments, and a **stdin preamble**: the
+/// caller must write the returned bytes to the bridge's stdin *before anything
+/// else*, then hand the same stdin to [`crate::spawn_bridge_mux`]. The lock
+/// content carries the CLI's IDE auth token, so it travels on stdin rather than
+/// on the command line, where `/proc/<pid>/cmdline` would leak it (ADR-F49
+/// item 5).
+///
+/// Spawn it with piped stdin and stdout, `CREATE_NO_WINDOW` and an empty
+/// `WSLENV`, as the sandbox's own `wsl.exe` is, and before the session it
+/// serves: the helper refuses a rendezvous directory that does not exist yet.
+/// Its stderr says `zed-ide-bridge: ready` once it listens, or
+/// `zed-ide-bridge: <code>: <detail>` before it exits with status 126 when it
+/// cannot set up. It removes the socket and the lock file, and exits, when its
+/// stdin closes. Like [`wrap_invocation`], this may copy the helper into WSL
+/// first.
+pub async fn ide_bridge_invocation(
+    distro: Option<&str>,
+    rendezvous_path: &str,
+    lock_file_path: &str,
+    lock_content: &[u8],
+) -> Result<(PathBuf, Vec<String>, Vec<u8>)> {
+    ensure_linux_absolute_path(rendezvous_path, "IDE rendezvous")?;
+    ensure_linux_absolute_path(lock_file_path, "IDE lock file")?;
+    ensure!(
+        lock_content.len() <= crate::MAX_IDE_LOCK_CONTENT,
+        "the IDE lock content is larger than {} bytes",
+        crate::MAX_IDE_LOCK_CONTENT
+    );
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let helper = ensure_sandbox_helper(&wsl_exe, distro).await?;
+    let args = ide_bridge_command_line(distro, &helper, rendezvous_path, lock_file_path);
+    let preamble = crate::encode_ide_lock_preamble(lock_content);
+    Ok((wsl_exe, args, preamble))
+}
+
+fn ide_bridge_command_line(
+    distro: Option<&str>,
+    helper: &InstalledHelper,
+    rendezvous_path: &str,
+    lock_file_path: &str,
+) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(distro) = distro {
+        args.extend(["-d".to_string(), distro.to_string()]);
+    }
+    args.extend(helper_invocation(helper));
+    args.extend([
+        crate::IDE_BRIDGE_FLAG.to_string(),
+        "--rendezvous".to_string(),
+        rendezvous_path.to_string(),
+        "--lock-file".to_string(),
+        lock_file_path.to_string(),
+    ]);
+    args
+}
+
+/// ADR-F49: the WSL distro a sandboxed command started in `path` runs in: the
+/// one a `\\wsl.localhost\<distro>\…` path names, or `None` for the default
+/// distro. Start the IDE bridge and stage agent binaries in the distro of the
+/// session they serve.
+pub fn wsl_distro_for_path(path: &Path) -> Option<String> {
+    parse_wsl_unc_path(&path.to_string_lossy())
+        .ok()
+        .and_then(|path| path.distro)
 }
 
 /// What `--wsl-sandbox-probe` reports about the distro's kernel.
@@ -2195,6 +2699,7 @@ mod tests {
                 network: RemoteSandboxNetwork::Blocked,
                 network_ceiling: None,
                 allow_fs_write: false,
+                interactive_session: None,
             },
             None,
             HashMap::<String, String>::new(),
@@ -2221,6 +2726,7 @@ mod tests {
                 slirp_sha256: Some("slirp-digest"),
                 environment: &[("PAGER".to_string(), String::new())],
                 unset_environment: &WSL_INTEROP_VARIABLES,
+                interactive_session: None,
             },
         );
         let args = helper_command_line(
@@ -2849,5 +3355,200 @@ mod tests {
         assert!(parse_path_resolution_output("weird ok /a\n", 1).is_err());
         assert!(parse_path_resolution_output("ok weird /a\n", 1).is_err());
         assert!(parse_path_resolution_output("ok ok not-absolute\n", 1).is_err());
+    }
+
+    #[test]
+    fn the_bridge_starts_through_the_verified_helper() {
+        let helper = InstalledHelper {
+            path: "/root/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server".to_string(),
+            digests: Some(HelperDigests {
+                server: "server-digest".to_string(),
+                slirp: "slirp-digest".to_string(),
+            }),
+        };
+        let args = ide_bridge_command_line(
+            Some("Ubuntu"),
+            &helper,
+            "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+            "/root/.claude-zed/ide/45123.lock",
+        );
+        assert_eq!(
+            args,
+            [
+                "-d",
+                "Ubuntu",
+                "--exec",
+                "/bin/sh",
+                "-c",
+                VERIFIED_EXEC_SCRIPT,
+                "zed-wsl-exec",
+                "/root/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server",
+                "server-digest",
+                "--ide-bridge",
+                "--rendezvous",
+                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                "--lock-file",
+                "/root/.claude-zed/ide/45123.lock",
+            ],
+            "the lock content is not on the command line"
+        );
+        // The token rides on stdin instead, as a length-prefixed preamble.
+        assert_eq!(
+            crate::encode_ide_lock_preamble(b"{\"pid\":1}"),
+            [&9u32.to_le_bytes()[..], b"{\"pid\":1}"].concat()
+        );
+    }
+
+    #[test]
+    fn the_distro_home_is_read_off_an_installed_helper() {
+        assert_eq!(
+            home_from_helper_path("/root/.cache/zed-jp-enhance/sandbox/0123abcd/zed-remote-server"),
+            Some("/root")
+        );
+        assert_eq!(
+            home_from_helper_path(
+                "/home/my user/.cache/zed-jp-enhance/sandbox/k/zed-remote-server"
+            ),
+            Some("/home/my user")
+        );
+        assert_eq!(home_from_helper_path("/opt/zed/remote_server"), None);
+        assert_eq!(
+            home_from_helper_path("/.cache/zed-jp-enhance/sandbox/k/zed-remote-server"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_distro_of_a_session_is_the_one_its_worktree_names() {
+        assert_eq!(
+            wsl_distro_for_path(Path::new(r"\\wsl.localhost\Debian\home\me\project")),
+            Some("Debian".to_string())
+        );
+        assert_eq!(wsl_distro_for_path(Path::new(r"C:\Users\me\project")), None);
+    }
+
+    #[test]
+    fn agent_binary_names_and_digests_are_checked() {
+        assert!(ensure_agent_binary_name("claude").is_ok());
+        assert!(ensure_agent_binary_name("claude-2.1.0_x86").is_ok());
+        for invalid in ["", ".hidden", "a/b", "..", "a b", &"x".repeat(65)] {
+            assert!(ensure_agent_binary_name(invalid).is_err(), "{invalid:?}");
+        }
+        assert_eq!(
+            normalized_sha256(&"AB".repeat(32)).expect("valid"),
+            "ab".repeat(32)
+        );
+        for invalid in ["", "ab", &"g".repeat(64), &"a".repeat(65)] {
+            assert!(normalized_sha256(invalid).is_err(), "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn agent_check_results_are_read_with_their_own_prefix() {
+        assert_eq!(
+            parse_check_result(
+                "zed-wsl-agent: ready /root/.cache/zed-jp-enhance/agents/ab/claude\n",
+                AGENT_RESULT_PREFIX
+            )
+            .expect("valid"),
+            HelperCheck::Ready("/root/.cache/zed-jp-enhance/agents/ab/claude".to_string())
+        );
+        assert_eq!(
+            parse_check_result("zed-wsl-agent: missing /x\n", AGENT_RESULT_PREFIX).expect("valid"),
+            HelperCheck::Missing
+        );
+        assert!(parse_check_result("zed-wsl-helper: ready /x\n", AGENT_RESULT_PREFIX).is_err());
+        assert!(AGENT_CHECK_SCRIPT.contains("zed-wsl-agent: ready"));
+    }
+
+    #[test]
+    fn bridge_paths_must_be_absolute_linux_paths() {
+        assert!(ensure_linux_absolute_path("/root/x", "test").is_ok());
+        for invalid in ["relative", r"C:\x", "", "/a\0b"] {
+            assert!(
+                ensure_linux_absolute_path(invalid, "test").is_err(),
+                "{invalid:?}"
+            );
+        }
+    }
+
+    /// Stages a file into the real default distro, runs it, and reads it back
+    /// (ADR-F49). It needs WSL, so it runs only when asked for:
+    /// `cargo test -p sandbox --lib -- --ignored agent_binary_staging_round_trip`.
+    #[test]
+    #[ignore = "needs WSL"]
+    fn agent_binary_staging_round_trip() {
+        smol::block_on(async {
+            let source = tempfile::NamedTempFile::new().expect("temp file");
+            let marker = format!("zed-f49s-staged-{}", std::process::id());
+            std::fs::write(source.path(), format!("#!/bin/sh\necho {marker}\n")).expect("write");
+            let digest =
+                hex_string(Sha256::digest(std::fs::read(source.path()).expect("read")).as_slice());
+            let name = "zed-f49s-test-agent";
+
+            assert_eq!(
+                staged_agent_binary(None, name, &digest)
+                    .await
+                    .expect("check"),
+                None
+            );
+            assert!(
+                stage_agent_binary(None, name, source.path(), &"0".repeat(64))
+                    .await
+                    .is_err(),
+                "a file with another digest is refused"
+            );
+            let staged = stage_agent_binary(None, name, source.path(), &digest)
+                .await
+                .expect("stage");
+            assert!(
+                staged.ends_with(&format!("/{AGENT_BINARIES_HOME_RELATIVE}/{digest}/{name}")),
+                "{staged}"
+            );
+            assert_eq!(
+                staged_agent_binary(None, name, &digest)
+                    .await
+                    .expect("check"),
+                Some(staged.clone())
+            );
+            assert_eq!(
+                stage_agent_binary(None, name, source.path(), &digest)
+                    .await
+                    .expect("reuse"),
+                staged
+            );
+
+            let wsl_exe = installed_wsl_exe().expect("wsl.exe");
+            let output = run_wsl_command(&wsl_exe, None, ["--exec", staged.as_str()], "test")
+                .await
+                .expect("run it");
+            let cleanup = run_wsl_command(
+                &wsl_exe,
+                None,
+                [
+                    "--exec",
+                    "sh",
+                    "-c",
+                    r#"rm -rf "$HOME/$1/$2"; rmdir "$HOME/$1" "$HOME/.cache/zed-jp-enhance" 2>/dev/null; true"#,
+                    "zed-f49s-cleanup",
+                    AGENT_BINARIES_HOME_RELATIVE,
+                    digest.as_str(),
+                ],
+                "test",
+            )
+            .await;
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout).trim(),
+                marker,
+                "the staged binary runs"
+            );
+            assert!(cleanup.expect("clean up").status.success());
+            assert_eq!(
+                staged_agent_binary(None, name, &digest)
+                    .await
+                    .expect("check"),
+                None
+            );
+        });
     }
 }
