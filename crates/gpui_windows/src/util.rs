@@ -1,4 +1,7 @@
-use std::sync::OnceLock;
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 
 use anyhow::Context;
 use gpui_util::ResultExt;
@@ -152,6 +155,30 @@ pub(crate) fn logical_point(x: f32, y: f32, scale_factor: f32) -> Point<Pixels> 
     Point {
         x: px(x / scale_factor),
         y: px(y / scale_factor),
+    }
+}
+
+/// `GetCursorPos` is denied for as long as the session's desktop is not the
+/// one taking input - a locked workstation, a disconnected remote desktop -
+/// and every resize, move and activation of a window asks for the cursor, so
+/// only the first failure of such a stretch is worth a warning.
+static CURSOR_POSITION_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn cursor_position() -> Option<POINT> {
+    let mut position = POINT::default();
+    match unsafe { GetCursorPos(&mut position) } {
+        Ok(()) => {
+            CURSOR_POSITION_UNAVAILABLE.store(false, Ordering::Relaxed);
+            Some(position)
+        }
+        Err(error) => {
+            if CURSOR_POSITION_UNAVAILABLE.swap(true, Ordering::Relaxed) {
+                log::debug!("unable to get cursor position: {error}");
+            } else {
+                log::warn!("unable to get cursor position: {error}");
+            }
+            None
+        }
     }
 }
 

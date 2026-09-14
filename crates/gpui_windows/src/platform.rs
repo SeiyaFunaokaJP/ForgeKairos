@@ -596,10 +596,7 @@ impl Platform for WindowsPlatform {
     }
 
     fn window_under_cursor(&self) -> Option<(AnyWindowHandle, Point<Pixels>)> {
-        let mut cursor = POINT::default();
-        unsafe { GetCursorPos(&mut cursor) }
-            .context("unable to get cursor position")
-            .log_err()?;
+        let cursor = cursor_position()?;
         // `WindowFromPoint` reports the deepest child window at the point, and
         // a hosted WebView2 covers most of a browser tab with child windows of
         // its own, so the top-level window it belongs to is what we want.

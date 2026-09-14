@@ -726,14 +726,10 @@ impl PlatformWindow for WindowsWindow {
 
     fn mouse_position(&self) -> Point<Pixels> {
         let scale_factor = self.scale_factor();
-        let point = unsafe {
-            let mut point: POINT = std::mem::zeroed();
-            GetCursorPos(&mut point)
-                .context("unable to get cursor position")
-                .log_err();
-            ScreenToClient(self.0.hwnd, &mut point).ok().log_err();
-            point
-        };
+        let mut point = cursor_position().unwrap_or_default();
+        unsafe { ScreenToClient(self.0.hwnd, &mut point) }
+            .ok()
+            .log_err();
         logical_point(point.x as f32, point.y as f32, scale_factor)
     }
 

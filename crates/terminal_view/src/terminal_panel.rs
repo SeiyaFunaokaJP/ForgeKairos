@@ -1421,6 +1421,8 @@ impl TerminalPanel {
                     )
                 }));
 
+                let reveal_strategy =
+                    reveal_strategy_for_started_terminal(reveal_strategy, workspace, window, cx);
                 match reveal_strategy {
                     RevealStrategy::Always => {
                         workspace.focus_panel::<Self>(window, cx);
@@ -1509,6 +1511,12 @@ impl TerminalPanel {
                             )
                         }));
 
+                        let reveal_strategy = reveal_strategy_for_started_terminal(
+                            reveal_strategy,
+                            workspace,
+                            window,
+                            cx,
+                        );
                         match reveal_strategy {
                             RevealStrategy::Always => {
                                 workspace.focus_panel::<Self>(window, cx);
@@ -1803,6 +1811,23 @@ pub fn prepare_task_for_spawn(
 
 fn is_enabled_in_workspace(workspace: &Workspace, cx: &App) -> bool {
     workspace.project().read(cx).supports_terminal(cx)
+}
+
+/// A terminal finishes starting well after it was asked for: the shell the
+/// panel opens for itself at startup lands after the worktree trust prompt is
+/// up. Focusing it then would send the keystrokes meant for the modal to the
+/// shell, so it is only revealed, the way `NoFocus` reveals it.
+fn reveal_strategy_for_started_terminal(
+    reveal_strategy: RevealStrategy,
+    workspace: &Workspace,
+    window: &mut Window,
+    cx: &mut App,
+) -> RevealStrategy {
+    if reveal_strategy == RevealStrategy::Always && workspace.has_active_modal(window, cx) {
+        RevealStrategy::NoFocus
+    } else {
+        reveal_strategy
+    }
 }
 
 pub fn new_terminal_pane(
@@ -3260,6 +3285,136 @@ mod tests {
             assert!(
                 terminal_view.focus_handle(cx).contains_focused(window, cx),
                 "with no modal open, a new center terminal should take focus"
+            );
+        });
+    }
+
+    fn display_only_terminal(cx: &mut App) -> Entity<Terminal> {
+        cx.new(|cx| {
+            terminal::TerminalBuilder::new_display_only(
+                terminal::terminal_settings::CursorShape::default(),
+                terminal::terminal_settings::AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                util::paths::PathStyle::local(),
+            )
+            .subscribe(cx)
+        })
+    }
+
+    /// The shell the panel starts for itself when it opens at startup can
+    /// finish after the worktree trust prompt is already up. The prompt keeps
+    /// the keyboard, so Enter trusts the project instead of reaching the shell.
+    #[gpui::test]
+    async fn test_panel_terminal_keeps_focus_on_the_trust_prompt(cx: &mut TestAppContext) {
+        init_test(cx);
+        pin_panel_closed_at_startup(cx);
+        cx.update(|cx| {
+            project::trusted_worktrees::init(Default::default(), cx);
+            cx.bind_keys([gpui::KeyBinding::new(
+                "enter",
+                menu::Confirm,
+                Some("SecurityModal"),
+            )]);
+        });
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            util::path!("/project"),
+            serde_json::json!({ "main.rs": "" }),
+        )
+        .await;
+        let project =
+            Project::test_with_worktree_trust(fs, [Path::new(util::path!("/project"))], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let (workspace, terminal_panel) = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                let workspace = multi_workspace.workspace().clone();
+                let terminal_panel = workspace.update(cx, |workspace, cx| {
+                    let panel = cx.new(|cx| TerminalPanel::new(workspace, window, cx));
+                    workspace.add_panel(panel.clone(), window, cx);
+                    panel
+                });
+                (workspace, terminal_panel)
+            })
+            .expect("failed to set up the workspace");
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.show_worktree_trust_security_modal(false, window, cx);
+        });
+        cx.run_until_parked();
+        let security_modal = workspace
+            .read_with(cx, |workspace, cx| {
+                workspace.active_modal::<workspace::security_modal::SecurityModal>(cx)
+            })
+            .expect("an untrusted worktree should bring up the trust prompt");
+
+        terminal_panel
+            .update_in(cx, |terminal_panel, window, cx| {
+                terminal_panel.add_terminal_with(RevealStrategy::Always, window, cx, |_, cx| {
+                    gpui::Task::ready(Ok(display_only_terminal(cx)))
+                })
+            })
+            .await
+            .expect("the terminal should be added to the panel");
+        cx.run_until_parked();
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert_eq!(terminal_panel.read(cx).active_pane.read(cx).items_len(), 1);
+            assert!(
+                workspace.bottom_dock().read(cx).is_open(),
+                "the panel should still open on its new terminal"
+            );
+            assert!(
+                security_modal
+                    .read(cx)
+                    .focus_handle(cx)
+                    .contains_focused(window, cx),
+                "a terminal that finished starting after the trust prompt must not take its focus"
+            );
+        });
+
+        cx.simulate_keystrokes("enter");
+
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert!(
+                workspace
+                    .active_modal::<workspace::security_modal::SecurityModal>(cx)
+                    .is_none(),
+                "Enter should confirm the trust prompt"
+            );
+            assert!(
+                !project::trusted_worktrees::TrustedWorktrees::has_restricted_worktrees(
+                    &workspace.project().read(cx).worktree_store(),
+                    cx
+                ),
+                "confirming the prompt should trust the project"
+            );
+        });
+
+        terminal_panel
+            .update_in(cx, |terminal_panel, window, cx| {
+                terminal_panel.add_terminal_with(RevealStrategy::Always, window, cx, |_, cx| {
+                    gpui::Task::ready(Ok(display_only_terminal(cx)))
+                })
+            })
+            .await
+            .expect("the second terminal should be added to the panel");
+        cx.run_until_parked();
+
+        terminal_panel.update_in(cx, |terminal_panel, window, cx| {
+            let terminal_view = terminal_panel
+                .active_pane
+                .read(cx)
+                .active_item()
+                .and_then(|item| item.downcast::<TerminalView>())
+                .expect("the second terminal should be the panel's active item");
+            assert!(
+                terminal_view.focus_handle(cx).contains_focused(window, cx),
+                "with no modal open, the new terminal should take focus as before"
             );
         });
     }
