@@ -132,6 +132,11 @@ impl AgentTool for ApplyCodeActionTool {
                 )
             })?;
 
+            // ADR-F50: the language server's edit can change files in any
+            // worktree, and create, rename or delete them.
+            project
+                .update(cx, |project, cx| project.note_agent_write_anywhere(cx))
+                .await;
             let apply_task = project.update(cx, |project, cx| {
                 project.apply_code_action(buffer, action, true, cx)
             });

@@ -1028,7 +1028,7 @@ pub(crate) fn code_loading_environment<'a>(
         .collect()
 }
 
-fn is_code_loading_variable(name: &str) -> bool {
+pub(crate) fn is_code_loading_variable(name: &str) -> bool {
     let name = name.to_ascii_uppercase();
     CODE_LOADING_ENVIRONMENT_VARIABLES.contains(&name.as_str())
         || CODE_LOADING_ENVIRONMENT_PREFIXES
@@ -1036,13 +1036,13 @@ fn is_code_loading_variable(name: &str) -> bool {
             .any(|prefix| name.starts_with(prefix))
 }
 
-fn runs_code_from_working_directory(program: &str) -> bool {
+pub(crate) fn runs_code_from_working_directory(program: &str) -> bool {
     let stem = program_stem(program);
     stem.starts_with("python") || WORKING_DIRECTORY_CODE_RUNNERS.contains(&stem.as_str())
 }
 
 /// The lowercase file name of `program`, without an executable extension.
-fn program_stem(program: &str) -> String {
+pub(crate) fn program_stem(program: &str) -> String {
     let file_name = program
         .rsplit(['/', '\\'])
         .next()

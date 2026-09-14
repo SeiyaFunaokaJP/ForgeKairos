@@ -139,6 +139,13 @@ const DB_FILE_NAME: &str = "db.sqlite";
 
 pub static ALL_FILE_DB_FAILED: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
 
+/// Whether what is written to the app's database is still there after a
+/// restart: not when Zed runs stateless, nor when every file database failed
+/// to open and an in-memory one stands in.
+pub fn app_database_is_persistent() -> bool {
+    !*ZED_STATELESS && !ALL_FILE_DB_FAILED.load(Ordering::Acquire)
+}
+
 /// A type that can be used as a database scope for path construction.
 pub trait DbScope {
     fn scope_name(&self) -> &str;
@@ -358,6 +365,9 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        // What was kept is not there, and what relies on it (ADR-F50's stored
+        // pauses) can tell.
+        assert!(!crate::app_database_is_persistent());
     }
 
     /// Test that DB exists but corrupted (causing recreate)

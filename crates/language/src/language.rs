@@ -690,6 +690,52 @@ pub trait LspAdapter: 'static + Send + Sync + DynLspInstaller {
     /// This allows adapters to intercept preference selections (like "Always" or "Never")
     /// for settings that should be persisted to Zed's settings file.
     fn process_prompt_response(&self, _context: &PromptResponseContext, _cx: &mut AsyncApp) {}
+
+    /// How this server runs while its worktree's code is paused, after an AI
+    /// agent wrote into the worktree and until the user resumes it (ADR-F50).
+    ///
+    /// `Unaffected` by default, because whatever an adapter says, the store
+    /// keeps the server's executable, its script arguments and its
+    /// code-loading environment out of the worktree while it is paused: a
+    /// server that does not run project code by design needs nothing more. A
+    /// server that loads project configuration or plugins as code, or runs the
+    /// project's interpreter, has to say so here. An error stops the server.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Unaffected)
+    }
+}
+
+/// How a language server runs while its worktree's code is paused (ADR-F50).
+#[derive(Clone, Debug, PartialEq)]
+pub enum WorktreeCodePausedMode {
+    /// Keeps running: the server does not run the worktree's code by itself.
+    Unaffected,
+    /// Stopped until the user resumes: the server runs the worktree's code
+    /// by design.
+    Stopped,
+    /// Runs with settings that keep it from running the worktree's code.
+    /// `initialization_options` is merged over everything else the server
+    /// starts with, and each top-level section of `workspace_configuration`
+    /// into the section of the same name, without adding sections the
+    /// configuration does not have. An empty object in either clears what is
+    /// there. It runs this way only while every worktree file whose path ends
+    /// with one of `unchanged_files` is byte for byte what it was when the user
+    /// last confirmed the worktree; otherwise it is stopped. With any
+    /// `unchanged_files`, what it hears of changed and saved files waits for
+    /// those files to be checked.
+    Restricted {
+        initialization_options: Value,
+        workspace_configuration: Value,
+        unchanged_files: &'static [&'static str],
+        /// Whether the server formats by running other programs that the
+        /// worktree can pick (rust-analyzer runs rustfmt through rustup,
+        /// which reads the worktree's toolchain file). Its formatting is
+        /// skipped while the worktree is paused.
+        formatting_runs_programs: bool,
+    },
 }
 
 pub trait LspInstaller {
@@ -944,6 +990,8 @@ pub struct FakeLspAdapter {
     pub disk_based_diagnostics_progress_token: Option<String>,
     pub disk_based_diagnostics_sources: Vec<String>,
     pub language_server_binary: LanguageServerBinary,
+    pub worktree_code_paused_mode: WorktreeCodePausedMode,
+    pub is_extension: bool,
 
     pub capabilities: lsp::ServerCapabilities,
     pub initializer: Option<Box<dyn 'static + Send + Sync + Fn(&mut lsp::FakeLanguageServer)>>,
@@ -1506,6 +1554,8 @@ impl Default for FakeLspAdapter {
                 arguments: vec![],
                 env: Default::default(),
             },
+            worktree_code_paused_mode: WorktreeCodePausedMode::Unaffected,
+            is_extension: false,
             label_for_completion: None,
         }
     }
@@ -1609,7 +1659,14 @@ impl LspAdapter for FakeLspAdapter {
     }
 
     fn is_extension(&self) -> bool {
-        false
+        self.is_extension
+    }
+
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(self.worktree_code_paused_mode.clone())
     }
 }
 

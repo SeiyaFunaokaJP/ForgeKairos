@@ -97,6 +97,14 @@ pub trait AgentConnection {
         None
     }
 
+    /// Whether every file this agent changes goes through Zed's own tools,
+    /// which pause the worktree's code before they write (ADR-F50). An
+    /// external agent writes files itself, so each of its turns counts as a
+    /// writer of the project's host.
+    fn changes_files_through_zed(&self) -> bool {
+        false
+    }
+
     fn new_session(
         self: Rc<Self>,
         project: Entity<Project>,

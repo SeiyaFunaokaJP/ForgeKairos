@@ -346,6 +346,14 @@ impl AnyAgentTool for ContextServerTool {
             return Task::ready(Err(anyhow::anyhow!("Context server not found").into()));
         };
         let tool_name = self.tool.name.clone();
+        // ADR-F50: an MCP server can change files anywhere it reaches, so only
+        // a tool that says it changes nothing is taken at its word.
+        let read_only = self
+            .tool
+            .annotations
+            .as_ref()
+            .and_then(|annotations| annotations.read_only_hint)
+            == Some(true);
         let tool_id = mcp_tool_id(&self.server_id.0, &self.tool.name);
         let display_name = self.tool.name.clone();
         let initial_title = self.initial_title(serde_json::Value::Null, cx);
@@ -378,6 +386,9 @@ impl AnyAgentTool for ContextServerTool {
                 arguments
             );
 
+            if !read_only {
+                cx.update(project::WorktreeCodeExecution::note_agent_write_on_every_host);
+            }
             let request = protocol.request::<context_server::types::requests::CallTool>(
                 context_server::types::CallToolParams {
                     name: tool_name,
@@ -392,6 +403,9 @@ impl AnyAgentTool for ContextServerTool {
                     return Err(anyhow::anyhow!("MCP tool cancelled by user").into());
                 }
             };
+            if !read_only {
+                cx.update(project::WorktreeCodeExecution::note_agent_write_landed_on_every_host);
+            }
 
             if response.is_error == Some(true) {
                 let error_message: String =

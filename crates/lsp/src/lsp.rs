@@ -459,6 +459,9 @@ impl LanguageServer {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        if cfg!(windows) {
+            command.env(util::command::NO_CURRENT_DIRECTORY_PROGRAM_LOOKUP, "1");
+        }
 
         let mut server = command
             .spawn()

@@ -36,6 +36,9 @@ message AddWorktree {
   string path = 1;
   uint64 project_id = 2;
   bool visible = 3;
+  // ADR-F50: the IDE says whether the worktree's code may run before any of
+  // it runs on the remote host.
+  bool code_execution_follows_ide = 4;
 }
 
 message AddWorktreeResponse {
@@ -238,4 +241,18 @@ message AllocateWorktreeId {
 
 message AllocateWorktreeIdResponse {
   uint64 worktree_id = 1;
+}
+
+// ADR-F50: from the IDE to the remote server, whether a worktree's own code
+// may run on the remote host. The worktree's code is paused while
+// `generation` differs from `confirmed_generation`, which only the IDE's user
+// advances. A server that does not know this message keeps running it, and
+// does not acknowledge it.
+message SetWorktreeCodeExecution {
+  uint64 project_id = 1;
+  uint64 worktree_id = 2;
+  uint64 generation = 3;
+  uint64 confirmed_generation = 4;
+  // Extension language servers the user lets run while the code is paused.
+  repeated string language_servers_allowed_while_paused = 5;
 }

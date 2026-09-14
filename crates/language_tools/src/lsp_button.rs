@@ -29,6 +29,7 @@ use util::{ResultExt, paths::PathExt, rel_path::RelPath};
 use workspace::{StatusItemView, ToggleWorktreeSecurity, Workspace};
 
 use crate::lsp_log_view;
+use crate::paused_worktree_code::ReviewPausedWorktreeCode;
 
 actions!(
     lsp_tool,
@@ -258,6 +259,51 @@ impl LanguageServerState {
                 },
                 move |window, cx| {
                     window.dispatch_action(ToggleWorktreeSecurity.boxed_clone(), cx);
+                },
+            );
+        }
+
+        // ADR-F50: the dialog it leads to is the only way to resume.
+        let has_paused_worktree_code = self.workspace.upgrade().is_some_and(|workspace| {
+            !workspace
+                .read(cx)
+                .project()
+                .read(cx)
+                .worktree_code_execution()
+                .read(cx)
+                .paused_worktrees()
+                .is_empty()
+        });
+        if has_paused_worktree_code {
+            menu = menu.custom_entry(
+                move |_window, _cx| {
+                    v_flex()
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    Icon::new(IconName::Warning)
+                                        .color(Color::Warning)
+                                        .size(IconSize::XSmall),
+                                )
+                                .child(
+                                    Label::new(
+                                        "エージェントの書き込み後のため、フォルダーのコードを止めています",
+                                    )
+                                    .size(LabelSize::Small),
+                                ),
+                        )
+                        .child(
+                            Label::new(
+                                "確認して再開するまで、言語サーバーは制限モードか停止のままです。",
+                            )
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                        )
+                        .into_any_element()
+                },
+                move |window, cx| {
+                    window.dispatch_action(ReviewPausedWorktreeCode.boxed_clone(), cx);
                 },
             );
         }

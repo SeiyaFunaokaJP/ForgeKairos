@@ -392,6 +392,22 @@ pub struct AgentSettingsContent {
     /// These are populated when choosing "Allow always" from a sandbox
     /// escalation prompt.
     pub sandbox_permissions: Option<SandboxPermissionsContent>,
+
+    /// Whether a worktree an agent wrote into stops running its own code
+    /// (project language server modes, formatters, the project's prettier)
+    /// until the user reviews the changes and resumes it. Read from the user
+    /// settings file only: project and server settings cannot turn it off.
+    ///
+    /// Default: true
+    pub pause_worktree_code_after_agent_writes: Option<bool>,
+
+    /// Language servers from extensions that keep running while their
+    /// worktree's code is paused, by name (for example `"gopls"`). Other
+    /// extensions' servers stop until the worktree is resumed. Read from the
+    /// user settings file only.
+    ///
+    /// Default: []
+    pub language_servers_allowed_while_paused: Option<Vec<String>>,
 }
 
 impl AgentSettingsContent {

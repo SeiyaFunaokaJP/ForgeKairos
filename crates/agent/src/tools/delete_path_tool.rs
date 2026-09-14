@@ -204,6 +204,13 @@ impl AgentTool for DeletePathTool {
                 Result::<_, String>::Ok((project_path, worktree_snapshot))
             })?;
 
+            // ADR-F50: a deletion is a write into the worktree.
+            project
+                .update(cx, |project, cx| {
+                    project.note_agent_write_to_project_path(&project_path, cx)
+                })
+                .await;
+
             let (mut paths_tx, mut paths_rx) = mpsc::channel(256);
             cx.background_spawn({
                 let project_path = project_path.clone();

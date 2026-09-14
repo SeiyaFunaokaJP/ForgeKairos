@@ -4693,6 +4693,126 @@ async fn test_remote_trash_restore(cx: &mut TestAppContext, server_cx: &mut Test
     });
 }
 
+/// ADR-F50: the IDE says whether a remote worktree's own code may run, and
+/// the remote host, which runs its language servers and formatters, follows.
+#[gpui::test]
+async fn test_the_ide_pauses_a_remote_worktrees_code_on_its_host(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    use project::worktree_code_execution::{RemoteHostPause, ResumeOutcome, WorktreeCodeState};
+
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({ "project1": { "src": { "lib.rs": "fn one() -> usize { 1 }" } } }),
+    )
+    .await;
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let host_state = |server_cx: &mut TestAppContext| {
+        headless.read_with(server_cx, |headless, cx| {
+            headless.worktree_code_execution.read(cx).state(worktree_id)
+        })
+    };
+    assert_eq!(host_state(server_cx), WorktreeCodeState::Allowed);
+    let execution = project.read_with(cx, |project, _| project.worktree_code_execution().clone());
+    let host_follows = |cx: &mut TestAppContext| {
+        execution.read_with(cx, |execution, _| {
+            execution
+                .details(worktree_id)
+                .and_then(|details| details.remote_host)
+        })
+    };
+    assert_eq!(host_follows(cx), Some(RemoteHostPause::Following));
+
+    project
+        .update(cx, |project, cx| {
+            project.note_agent_write_to_path(Path::new(path!("/code/project1/src/lib.rs")), cx)
+        })
+        .await;
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    assert_eq!(host_state(server_cx), WorktreeCodeState::Paused);
+
+    let resumed = execution
+        .update(cx, |execution, cx| {
+            let generation = execution
+                .generation(worktree_id)
+                .expect("the worktree is known");
+            execution.resume(worktree_id, generation, cx)
+        })
+        .await;
+    assert_eq!(resumed, ResumeOutcome::Resumed);
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    assert_eq!(host_state(server_cx), WorktreeCodeState::Allowed);
+}
+
+/// ADR-F50: a server from before the pause neither follows nor acknowledges
+/// it. The IDE tells so rather than claim the host's code is paused, and a
+/// worktree the IDE has not decided about runs nothing of its own there.
+#[gpui::test]
+async fn test_a_remote_server_that_does_not_acknowledge_the_pause_is_told_apart(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    use project::worktree_code_execution::{
+        IgnoreWorktreeCodeExecutionForTests, REMOTE_ACKNOWLEDGEMENT_TIMEOUT, RemoteHostPause,
+        WorktreeCodeState,
+    };
+
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({ "project1": { "src": { "lib.rs": "fn one() -> usize { 1 }" } } }),
+    )
+    .await;
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    server_cx.update(|cx| cx.set_global(IgnoreWorktreeCodeExecutionForTests));
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    assert_eq!(
+        headless.read_with(server_cx, |headless, cx| {
+            headless.worktree_code_execution.read(cx).state(worktree_id)
+        }),
+        WorktreeCodeState::Unknown,
+        "the host waits for the IDE's decision before running the worktree's code"
+    );
+    let execution = project.read_with(cx, |project, _| project.worktree_code_execution().clone());
+    let host_follows = |cx: &mut TestAppContext| {
+        execution.read_with(cx, |execution, _| {
+            execution
+                .details(worktree_id)
+                .and_then(|details| details.remote_host)
+        })
+    };
+    assert_eq!(host_follows(cx), Some(RemoteHostPause::Unknown));
+
+    cx.executor().advance_clock(REMOTE_ACKNOWLEDGEMENT_TIMEOUT);
+    cx.run_until_parked();
+    assert_eq!(host_follows(cx), Some(RemoteHostPause::NotFollowing));
+    let paused_on_host = execution.read_with(cx, |execution, _| {
+        execution.formatters_skipped_since(worktree_id, 0)
+    });
+    assert!(!paused_on_host);
+}
+
 pub async fn init_test(
     server_fs: &Arc<FakeFs>,
     cx: &mut TestAppContext,
@@ -5003,6 +5123,8 @@ async fn open_buffer_over_session(session: &rpc::AnyProtoClient, cx: &mut TestAp
             project_id: proto::REMOTE_SERVER_PROJECT_ID,
             path: path!("/code/project1").to_string(),
             visible: true,
+            // An IDE that never says whether the worktree's code may run.
+            code_execution_follows_ide: false,
         })
         .await
         .unwrap();

@@ -26,6 +26,7 @@ pub mod telemetry_snapshot;
 pub mod terminals;
 pub mod toolchain_store;
 pub mod trusted_worktrees;
+pub mod worktree_code_execution;
 pub mod worktree_store;
 
 mod environment;
@@ -59,6 +60,10 @@ pub use git_store::{
 };
 pub use manifest_tree::ManifestTree;
 pub use project_search::{Search, SearchResults};
+pub use worktree_code_execution::{
+    AgentWriteScope, AgentWriterKind, ExternalAgentSessionGuard, SandboxedWriterGuard,
+    WorktreeCodeExecution,
+};
 pub use worktree_store::WorktreePaths;
 
 use anyhow::{Context as _, Result, anyhow};
@@ -264,6 +269,9 @@ pub struct Project {
     /// ADR-F50: the launches this remote project's server asked the user
     /// about. `None` for other projects.
     _remote_launch_requests: Option<Entity<RemoteLaunchRequests>>,
+    /// ADR-F50: whether each worktree's own code may run, after agents wrote
+    /// into it.
+    worktree_code_execution: Entity<WorktreeCodeExecution>,
 }
 
 struct DownloadingFile {
@@ -1336,6 +1344,9 @@ impl Project {
             cx.subscribe(&settings_observer, Self::on_settings_observer_event)
                 .detach();
 
+            let worktree_code_execution =
+                cx.new(|cx| WorktreeCodeExecution::local(&worktree_store, fs.clone(), cx));
+
             let lsp_store = cx.new(|cx| {
                 LspStore::new_local(
                     buffer_store.clone(),
@@ -1353,6 +1364,7 @@ impl Project {
                     // hands language servers to fetch themselves with.
                     http_client::ide_lane(client.http_client()),
                     fs.clone(),
+                    worktree_code_execution.clone(),
                     cx,
                 )
             });
@@ -1416,6 +1428,7 @@ impl Project {
                 last_worktree_paths: WorktreePaths::default(),
                 remote_exec: remote_exec::RemoteExec::default(),
                 _remote_launch_requests: None,
+                worktree_code_execution,
             }
         })
     }
@@ -1611,6 +1624,19 @@ impl Project {
                 )
             });
 
+            // ADR-F50: the remote host runs the worktrees' language servers
+            // and formatters, and hears from here whether they may run the
+            // worktrees' code.
+            let worktree_code_execution = cx.new(|cx| {
+                WorktreeCodeExecution::remote_host(
+                    &worktree_store,
+                    &remote,
+                    remote_proto.clone(),
+                    REMOTE_SERVER_PROJECT_ID,
+                    cx,
+                )
+            });
+
             let this = Self {
                 buffer_ordered_messages_tx: tx,
                 collaborators: Default::default(),
@@ -1674,6 +1700,7 @@ impl Project {
                 last_worktree_paths: WorktreePaths::default(),
                 remote_exec: remote_exec::RemoteExec::default(),
                 _remote_launch_requests: Some(remote_launch_requests.clone()),
+                worktree_code_execution,
             };
 
             // remote server -> local machine handlers
@@ -1928,6 +1955,9 @@ impl Project {
 
             cx.subscribe(&dap_store, Self::on_dap_store_event).detach();
 
+            let worktree_code_execution =
+                cx.new(|cx| WorktreeCodeExecution::inert(&worktree_store, cx));
+
             let mut project = Self {
                 buffer_ordered_messages_tx: tx,
                 buffer_store: buffer_store.clone(),
@@ -1976,6 +2006,7 @@ impl Project {
                 last_worktree_paths: WorktreePaths::default(),
                 remote_exec: remote_exec::RemoteExec::default(),
                 _remote_launch_requests: None,
+                worktree_code_execution,
             };
             project.set_role(role, cx);
             for worktree in worktrees {
@@ -2258,6 +2289,154 @@ impl Project {
     }
 
     #[inline]
+    /// ADR-F50: whether each worktree's own code may run.
+    pub fn worktree_code_execution(&self) -> &Entity<WorktreeCodeExecution> {
+        &self.worktree_code_execution
+    }
+
+    /// ADR-F50: an AI agent is about to write `abs_path`. Called before the
+    /// write lands, so that what the write triggers finds every open worktree
+    /// that holds the path paused, in this project or another one. The
+    /// returned task has worktrees reached through another spelling of the
+    /// path (a link, a junction, a mapped drive) paused as well; the write
+    /// waits for it.
+    pub fn note_agent_write_to_path(
+        &mut self,
+        abs_path: &Path,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
+        self.note_agent_write_to_paths(vec![abs_path.to_path_buf()], cx)
+    }
+
+    /// ADR-F50: an AI agent is about to write `project_path` (see
+    /// [`Self::note_agent_write_to_path`]).
+    pub fn note_agent_write_to_project_path(
+        &mut self,
+        project_path: &ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
+        match self.absolute_path(project_path, cx) {
+            Some(abs_path) => self.note_agent_write_to_path(&abs_path, cx),
+            None => Task::ready(()),
+        }
+    }
+
+    /// ADR-F50: an AI agent is about to change files it did not name, which
+    /// can be in any of the project's worktrees (a workspace edit from a
+    /// language server; see [`Self::note_agent_write_to_path`]).
+    pub fn note_agent_write_anywhere(&mut self, cx: &mut Context<Self>) -> Task<()> {
+        let roots = self.worktree_root_paths(cx);
+        self.note_agent_write_to_paths(roots, cx)
+    }
+
+    fn note_agent_write_to_paths(
+        &mut self,
+        paths: Vec<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
+        let Some(host) = self.worktree_code_execution_host(cx) else {
+            return Task::ready(());
+        };
+        WorktreeCodeExecution::note_agent_write(&host, &AgentWriteScope::Paths(paths.clone()), cx);
+        let Some(fs) = self.fs_resolving_write_paths() else {
+            return Task::ready(());
+        };
+        cx.spawn(async move |_, cx| {
+            let canonical =
+                worktree_code_execution::canonical_write_paths(fs.as_ref(), &paths).await;
+            if !canonical.is_empty() {
+                cx.update(|cx| {
+                    WorktreeCodeExecution::note_agent_write(
+                        &host,
+                        &AgentWriteScope::Paths(canonical),
+                        cx,
+                    )
+                });
+            }
+        })
+    }
+
+    /// ADR-F50: an agent's write to `abs_path`, which can land where no
+    /// worktree scan looks, has landed.
+    pub fn note_agent_write_landed(&mut self, abs_path: &Path, cx: &mut Context<Self>) {
+        let Some(host) = self.worktree_code_execution_host(cx) else {
+            return;
+        };
+        WorktreeCodeExecution::note_agent_write_landed(
+            &host,
+            &AgentWriteScope::Paths(vec![abs_path.to_path_buf()]),
+            cx,
+        );
+    }
+
+    /// ADR-F50: registers a process of `kind` that can write within `scope`
+    /// on this project's host for as long as the returned guard lives. The
+    /// worktrees it can write, in any open project, are paused at once, and
+    /// each change seen in them while it runs pauses them again. The returned
+    /// task has it cover worktrees reached through other spellings of those
+    /// paths as well; the process starts after it.
+    pub fn register_agent_writer(
+        &mut self,
+        scope: AgentWriteScope,
+        kind: AgentWriterKind,
+        cx: &mut Context<Self>,
+    ) -> (SandboxedWriterGuard, Task<()>) {
+        let Some(host) = self.worktree_code_execution_host(cx) else {
+            return (SandboxedWriterGuard::default(), Task::ready(()));
+        };
+        let guard = WorktreeCodeExecution::register_agent_writer(&host, &scope, kind, cx);
+        let (AgentWriteScope::Paths(paths), Some(fs), Some(registration)) =
+            (scope, self.fs_resolving_write_paths(), guard.registration())
+        else {
+            return (guard, Task::ready(()));
+        };
+        let resolved = cx.spawn(async move |_, cx| {
+            let canonical =
+                worktree_code_execution::canonical_write_paths(fs.as_ref(), &paths).await;
+            if !canonical.is_empty() {
+                cx.update(|cx| {
+                    WorktreeCodeExecution::extend_agent_writer(
+                        &host,
+                        &AgentWriteScope::Paths(canonical),
+                        &registration,
+                        cx,
+                    )
+                });
+            }
+        });
+        (guard, resolved)
+    }
+
+    /// ADR-F50: an external agent's session on this project's host lasts for
+    /// as long as the returned guard lives.
+    pub fn register_external_agent_session(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> ExternalAgentSessionGuard {
+        match self.worktree_code_execution_host(cx) {
+            Some(host) => WorktreeCodeExecution::register_external_agent_session(&host, cx),
+            None => ExternalAgentSessionGuard::default(),
+        }
+    }
+
+    /// Write paths are resolved on this machine only.
+    fn fs_resolving_write_paths(&self) -> Option<Arc<dyn Fs>> {
+        self.is_local().then(|| self.fs.clone())
+    }
+
+    fn worktree_root_paths(&self, cx: &App) -> Vec<PathBuf> {
+        self.worktrees(cx)
+            .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
+            .collect()
+    }
+
+    fn worktree_code_execution_host(&self, cx: &App) -> Option<String> {
+        self.worktree_code_execution
+            .read(cx)
+            .host_key()
+            .map(str::to_string)
+    }
+
     pub fn lsp_store(&self) -> Entity<LspStore> {
         self.lsp_store.clone()
     }

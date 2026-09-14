@@ -11,7 +11,7 @@ use language::language_settings::LanguageSettings;
 use language::{
     Buffer, ContextLocation, DynLspInstaller, LanguageToolchainStore, LspInstaller, Symbol,
 };
-use language::{ContextProvider, LspAdapter, LspAdapterDelegate};
+use language::{ContextProvider, LspAdapter, LspAdapterDelegate, WorktreeCodePausedMode};
 use language::{LanguageName, ManifestName, ManifestProvider, ManifestQuery};
 use language::{Toolchain, ToolchainList, ToolchainLister, ToolchainMetadata};
 use lsp::{CompletionItemKind, LanguageServerBinary, Uri};
@@ -613,6 +613,16 @@ impl PyrightLspAdapter {
 impl LspAdapter for PyrightLspAdapter {
     fn name(&self) -> LanguageServerName {
         Self::SERVER_NAME
+    }
+
+    /// ADR-F50: Pyright runs the project's Python interpreter to find where
+    /// imports resolve, and a virtual environment's interpreter is worktree
+    /// code.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Stopped)
     }
 
     async fn initialization_options(
@@ -1799,6 +1809,15 @@ impl LspAdapter for PyLspAdapter {
         Self::SERVER_NAME
     }
 
+    /// ADR-F50: pylsp runs inside the project's Python environment and loads
+    /// its plugins from there.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Stopped)
+    }
+
     async fn process_completions(&self, items: &mut [lsp::CompletionItem]) {
         for item in items {
             let is_named_argument = item.label.ends_with('=');
@@ -2060,6 +2079,15 @@ impl BasedPyrightLspAdapter {
 impl LspAdapter for BasedPyrightLspAdapter {
     fn name(&self) -> LanguageServerName {
         Self::SERVER_NAME
+    }
+
+    /// ADR-F50: basedpyright runs the project's Python interpreter to find
+    /// where imports resolve, as Pyright does.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Stopped)
     }
 
     async fn initialization_options(

@@ -12,6 +12,13 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000_u32;
 
 pub use gpui_util::new_std_command;
 
+/// ADR-F50: set to anything in a child's environment, this makes Windows
+/// (`CreateProcess`, `cmd.exe`) stop looking for a bare program name in the
+/// child's working directory, which for a language server, a formatter or an
+/// MCP server is a project folder: a `.cmd` shim that runs `node` must not
+/// find a `node.exe` the project put there.
+pub const NO_CURRENT_DIRECTORY_PROGRAM_LOOKUP: &str = "NoDefaultCurrentDirectoryInExePath";
+
 pub fn new_command(program: impl AsRef<OsStr>) -> Command {
     Command::new(program)
 }

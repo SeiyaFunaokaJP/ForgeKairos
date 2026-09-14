@@ -79,6 +79,24 @@ pub(crate) fn render_sandbox_settings_page(
             )
             .tab_index(0),
         )
+        .child(
+            SwitchField::new(
+                "pause-worktree-code-after-agent-writes",
+                Some("エージェントが書き込んだフォルダーのコードを再開まで止める"),
+                Some(
+                    "エージェントがファイルを書き込んだプロジェクトのフォルダーでは、[再開] を押すまで、言語サーバーとフォーマッターがそのフォルダーのコード (プロジェクトの prettier・ESLint の設定、ビルドスクリプトなど) を実行しません。この設定はユーザー設定にだけ保存され、プロジェクトの設定では変えられません。"
+                        .into(),
+                ),
+                project::worktree_code_execution::pause_after_agent_writes_enabled(cx),
+                move |state, _window, cx| {
+                    set_pause_worktree_code_after_agent_writes(
+                        *state == ToggleState::Selected,
+                        cx,
+                    );
+                },
+            )
+            .tab_index(0),
+        )
         .child({
             let docs_url =
                 client::zed_urls::sandboxing_docs(Some("persistent-sandbox-permissions"), cx);
@@ -462,6 +480,16 @@ fn update_sandbox_permissions(
                 .sandbox_permissions
                 .get_or_insert_default(),
         );
+    });
+}
+
+/// ADR-F50: written to the user settings file, the only one it is read from.
+fn set_pause_worktree_code_after_agent_writes(value: bool, cx: &mut App) {
+    SettingsStore::global(cx).update_settings_file(<dyn fs::Fs>::global(cx), move |settings, _| {
+        settings
+            .agent
+            .get_or_insert_default()
+            .pause_worktree_code_after_agent_writes = Some(value);
     });
 }
 

@@ -1341,6 +1341,7 @@ mod tests {
                 project_id: REMOTE_SERVER_PROJECT_ID,
                 path: util::path!("/code/project1").to_string(),
                 visible: true,
+                code_execution_follows_ide: false,
             }
             .into_envelope(10, None, None),
         )

@@ -61,6 +61,10 @@ use crate::{
     remote_launch_approvals::{LaunchPlace, RemoteLaunchApprovals},
     toolchain_store::{LocalToolchainStore, ToolchainStoreEvent},
     trusted_worktrees::{PathTrust, TrustedWorktrees, TrustedWorktreesEvent},
+    worktree_code_execution::{
+        GuardCheckMark, PausedLanguageServer, WorktreeCodeExecution, WorktreeCodeExecutionEvent,
+        WorktreeCodeState, external_formatter_may_run_while_paused, path_is_within,
+    },
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
     yarn::YarnPathStore,
 };
@@ -90,6 +94,7 @@ use language::{
     LspAdapter, LspAdapterDelegate, LspInstaller, ManifestDelegate, ManifestName, ModelineSettings,
     OffsetUtf16, Patch, PointUtf16, RelatedInformation, RelatedLocation, TextBufferSnapshot,
     ToOffset, ToOffsetUtf16, ToPointUtf16, Toolchain, Transaction, Unclipped,
+    WorktreeCodePausedMode,
     language_settings::{
         AllLanguageSettings, FormatOnSave, Formatter, LanguageSettings, LineEndingSetting,
         all_language_settings,
@@ -365,6 +370,16 @@ pub struct LocalLspStore {
     /// On the remote server, the approvals of the session this store is
     /// shared with (ADR-F50): project-defined launches are asked about there.
     remote_launch_approvals: Option<(Entity<RemoteLaunchApprovals>, Subscription)>,
+    /// ADR-F50: whether each worktree's own code may run.
+    worktree_code_execution: Entity<WorktreeCodeExecution>,
+    /// How each server that got past the ADR-F50 check started.
+    worktree_code_use: HashMap<LanguageServerId, WorktreeCodeUse>,
+    /// ADR-F50: what restricted servers whose paused mode depends on guard
+    /// files are to hear only once a check of those files has covered it.
+    guard_checks: HashMap<WorktreeId, GuardCheck>,
+    /// ADR-F50: the servers, running or waiting to, whose paused mode depends
+    /// on guard files, and their worktrees.
+    guard_dependent_servers: HashMap<LanguageServerId, WorktreeId>,
 
     buffers_to_refresh_hash_set: HashSet<BufferId>,
     buffers_to_refresh_queue: VecDeque<BufferId>,
@@ -505,32 +520,32 @@ impl LocalLspStore {
         );
         let update_binary_status = wait_until_worktree_trust.is_none() && launch_approval.is_none();
 
-        let binary = match launch_approval {
-            None => self.get_language_server_binary(
-                worktree_abs_path.clone(),
-                adapter.clone(),
-                settings,
-                toolchain.clone(),
-                delegate.clone(),
-                true,
-                wait_until_worktree_trust,
-                cx,
-            ),
-            Some(launch_approval) => {
-                let lsp_store = self.weak.clone();
-                let languages = self.languages.clone();
-                let worktree_abs_path = worktree_abs_path.clone();
-                let adapter = adapter.clone();
-                let toolchain = toolchain.clone();
-                let delegate = delegate.clone();
-                let server_name = adapter.name.0.clone();
-                cx.spawn(async move |cx| {
+        let code_state = self.worktree_code_execution.update(cx, |execution, cx| {
+            execution.state_receiver(worktree_id, cx)
+        });
+        let binary_request = LanguageServerBinaryRequest {
+            worktree_abs_path: worktree_abs_path.clone(),
+            adapter: adapter.clone(),
+            settings,
+            toolchain: toolchain.clone(),
+            delegate: delegate.clone(),
+            wait_until_worktree_trust,
+        };
+        let binary = {
+            let lsp_store = self.weak.clone();
+            let languages = self.languages.clone();
+            let server_name = adapter.name.0.clone();
+            cx.spawn(async move |cx| {
+                if let Some(launch_approval) = launch_approval {
                     let (approved, launch_approver) = launch_approval.await?;
-                    languages.update_lsp_binary_status(adapter.name(), BinaryStatus::Starting);
-                    let binary = lsp_store.update(cx, |lsp_store, cx| {
+                    languages.update_lsp_binary_status(
+                        binary_request.adapter.name(),
+                        BinaryStatus::Starting,
+                    );
+                    lsp_store.update(cx, |lsp_store, cx| {
                         // Revoking or denying finds the server by the record
-                        // made below, so a decision taken back before then
-                        // is caught here.
+                        // made here, so a decision taken back before then is
+                        // caught here.
                         anyhow::ensure!(
                             launch_approver.still_approved(&approved, cx),
                             "言語サーバー「{server_name}」の実行ファイルの承認は取り消されたため、起動しません"
@@ -541,20 +556,19 @@ impl LocalLspStore {
                         local_lsp_store
                             .approved_binary_launches
                             .insert(server_id, approved);
-                        anyhow::Ok(local_lsp_store.get_language_server_binary(
-                            worktree_abs_path,
-                            adapter,
-                            settings,
-                            toolchain,
-                            delegate,
-                            true,
-                            wait_until_worktree_trust,
-                            cx,
-                        ))
+                        anyhow::Ok(())
                     })??;
-                    binary.await
-                })
-            }
+                }
+                LocalLspStore::language_server_binary_for_worktree_code(
+                    lsp_store,
+                    server_id,
+                    worktree_id,
+                    binary_request,
+                    code_state,
+                    cx,
+                )
+                .await
+            })
         };
         let pending_workspace_folders = Arc::<Mutex<BTreeSet<Uri>>>::default();
 
@@ -562,11 +576,18 @@ impl LocalLspStore {
             let adapter = adapter.clone();
             let server_name = adapter.name.clone();
             let stderr_capture = stderr_capture.clone();
-            #[cfg(any(test, feature = "test-support"))]
             let lsp_store = self.weak.clone();
             let pending_workspace_folders = pending_workspace_folders.clone();
             async move |cx| {
                 let binary = binary.await?;
+                // ADR-F50: the process is spawned in the same turn as this
+                // check, so a pause cannot slip in between.
+                lsp_store.update(cx, |lsp_store, cx| {
+                    lsp_store
+                        .as_local()
+                        .context("the language server store is no longer local")?
+                        .check_worktree_code_before_spawn(server_id, worktree_id, cx)
+                })??;
                 #[cfg(any(test, feature = "test-support"))]
                 if let Some(server) = lsp_store
                     .update(&mut cx.clone(), |this, cx| {
@@ -619,8 +640,25 @@ impl LocalLspStore {
             cx.spawn(async move |cx| {
                 let result = async {
                     let language_server = pending_server.await?;
+                    let restricted = lsp_store.read_with(cx, |lsp_store, _| {
+                        lsp_store
+                            .as_local()
+                            .and_then(|local| local.restricted_configuration(server_id))
+                    })?;
+                    // ADR-F50: an agent can write project settings, so a
+                    // restricted server goes without them.
+                    let override_options = if restricted.is_some() {
+                        cx.update(|cx| {
+                            ProjectSettings::get_global(cx)
+                                .lsp
+                                .get(&adapter.name)
+                                .and_then(|settings| settings.initialization_options.clone())
+                        })
+                    } else {
+                        override_options
+                    };
 
-                    let workspace_config = Self::workspace_configuration_for_adapter(
+                    let mut workspace_config = Self::workspace_configuration_for_adapter(
                         adapter.adapter.clone(),
                         &delegate,
                         toolchain,
@@ -628,6 +666,12 @@ impl LocalLspStore {
                         cx,
                     )
                     .await?;
+                    if let Some(restricted) = &restricted {
+                        apply_restricted_workspace_configuration(
+                            &restricted.workspace_configuration,
+                            &mut workspace_config,
+                        );
+                    }
 
                     let mut initialization_options = Self::initialization_options_for_adapter(
                         adapter.adapter.clone(),
@@ -642,6 +686,14 @@ impl LocalLspStore {
                         }
                         (None, override_options) => initialization_options = override_options,
                         _ => {}
+                    }
+                    // ADR-F50: over everything settings put in, project
+                    // settings included.
+                    if let Some(restricted) = &restricted {
+                        apply_restricted_initialization_options(
+                            &restricted.initialization_options,
+                            &mut initialization_options,
+                        );
                     }
 
                     let initialization_params = cx.update(|cx| {
@@ -715,6 +767,21 @@ impl LocalLspStore {
                     }
 
                     Err(err) => {
+                        // Stopped while it started (restarted for its
+                        // worktree's code, say): nothing failed.
+                        let still_starting = lsp_store
+                            .read_with(cx, |lsp_store, _| {
+                                lsp_store.as_local().is_some_and(|local| {
+                                    local.language_servers.contains_key(&server_id)
+                                })
+                            })
+                            .unwrap_or(false);
+                        if !still_starting {
+                            log::info!(
+                                "language server {server_name:?} was stopped while it started: {err:#}"
+                            );
+                            return None;
+                        }
                         let log = stderr_capture.lock().take().unwrap_or_default();
                         let error = if log.is_empty() {
                             format!("{err:#}")
@@ -901,6 +968,311 @@ impl LocalLspStore {
         }))
     }
 
+    /// ADR-F50: resolves a server's binary as its worktree's code allows.
+    /// While whether the worktree is paused is not known yet, the server
+    /// waits. While it is paused, the server runs in its adapter's paused mode
+    /// with nothing it runs taken from the worktree, or waits until the user
+    /// resumes the worktree.
+    async fn language_server_binary_for_worktree_code(
+        lsp_store: WeakEntity<LspStore>,
+        server_id: LanguageServerId,
+        worktree_id: WorktreeId,
+        request: LanguageServerBinaryRequest,
+        code_state: Option<::watch::Receiver<WorktreeCodeState>>,
+        cx: &mut AsyncApp,
+    ) -> Result<LanguageServerBinary> {
+        let Some(mut code_state) = code_state else {
+            return request.resolve(&lsp_store, false, cx).await;
+        };
+        let mut waited = false;
+        loop {
+            let state = *code_state.borrow();
+            if waited && state != WorktreeCodeState::Unknown {
+                waited = false;
+                request
+                    .delegate
+                    .update_status(request.adapter.name(), BinaryStatus::Starting);
+            }
+            match state {
+                WorktreeCodeState::Unknown => {}
+                WorktreeCodeState::Allowed => {
+                    let binary = request.resolve(&lsp_store, false, cx).await?;
+                    let affected = request.paused_mode(&lsp_store, cx).await
+                        != WorktreeCodePausedMode::Unaffected
+                        || binary_runs_worktree_program(&binary, &request.worktree_abs_path)
+                        || environment_reaches_into_worktree(&binary, &request.worktree_abs_path);
+                    // Paused while the binary was found, the write that paused
+                    // it may have landed already.
+                    if *code_state.borrow() != WorktreeCodeState::Allowed {
+                        continue;
+                    }
+                    Self::record_worktree_code_use(
+                        &lsp_store,
+                        server_id,
+                        WorktreeCodeUse::Allowed { affected },
+                        cx,
+                    )?;
+                    return Ok(binary);
+                }
+                WorktreeCodeState::Paused => {
+                    let paused = Self::paused_language_server_binary(
+                        &lsp_store,
+                        server_id,
+                        worktree_id,
+                        &request,
+                        cx,
+                    )
+                    .await?;
+                    if *code_state.borrow() != WorktreeCodeState::Paused {
+                        continue;
+                    }
+                    match paused {
+                        Some((binary, worktree_code_use)) => {
+                            let restricted = matches!(
+                                worktree_code_use,
+                                WorktreeCodeUse::Paused {
+                                    restricted: Some(_)
+                                }
+                            );
+                            Self::record_worktree_code_use(
+                                &lsp_store,
+                                server_id,
+                                worktree_code_use,
+                                cx,
+                            )?;
+                            if restricted {
+                                Self::note_language_server_paused(
+                                    &lsp_store,
+                                    worktree_id,
+                                    request.adapter.name(),
+                                    PausedLanguageServer::Restricted,
+                                    cx,
+                                );
+                            }
+                            return Ok(binary);
+                        }
+                        None => {
+                            log::info!(
+                                "language server {} waits until its worktree's code is resumed",
+                                request.adapter.name
+                            );
+                            Self::note_language_server_paused(
+                                &lsp_store,
+                                worktree_id,
+                                request.adapter.name(),
+                                PausedLanguageServer::Stopped,
+                                cx,
+                            );
+                            request
+                                .delegate
+                                .update_status(request.adapter.name(), BinaryStatus::Stopped);
+                        }
+                    }
+                }
+            }
+            waited = true;
+            code_state
+                .changed()
+                .await
+                .context("the worktree the language server was for is gone")?;
+        }
+    }
+
+    /// The binary a server of a paused worktree runs, and how it runs, or
+    /// `None` when it has to wait until the user resumes the worktree.
+    async fn paused_language_server_binary(
+        lsp_store: &WeakEntity<LspStore>,
+        server_id: LanguageServerId,
+        worktree_id: WorktreeId,
+        request: &LanguageServerBinaryRequest,
+        cx: &mut AsyncApp,
+    ) -> Result<Option<(LanguageServerBinary, WorktreeCodeUse)>> {
+        let (restricted, unchanged_files) = match request.paused_mode(lsp_store, cx).await {
+            WorktreeCodePausedMode::Stopped => return Ok(None),
+            WorktreeCodePausedMode::Unaffected => (None, None),
+            WorktreeCodePausedMode::Restricted {
+                initialization_options,
+                workspace_configuration,
+                unchanged_files,
+                formatting_runs_programs,
+            } => (
+                Some(RestrictedConfiguration {
+                    initialization_options,
+                    workspace_configuration,
+                    unchanged_files,
+                    formatting_runs_programs,
+                }),
+                Some(unchanged_files),
+            ),
+        };
+        if unchanged_files.is_some_and(|files| !files.is_empty()) {
+            // Checks of the guard files decide what it hears, and wake it
+            // when it waits.
+            lsp_store.update(cx, |lsp_store, _| {
+                if let Some(local) = lsp_store.as_local_mut() {
+                    local.guard_dependent_servers.insert(server_id, worktree_id);
+                }
+            })?;
+        }
+        let worktree_root = &request.worktree_abs_path;
+        let mut binary = request.resolve(lsp_store, false, cx).await?;
+        let mut differs = restricted.is_some();
+        if binary_runs_worktree_program(&binary, worktree_root) {
+            // A copy from outside the worktree, such as the one Zed installs
+            // for the server, does as well.
+            match request.resolve(lsp_store, true, cx).await {
+                Ok(outside) if !binary_runs_worktree_program(&outside, worktree_root) => {
+                    binary = outside;
+                    differs = true;
+                }
+                Ok(_) => return Ok(None),
+                Err(error) => {
+                    log::info!(
+                        "no copy of language server {} outside its worktree: {error:#}",
+                        request.adapter.name
+                    );
+                    return Ok(None);
+                }
+            }
+        }
+        if let Some(unchanged_files) = unchanged_files {
+            let unchanged = lsp_store.update(cx, |lsp_store, cx| {
+                lsp_store.as_local().map(|local| {
+                    local.worktree_code_execution.update(cx, |execution, cx| {
+                        execution.guard_files_unchanged(worktree_id, unchanged_files, cx)
+                    })
+                })
+            })?;
+            let Some(unchanged) = unchanged else {
+                return Ok(None);
+            };
+            if !unchanged.await {
+                return Ok(None);
+            }
+        }
+        differs |= keep_worktree_code_out_of_environment(&mut binary, worktree_root);
+        let worktree_code_use = if differs {
+            WorktreeCodeUse::Paused { restricted }
+        } else {
+            WorktreeCodeUse::Allowed { affected: false }
+        };
+        Ok(Some((binary, worktree_code_use)))
+    }
+
+    fn record_worktree_code_use(
+        lsp_store: &WeakEntity<LspStore>,
+        server_id: LanguageServerId,
+        worktree_code_use: WorktreeCodeUse,
+        cx: &mut AsyncApp,
+    ) -> Result<()> {
+        lsp_store.update(cx, |lsp_store, cx| {
+            let local = lsp_store
+                .as_local_mut()
+                .context("the language server store is no longer local")?;
+            anyhow::ensure!(
+                local.language_servers.contains_key(&server_id),
+                "the language server was stopped before it started"
+            );
+            if matches!(
+                worktree_code_use,
+                WorktreeCodeUse::Paused {
+                    restricted: Some(_)
+                }
+            ) && let Some(seed) = local
+                .language_server_ids
+                .iter()
+                .find(|(_, state)| state.id == server_id)
+                .map(|(seed, _)| seed)
+            {
+                cx.default_global::<RestrictedLanguageServers>()
+                    .0
+                    .insert((seed.worktree_id, seed.name.clone()), server_id);
+            }
+            local.worktree_code_use.insert(server_id, worktree_code_use);
+            anyhow::Ok(())
+        })?
+    }
+
+    fn note_language_server_paused(
+        lsp_store: &WeakEntity<LspStore>,
+        worktree_id: WorktreeId,
+        name: LanguageServerName,
+        how: PausedLanguageServer,
+        cx: &mut AsyncApp,
+    ) {
+        lsp_store
+            .update(cx, |lsp_store, cx| {
+                if let Some(local) = lsp_store.as_local() {
+                    let execution = local.worktree_code_execution.clone();
+                    execution.update(cx, |execution, cx| {
+                        execution.note_language_server_paused(worktree_id, name, how, cx)
+                    });
+                }
+            })
+            .log_err();
+    }
+
+    fn restricted_configuration(
+        &self,
+        server_id: LanguageServerId,
+    ) -> Option<RestrictedConfiguration> {
+        match self.worktree_code_use.get(&server_id)? {
+            WorktreeCodeUse::Paused { restricted } => restricted.clone(),
+            WorktreeCodeUse::Allowed { .. } => None,
+        }
+    }
+
+    /// ADR-F50: whether what the server hears of its paused worktree's files
+    /// waits for a check of the guard files its paused mode depends on.
+    fn holds_for_guard_check(&self, server_id: LanguageServerId) -> bool {
+        matches!(
+            self.worktree_code_use.get(&server_id),
+            Some(WorktreeCodeUse::Paused {
+                restricted: Some(configuration)
+            }) if !configuration.unchanged_files.is_empty()
+        )
+    }
+
+    fn worktree_is_guard_dependent(&self, worktree_id: WorktreeId) -> bool {
+        self.guard_dependent_servers
+            .values()
+            .any(|dependent_worktree| *dependent_worktree == worktree_id)
+    }
+
+    /// Whether the server may still be spawned the way it was checked in.
+    fn check_worktree_code_before_spawn(
+        &self,
+        server_id: LanguageServerId,
+        worktree_id: WorktreeId,
+        cx: &App,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            self.language_servers.contains_key(&server_id),
+            "the language server was stopped before it started"
+        );
+        let state = self.worktree_code_execution.read(cx).state(worktree_id);
+        match self.worktree_code_use.get(&server_id) {
+            Some(WorktreeCodeUse::Allowed { affected: false }) => Ok(()),
+            Some(WorktreeCodeUse::Allowed { affected: true }) => {
+                anyhow::ensure!(
+                    state == WorktreeCodeState::Allowed,
+                    "the worktree's code was paused before the language server started"
+                );
+                Ok(())
+            }
+            Some(WorktreeCodeUse::Paused { .. }) => {
+                anyhow::ensure!(
+                    state == WorktreeCodeState::Paused,
+                    "the worktree's code was resumed before the language server started"
+                );
+                Ok(())
+            }
+            None => Err(anyhow!(
+                "the language server was about to start without its worktree's code being checked"
+            )),
+        }
+    }
+
     fn get_language_server_binary(
         &self,
         worktree_abs_path: Arc<Path>,
@@ -909,6 +1281,7 @@ impl LocalLspStore {
         toolchain: Option<Toolchain>,
         delegate: Arc<dyn LspAdapterDelegate>,
         allow_binary_download: bool,
+        ignore_user_installed: bool,
         wait_until_worktree_trust: Option<watch::Receiver<bool>>,
         cx: &mut App,
     ) -> Task<Result<LanguageServerBinary>> {
@@ -1004,11 +1377,12 @@ impl LocalLspStore {
         }
 
         let lsp_binary_options = LanguageServerBinaryOptions {
-            allow_path_lookup: !settings
-                .binary
-                .as_ref()
-                .and_then(|b| b.ignore_system_version)
-                .unwrap_or_default(),
+            allow_path_lookup: !ignore_user_installed
+                && !settings
+                    .binary
+                    .as_ref()
+                    .and_then(|b| b.ignore_system_version)
+                    .unwrap_or_default(),
             allow_binary_download,
             pre_release: settings
                 .fetch
@@ -1191,6 +1565,10 @@ impl LocalLspStore {
                                 )
                             })?
                             .context("Expected the LSP store to be in a local mode")?;
+                        let restricted = this.update(&mut cx, |this, _| {
+                            this.as_local()
+                                .and_then(|local| local.restricted_configuration(server_id))
+                        })?;
 
                         let mut scope_uri_to_workspace_config = BTreeMap::new();
                         for item in &params.items {
@@ -1201,7 +1579,7 @@ impl LocalLspStore {
                                 // We've already queried workspace configuration of this URI.
                                 continue;
                             };
-                            let workspace_config = Self::workspace_configuration_for_adapter(
+                            let mut workspace_config = Self::workspace_configuration_for_adapter(
                                 adapter.clone(),
                                 &delegate,
                                 toolchain_for_id.clone(),
@@ -1209,6 +1587,12 @@ impl LocalLspStore {
                                 &mut cx,
                             )
                             .await?;
+                            if let Some(restricted) = &restricted {
+                                apply_restricted_workspace_configuration(
+                                    &restricted.workspace_configuration,
+                                    &mut workspace_config,
+                                );
+                            }
                             new_scope_uri.insert(workspace_config);
                         }
 
@@ -2118,6 +2502,18 @@ impl LocalLspStore {
             }
             Formatter::Prettier => {
                 let logger = zlog::scoped!(logger => "prettier");
+                // ADR-F50: prettier loads the project's configuration and
+                // plugins, and its copy in the project, as code.
+                if Self::formatter_waits_for_worktree_code(
+                    lsp_store,
+                    buffer,
+                    "prettier",
+                    |_| true,
+                    cx,
+                ) {
+                    zlog::info!(logger => "The worktree's code is paused after an agent wrote into it; skipping prettier");
+                    return Ok(());
+                }
                 zlog::trace!(logger => "formatting");
                 let _timer = zlog::time!(logger => "Formatting buffer via prettier");
 
@@ -2195,6 +2591,28 @@ impl LocalLspStore {
                     && !settings::external_formatter_arguments_support_ranges(arguments.as_deref())
                 {
                     zlog::debug!(logger => "External formatter has no line placeholders in its arguments, so it cannot honor a selection; skipping");
+                    return Ok(());
+                }
+
+                if Self::formatter_waits_for_worktree_code(
+                    lsp_store,
+                    buffer,
+                    command,
+                    |worktree_root| {
+                        let search_path = buffer
+                            .env
+                            .as_ref()
+                            .and_then(|environment| environment.get("PATH").cloned())
+                            .or_else(|| std::env::var("PATH").ok());
+                        !external_formatter_may_run_while_paused(
+                            command,
+                            search_path.as_deref(),
+                            worktree_root,
+                        )
+                    },
+                    cx,
+                ) {
+                    zlog::info!(logger => "The worktree's code is paused after an agent wrote into it; skipping external formatter `{command}`");
                     return Ok(());
                 }
 
@@ -2282,6 +2700,16 @@ impl LocalLspStore {
                     }
                     return Ok(());
                 };
+
+                if Self::language_server_formatting_waits_for_worktree_code(
+                    &lsp_store,
+                    buffer,
+                    &language_server,
+                    cx,
+                ) {
+                    zlog::info!(logger => "The worktree's code is paused, and language server {:?} would format by running programs the worktree can pick; skipping it", language_server.name());
+                    return Ok(());
+                }
 
                 zlog::trace!(
                     logger =>
@@ -2931,6 +3359,76 @@ impl LocalLspStore {
         }
     }
 
+    /// ADR-F50: whether the buffer's worktree has its code paused and the
+    /// formatter would run it, noting the formatter as skipped when so. The
+    /// save goes through either way.
+    fn formatter_waits_for_worktree_code(
+        lsp_store: &WeakEntity<LspStore>,
+        buffer: &FormattableBuffer,
+        formatter: &str,
+        runs_worktree_code: impl FnOnce(&Path) -> bool,
+        cx: &mut AsyncApp,
+    ) -> bool {
+        lsp_store
+            .update(cx, |lsp_store, cx| {
+                // A remote project's host decides for itself.
+                let Some(local) = lsp_store.as_local() else {
+                    return false;
+                };
+                let Some(file) = File::from_dyn(buffer.handle.read(cx).file()) else {
+                    return false;
+                };
+                let (worktree_id, worktree_root) = {
+                    let worktree = file.worktree.read(cx);
+                    (worktree.id(), worktree.abs_path())
+                };
+                let execution = local.worktree_code_execution.clone();
+                if execution.read(cx).state(worktree_id) == WorktreeCodeState::Allowed
+                    || !runs_worktree_code(&worktree_root)
+                {
+                    return false;
+                }
+                execution.update(cx, |execution, cx| {
+                    execution.note_formatter_skipped(worktree_id, formatter, cx)
+                });
+                true
+            })
+            .unwrap_or(true)
+    }
+
+    /// ADR-F50: whether the server, running restricted, formats by running
+    /// other programs that the worktree can pick (rust-analyzer runs rustfmt
+    /// through rustup, which reads the worktree's toolchain file), noting it
+    /// as a skipped formatter when so.
+    fn language_server_formatting_waits_for_worktree_code(
+        lsp_store: &WeakEntity<LspStore>,
+        buffer: &FormattableBuffer,
+        server: &Arc<LanguageServer>,
+        cx: &mut AsyncApp,
+    ) -> bool {
+        lsp_store
+            .update(cx, |lsp_store, cx| {
+                let Some(local) = lsp_store.as_local() else {
+                    return false;
+                };
+                let runs_programs = local
+                    .restricted_configuration(server.server_id())
+                    .is_some_and(|configuration| configuration.formatting_runs_programs);
+                if !runs_programs {
+                    return false;
+                }
+                if let Some(file) = File::from_dyn(buffer.handle.read(cx).file()) {
+                    let worktree_id = file.worktree.read(cx).id();
+                    let execution = local.worktree_code_execution.clone();
+                    execution.update(cx, |execution, cx| {
+                        execution.note_formatter_skipped(worktree_id, &server.name().0, cx)
+                    });
+                }
+                true
+            })
+            .unwrap_or(true)
+    }
+
     /// ADR-F42: an external formatter that project settings set runs only once
     /// the user approved that definition. Until then it is skipped, so a save
     /// (the agent's own included) still goes through.
@@ -3097,6 +3595,9 @@ impl LocalLspStore {
 
         if let Some(buffer_env) = buffer.env.as_ref() {
             child.envs(buffer_env);
+        }
+        if cfg!(windows) {
+            child.env(util::command::NO_CURRENT_DIRECTORY_PROGRAM_LOOKUP, "1");
         }
 
         if let Some(working_dir_path) = working_dir_path {
@@ -4833,6 +5334,256 @@ pub struct FormattableBuffer {
     ranges: Option<Vec<Range<Anchor>>>,
 }
 
+/// How a language server started with respect to its worktree's code
+/// (ADR-F50).
+#[derive(Clone, Debug)]
+enum WorktreeCodeUse {
+    /// Started while the worktree's code could run. An `affected` server is
+    /// restarted when the worktree is paused.
+    Allowed { affected: bool },
+    /// Started while the worktree was paused, differently from how it runs
+    /// once the worktree is resumed.
+    Paused {
+        restricted: Option<RestrictedConfiguration>,
+    },
+}
+
+/// What a restricted server's paused mode puts over its configuration, and
+/// what else it goes without.
+#[derive(Clone, Debug)]
+struct RestrictedConfiguration {
+    initialization_options: Value,
+    workspace_configuration: Value,
+    unchanged_files: &'static [&'static str],
+    formatting_runs_programs: bool,
+}
+
+/// ADR-F50: what a paused worktree's restricted servers were held back from
+/// until a check of its guard files covers it.
+#[derive(Default)]
+struct GuardCheck {
+    held: Vec<(LanguageServerId, HeldNotification)>,
+    running: bool,
+    /// More arrived while a check ran, and needs a check of its own.
+    requested_again: bool,
+}
+
+enum HeldNotification {
+    WatchedFiles(lsp::DidChangeWatchedFilesParams),
+    Saved(lsp::DidSaveTextDocumentParams),
+}
+
+/// ADR-F50: the servers running restricted while their worktree's code is
+/// paused, which go without project settings.
+#[derive(Default)]
+struct RestrictedLanguageServers(HashMap<(WorktreeId, LanguageServerName), LanguageServerId>);
+
+impl gpui::Global for RestrictedLanguageServers {}
+
+/// What a language server's binary is resolved from, kept to resolve it
+/// again outside the worktree.
+struct LanguageServerBinaryRequest {
+    worktree_abs_path: Arc<Path>,
+    adapter: Arc<CachedLspAdapter>,
+    settings: Arc<LspSettings>,
+    toolchain: Option<Toolchain>,
+    delegate: Arc<dyn LspAdapterDelegate>,
+    wait_until_worktree_trust: Option<watch::Receiver<bool>>,
+}
+
+impl LanguageServerBinaryRequest {
+    /// `ignore_user_installed` skips what the adapter finds on its own (on
+    /// `PATH`, in a toolchain), leaving the copy Zed installs.
+    async fn resolve(
+        &self,
+        lsp_store: &WeakEntity<LspStore>,
+        ignore_user_installed: bool,
+        cx: &mut AsyncApp,
+    ) -> Result<LanguageServerBinary> {
+        let binary = lsp_store.update(cx, |lsp_store, cx| {
+            let local = lsp_store
+                .as_local()
+                .context("the language server store is no longer local")?;
+            anyhow::Ok(local.get_language_server_binary(
+                self.worktree_abs_path.clone(),
+                self.adapter.clone(),
+                self.settings.clone(),
+                self.toolchain.clone(),
+                self.delegate.clone(),
+                true,
+                ignore_user_installed,
+                self.wait_until_worktree_trust.clone(),
+                cx,
+            ))
+        })??;
+        binary.await
+    }
+
+    /// How the server runs while its worktree is paused. An adapter that
+    /// cannot say has it stopped, and so has an extension's, unless the user
+    /// lets it run.
+    async fn paused_mode(
+        &self,
+        lsp_store: &WeakEntity<LspStore>,
+        cx: &mut AsyncApp,
+    ) -> WorktreeCodePausedMode {
+        if self.adapter.adapter.is_extension() {
+            let allowed = lsp_store
+                .read_with(cx, |lsp_store, cx| {
+                    lsp_store.as_local().is_some_and(|local| {
+                        local
+                            .worktree_code_execution
+                            .read(cx)
+                            .language_server_allowed_while_paused(&self.adapter.name.0)
+                    })
+                })
+                .unwrap_or(false);
+            return if allowed {
+                WorktreeCodePausedMode::Unaffected
+            } else {
+                WorktreeCodePausedMode::Stopped
+            };
+        }
+        self.adapter
+            .adapter
+            .clone()
+            .worktree_code_paused_mode(&self.delegate)
+            .await
+            .with_context(|| {
+                format!(
+                    "finding how language server {} runs while its worktree is paused",
+                    self.adapter.name
+                )
+            })
+            .log_err()
+            .unwrap_or(WorktreeCodePausedMode::Stopped)
+    }
+}
+
+/// Whether running `binary` runs a program or a script from the worktree at
+/// `worktree_root`.
+fn binary_runs_worktree_program(binary: &LanguageServerBinary, worktree_root: &Path) -> bool {
+    names_worktree_path(&binary.path, worktree_root)
+        || binary.arguments.iter().any(|argument| {
+            let argument = argument.to_string_lossy();
+            let value = argument
+                .split_once('=')
+                .map_or(argument.as_ref(), |(_, value)| value);
+            !value.starts_with('-') && names_worktree_path(Path::new(value), worktree_root)
+        })
+}
+
+/// A path with a root is compared with the worktree's (on Windows, `\tools`
+/// has one without being absolute, and does not lead into the worktree); a
+/// relative path of more than a name is taken as relative to the worktree,
+/// where language servers and formatters start.
+fn names_worktree_path(path: &Path, worktree_root: &Path) -> bool {
+    if path.has_root() {
+        path_is_within(path, worktree_root)
+    } else {
+        path.components().count() > 1
+    }
+}
+
+fn environment_reaches_into_worktree(binary: &LanguageServerBinary, worktree_root: &Path) -> bool {
+    binary.env.iter().flatten().any(|(name, value)| {
+        project_launch_approvals::is_code_loading_variable(name)
+            && value_reaches_into_worktree(name, value, worktree_root)
+    })
+}
+
+/// Whether a variable that decides which code runs (`PATH`, `NODE_OPTIONS`,
+/// ...) points into the worktree.
+fn value_reaches_into_worktree(name: &str, value: &str, worktree_root: &Path) -> bool {
+    if name.eq_ignore_ascii_case("PATH") {
+        // An empty or relative entry is searched from where the program
+        // starts, which is the worktree.
+        return std::env::split_paths(value)
+            .any(|entry| !entry.has_root() || path_is_within(&entry, worktree_root));
+    }
+    std::env::split_paths(value)
+        .chain(value.split([' ', '=']).map(PathBuf::from))
+        .any(|piece| piece.has_root() && path_is_within(&piece, worktree_root))
+}
+
+/// Takes out of `binary`'s environment what would load code from the
+/// worktree, keeping the rest of `PATH`. Whether anything was taken out.
+fn keep_worktree_code_out_of_environment(
+    binary: &mut LanguageServerBinary,
+    worktree_root: &Path,
+) -> bool {
+    let Some(environment) = binary.env.as_mut() else {
+        return false;
+    };
+    let mut changed = false;
+    environment.retain(|name, value| {
+        if !project_launch_approvals::is_code_loading_variable(name)
+            || !value_reaches_into_worktree(name, value, worktree_root)
+        {
+            return true;
+        }
+        changed = true;
+        if !name.eq_ignore_ascii_case("PATH") {
+            return false;
+        }
+        let kept = std::env::split_paths(value)
+            .filter(|entry| entry.has_root() && !path_is_within(entry, worktree_root))
+            .collect::<Vec<_>>();
+        match std::env::join_paths(kept) {
+            Ok(joined) => {
+                *value = joined.to_string_lossy().into_owned();
+                true
+            }
+            Err(error) => {
+                log::warn!("dropping PATH that no longer joins: {error}");
+                false
+            }
+        }
+    });
+    changed
+}
+
+/// Puts a restricted server's paused mode over its initialization options
+/// (see `WorktreeCodePausedMode::Restricted`).
+fn apply_restricted_initialization_options(patch: &Value, target: &mut Option<Value>) {
+    if !patch.as_object().is_some_and(|patch| !patch.is_empty()) {
+        return;
+    }
+    let target = target.get_or_insert_with(|| Value::Object(serde_json::Map::new()));
+    merge_restricted_value(patch, target);
+}
+
+/// Puts a restricted server's paused mode over the sections of its
+/// workspace configuration that the configuration has.
+fn apply_restricted_workspace_configuration(patch: &Value, target: &mut Value) {
+    let (Value::Object(patch), Value::Object(target)) = (patch, target) else {
+        return;
+    };
+    for (section, section_patch) in patch {
+        if let Some(existing) = target.get_mut(section) {
+            merge_restricted_value(section_patch, existing);
+        }
+    }
+}
+
+/// Merges `patch` into `target`, except that an empty object in `patch`
+/// clears what is there.
+fn merge_restricted_value(patch: &Value, target: &mut Value) {
+    match (patch, target) {
+        (Value::Object(patch), Value::Object(target)) if !patch.is_empty() => {
+            for (key, value) in patch {
+                match target.get_mut(key) {
+                    Some(existing) => merge_restricted_value(value, existing),
+                    None => {
+                        target.insert(key.clone(), value.clone());
+                    }
+                }
+            }
+        }
+        (patch, target) => *target = patch.clone(),
+    }
+}
+
 /// Whether an external formatter may run (ADR-F42, ADR-F50).
 enum ExternalFormatterLaunch {
     /// Not set by project settings.
@@ -5304,6 +6055,7 @@ impl LspStore {
         languages: Arc<LanguageRegistry>,
         http_client: Arc<dyn HttpClient>,
         fs: Arc<dyn Fs>,
+        worktree_code_execution: Entity<WorktreeCodeExecution>,
         cx: &mut Context<Self>,
     ) -> Self {
         let yarn = YarnPathStore::new(fs.clone(), cx);
@@ -5323,6 +6075,11 @@ impl LspStore {
             cx.subscribe(&launch_approvals, Self::on_launch_approvals_event)
                 .detach();
         }
+        cx.subscribe(
+            &worktree_code_execution,
+            Self::on_worktree_code_execution_event,
+        )
+        .detach();
         subscribe_to_binary_statuses(&languages, cx).detach();
 
         let _maintain_workspace_config = {
@@ -5375,6 +6132,10 @@ impl LspStore {
                 stopped_language_servers: HashSet::default(),
                 approved_binary_launches: HashMap::default(),
                 remote_launch_approvals: None,
+                worktree_code_execution,
+                worktree_code_use: HashMap::default(),
+                guard_checks: HashMap::default(),
+                guard_dependent_servers: HashMap::default(),
                 watched_manifest_filenames: ManifestProvidersStore::global(cx)
                     .manifest_file_names(),
             }),
@@ -5509,6 +6270,15 @@ impl LspStore {
                 }
                 cx.subscribe(worktree, |this, worktree, event, cx| match event {
                     worktree::Event::UpdatedEntries(changes) => {
+                        // ADR-F50: a running writer's change pauses the
+                        // worktree before any language server hears of it.
+                        if let Some(local) = this.as_local() {
+                            let worktree_id = worktree.read(cx).id();
+                            let execution = local.worktree_code_execution.clone();
+                            execution.update(cx, |execution, cx| {
+                                execution.observe_worktree_changes(worktree_id, changes, cx)
+                            });
+                        }
                         this.update_local_worktree_language_servers(&worktree, changes, cx);
                     }
                     worktree::Event::UpdatedGitRepositories(_)
@@ -9463,6 +10233,11 @@ impl LspStore {
             uri: file_path_to_lsp_url(&abs_path).log_err()?,
         };
         let local = self.as_local()?;
+        let paused = local
+            .worktree_code_execution
+            .read(cx)
+            .is_paused(worktree_id);
+        let mut held = Vec::new();
 
         for server in local.language_servers_for_worktree(worktree_id) {
             if let Some(include_text) = include_text(server.as_ref()) {
@@ -9471,14 +10246,19 @@ impl LspStore {
                 } else {
                     None
                 };
-                server
-                    .notify::<lsp::notification::DidSaveTextDocument>(
-                        lsp::DidSaveTextDocumentParams {
-                            text_document: text_document.clone(),
-                            text,
-                        },
-                    )
-                    .ok();
+                let params = lsp::DidSaveTextDocumentParams {
+                    text_document: text_document.clone(),
+                    text,
+                };
+                // ADR-F50: as with changed files (see
+                // `update_local_worktree_language_servers`).
+                if paused && local.holds_for_guard_check(server.server_id()) {
+                    held.push((server.server_id(), HeldNotification::Saved(params)));
+                } else {
+                    server
+                        .notify::<lsp::notification::DidSaveTextDocument>(params)
+                        .ok();
+                }
             }
         }
 
@@ -9487,6 +10267,17 @@ impl LspStore {
         });
         for language_server_id in language_servers {
             self.simulate_disk_based_diagnostics_events_if_needed(language_server_id, cx);
+        }
+        if !held.is_empty() {
+            if let Some(local) = self.as_local_mut() {
+                local
+                    .guard_checks
+                    .entry(worktree_id)
+                    .or_default()
+                    .held
+                    .extend(held);
+            }
+            self.check_guard_files_before_forwarding(worktree_id, cx);
         }
 
         None
@@ -9532,8 +10323,9 @@ impl LspStore {
                                     let server = server.clone();
                                     refreshed_servers.insert(server.name());
                                     let toolchain = seed.toolchain.clone();
+                                    let restricted = local.restricted_configuration(server_id);
                                     Some(cx.spawn(async move |_, cx| {
-                                        let settings =
+                                        let mut settings =
                                             LocalLspStore::workspace_configuration_for_adapter(
                                                 adapter.adapter.clone(),
                                                 &delegate,
@@ -9543,6 +10335,12 @@ impl LspStore {
                                             )
                                             .await
                                             .ok()?;
+                                        if let Some(restricted) = &restricted {
+                                            apply_restricted_workspace_configuration(
+                                                &restricted.workspace_configuration,
+                                                &mut settings,
+                                            );
+                                        }
                                         server
                                             .notify::<lsp::notification::DidChangeConfiguration>(
                                                 lsp::DidChangeConfigurationParams { settings },
@@ -12516,6 +13314,288 @@ impl LspStore {
         }
     }
 
+    /// ADR-F50: a worktree's code was paused or resumed: the servers that run
+    /// differently now are restarted, once per change, and servers still
+    /// waiting to start follow the change by themselves. Or its guard files
+    /// are to be checked, or the extension servers the user lets run while
+    /// paused changed.
+    fn on_worktree_code_execution_event(
+        &mut self,
+        _: Entity<WorktreeCodeExecution>,
+        event: &WorktreeCodeExecutionEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let (worktree_id, restarts): (WorktreeId, fn(&WorktreeCodeUse) -> bool) = match event {
+            WorktreeCodeExecutionEvent::Paused(worktree_id) => {
+                (*worktree_id, |worktree_code_use| {
+                    matches!(
+                        worktree_code_use,
+                        WorktreeCodeUse::Allowed { affected: true }
+                    )
+                })
+            }
+            WorktreeCodeExecutionEvent::Resumed(worktree_id) => {
+                if let Some(local) = self.as_local_mut() {
+                    local.guard_checks.remove(worktree_id);
+                }
+                (*worktree_id, |worktree_code_use| {
+                    matches!(worktree_code_use, WorktreeCodeUse::Paused { .. })
+                })
+            }
+            WorktreeCodeExecutionEvent::CheckGuardFiles(worktree_id) => {
+                if self
+                    .as_local()
+                    .is_some_and(|local| local.worktree_is_guard_dependent(*worktree_id))
+                {
+                    self.check_guard_files_before_forwarding(*worktree_id, cx);
+                }
+                return;
+            }
+            WorktreeCodeExecutionEvent::LanguageServersAllowedWhilePausedChanged => {
+                self.restart_extension_servers_of_paused_worktrees(cx);
+                return;
+            }
+            WorktreeCodeExecutionEvent::DetailsChanged(_) => return,
+        };
+        let Some(local) = self.as_local() else {
+            return;
+        };
+        let server_ids = local
+            .language_server_ids
+            .iter()
+            .filter(|(seed, _)| seed.worktree_id == worktree_id)
+            .map(|(_, state)| state.id)
+            .filter(|server_id| local.worktree_code_use.get(server_id).is_some_and(restarts))
+            .collect::<Vec<_>>();
+        self.restart_language_servers_for_worktree_code(worktree_id, server_ids, cx);
+    }
+
+    fn restart_language_servers_for_worktree_code(
+        &mut self,
+        worktree_id: WorktreeId,
+        server_ids: Vec<LanguageServerId>,
+        cx: &mut Context<Self>,
+    ) {
+        if server_ids.is_empty() {
+            return;
+        }
+        let Some(local) = self.as_local_mut() else {
+            return;
+        };
+        log::info!(
+            "restarting language servers {server_ids:?} of worktree {worktree_id:?} for its code's pause"
+        );
+        let names = server_ids
+            .iter()
+            .filter_map(|server_id| {
+                local
+                    .language_server_ids
+                    .iter()
+                    .find(|(_, state)| state.id == *server_id)
+                    .map(|(seed, _)| LanguageServerSelector::Name(seed.name.clone()))
+            })
+            .collect::<HashSet<_>>();
+        local
+            .lsp_tree
+            .remove_nodes(&server_ids.iter().copied().collect::<BTreeSet<_>>());
+        let registered_buffers = local
+            .registered_buffers
+            .keys()
+            .copied()
+            .collect::<HashSet<_>>();
+        let stop_tasks = server_ids
+            .into_iter()
+            .map(|server_id| self.stop_local_language_server(server_id, cx))
+            .collect::<Vec<_>>();
+        let buffers = self
+            .buffer_store
+            .read(cx)
+            .buffers()
+            .filter(|buffer| {
+                let buffer = buffer.read(cx);
+                registered_buffers.contains(&buffer.remote_id())
+                    && buffer
+                        .file()
+                        .is_some_and(|file| file.worktree_id(cx) == worktree_id)
+            })
+            .collect::<Vec<_>>();
+        cx.spawn(async move |lsp_store, cx| {
+            join_all(stop_tasks).await;
+            lsp_store
+                .update(cx, |lsp_store, cx| {
+                    for buffer in &buffers {
+                        lsp_store.register_buffer_with_language_servers(
+                            buffer,
+                            names.clone(),
+                            true,
+                            cx,
+                        );
+                    }
+                })
+                .log_err();
+        })
+        .detach();
+    }
+
+    /// ADR-F50: checks the paused worktree's guard files on disk, then hands
+    /// what its restricted servers were held back from to them, and wakes
+    /// those waiting to start, if the files are as the user confirmed them;
+    /// otherwise stops those servers first, with nothing handed over. They
+    /// start again once a later check passes.
+    fn check_guard_files_before_forwarding(
+        &mut self,
+        worktree_id: WorktreeId,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(local) = self.as_local_mut() else {
+            return;
+        };
+        let check = local.guard_checks.entry(worktree_id).or_default();
+        if check.running {
+            check.requested_again = true;
+            return;
+        }
+        check.running = true;
+        check.requested_again = false;
+        let batch = std::mem::take(&mut check.held);
+        let execution = local.worktree_code_execution.clone();
+        let started = execution.read(cx).guard_check_mark(worktree_id);
+        let unchanged = execution.update(cx, |execution, cx| {
+            execution.all_guard_files_unchanged(worktree_id, cx)
+        });
+        cx.spawn(async move |lsp_store, cx| {
+            let unchanged = unchanged.await;
+            lsp_store
+                .update(cx, |lsp_store, cx| {
+                    lsp_store.finish_guard_check(worktree_id, batch, unchanged, started, cx)
+                })
+                .log_err();
+        })
+        .detach();
+    }
+
+    fn finish_guard_check(
+        &mut self,
+        worktree_id: WorktreeId,
+        batch: Vec<(LanguageServerId, HeldNotification)>,
+        unchanged: bool,
+        started: Option<GuardCheckMark>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(local) = self.as_local_mut() else {
+            return;
+        };
+        if !local
+            .worktree_code_execution
+            .read(cx)
+            .is_paused(worktree_id)
+        {
+            // Resumed meanwhile: the servers start again as allowed, and hear
+            // of the worktree afresh.
+            local.guard_checks.remove(&worktree_id);
+            return;
+        }
+        if !unchanged {
+            local.guard_checks.remove(&worktree_id);
+            let server_ids = local
+                .guard_dependent_servers
+                .iter()
+                .filter(|(server_id, dependent_worktree)| {
+                    **dependent_worktree == worktree_id && local.holds_for_guard_check(**server_id)
+                })
+                .map(|(server_id, _)| *server_id)
+                .collect::<Vec<_>>();
+            log::info!(
+                "guard files of worktree {worktree_id:?} differ from what the user confirmed; stopping language servers {server_ids:?}"
+            );
+            self.restart_language_servers_for_worktree_code(worktree_id, server_ids, cx);
+            return;
+        }
+        let (landed_meanwhile, writer_running) = {
+            let execution = local.worktree_code_execution.read(cx);
+            (
+                execution.guard_check_mark(worktree_id) != started,
+                execution.writer_running(worktree_id),
+            )
+        };
+        if landed_meanwhile || writer_running {
+            // What was held may predate a write the check cannot have seen (an
+            // agent's write noted, a guard file changed, or a running
+            // command's write where no change shows): none of it reaches the
+            // servers, and the files are checked again, now or once the
+            // command has ended.
+            log::info!(
+                "a write may have landed while the guard files of worktree {worktree_id:?} were checked; dropping what was held"
+            );
+            if let Some(check) = local.guard_checks.get_mut(&worktree_id) {
+                check.running = false;
+                check.requested_again = false;
+            }
+            if !writer_running {
+                self.check_guard_files_before_forwarding(worktree_id, cx);
+            }
+            return;
+        }
+        for (server_id, notification) in batch {
+            if !local.holds_for_guard_check(server_id) {
+                continue;
+            }
+            let Some(LanguageServerState::Running { server, .. }) =
+                local.language_servers.get(&server_id)
+            else {
+                continue;
+            };
+            match notification {
+                HeldNotification::WatchedFiles(params) => server
+                    .notify::<lsp::notification::DidChangeWatchedFiles>(params)
+                    .log_err(),
+                HeldNotification::Saved(params) => server
+                    .notify::<lsp::notification::DidSaveTextDocument>(params)
+                    .log_err(),
+            };
+        }
+        let check_again = local
+            .guard_checks
+            .get_mut(&worktree_id)
+            .is_some_and(|check| {
+                check.running = false;
+                std::mem::take(&mut check.requested_again) || !check.held.is_empty()
+            });
+        let execution = local.worktree_code_execution.clone();
+        execution.update(cx, |execution, _| {
+            execution.wake_waiting_language_servers(worktree_id)
+        });
+        if check_again {
+            self.check_guard_files_before_forwarding(worktree_id, cx);
+        }
+    }
+
+    /// ADR-F50: the extension servers of paused worktrees run, or wait, as
+    /// the user's list says now.
+    fn restart_extension_servers_of_paused_worktrees(&mut self, cx: &mut Context<Self>) {
+        let Some(local) = self.as_local() else {
+            return;
+        };
+        let execution = local.worktree_code_execution.read(cx);
+        let mut server_ids_by_worktree = HashMap::<WorktreeId, Vec<LanguageServerId>>::default();
+        for (seed, state) in &local.language_server_ids {
+            if execution.is_paused(seed.worktree_id)
+                && self
+                    .languages
+                    .adapter_for_name(&seed.name)
+                    .is_some_and(|adapter| adapter.adapter.is_extension())
+            {
+                server_ids_by_worktree
+                    .entry(seed.worktree_id)
+                    .or_default()
+                    .push(state.id);
+            }
+        }
+        for (worktree_id, server_ids) in server_ids_by_worktree {
+            self.restart_language_servers_for_worktree_code(worktree_id, server_ids, cx);
+        }
+    }
+
     // Returns a list of all of the worktrees which no longer have a language server and the root path
     // for the stopped server
     fn stop_local_language_server(
@@ -12598,6 +13678,13 @@ impl LspStore {
             .language_server_dynamic_registrations
             .remove(&server_id);
         local.approved_binary_launches.remove(&server_id);
+        local.worktree_code_use.remove(&server_id);
+        local.guard_dependent_servers.remove(&server_id);
+        if cx.has_global::<RestrictedLanguageServers>() {
+            cx.global_mut::<RestrictedLanguageServers>()
+                .0
+                .retain(|_, restricted_id| *restricted_id != server_id);
+        }
 
         let server_state = local.language_servers.remove(&server_id);
         self.cleanup_lsp_data(server_id);
@@ -13529,8 +14616,20 @@ impl LspStore {
         language_server_ids.sort_unstable();
         language_server_ids.dedup();
 
-        // let abs_path = worktree_handle.read(cx).abs_path();
+        let paused = local
+            .worktree_code_execution
+            .read(cx)
+            .is_paused(worktree_id);
+        let mut held = Vec::new();
         for server_id in &language_server_ids {
+            // ADR-F50: a server about to restart in its paused mode hears no
+            // more of the worktree, and a restricted one whose paused mode
+            // depends on guard files hears of nothing before a check of those
+            // files on disk has covered it.
+            let hold = match local.worktree_code_use.get(server_id) {
+                Some(WorktreeCodeUse::Allowed { affected: true }) if paused => continue,
+                _ => paused && local.holds_for_guard_check(*server_id),
+            };
             if let Some(LanguageServerState::Running { server, .. }) =
                 local.language_servers.get(server_id)
                 && let Some(watched_paths) = local
@@ -13561,11 +14660,24 @@ impl LspStore {
                         .collect(),
                 };
                 if !params.changes.is_empty() {
-                    server
-                        .notify::<lsp::notification::DidChangeWatchedFiles>(params)
-                        .ok();
+                    if hold {
+                        held.push((*server_id, HeldNotification::WatchedFiles(params)));
+                    } else {
+                        server
+                            .notify::<lsp::notification::DidChangeWatchedFiles>(params)
+                            .ok();
+                    }
                 }
             }
+        }
+        let check_guard_files = paused && local.worktree_is_guard_dependent(worktree_id);
+        if !held.is_empty() {
+            local
+                .guard_checks
+                .entry(worktree_id)
+                .or_default()
+                .held
+                .extend(held);
         }
         for (path, _, _) in changes {
             if let Some(file_name) = path.file_name()
@@ -13574,6 +14686,9 @@ impl LspStore {
                 self.request_workspace_config_refresh();
                 break;
             }
+        }
+        if check_guard_files {
+            self.check_guard_files_before_forwarding(worktree_id, cx);
         }
     }
 
@@ -15504,9 +16619,26 @@ pub fn language_server_settings<'a>(
     language: &LanguageServerName,
     cx: &'a App,
 ) -> Option<&'a LspSettings> {
+    language_server_settings_in_worktree(delegate.worktree_id(), language, cx)
+}
+
+/// The settings of a language server for the worktree it runs in. ADR-F50:
+/// an agent can write project settings, so a server restricted while its
+/// worktree's code is paused goes without them.
+pub fn language_server_settings_in_worktree<'a>(
+    worktree_id: WorktreeId,
+    language: &LanguageServerName,
+    cx: &'a App,
+) -> Option<&'a LspSettings> {
+    let restricted = cx
+        .try_global::<RestrictedLanguageServers>()
+        .is_some_and(|restricted| restricted.0.contains_key(&(worktree_id, language.clone())));
+    if restricted {
+        return ProjectSettings::get_global(cx).lsp.get(language);
+    }
     language_server_settings_for(
         SettingsLocation {
-            worktree_id: delegate.worktree_id(),
+            worktree_id,
             path: RelPath::empty(),
         },
         language,

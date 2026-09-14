@@ -2102,13 +2102,37 @@ pub fn refusal_fallback_model_from_meta(meta: &Option<acp::Meta>) -> Option<Shar
         .map(|s| SharedString::from(s.to_owned()))
 }
 
+/// ADR-F50: where a command can write: the paths its sandbox makes writable
+/// and the user's write grants (as requested and as resolved), or anywhere on
+/// its host when it runs without a sandbox or may write everywhere.
+fn agent_write_scope(sandbox_wrap: Option<&SandboxWrap>) -> project::AgentWriteScope {
+    match sandbox_wrap {
+        Some(wrap) if !wrap.allow_fs_write => project::AgentWriteScope::Paths(
+            wrap.writable_paths
+                .iter()
+                .cloned()
+                .chain(wrap.extra_write_paths.iter().flat_map(|grant| {
+                    std::iter::once(grant.requested.clone()).chain(grant.resolved.clone())
+                }))
+                .collect(),
+        ),
+        Some(_) | None => project::AgentWriteScope::Anywhere,
+    }
+}
+
 struct RunningTurn {
     id: u32,
     send_task: Task<()>,
+    /// ADR-F50: an external agent writes files itself, anywhere its process
+    /// can, so its turn is a writer of every worktree on the project's host
+    /// until it ends.
+    worktree_code_writer: Option<project::SandboxedWriterGuard>,
 }
 
 pub struct AcpThread {
     session_id: acp::SessionId,
+    /// ADR-F50: an external agent's session, while it lasts.
+    _external_agent_session: Option<project::ExternalAgentSessionGuard>,
     work_dirs: Option<PathList>,
     parent_session_id: Option<acp::SessionId>,
     title: Option<SharedString>,
@@ -2320,10 +2344,20 @@ impl AcpThread {
             }
         });
 
+        // ADR-F50: what changes between an external agent's turns can come
+        // from what it left running, and is never taken for the user's own
+        // change.
+        let external_agent_session = (!connection.changes_files_through_zed()).then(|| {
+            project.update(cx, |project, cx| {
+                project.register_external_agent_session(cx)
+            })
+        });
+
         Self {
             parent_session_id,
             work_dirs,
             action_log,
+            _external_agent_session: external_agent_session,
             _git_store_subscription,
             update_last_checkpoint_if_changed_task: None,
             shared_buffers: Default::default(),
@@ -3832,17 +3866,35 @@ impl AcpThread {
 
         self.turn_id += 1;
         let turn_id = self.turn_id;
+        let worktree_code_writer = (!self.connection.changes_files_through_zed()).then(|| {
+            self.project.update(cx, |project, cx| {
+                let (writer, _) = project.register_agent_writer(
+                    project::AgentWriteScope::Anywhere,
+                    project::AgentWriterKind::AgentTurn,
+                    cx,
+                );
+                writer
+            })
+        });
         self.running_turn = Some(RunningTurn {
             id: turn_id,
             send_task: cx.spawn(async move |this, cx| {
                 cancel_task.await;
                 tx.send(f(this, cx).await).ok();
             }),
+            worktree_code_writer,
         });
         cx.emit(AcpThreadEvent::StatusChanged);
 
         cx.spawn(async move |this, cx| {
             let response = rx.await;
+
+            // ADR-F50: the turn is over, whatever becomes of its checkpoint.
+            this.update(cx, |this, _| {
+                if let Some(turn) = this.running_turn.as_mut().filter(|turn| turn.id == turn_id) {
+                    turn.worktree_code_writer = None;
+                }
+            })?;
 
             this.update(cx, |this, cx| this.update_last_checkpoint(cx))?
                 .await?;
@@ -4500,6 +4552,17 @@ impl AcpThread {
         sandbox_wrap: Option<SandboxWrap>,
         cx: &mut Context<Self>,
     ) -> Task<Result<Entity<Terminal>>> {
+        // ADR-F50: the command can write, for as long as it runs and starting
+        // now, wherever its sandbox lets it, or anywhere on its host without
+        // one.
+        let (worktree_code_writer, worktree_code_writer_resolved) =
+            self.project.update(cx, |project, cx| {
+                project.register_agent_writer(
+                    agent_write_scope(sandbox_wrap.as_ref()),
+                    project::AgentWriterKind::Command,
+                    cx,
+                )
+            });
         // ADR-F46: a sandboxed command never has an environment captured for
         // it. Capturing runs the user's login shell and its `cd` hooks (direnv
         // and the like) in the directory the model picked, outside the sandbox;
@@ -4543,6 +4606,9 @@ impl AcpThread {
         let terminal_task = cx.spawn({
             let terminal_id = terminal_id.clone();
             async move |_this, cx| {
+                // ADR-F50: worktrees reached through other spellings of what
+                // it can write are paused before it starts.
+                worktree_code_writer_resolved.await;
                 let env = env.await;
                 let shell = project
                     .update(cx, |project, cx| {
@@ -4627,6 +4693,7 @@ impl AcpThread {
                             terminal,
                             language_registry,
                             None,
+                            Some(worktree_code_writer),
                             cx,
                         )
                     }));
@@ -4763,6 +4830,7 @@ impl AcpThread {
                         terminal,
                         language_registry,
                         sandbox,
+                        Some(worktree_code_writer),
                         cx,
                     )
                 }))
@@ -4856,6 +4924,7 @@ impl AcpThread {
                 language_registry,
                 // External terminal providers manage their own sandboxing
                 // (if any). We don't wrap their commands.
+                None,
                 None,
                 cx,
             )
@@ -6431,6 +6500,370 @@ mod tests {
         thread.read_with(cx, |thread, _| {
             assert!(thread.entries.is_empty(), "an ordinary write asks nothing");
         });
+    }
+
+    /// ADR-F50: an external agent's write pauses its worktree's code before it
+    /// lands; one that is refused changes nothing.
+    #[gpui::test]
+    async fn test_agent_write_pauses_the_worktree_code_before_it_lands(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({
+                ".git": { "config": "[core]\n" },
+                "src": { "main.rs": "fn main() {}\n" },
+            }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let is_paused = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .is_paused(worktree_id)
+            })
+        };
+
+        let refused = thread
+            .update(cx, |thread, cx| {
+                thread.write_text_file(
+                    PathBuf::from(path!("/test/.git/config")),
+                    "[core]\n\tfsmonitor = touch pwned\n".to_string(),
+                    cx,
+                )
+            })
+            .await;
+        assert!(refused.is_err());
+        assert!(!is_paused(cx), "a refused write changes nothing");
+
+        thread
+            .update(cx, |thread, cx| {
+                thread.write_text_file(
+                    PathBuf::from(path!("/test/src/main.rs")),
+                    "fn main() {  }\n".to_string(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        assert!(is_paused(cx));
+    }
+
+    /// ADR-F50: a command an agent runs, natively or through ACP's
+    /// `terminal/create` (both reach `create_terminal`), is registered as a
+    /// writer of the project's worktrees before it starts, until it is done.
+    #[gpui::test]
+    async fn test_agent_command_is_a_worktree_writer_from_before_it_starts(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let paused_and_writer_running = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                let execution = project.worktree_code_execution().read(cx);
+                (
+                    execution.is_paused(worktree_id),
+                    execution
+                        .details(worktree_id)
+                        .is_some_and(|details| details.sandboxed_writer_running),
+                )
+            })
+        };
+        assert_eq!(paused_and_writer_running(cx), (false, false));
+
+        let terminal = thread.update(cx, |thread, cx| {
+            thread.create_terminal(
+                "true".to_string(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                None,
+                cx,
+            )
+        });
+        assert_eq!(
+            paused_and_writer_running(cx),
+            (true, true),
+            "paused, with the writer registered, before the command starts"
+        );
+
+        drop(terminal);
+        cx.run_until_parked();
+        assert_eq!(
+            paused_and_writer_running(cx),
+            (true, false),
+            "the registration ends with the command; the pause stays until resumed"
+        );
+    }
+
+    /// ADR-F50: a command can write where its sandbox lets it: its project
+    /// and the paths the user granted, which another open project can hold,
+    /// or, without a sandbox, anywhere on its host.
+    #[gpui::test]
+    async fn test_agent_command_pauses_every_project_it_can_write(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        fs.insert_tree(path!("/granted"), json!({ "data.txt": "" }))
+            .await;
+        fs.insert_tree(path!("/elsewhere"), json!({ "notes.md": "" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let granted = Project::test(fs.clone(), [path!("/granted").as_ref()], cx).await;
+        let elsewhere = Project::test(fs.clone(), [path!("/elsewhere").as_ref()], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+        let projects = [&project, &granted, &elsewhere];
+        let paused = |cx: &mut TestAppContext| {
+            projects.map(|project| {
+                project.read_with(cx, |project, cx| {
+                    !project
+                        .worktree_code_execution()
+                        .read(cx)
+                        .paused_worktrees()
+                        .is_empty()
+                })
+            })
+        };
+        async fn resume_every_project(projects: &[&Entity<Project>], cx: &mut TestAppContext) {
+            for project in projects {
+                let execution =
+                    project.read_with(cx, |project, _| project.worktree_code_execution().clone());
+                let resumes = execution.update(cx, |execution, cx| {
+                    execution
+                        .paused_worktrees()
+                        .into_iter()
+                        .filter_map(|worktree_id| {
+                            let generation = execution.generation(worktree_id)?;
+                            Some(execution.resume(worktree_id, generation, cx))
+                        })
+                        .collect::<Vec<_>>()
+                });
+                for resume in resumes {
+                    assert_eq!(
+                        resume.await,
+                        project::worktree_code_execution::ResumeOutcome::Resumed
+                    );
+                }
+            }
+        }
+        let run = |sandbox_wrap: Option<SandboxWrap>, cx: &mut TestAppContext| {
+            thread.update(cx, |thread, cx| {
+                thread.create_terminal(
+                    "true".to_string(),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    None,
+                    sandbox_wrap,
+                    cx,
+                )
+            })
+        };
+        let confined_to_the_project = || SandboxWrap {
+            writable_paths: vec![PathBuf::from(path!("/test"))],
+            ..SandboxWrap::default()
+        };
+
+        let terminal = run(Some(confined_to_the_project()), cx);
+        assert_eq!(paused(cx), [true, false, false]);
+        drop(terminal);
+        cx.run_until_parked();
+        resume_every_project(&projects, cx).await;
+
+        let terminal = run(
+            Some(SandboxWrap {
+                extra_write_paths: vec![settings::GrantedWritePath::from_requested(PathBuf::from(
+                    path!("/granted"),
+                ))],
+                ..confined_to_the_project()
+            }),
+            cx,
+        );
+        assert_eq!(
+            paused(cx),
+            [true, true, false],
+            "a write grant reaches the project that holds it"
+        );
+        drop(terminal);
+        cx.run_until_parked();
+        resume_every_project(&projects, cx).await;
+
+        let terminal = run(None, cx);
+        assert_eq!(
+            paused(cx),
+            [true, true, true],
+            "without a sandbox, anywhere on its host"
+        );
+        drop(terminal);
+        cx.run_until_parked();
+        resume_every_project(&projects, cx).await;
+
+        let terminal = run(
+            Some(SandboxWrap {
+                allow_fs_write: true,
+                ..confined_to_the_project()
+            }),
+            cx,
+        );
+        assert_eq!(
+            paused(cx),
+            [true, true, true],
+            "nor with a sandbox that lets it write everywhere"
+        );
+        drop(terminal);
+    }
+
+    /// ADR-F50: an external agent changes files itself, anywhere its process
+    /// can, so each of its turns is a writer of every worktree on its host
+    /// until the turn ends.
+    #[gpui::test]
+    async fn test_an_external_agents_turn_is_a_worktree_writer(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        fs.insert_tree(path!("/elsewhere"), json!({ "notes.md": "" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let elsewhere = Project::test(fs.clone(), [path!("/elsewhere").as_ref()], cx).await;
+        let (end_turn, turn_ended) = oneshot::channel::<()>();
+        let turn_ended = Rc::new(RefCell::new(Some(turn_ended)));
+        let connection = Rc::new(FakeAgentConnection::new().on_user_message({
+            let turn_ended = turn_ended.clone();
+            move |_, _, _| {
+                let turn_ended = turn_ended.borrow_mut().take();
+                async move {
+                    if let Some(turn_ended) = turn_ended {
+                        turn_ended.await.ok();
+                    }
+                    Ok(acp::PromptResponse::new(acp::StopReason::EndTurn))
+                }
+                .boxed_local()
+            }
+        }));
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let paused_and_writer_running = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                let execution = project.worktree_code_execution().read(cx);
+                (
+                    execution.is_paused(worktree_id),
+                    execution
+                        .details(worktree_id)
+                        .is_some_and(|details| details.sandboxed_writer_running),
+                )
+            })
+        };
+        assert_eq!(paused_and_writer_running(cx), (false, false));
+
+        let turn = thread.update(cx, |thread, cx| thread.send_raw("Fix the build", cx));
+        cx.run_until_parked();
+        assert_eq!(
+            paused_and_writer_running(cx),
+            (true, true),
+            "paused, with the agent registered as a writer, while its turn runs"
+        );
+        assert!(
+            elsewhere.read_with(cx, |project, cx| {
+                !project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .paused_worktrees()
+                    .is_empty()
+            }),
+            "its process can write anywhere on the host"
+        );
+
+        end_turn.send(()).unwrap();
+        turn.await.unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            paused_and_writer_running(cx),
+            (true, false),
+            "the registration ends with the turn; the pause stays until resumed"
+        );
     }
 
     /// ADR-F49: a write to a project's `.zed` settings asks the user every time,

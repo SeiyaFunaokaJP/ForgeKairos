@@ -103,7 +103,10 @@ pub(crate) async fn authorize_agent_file_write(
     let project = thread.read_with(cx, |thread, _| thread.project().clone())?;
     let (verdict, opened) = judge_agent_file_write(&project, path, cx).await?;
     let kind = match verdict {
-        AgentWriteVerdict::Allow => return Ok(None),
+        AgentWriteVerdict::Allow => {
+            note_agent_write(&project, &opened, cx).await;
+            return Ok(None);
+        }
         AgentWriteVerdict::Refuse(refusal) => return Err(anyhow!(refusal_message(refusal, path))),
         AgentWriteVerdict::Confirm(kind) => kind,
     };
@@ -130,7 +133,10 @@ pub(crate) async fn authorize_agent_file_write(
         Err(error) => Err(error),
     };
     match judged_again {
-        Ok(()) => Ok(Some(tool_call_id)),
+        Ok(()) => {
+            note_agent_write(&project, &opened, cx).await;
+            Ok(Some(tool_call_id))
+        }
         Err(error) => {
             thread
                 .update(cx, |thread, cx| {
@@ -141,6 +147,16 @@ pub(crate) async fn authorize_agent_file_write(
             Err(error)
         }
     }
+}
+
+/// ADR-F50: the write is allowed and about to land, so the worktree it lands
+/// in stops running its own code until the user resumes it, and what the
+/// write triggers (formatting before the save, the save's `didSave`) already
+/// finds it paused.
+async fn note_agent_write(project: &Entity<Project>, path: &Path, cx: &mut AsyncApp) {
+    project
+        .update(cx, |project, cx| project.note_agent_write_to_path(path, cx))
+        .await;
 }
 
 /// What the rules say about a write to `path`, along with the path Zed would

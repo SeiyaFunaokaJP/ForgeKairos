@@ -35,6 +35,9 @@ impl StdioTransport {
             builder.build_std_command(Some(binary.executable.display().to_string()), &binary.args);
 
         command.envs(binary.env.unwrap_or_default());
+        if cfg!(windows) {
+            command.env(util::command::NO_CURRENT_DIRECTORY_PROGRAM_LOOKUP, "1");
+        }
 
         if let Some(working_directory) = working_directory {
             command.current_dir(working_directory);

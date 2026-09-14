@@ -35,6 +35,7 @@ use project::{
     search::SearchQuery,
     task_store::TaskStore,
     trusted_worktrees::{PathTrust, RemoteHostLocation, TrustedWorktrees},
+    worktree_code_execution::WorktreeCodeExecution,
     worktree_store::{WorktreeIdCounter, WorktreeStore},
 };
 use rpc::{
@@ -70,6 +71,9 @@ pub struct HeadlessProject {
     /// ADR-F50: what the IDE of this session decided about the language
     /// servers and formatters that project or server settings define here.
     pub launch_approvals: Entity<RemoteLaunchApprovals>,
+    /// ADR-F50: whether the IDE of this session lets each worktree's own code
+    /// run here.
+    pub worktree_code_execution: Entity<WorktreeCodeExecution>,
     pub task_store: Entity<TaskStore>,
     pub dap_store: Entity<DapStore>,
     pub breakpoint_store: Entity<BreakpointStore>,
@@ -445,6 +449,11 @@ impl HeadlessProject {
             observer
         });
 
+        // ADR-F50: the IDE of this session says whether each worktree's own
+        // code may run here, after its agents wrote into it.
+        let worktree_code_execution =
+            cx.new(|cx| WorktreeCodeExecution::headless(&worktree_store, fs.clone(), cx));
+
         let lsp_store = cx.new(|cx| {
             let mut lsp_store = LspStore::new_local(
                 buffer_store.clone(),
@@ -463,6 +472,7 @@ impl HeadlessProject {
                 // does not gate the relay either.
                 http_client::ide_lane(http_client.clone()),
                 fs.clone(),
+                worktree_code_execution.clone(),
                 cx,
             );
             lsp_store.shared(REMOTE_SERVER_PROJECT_ID, session.clone(), cx);
@@ -516,6 +526,7 @@ impl HeadlessProject {
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &cx.entity());
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &lsp_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &launch_approvals);
+        session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &worktree_code_execution);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &task_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &toolchain_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &dap_store);
@@ -575,6 +586,7 @@ impl HeadlessProject {
         SettingsObserver::init(&session);
         LspStore::init(&session);
         RemoteLaunchApprovals::init(&session);
+        WorktreeCodeExecution::init(&session);
         TaskStore::init(Some(&session));
         ToolchainStore::init(&session);
         DapStore::init(&session, cx);
@@ -595,6 +607,7 @@ impl HeadlessProject {
             buffer_store,
             lsp_store,
             launch_approvals,
+            worktree_code_execution,
             task_store,
             dap_store,
             breakpoint_store,
@@ -820,6 +833,15 @@ impl HeadlessProject {
                 }
             }
         };
+        // ADR-F50: an IDE that decides whether the worktree's code may run is
+        // heard before any of it runs here.
+        if message.payload.code_execution_follows_ide {
+            this.update(&mut cx, |this, cx| {
+                this.worktree_code_execution.update(cx, |execution, _| {
+                    execution.expect_ide_decision(canonicalized.clone())
+                })
+            });
+        }
         let next_worktree_id = this
             .update(&mut cx, |this, cx| {
                 this.worktree_store

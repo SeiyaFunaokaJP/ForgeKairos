@@ -4382,6 +4382,14 @@ impl Thread {
         self.tools.contains_key(name)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn registered_tool_kinds(&self) -> Vec<(SharedString, acp::ToolKind)> {
+        self.tools
+            .iter()
+            .map(|(name, tool)| (name.clone(), tool.kind()))
+            .collect()
+    }
+
     pub(crate) fn register_running_subagent(&mut self, subagent: WeakEntity<Thread>) {
         self.running_subagents.push(subagent);
     }

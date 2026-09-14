@@ -2,7 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use collections::HashMap;
 use gpui::AsyncApp;
-use language::{LanguageName, LspAdapter, LspAdapterDelegate, LspInstaller, Toolchain};
+use language::{
+    LanguageName, LspAdapter, LspAdapterDelegate, LspInstaller, Toolchain, WorktreeCodePausedMode,
+};
 use lsp::{LanguageServerBinary, LanguageServerName, Uri};
 use node_runtime::{NodeRuntime, VersionStrategy};
 use project::lsp_store::language_server_settings;
@@ -139,6 +141,15 @@ impl LspInstaller for TailwindLspAdapter {
 impl LspAdapter for TailwindLspAdapter {
     fn name(&self) -> LanguageServerName {
         Self::SERVER_NAME
+    }
+
+    /// ADR-F50: the Tailwind server loads the project's Tailwind configuration
+    /// and plugins, which are JavaScript from the worktree.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Stopped)
     }
 
     async fn initialization_options(

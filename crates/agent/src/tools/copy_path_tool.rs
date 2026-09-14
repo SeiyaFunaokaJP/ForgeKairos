@@ -208,6 +208,12 @@ impl AgentTool for CopyPathTool {
                     })?
                 };
 
+                // ADR-F50: the copy may land in a worktree.
+                project
+                    .update(cx, |project, cx| {
+                        project.note_agent_write_to_path(&destination_path, cx)
+                    })
+                    .await;
                 futures::select! {
                     result = fs::copy_recursive(
                         fs.as_ref(),
@@ -222,12 +228,24 @@ impl AgentTool for CopyPathTool {
                     }
                 }
 
+                project.update(cx, |project, cx| {
+                    project.note_agent_write_landed(&destination_path, cx)
+                });
                 return Ok(format!(
                     "Copied {} to {}",
                     input.source_path, input.destination_path
                 ));
             }
 
+            // ADR-F50: the copy lands in the destination's worktree.
+            let noted = project.update(cx, |project, cx| {
+                project
+                    .find_project_path(&input.destination_path, cx)
+                    .map(|destination| project.note_agent_write_to_project_path(&destination, cx))
+            });
+            if let Some(noted) = noted {
+                noted.await;
+            }
             let copy_task = project.update(cx, |project, cx| {
                 match project
                     .find_project_path(&input.source_path, cx)

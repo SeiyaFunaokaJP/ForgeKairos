@@ -212,6 +212,15 @@ impl AgentTool for CreateDirectoryTool {
                 return Ok(format!("Created directory {destination_path}"));
             }
 
+            // ADR-F50: a new directory is a write into the worktree.
+            let noted = project.update(cx, |project, cx| {
+                project
+                    .find_project_path(&input.path, cx)
+                    .map(|project_path| project.note_agent_write_to_project_path(&project_path, cx))
+            });
+            if let Some(noted) = noted {
+                noted.await;
+            }
             let create_entry = project.update(cx, |project, cx| {
                 match project.find_project_path(&input.path, cx) {
                     Some(project_path) => Ok(project.create_entry(project_path, true, cx)),
@@ -356,6 +365,47 @@ mod tests {
             settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
             AgentSettings::override_global(settings, cx);
         });
+    }
+
+    /// ADR-F50: a directory created in a worktree pauses its code first.
+    #[gpui::test]
+    async fn test_create_directory_pauses_the_worktree_code(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root/project"), json!({})).await;
+        let project = Project::test(fs.clone(), [path!("/root/project").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+
+        let tool = Arc::new(CreateDirectoryTool::new(project.clone()));
+        let (event_stream, _event_rx) = ToolCallEventStream::test();
+        let result = cx
+            .update(|cx| {
+                tool.run(
+                    ToolInput::resolved(CreateDirectoryToolInput {
+                        path: "project/generated".to_string(),
+                        reason: None,
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await;
+        assert!(result.is_ok(), "{result:?}");
+        assert!(project.read_with(cx, |project, cx| {
+            project
+                .worktree_code_execution()
+                .read(cx)
+                .is_paused(worktree_id)
+        }));
     }
 
     #[gpui::test]

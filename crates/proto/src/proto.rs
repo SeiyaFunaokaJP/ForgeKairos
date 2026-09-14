@@ -85,6 +85,7 @@ messages!(
     (ProjectLaunchApprovalDecided, Foreground),
     (ProjectLaunchApprovalRevoked, Foreground),
     (WithdrawProjectLaunchApproval, Foreground),
+    (SetWorktreeCodeExecution, Foreground),
     (Follow, Foreground),
     (FollowResponse, Foreground),
     (ApplyCodeActionKind, Foreground),
@@ -451,6 +452,7 @@ request_messages!(
     (ExpandProjectEntry, ExpandProjectEntryResponse),
     (ExpandAllForProjectEntry, ExpandAllForProjectEntryResponse),
     (RescanProjectWorktree, RescanProjectWorktreeResponse),
+    (SetWorktreeCodeExecution, Ack),
     (
         RequestProjectLaunchApproval,
         RequestProjectLaunchApprovalResponse
@@ -741,6 +743,7 @@ entity_messages!(
     ProjectLaunchApprovalDecided,
     ProjectLaunchApprovalRevoked,
     WithdrawProjectLaunchApproval,
+    SetWorktreeCodeExecution,
     FindSearchCandidates,
     ApplyCodeActionKind,
     FormatBuffers,

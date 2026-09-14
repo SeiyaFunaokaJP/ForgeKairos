@@ -44,6 +44,14 @@ const DIAGNOSTICS_WAIT_AFTER_SAVE: Duration = Duration::from_secs(2);
 /// file with hundreds of errors can't crowd out the rest of the conversation.
 const MAX_REPORTED_DIAGNOSTICS: usize = 20;
 
+/// ADR-F50: what the model hears when saving skipped formatters that would
+/// have run the worktree's own code.
+pub(crate) const FORMATTING_SKIPPED_NOTE: &str = "Formatting on save skipped the formatters that \
+    would run this worktree's own code (such as the project's prettier or a formatter command \
+    from the project), because Zed does not run the worktree's code after an agent writes to it \
+    until the user reviews the changes and resumes it. The file was saved without that \
+    formatting.";
+
 /// Operating mode used internally by `EditSession`/`Pipeline` to choose between
 /// applying granular edits (the `edit_file` tool) or replacing/creating the
 /// entire file content (the `write_file` tool).
@@ -93,6 +101,10 @@ pub enum EditSessionOutput {
         /// buffer has no language server, or when it came back clean.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         diagnostics: String,
+        /// ADR-F50: formatting that saving skipped because the worktree's own
+        /// code is paused, told to the model as is.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        formatting_note: String,
     },
     Error {
         error: String,
@@ -120,12 +132,16 @@ impl std::fmt::Display for EditSessionOutput {
                 diff,
                 input_path,
                 diagnostics,
+                formatting_note,
                 ..
             } => {
                 if diff.is_empty() {
                     write!(f, "No edits were made.")?;
                 } else {
                     write!(f, "Edited {} successfully", input_path.display())?;
+                }
+                if !formatting_note.is_empty() {
+                    write!(f, "\n\n{formatting_note}")?;
                 }
                 if diagnostics.is_empty() {
                     Ok(())
@@ -211,11 +227,28 @@ impl EditSessionContext {
         }
     }
 
-    async fn ensure_buffer_saved(&self, buffer: &Entity<Buffer>, cx: &mut AsyncApp) {
+    /// Formats the buffer as saving it would and saves it. Returns what the
+    /// model is to be told about formatting that was skipped because the
+    /// worktree's code is paused (ADR-F50), if any was.
+    async fn ensure_buffer_saved(&self, buffer: &Entity<Buffer>, cx: &mut AsyncApp) -> String {
         let format_on_save_enabled = buffer.read_with(cx, |buffer, cx| {
             let settings = language_settings::LanguageSettings::for_buffer(buffer, cx);
             settings.format_on_save != FormatOnSave::Off
         });
+        let formatter_skip_mark = buffer
+            .read_with(cx, |buffer, cx| {
+                buffer.file().map(|file| file.worktree_id(cx))
+            })
+            .filter(|_| format_on_save_enabled)
+            .map(|worktree_id| {
+                let mark = self.project.read_with(cx, |project, cx| {
+                    project
+                        .worktree_code_execution()
+                        .read(cx)
+                        .formatter_skip_mark(worktree_id)
+                });
+                (worktree_id, mark)
+            });
 
         if format_on_save_enabled {
             self.project
@@ -240,6 +273,20 @@ impl EditSessionContext {
         self.action_log.update(cx, |log, cx| {
             log.buffer_edited(buffer.clone(), cx);
         });
+
+        let formatters_skipped = formatter_skip_mark.is_some_and(|(worktree_id, mark)| {
+            self.project.read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .formatters_skipped_since(worktree_id, mark)
+            })
+        });
+        if formatters_skipped {
+            FORMATTING_SKIPPED_NOTE.to_string()
+        } else {
+            String::new()
+        }
     }
 
     /// Errors and warnings the language server reports for `buffer` right after
@@ -423,7 +470,7 @@ pub(crate) async fn run_session(
 ) -> Result<EditSessionOutput, EditSessionOutput> {
     match result {
         EditSessionResult::Completed(session) => {
-            session
+            let formatting_note = session
                 .context
                 .ensure_buffer_saved(&session.buffer, cx)
                 .await;
@@ -442,12 +489,14 @@ pub(crate) async fn run_session(
                 input_path: session.input_path,
                 diff,
                 diagnostics,
+                formatting_note,
             })
         }
         EditSessionResult::Failed {
             error,
             session: Some(session),
         } => {
+            // The error is what the model hears about this edit.
             session
                 .context
                 .ensure_buffer_saved(&session.buffer, cx)
@@ -874,6 +923,15 @@ impl EditSession {
         cx.update(|cx| context.authorize(tool_name, &path, event_stream, cx))
             .await
             .map_err(|e| e.to_string())?;
+
+        // ADR-F50: before the buffer changes, so that the save this edit ends
+        // with finds the worktree's code paused.
+        context
+            .project
+            .update(cx, |project, cx| {
+                project.note_agent_write_to_path(&abs_path, cx)
+            })
+            .await;
 
         let buffer = match project_path {
             Some(project_path) => context

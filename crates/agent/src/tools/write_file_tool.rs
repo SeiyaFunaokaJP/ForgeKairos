@@ -525,6 +525,85 @@ mod tests {
         );
     }
 
+    /// ADR-F50: the write pauses the worktree's code before it lands, so the
+    /// save skips a formatter from the worktree, and the model hears why.
+    #[gpui::test]
+    async fn test_write_pauses_worktree_code_and_says_formatting_was_skipped(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = project::FakeFs::new(cx.executor());
+        fs.insert_tree("/root", json!({"src": {"main.rs": "fn main() {}\n"}}))
+            .await;
+        let (write_tool, project, _action_log, fs, _thread) =
+            setup_test_with_fs(cx, fs, &[path!("/root").as_ref()]).await;
+        let rust_language = Arc::new(language::Language::new(
+            language::LanguageConfig {
+                name: "Rust".into(),
+                matcher: (language::LanguageMatcher {
+                    path_suffixes: vec!["rs".to_string()],
+                    ..Default::default()
+                })
+                .into(),
+                ..Default::default()
+            },
+            None,
+        ));
+        project.read_with(cx, |project, _| project.languages().add(rust_language));
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.all_languages.defaults.format_on_save = Some(FormatOnSave::On);
+                    settings.project.all_languages.defaults.formatter = Some(
+                        serde_json::from_value(
+                            json!({ "external": { "command": "scripts/format", "arguments": [] } }),
+                        )
+                        .expect("a formatter setting"),
+                    );
+                });
+            });
+        });
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+
+        let (mut sender, input) = ToolInput::<WriteFileToolInput>::test();
+        let (event_stream, _receiver) = ToolCallEventStream::test();
+        let task = cx.update(|cx| write_tool.clone().run(input, event_stream, cx));
+        sender.send_full(json!({
+            "path": "root/src/main.rs",
+            "content": "fn main() {  }\n"
+        }));
+        let output = task
+            .await
+            .expect("the write goes through with the formatter skipped");
+        assert!(
+            output
+                .to_string()
+                .contains(crate::tools::edit_session::FORMATTING_SKIPPED_NOTE),
+            "{output}"
+        );
+        assert!(project.read_with(cx, |project, cx| {
+            project
+                .worktree_code_execution()
+                .read(cx)
+                .is_paused(worktree_id)
+        }));
+        assert_eq!(
+            fs.load(path!("/root/src/main.rs").as_ref())
+                .await
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "fn main() {  }\n"
+        );
+    }
+
     #[gpui::test]
     async fn test_streaming_format_on_save(cx: &mut TestAppContext) {
         init_test(cx);

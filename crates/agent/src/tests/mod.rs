@@ -1948,6 +1948,120 @@ async fn test_mcp_tool_names_are_sanitized_for_providers(cx: &mut TestAppContext
     events.collect::<Vec<_>>().await;
 }
 
+/// ADR-F50: an MCP server can change files wherever it reaches, so a call to
+/// one of its tools pauses the worktrees' code first, unless the tool says it
+/// changes nothing.
+#[gpui::test]
+async fn test_mcp_tool_calls_pause_worktree_code_unless_read_only(cx: &mut TestAppContext) {
+    let ThreadTest {
+        model,
+        thread,
+        context_server_store,
+        fs,
+        ..
+    } = setup(cx, TestModel::Fake).await;
+    let fake_model = model.as_fake();
+
+    fs.insert_file(
+        paths::settings_file(),
+        json!({
+            "agent": {
+                "tool_permissions": { "default": "allow" },
+                "profiles": {
+                    "test": {
+                        "name": "Test Profile",
+                        "enable_all_context_servers": true,
+                    },
+                }
+            }
+        })
+        .to_string()
+        .into_bytes(),
+    )
+    .await;
+    cx.run_until_parked();
+    thread.update(cx, |thread, cx| {
+        thread.set_profile(AgentProfileId("test".into()), cx)
+    });
+    let tool = |name: &str, read_only_hint: Option<bool>| context_server::types::Tool {
+        name: name.into(),
+        title: None,
+        description: None,
+        input_schema: json!({"type": "object", "properties": {}}),
+        output_schema: None,
+        annotations: Some(context_server::types::ToolAnnotations {
+            title: None,
+            read_only_hint,
+            destructive_hint: None,
+            idempotent_hint: None,
+            open_world_hint: None,
+        }),
+    };
+    let mut mcp_tool_calls = setup_context_server(
+        "Workspace",
+        vec![tool("look_around", Some(true)), tool("tidy_up", None)],
+        &context_server_store,
+        cx,
+    );
+    let project = thread.read_with(cx, |thread, _| thread.project().clone());
+    let paused = |cx: &mut TestAppContext| {
+        project.read_with(cx, |project, cx| {
+            !project
+                .worktree_code_execution()
+                .read(cx)
+                .paused_worktrees()
+                .is_empty()
+        })
+    };
+
+    let events = thread.update(cx, |thread, cx| {
+        thread
+            .send(ClientUserMessageId::new(), ["Use the MCP tools"], cx)
+            .unwrap()
+    });
+    cx.run_until_parked();
+    for (tool_use_id, tool_name, pauses) in [
+        ("tool_1", "look_around", false),
+        ("tool_2", "tidy_up", true),
+    ] {
+        fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(
+            LanguageModelToolUse {
+                id: tool_use_id.into(),
+                name: tool_name.into(),
+                raw_input: json!({}).to_string(),
+                input: language_model::LanguageModelToolUseInput::Json(json!({})),
+                is_input_complete: true,
+                thought_signature: None,
+            },
+        ));
+        fake_model.end_last_completion_stream();
+        cx.run_until_parked();
+
+        let (tool_call_params, tool_call_response) = mcp_tool_calls.next().await.unwrap();
+        assert_eq!(tool_call_params.name, tool_name);
+        assert_eq!(
+            paused(cx),
+            pauses,
+            "{tool_name}: paused by the time the server hears of the call"
+        );
+        tool_call_response
+            .send(context_server::types::CallToolResponse {
+                content: vec![context_server::types::ToolResponseContent::Text {
+                    text: "done".into(),
+                }],
+                is_error: None,
+                meta: None,
+                structured_content: None,
+            })
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    fake_model.send_last_completion_stream_text_chunk("Done!");
+    fake_model.end_last_completion_stream();
+    events.collect::<Vec<_>>().await;
+}
+
 #[gpui::test]
 async fn test_mcp_tool_multi_content_response(cx: &mut TestAppContext) {
     let ThreadTest {
@@ -6355,6 +6469,96 @@ async fn test_max_subagent_depth_prevents_tool_registration(cx: &mut TestAppCont
             !thread.has_registered_tool(SpawnAgentTool::NAME),
             "subagent tool should not be present at max depth"
         );
+    });
+}
+
+/// ADR-F50: every native tool is known either to write into the project's
+/// worktrees, and then it pauses their code before it writes
+/// (`Project::note_agent_write*`), or not to. A new tool fails here until it
+/// is put on one of the lists, and one of an editing, moving, deleting or
+/// executing kind cannot go on the second.
+#[gpui::test]
+async fn test_every_tool_is_known_to_write_worktrees_or_not(cx: &mut TestAppContext) {
+    const WRITES_WORKTREES: &[&str] = &[
+        "apply_code_action",
+        "copy_path",
+        "create_directory",
+        "delete_path",
+        "edit_file",
+        "move_path",
+        "rename_symbol",
+        "sandboxed_terminal",
+        "terminal",
+        "write_file",
+    ];
+    const DOES_NOT_WRITE_WORKTREES: &[&str] = &[
+        "ask_user",
+        "create_thread",
+        "diagnostics",
+        "fetch",
+        "find_path",
+        "find_references",
+        "get_code_actions",
+        "go_to_definition",
+        "grep",
+        "list_agents_and_models",
+        "list_directory",
+        "read_file",
+        "repo_map",
+        "search_web",
+        "skill",
+        "spawn_agent",
+    ];
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/test"), json!({})).await;
+    let project = Project::test(fs, [path!("/test").as_ref()], cx).await;
+    let project_context = cx.new(|_cx| ProjectContext::default());
+    let context_server_store = project.read_with(cx, |project, _| project.context_server_store());
+    let context_server_registry =
+        cx.new(|cx| ContextServerRegistry::new(context_server_store.clone(), cx));
+    let model = Arc::new(FakeLanguageModel::default());
+    let environment = Rc::new(cx.update(|cx| {
+        FakeThreadEnvironment::default().with_terminal(FakeTerminalHandle::new_never_exits(cx))
+    }));
+    let thread = cx.new(|cx| {
+        let mut thread = Thread::new(
+            project,
+            project_context,
+            context_server_registry,
+            Templates::new(),
+            Some(model.clone() as Arc<dyn LanguageModel>),
+            cx,
+        );
+        thread.add_default_tools(environment, cx);
+        thread
+    });
+
+    thread.read_with(cx, |thread, _| {
+        let tools = thread.registered_tool_kinds();
+        assert!(!tools.is_empty());
+        for (name, kind) in tools {
+            let writes = WRITES_WORKTREES.contains(&name.as_ref());
+            let does_not_write = DOES_NOT_WRITE_WORKTREES.contains(&name.as_ref());
+            assert!(
+                writes != does_not_write,
+                "say whether the tool `{name}` writes into worktrees; if it does, it has to \
+                 call `Project::note_agent_write*` before it writes"
+            );
+            if matches!(
+                kind,
+                acp::ToolKind::Edit
+                    | acp::ToolKind::Delete
+                    | acp::ToolKind::Move
+                    | acp::ToolKind::Execute
+            ) {
+                assert!(
+                    writes,
+                    "the tool `{name}` is of kind {kind:?}, so it writes into worktrees"
+                );
+            }
+        }
     });
 }
 

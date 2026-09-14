@@ -881,6 +881,7 @@ impl WorktreeStore {
                     project_id: REMOTE_SERVER_PROJECT_ID,
                     path: path.to_proto(),
                     visible,
+                    code_execution_follows_ide: true,
                 })
                 .await?;
 

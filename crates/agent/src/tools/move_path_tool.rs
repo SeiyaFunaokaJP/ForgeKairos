@@ -237,6 +237,15 @@ impl AgentTool for MovePathTool {
                     })?
                 };
 
+                // ADR-F50: a move changes both the worktree it leaves and the
+                // one it lands in.
+                let noted = project.update(cx, |project, cx| {
+                    [
+                        project.note_agent_write_to_path(&source_path, cx),
+                        project.note_agent_write_to_path(&destination_path, cx),
+                    ]
+                });
+                futures::future::join_all(noted).await;
                 futures::select! {
                     result = fs.rename(
                         &source_path,
@@ -253,12 +262,28 @@ impl AgentTool for MovePathTool {
                     }
                 }
 
+                project.update(cx, |project, cx| {
+                    project.note_agent_write_landed(&source_path, cx);
+                    project.note_agent_write_landed(&destination_path, cx);
+                });
                 return Ok(format!(
                     "Moved {} to {}",
                     input.source_path, input.destination_path
                 ));
             }
 
+            // ADR-F50: a move changes both the worktree it leaves and the one
+            // it lands in.
+            let noted = project.update(cx, |project, cx| {
+                let mut noted = Vec::new();
+                for path in [&input.source_path, &input.destination_path] {
+                    if let Some(project_path) = project.find_project_path(path, cx) {
+                        noted.push(project.note_agent_write_to_project_path(&project_path, cx));
+                    }
+                }
+                noted
+            });
+            futures::future::join_all(noted).await;
             let rename_task = project.update(cx, |project, cx| {
                 match project
                     .find_project_path(&input.source_path, cx)

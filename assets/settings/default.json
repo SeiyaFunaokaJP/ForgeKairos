@@ -1150,6 +1150,17 @@
     // Whether to include project rules files (AGENTS.md, CLAUDE.md, .rules, etc.)
     // in the prompt when generating git commit messages.
     "commit_message_include_project_rules": true,
+    // Whether a project folder an agent wrote into stops running its own code
+    // (the project's prettier, ESLint and Python interpreter, rust-analyzer's
+    // build scripts, formatter commands from the project) until the user
+    // reviews the changes and resumes it (ADR-F50). Only the user settings
+    // file can turn this off.
+    "pause_worktree_code_after_agent_writes": true,
+    // Language servers from extensions that keep running while a project
+    // folder's code is paused, by name (for example ["gopls"]). Other
+    // extensions' servers stop until the folder is resumed. Only the user
+    // settings file is read.
+    "language_servers_allowed_while_paused": [],
     // Whether the agent is enabled.
     // Off in this fork: every AI feature ships disabled and the user opts in
     // explicitly from the settings UI ("AI" page). See docs/jp-enhance/DESIGN.md

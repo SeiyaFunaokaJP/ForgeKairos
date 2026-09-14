@@ -302,10 +302,57 @@ impl ManifestProvider for CargoManifestProvider {
     }
 }
 
+/// ADR-F50: build scripts, procedural macros and the check on save compile and
+/// run the worktree's code, and the commands the configuration can name run
+/// whatever they name. A sysroot set to a path runs the `cargo` and `rustc`
+/// found there, and linked projects can name a `rust-project.json` with build
+/// commands. Cargo and rustup still read `.cargo/config*` and
+/// `rust-toolchain*` from the worktree, and rust-analyzer its own
+/// `rust-analyzer.toml` and `rust-project.json`, which can name programs too,
+/// so those have to be as the user confirmed them. The server's own file
+/// watcher would see them change before Zed can stop it.
+fn rust_analyzer_paused_mode() -> WorktreeCodePausedMode {
+    let restricted = json!({
+        "cargo": {
+            "buildScripts": { "enable": false, "overrideCommand": null },
+            "extraEnv": {},
+            "sysroot": "discover",
+        },
+        "procMacro": { "enable": false, "server": null },
+        "checkOnSave": false,
+        "check": { "overrideCommand": null },
+        "rustfmt": { "overrideCommand": null },
+        "workspace": { "discoverConfig": null },
+        "linkedProjects": [],
+        "files": { "watcher": "client" },
+    });
+    WorktreeCodePausedMode::Restricted {
+        initialization_options: restricted.clone(),
+        workspace_configuration: json!({ "rust-analyzer": restricted }),
+        unchanged_files: &[
+            ".cargo/config",
+            ".cargo/config.toml",
+            "rust-toolchain",
+            "rust-toolchain.toml",
+            "rust-analyzer.toml",
+            "rust-project.json",
+            ".rust-project.json",
+        ],
+        formatting_runs_programs: true,
+    }
+}
+
 #[async_trait(?Send)]
 impl LspAdapter for RustLspAdapter {
     fn name(&self) -> LanguageServerName {
         SERVER_NAME
+    }
+
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(rust_analyzer_paused_mode())
     }
 
     fn disk_based_diagnostic_sources(&self) -> Vec<String> {
@@ -1478,6 +1525,51 @@ mod tests {
     use settings::SettingsStore;
     use theme::SyntaxTheme;
     use util::path;
+
+    /// ADR-F50: what rust-analyzer's paused mode turns off, and the files it
+    /// has to find as the user confirmed them.
+    #[test]
+    fn test_rust_analyzer_paused_mode() {
+        let WorktreeCodePausedMode::Restricted {
+            initialization_options,
+            workspace_configuration,
+            unchanged_files,
+            formatting_runs_programs,
+        } = rust_analyzer_paused_mode()
+        else {
+            panic!("rust-analyzer runs restricted while its worktree is paused");
+        };
+        assert_eq!(
+            workspace_configuration,
+            json!({ "rust-analyzer": initialization_options })
+        );
+        assert!(formatting_runs_programs, "rustfmt runs through rustup");
+        for (pointer, value) in [
+            ("/cargo/buildScripts/enable", json!(false)),
+            ("/cargo/sysroot", json!("discover")),
+            ("/procMacro/enable", json!(false)),
+            ("/checkOnSave", json!(false)),
+            ("/linkedProjects", json!([])),
+            ("/files/watcher", json!("client")),
+        ] {
+            assert_eq!(
+                initialization_options.pointer(pointer),
+                Some(&value),
+                "{pointer}"
+            );
+        }
+        for name in [
+            ".cargo/config",
+            ".cargo/config.toml",
+            "rust-toolchain",
+            "rust-toolchain.toml",
+            "rust-analyzer.toml",
+            "rust-project.json",
+            ".rust-project.json",
+        ] {
+            assert!(unchanged_files.contains(&name), "{name}");
+        }
+    }
 
     #[gpui::test]
     async fn test_process_rust_diagnostics() {

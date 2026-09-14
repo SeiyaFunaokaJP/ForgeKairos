@@ -5,7 +5,7 @@ use http_client::{
     github::{AssetKind, GitHubLspBinaryVersion, build_asset_url},
     github_download::download_server_binary,
 };
-use language::{LspAdapter, LspAdapterDelegate, LspInstaller, Toolchain};
+use language::{LspAdapter, LspAdapterDelegate, LspInstaller, Toolchain, WorktreeCodePausedMode};
 use lsp::{CodeActionKind, LanguageServerBinary, LanguageServerName, Uri};
 use node_runtime::{NodeRuntime, read_package_installed_version};
 use project::Fs;
@@ -213,6 +213,15 @@ impl EslintSettingsOverrides {
 
 #[async_trait(?Send)]
 impl LspAdapter for EsLintLspAdapter {
+    /// ADR-F50: ESLint loads the project's configuration and plugins, which
+    /// are code from the worktree.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Stopped)
+    }
+
     fn code_action_kinds(&self) -> Option<Vec<CodeActionKind>> {
         Some(vec![
             CodeActionKind::QUICKFIX,

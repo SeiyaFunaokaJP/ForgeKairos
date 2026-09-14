@@ -4,6 +4,7 @@ use collections::HashMap;
 use gpui::AsyncApp;
 use language::{
     LanguageName, LspAdapter, LspAdapterDelegate, LspInstaller, PromptResponseContext, Toolchain,
+    WorktreeCodePausedMode,
 };
 use lsp::{CodeActionKind, LanguageServerBinary, LanguageServerName, Uri};
 use node_runtime::{NodeRuntime, VersionStrategy};
@@ -188,6 +189,36 @@ impl LspInstaller for VtslsLspAdapter {
 impl LspAdapter for VtslsLspAdapter {
     fn name(&self) -> LanguageServerName {
         SERVER_NAME
+    }
+
+    /// ADR-F50: vtsls runs the TypeScript it ships with unless pointed at the
+    /// project's (`tsdk`, `autoUseWorkspaceTsdk`), and the project's copy is
+    /// code from the worktree. Its tsserver is started without
+    /// `--allowLocalPluginLoads`, so the plugins a `tsconfig.json` names are
+    /// looked for only next to that TypeScript and in the plugin locations
+    /// settings give, which are cleared here (relative plugin paths resolve
+    /// against the worktree). Automatic type acquisition would run npm.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Restricted {
+            initialization_options: json!({}),
+            workspace_configuration: json!({
+                "typescript": {
+                    "tsdk": null,
+                    "tsserver": { "pluginPaths": [] },
+                    "disableAutomaticTypeAcquisition": true,
+                },
+                "javascript": { "tsdk": null },
+                "vtsls": {
+                    "autoUseWorkspaceTsdk": false,
+                    "tsserver": { "globalPlugins": [] },
+                },
+            }),
+            unchanged_files: &[],
+            formatting_runs_programs: false,
+        })
     }
 
     fn code_action_kinds(&self) -> Option<Vec<CodeActionKind>> {

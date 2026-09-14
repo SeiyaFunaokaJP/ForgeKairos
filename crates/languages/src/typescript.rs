@@ -7,7 +7,7 @@ use gpui::{App, AppContext, AsyncApp, Entity, Task};
 use itertools::Itertools as _;
 use language::{
     Buffer, ContextLocation, ContextProvider, File, LanguageName, LanguageToolchainStore,
-    LspAdapter, LspAdapterDelegate, LspInstaller, Toolchain,
+    LspAdapter, LspAdapterDelegate, LspInstaller, Toolchain, WorktreeCodePausedMode,
 };
 use lsp::{CodeActionKind, LanguageServerBinary, LanguageServerName, Uri};
 use node_runtime::{NodeRuntime, VersionStrategy};
@@ -770,10 +770,53 @@ impl LspInstaller for TypeScriptLspAdapter {
     }
 }
 
+/// ADR-F50: how typescript-language-server runs while its worktree is paused,
+/// given where Zed installs it. It prefers the worktree's TypeScript to its
+/// own unless told where tsserver is, so without its own copy it stops. It
+/// starts tsserver without `--allowLocalPluginLoads`, so the plugins a
+/// `tsconfig.json` names are looked for only next to that TypeScript and in
+/// the plugin locations the initialization options give, which are cleared.
+/// Automatic type acquisition would run npm.
+async fn typescript_language_server_paused_mode(
+    fs: &dyn Fs,
+    download_dir: &Path,
+) -> Result<WorktreeCodePausedMode> {
+    let installed_typescript = download_dir
+        .join("node_modules")
+        .join("typescript")
+        .join("lib");
+    if !fs.is_file(&installed_typescript.join("tsserver.js")).await {
+        return Ok(WorktreeCodePausedMode::Stopped);
+    }
+    let installed_typescript = installed_typescript
+        .to_str()
+        .context("the installed TypeScript's path is not valid UTF-8")?;
+    Ok(WorktreeCodePausedMode::Restricted {
+        initialization_options: json!({
+            "tsserver": { "path": installed_typescript },
+            "plugins": [],
+            "disableAutomaticTypingAcquisition": true,
+        }),
+        workspace_configuration: json!({}),
+        unchanged_files: &[],
+        formatting_runs_programs: false,
+    })
+}
+
 #[async_trait(?Send)]
 impl LspAdapter for TypeScriptLspAdapter {
     fn name(&self) -> LanguageServerName {
         Self::SERVER_NAME
+    }
+
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        delegate: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        let download_dir = delegate
+            .language_server_download_dir(&Self::SERVER_NAME)
+            .await?;
+        typescript_language_server_paused_mode(self.fs.as_ref(), &download_dir).await
     }
 
     fn code_action_kinds(&self) -> Option<Vec<CodeActionKind>> {
@@ -919,7 +962,56 @@ mod tests {
 
     use crate::typescript::{
         PackageJsonData, TypeScriptContextProvider, replace_test_name_parameters,
+        typescript_language_server_paused_mode,
     };
+
+    /// ADR-F50: while its worktree is paused, typescript-language-server runs
+    /// only the TypeScript installed next to it, without plugin locations or
+    /// automatic type acquisition, and stops when that copy is missing.
+    #[gpui::test]
+    async fn test_typescript_language_server_paused_mode(executor: BackgroundExecutor) {
+        let fs = FakeFs::new(executor);
+        let download_dir = Path::new(path!("/downloads/typescript-language-server"));
+        let paused_mode = typescript_language_server_paused_mode(fs.as_ref(), download_dir)
+            .await
+            .unwrap();
+        assert_eq!(
+            paused_mode,
+            language::WorktreeCodePausedMode::Stopped,
+            "without its own TypeScript it would fall back to the worktree's"
+        );
+
+        let installed_typescript = download_dir
+            .join("node_modules")
+            .join("typescript")
+            .join("lib");
+        fs.insert_tree(&installed_typescript, json!({ "tsserver.js": "" }))
+            .await;
+        let paused_mode = typescript_language_server_paused_mode(fs.as_ref(), download_dir)
+            .await
+            .unwrap();
+        match paused_mode {
+            language::WorktreeCodePausedMode::Restricted {
+                initialization_options,
+                workspace_configuration,
+                unchanged_files,
+                formatting_runs_programs,
+            } => {
+                assert!(!formatting_runs_programs, "tsserver formats in-process");
+                assert_eq!(
+                    initialization_options,
+                    json!({
+                        "tsserver": { "path": installed_typescript.to_str().unwrap() },
+                        "plugins": [],
+                        "disableAutomaticTypingAcquisition": true,
+                    })
+                );
+                assert_eq!(workspace_configuration, json!({}));
+                assert!(unchanged_files.is_empty());
+            }
+            other => panic!("expected the restricted mode, got {other:?}"),
+        }
+    }
 
     #[test]
     fn test_class_instantiation_highlighting() {

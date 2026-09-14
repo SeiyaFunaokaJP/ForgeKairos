@@ -478,6 +478,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("editor::RestartLanguageServer", "言語サーバーを再起動"),
     ("editor::StopLanguageServer", "言語サーバーを停止"),
     (
+        "lsp_tool::ReviewPausedWorktreeCode",
+        "止めているフォルダーのコードを確認",
+    ),
+    (
         "editor::CancelLanguageServerWork",
         "言語サーバーの処理を中止",
     ),

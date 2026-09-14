@@ -2622,6 +2622,10 @@ impl acp_thread::AgentConnection for NativeAgentConnection {
         "zed".into()
     }
 
+    fn changes_files_through_zed(&self) -> bool {
+        true
+    }
+
     fn new_session(
         self: Rc<Self>,
         project: Entity<Project>,

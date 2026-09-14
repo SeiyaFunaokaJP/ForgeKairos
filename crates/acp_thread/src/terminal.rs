@@ -967,6 +967,9 @@ pub struct Terminal {
     /// sandboxed or after it finishes. Dropping it tears down the proxy on a
     /// background thread (see `sandbox::Sandbox`'s `Drop`).
     _sandbox: Option<SandboxConfigHandle>,
+    /// ADR-F50: keeps the command registered as a writer of the project's
+    /// worktrees until it exits.
+    worktree_code_writer: Option<project::SandboxedWriterGuard>,
 }
 
 pub struct TerminalOutput {
@@ -986,6 +989,7 @@ impl Terminal {
         terminal: Entity<terminal::Terminal>,
         language_registry: Arc<LanguageRegistry>,
         sandbox: Option<SandboxConfigHandle>,
+        worktree_code_writer: Option<project::SandboxedWriterGuard>,
         cx: &mut Context<Self>,
     ) -> Self {
         let command_task = terminal.read(cx).wait_for_completed_task(cx);
@@ -1005,6 +1009,7 @@ impl Terminal {
         Self {
             id,
             _sandbox: sandbox,
+            worktree_code_writer,
             command: cx.new(|cx| {
                 Markdown::new(
                     format!("```\n{}\n```", command_label).into(),
@@ -1061,6 +1066,7 @@ impl Terminal {
                                 .spawn(async move { sandbox.drop_on_current_thread() })
                                 .detach();
                         }
+                        drop(this.worktree_code_writer.take());
                         cx.notify();
                     })
                     .ok();
