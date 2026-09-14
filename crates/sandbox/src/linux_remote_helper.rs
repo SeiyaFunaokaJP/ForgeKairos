@@ -3603,9 +3603,11 @@ fn windows_drives() -> Result<WindowsDrives> {
 }
 
 /// The mount points of the Windows drives in `mountinfo`, outermost first:
-/// DrvFs over 9p (`aname=drvfs` — WSL mounts its driver store over 9p too),
-/// `drvfs` itself, and virtiofs, which WSL can mount the drives with instead —
-/// the types [`path_is_on_windows_fs`] tells a Windows file by.
+/// DrvFs over 9p (`aname=drvfs`), `drvfs` itself, and virtiofs tagged
+/// `drvfs…`, which WSL can mount the drives with instead — the types
+/// [`path_is_on_windows_fs`] tells a Windows file by. WSL shares its driver
+/// store and GPU libraries over 9p and virtiofs as well, and covering those
+/// would break GPU tools in the sandbox.
 fn drive_mount_points(mountinfo: &str) -> Vec<PathBuf> {
     let mut drives: Vec<PathBuf> = Vec::new();
     for line in mountinfo.lines() {
@@ -3623,12 +3625,16 @@ fn drive_mount_points(mountinfo: &str) -> Vec<PathBuf> {
         else {
             continue;
         };
+        let source = fields.get(separator + 2).copied().unwrap_or_default();
         let options = fields.get(separator + 3).copied().unwrap_or_default();
         let drive = match *filesystem {
             "9p" => options
                 .split(',')
                 .any(|option| option.starts_with("aname=drvfs")),
-            "drvfs" | "virtiofs" => true,
+            "drvfs" => true,
+            "virtiofs" => source
+                .get(..5)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("drvfs")),
             _ => false,
         };
         let mount_point = unescape_mount_point(mount_point);
@@ -4835,6 +4841,18 @@ mod tests {
                 PathBuf::from("/mnt/my drive"),
             ]
         );
+    }
+
+    /// A virtiofs share is a drive only under WSL's drive tag: the driver
+    /// store and GPU libraries, shared over virtiofs too, stay uncovered.
+    #[test]
+    fn only_drvfs_tagged_virtiofs_shares_are_drives() {
+        let mountinfo = "\
+702 610 0:100 / /mnt/e rw,noatime - virtiofs drvfsE rw
+704 610 0:102 / /usr/lib/wsl/drivers ro,nosuid,nodev,noatime - virtiofs drivers ro
+705 610 0:103 / /usr/lib/wsl/lib ro,nosuid,nodev,noatime - virtiofs gpu_lib ro
+";
+        assert_eq!(drive_mount_points(mountinfo), [PathBuf::from("/mnt/e")]);
     }
 
     /// Round-trip the builder through the stage-1 decoder to lock the argv
