@@ -54,7 +54,10 @@ pub use ide_bridge::{
 /// asked for. Shared by [`Sandbox::new`] (the local backends) and the SSH-remote
 /// helper.
 mod protected_paths;
-pub use protected_paths::{APP_DIRECTORY_NAME, builtin_protected_paths, builtin_read_hidden_paths};
+pub use protected_paths::{
+    APP_DIRECTORY_NAME, UNIX_PROTECTED_HOME_RELATIVE, WORKTREE_PROTECTED_RELATIVE,
+    builtin_protected_paths, builtin_read_hidden_paths,
+};
 
 mod util;
 

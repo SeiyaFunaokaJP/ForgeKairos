@@ -45,8 +45,13 @@ use std::path::{Path, PathBuf};
 /// re-validation there, and put local-only entries in
 /// [`LOCAL_EXTRA_PROTECTED_HOME_RELATIVE`] instead. On Windows it is applied by
 /// the helper inside WSL, not by this process.
-#[cfg(not(target_os = "windows"))]
-pub(crate) const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
+///
+/// It is also what the client refuses for an external agent's write to a
+/// remote host, whose home it can't see, and what a verified write refuses
+/// below the account's home. `fs::verified_write` keeps its own copy, so that
+/// `fs` doesn't depend on this crate; a test in `acp_thread` keeps the two
+/// the same.
+pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     // Credentials and keys.
     ".ssh",
     ".gnupg",
@@ -311,9 +316,9 @@ pub fn builtin_protected_paths(home: &Path, worktree_roots: &[PathBuf]) -> Vec<P
 /// command writing any of these would configure — through hooks and MCP
 /// servers, run — code outside the sandbox the next time a host agent opens the
 /// project. So they are protected in every worktree root a command may write,
-/// as its `.git` is (ADR-F49).
-pub(crate) const WORKTREE_PROTECTED_RELATIVE: &[&str] =
-    &[".claude", ".mcp.json", ".gemini", ".codex"];
+/// as its `.git` is (ADR-F49). The guard on an external agent's file writes
+/// asks the user before it writes one of these.
+pub const WORKTREE_PROTECTED_RELATIVE: &[&str] = &[".claude", ".mcp.json", ".gemini", ".codex"];
 
 /// [`WORKTREE_PROTECTED_RELATIVE`] resolved against each of `worktree_roots`.
 pub(crate) fn worktree_protected_paths(worktree_roots: &[PathBuf]) -> Vec<PathBuf> {

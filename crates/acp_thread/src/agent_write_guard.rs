@@ -14,11 +14,10 @@ use crate::AcpThread;
 use agent_client_protocol::schema::v1 as acp;
 use anyhow::{Result, anyhow};
 use fs::Fs;
-use fs::verified_write::{
-    AGENT_CONFIGURATION_HOME_RELATIVE, GIT_DIRECTORY_NAME, NameRules, UNIX_PROTECTED_HOME_RELATIVE,
-};
+use fs::verified_write::{GIT_DIRECTORY_NAME, NameRules};
 use gpui::{App, AsyncApp, Entity, WeakEntity};
 use project::Project;
+use sandbox::{UNIX_PROTECTED_HOME_RELATIVE, WORKTREE_PROTECTED_RELATIVE};
 use std::path::{Path, PathBuf};
 use util::ResultExt as _;
 
@@ -72,92 +71,23 @@ struct WriteTarget {
 enum ProtectedLocations {
     /// This machine, whose home and application directories are known.
     Local {
-        home_directories: Vec<PathBuf>,
         settings_directories: Vec<PathBuf>,
-        extra_protected_paths: Vec<PathBuf>,
+        protected_paths: Vec<PathBuf>,
     },
     /// A remote host. The client doesn't know its home directory, so every
     /// directory on the way to the file is treated as one that could be it.
     Remote,
 }
 
-// Mirrors `sandbox::protected_paths` (private to that crate), as the Unix list
-// in `fs::verified_write` does.
-#[cfg(target_os = "windows")]
-const WINDOWS_PROTECTED_HOME_RELATIVE: &[&str] = &[
-    r".ssh",
-    r".gnupg",
-    r"AppData\Roaming\gnupg",
-    r".aws",
-    r".azure",
-    r".kube",
-    r".docker\config.json",
-    r".config\gh",
-    r"AppData\Roaming\GitHub CLI",
-    r".netrc",
-    r"_netrc",
-    r".git-credentials",
-    r".gitconfig",
-    r".config\git",
-    r".claude.json",
-    r".cargo\bin",
-    r".local\bin",
-    // Shims that are already on `PATH` for every shell.
-    r"AppData\Roaming\npm",
-    r"AppData\Local\Microsoft\WindowsApps",
-    r"Documents\PowerShell",
-    r"Documents\WindowsPowerShell",
-    r".bashrc",
-    r".bash_aliases",
-    r".bash_profile",
-    r".bash_login",
-    r".profile",
-    r".bash_logout",
-    r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup",
-    r".wslconfig",
-];
-
-#[cfg(target_os = "linux")]
-const LOCAL_LOGIN_ITEMS_HOME_RELATIVE: &[&str] = &[".config/autostart", ".config/systemd/user"];
-#[cfg(target_os = "macos")]
-const LOCAL_LOGIN_ITEMS_HOME_RELATIVE: &[&str] = &["Library/LaunchAgents"];
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-const LOCAL_LOGIN_ITEMS_HOME_RELATIVE: &[&str] = &[];
-
-/// This machine's protected home entries. The user's own agent
-/// configurations are among them only here: on a remote host, whose home is
-/// unknown, the project-level files of that name get the user's go-ahead
-/// instead.
-fn local_protected_home_relative() -> impl Iterator<Item = &'static str> {
-    #[cfg(target_os = "windows")]
-    let platform_entries = WINDOWS_PROTECTED_HOME_RELATIVE;
-    #[cfg(not(target_os = "windows"))]
-    let platform_entries = UNIX_PROTECTED_HOME_RELATIVE;
-    [
-        platform_entries,
-        AGENT_CONFIGURATION_HOME_RELATIVE,
-        LOCAL_LOGIN_ITEMS_HOME_RELATIVE,
-    ]
-    .into_iter()
-    .flat_map(|list| list.iter().copied())
-}
-
-/// The protected locations the environment moved away from their
-/// home-relative defaults.
-fn environment_protected_paths() -> Vec<PathBuf> {
-    #[cfg(target_os = "windows")]
-    let entries: &[(&str, &str)] = &[
-        ("APPDATA", "npm"),
-        ("LOCALAPPDATA", r"Microsoft\WindowsApps"),
-    ];
-    #[cfg(not(target_os = "windows"))]
-    let entries: &[(&str, &str)] = &[("XDG_CONFIG_HOME", "git")];
-    entries
+/// What a remote host's home protects, looked for below every folder on the
+/// way. The entries a project has too (`.claude` and the like) are left out:
+/// in a project they need the user's go-ahead, and here the two can't be told
+/// apart.
+fn remote_protected_home_relative() -> Vec<&'static str> {
+    UNIX_PROTECTED_HOME_RELATIVE
         .iter()
-        .filter_map(|(variable, relative)| {
-            let base = PathBuf::from(std::env::var_os(variable)?);
-            base.is_absolute().then(|| base.join(relative))
-        })
+        .copied()
+        .filter(|entry| !WORKTREE_PROTECTED_RELATIVE.contains(entry))
         .collect()
 }
 
@@ -349,22 +279,26 @@ async fn canonicalize_with_ancestors(fs: &dyn Fs, path: &Path) -> Option<PathBuf
     None
 }
 
+/// What the sandbox protects on this machine, from its own list, together with
+/// the folders this Zed really keeps its data and state in, which a
+/// `--user-data-dir` can move where the sandbox doesn't look. The worktree
+/// entries of that list are not among them: here those need the user's
+/// go-ahead instead ([`is_agent_configuration`]).
 async fn local_protected_locations(fs: &dyn Fs) -> ProtectedLocations {
-    let mut extra_protected_paths = Vec::new();
-    let directories = [paths::data_dir().clone(), paths::state_dir().clone()]
+    let mut protected_paths = Vec::new();
+    let locations = sandbox::builtin_protected_paths(paths::home_dir(), &[])
         .into_iter()
-        .chain(environment_protected_paths());
-    for directory in directories {
-        for spelling in with_canonical_spelling(fs, &directory).await {
-            if !extra_protected_paths.contains(&spelling) {
-                extra_protected_paths.push(spelling);
+        .chain([paths::data_dir().clone(), paths::state_dir().clone()]);
+    for location in locations {
+        for spelling in with_canonical_spelling(fs, &location).await {
+            if !protected_paths.contains(&spelling) {
+                protected_paths.push(spelling);
             }
         }
     }
     ProtectedLocations::Local {
-        home_directories: with_canonical_spelling(fs, paths::home_dir()).await,
         settings_directories: with_canonical_spelling(fs, paths::config_dir()).await,
-        extra_protected_paths,
+        protected_paths,
     }
 }
 
@@ -403,10 +337,11 @@ fn classify_agent_write(
 
     match protected {
         ProtectedLocations::Local {
-            home_directories,
             settings_directories,
-            extra_protected_paths,
+            protected_paths,
         } => {
+            // Before the protected paths, which hold the settings folder too:
+            // Zed's settings may be written once the user allows it.
             if absolute.iter().any(|path| {
                 settings_directories
                     .iter()
@@ -414,11 +349,6 @@ fn classify_agent_write(
             }) {
                 return AgentWriteVerdict::Confirm(SensitiveWrite::Settings);
             }
-            let protected_paths = home_directories
-                .iter()
-                .flat_map(|home| local_protected_home_relative().map(move |entry| home.join(entry)))
-                .chain(extra_protected_paths.iter().cloned())
-                .collect::<Vec<_>>();
             if absolute.iter().any(|path| {
                 protected_paths
                     .iter()
@@ -428,9 +358,10 @@ fn classify_agent_write(
             }
         }
         ProtectedLocations::Remote => {
+            let protected_entries = remote_protected_home_relative();
             if absolute
                 .iter()
-                .any(|path| rules.is_under_home_entry_anywhere(path, UNIX_PROTECTED_HOME_RELATIVE))
+                .any(|path| rules.is_under_home_entry_anywhere(path, &protected_entries))
             {
                 return AgentWriteVerdict::Refuse(Refusal::ProtectedPath);
             }
@@ -478,16 +409,15 @@ fn has_agent_skills_folder(path: &Path, rules: NameRules) -> bool {
 /// Whether `path` is part of a project's configuration for an agent that runs
 /// on the host: anything in Claude Code's, the Gemini CLI's or Codex's project
 /// folder (settings, and the hook and skill scripts the agent runs), or
-/// `.mcp.json`.
+/// `.mcp.json` — what the sandbox protects in every worktree root.
 fn is_agent_configuration(path: &Path, rules: NameRules) -> bool {
-    let folders = AGENT_CONFIGURATION_HOME_RELATIVE
+    let names = WORKTREE_PROTECTED_RELATIVE
         .iter()
-        .map(|folder| rules.comparable_name(folder))
+        .map(|name| rules.comparable_name(name))
         .collect::<Vec<_>>();
-    let mcp_servers = rules.comparable_name(".mcp.json");
     rules
         .normal_component_keys(path)
-        .any(|name| folders.contains(&name) || name == mcp_servers)
+        .any(|name| names.contains(&name))
 }
 
 fn confirmation_title(path: &Path, kind: SensitiveWrite) -> String {
@@ -557,12 +487,14 @@ mod tests {
     const ELSEWHERE: NameRules = NameRules { windows: false };
 
     fn local() -> ProtectedLocations {
+        let mut protected_paths =
+            sandbox::builtin_protected_paths(Path::new(path!("/home/user")), &[]);
+        protected_paths.push(PathBuf::from(path!(
+            "/home/user/.local/share/zed-jp-enhance"
+        )));
         ProtectedLocations::Local {
-            home_directories: vec![PathBuf::from(path!("/home/user"))],
             settings_directories: vec![PathBuf::from(path!("/home/user/.config/zed-jp-enhance"))],
-            extra_protected_paths: vec![PathBuf::from(path!(
-                "/home/user/.local/share/zed-jp-enhance"
-            ))],
+            protected_paths,
         }
     }
 
@@ -822,6 +754,7 @@ mod tests {
             ("/home/user", ".config/fish/config.fish"),
             ("/home/user", ".gitconfig"),
             ("/home/user", ".config/git/config"),
+            ("/srv/work", ".claude.json"),
         ] {
             assert_eq!(
                 classify(root, relative, &ProtectedLocations::Remote),
@@ -829,5 +762,36 @@ mod tests {
                 "{root}/{relative}"
             );
         }
+    }
+
+    /// `fs::verified_write` keeps its own copy of the sandbox's Unix home list
+    /// so that `fs` doesn't depend on the sandbox. Its Unix list must match
+    /// the one the remote check here derives from the sandbox's, and with the
+    /// agents' folders it must be what the sandbox protects below the home,
+    /// entry for entry.
+    #[test]
+    fn the_verified_writes_copy_matches_the_sandboxs_list() {
+        fn sorted(entries: impl IntoIterator<Item = &'static str>) -> Vec<&'static str> {
+            let mut entries = entries.into_iter().collect::<Vec<_>>();
+            entries.sort_unstable();
+            entries
+        }
+        assert_eq!(
+            sorted(
+                fs::verified_write::UNIX_PROTECTED_HOME_RELATIVE
+                    .iter()
+                    .copied()
+            ),
+            sorted(remote_protected_home_relative())
+        );
+        assert_eq!(
+            sorted(
+                fs::verified_write::UNIX_PROTECTED_HOME_RELATIVE
+                    .iter()
+                    .chain(fs::verified_write::AGENT_CONFIGURATION_HOME_RELATIVE)
+                    .copied()
+            ),
+            sorted(UNIX_PROTECTED_HOME_RELATIVE.iter().copied())
+        );
     }
 }

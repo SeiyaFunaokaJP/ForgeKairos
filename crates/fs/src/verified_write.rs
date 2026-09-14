@@ -20,9 +20,10 @@ use unicode_normalization::UnicodeNormalization as _;
 
 pub const GIT_DIRECTORY_NAME: &str = ".git";
 
-// The home-relative entries below mirror `sandbox::protected_paths`, which keeps
-// its lists private: a file Zed writes for an agent must not reach what a
-// sandboxed command can't.
+// The two lists below together are a copy of `sandbox::UNIX_PROTECTED_HOME_RELATIVE`:
+// a file Zed writes for an agent must not reach what a sandboxed command can't.
+// They are copied so that `fs` doesn't depend on the sandbox, and a test in
+// `acp_thread` keeps them the same.
 /// Home-relative entries no agent write may reach on a Unix host: credentials,
 /// configuration that makes programs run (Git's included), shell and login
 /// startup files, directories already on `PATH`, and this fork's remote

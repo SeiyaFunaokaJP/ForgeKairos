@@ -1173,6 +1173,12 @@ lines below are from that blocked attempt, not a bug in the command. Commands \
 cannot run outside the sandbox, so if the task genuinely needs a Windows program, \
 tell the user the exact command and ask them to run it.";
 
+/// ADR-F49: said once to the model when the SSH host's sandbox could not keep
+/// credential files unreadable (the Japanese line in the output is the user's).
+const READ_HIDING_UNAVAILABLE_MODEL_NOTE: &str = "Note: this host's sandbox cannot stop \
+commands from reading credentials such as `~/.ssh` (the host refuses mounts inside a user \
+namespace). Writes are still restricted and the network is still isolated.";
+
 /// Whether terminal output contains the kernel-style diagnostics WSL prints
 /// when a Windows executable is launched inside the sandbox, whose seccomp
 /// filter refuses the socket interop needs (`UtilBindVsockAnyPort: socket
@@ -1255,9 +1261,12 @@ fn process_content(
             && let Some(reason) =
                 acp_thread::remote_sandbox_setup_failure_message(exit_code, &output.output)
         {
-            return format!(
-                "{reason}\n{hint}\n\n{content}",
-                hint = acp_thread::REMOTE_SANDBOX_UNSANDBOX_HINT,
+            return with_read_hiding_note(
+                format!(
+                    "{reason}\n{hint}\n\n{content}",
+                    hint = acp_thread::REMOTE_SANDBOX_UNSANDBOX_HINT,
+                ),
+                &output.output,
             );
         }
         match exit_code {
@@ -1295,7 +1304,18 @@ fn process_content(
             }
         }
     };
-    content
+    with_read_hiding_note(content, &output.output)
+}
+
+/// Adds [`READ_HIDING_UNAVAILABLE_MODEL_NOTE`] to `result` when the sandbox
+/// helper warned, ahead of the terminal's `output`, that it could not hide the
+/// credential stores.
+fn with_read_hiding_note(result: String, output: &str) -> String {
+    if acp_thread::sandbox_read_hiding_unavailable(output) {
+        format!("{result}\n\n{READ_HIDING_UNAVAILABLE_MODEL_NOTE}")
+    } else {
+        result
+    }
 }
 
 fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Option<PathBuf>> {
@@ -2126,6 +2146,55 @@ mod tests {
         assert!(
             !result.contains("サンドボックス"),
             "Must not surface the sandbox explanation for a plain failure, got: {result}"
+        );
+    }
+
+    /// ADR-F49: when the SSH host's sandbox could not keep credentials
+    /// unreadable, the model is told once, in English, whatever the command
+    /// did and whether `acp_thread` already explained it for the user.
+    #[test]
+    fn test_process_content_notes_missing_read_hiding_once() {
+        let warning = "zed-remote-sandbox-warning: read-hiding-unavailable: mount: EPERM";
+        for (raw, exit_code) in [
+            (format!("{warning}\nhello"), 0),
+            (format!("{warning}\nboom"), 1),
+            (
+                format!("{warning}\nzed-remote-sandbox: seccomp-failed: x"),
+                126,
+            ),
+        ] {
+            let annotated =
+                acp_thread::annotate_sandbox_setup_failure(raw.clone(), Some(exit_code));
+            for text in [raw, annotated] {
+                let output = acp::TerminalOutputResponse::new(text, false)
+                    .exit_status(acp::TerminalExitStatus::new().exit_code(exit_code));
+                let result = process_content(
+                    output,
+                    "ls",
+                    false,
+                    false,
+                    TerminalOutputSelection::default(),
+                );
+                assert_eq!(
+                    result.matches(READ_HIDING_UNAVAILABLE_MODEL_NOTE).count(),
+                    1,
+                    "{result}"
+                );
+            }
+        }
+
+        let output = acp::TerminalOutputResponse::new("hello".to_string(), false)
+            .exit_status(acp::TerminalExitStatus::new().exit_code(0));
+        let result = process_content(
+            output,
+            "ls",
+            false,
+            false,
+            TerminalOutputSelection::default(),
+        );
+        assert!(
+            !result.contains(READ_HIDING_UNAVAILABLE_MODEL_NOTE),
+            "{result}"
         );
     }
 

@@ -561,6 +561,24 @@ const REMOTE_SANDBOX_FAILURE_MARKER: &str = "zed-remote-sandbox: ";
 /// WSL. The codes are shared; what the user has to fix is not.
 const WSL_SANDBOX_FAILURE_MARKER: &str = "zed-wsl-sandbox: ";
 
+/// Lines the helper prints ahead of the command's own output, and of a
+/// fail-closed marker, about protection it could not apply to a command it
+/// still runs.
+const SANDBOX_WARNING_PREFIXES: [&str; 2] =
+    ["zed-remote-sandbox-warning:", "zed-wsl-sandbox-warning:"];
+
+/// How many warning lines are skipped looking for the marker. The helper
+/// prints at most one today; the bound keeps the search at the top of the
+/// output, where only the helper writes.
+const MAX_LEADING_SANDBOX_WARNINGS: usize = 4;
+
+/// ADR-F49: the warning an SSH host's helper prints when the host refused the
+/// mounts that hide the credential stores. The command runs without them.
+const READ_HIDING_UNAVAILABLE_WARNING: &str = "read-hiding-unavailable";
+
+/// What Zed adds right after that warning, for the user.
+const READ_HIDING_UNAVAILABLE_NOTE: &str = "このホストでは、サンドボックス内のコマンドから認証情報 (`~/.ssh` など) の読み取りを防げません (ユーザー名前空間内の mount が拒否されました)。書き込みの保護とネットワークの隔離は有効です。";
+
 /// Shared Japanese lead-in for every remote sandbox-creation failure
 /// (GLOSSARY §5).
 const REMOTE_SANDBOX_FAILURE_PREFIX: &str =
@@ -614,6 +632,7 @@ impl SandboxHost {
                     | "mount-failed"
                     | "seccomp-failed"
                     | "caps-failed"
+                    | "pidns-failed"
             )
             .then_some(WSL_SANDBOX_UPDATE_HINT),
         }
@@ -628,9 +647,10 @@ impl SandboxHost {
 /// Returns `None` for anything else, so an ordinary non-zero command exit is
 /// never mistaken for a sandbox-creation failure: **both** the exact exit code
 /// and the marker prefix must be present. `output` is the terminal's combined
-/// stdout/stderr; only the first (marker) line is parsed. The command never ran
-/// when this fires, so the caller should present the reason rather than treat
-/// the exit code as the command's own result.
+/// stdout/stderr; only the marker line, the first one after the helper's
+/// warnings, is parsed. The command never ran when this fires, so the caller
+/// should present the reason rather than treat the exit code as the command's
+/// own result.
 pub fn remote_sandbox_setup_failure_message(
     exit_code: Option<u32>,
     output: &str,
@@ -645,16 +665,19 @@ pub fn remote_sandbox_setup_failure_message(
 /// Writes the fail-closed reason of the sandbox helper — on an SSH host, or
 /// inside WSL for the Windows backend — into a finished command's output, so
 /// every reader of that output learns why the command never ran, not just the
-/// callers that run the detection themselves.
+/// callers that run the detection themselves. The helper's read-hiding
+/// warning is explained the same way whatever the exit code, since the command
+/// did run.
 ///
 /// The explanation goes *after* the marker line, not in front of it, because
 /// the marker has to stay first for [`remote_sandbox_setup_failure_message`] to
 /// keep recognizing it: a reader that does its own detection must not be
 /// silently downgraded to the generic "failed with exit code 126".
 ///
-/// Returns `output` untouched when the failure signature is absent, which is
-/// every ordinary command.
+/// Returns `output` untouched when neither is there, which is every ordinary
+/// command.
 pub fn annotate_sandbox_setup_failure(output: String, exit_code: Option<u32>) -> String {
+    let output = explain_read_hiding_warning(output);
     if exit_code != Some(REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE) {
         return output;
     }
@@ -665,25 +688,99 @@ pub fn annotate_sandbox_setup_failure(output: String, exit_code: Option<u32>) ->
         return output;
     };
     let reason = sandbox_failure_message_for_code(host, code);
+    if output.contains(&reason) {
+        return output;
+    }
     let hint = host
         .hint(code)
         .map(|hint| format!("{hint}\n"))
         .unwrap_or_default();
-    let leading_blanks = output.len() - output.trim_start().len();
-    let (head, rest) = output.split_at(leading_blanks);
+    let (preamble, rest) = split_sandbox_preamble(&output);
     let (marker_line, rest) = match rest.split_once('\n') {
         Some((marker_line, rest)) => (marker_line, rest),
         None => (rest, ""),
     };
-    format!("{head}{marker_line}\n{reason}\n{hint}{rest}")
+    format!("{preamble}{marker_line}\n{reason}\n{hint}{rest}")
+}
+
+/// Whether the helper said, ahead of the command's output, that it could not
+/// hide the credential stores from the command, which then ran without that.
+pub fn sandbox_read_hiding_unavailable(output: &str) -> bool {
+    read_hiding_warning_end(output).is_some()
+}
+
+/// Puts [`READ_HIDING_UNAVAILABLE_NOTE`] right after the helper's read-hiding
+/// warning, once.
+fn explain_read_hiding_warning(output: String) -> String {
+    let (preamble, _) = split_sandbox_preamble(&output);
+    if preamble.contains(READ_HIDING_UNAVAILABLE_NOTE) {
+        return output;
+    }
+    let Some(warning_end) = read_hiding_warning_end(&output) else {
+        return output;
+    };
+    let (before, after) = output.split_at(warning_end);
+    let line_break = if before.ends_with('\n') { "" } else { "\n" };
+    format!("{before}{line_break}{READ_HIDING_UNAVAILABLE_NOTE}\n{after}")
+}
+
+/// Where the line holding the helper's read-hiding warning ends, when the
+/// warnings ahead of the output include one.
+fn read_hiding_warning_end(output: &str) -> Option<usize> {
+    let (preamble, _) = split_sandbox_preamble(output);
+    let mut end = 0;
+    for line in preamble.split_inclusive('\n') {
+        end += line.len();
+        let is_read_hiding = sandbox_warning(line.trim()).is_some_and(|warning| {
+            warning
+                .split_once(':')
+                .is_some_and(|(code, _)| code.trim() == READ_HIDING_UNAVAILABLE_WARNING)
+        });
+        if is_read_hiding {
+            return Some(end);
+        }
+    }
+    None
+}
+
+/// Splits `output` after what comes ahead of everything else — blank lines, at
+/// most [`MAX_LEADING_SANDBOX_WARNINGS`] of the helper's warning lines, and
+/// the note Zed adds after one — so that what follows is the fail-closed
+/// marker line, if there is one, or the command's own output.
+fn split_sandbox_preamble(output: &str) -> (&str, &str) {
+    let mut rest = output.trim_start();
+    let mut warnings = 0;
+    let mut explained = false;
+    loop {
+        let (line, after) = rest.split_once('\n').unwrap_or((rest, ""));
+        let line = line.trim();
+        if warnings < MAX_LEADING_SANDBOX_WARNINGS && sandbox_warning(line).is_some() {
+            warnings += 1;
+        } else if !explained && line == READ_HIDING_UNAVAILABLE_NOTE {
+            explained = true;
+        } else {
+            break;
+        }
+        rest = after;
+    }
+    output.split_at(output.len() - rest.len())
+}
+
+/// The text of one of the helper's warning lines, after its prefix.
+fn sandbox_warning(line: &str) -> Option<&str> {
+    SANDBOX_WARNING_PREFIXES
+        .iter()
+        .find_map(|prefix| line.strip_prefix(prefix))
+        .map(str::trim_start)
 }
 
 /// Extract `<code>` from `host`'s `<marker> <code>: <detail>` line at the start
-/// of `output` (leading blank lines tolerated). Returns `None` when the marker
-/// is absent or no `<code>:` follows it, so the detection cannot fire on
-/// unrelated terminal output.
+/// of `output`, after leading blank lines and the helper's warning lines.
+/// Returns `None` when the marker is absent or no `<code>:` follows it, so the
+/// detection cannot fire on unrelated terminal output.
 fn sandbox_failure_code(output: &str, host: SandboxHost) -> Option<&str> {
-    let line = output.trim_start().lines().next()?;
+    let (_, rest) = split_sandbox_preamble(output);
+    let line = rest.lines().next()?;
     let rest = line.strip_prefix(host.marker())?;
     // Codes contain no colon, so the first `:` ends the code and begins the
     // (ignored) human-readable detail.
@@ -761,6 +858,33 @@ fn sandbox_failure_message_for_code(host: SandboxHost, code: &str) -> String {
             "IDE 連携の受け渡し用フォルダー (またはソケット) が安全な状態ではありません \
              (権限が 0700 でない・所有者が違う・保護対象の外にある) ため、実行しませんでした。\
              Zed を再起動してから再試行してください。"
+        }
+        (SandboxHost::Remote, "pidns-failed") => {
+            "リモートのカーネルが PID 名前空間の作成を拒否したため、コマンドの終了後に残るプロセスを\
+             確実に止められません。安全のため実行しませんでした (`user.max_pid_namespaces=0` の設定や、\
+             コンテナーの seccomp プロファイルが原因のことがあります)。"
+        }
+        (SandboxHost::Wsl, "pidns-failed") => {
+            "WSL のカーネルが PID 名前空間の作成を拒否したため、コマンドの終了後に残るプロセスを\
+             確実に止められません。安全のため実行しませんでした (`user.max_pid_namespaces=0` の設定が\
+             原因のことがあります)。"
+        }
+        (_, "uidmap-failed") => {
+            "ユーザー名前空間にユーザー ID の対応付け (uid_map / gid_map) を設定できませんでした。"
+        }
+        (_, "windows-home-root") => {
+            "書込を許可したフォルダーが Windows のユーザーフォルダーそのものか、それを含んでいるため、\
+             サンドボックスでは使えません (その中の認証情報を読めないようにしているため)。\
+             プロジェクトはその下のフォルダーで開いてください。"
+        }
+        (
+            _,
+            "pipe-failed" | "fork-failed" | "wait-failed" | "handshake-failed" | "mkdtemp-failed",
+        ) => {
+            return format!(
+                "{}サンドボックスの準備中に内部エラーが発生しました ({code})。",
+                host.prefix()
+            );
         }
         (_, "exec-failed" | "chdir-failed") => "サンドボックス内でコマンドを起動できませんでした。",
         (_, "bad-args") => "サンドボックスの起動引数が不正です (内部エラー)。",
@@ -904,10 +1028,12 @@ impl Terminal {
                         let content_line_count = this.terminal.read(cx).total_lines();
 
                         // ADR-F18: the helper failed closed, so the command
-                        // never ran. Explaining that here reaches everyone who
-                        // reads this terminal's output — external ACP agents
-                        // included, which previously got exit 126 and one line
-                        // of English marker and had to guess.
+                        // never ran — or (ADR-F49) it could not hide the
+                        // credential stores, and the command ran anyway.
+                        // Explaining that here reaches everyone who reads this
+                        // terminal's output — external ACP agents included,
+                        // which previously got exit 126 and one line of
+                        // English marker and had to guess.
                         //
                         // Inserted *after* the marker line rather than in front
                         // of it, so that a reader which recognizes the marker
@@ -1185,6 +1311,14 @@ mod remote_sandbox_failure_tests {
         "subreaper-failed",
         "signals-failed",
         "ide-forward-invalid",
+        "pidns-failed",
+        "uidmap-failed",
+        "windows-home-root",
+        "pipe-failed",
+        "fork-failed",
+        "wait-failed",
+        "handshake-failed",
+        "mkdtemp-failed",
     ];
 
     /// Every known code maps to a concrete Japanese message carrying the shared
@@ -1432,6 +1566,151 @@ mod remote_sandbox_failure_tests {
             remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: userns-failed: x")
                 .unwrap_or_default();
         assert!(userns.contains("--cap-add SYS_ADMIN") && userns.contains("--device /dev/net/tun"));
+    }
+
+    /// The helper's own plumbing failing is reported with its code, so a
+    /// report can say which step broke; an unknown code is named on either
+    /// host.
+    #[test]
+    fn internal_failures_name_their_code() {
+        for code in [
+            "pipe-failed",
+            "fork-failed",
+            "wait-failed",
+            "handshake-failed",
+            "mkdtemp-failed",
+        ] {
+            assert_eq!(
+                remote_sandbox_setup_failure_message(
+                    Some(126),
+                    &format!("zed-remote-sandbox: {code}: x")
+                ),
+                Some(format!(
+                    "{REMOTE_SANDBOX_FAILURE_PREFIX}サンドボックスの準備中に内部エラーが発生しました ({code})。"
+                ))
+            );
+        }
+        let unknown = annotate_sandbox_setup_failure(
+            "zed-wsl-sandbox: brand-new-code: x\n".to_string(),
+            Some(126),
+        );
+        assert!(
+            unknown.contains(&format!(
+                "{WSL_SANDBOX_FAILURE_PREFIX}不明な理由 (brand-new-code)"
+            )),
+            "{unknown}"
+        );
+    }
+
+    /// A refused PID namespace names what usually causes it, and in WSL
+    /// points at updating WSL's kernel.
+    #[test]
+    fn a_refused_pid_namespace_names_the_usual_causes() {
+        let remote =
+            remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: pidns-failed: x")
+                .unwrap_or_default();
+        assert!(
+            remote.contains("user.max_pid_namespaces=0") && remote.contains("seccomp"),
+            "{remote}"
+        );
+        let wsl = annotate_sandbox_setup_failure(
+            "zed-wsl-sandbox: pidns-failed: x\n".to_string(),
+            Some(126),
+        );
+        assert!(
+            wsl.contains("user.max_pid_namespaces=0") && wsl.contains(WSL_SANDBOX_UPDATE_HINT),
+            "{wsl}"
+        );
+    }
+
+    const READ_HIDING_WARNING: &str =
+        "zed-remote-sandbox-warning: read-hiding-unavailable: mount: Operation not permitted";
+
+    /// ADR-F49: a helper that warned and then failed closed is still
+    /// recognized, and the reason still goes right after the marker line.
+    #[test]
+    fn a_failure_after_a_warning_is_recognized() {
+        let output = format!("{READ_HIDING_WARNING}\nzed-remote-sandbox: seccomp-failed: x\n");
+        let reason = remote_sandbox_setup_failure_message(Some(126), &output)
+            .expect("the marker after the warning should be recognized");
+        assert!(reason.contains("システムコール制限"), "{reason}");
+
+        let annotated = annotate_sandbox_setup_failure(output, Some(126));
+        assert_eq!(
+            annotated.lines().collect::<Vec<_>>(),
+            [
+                READ_HIDING_WARNING,
+                READ_HIDING_UNAVAILABLE_NOTE,
+                "zed-remote-sandbox: seccomp-failed: x",
+                reason.as_str(),
+                REMOTE_SANDBOX_UNSANDBOX_HINT,
+            ]
+        );
+        assert_eq!(
+            annotate_sandbox_setup_failure(annotated.clone(), Some(126)),
+            annotated,
+            "annotating twice must not repeat the note or the reason"
+        );
+        assert_eq!(
+            remote_sandbox_setup_failure_message(Some(126), &annotated),
+            Some(reason)
+        );
+
+        // Either host's warning prefix is skipped, but only a few of them.
+        assert!(
+            remote_sandbox_setup_failure_message(
+                Some(126),
+                "zed-wsl-sandbox-warning: something\nzed-remote-sandbox: caps-failed: x",
+            )
+            .is_some()
+        );
+        let many_warnings = format!(
+            "{}zed-remote-sandbox: caps-failed: x",
+            "zed-remote-sandbox-warning: w\n".repeat(MAX_LEADING_SANDBOX_WARNINGS + 1)
+        );
+        assert_eq!(
+            remote_sandbox_setup_failure_message(Some(126), &many_warnings),
+            None
+        );
+    }
+
+    /// ADR-F49: the command ran without read hiding, so the warning is
+    /// explained whatever the command exited with — once, and only at the top.
+    #[test]
+    fn a_read_hiding_warning_is_explained_whatever_the_exit_code() {
+        let output = format!("{READ_HIDING_WARNING}\nhello\n");
+        let explained = format!("{READ_HIDING_WARNING}\n{READ_HIDING_UNAVAILABLE_NOTE}\nhello\n");
+        for exit_code in [Some(0), Some(1), Some(126), None] {
+            assert_eq!(
+                annotate_sandbox_setup_failure(output.clone(), exit_code),
+                explained,
+                "{exit_code:?}"
+            );
+        }
+        assert_eq!(
+            annotate_sandbox_setup_failure(explained.clone(), Some(0)),
+            explained
+        );
+        assert!(sandbox_read_hiding_unavailable(&output));
+        assert!(sandbox_read_hiding_unavailable(&explained));
+
+        // The terminal's carriage returns, and a warning with nothing after it.
+        assert_eq!(
+            annotate_sandbox_setup_failure(format!("{READ_HIDING_WARNING}\r\nhello\r\n"), Some(0)),
+            format!("{READ_HIDING_WARNING}\r\n{READ_HIDING_UNAVAILABLE_NOTE}\nhello\r\n")
+        );
+        assert_eq!(
+            annotate_sandbox_setup_failure(READ_HIDING_WARNING.to_string(), Some(0)),
+            format!("{READ_HIDING_WARNING}\n{READ_HIDING_UNAVAILABLE_NOTE}\n")
+        );
+
+        // The same text in the command's own output is left alone.
+        let echoed = format!("hello\n{READ_HIDING_WARNING}\n");
+        assert_eq!(
+            annotate_sandbox_setup_failure(echoed.clone(), Some(0)),
+            echoed
+        );
+        assert!(!sandbox_read_hiding_unavailable(&echoed));
     }
 }
 
