@@ -3852,9 +3852,7 @@ fn starting_directory(
         return Ok(None);
     };
     if !covers.iter().any(|cover| directory.starts_with(cover))
-        || binds
-            .iter()
-            .any(|bind| directory.starts_with(&bind.target))
+        || binds.iter().any(|bind| directory.starts_with(&bind.target))
     {
         return Ok(None);
     }
@@ -3948,9 +3946,7 @@ fn is_windows_home(path: &Path, drive: &Path) -> bool {
     match components.as_slice() {
         [folder, _name] if folder.eq_ignore_ascii_case("users") => true,
         [] => false,
-        _ => {
-            path.join("NTUSER.DAT").symlink_metadata().is_ok() && path.join("AppData").is_dir()
-        }
+        _ => path.join("NTUSER.DAT").symlink_metadata().is_ok() && path.join("AppData").is_dir(),
     }
 }
 
@@ -3985,8 +3981,8 @@ fn held_hidden_entry(path: &Path, drives: &[PathBuf]) -> Option<PathBuf> {
 /// identity: on DrvFs a path can name an entry in any case, by its 8.3 name or
 /// through a junction such as `Application Data`.
 fn inside_hidden_windows_entry(directory: &Path, drives: &[PathBuf]) -> bool {
-    let Some(home) = drive_holding(directory, drives)
-        .and_then(|drive| enclosing_windows_home(directory, drive))
+    let Some(home) =
+        drive_holding(directory, drives).and_then(|drive| enclosing_windows_home(directory, drive))
     else {
         return false;
     };
@@ -4787,7 +4783,7 @@ mod tests {
             home.join(".ssh"),
             relocated.join("projects"),
             root.join("d"),
-            not_a_home.clone(),
+            not_a_home,
         ] {
             assert!(
                 windows_home_exposure(&allowed, &drives).is_none(),
