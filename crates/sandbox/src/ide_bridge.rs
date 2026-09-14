@@ -750,12 +750,15 @@ mod linux {
     /// frames, so a burst of small frames is no reason to close anything.
     const WRITER_BYTES_PER_CONNECTION: usize = 1024 * 1024;
 
-    /// `--ide-bridge --rendezvous <socket> [--lock-file <path>]`.
+    /// `--ide-bridge --rendezvous <socket> [--lock-file <path>]
+    /// [--exclusive-directory <directory>]`.
     ///
-    /// Listens on the rendezvous socket (in a private directory of this
-    /// account's), writes the IDE lock file (its content arrives as a stdin
-    /// preamble, not on the command line — see
-    /// [`super::encode_ide_lock_preamble`]), and multiplexes every connection
+    /// Claims the exclusive directory first (see [`claim_exclusive_directory`];
+    /// `session-running` when another bridge holds it), listens on the
+    /// rendezvous socket (in a private directory of this account's), writes the
+    /// IDE lock file (its content arrives as a stdin preamble, not on the
+    /// command line — see [`super::encode_ide_lock_preamble`]), and multiplexes
+    /// every connection
     /// over stdin / stdout until stdin ends (Zed went away), a protocol error,
     /// or SIGTERM / SIGHUP / SIGINT — then removes the socket and the lock
     /// file and exits. Never returns.
@@ -780,6 +783,19 @@ mod linux {
                 "home-unknown",
                 &anyhow::anyhow!("cannot determine the account's home directory"),
             ),
+        };
+        // Before anything is created, so that a bridge turned away leaves
+        // nothing behind. Held until the process exits, however it ends.
+        let _exclusive = match options.exclusive_directory.as_ref() {
+            Some(path) => match claim_exclusive_directory(path, &base) {
+                Ok(Claim::Held(directory)) => Some(directory),
+                Ok(Claim::Taken) => fail_setup(
+                    "session-running",
+                    &anyhow::anyhow!("another IDE bridge serves {}", path.display()),
+                ),
+                Err(error) => fail_setup("lock-file-failed", &error),
+            },
+            None => None,
         };
         let (rendezvous, listener) = match Rendezvous::create(&options.rendezvous, &base) {
             Ok(created) => created,
@@ -832,11 +848,14 @@ mod linux {
         rendezvous: PathBuf,
         /// When present, the lock file's path; its content comes over stdin.
         lock_file: Option<PathBuf>,
+        /// When present, the directory only one bridge at a time may serve.
+        exclusive_directory: Option<PathBuf>,
     }
 
     fn parse_bridge_args(args: &[OsString]) -> Result<BridgeOptions> {
         let mut rendezvous = None;
         let mut lock_file = None;
+        let mut exclusive_directory = None;
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             match arg.to_str().unwrap_or_default() {
@@ -848,13 +867,48 @@ mod linux {
                     let value = args.next().context("--lock-file requires a path")?;
                     lock_file = Some(PathBuf::from(value));
                 }
+                "--exclusive-directory" => {
+                    let value = args
+                        .next()
+                        .context("--exclusive-directory requires a path")?;
+                    exclusive_directory = Some(PathBuf::from(value));
+                }
                 other => bail!("unknown IDE bridge flag: {other}"),
             }
         }
         Ok(BridgeOptions {
             rendezvous: rendezvous.context("--rendezvous is required")?,
             lock_file,
+            exclusive_directory,
         })
+    }
+
+    /// What a claim on an exclusive directory came to.
+    enum Claim {
+        /// Ours until the descriptor closes.
+        Held(OwnedFd),
+        /// Another bridge holds it.
+        Taken,
+    }
+
+    /// Open the directory `path`, walking to it as [`open_directory_tree`]
+    /// does and creating it if missing, and take an exclusive `flock` on it
+    /// for as long as the returned descriptor stays open: one bridge at a time
+    /// serves it, whichever Zed started the bridge (ADR-F49: one sandboxed
+    /// Claude Code session per configuration). The kernel lets the lock go
+    /// with the process, so a bridge that crashed holds nothing.
+    fn claim_exclusive_directory(path: &Path, base: &Path) -> Result<Claim> {
+        let directory =
+            open_directory_tree(path, base, DirectoryAccess::NotWritableByOthers)?.directory;
+        // SAFETY: `directory` is an open descriptor of ours.
+        if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(Claim::Held(directory));
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() == io::ErrorKind::WouldBlock {
+            return Ok(Claim::Taken);
+        }
+        Err(error).with_context(|| format!("locking {}", path.display()))
     }
 
     /// Read the lock-file content the caller wrote to stdin ahead of the frame
@@ -2201,6 +2255,37 @@ mod linux {
         }
 
         #[test]
+        fn one_bridge_at_a_time_holds_the_exclusive_directory() {
+            let root = tempfile::tempdir().expect("tempdir");
+            let directory = root.path().join("projects/0123456789abcdef");
+            let claim = || claim_exclusive_directory(&directory, root.path()).expect("claim");
+            let Claim::Held(first) = claim() else {
+                panic!("nothing holds the directory yet");
+            };
+            assert_eq!(
+                std::fs::metadata(&directory).expect("stat").mode() & 0o777,
+                0o700,
+                "the claim creates it owner-only"
+            );
+            assert!(
+                matches!(claim(), Claim::Taken),
+                "a second bridge is turned away"
+            );
+            drop(first);
+            assert!(
+                matches!(claim(), Claim::Held(_)),
+                "the first one's end frees it"
+            );
+
+            let linked = root.path().join("linked");
+            std::os::unix::fs::symlink(root.path().join("projects"), &linked).expect("symlink");
+            assert!(
+                claim_exclusive_directory(&linked.join("0123456789abcdef"), root.path()).is_err(),
+                "never through a symlink"
+            );
+        }
+
+        #[test]
         fn bridge_arguments_are_parsed_and_checked() {
             let args = |values: &[&str]| values.iter().map(OsString::from).collect::<Vec<_>>();
             let options = parse_bridge_args(&args(&[
@@ -2208,22 +2293,22 @@ mod linux {
                 "/r/bridge.sock",
                 "--lock-file",
                 "/c/ide/1.lock",
+                "--exclusive-directory",
+                "/c",
             ]))
             .expect("valid arguments");
             assert_eq!(options.rendezvous, PathBuf::from("/r/bridge.sock"));
             // The content no longer rides on the command line; only the path.
             assert_eq!(options.lock_file, Some(PathBuf::from("/c/ide/1.lock")));
-            assert!(
-                parse_bridge_args(&args(&["--rendezvous", "/r/s"]))
-                    .expect("no lock file")
-                    .lock_file
-                    .is_none()
-            );
+            assert_eq!(options.exclusive_directory, Some(PathBuf::from("/c")));
+            let bare = parse_bridge_args(&args(&["--rendezvous", "/r/s"])).expect("only a socket");
+            assert!(bare.lock_file.is_none() && bare.exclusive_directory.is_none());
             for invalid in [
                 &["--lock-file", "/c/1.lock"][..],
                 &["--unknown"],
                 &["--rendezvous", "/r/s", "--unknown"],
                 &["--rendezvous"],
+                &["--rendezvous", "/r/s", "--exclusive-directory"],
             ] {
                 assert!(parse_bridge_args(&args(invalid)).is_err(), "{invalid:?}");
             }

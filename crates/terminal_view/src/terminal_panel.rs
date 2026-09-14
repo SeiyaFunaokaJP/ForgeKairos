@@ -507,6 +507,13 @@ impl TerminalPanel {
                                         zed_actions::terminal::LaunchClaudeCode { effort: None }
                                             .boxed_clone(),
                                     )
+                                    .action(
+                                        "Claude Code をサンドボックスの外で起動",
+                                        zed_actions::terminal::LaunchClaudeCodeOutsideSandbox {
+                                            effort: None,
+                                        }
+                                        .boxed_clone(),
+                                    )
                                     .separator()
                                     .action(
                                         "クイック接続…",
@@ -1373,6 +1380,24 @@ impl TerminalPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<WeakEntity<Terminal>>> {
+        self.add_terminal_with(reveal_strategy, window, cx, move |project, cx| {
+            project.create_terminal_task(task, cx)
+        })
+    }
+
+    /// [`Self::add_terminal_task`] with the terminal built by `create_terminal`,
+    /// such as a sandboxed session from `Project::create_sandboxed_terminal_task`.
+    pub fn add_terminal_with(
+        &mut self,
+        reveal_strategy: RevealStrategy,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        create_terminal: impl FnOnce(
+            &mut Project,
+            &mut Context<Project>,
+        ) -> Task<Result<Entity<Terminal>>>
+        + 'static,
+    ) -> Task<Result<WeakEntity<Terminal>>> {
         let workspace = self.workspace.clone();
         cx.spawn_in(window, async move |terminal_panel, cx| {
             if workspace.update(cx, |workspace, cx| !is_enabled_in_workspace(workspace, cx))? {
@@ -1383,9 +1408,7 @@ impl TerminalPanel {
                 terminal_panel.active_pane.clone()
             })?;
             let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
-            let terminal = project
-                .update(cx, |project, cx| project.create_terminal_task(task, cx))
-                .await?;
+            let terminal = project.update(cx, create_terminal).await?;
             let result = workspace.update_in(cx, |workspace, window, cx| {
                 let terminal_view = Box::new(cx.new(|cx| {
                     TerminalView::new(

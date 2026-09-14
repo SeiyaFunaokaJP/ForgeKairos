@@ -34,7 +34,7 @@ use ui::{
 };
 use util::ResultExt as _;
 use workspace::{ModalView, Panel as _, Workspace};
-use zed_actions::terminal::{InstallClaudeCode, LaunchClaudeCode};
+use zed_actions::terminal::InstallClaudeCode;
 
 use crate::{TerminalPanel, TerminalView};
 
@@ -84,18 +84,21 @@ pub fn init(cx: &mut App) {
         workspace.register_action(|workspace, _: &InstallClaudeCode, window, cx| {
             spawn_claude_code_command(workspace, ClaudeCodeCommand::Install, window, cx);
         });
-        workspace.register_action(|workspace, action: &LaunchClaudeCode, window, cx| {
-            spawn_claude_code_command(
-                workspace,
-                ClaudeCodeCommand::Launch {
-                    effort: action.effort.clone(),
-                },
-                window,
-                cx,
-            );
-        });
     })
     .detach();
+}
+
+/// Starts the `claude` on this machine's `PATH` in a new terminal tab, outside
+/// any sandbox (ADR-F49 decision 6). The caller asks the user first, every time:
+/// `agent_ui` owns the launch actions because the sandboxed launch needs the IDE
+/// session and the Linux CLI, which this crate cannot reach.
+pub fn spawn_claude_code_on_host(
+    workspace: &mut Workspace,
+    effort: Option<String>,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    spawn_claude_code_command(workspace, ClaudeCodeCommand::Launch { effort }, window, cx);
 }
 
 /// 公式パッケージ名。フォークは Claude Code を同梱せず (ADR-F20)、公式の npm
@@ -145,7 +148,7 @@ fn spawn_claude_code_command(
                 CLAUDE_CODE_PROGRAM.to_string(),
                 args,
                 "terminal::launch-claude-code",
-                "Claude Code".to_string(),
+                "Claude Code (サンドボックスの外)".to_string(),
             )
         }
     };
@@ -191,7 +194,8 @@ fn spawn_claude_code_command(
             // 何が実行されるのかを利用者がその場で確認できるよう、
             // 実行するコマンド行をターミナルに表示する。
             show_command: true,
-            show_rerun: true,
+            // Rerunning would open the task picker: these commands are not tasks.
+            show_rerun: false,
             ..SpawnInTerminal::default()
         };
 

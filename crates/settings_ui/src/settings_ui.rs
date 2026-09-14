@@ -4141,6 +4141,24 @@ impl SettingsWindow {
         );
     }
 
+    /// Starts this machine's `claude` outside the sandbox (ADR-F49 decision 6);
+    /// the workspace asks for confirmation before it does.
+    pub(crate) fn launch_claude_code_outside_sandbox(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let effort = self
+            .claude_code_effort
+            .as_ref()
+            .map(|effort| effort.to_string());
+        self.dispatch_in_original_window(
+            Box::new(zed_actions::terminal::LaunchClaudeCodeOutsideSandbox { effort }),
+            window,
+            cx,
+        );
+    }
+
     /// Dispatches an action into the workspace this settings window was launched
     /// from, then closes the settings window so the result is what the user lands
     /// on.

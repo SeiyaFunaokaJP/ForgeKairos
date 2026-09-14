@@ -79,6 +79,7 @@ use std::time::{Duration, Instant};
 use crate::RemoteSandboxNetwork;
 use crate::linux_bubblewrap::install_command_seccomp_filter;
 use crate::protected_paths::{
+    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE, SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE,
     UNIX_PROTECTED_HOME_RELATIVE, WSL_SANDBOX_HELPER_HOME_RELATIVE,
     app_state_directories_from_environment, around_reachable,
     git_config_directory_from_environment, home_dir_from_account,
@@ -512,12 +513,21 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         if !invocation.protected_paths.contains(&install_root) {
             invocation.protected_paths.push(install_root);
         }
+        // The sandboxed Claude Code sessions' configuration: a hook or an
+        // `apiKeyHelper` written there runs in the next session with its
+        // grants. A session's own directory is inside it and comes from its
+        // write grant, which this does not narrow.
+        let agent_configs = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
+        if !invocation.protected_paths.contains(&agent_configs) {
+            invocation.protected_paths.push(agent_configs);
+        }
     }
     // ADR-F49 decision 11: what the command may not read, taken here from the
     // environment the caller gave, like the protected set above; init covers
     // them once the filesystem backend's own mounts are in place, split around
     // the roots the command has to keep reaching.
     let reachable = reachable_paths(&invocation, &home);
+    let enclosures = enclosed_directories(&home);
     let mut read_hidden = read_hidden_home_paths(&read_hidden_home(&home), false);
     for directory in app_state_directories_from_environment() {
         if !read_hidden.contains(&directory) {
@@ -656,6 +666,7 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
                 terminal: terminal.map(|(descriptor, _)| descriptor),
                 read_hidden: &read_hidden,
                 reachable: &reachable,
+                enclosures: &enclosures,
             },
             ready_write_fd,
             go_read_fd,
@@ -887,6 +898,9 @@ struct HolderSetup<'a> {
     /// What stays reachable however it lies among them (see
     /// [`reachable_paths`]).
     reachable: &'a [PathBuf],
+    /// Directories covered whole around the roots inside them (see
+    /// [`cover_enclosure`]).
+    enclosures: &'a [PathBuf],
 }
 
 fn run_holder_inner(
@@ -1023,6 +1037,7 @@ fn apply_filesystem_backend(
     scratch_pid: libc::pid_t,
     read_hidden: &[PathBuf],
     reachable: &[PathBuf],
+    enclosures: &[PathBuf],
 ) -> std::result::Result<PathBuf, (&'static str, anyhow::Error)> {
     match fs_backend {
         FsBackend::Landlock(abi) => {
@@ -1053,8 +1068,15 @@ fn apply_filesystem_backend(
                 for pin in &plan.binds {
                     bind_read_only(pin).map_err(|error| ("mount-failed", error))?;
                 }
-                hide_read_hidden_entries(read_hidden, reachable, writable_pins, None, false)
-                    .or_else(|error| read_hiding_refused(invocation.wsl, error))?;
+                hide_read_hidden_entries(
+                    read_hidden,
+                    reachable,
+                    enclosures,
+                    writable_pins,
+                    None,
+                    false,
+                )
+                .or_else(|error| read_hiding_refused(invocation.wsl, error))?;
                 tmpdir
             } else {
                 let private_tmp = create_private_tmpdir(scratch_pid)
@@ -1066,6 +1088,7 @@ fn apply_filesystem_backend(
                 hide_read_hidden_entries(
                     read_hidden,
                     reachable,
+                    enclosures,
                     writable_pins,
                     invocation.on_wsl.then_some(invocation),
                     true,
@@ -1095,6 +1118,7 @@ fn apply_filesystem_backend(
             hide_read_hidden_entries(
                 read_hidden,
                 reachable,
+                enclosures,
                 writable_pins,
                 invocation.on_wsl.then_some(invocation),
                 false,
@@ -1293,6 +1317,7 @@ fn prepare_and_run_command(
         terminal,
         read_hidden,
         reachable,
+        enclosures,
     } = setup;
     set_parent_death_signal().map_err(|error| ("signals-failed", error))?;
     // Checked after the request, so a holder that died before it is seen here
@@ -1312,6 +1337,7 @@ fn prepare_and_run_command(
         scratch_pid,
         read_hidden,
         reachable,
+        enclosures,
     )?;
     set_command_environment(&invocation, &tmpdir, relay_port);
     // After the FS jail is in place, so the path resolves inside the jail.
@@ -3003,7 +3029,8 @@ struct FilesystemPlan {
 /// `.git`, as Bubblewrap allowed. Renaming it is refused because it is a mount
 /// point, and above it there is nothing left to rename but the root. Only
 /// where `names_are_exact` holds for the root, though (see
-/// [`directory_names_are_exact`]).
+/// [`directory_names_are_exact`]), and never for an entry that holds another
+/// writable root (see [`holds_writable_root`]).
 fn plan_filesystem(
     writable_pins: &[CanonicalPathBuf],
     protected: &[ProtectedEntry],
@@ -3024,6 +3051,7 @@ fn plan_filesystem(
             if let ProtectedKind::Present(pin) = &entry.kind
                 && bind_children
                 && entry.location.parent() == Some(root.path())
+                && !holds_writable_root(&entry.location, writable_pins)
             {
                 if !plan.binds.contains(pin) {
                     plan.binds.push(pin.clone());
@@ -3039,6 +3067,18 @@ fn plan_filesystem(
         plan_subtree(root, &carve_targets, protected, &mut plan.grants, 0)?;
     }
     Ok(plan)
+}
+
+/// Whether another writable root lies inside the protected entry at
+/// `location`. A read-only bind of the entry would make that root read-only
+/// too — the WSL home opened as a project holds `~/.zed-jp-enhance-claude`,
+/// and the sandboxed Claude Code session's own configuration below it — so
+/// such an entry is carved instead: no grant reaches it from the outer root,
+/// and the inner root keeps its own.
+fn holds_writable_root(location: &Path, writable_pins: &[CanonicalPathBuf]) -> bool {
+    writable_pins
+        .iter()
+        .any(|pin| pin.path() != location && pin.path().starts_with(location))
 }
 
 /// Pin the writable roots for either backend.
@@ -3724,7 +3764,7 @@ fn cover_windows_drives(
     // Opened while the drives still show them, and bound back only when they
     // are a root the user approved: a spelling that leads somewhere else by now
     // is left out.
-    let mut binds: Vec<DrivesBind> = Vec::new();
+    let mut binds: Vec<BindBack> = Vec::new();
     for path in spellings {
         if binds.iter().any(|outer| path.starts_with(&outer.target)) {
             continue;
@@ -3746,7 +3786,7 @@ fn cover_windows_drives(
             );
             continue;
         }
-        binds.push(DrivesBind {
+        binds.push(BindBack {
             target: path,
             source,
             read_only: false,
@@ -3760,63 +3800,76 @@ fn cover_windows_drives(
     binds.sort_by_key(|bind| bind.target.components().count());
 
     for cover in &covers {
-        mount(
-            Some(Path::new("tmpfs")),
-            cover,
-            Some("tmpfs"),
-            libc::MS_NOSUID | libc::MS_NODEV,
-            Some("mode=755"),
-        )
-        .with_context(|| format!("covering {}", cover.display()))?;
-        mounted.push(cover.clone());
-        for bind in binds.iter().filter(|bind| bind.target.starts_with(cover)) {
-            let target = &bind.target;
-            // One inside the starting directory has its mount point there
-            // already, and making it again could empty a file of the user's.
-            let mount_point = if target.symlink_metadata().is_ok() {
-                Ok(())
-            } else if fd_is_dir(bind.source.as_raw_fd())? {
-                std::fs::create_dir_all(target)
-            } else {
-                target
-                    .parent()
-                    .map_or(Ok(()), |parent| std::fs::create_dir_all(parent))
-                    .and_then(|()| std::fs::File::create(target).map(drop))
-            };
-            mount_point.with_context(|| format!("creating mount point {}", target.display()))?;
-            let source_path = PathBuf::from(format!("/proc/self/fd/{}", bind.source.as_raw_fd()));
-            mount(
-                Some(source_path.as_path()),
-                target,
-                None,
-                libc::MS_BIND | libc::MS_REC,
-                None,
-            )
-            .with_context(|| {
-                format!("binding {} back over the covered drives", target.display())
-            })?;
-            mounted.push(target.clone());
-            if bind.read_only {
-                remount_read_only(target)
-                    .with_context(|| format!("making {} read-only", target.display()))?;
-            }
-        }
-        // Read-only once the mount points are made, so nothing can be put in
-        // the cover itself; what is bound back keeps its own access.
-        mount(
-            None,
-            cover,
-            None,
-            libc::MS_REMOUNT | libc::MS_RDONLY | libc::MS_NOSUID | libc::MS_NODEV,
-            None,
-        )
-        .with_context(|| format!("making the cover over {} read-only", cover.display()))?;
+        cover_and_bind_back(cover, &binds, mounted)?;
     }
     Ok(())
 }
 
-/// Something [`cover_windows_drives`] binds back over the covered drives.
-struct DrivesBind {
+/// Mount an empty tmpfs over `cover`, bind each of `binds` inside it back
+/// where it was, in the order given, then make the cover itself read-only;
+/// what is bound back keeps its own access. Each mount made is added to
+/// `mounted`.
+fn cover_and_bind_back(cover: &Path, binds: &[BindBack], mounted: &mut Vec<PathBuf>) -> Result<()> {
+    mount(
+        Some(Path::new("tmpfs")),
+        cover,
+        Some("tmpfs"),
+        libc::MS_NOSUID | libc::MS_NODEV,
+        Some("mode=755"),
+    )
+    .with_context(|| format!("covering {}", cover.display()))?;
+    mounted.push(cover.to_path_buf());
+    for bind in binds.iter().filter(|bind| bind.target.starts_with(cover)) {
+        let target = &bind.target;
+        // One inside the starting directory has its mount point there
+        // already, and making it again could empty a file of the user's.
+        let mount_point = if target.symlink_metadata().is_ok() {
+            Ok(())
+        } else if fd_is_dir(bind.source.as_raw_fd())? {
+            std::fs::create_dir_all(target)
+        } else {
+            target
+                .parent()
+                .map_or(Ok(()), |parent| std::fs::create_dir_all(parent))
+                .and_then(|()| std::fs::File::create(target).map(drop))
+        };
+        mount_point.with_context(|| format!("creating mount point {}", target.display()))?;
+        let source_path = PathBuf::from(format!("/proc/self/fd/{}", bind.source.as_raw_fd()));
+        mount(
+            Some(source_path.as_path()),
+            target,
+            None,
+            libc::MS_BIND | libc::MS_REC,
+            None,
+        )
+        .with_context(|| {
+            format!(
+                "binding {} back over the cover on {}",
+                target.display(),
+                cover.display()
+            )
+        })?;
+        mounted.push(target.clone());
+        if bind.read_only {
+            remount_read_only(target)
+                .with_context(|| format!("making {} read-only", target.display()))?;
+        }
+    }
+    // Read-only once the mount points are made, so nothing can be put in the
+    // cover itself; what is bound back keeps its own access.
+    mount(
+        None,
+        cover,
+        None,
+        libc::MS_REMOUNT | libc::MS_RDONLY | libc::MS_NOSUID | libc::MS_NODEV,
+        None,
+    )
+    .with_context(|| format!("making the cover over {} read-only", cover.display()))?;
+    Ok(())
+}
+
+/// Something bound back over a cover (see [`cover_and_bind_back`]).
+struct BindBack {
     target: PathBuf,
     source: OwnedFd,
     read_only: bool,
@@ -3852,8 +3905,8 @@ fn starting_directory(
     invocation: &Stage1Invocation,
     covers: &[PathBuf],
     drives: &[PathBuf],
-    binds: &[DrivesBind],
-) -> Result<Option<DrivesBind>> {
+    binds: &[BindBack],
+) -> Result<Option<BindBack>> {
     let Some(Ok(directory)) = invocation.chdir.as_deref().map(std::fs::canonicalize) else {
         return Ok(None);
     };
@@ -3882,7 +3935,7 @@ fn starting_directory(
     if !opened.is_ok_and(|opened| opened == directory) || !fd_is_dir(source.as_raw_fd())? {
         return Ok(None);
     }
-    Ok(Some(DrivesBind {
+    Ok(Some(BindBack {
         target: directory,
         source,
         read_only: !invocation.allow_fs_write,
@@ -4019,13 +4072,95 @@ fn reachable_paths(invocation: &Stage1Invocation, home: &Path) -> Vec<PathBuf> {
     reachable
 }
 
+/// The directories [`cover_enclosure`] covers whole when a root the command
+/// writes lies inside: the sandboxed Claude Code sessions' projects directory,
+/// where a session's own configuration sits beside every other project's.
+fn enclosed_directories(home: &Path) -> Vec<PathBuf> {
+    let home = read_hidden_home(home);
+    // Canonical, as the roots and the read-hidden targets are: under a home
+    // reached through a symlink it is covered where it really is.
+    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    vec![home.join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)]
+}
+
+/// Those of `enclosures` to cover: a real directory where it is named that
+/// holds a root the command writes, without being one itself (a read-hidden
+/// entry that is a root is left alone as well). Anything else is left to the
+/// split around the roots (see [`read_hidden_targets`]).
+fn enclosures_to_cover(enclosures: &[PathBuf], writable_pins: &[CanonicalPathBuf]) -> Vec<PathBuf> {
+    enclosures
+        .iter()
+        .filter(|enclosure| {
+            std::fs::symlink_metadata(enclosure).is_ok_and(|metadata| metadata.is_dir())
+                && std::fs::canonicalize(enclosure).is_ok_and(|canonical| canonical == **enclosure)
+                && writable_pins
+                    .iter()
+                    .all(|pin| pin.path() != enclosure.as_path())
+                && writable_pins
+                    .iter()
+                    .any(|pin| pin.path().starts_with(enclosure))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Cover `enclosure` with an empty read-only tmpfs and bind back only the
+/// roots the command writes inside it, as [`cover_windows_drives`] does for
+/// the drives. The sessions' projects directory then shows a session its own
+/// configuration and nothing else, however many projects are added while it
+/// runs — hiding the other entries one by one could only hide those there at
+/// the start. Each root is opened before the cover and bound back only when
+/// it is still the inode that was pinned; one that is not stays covered, and
+/// the command does without it. Each mount made is added to `mounted`.
+fn cover_enclosure(
+    enclosure: &Path,
+    writable_pins: &[CanonicalPathBuf],
+    mounted: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let mut inside: Vec<&CanonicalPathBuf> = writable_pins
+        .iter()
+        .filter(|pin| pin.path() != enclosure && pin.path().starts_with(enclosure))
+        .collect();
+    inside.sort_by_key(|pin| pin.path().components().count());
+    let mut binds: Vec<BindBack> = Vec::new();
+    for pin in inside {
+        let path = pin.path();
+        if binds.iter().any(|outer| path.starts_with(&outer.target)) {
+            continue;
+        }
+        let Ok(source) = crate::util::open_o_path(path, crate::util::FollowSymlinks::No) else {
+            log::warn!(
+                "[remote-sandbox] leaving {} covered: it cannot be opened",
+                path.display()
+            );
+            continue;
+        };
+        let pinned = crate::util::linux_fd_identity(pin.fd().as_raw_fd());
+        if pinned.is_none() || pinned != crate::util::linux_fd_identity(source.as_raw_fd()) {
+            log::warn!(
+                "[remote-sandbox] leaving {} covered: it was replaced after it was pinned",
+                path.display()
+            );
+            continue;
+        }
+        binds.push(BindBack {
+            target: path.to_path_buf(),
+            source,
+            read_only: false,
+        });
+    }
+    cover_and_bind_back(enclosure, &binds, mounted)
+}
+
 /// Cover every read-hidden entry that exists with empty content so the
 /// command cannot read it (ADR-F49 decision 11): the Linux home's
 /// `read_hidden`, split around the roots kept inside one (see
-/// [`read_hidden_targets`]), and with `drives` the Windows drives first (see
-/// [`cover_windows_drives`], for that invocation). `needs_mount_namespace`
-/// enters one of the command's own first, which only the backends that set up
-/// none of their own need — and only when there is something to hide.
+/// [`read_hidden_targets`]) except inside `enclosures`, which are covered
+/// whole around them (see [`cover_enclosure`]), and with `drives` the Windows
+/// drives first (see [`cover_windows_drives`], for that invocation).
+/// `needs_mount_namespace` enters one of the command's own first, which only
+/// the backends that set up none of their own need — and only when there is
+/// something to hide.
 ///
 /// Landlock handles only writes, so reads of the whole filesystem stay allowed
 /// there and read-only binds do not help: the entries are hidden by mounting
@@ -4036,13 +4171,24 @@ fn reachable_paths(invocation: &Stage1Invocation, home: &Path) -> Vec<PathBuf> {
 fn hide_read_hidden_entries(
     read_hidden: &[PathBuf],
     reachable: &[PathBuf],
+    enclosures: &[PathBuf],
     writable_pins: &[CanonicalPathBuf],
     drives: Option<&Stage1Invocation>,
     needs_mount_namespace: bool,
 ) -> Result<()> {
     let started = Instant::now();
-    let targets = read_hidden_targets(read_hidden, reachable, writable_pins);
-    if targets.is_empty() && drives.is_none() {
+    let enclosures = enclosures_to_cover(enclosures, writable_pins);
+    // What lies in an enclosure is hidden by its cover, whether it is there
+    // yet or not.
+    let targets: Vec<PathBuf> = read_hidden_targets(read_hidden, reachable, writable_pins)
+        .into_iter()
+        .filter(|target| {
+            !enclosures
+                .iter()
+                .any(|enclosure| target.starts_with(enclosure))
+        })
+        .collect();
+    if targets.is_empty() && enclosures.is_empty() && drives.is_none() {
         return Ok(());
     }
     if needs_mount_namespace && let Err(error) = enter_private_mount_namespace() {
@@ -4064,6 +4210,17 @@ fn hide_read_hidden_entries(
                 error,
                 &covered,
             ));
+        }
+        step += 1;
+    }
+    for enclosure in &enclosures {
+        let covering = if refused_on_purpose(step) {
+            Err(anyhow!("refused on purpose by the test helper"))
+        } else {
+            cover_enclosure(enclosure, writable_pins, &mut covered)
+        };
+        if let Err(error) = covering {
+            return Err(refused_cover(enclosure, error, &covered));
         }
         step += 1;
     }
@@ -5699,6 +5856,72 @@ mod tests {
             [root.join("dotfiles/vimrc"), root.join("notes.txt")]
         );
         assert!(plan.binds.is_empty(), "a bind would follow the link");
+    }
+
+    /// The WSL home opened as a project: its protected
+    /// `.zed-jp-enhance-claude` holds the session's own configuration, which
+    /// a read-only bind of it would take along. It is carved instead, and
+    /// the configuration keeps its own grant.
+    #[test]
+    fn a_protected_entry_holding_a_writable_root_is_carved_not_bound() {
+        let (_root, root) = canonical_tempdir();
+        let configuration = root.join(".zed-jp-enhance-claude/projects/0123456789abcdef");
+        std::fs::create_dir_all(configuration.join("config")).expect("create the configuration");
+        std::fs::create_dir(root.join(".zed-jp-enhance-claude/projects/other"))
+            .expect("create another project's");
+        std::fs::write(root.join("notes.txt"), "x").expect("write notes.txt");
+        let protected =
+            classify_protected_paths(&[root.join(".zed-jp-enhance-claude")]).expect("classify");
+
+        let home_only = pin_writable_paths(std::slice::from_ref(&root), true).expect("pin");
+        let plan = plan_filesystem(&home_only, &protected, false, true, &|_| true).expect("plan");
+        assert_eq!(plan.binds.len(), 1, "on its own it is bound read-only");
+
+        let roots = pin_writable_paths(&[root.clone(), configuration.clone()], true).expect("pin");
+        let plan = plan_filesystem(&roots, &protected, false, true, &|_| true).expect("plan");
+        assert!(plan.binds.is_empty());
+        assert_eq!(granted(&plan), [configuration, root.join("notes.txt")]);
+    }
+
+    /// The projects directory is covered only around a root inside it, and
+    /// only where it really is.
+    #[test]
+    fn an_enclosure_is_covered_only_around_a_root_inside_it() {
+        let (_home, home) = canonical_tempdir();
+        let projects = home.join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
+        let own = projects.join("0123456789abcdef");
+        std::fs::create_dir_all(own.join("config")).expect("create the configuration");
+        std::fs::create_dir(projects.join("fedcba9876543210")).expect("create another");
+        let work = home.join("work");
+        std::fs::create_dir(&work).expect("create a worktree");
+        let pins = |paths: &[PathBuf]| pin_writable_paths(paths, true).expect("pin");
+        let enclosures = enclosed_directories(&home);
+        assert_eq!(enclosures, std::slice::from_ref(&projects));
+
+        let session = pins(&[work.clone(), own.clone()]);
+        assert_eq!(
+            enclosures_to_cover(&enclosures, &session),
+            std::slice::from_ref(&projects)
+        );
+        let home_session = pins(&[home.clone(), own]);
+        assert_eq!(
+            enclosures_to_cover(&enclosures, &home_session),
+            std::slice::from_ref(&projects),
+            "a root above it does not stop the cover"
+        );
+        assert!(enclosures_to_cover(&enclosures, &pins(std::slice::from_ref(&work))).is_empty());
+        assert!(
+            enclosures_to_cover(&enclosures, &pins(std::slice::from_ref(&projects))).is_empty()
+        );
+
+        let moved = home.join("moved");
+        std::fs::rename(&projects, &moved).expect("move it away");
+        std::os::unix::fs::symlink(&moved, &projects).expect("symlink");
+        let through_link = pins(&[moved.join("0123456789abcdef")]);
+        assert!(
+            enclosures_to_cover(&enclosures, &through_link).is_empty(),
+            "a symlink in its place is not covered"
+        );
     }
 
     #[test]

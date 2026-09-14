@@ -424,8 +424,10 @@ pub mod project_panel {
         ]
     );
 }
-/// Claude Code の導線 (ADR-F20)。ハンドラーは `terminal_view::session_tools` にあり、
-/// 設定ウィンドウのような別ウィンドウからは元のワークスペースへディスパッチして使う。
+/// Claude Code の導線 (ADR-F20 / ADR-F49)。インストールのハンドラーは
+/// `terminal_view::session_tools`、起動の 2 つは `agent_ui` (サンドボックスの IDE 連携を
+/// 組むため) にあり、設定ウィンドウのような別ウィンドウからは元のワークスペースへ
+/// ディスパッチして使う。
 pub mod terminal {
     use gpui::Action;
     use schemars::JsonSchema;
@@ -437,13 +439,25 @@ pub mod terminal {
     #[serde(deny_unknown_fields)]
     pub struct InstallClaudeCode;
 
-    /// プロジェクトのディレクトリで Claude Code CLI を統合ターミナルから起動します。
+    /// Claude Code CLI をターミナルで起動します。Windows のローカルのプロジェクトではサンドボックス
+    /// (WSL) の中で起動し、それ以外では起動のたびに確認してからサンドボックスの外で起動します。
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
     pub struct LaunchClaudeCode {
         /// 公式 CLI の `--effort` に渡す値 (`low` / `medium` / `high` 等)。
         /// 未指定なら `--effort` を付けず CLI の既定に任せる。
+        #[serde(default)]
+        pub effort: Option<String>,
+    }
+
+    /// この PC の Claude Code CLI を、サンドボックスの外 (Zed 本体の権限) で起動します。
+    /// 起動のたびに確認します。
+    #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+    #[action(namespace = terminal)]
+    #[serde(deny_unknown_fields)]
+    pub struct LaunchClaudeCodeOutsideSandbox {
+        /// [`LaunchClaudeCode::effort`] と同じ。
         #[serde(default)]
         pub effort: Option<String>,
     }

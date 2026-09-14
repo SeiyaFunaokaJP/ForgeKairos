@@ -65,6 +65,7 @@ gpui_tokio.workspace = true
 hex.workspace = true
 html_to_markdown.workspace = true
 http_client.workspace = true
+ide_server.workspace = true
 idna.workspace = true
 indoc.workspace = true
 itertools.workspace = true
@@ -130,6 +131,7 @@ reqwest_client = { workspace = true, optional = true }
 
 [dev-dependencies]
 acp_thread = { workspace = true, features = ["test-support"] }
+async-tungstenite.workspace = true
 agent = { workspace = true, features = ["test-support"] }
 agent_servers = { workspace = true, features = ["test-support"] }
 buffer_diff = { workspace = true, features = ["test-support"] }

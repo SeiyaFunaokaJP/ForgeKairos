@@ -141,6 +141,159 @@ fn is_known_terminal_agent_command(command: &str) -> bool {
     KNOWN_TERMINAL_AGENT_COMMANDS.contains(&command)
 }
 
+/// The agent CLI above that the shell command line `command` starts, if any
+/// of its commands starts one, however it is named: on any line or after `;`,
+/// `|` or `&` (so `&&` and `||` too), past `NAME=value`, `env`, `call`,
+/// `start`, `cmd /c` and `pwsh -c`, by a path, quoted, or with `.exe`, `.cmd`,
+/// `.bat` or `.ps1`. The setting is the user's own, so this only has to catch
+/// what a user would type, not what someone would hide.
+fn terminal_agent_started_by(command: &str) -> Option<&'static str> {
+    shell_commands(command)
+        .iter()
+        .find_map(|words| terminal_agent_started_by_words(words))
+}
+
+/// A word of a shell command line, and whether any of it was quoted.
+#[derive(Default)]
+struct ShellWord {
+    text: String,
+    quoted: bool,
+}
+
+/// `command` split into its commands, and those into words: quotes group a
+/// word and are dropped, and a line break or an unquoted `;`, `|` or `&` ends
+/// a command.
+fn shell_commands(command: &str) -> Vec<Vec<ShellWord>> {
+    fn end_word(commands: &mut [Vec<ShellWord>], word: &mut Option<ShellWord>) {
+        if let (Some(word), Some(command)) = (word.take(), commands.last_mut()) {
+            command.push(word);
+        }
+    }
+
+    let mut commands = vec![Vec::new()];
+    let mut word: Option<ShellWord> = None;
+    let mut quote = None;
+    for character in command.chars() {
+        if let Some(open) = quote {
+            if character == open {
+                quote = None;
+            } else {
+                word.get_or_insert_with(ShellWord::default)
+                    .text
+                    .push(character);
+            }
+            continue;
+        }
+        match character {
+            '"' | '\'' => {
+                quote = Some(character);
+                word.get_or_insert_with(ShellWord::default).quoted = true;
+            }
+            '\n' | '\r' | ';' | '|' | '&' => {
+                end_word(&mut commands, &mut word);
+                commands.push(Vec::new());
+            }
+            character if character.is_whitespace() => end_word(&mut commands, &mut word),
+            character => word
+                .get_or_insert_with(ShellWord::default)
+                .text
+                .push(character),
+        }
+    }
+    end_word(&mut commands, &mut word);
+    commands.retain(|words| !words.is_empty());
+    commands
+}
+
+fn terminal_agent_started_by_words(words: &[ShellWord]) -> Option<&'static str> {
+    let mut rest = words;
+    loop {
+        let (first, tail) = rest.split_first()?;
+        if is_environment_assignment(&first.text) {
+            rest = tail;
+            continue;
+        }
+        let program = program_name(&first.text);
+        rest = match program.as_str() {
+            "call" => tail,
+            "env" => {
+                let options = tail
+                    .iter()
+                    .take_while(|word| word.text.starts_with('-'))
+                    .count();
+                tail.get(options..)?
+            }
+            "start" => {
+                // `start "title" program`: the first quoted word is the
+                // window's title, then come options.
+                let tail = match tail {
+                    [title, _, ..] if title.quoted => tail.get(1..)?,
+                    _ => tail,
+                };
+                let options = tail
+                    .iter()
+                    .take_while(|word| word.text.starts_with('/'))
+                    .count();
+                tail.get(options..)?
+            }
+            "cmd" => {
+                return inner_shell_command(tail, |flag| {
+                    flag.eq_ignore_ascii_case("/c") || flag.eq_ignore_ascii_case("/k")
+                });
+            }
+            "pwsh" | "powershell" => {
+                return inner_shell_command(tail, |flag| {
+                    flag.eq_ignore_ascii_case("-c") || flag.eq_ignore_ascii_case("-command")
+                });
+            }
+            _ => {
+                return KNOWN_TERMINAL_AGENT_COMMANDS
+                    .iter()
+                    .copied()
+                    .find(|known| *known == program);
+            }
+        };
+    }
+}
+
+/// What the command after a shell's command flag starts, when it has one.
+fn inner_shell_command(
+    words: &[ShellWord],
+    is_command_flag: impl Fn(&str) -> bool,
+) -> Option<&'static str> {
+    let flag = words.iter().position(|word| is_command_flag(&word.text))?;
+    let command = words
+        .get(flag + 1..)?
+        .iter()
+        .map(|word| word.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    terminal_agent_started_by(&command)
+}
+
+/// `NAME=value`, which a POSIX shell sets for the command that follows.
+fn is_environment_assignment(word: &str) -> bool {
+    word.split_once('=').is_some_and(|(name, _)| {
+        !name.is_empty()
+            && !name.starts_with(|character: char| character.is_ascii_digit())
+            && name
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+    })
+}
+
+/// A program word's name: its last path component, lowercased, without the
+/// extension of a Windows executable or script.
+fn program_name(word: &str) -> String {
+    let word = word.to_ascii_lowercase();
+    let name = word.rsplit(['/', '\\']).next().unwrap_or(&word);
+    [".exe", ".cmd", ".bat", ".ps1"]
+        .iter()
+        .find_map(|extension| name.strip_suffix(extension))
+        .unwrap_or(name)
+        .to_string()
+}
+
 fn terminal_program_to_report(
     last_observed_program: &mut Option<String>,
     current_program: Option<String>,
@@ -2612,7 +2765,12 @@ impl AgentPanel {
                     window,
                     cx,
                 );
-                Self::write_terminal_init_command(&terminal_for_init_command, init_command, cx);
+                this.deliver_terminal_init_command(
+                    &terminal_for_init_command,
+                    init_command,
+                    window,
+                    cx,
+                );
             })?;
             anyhow::Ok(())
         })
@@ -2624,6 +2782,52 @@ impl AgentPanel {
             .then(|| AgentSettings::get_global(cx).terminal_init_command.clone())
             .flatten()
             .filter(|command| !command.trim().is_empty())
+    }
+
+    /// A restored terminal thread types its init command in again, unless it
+    /// starts an agent CLI: that runs outside the sandbox, and a restore is
+    /// nobody's request to run it (ADR-F49).
+    fn runs_init_command_on_restore(cx: &App) -> bool {
+        Self::terminal_init_command(true, cx)
+            .as_deref()
+            .and_then(terminal_agent_started_by)
+            .is_none()
+    }
+
+    /// Types `init_command` into `terminal` — after asking, every time, when
+    /// it starts an agent CLI, which in this shell runs outside the sandbox
+    /// with the project's hooks and MCP servers (ADR-F49).
+    fn deliver_terminal_init_command(
+        &self,
+        terminal: &Entity<terminal::Terminal>,
+        init_command: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(program) = init_command.as_deref().and_then(terminal_agent_started_by) else {
+            Self::write_terminal_init_command(terminal, init_command, cx);
+            return;
+        };
+        let on_remote_host = self.project.read(cx).is_via_remote_server();
+        let confirmed = crate::sandboxed_claude_code::confirm_running_outside_sandbox(
+            program,
+            on_remote_host,
+            None,
+            window,
+            cx,
+        );
+        let terminal = terminal.downgrade();
+        cx.spawn(async move |this, cx| {
+            if !confirmed.await {
+                return anyhow::Ok(());
+            }
+            this.update(cx, |_, cx| {
+                if let Some(terminal) = terminal.upgrade() {
+                    Self::write_terminal_init_command(&terminal, init_command, cx);
+                }
+            })
+        })
+        .detach_and_log_err(cx);
     }
 
     fn write_terminal_init_command(
@@ -2956,7 +3160,7 @@ impl AgentPanel {
             Some(metadata.created_at),
             true,
             focus,
-            true,
+            Self::runs_init_command_on_restore(cx),
             source,
             window,
             cx,
@@ -8385,7 +8589,7 @@ impl AgentPanel {
             Some(metadata.created_at),
             true,
             focus,
-            true,
+            Self::runs_init_command_on_restore(cx),
             source,
             window,
             cx,
@@ -8445,7 +8649,7 @@ impl AgentPanel {
             window,
             cx,
         );
-        Self::write_terminal_init_command(&terminal_for_init_command, init_command, cx);
+        self.deliver_terminal_init_command(&terminal_for_init_command, init_command, window, cx);
         Ok(())
     }
 
@@ -9246,12 +9450,163 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_terminal_agent_started_by() {
+        for (command, agent) in [
+            ("claude", "claude"),
+            (" claude --resume ", "claude"),
+            ("codex exec", "codex"),
+            ("/usr/local/bin/claude", "claude"),
+            (r"C:\Users\u\AppData\Roaming\npm\claude.cmd", "claude"),
+            ("CLAUDE.EXE --continue", "claude"),
+            (r#""C:\Program Files\nodejs\gemini.cmd" --yolo"#, "gemini"),
+            (r"& 'C:\tools\claude.ps1'", "claude"),
+            ("call aider.bat", "aider"),
+            (r#"start "" claude"#, "claude"),
+            (r#"start "Agent" /b codex"#, "codex"),
+            (r#"cmd /c "claude --resume""#, "claude"),
+            ("cmd.exe /S /K claude", "claude"),
+            (r#"pwsh -NoProfile -c "gemini""#, "gemini"),
+            (r#"powershell.exe -Command "& aider""#, "aider"),
+            ("env -i FOO=1 claude", "claude"),
+            ("ANTHROPIC_MODEL=x claude", "claude"),
+            ("echo hi\nclaude", "claude"),
+            ("cd /work && codex", "codex"),
+            ("git pull; claude", "claude"),
+        ] {
+            assert_eq!(terminal_agent_started_by(command), Some(agent), "{command}");
+        }
+        for command in [
+            "",
+            "cargo run",
+            "echo claude",
+            "claudette",
+            "./script/claude-setup",
+            "cmd /c echo claude",
+            "start notepad",
+            "pwsh -NoLogo",
+            "env",
+            "FOO=claude make",
+            "git commit -m 'claude && codex'",
+        ] {
+            assert_eq!(terminal_agent_started_by(command), None, "{command}");
+        }
+    }
+
+    /// ADR-F49: a restored terminal thread does not start an agent CLI on its
+    /// own; in this shell it would run outside the sandbox.
+    #[gpui::test]
+    async fn test_restored_terminal_does_not_start_an_agent_cli(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_panel(cx).await;
+        cx.update(|_, cx| {
+            let mut settings = AgentSettings::get_global(cx).clone();
+            settings.terminal_init_command = Some(" claude --resume ".to_string());
+            AgentSettings::override_global(settings, cx);
+        });
+        let metadata = TerminalThreadMetadata {
+            terminal_id: TerminalId::new(),
+            title: "Restored Terminal".into(),
+            custom_title: None,
+            created_at: Utc::now(),
+            worktree_paths: WorktreePaths::from_folder_paths(&PathList::new(&[PathBuf::from(
+                "/project",
+            )])),
+            remote_connection: None,
+            working_directory: None,
+        };
+        let terminal_id = metadata.terminal_id;
+        panel
+            .update_in(&mut cx, |panel, window, cx| {
+                panel.restore_test_terminal(
+                    metadata,
+                    true,
+                    AgentThreadSource::AgentPanel,
+                    None,
+                    window,
+                    cx,
+                )
+            })
+            .expect("test terminal should be restored");
+        cx.run_until_parked();
+
+        assert!(!cx.has_pending_prompt(), "a restore does not even ask");
+        let terminal = panel.read_with(&cx, |panel, cx| {
+            panel
+                .terminals
+                .get(&terminal_id)
+                .expect("terminal should exist")
+                .view
+                .read(cx)
+                .terminal()
+                .clone()
+        });
+        let input_log = terminal.update(&mut cx, |terminal, _| terminal.take_input_log());
+        assert!(input_log.is_empty(), "{input_log:?}");
+    }
+
+    /// ADR-F49: a new terminal thread asks, every time, before it types in an
+    /// init command that starts an agent CLI.
+    #[gpui::test]
+    async fn test_new_terminal_asks_before_starting_an_agent_cli(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_panel(cx).await;
+        cx.update(|_, cx| {
+            let mut settings = AgentSettings::get_global(cx).clone();
+            settings.terminal_init_command = Some("codex".to_string());
+            AgentSettings::override_global(settings, cx);
+        });
+
+        for (answer, expected) in [
+            ("キャンセル", Vec::<Vec<u8>>::new()),
+            ("起動 (今回のみ)", vec![b"codex\r".to_vec()]),
+        ] {
+            let terminal_id = TerminalId::new();
+            panel
+                .update_in(&mut cx, |panel, window, cx| {
+                    panel.insert_display_only_terminal(
+                        terminal_id,
+                        None,
+                        None,
+                        None,
+                        None,
+                        true,
+                        true,
+                        true,
+                        AgentThreadSource::AgentPanel,
+                        window,
+                        cx,
+                    )
+                })
+                .expect("the terminal opens");
+            cx.run_until_parked();
+            let (message, detail) = cx
+                .pending_prompt()
+                .unwrap_or_else(|| panic!("it asks before `{answer}`"));
+            assert!(message.contains("`codex`"), "it names the CLI: {message}");
+            assert!(detail.contains("この PC の `codex`"), "{detail}");
+            cx.simulate_prompt_answer(answer);
+            cx.run_until_parked();
+
+            let terminal = panel.read_with(&cx, |panel, cx| {
+                panel
+                    .terminals
+                    .get(&terminal_id)
+                    .expect("terminal should exist")
+                    .view
+                    .read(cx)
+                    .terminal()
+                    .clone()
+            });
+            let input_log = terminal.update(&mut cx, |terminal, _| terminal.take_input_log());
+            assert_eq!(input_log, expected, "after `{answer}`");
+        }
+    }
+
     #[gpui::test]
     async fn test_restored_terminal_runs_init_command_once(cx: &mut TestAppContext) {
         let (panel, mut cx) = setup_panel(cx).await;
         cx.update(|_, cx| {
             let mut settings = AgentSettings::get_global(cx).clone();
-            settings.terminal_init_command = Some(" claude --resume ".to_string());
+            settings.terminal_init_command = Some(" echo resumed ".to_string());
             AgentSettings::override_global(settings, cx);
         });
 
@@ -9292,7 +9647,7 @@ mod tests {
                 .clone()
         });
         let input_log = terminal.update(&mut cx, |terminal, _| terminal.take_input_log());
-        assert_eq!(input_log, vec![b" claude --resume \r".to_vec()]);
+        assert_eq!(input_log, vec![b" echo resumed \r".to_vec()]);
         assert!(
             !terminal.read_with(&cx, |terminal, _| terminal.keyboard_input_sent()),
             "writing the init command must not mark the terminal as having received \

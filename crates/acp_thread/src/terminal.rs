@@ -662,6 +662,22 @@ pub fn remote_sandbox_setup_failure_message(
     Some(sandbox_failure_message_for_code(SandboxHost::Remote, code))
 }
 
+/// ADR-F49: the same detection for the Windows backend's helper inside WSL, for
+/// callers that run it themselves — an interactive session on a terminal,
+/// whose output is the terminal's screen. `output` starts at the marker line.
+/// Returns the reason with the fix to try, when there is one.
+pub fn wsl_sandbox_setup_failure_message(exit_code: Option<u32>, output: &str) -> Option<String> {
+    if exit_code != Some(REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE) {
+        return None;
+    }
+    let code = sandbox_failure_code(output, SandboxHost::Wsl)?;
+    let reason = sandbox_failure_message_for_code(SandboxHost::Wsl, code);
+    Some(match SandboxHost::Wsl.hint(code) {
+        Some(hint) => format!("{reason}\n{hint}"),
+        None => reason,
+    })
+}
+
 /// Writes the fail-closed reason of the sandbox helper — on an SSH host, or
 /// inside WSL for the Windows backend — into a finished command's output, so
 /// every reader of that output learns why the command never ran, not just the
@@ -1344,6 +1360,28 @@ mod remote_sandbox_failure_tests {
                 "known code {code} must not fall back to the unknown branch: {message}"
             );
         }
+    }
+
+    /// ADR-F49: an interactive session's screen, read by its launcher, gets the
+    /// WSL wording and the fix; anything but the helper's signature is left alone.
+    #[test]
+    fn wsl_setup_failures_are_recognized_on_their_own() {
+        let message = wsl_sandbox_setup_failure_message(
+            Some(126),
+            "zed-wsl-sandbox: userns-failed: detail\nmore output",
+        )
+        .expect("the helper's signature is recognized");
+        assert!(message.starts_with(WSL_SANDBOX_FAILURE_PREFIX), "{message}");
+        assert!(message.ends_with(WSL_SANDBOX_UPDATE_HINT), "{message}");
+        assert!(
+            wsl_sandbox_setup_failure_message(Some(1), "zed-wsl-sandbox: userns-failed: x")
+                .is_none()
+        );
+        assert!(
+            wsl_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: userns-failed: x")
+                .is_none()
+        );
+        assert!(wsl_sandbox_setup_failure_message(Some(126), "claude: exit").is_none());
     }
 
     /// A few representative codes map to their exact GLOSSARY §5 wording, and

@@ -411,11 +411,27 @@ pub(crate) const READ_HIDDEN_HOME_RELATIVE: &[&str] = &[
     ".claude",
     ".gemini",
     ".codex",
+    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
     ".config/zed-jp-enhance",
     ".local/share/zed-jp-enhance",
     ".local/state/zed-jp-enhance",
     ".zed_server",
 ];
+
+/// ADR-F49: where the Claude Code sessions Zed runs in the WSL sandbox keep
+/// their configuration, one directory per project, relative to the distro
+/// account's home. It holds their login tokens and the hooks they run, so no
+/// other sandboxed command may read it (a session reaches its own directory
+/// through its write grant, see [`around_reachable`]), and in WSL none may
+/// write it either.
+pub const SANDBOXED_AGENT_CONFIG_HOME_RELATIVE: &str = ".zed-jp-enhance-claude";
+
+/// ADR-F49: the directory below [`SANDBOXED_AGENT_CONFIG_HOME_RELATIVE`] that
+/// holds each project's configuration directory, relative to the distro
+/// account's home. A session is granted its own project's directory in it; the
+/// WSL helper covers the rest of it whole, so that a project added while the
+/// session runs is not visible to it either.
+pub const SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE: &str = ".zed-jp-enhance-claude/projects";
 
 /// What a Windows home hides on top of [`READ_HIDDEN_HOME_RELATIVE`]: `_netrc`,
 /// the spelling curl looks for there, and all of `AppData`, where browser
@@ -720,6 +736,7 @@ mod tests {
             home.join(".local").join("share").join("keyrings"),
             home.join(".claude"),
             home.join(".claude.json"),
+            home.join(".zed-jp-enhance-claude"),
             home.join(".zed_server"),
         ] {
             assert!(paths.contains(&expected), "{}", expected.display());
@@ -765,6 +782,47 @@ mod tests {
         assert!(
             around_reachable(vec![project.clone()], std::slice::from_ref(&project)).is_empty(),
             "an entry that is the root is left out"
+        );
+    }
+
+    /// ADR-F49: a sandboxed Claude Code session reaches its own project's
+    /// configuration through its write grant, and nothing else under the
+    /// sessions' root — another project's login token stays hidden from it,
+    /// and all of them from a command that works on an ordinary project.
+    #[test]
+    fn a_session_reaches_only_its_own_agent_configuration() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let projects = home
+            .path()
+            .join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE)
+            .join("projects");
+        for project in ["own", "other"] {
+            let config = projects.join(project).join("config");
+            std::fs::create_dir_all(&config).expect("create");
+            std::fs::write(config.join(".credentials.json"), "token").expect("write");
+        }
+        let own_grant = projects.join("own");
+
+        let hidden = around_reachable(
+            read_hidden_home_paths(home.path(), false),
+            std::slice::from_ref(&own_grant),
+        );
+        assert!(hidden.contains(&projects.join("other")), "{hidden:?}");
+        assert!(
+            !hidden
+                .iter()
+                .any(|path| own_grant.join("config").starts_with(path)),
+            "the session's own configuration stays reachable: {hidden:?}"
+        );
+
+        let worktree = home.path().join("work");
+        let hidden = around_reachable(
+            read_hidden_home_paths(home.path(), false),
+            std::slice::from_ref(&worktree),
+        );
+        assert!(
+            hidden.contains(&home.path().join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE)),
+            "{hidden:?}"
         );
     }
 

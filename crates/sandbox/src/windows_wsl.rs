@@ -348,7 +348,16 @@ fn read_distro_registration(distro: Option<&str>) -> DistroRegistration {
             DistroRegistration::NotInstalled
         };
     };
-    let distros: Vec<RegisteredDistro> = match lxss.keys() {
+    let distros = registered_distros(&lxss);
+    if distros.is_empty() && !wsl_installed() {
+        return DistroRegistration::NotInstalled;
+    }
+    let default_id = lxss.get_string("DefaultDistribution").ok();
+    classify_registration(&distros, default_id.as_deref(), distro)
+}
+
+fn registered_distros(lxss: &windows_registry::Key) -> Vec<RegisteredDistro> {
+    match lxss.keys() {
         Ok(keys) => keys
             .filter_map(|id| {
                 let key = lxss.open(&id).ok()?;
@@ -358,12 +367,34 @@ fn read_distro_registration(distro: Option<&str>) -> DistroRegistration {
             })
             .collect(),
         Err(_) => Vec::new(),
-    };
-    if distros.is_empty() && !wsl_installed() {
-        return DistroRegistration::NotInstalled;
     }
+}
+
+/// ADR-F49: the name WSL registers `distro` under, or the default distro's
+/// for `None` — one spelling for each distro, whether a `\\wsl.localhost`
+/// path or the default named it. `None` when the registry does not say.
+pub fn registered_wsl_distro_name(distro: Option<&str>) -> Option<String> {
+    let lxss = windows_registry::CURRENT_USER.open(LXSS_KEY).ok()?;
     let default_id = lxss.get_string("DefaultDistribution").ok();
-    classify_registration(&distros, default_id.as_deref(), distro)
+    registered_name(&registered_distros(&lxss), default_id.as_deref(), distro)
+}
+
+fn registered_name(
+    distros: &[RegisteredDistro],
+    default_id: Option<&str>,
+    requested: Option<&str>,
+) -> Option<String> {
+    let distro = match requested {
+        Some(name) => distros
+            .iter()
+            .find(|distro| distro.name.eq_ignore_ascii_case(name)),
+        None => default_id.and_then(|id| {
+            distros
+                .iter()
+                .find(|distro| distro.id.eq_ignore_ascii_case(id))
+        }),
+    }?;
+    Some(distro.name.clone())
 }
 
 /// Whether the WSL platform is installed, which the distro list alone can't
@@ -1995,17 +2026,22 @@ async fn query_distro_home(wsl_exe: &Path, distro: Option<&str>) -> Result<Strin
 /// serves: the helper refuses a rendezvous directory that does not exist yet.
 /// Its stderr says `zed-ide-bridge: ready` once it listens, or
 /// `zed-ide-bridge: <code>: <detail>` before it exits with status 126 when it
-/// cannot set up. It removes the socket and the lock file, and exits, when its
-/// stdin closes. Like [`wrap_invocation`], this may copy the helper into WSL
-/// first.
+/// cannot set up — `session-running` when `exclusive_directory` is given and
+/// another bridge, from this Zed or another, holds it. It removes the socket
+/// and the lock file, and exits, when its stdin closes. Like
+/// [`wrap_invocation`], this may copy the helper into WSL first.
 pub async fn ide_bridge_invocation(
     distro: Option<&str>,
     rendezvous_path: &str,
     lock_file_path: &str,
     lock_content: &[u8],
+    exclusive_directory: Option<&str>,
 ) -> Result<(PathBuf, Vec<String>, Vec<u8>)> {
     ensure_linux_absolute_path(rendezvous_path, "IDE rendezvous")?;
     ensure_linux_absolute_path(lock_file_path, "IDE lock file")?;
+    if let Some(directory) = exclusive_directory {
+        ensure_linux_absolute_path(directory, "IDE bridge exclusive directory")?;
+    }
     ensure!(
         lock_content.len() <= crate::MAX_IDE_LOCK_CONTENT,
         "the IDE lock content is larger than {} bytes",
@@ -2014,7 +2050,13 @@ pub async fn ide_bridge_invocation(
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
     let helper = ensure_sandbox_helper(&wsl_exe, distro).await?;
-    let args = ide_bridge_command_line(distro, &helper, rendezvous_path, lock_file_path);
+    let args = ide_bridge_command_line(
+        distro,
+        &helper,
+        rendezvous_path,
+        lock_file_path,
+        exclusive_directory,
+    );
     let preamble = crate::encode_ide_lock_preamble(lock_content);
     Ok((wsl_exe, args, preamble))
 }
@@ -2024,6 +2066,7 @@ fn ide_bridge_command_line(
     helper: &InstalledHelper,
     rendezvous_path: &str,
     lock_file_path: &str,
+    exclusive_directory: Option<&str>,
 ) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(distro) = distro {
@@ -2037,6 +2080,9 @@ fn ide_bridge_command_line(
         "--lock-file".to_string(),
         lock_file_path.to_string(),
     ]);
+    if let Some(directory) = exclusive_directory {
+        args.extend(["--exclusive-directory".to_string(), directory.to_string()]);
+    }
     args
 }
 
@@ -2903,6 +2949,23 @@ mod tests {
         );
     }
 
+    /// The default distro and a path naming it in another case come to the
+    /// same name.
+    #[test]
+    fn a_distro_has_one_registered_name() {
+        let distros = [
+            registered("{a}", "Ubuntu", Some(2)),
+            registered("{b}", "Debian", Some(2)),
+        ];
+        let name = |default_id, requested| registered_name(&distros, default_id, requested);
+        assert_eq!(name(Some("{A}"), None).as_deref(), Some("Ubuntu"));
+        assert_eq!(name(Some("{a}"), Some("ubuntu")).as_deref(), Some("Ubuntu"));
+        assert_eq!(name(Some("{a}"), Some("DEBIAN")).as_deref(), Some("Debian"));
+        assert_eq!(name(Some("{missing}"), None), None);
+        assert_eq!(name(None, None), None);
+        assert_eq!(name(Some("{a}"), Some("Fedora")), None);
+    }
+
     #[test]
     fn every_registration_problem_names_its_fix() {
         let cases = [
@@ -3371,6 +3434,7 @@ mod tests {
             &helper,
             "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
             "/root/.claude-zed/ide/45123.lock",
+            Some("/root/.claude-zed"),
         );
         assert_eq!(
             args,
@@ -3389,6 +3453,8 @@ mod tests {
                 "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
                 "--lock-file",
                 "/root/.claude-zed/ide/45123.lock",
+                "--exclusive-directory",
+                "/root/.claude-zed",
             ],
             "the lock content is not on the command line"
         );

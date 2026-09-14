@@ -55,8 +55,9 @@ pub use ide_bridge::{
 /// helper.
 mod protected_paths;
 pub use protected_paths::{
-    APP_DIRECTORY_NAME, UNIX_PROTECTED_HOME_RELATIVE, WORKTREE_PROTECTED_RELATIVE,
-    builtin_protected_paths, builtin_read_hidden_paths,
+    APP_DIRECTORY_NAME, SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+    SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE, UNIX_PROTECTED_HOME_RELATIVE,
+    WORKTREE_PROTECTED_RELATIVE, builtin_protected_paths, builtin_read_hidden_paths,
 };
 
 mod util;
@@ -72,7 +73,8 @@ pub use util::{
 #[cfg(target_os = "windows")]
 pub use windows_wsl::{
     ResolvedGrant, ide_bridge_invocation, ide_rendezvous_path, is_forwardable_env_var,
-    resolve_canonical_for_grant, stage_agent_binary, staged_agent_binary, wsl_distro_for_path,
+    registered_wsl_distro_name, resolve_canonical_for_grant, stage_agent_binary,
+    staged_agent_binary, wsl_distro_for_path,
 };
 
 #[cfg(target_os = "windows")]

@@ -26,6 +26,7 @@ mod model_selector;
 mod model_selector_popover;
 mod panel_thread_history;
 mod profile_selector;
+mod sandboxed_claude_code;
 mod terminal_codegen;
 mod terminal_inline_assistant;
 pub mod terminal_thread_metadata_store;
@@ -655,6 +656,7 @@ pub fn init(
 
     inline_assistant::init(fs.clone(), prompt_builder.clone(), cx);
     terminal_inline_assistant::init(fs.clone(), prompt_builder, cx);
+    sandboxed_claude_code::init(cx);
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         workspace.register_action(
             move |workspace: &mut Workspace,

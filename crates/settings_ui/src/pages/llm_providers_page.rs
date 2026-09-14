@@ -55,6 +55,8 @@ const INSTALL_CLAUDE_CODE_LABEL: &str = "Claude Code をインストール (公�
 
 const LAUNCH_CLAUDE_CODE_LABEL: &str = "ターミナルで Claude Code を起動";
 
+const LAUNCH_CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で起動";
+
 /// Levels accepted by the official CLI's `--effort` flag, verified locally with
 /// `claude --help` ("Effort level for the current session (low, medium, high,
 /// xhigh, max)"). These are passed to the CLI verbatim, so they are **not**
@@ -354,13 +356,32 @@ fn render_claude_code_buttons(
                         .color(Color::Muted),
                 )
                 .tooltip(Tooltip::text(if has_workspace {
-                    "設定ウィンドウを閉じ、プロジェクトのディレクトリで `claude` を統合ターミナルから起動します"
+                    "設定ウィンドウを閉じ、Claude Code をターミナルで起動します。\
+                     Windows のローカルのプロジェクトではサンドボックス (WSL) の中で起動します"
                 } else {
                     no_workspace_tooltip
                 }))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.launch_claude_code(window, cx);
                 })),
+        )
+        .child(
+            Button::new(
+                "claude-code-launch-outside-sandbox",
+                LAUNCH_CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL,
+            )
+            .label_size(LabelSize::Small)
+            .style(ButtonStyle::Outlined)
+            .disabled(!has_workspace)
+            .tooltip(Tooltip::text(if has_workspace {
+                "設定ウィンドウを閉じ、この PC の `claude` をサンドボックスの外 \
+                 (Zed 本体の権限) で起動します。起動のたびに確認します"
+            } else {
+                no_workspace_tooltip
+            }))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.launch_claude_code_outside_sandbox(window, cx);
+            })),
         )
         .child(render_claude_code_effort_selector(
             settings_window,

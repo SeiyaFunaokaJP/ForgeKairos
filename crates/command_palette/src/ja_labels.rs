@@ -810,6 +810,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "terminal::LaunchClaudeCode",
         "ターミナル: Claude Code を起動",
     ),
+    (
+        "terminal::LaunchClaudeCodeOutsideSandbox",
+        "ターミナル: Claude Code をサンドボックスの外で起動",
+    ),
     ("terminal::ScrollToTop", "ターミナル: 先頭までスクロール"),
     ("terminal::ScrollToBottom", "ターミナル: 末尾までスクロール"),
     (
