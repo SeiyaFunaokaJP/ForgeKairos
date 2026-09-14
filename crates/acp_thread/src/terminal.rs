@@ -298,6 +298,7 @@ impl SandboxWrap {
             sandbox::SandboxFsPolicy::Restricted {
                 writable_paths,
                 protected_paths,
+                readable_paths: Vec::new(),
             }
         };
         let network = match &self.network {
@@ -387,11 +388,17 @@ pub(crate) fn wsl_sandbox_timeout_message() -> String {
 /// `LD_PRELOAD`, or a `HOME` / `PATH` the helper itself reads, would act before
 /// the sandbox exists. The helper `--chdir`s into the real working directory
 /// once its jail is in place.
-pub(crate) fn build_remote_sandbox_command(
+///
+/// ADR-F49: `readable_paths` are what the command runs from inside the
+/// read-hidden data directory (an external agent's installation), and
+/// `interactive` keeps its standard input live for a terminal session.
+pub fn build_remote_sandbox_command(
     remote_binary: &RelPath,
     wrap: &SandboxWrap,
     cwd: Option<&Path>,
     environment: &HashMap<String, String>,
+    readable_paths: &[String],
+    interactive: bool,
     inner_command: String,
     inner_args: Vec<String>,
 ) -> (String, Vec<String>) {
@@ -435,12 +442,16 @@ pub(crate) fn build_remote_sandbox_command(
     let mut args = sandbox::build_remote_sandbox_helper_argv(
         &writable,
         &protected,
+        readable_paths,
         &network,
         wrap.allow_fs_write,
         chdir.as_deref(),
     );
     // The policy ends with `--`, and the environment belongs before it.
     let separator = args.pop_if(|arg| arg == "--");
+    if interactive {
+        args.push("--interactive".to_string());
+    }
     let mut environment = environment
         .iter()
         .filter(|(name, value)| can_forward_environment_variable(name, value))
@@ -518,6 +529,74 @@ const SANDBOX_OWNED_VARIABLES: &[&str] = &[
     "TMP",
     "TEMP",
 ];
+
+/// What a sandboxed command still gets from Zed's own environment, because a
+/// command without it cannot run or address the terminal: where to find
+/// programs, who the user is and where their home is, and what the terminal
+/// understands. Every other variable Zed was started with — the login shell's
+/// `SSH_AUTH_SOCK`, the API tokens of whatever started Zed — stays outside.
+// On Windows the local sandbox is `wsl.exe`, which lets no variable of its own
+// process cross into Linux unless `WSLENV` names it, so nothing there starts a
+// command this way.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+pub(crate) const HOST_ENVIRONMENT_INSIDE_SANDBOX: &[&str] = &[
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TERM",
+    "TERMINFO",
+    "COLORTERM",
+    "TZ",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_COLLATE",
+    "LC_MESSAGES",
+    "LC_NUMERIC",
+    "LC_TIME",
+];
+
+/// ADR-F49 / ADR-F46: starts `(program, args)` from an empty environment with
+/// nothing but `environment` and [`HOST_ENVIRONMENT_INSIDE_SANDBOX`] on it.
+///
+/// A terminal starts its command through a PTY, which hands the child
+/// everything the editor's own process has — `alacritty_terminal` sets the
+/// variables it is given without clearing the rest — so a command Zed wrapped
+/// in a sandbox would otherwise be handed the environment Zed itself was
+/// started with (a login shell's agent socket, the tokens in the shell that
+/// launched it), whatever the sandbox does about the filesystem and the
+/// network. Clearing it here covers every backend: what the wrapper process
+/// starts with is all its child can inherit.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+pub(crate) fn start_from_an_empty_environment(
+    program: String,
+    args: Vec<String>,
+    environment: &HashMap<String, String>,
+) -> (String, Vec<String>) {
+    let mut assignments = HOST_ENVIRONMENT_INSIDE_SANDBOX
+        .iter()
+        .filter(|name| !environment.contains_key(**name))
+        .filter_map(|name| Some((name.to_string(), std::env::var(name).ok()?)))
+        .chain(
+            environment
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone())),
+        )
+        .filter(|(name, value)| can_forward_environment_variable(name, value))
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>();
+    assignments.sort();
+    // `-i` first, and an absolute path, because this is the one command the
+    // terminal starts with Zed's own `PATH` still in effect.
+    let mut cleared = vec!["-i".to_string()];
+    cleared.append(&mut assignments);
+    cleared.push(program);
+    cleared.extend(args);
+    ("/usr/bin/env".to_string(), cleared)
+}
 
 /// ADR-F46: runs `(program, args)` under `env` with `environment` laid over the
 /// command's own, so that a locally sandboxed command still gets `terminal.env`
@@ -893,6 +972,11 @@ fn sandbox_failure_message_for_code(host: SandboxHost, code: &str) -> String {
              サンドボックスでは使えません (その中の認証情報を読めないようにしているため)。\
              プロジェクトはその下のフォルダーで開いてください。"
         }
+        (_, "readable-refused") => {
+            "エージェントの実行に必要なものとして読み取り専用で見せるよう求められたパスが、Zed のデータフォルダーの\
+             中のエージェントのインストール先 (`external_agents`) と Node.js (`node`) のどちらでもない \
+             (または認証情報と重なる) ため、実行しませんでした。"
+        }
         (
             _,
             "pipe-failed" | "fork-failed" | "wait-failed" | "handshake-failed" | "mkdtemp-failed",
@@ -1199,13 +1283,19 @@ impl Terminal {
 }
 
 /// The directory subtrees the sandbox always grants write access to for a
-/// project: its worktree roots. This is the single source of truth shared by
-/// the agents' terminals (which hand these to the sandbox as
-/// [`SandboxWrap::writable_paths`]) and the status UI (which lists them), so
-/// the two can't drift if the set ever changes.
+/// project: the roots of the worktrees the user opened. This is the single
+/// source of truth shared by the agents' terminals (which hand these to the
+/// sandbox as [`SandboxWrap::writable_paths`]), the write scope an external
+/// agent's process is registered with (ADR-F49 decision 18) and the status UI
+/// (which lists them), so the three can't drift if the set ever changes.
+///
+/// Only the visible worktrees: going to a definition in `~/.cargo/registry`, a
+/// file dropped on the window or one a bookmark opened each add a worktree of
+/// their own, which the project panel doesn't show and the user never offered
+/// to the agent — those stay read-only (ADR-F46, ADR-F49).
 pub fn sandbox_worktree_writable_paths(project: &Project, cx: &App) -> Vec<PathBuf> {
     project
-        .worktrees(cx)
+        .visible_worktrees(cx)
         .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
         .collect()
 }
@@ -1341,6 +1431,7 @@ mod remote_sandbox_failure_tests {
         "wait-failed",
         "handshake-failed",
         "mkdtemp-failed",
+        "readable-refused",
     ];
 
     /// Every known code maps to a concrete Japanese message carrying the shared
@@ -1877,6 +1968,61 @@ mod sandboxed_spawn_tests {
         );
     }
 
+    /// ADR-F49: a command this machine's sandbox wraps starts from an empty
+    /// environment. The terminal hands its child everything the editor's own
+    /// process has, so what a wrapped command may see has to be named: its own
+    /// variables, and the few a terminal needs.
+    #[test]
+    fn a_sandboxed_command_starts_from_an_empty_environment() {
+        let environment = HashMap::from_iter([
+            ("PATH".to_string(), "/sandbox/bin".to_string()),
+            ("HTTPS_PROXY".to_string(), "http://127.0.0.1:1".to_string()),
+            // What the caller lays in of the terminal's own: see
+            // `AcpThread::create_terminal`.
+            ("TERM".to_string(), "xterm-256color".to_string()),
+        ]);
+        let (program, args) = start_from_an_empty_environment(
+            "bwrap".to_string(),
+            vec!["--die-with-parent".to_string(), "sh".to_string()],
+            &environment,
+        );
+
+        assert_eq!(program, "/usr/bin/env");
+        assert_eq!(args.first().map(String::as_str), Some("-i"));
+        assert_eq!(
+            &args[args.len() - 3..],
+            ["bwrap", "--die-with-parent", "sh"]
+        );
+        let assignments = &args[1..args.len() - 3];
+        for assignment in [
+            "PATH=/sandbox/bin",
+            "HTTPS_PROXY=http://127.0.0.1:1",
+            "TERM=xterm-256color",
+        ] {
+            assert!(
+                assignments.contains(&assignment.to_string()),
+                "{assignments:?}"
+            );
+        }
+        assert_eq!(
+            assignments
+                .iter()
+                .filter(|assignment| assignment.starts_with("PATH="))
+                .count(),
+            1,
+            "the command's own variables win over this machine's: {assignments:?}"
+        );
+        for assignment in assignments {
+            let (name, _) = assignment
+                .split_once('=')
+                .unwrap_or_else(|| panic!("{assignment} is not an assignment"));
+            assert!(
+                HOST_ENVIRONMENT_INSIDE_SANDBOX.contains(&name) || environment.contains_key(name),
+                "{name} is not one of the variables a sandboxed command may be given"
+            );
+        }
+    }
+
     #[test]
     fn remote_helper_is_started_directly_with_the_environment_inside() {
         let environment = HashMap::from_iter([
@@ -1898,6 +2044,8 @@ mod sandboxed_spawn_tests {
             &wrap,
             Some(Path::new("/home/user/project")),
             &environment,
+            &[],
+            false,
             "/bin/sh".to_string(),
             vec!["-c".to_string(), "make".to_string()],
         );

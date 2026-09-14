@@ -34,6 +34,7 @@ anyhow.workspace = true
 chrono.workspace = true
 client.workspace = true
 collections.workspace = true
+egress_policy.workspace = true
 env_logger = { workspace = true, optional = true }
 fs.workspace = true
 futures.workspace = true
@@ -51,6 +52,7 @@ project.workspace = true
 release_channel.workspace = true
 remote.workspace = true
 reqwest_client = { workspace = true, optional = true }
+sandbox.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 settings.workspace = true

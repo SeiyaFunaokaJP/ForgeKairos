@@ -1,9 +1,5 @@
-//! サンドボックス (WSL) の中の CLI が使うパスと、Zed (ホスト) のパスの相互変換
-//! (ADR-F49 決定 4)。
-//!
-//! サンドボックスのセッションでは、CLI から来るパスを信用しない入力として扱う。変換
-//! できないもの、`..` を含むもの、ワークツリーの外を指すものはすべて拒否し、逆向き
-//! (ホスト → CLI) でもワークツリーの外のパスは CLI に見せない。
+//! サンドボックス (WSL) の中の CLI が指したパスについての、ファイルシステムに触れる確認
+//! (ADR-F49 決定 4)。パスの変換とワークツリーの中かどうかの判定は [`util::path_mapping`]。
 
 use std::ffi::OsString;
 use std::io::Read as _;
@@ -14,457 +10,168 @@ use anyhow::{Context as _, Result};
 use fs::FileHandle;
 use gpui::BackgroundExecutor;
 use project::Fs;
+use util::path_mapping::{ComparablePath, SandboxPaths};
+use util::paths::PathStyle;
 
-/// CLI (クライアント) 側のパスとホストのパスの変換。
-///
-/// どちらの向きも、変換できない・`..` を含む・相手側で別の意味になるパスには `None`
-/// を返す。ワークツリーの中かどうかはここでは見ない (それは [`SandboxPaths`] の役目)。
-pub trait PathMapper: Send + Sync {
-    fn to_host(&self, client_path: &str) -> Option<PathBuf>;
-    fn to_client(&self, host_path: &Path) -> Option<String>;
-
-    /// `file://` の URI も素のパスも受ける。CLI の `normalizeFileUri` に合わせて
-    /// パーセントデコードはしない。
-    fn uri_to_host(&self, client_uri: &str) -> Option<PathBuf> {
-        self.to_host(client_uri.strip_prefix("file://").unwrap_or(client_uri))
-    }
-
-    fn to_client_uri(&self, host_path: &Path) -> Option<String> {
-        self.to_client(host_path)
-            .map(|client_path| format!("file://{client_path}"))
-    }
+/// ワークツリーのルートより下の成分に、リンク (シンボリックリンク・ジャンクション・WSL の
+/// リンク) や、`\\wsl.localhost` の特殊ファイルがあるか。WSL 側に作られたリンクは Windows の
+/// `canonicalize` でも `read_link` でも解決できないので、実体の比較とは別に成分ごとに見る。
+pub async fn has_link_below_root(
+    paths: &SandboxPaths,
+    host_path: &Path,
+    fs: &Arc<dyn Fs>,
+    executor: &BackgroundExecutor,
+) -> Result<bool> {
+    Ok(!links_below_root(paths, host_path, fs, executor)
+        .await?
+        .is_empty())
 }
 
-/// Windows のホストと、WSL のディストリビューションの中の CLI。
+/// サンドボックスが指したホストのパス (綴りの上ではワークツリーの中) が、ワークツリーの中に
+/// 置かれたリンクを通って外へ出ないことを確かめる (ADR-F49 決定 23)。外部エージェントの ACP の
+/// fs の読み書きは、ホストの Zed がファイルに触る前にこれを通す (`agent_servers::acp_paths` は
+/// 綴りしか見ない)。通れば `host_path` をそのまま返す。
 ///
-/// - `/mnt/<drive>/…` ↔ `<DRIVE>:\…` (扱う自動マウント先は既定の `/mnt` だけ)
-/// - それ以外のディストリビューション内のパス ↔ `\\wsl.localhost\<distro>\…`
-///   (ホスト側の入力では `\\wsl$\<distro>\…` も受ける)
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WslPathMapper {
-    pub distro: String,
+/// - ルートより下の各段がリンクでなければ通す
+/// - リンクを通るときは、リンクごとにたどった先がワークツリーのルート (の実体) の中なら通し、
+///   外なら断る。たどれないリンク (壊れたリンクなど) は `canonicalize` が失敗するので断る
+/// - WSL の中で作られたリンクは、Windows の `canonicalize` ではたどれないことがある。失敗すれば
+///   断り、たどらずにリンクそのものの場所を返したとき (行き先が分からない) も断る。
+///   `\\wsl.localhost` の下のリンクと Linux の特殊ファイルは、`canonicalize` の結果を信じられない
+///   ので、行き先に関わらず断る
+/// - 確かめてから使うまでのあいだにリンクへ差し替えられうる (サンドボックスはワークツリーに
+///   書ける)。読むだけなら、1 つのハンドルで確かめてから読む [`RealRoots::read_file`] を使う
+pub async fn resolve_inside_roots(
+    paths: &SandboxPaths,
+    host_path: &Path,
+    fs: &Arc<dyn Fs>,
+    executor: &BackgroundExecutor,
+) -> Result<PathBuf> {
+    let links = links_below_root(paths, host_path, fs, executor).await?;
+    anyhow::ensure!(
+        links.is_empty()
+            || !paths
+                .comparable(host_path)
+                .is_some_and(|path| path.is_unc()),
+        "the path goes through a link or a special file inside WSL, which Zed cannot follow"
+    );
+    let real_roots = real_roots(paths, fs).await;
+    for link in &links {
+        ensure_link_stays_inside(link, &real_roots, fs).await?;
+    }
+    real_roots.ensure_contains(host_path, fs).await?;
+    Ok(host_path.to_path_buf())
 }
 
-impl PathMapper for WslPathMapper {
-    fn to_host(&self, client_path: &str) -> Option<PathBuf> {
-        let components = client_components(client_path, NameRules::Windows)?;
-        if let [mount, drive, rest @ ..] = components.as_slice()
-            && *mount == "mnt"
-            && let Some(letter) = drive_letter(drive)
-        {
-            return Some(PathBuf::from(format!(
-                "{}:\\{}",
-                letter.to_ascii_uppercase(),
-                rest.join("\\")
-            )));
-        }
-        if !is_valid_distro_name(&self.distro) {
-            return None;
-        }
-        Some(PathBuf::from(format!(
-            "\\\\wsl.localhost\\{}\\{}",
-            self.distro,
-            components.join("\\")
-        )))
-    }
-
-    fn to_client(&self, host_path: &Path) -> Option<String> {
-        let parsed = WindowsPath::parse(host_path.to_str()?)?;
-        let mut client_path = match parsed.root {
-            WindowsRoot::Drive(letter) => format!("/mnt/{}", letter.to_ascii_lowercase()),
-            WindowsRoot::Unc { server, share } => {
-                if !is_wsl_server(server) || !share.eq_ignore_ascii_case(&self.distro) {
-                    return None;
+/// ルートより下で、リンクか `\\wsl.localhost` の特殊ファイルである段 (ルートに近い順)。
+async fn links_below_root(
+    paths: &SandboxPaths,
+    host_path: &Path,
+    fs: &Arc<dyn Fs>,
+    executor: &BackgroundExecutor,
+) -> Result<Vec<PathBuf>> {
+    let (root, components) = paths
+        .split_at_root(host_path)
+        .context("the path is outside the workspace")?;
+    let mut prefix = root.to_path_buf();
+    // リンクをたどらず、データも求めずに成分ごとの種類を見る。`Fs::metadata` はたどった先も
+    // 開くので、`\\wsl.localhost` の FIFO ではリダイレクタが打ち切る 10 秒まで止まる。
+    if !fs.is_fake() {
+        return executor
+            .spawn(async move {
+                let mut links = Vec::new();
+                for component in components {
+                    prefix.push(component);
+                    match std::fs::symlink_metadata(&prefix) {
+                        Ok(metadata)
+                            if metadata.file_type().is_symlink()
+                                || is_link_or_special(&metadata, &prefix) =>
+                        {
+                            links.push(prefix.clone());
+                        }
+                        Ok(_) => {}
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                            ) =>
+                        {
+                            break;
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
                 }
-                String::new()
-            }
-        };
-        for component in &parsed.components {
-            client_path.push('/');
-            client_path.push_str(component);
-        }
-        if client_path.is_empty() {
-            client_path.push('/');
-        }
-        Some(client_path)
+                anyhow::Ok(links)
+            })
+            .await;
     }
-}
-
-/// ホストと CLI が同じパスを使う環境 (Windows 以外のサンドボックス)。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct IdentityPathMapper;
-
-impl PathMapper for IdentityPathMapper {
-    fn to_host(&self, client_path: &str) -> Option<PathBuf> {
-        let components = client_components(client_path, NameRules::Posix)?;
-        Some(PathBuf::from(format!("/{}", components.join("/"))))
-    }
-
-    fn to_client(&self, host_path: &Path) -> Option<String> {
-        let components = client_components(host_path.to_str()?, NameRules::Posix)?;
-        Some(format!("/{}", components.join("/")))
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum NameRules {
-    /// 名前はホストの Windows で解釈される。
-    Windows,
-    Posix,
-}
-
-/// CLI の絶対パスを成分に分ける。`.` と空の成分 (`//`) は落とし、上の階層を指す成分を
-/// 含むものは `None`。
-fn client_components(client_path: &str, rules: NameRules) -> Option<Vec<&str>> {
-    let relative = client_path.strip_prefix('/')?;
-    let mut components = Vec::new();
-    for component in relative.split('/') {
-        if component.is_empty() || component == "." {
+    // `FakeFs` はディスクに実体が無いので、`Fs` を通して同じ判定をする。
+    let mut links = Vec::new();
+    for component in components {
+        prefix.push(component);
+        // `read_link` が通るのはリンクだけ (壊れたリンクも含む)。失敗は「リンクではない」。
+        if fs.read_link(&prefix).await.is_ok() {
+            links.push(prefix.clone());
             continue;
         }
-        if component == ".." || component.contains('\0') {
-            return None;
+        match fs.metadata(&prefix).await? {
+            Some(metadata) if metadata.is_symlink => links.push(prefix.clone()),
+            Some(_) => {}
+            None => break,
         }
-        if rules == NameRules::Windows && !is_portable_windows_name(component) {
-            return None;
-        }
-        components.push(component);
     }
-    Some(components)
+    Ok(links)
 }
 
-/// Win32 のパス正規化は名前の末尾の `.` と空白を落とすので、そういう名前は別の名前
-/// (点と空白だけなら `.` や `..`) と同じ場所を指しうる。`\` は区切り、`:` は代替データ
-/// ストリーム、デバイス名はファイルではないものを開く。
-fn is_portable_windows_name(component: &str) -> bool {
-    if component.ends_with(['.', ' ']) {
-        return false;
-    }
-    let has_reserved_character = component.chars().any(|character| {
-        character < ' ' || matches!(character, '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
-    });
-    !has_reserved_character && !is_reserved_device_name(component)
-}
-
-fn is_reserved_device_name(component: &str) -> bool {
-    let stem = component
-        .split('.')
-        .next()
-        .unwrap_or(component)
-        .trim_end_matches(' ')
-        .to_ascii_uppercase();
-    if matches!(
-        stem.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
-    ) {
-        return true;
-    }
-    // Windows は上付きの ¹²³ も COM・LPT の番号として扱う。
-    let Some(number) = stem
-        .strip_prefix("COM")
-        .or_else(|| stem.strip_prefix("LPT"))
-    else {
-        return false;
+async fn ensure_link_stays_inside(
+    link: &Path,
+    real_roots: &RealRoots,
+    fs: &Arc<dyn Fs>,
+) -> Result<()> {
+    let target = fs
+        .canonicalize(link)
+        .await
+        .context("the link cannot be followed")?;
+    let (Some(parent), Some(name)) = (link.parent(), link.file_name()) else {
+        anyhow::bail!("the link has no parent folder");
     };
-    let mut characters = number.chars();
-    matches!(
-        (characters.next(), characters.next()),
-        (Some('0'..='9' | '¹' | '²' | '³'), None)
-    )
+    let unfollowed = fs.canonicalize(parent).await?.join(name);
+    anyhow::ensure!(
+        !same_final_location(&target, &unfollowed),
+        "Zed cannot follow the link"
+    );
+    real_roots
+        .ensure_contains(&target, fs)
+        .await
+        .context("the link leads outside the workspace")
 }
 
-fn drive_letter(component: &str) -> Option<char> {
-    let mut characters = component.chars();
-    let letter = characters.next()?;
-    (letter.is_ascii_alphabetic() && characters.next().is_none()).then_some(letter)
-}
-
-fn is_valid_distro_name(distro: &str) -> bool {
-    !distro.is_empty()
-        && !distro.chars().all(|character| character == '.')
-        && distro.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
-        })
-}
-
-fn is_wsl_server(server: &str) -> bool {
-    server.eq_ignore_ascii_case("wsl.localhost") || server.eq_ignore_ascii_case("wsl$")
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WindowsRoot<'a> {
-    Drive(char),
-    Unc { server: &'a str, share: &'a str },
-}
-
-/// ホストの Windows パスを文字列のまま読んだもの。`Path::components` は実行している
-/// OS の規則でしか読めないので、ここでは自前で分ける。
-struct WindowsPath<'a> {
-    root: WindowsRoot<'a>,
-    components: Vec<&'a str>,
-}
-
-impl<'a> WindowsPath<'a> {
-    /// `\` と `/` の両方を区切りとして読む。`canonicalize` が返す `\\?\` 付きの形も受ける。
-    fn parse(text: &'a str) -> Option<Self> {
-        let (root, rest) = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-            unc_root(rest)?
-        } else if let Some(rest) = text.strip_prefix(r"\\?\") {
-            drive_root(rest)?
-        } else if let Some(rest) = text.strip_prefix(r"\\").or_else(|| text.strip_prefix("//")) {
-            unc_root(rest)?
-        } else {
-            drive_root(text)?
+/// シンボリックリンクをたどったあとのワークツリーのルート (ルート自体がリンクでもよい)。
+pub async fn real_roots(paths: &SandboxPaths, fs: &Arc<dyn Fs>) -> RealRoots {
+    let mut roots = Vec::new();
+    for root in paths.roots() {
+        let Some(lexical) = paths.comparable(root) else {
+            continue;
         };
-        let mut components = Vec::new();
-        for component in rest.split(['\\', '/']) {
-            match component {
-                "" | "." => {}
-                ".." => return None,
-                component => components.push(component),
-            }
-        }
-        Some(Self { root, components })
-    }
-}
-
-fn drive_root(text: &str) -> Option<(WindowsRoot<'_>, &str)> {
-    let mut characters = text.chars();
-    let letter = characters.next().filter(char::is_ascii_alphabetic)?;
-    // `C:` だけや `C:foo` は、ドライブごとのカレントディレクトリからの相対パス。
-    let rest = characters
-        .as_str()
-        .strip_prefix(':')?
-        .strip_prefix(['\\', '/'])?;
-    Some((WindowsRoot::Drive(letter.to_ascii_uppercase()), rest))
-}
-
-fn unc_root(text: &str) -> Option<(WindowsRoot<'_>, &str)> {
-    let mut parts = text.splitn(3, ['\\', '/']);
-    let is_name = |part: &&str| !matches!(*part, "" | "." | "..");
-    let server = parts.next().filter(is_name)?;
-    let share = parts.next().filter(is_name)?;
-    Some((
-        WindowsRoot::Unc { server, share },
-        parts.next().unwrap_or_default(),
-    ))
-}
-
-/// ワークツリーの中かどうかを成分単位で比べるための形。
-#[derive(Debug, PartialEq, Eq)]
-struct ComparablePath {
-    root: String,
-    components: Vec<String>,
-}
-
-impl ComparablePath {
-    /// ドライブ文字と UNC のサーバー名・共有名だけは大文字小文字を区別しない (CLI は
-    /// ドライブを小文字で返し、`\\wsl$\` と `\\wsl.localhost\` は同じ場所)。その先の名前は
-    /// ワークツリーのルートから作ったパスが同じ綴りで戻ってくるので、厳密に比べる。
-    #[cfg(windows)]
-    fn new(path: &Path) -> Option<Self> {
-        let parsed = WindowsPath::parse(path.to_str()?)?;
-        let root = match parsed.root {
-            WindowsRoot::Drive(letter) => format!("{letter}:"),
-            WindowsRoot::Unc { server, share } => {
-                let server = if is_wsl_server(server) {
-                    "wsl.localhost".to_string()
-                } else {
-                    server.to_lowercase()
-                };
-                format!(r"\\{server}\{}", share.to_lowercase())
-            }
-        };
-        Some(Self {
-            root,
-            components: parsed.components.into_iter().map(str::to_string).collect(),
-        })
-    }
-
-    #[cfg(not(windows))]
-    fn new(path: &Path) -> Option<Self> {
-        use std::path::Component;
-
-        if !path.is_absolute() {
-            return None;
-        }
-        let mut components = Vec::new();
-        for component in path.components() {
-            match component {
-                Component::RootDir | Component::CurDir => {}
-                Component::Normal(name) => components.push(name.to_str()?.to_string()),
-                Component::ParentDir | Component::Prefix(_) => return None,
-            }
-        }
-        Some(Self {
-            root: "/".to_string(),
-            components,
-        })
-    }
-
-    fn starts_with(&self, root: &Self) -> bool {
-        self.root == root.root && self.components.starts_with(&root.components)
-    }
-}
-
-/// 2 つのホストのパスが (綴りの揺れを除いて) 同じ場所を指すか。
-pub fn same_location(left: &Path, right: &Path) -> bool {
-    match (ComparablePath::new(left), ComparablePath::new(right)) {
-        (Some(left), Some(right)) => left == right,
-        _ => false,
-    }
-}
-
-/// サンドボックスのセッション 1 本ぶんのパスの規則: 変換器と、CLI に見せてよい
-/// ワークツリーのルート (ホストのパス)。
-pub struct SandboxPaths {
-    mapper: Arc<dyn PathMapper>,
-    roots: Vec<PathBuf>,
-}
-
-impl SandboxPaths {
-    pub fn new(mapper: Arc<dyn PathMapper>, roots: Vec<PathBuf>) -> Self {
-        Self { mapper, roots }
-    }
-
-    pub fn roots(&self) -> &[PathBuf] {
-        &self.roots
-    }
-
-    /// CLI から来たパス (か `file://` URI) を、ワークツリーの中のホストのパスに直す。
-    pub fn to_host(&self, client_path: &str) -> Result<PathBuf> {
-        let host_path = self
-            .mapper
-            .uri_to_host(client_path)
-            .with_context(|| format!("{client_path} is not a path Zed can open"))?;
-        anyhow::ensure!(
-            self.contains(&host_path),
-            "{client_path} is outside the workspace"
-        );
-        Ok(host_path)
-    }
-
-    pub fn to_client(&self, host_path: &Path) -> Option<String> {
-        if !self.contains(host_path) {
-            return None;
-        }
-        self.mapper.to_client(host_path)
-    }
-
-    pub fn to_client_uri(&self, host_path: &Path) -> Option<String> {
-        if !self.contains(host_path) {
-            return None;
-        }
-        self.mapper.to_client_uri(host_path)
-    }
-
-    pub fn contains(&self, host_path: &Path) -> bool {
-        let Some(candidate) = ComparablePath::new(host_path) else {
-            return false;
-        };
-        self.roots
-            .iter()
-            .filter_map(|root| ComparablePath::new(root))
-            .any(|root| candidate.starts_with(&root))
-    }
-
-    /// ワークツリーのルートより下の成分に、リンク (シンボリックリンク・ジャンクション・WSL の
-    /// リンク) や、`\\wsl.localhost` の特殊ファイルがあるか。WSL 側に作られたリンクは Windows の
-    /// `canonicalize` でも `read_link` でも解決できないので、実体の比較とは別に成分ごとに見る。
-    pub async fn has_link_below_root(
-        &self,
-        host_path: &Path,
-        fs: &Arc<dyn Fs>,
-        executor: &BackgroundExecutor,
-    ) -> Result<bool> {
-        let candidate =
-            ComparablePath::new(host_path).context("the path cannot be compared with the roots")?;
-        let (mut prefix, root_depth) = self
-            .roots
-            .iter()
-            .find_map(|root| {
-                let comparable = ComparablePath::new(root)?;
-                candidate
-                    .starts_with(&comparable)
-                    .then(|| (root.clone(), comparable.components.len()))
-            })
-            .context("the path is outside the workspace")?;
-        let components = candidate
-            .components
-            .into_iter()
-            .skip(root_depth)
-            .collect::<Vec<_>>();
-        // リンクをたどらず、データも求めずに成分ごとの種類を見る。`Fs::metadata` はたどった先も
-        // 開くので、`\\wsl.localhost` の FIFO ではリダイレクタが打ち切る 10 秒まで止まる。
-        if !fs.is_fake() {
-            return executor
-                .spawn(async move {
-                    for component in components {
-                        prefix.push(component);
-                        match std::fs::symlink_metadata(&prefix) {
-                            Ok(metadata)
-                                if metadata.file_type().is_symlink()
-                                    || is_link_or_special(&metadata, &prefix) =>
-                            {
-                                return Ok(true);
-                            }
-                            Ok(_) => {}
-                            Err(error)
-                                if matches!(
-                                    error.kind(),
-                                    std::io::ErrorKind::NotFound
-                                        | std::io::ErrorKind::NotADirectory
-                                ) =>
-                            {
-                                break;
-                            }
-                            Err(error) => return Err(error.into()),
-                        }
-                    }
-                    anyhow::Ok(false)
-                })
-                .await;
-        }
-        // `FakeFs` はディスクに実体が無いので、`Fs` を通して同じ判定をする。
-        for component in components {
-            prefix.push(component);
-            // `read_link` が通るのはリンクだけ (壊れたリンクも含む)。失敗は「リンクではない」。
-            if fs.read_link(&prefix).await.is_ok() {
-                return Ok(true);
-            }
-            match fs.metadata(&prefix).await? {
-                Some(metadata) if metadata.is_symlink => return Ok(true),
-                Some(_) => {}
-                None => break,
-            }
-        }
-        Ok(false)
-    }
-
-    /// シンボリックリンクをたどったあとのワークツリーのルート (ルート自体がリンクでもよい)。
-    pub async fn real_roots(&self, fs: &Arc<dyn Fs>) -> RealRoots {
-        let mut roots = Vec::new();
-        for root in &self.roots {
-            let Some(lexical) = ComparablePath::new(root) else {
-                continue;
-            };
-            match real_location(root, fs).await {
-                Ok(real_path) => {
-                    if let Some(real) = ComparablePath::new(&real_path) {
-                        roots.push(RealRoot {
-                            lexical,
-                            real_path,
-                            real,
-                        });
-                    }
+        match real_location(root, fs).await {
+            Ok(real_path) => {
+                if let Some(real) = ComparablePath::local(&real_path) {
+                    roots.push(RealRoot {
+                        lexical,
+                        real_path,
+                        real,
+                    });
                 }
-                Err(error) => log::warn!(
-                    "ide_server: could not resolve the worktree {}: {error:#}",
-                    root.display()
-                ),
             }
+            Err(error) => log::warn!(
+                "ide_server: could not resolve the worktree {}: {error:#}",
+                root.display()
+            ),
         }
-        RealRoots(roots)
+    }
+    RealRoots {
+        roots,
+        host_path_style: paths.host_path_style(),
     }
 }
 
@@ -476,15 +183,22 @@ struct RealRoot {
 }
 
 /// 要求 1 件ぶんの、ワークツリーのルートの実体。
-pub struct RealRoots(Vec<RealRoot>);
+pub struct RealRoots {
+    roots: Vec<RealRoot>,
+    /// セッションに渡されたままの綴りと比べるときの読み方。
+    host_path_style: PathStyle,
+}
 
 impl RealRoots {
     /// ワークツリーの中に置かれたリンクを経由して、ワークツリーの外を読ませないための確認。
     /// サンドボックスはワークツリーに書けるので、リンクはいくらでも作れる。
     pub async fn ensure_contains(&self, host_path: &Path, fs: &Arc<dyn Fs>) -> Result<()> {
         let real_path = real_location(host_path, fs).await?;
-        let inside = ComparablePath::new(&real_path)
-            .is_some_and(|candidate| self.0.iter().any(|root| candidate.starts_with(&root.real)));
+        let inside = ComparablePath::local(&real_path).is_some_and(|candidate| {
+            self.roots
+                .iter()
+                .any(|root| candidate.starts_with(&root.real))
+        });
         anyhow::ensure!(
             inside,
             "the path resolves to a location outside the workspace"
@@ -522,17 +236,17 @@ impl RealRoots {
 
     /// ワークツリーの中のパスが、リンクをたどらずに行き着くはずの実体の場所。
     fn expected_real_path(&self, host_path: &Path) -> Option<PathBuf> {
-        let candidate = ComparablePath::new(host_path)?;
+        let candidate = ComparablePath::new(host_path, self.host_path_style)?;
         let root = self
-            .0
+            .roots
             .iter()
             .find(|root| candidate.starts_with(&root.lexical))?;
         let mut expected = root.real_path.clone();
         expected.extend(
             candidate
-                .components
+                .components()
                 .iter()
-                .skip(root.lexical.components.len()),
+                .skip(root.lexical.components().len()),
         );
         Some(expected)
     }
@@ -709,9 +423,7 @@ fn is_link_or_special(_metadata: &std::fs::Metadata, _path: &Path) -> bool {
 
 #[cfg(windows)]
 fn is_unc_path(path: &Path) -> bool {
-    path.to_str()
-        .and_then(WindowsPath::parse)
-        .is_some_and(|parsed| matches!(parsed.root, WindowsRoot::Unc { .. }))
+    ComparablePath::local(path).is_some_and(|parsed| parsed.is_unc())
 }
 
 /// 開いたハンドルの実体の場所と、行き着くはずの場所の比較。ドライブ文字のパス (NTFS など) は
@@ -719,31 +431,34 @@ fn is_unc_path(path: &Path) -> bool {
 /// (同じディレクトリの中の話で、ワークツリーの外には出ない)。UNC (`\\wsl.localhost` など) の先は
 /// 区別するファイルシステムでありうるので、綴りどおりに比べる。
 fn same_final_location(left: &Path, right: &Path) -> bool {
-    let (Some(left), Some(right)) = (ComparablePath::new(left), ComparablePath::new(right)) else {
+    let (Some(left), Some(right)) = (ComparablePath::local(left), ComparablePath::local(right))
+    else {
         return false;
     };
-    if !cfg!(windows) || left.root.starts_with(r"\\") {
+    if !cfg!(windows) || left.is_unc() {
         return left == right;
     }
-    left.root == right.root
-        && left.components.len() == right.components.len()
+    left.root() == right.root()
+        && left.components().len() == right.components().len()
         && left
-            .components
+            .components()
             .iter()
-            .zip(&right.components)
+            .zip(right.components())
             .all(|(left, right)| left.to_lowercase() == right.to_lowercase())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use util::path_mapping::{PathMapper as _, WslPathMapper};
 
     /// ドライブ文字のパスは大文字小文字の違いを同じ場所とみなすが、UNC (`\\wsl.localhost`) の
     /// 先は綴りどおりに比べる。
     #[cfg(windows)]
     #[test]
     fn compares_final_paths_exactly_on_unc_shares() {
-        let same = |left: &str, right: &str| same_final_location(Path::new(left), Path::new(right));
+        let same = |left: &str, right: &str| {
+            super::same_final_location(std::path::Path::new(left), std::path::Path::new(right))
+        };
         assert!(same(r"\\?\C:\Work\Main.rs", r"C:\work\main.rs"));
         assert!(same(
             r"\\?\UNC\wsl.localhost\Ubuntu\home\u\a.rs",
@@ -756,328 +471,14 @@ mod tests {
         assert!(!same(r"C:\work\main.rs", r"C:\work\other\main.rs"));
     }
 
-    fn wsl() -> WslPathMapper {
-        WslPathMapper {
+    /// CLI から来た URI を直したホストのパスは、診断の応答では CLI が比べられる形の URI になる。
+    #[test]
+    fn renders_a_mapped_cli_uri_as_a_host_file_uri() {
+        let host_path = WslPathMapper {
             distro: "Ubuntu".to_string(),
         }
-    }
-
-    fn host(client_path: &str) -> Option<String> {
-        wsl()
-            .to_host(client_path)
-            .map(|path| path.to_string_lossy().into_owned())
-    }
-
-    fn client(host_path: &str) -> Option<String> {
-        wsl().to_client(Path::new(host_path))
-    }
-
-    #[test]
-    fn maps_drive_paths_to_the_host() {
-        assert_eq!(
-            host("/mnt/i/zed-jp-llm/src/main.rs").as_deref(),
-            Some(r"I:\zed-jp-llm\src\main.rs")
-        );
-        assert_eq!(host("/mnt/c").as_deref(), Some(r"C:\"));
-        assert_eq!(host("/mnt/c/").as_deref(), Some(r"C:\"));
-        assert_eq!(host("/mnt/i/./a//b").as_deref(), Some(r"I:\a\b"));
-        assert_eq!(
-            host("/mnt/i/My Project/a b.rs").as_deref(),
-            Some(r"I:\My Project\a b.rs")
-        );
-        assert_eq!(
-            host("/mnt/i/プロジェクト/日本語.rs").as_deref(),
-            Some(r"I:\プロジェクト\日本語.rs")
-        );
-        // 先頭の点、途中の点、デバイス名に似ているだけの名前は通す。
-        assert_eq!(
-            host("/mnt/i/.hidden/a.b/COM10.txt").as_deref(),
-            Some(r"I:\.hidden\a.b\COM10.txt")
-        );
-    }
-
-    #[test]
-    fn maps_distro_paths_to_the_wsl_share() {
-        assert_eq!(
-            host("/home/user/project/a.rs").as_deref(),
-            Some(r"\\wsl.localhost\Ubuntu\home\user\project\a.rs")
-        );
-        assert_eq!(host("/").as_deref(), Some(r"\\wsl.localhost\Ubuntu\"));
-        // `/mnt` の下でも 1 文字の英字でなければドライブではない。
-        assert_eq!(
-            host("/mnt/data/a.rs").as_deref(),
-            Some(r"\\wsl.localhost\Ubuntu\mnt\data\a.rs")
-        );
-        assert_eq!(
-            host("/mnt/1/a.rs").as_deref(),
-            Some(r"\\wsl.localhost\Ubuntu\mnt\1\a.rs")
-        );
-    }
-
-    #[test]
-    fn rejects_client_paths_that_do_not_map() {
-        for client_path in [
-            "",
-            "relative/a.rs",
-            "mnt/i/a.rs",
-            r"C:\a.rs",
-            "/mnt/i/a/../b",
-            "/mnt/i/..",
-            "/mnt/i/a/..",
-            "/mnt/i/.. ",
-            "/mnt/i/...",
-            "/mnt/i/. .",
-            r"/mnt/i/a\..\..\b",
-            "/mnt/i/a.rs:secret",
-            "/mnt/i/a?.rs",
-            "/mnt/i/nul",
-            "/mnt/i/COM1.txt",
-            "/mnt/i/con .rs",
-            "/mnt/i/trailing.",
-            "/mnt/i/trailing ",
-            "/mnt/i/dir./a.rs",
-            "/mnt/i/COM¹",
-            "/mnt/i/lpt³.txt",
-            "/mnt/i/Com2.log",
-            "/mnt/i/a\0b",
-            "/home/u/../../etc",
-        ] {
-            assert_eq!(
-                wsl().to_host(client_path),
-                None,
-                "{client_path:?} must not map"
-            );
-        }
-        for distro in ["", "..", r"a\b", "a/b"] {
-            let mapper = WslPathMapper {
-                distro: distro.to_string(),
-            };
-            assert_eq!(mapper.to_host("/home/u"), None, "distro {distro:?}");
-            // ドライブの変換はディストリビューション名に依らない。
-            assert_eq!(mapper.to_host("/mnt/c/x"), Some(PathBuf::from(r"C:\x")));
-        }
-    }
-
-    #[test]
-    fn maps_host_paths_to_the_client() {
-        assert_eq!(
-            client(r"I:\zed-jp-llm\src\main.rs").as_deref(),
-            Some("/mnt/i/zed-jp-llm/src/main.rs")
-        );
-        assert_eq!(client(r"i:\x").as_deref(), Some("/mnt/i/x"));
-        assert_eq!(client("I:/x/y").as_deref(), Some("/mnt/i/x/y"));
-        assert_eq!(client(r"\\?\I:\x").as_deref(), Some("/mnt/i/x"));
-        assert_eq!(client(r"C:\").as_deref(), Some("/mnt/c"));
-        assert_eq!(
-            client(r"\\wsl.localhost\Ubuntu\home\u\x").as_deref(),
-            Some("/home/u/x")
-        );
-        assert_eq!(client(r"\\wsl$\Ubuntu\home\u").as_deref(), Some("/home/u"));
-        assert_eq!(
-            client(r"\\WSL.LOCALHOST\ubuntu\home").as_deref(),
-            Some("/home")
-        );
-        assert_eq!(
-            client(r"\\?\UNC\wsl.localhost\Ubuntu\home").as_deref(),
-            Some("/home")
-        );
-        assert_eq!(client(r"\\wsl.localhost\Ubuntu").as_deref(), Some("/"));
-        assert_eq!(
-            client(r"D:\データ\with space\ファイル.txt").as_deref(),
-            Some("/mnt/d/データ/with space/ファイル.txt")
-        );
-    }
-
-    #[test]
-    fn rejects_host_paths_that_do_not_map() {
-        for host_path in [
-            r"\\wsl.localhost\Debian\home",
-            r"\\server\share\x",
-            r"\\wsl.localhost",
-            r"\\wsl.localhost\..\x",
-            r"I:\a\..\b",
-            r"relative\x",
-            "C:",
-            "C:relative",
-            r"\\?\Volume{0}\x",
-            "/home/u",
-        ] {
-            assert_eq!(client(host_path), None, "{host_path:?} must not map");
-        }
-    }
-
-    #[test]
-    fn round_trips_between_the_client_and_the_host() {
-        for client_path in [
-            "/mnt/i/zed-jp-llm/src/main.rs",
-            "/mnt/c",
-            "/mnt/d/My Project/a b.rs",
-            "/mnt/i/プロジェクト/日本語.rs",
-            "/home/user/.config/x",
-            "/",
-        ] {
-            let host_path = wsl()
-                .to_host(client_path)
-                .unwrap_or_else(|| panic!("{client_path:?} maps to the host"));
-            assert_eq!(
-                wsl().to_client(&host_path).as_deref(),
-                Some(client_path),
-                "{client_path:?} via {host_path:?}"
-            );
-        }
-        for host_path in [
-            r"I:\zed-jp-llm\src\main.rs",
-            r"\\wsl.localhost\Ubuntu\home\u\データ.txt",
-            r"D:\with space\x",
-        ] {
-            let client_path =
-                client(host_path).unwrap_or_else(|| panic!("{host_path:?} maps to the client"));
-            assert_eq!(
-                wsl().to_host(&client_path),
-                Some(PathBuf::from(host_path)),
-                "{host_path:?} via {client_path:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn maps_file_uris() {
-        let host_path = wsl()
-            .uri_to_host("file:///mnt/i/x/main.rs")
-            .expect("the URI maps to the host");
+        .uri_to_host("file:///mnt/i/x/main.rs")
+        .expect("the URI maps to the host");
         assert_eq!(crate::tools::file_uri(&host_path), "file:///I:/x/main.rs");
-        assert_eq!(
-            wsl().to_client_uri(Path::new(r"I:\x\main.rs")).as_deref(),
-            Some("file:///mnt/i/x/main.rs")
-        );
-        assert_eq!(
-            wsl().uri_to_host("file:///home/u/a.rs"),
-            Some(PathBuf::from(r"\\wsl.localhost\Ubuntu\home\u\a.rs"))
-        );
-        assert_eq!(
-            wsl()
-                .to_client_uri(Path::new(r"\\wsl$\Ubuntu\home\u\a b.rs"))
-                .as_deref(),
-            Some("file:///home/u/a b.rs")
-        );
-        // 素のパスも受ける。
-        assert_eq!(wsl().uri_to_host("/mnt/i/x"), Some(PathBuf::from(r"I:\x")));
-        // CLI と同じくパーセントデコードはしない。
-        assert_eq!(
-            wsl().uri_to_host("file:///mnt/i/a%20b"),
-            Some(PathBuf::from(r"I:\a%20b"))
-        );
-        assert_eq!(wsl().uri_to_host("file://localhost/mnt/i/x"), None);
-        assert_eq!(wsl().uri_to_host("file:///mnt/i/a/../b"), None);
-        assert_eq!(wsl().uri_to_host("file:///I:/x"), None);
-    }
-
-    #[test]
-    fn identity_mapper_only_normalizes() {
-        let identity = IdentityPathMapper;
-        assert_eq!(
-            identity.to_host("/home/u/./a//b.rs"),
-            Some(PathBuf::from("/home/u/a/b.rs"))
-        );
-        // POSIX の名前としては正しいので、Windows 向けの制限はかけない。
-        assert_eq!(
-            identity.to_host(r"/home/u/a:b\c"),
-            Some(PathBuf::from(r"/home/u/a:b\c"))
-        );
-        assert_eq!(identity.to_host("/home/u/../x"), None);
-        assert_eq!(identity.to_host("home/u"), None);
-        assert_eq!(
-            identity.to_client(Path::new("/home/u/a.rs")).as_deref(),
-            Some("/home/u/a.rs")
-        );
-        assert_eq!(identity.to_client(Path::new("/home/u/../a.rs")), None);
-        assert_eq!(
-            identity
-                .to_client_uri(Path::new("/home/u/日本語 a.rs"))
-                .as_deref(),
-            Some("file:///home/u/日本語 a.rs")
-        );
-    }
-
-    /// 実行している OS のパスで、ワークツリー `…/proj` を持つセッションの規則。
-    fn sandbox_paths() -> (SandboxPaths, &'static str) {
-        if cfg!(windows) {
-            (
-                SandboxPaths::new(Arc::new(wsl()), vec![PathBuf::from(r"I:\proj")]),
-                "/mnt/i/proj",
-            )
-        } else {
-            (
-                SandboxPaths::new(Arc::new(IdentityPathMapper), vec![PathBuf::from("/proj")]),
-                "/proj",
-            )
-        }
-    }
-
-    #[test]
-    fn confines_paths_to_the_worktree_roots() {
-        let (paths, client_root) = sandbox_paths();
-
-        let inside = paths
-            .to_host(&format!("{client_root}/src/main.rs"))
-            .expect("a path inside the worktree maps");
-        assert_eq!(
-            paths.to_client(&inside),
-            Some(format!("{client_root}/src/main.rs"))
-        );
-        assert_eq!(
-            paths.to_client_uri(&inside),
-            Some(format!("file://{client_root}/src/main.rs"))
-        );
-        assert!(
-            paths.to_host(client_root).is_ok(),
-            "the root itself is inside"
-        );
-        assert!(paths.to_host(&format!("file://{client_root}/a.rs")).is_ok());
-
-        for outside in [
-            // 綴りの先頭が同じだけの隣のディレクトリ。
-            format!("{client_root}X/a.rs"),
-            format!("{client_root}/../other/a.rs"),
-            format!("{client_root}/src/../../other/a.rs"),
-            "/etc/passwd".to_string(),
-            "/mnt/i/other/a.rs".to_string(),
-        ] {
-            assert!(
-                paths.to_host(&outside).is_err(),
-                "{outside:?} is outside the worktree"
-            );
-        }
-
-        let outside_host = if cfg!(windows) {
-            Path::new(r"I:\other\secret.rs")
-        } else {
-            Path::new("/other/secret.rs")
-        };
-        assert_eq!(paths.to_client(outside_host), None);
-        assert_eq!(paths.to_client_uri(outside_host), None);
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn compares_drive_letters_and_wsl_shares_without_case() {
-        let paths = SandboxPaths::new(
-            Arc::new(wsl()),
-            vec![
-                PathBuf::from(r"i:\proj"),
-                PathBuf::from(r"\\wsl$\Ubuntu\home\u\repo"),
-            ],
-        );
-        assert!(paths.to_host("/mnt/i/proj/a.rs").is_ok());
-        assert!(paths.to_host("/home/u/repo/a.rs").is_ok());
-        assert!(paths.contains(Path::new(r"\\?\I:\proj\a.rs")));
-        assert!(
-            paths.to_host("/mnt/i/Proj/a.rs").is_err(),
-            "names below the root are compared exactly"
-        );
-        assert!(same_location(
-            Path::new(r"\\wsl$\ubuntu\home"),
-            Path::new(r"\\wsl.localhost\Ubuntu\home")
-        ));
     }
 }

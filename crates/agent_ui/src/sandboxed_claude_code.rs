@@ -251,8 +251,9 @@ mod session {
     use futures::channel::mpsc;
     use futures::{AsyncRead, AsyncWrite, StreamExt as _};
     use gpui::{App, Entity, Global, SharedString, Task, WeakEntity};
+    use project::agent_sandbox::is_project_key;
+    pub(super) use project::agent_sandbox::project_key;
     use project::{AgentWriteScope, AgentWriterKind, Project, SandboxedWriterGuard};
-    use sha2::{Digest as _, Sha256};
     use terminal::Terminal;
     use workspace::Workspace;
 
@@ -302,40 +303,6 @@ exec "$0" "$@""#;
 
     pub(super) fn new_session_id() -> String {
         format!("{SESSION_ID_PREFIX}{}", uuid::Uuid::new_v4().simple())
-    }
-
-    /// The project's directory name in the sessions' projects directory, from
-    /// the canonical paths of all its folders: the same folders, however they
-    /// were opened and in whatever order, always get the same configuration,
-    /// and a project with a folder more, fewer or other gets its own.
-    pub(super) fn project_key(canonical_roots: &[PathBuf]) -> String {
-        let mut roots = canonical_roots
-            .iter()
-            .map(|root| root.to_string_lossy())
-            .collect::<Vec<_>>();
-        roots.sort();
-        roots.dedup();
-        let mut hasher = Sha256::new();
-        for root in roots {
-            hasher.update(root.as_bytes());
-            // No path holds a NUL, so each list hashes one way only.
-            hasher.update([0]);
-        }
-        hasher
-            .finalize()
-            .iter()
-            .take(PROJECT_KEY_BYTES)
-            .map(|byte| format!("{byte:02x}"))
-            .collect()
-    }
-
-    const PROJECT_KEY_BYTES: usize = 8;
-
-    fn is_project_key(key: &str) -> bool {
-        key.len() == PROJECT_KEY_BYTES * 2
-            && key
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     }
 
     /// Where a session's files live inside the distro.
@@ -796,6 +763,7 @@ mod launch {
         PromptLevel, SharedString, Task, WeakEntity, Window,
     };
     use project::SandboxedWriterGuard;
+    use project::agent_sandbox::canonical_project_key_roots;
     use rand::Rng as _;
     use task::{RevealStrategy, RevealTarget, SpawnInTerminal, TaskId};
     use terminal::Terminal;
@@ -899,10 +867,14 @@ shift 3
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        let (roots, git_dirs) = {
+        let (roots, key_roots, git_dirs) = {
             let project = workspace.project().read(cx);
             (
                 super::sandbox_roots(project, cx),
+                // ADR-F49 decision 15: the folders the configuration is named
+                // after are the same everywhere, so that the CLI here and an
+                // ACP agent in its sandbox share one folder and one sign-in.
+                project::agent_sandbox::project_key_roots(project.worktree_store().read(cx), cx),
                 acp_thread::sandbox_git_dirs(project, cx),
             )
         };
@@ -916,8 +888,17 @@ shift 3
         let fs = workspace.app_state().fs.clone();
         show_progress(workspace, PREPARING_MESSAGE, cx);
         cx.spawn_in(window, async move |workspace, cx| {
-            let outcome =
-                start_session(workspace.clone(), fs, roots, git_dirs, distro, effort, cx).await;
+            let outcome = start_session(
+                workspace.clone(),
+                fs,
+                roots,
+                key_roots,
+                git_dirs,
+                distro,
+                effort,
+                cx,
+            )
+            .await;
             workspace
                 .update(cx, |workspace, cx| {
                     workspace.dismiss_toast(&progress_id(), cx);
@@ -958,6 +939,7 @@ shift 3
         workspace: WeakEntity<Workspace>,
         fs: Arc<dyn Fs>,
         roots: Vec<PathBuf>,
+        key_roots: Vec<PathBuf>,
         git_dirs: Vec<PathBuf>,
         distro: Option<String>,
         effort: Option<String>,
@@ -967,11 +949,10 @@ shift 3
             bail!("no folder to run Claude Code in");
         }
         let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
-        let mut canonical_roots = Vec::with_capacity(roots.len());
-        for root in &roots {
-            let canonical = fs.canonicalize(root).await.log_err();
-            canonical_roots.push(canonical.unwrap_or_else(|| root.clone()));
-        }
+        // The key's folders are the project's, not the session's writable
+        // ones: a single file's folder names the project without the session
+        // being allowed to write it.
+        let canonical_roots = canonical_project_key_roots(&fs, key_roots).await;
         let project_key = project_key(&canonical_roots);
         // The default distro by its name, so that it and a path naming it share
         // one slot, as they share one configuration. Without the registry's
@@ -1459,6 +1440,7 @@ shift 3
                     writable_paths.into_iter(),
                 ),
                 protected_paths,
+                readable_paths: Vec::new(),
             },
             network: sandbox::SandboxNetPolicy::Restricted {
                 allowed_domains: plan.allowed_hosts,

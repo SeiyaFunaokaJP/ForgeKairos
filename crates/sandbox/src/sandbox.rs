@@ -141,6 +141,23 @@ pub enum SandboxFsPolicy {
     Restricted {
         writable_paths: Vec<HostFilesystemLocation>,
         protected_paths: Vec<HostFilesystemLocation>,
+        /// ADR-F49 decision 14: locations the command may read although they
+        /// lie among the entries no sandboxed command may read (decision 11) —
+        /// read, never write. What an agent needs to run: its installation and
+        /// the Node.js Zed runs it with, both in Zed's data directory, which is
+        /// hidden as a whole otherwise.
+        ///
+        /// Only a location inside the `external_agents` or `node` directory of
+        /// Zed's data directory under the account's home may be named. Anything
+        /// else — a credential store or a directory holding one, Zed's
+        /// database, settings or logs, the remote server itself — refuses the
+        /// whole command ([`SandboxError::InvalidRequest`] here, a fail-closed
+        /// `readable-refused` from the remote helper) instead of being dropped.
+        /// Decided on the resolved path, so a symlink leading anywhere else is
+        /// refused too, and never from the environment. Where the read hiding
+        /// cannot be applied at all (an SSH host that refuses the mounts), there
+        /// is nothing to lift and these change nothing.
+        readable_paths: Vec<HostFilesystemLocation>,
     },
 }
 
@@ -203,6 +220,69 @@ fn network_ceiling() -> Option<Arc<dyn DestinationPolicy>> {
         .read()
         .unwrap_or_else(|error| error.into_inner())
         .clone()
+}
+
+/// Where the running application keeps its own data and configuration.
+///
+/// The sandbox has to keep a command out of the editor's own directories — its
+/// settings, its thread database, its logs — and has to recognise, inside the
+/// data directory, the agents the editor installed and the Node.js it runs them
+/// with as the one thing a sandboxed agent may be shown there (ADR-F49
+/// decisions 11 and 14). The default places are home-relative and this crate
+/// knows them, but `--user-data-dir`, `XDG_DATA_HOME` and the Flatpak variables
+/// move them, and this crate must not read the environment to decide what stays
+/// visible: a variable a project can set would be a way to un-hide a credential
+/// store. So the application registers them, exactly as it publishes the
+/// network ceiling; what the environment names is still *added* to the
+/// protected and hidden sets, which can only take access away.
+///
+/// A process-wide slot rather than a field on [`SandboxPolicy`]: these are a
+/// property of the running application, identical for every command. Nothing is
+/// registered in the remote helper (it is not the editor) or in an embedder
+/// that never calls [`register_application_directories`], and the home-relative
+/// defaults are then all the sandbox knows.
+static APPLICATION_DIRECTORIES: RwLock<Option<ApplicationDirectories>> = RwLock::new(None);
+
+#[derive(Clone)]
+struct ApplicationDirectories {
+    data: PathBuf,
+    config: PathBuf,
+}
+
+/// Register the directories this process really uses (see
+/// [`APPLICATION_DIRECTORIES`]). Called once at startup, from `main`, after
+/// `--user-data-dir` has been applied and before any sandbox is built.
+pub fn register_application_directories(data_directory: PathBuf, config_directory: PathBuf) {
+    // A poisoned lock means a previous writer panicked while holding it; the
+    // slot is a single `Option`, so there is no torn state to recover from.
+    *APPLICATION_DIRECTORIES
+        .write()
+        .unwrap_or_else(|error| error.into_inner()) = Some(ApplicationDirectories {
+        data: data_directory,
+        config: config_directory,
+    });
+}
+
+/// Both registered directories, for the protected and read-hidden sets. Empty
+/// where nothing was registered.
+pub(crate) fn registered_application_directories() -> Vec<PathBuf> {
+    APPLICATION_DIRECTORIES
+        .read()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .map(|directories| vec![directories.data.clone(), directories.config.clone()])
+        .unwrap_or_default()
+}
+
+/// The registered data directory alone: where an agent installation and Zed's
+/// Node.js are looked for (ADR-F49 decision 14).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn registered_data_directory() -> Option<PathBuf> {
+    APPLICATION_DIRECTORIES
+        .read()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .map(|directories| directories.data.clone())
 }
 
 /// ADR-F46: the editor-wide network allowlist as the WSL helper's proxy
@@ -462,7 +542,7 @@ const PROTECTS_NOT_YET_EXISTING_PATHS: bool = cfg!(target_os = "macos");
 fn add_builtin_protected_paths(
     requested: Vec<HostFilesystemLocation>,
     writable_paths: &[HostFilesystemLocation],
-) -> Result<Vec<HostFilesystemLocation>, SandboxError> {
+) -> Result<ProtectedSetup, SandboxError> {
     let Some(home) = protected_paths::home_dir_from_environment() else {
         return Err(SandboxError::Other(
             "ホームディレクトリを特定できないため、常に保護するパス (認証情報・シェル初期化\
@@ -476,25 +556,145 @@ fn add_builtin_protected_paths(
         .collect();
     let builtin_paths = protected_paths::builtin_protected_paths(&home, &worktree_roots);
     let requested_count = requested.len();
-    let merged = merge_protected_paths(requested, writable_paths, builtin_paths)?;
+    let setup = merge_protected_paths(requested, writable_paths, builtin_paths)?;
 
     log::debug!(
-        "[sandbox] protecting {} paths ({} built-ins under {})",
-        merged.len(),
-        merged.len() - requested_count,
-        home.display()
+        "[sandbox] protecting {} paths ({} built-ins under {}, {} of them not there yet)",
+        setup.paths.len(),
+        setup.paths.len() - requested_count,
+        home.display(),
+        setup.missing.len()
     );
-    Ok(merged)
+    Ok(setup)
 }
 
-/// ADR-F49 decision 11: what the command may not read on the local Bubblewrap
-/// and Seatbelt backends — [`protected_paths::builtin_read_hidden_paths`]
-/// split around the roots the command may write, canonical where an entry
-/// exists so a symlinked `~/.ssh` is hidden where it really lies, and never one
-/// that lands on a root. Nothing from the environment: a variable a project can
-/// set would be a way to un-hide a credential store.
+/// The protected set for one command: what exists and can be enforced object by
+/// object, and what does not exist yet.
+#[derive(Debug)]
+struct ProtectedSetup {
+    paths: Vec<HostFilesystemLocation>,
+    /// ADR-F49 decision 8: built-in entries that are not there yet, where they
+    /// would be created. Creating one is as good as writing it — a worktree's
+    /// `.claude/settings.local.json` runs on the host at the next agent turn —
+    /// so a backend that cannot protect a path that does not exist keeps the
+    /// command from creating it instead (see [`carve_writable_binds`]).
+    /// Empty where the backend protects them by path anyway
+    /// ([`PROTECTS_NOT_YET_EXISTING_PATHS`]).
+    missing: Vec<PathBuf>,
+}
+
+/// ADR-F49 decision 14: refuse the whole command when one of `readable_paths`
+/// may not be shown (see [`protected_paths::resolve_readable_path`]), rather
+/// than run it with that entry left out.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn local_read_hidden_paths(writable: &[&Path]) -> Result<Vec<PathBuf>, SandboxError> {
+fn check_readable_paths(readable_paths: &[HostFilesystemLocation]) -> Result<(), SandboxError> {
+    if readable_paths.is_empty() {
+        return Ok(());
+    }
+    let Some(home) = protected_paths::home_dir_from_environment() else {
+        return Err(SandboxError::Other(
+            "ホームディレクトリを特定できないため、読み取り専用で見せるパスを確認できません。\
+             サンドボックスを構築せずに中止します。"
+                .to_string(),
+        ));
+    };
+    let data_directory = protected_paths::agent_runtime_data_directory(&home);
+    check_readable_paths_for(readable_paths, &data_directory, &home)
+}
+
+/// Windows leaves the check to the helper inside WSL, where the paths are
+/// resolved and where their home is; it fails the command closed the same way
+/// (`readable-refused`).
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn check_readable_paths(_readable_paths: &[HostFilesystemLocation]) -> Result<(), SandboxError> {
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn check_readable_paths_for(
+    readable_paths: &[HostFilesystemLocation],
+    data_directory: &Path,
+    home: &Path,
+) -> Result<(), SandboxError> {
+    use protected_paths::ReadableRefusal;
+
+    for location in readable_paths {
+        let path = local_canonical_path(location);
+        let refusal = match protected_paths::resolve_readable_path(path, data_directory, home) {
+            Ok(canonical) if canonical == path => continue,
+            Ok(canonical) => format!(
+                "読み取り専用で見せるパス `{}` は、確認のあとで別の場所 (`{}`) を指すように\
+                 置き換えられています。安全のため中止します。",
+                location.untrusted_path_display(),
+                canonical.display()
+            ),
+            Err(ReadableRefusal::Unresolvable(error)) => format!(
+                "読み取り専用で見せるパス `{}` を確認できませんでした ({error})。\
+                 確認できないものは見せないため、中止します。",
+                location.untrusted_path_display()
+            ),
+            Err(ReadableRefusal::OutsideAgentRuntime {
+                canonical,
+                data_directory,
+            }) => format!(
+                "読み取り専用で見せるパス `{}` (実際の場所 `{}`) は見せられません。見せられるのは \
+                 Zed のデータフォルダー (`{}`) の中のエージェントのインストール先 \
+                 (`external_agents`) と Node.js (`node`) だけです \
+                 (認証情報や Zed のデータベース・設定・ログは見せません)。",
+                location.untrusted_path_display(),
+                canonical.display(),
+                data_directory.display()
+            ),
+            Err(ReadableRefusal::TouchesHiddenEntry { canonical, entry }) => format!(
+                "読み取り専用で見せるパス `{}` (実際の場所 `{}`) は、読み取りを禁止している `{}` と\
+                 重なるため見せられません。",
+                location.untrusted_path_display(),
+                canonical.display(),
+                entry.display()
+            ),
+        };
+        return Err(SandboxError::InvalidRequest(refusal));
+    }
+    Ok(())
+}
+
+/// Where a captured location lies, on the backends that enforce by path.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn local_canonical_path(location: &HostFilesystemLocation) -> &Path {
+    #[cfg(target_os = "linux")]
+    {
+        location.linux_canonical_path()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        location.macos_canonical_path()
+    }
+}
+
+/// ADR-F49 decisions 11 and 15 on the local Bubblewrap and Seatbelt backends.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+struct LocalReadHiding {
+    /// What the command may not read:
+    /// [`protected_paths::builtin_read_hidden_paths`] split around the roots it
+    /// may write and the locations it may read, canonical where an entry exists
+    /// so a symlinked `~/.ssh` is hidden where it really lies, and never one
+    /// that lands on either.
+    hidden: Vec<PathBuf>,
+    /// Directories covered whole around the roots written inside them (see
+    /// [`protected_paths::enclosures_to_cover`]). What lies in one is left out
+    /// of `hidden`: the cover hides it.
+    enclosures: Vec<PathBuf>,
+}
+
+/// [`LocalReadHiding`] for the account's home. Nothing from the environment
+/// decides what stays visible: a variable a project can set would be a way to
+/// un-hide a credential store.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn local_read_hiding(
+    writable: &[&Path],
+    readable: &[&Path],
+    allow_fs_write: bool,
+) -> Result<LocalReadHiding, SandboxError> {
     let Some(home) = protected_paths::home_dir_from_environment() else {
         return Err(SandboxError::Other(
             "ホームディレクトリを特定できないため、読み取りを禁止するパス (認証情報・\
@@ -502,15 +702,47 @@ fn local_read_hidden_paths(writable: &[&Path]) -> Result<Vec<PathBuf>, SandboxEr
                 .to_string(),
         ));
     };
+    Ok(local_read_hiding_for_home(
+        &home,
+        writable,
+        readable,
+        allow_fs_write,
+    ))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn local_read_hiding_for_home(
+    home: &Path,
+    writable: &[&Path],
+    readable: &[&Path],
+    allow_fs_write: bool,
+) -> LocalReadHiding {
     // Resolved, so that an entry holding a root is recognised as such and split
     // around it even when the home is reached through a symlink.
-    let home = std::fs::canonicalize(&home).unwrap_or(home);
-    let mut reachable: Vec<PathBuf> = writable.iter().map(|path| path.to_path_buf()).collect();
-    let canonical_reachable: Vec<PathBuf> = reachable
+    let home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    // Each location is used exactly as it was captured and checked — where it
+    // led when the user approved it, and (for what may be read) where the check
+    // above proved it lies. Resolving one again here would decide on what it
+    // points at *now*: one symlink planted where a location was would take the
+    // cover off whatever it leads to — `~/.ssh` — for every command that
+    // follows, and the entry would stay uncovered for good.
+    let reachable: Vec<PathBuf> = writable
         .iter()
-        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .chain(readable)
+        .map(|path| path.to_path_buf())
         .collect();
-    reachable.extend(canonical_reachable);
+    let granted: Vec<&Path> = writable.iter().chain(readable).copied().collect();
+    let enclosures = if allow_fs_write {
+        // A command that may write everywhere names no roots, so there is
+        // nothing to bind back into a cover; the backends leave the covers out
+        // as well, and the two must agree on that.
+        Vec::new()
+    } else {
+        protected_paths::enclosures_to_cover(
+            &protected_paths::enclosed_directories(&home),
+            &granted,
+        )
+    };
     // Each entry resolved before it is split, so one reached through a symlink
     // (`~/.config` kept elsewhere) is split around a root inside it rather than
     // dropped whole by the last check.
@@ -521,8 +753,120 @@ fn local_read_hidden_paths(writable: &[&Path]) -> Result<Vec<PathBuf>, SandboxEr
     let hidden = protected_paths::around_reachable(entries, &reachable)
         .into_iter()
         .map(|path| std::fs::canonicalize(&path).unwrap_or(path))
+        .filter(|path| {
+            !enclosures
+                .iter()
+                .any(|enclosure| path.starts_with(enclosure))
+        })
         .collect();
-    Ok(protected_paths::without_reachable(hidden, &reachable))
+    LocalReadHiding {
+        hidden: protected_paths::without_reachable(hidden, &reachable),
+        enclosures,
+    }
+}
+
+/// ADR-F49 decision 8: the writable binds for one command — each root as one
+/// bind, or, when a built-in protected entry that is not there yet lies inside
+/// it, the root's entries one by one.
+///
+/// Bubblewrap can only re-bind an object that exists, so a missing
+/// `.claude/settings.local.json` in a worktree without a `.claude/` would
+/// otherwise be creatable, and a host agent would run its hooks at the next
+/// turn. Carving the root is what the remote helper's Landlock grants do for
+/// the same reason (`plan_subtree`): the root directory itself stays read-only,
+/// so nothing new can be created directly in it, while everything already in it
+/// stays writable. Nothing is created on the host to achieve this — no
+/// placeholder for the missing entry.
+///
+/// Each bind carries the descriptor the in-sandbox validator compares the
+/// mounted inode against, so a child swapped for a symlink between the listing
+/// here and the mount fails the command closed rather than binding whatever it
+/// now leads to.
+#[cfg(target_os = "linux")]
+fn carve_writable_binds(
+    writable_paths: &[HostFilesystemLocation],
+    missing_protected_paths: &[PathBuf],
+) -> Result<Vec<(PathBuf, std::os::fd::OwnedFd)>, SandboxError> {
+    let mut binds = Vec::new();
+    for location in writable_paths {
+        let path = location.linux_canonical_path();
+        let carve = missing_protected_paths
+            .iter()
+            .any(|target| target.starts_with(path) && target.as_path() != path);
+        if carve {
+            carve_directory(path, missing_protected_paths, &mut binds, 0)?;
+            continue;
+        }
+        match location.linux_dup_fd() {
+            Ok(fd) => binds.push((path.to_path_buf(), fd)),
+            Err(error) => {
+                // Fail closed: a bind we can't pin a verifiable fd for is
+                // dropped rather than bound unverified.
+                log::warn!(
+                    "[sandbox] could not duplicate fd for writable bind {}: {error}",
+                    path.display()
+                );
+            }
+        }
+    }
+    Ok(binds)
+}
+
+/// One level of [`carve_writable_binds`]: bind each entry of `directory` that
+/// leads to no carve target, and carve in turn the ones that do. `depth` is 0
+/// for the root itself.
+#[cfg(target_os = "linux")]
+fn carve_directory(
+    directory: &Path,
+    carve_targets: &[PathBuf],
+    binds: &mut Vec<(PathBuf, std::os::fd::OwnedFd)>,
+    depth: usize,
+) -> Result<(), SandboxError> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        // Below the root, a directory that cannot be listed is granted nothing
+        // rather than failing the command: binding it whole is the one thing we
+        // must not do, since that is what re-exposes the entry underneath. The
+        // root itself is different — nothing sensible can be granted there.
+        Err(error) if depth > 0 => {
+            log::warn!(
+                "[sandbox] granting no write under {} (cannot list it: {error})",
+                directory.display()
+            );
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(SandboxError::Io(format!(
+                "書込を許可したパス `{}` の中を読めませんでした ({error})。\
+                 保護すべきパスを切り分けられないため、中止します。",
+                directory.display()
+            )));
+        }
+    };
+    for entry in entries.filter_map(std::result::Result::ok) {
+        let child = entry.path();
+        // A symlink is left alone: binding it would follow it and hand write
+        // access to wherever it leads. It cannot be replaced either — the
+        // directory holding it is read-only inside the sandbox.
+        if entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
+            continue;
+        }
+        if carve_targets
+            .iter()
+            .any(|target| target.starts_with(&child))
+        {
+            carve_directory(&child, carve_targets, binds, depth + 1)?;
+            continue;
+        }
+        match util::open_o_path(&child, util::FollowSymlinks::No) {
+            Ok(fd) => binds.push((child, fd)),
+            Err(error) => log::warn!(
+                "[sandbox] granting no write on {} ({error})",
+                child.display()
+            ),
+        }
+    }
+    Ok(())
 }
 
 /// Where a writable grant lies on the host when it is a directory — a worktree
@@ -551,13 +895,17 @@ fn merge_protected_paths(
     requested: Vec<HostFilesystemLocation>,
     writable_paths: &[HostFilesystemLocation],
     builtin_paths: Vec<PathBuf>,
-) -> Result<Vec<HostFilesystemLocation>, SandboxError> {
+) -> Result<ProtectedSetup, SandboxError> {
     let mut merged = requested;
+    let mut missing_paths = Vec::new();
     for path in builtin_paths {
         let missing = std::fs::symlink_metadata(&path)
             .err()
             .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound);
         if missing && !PROTECTS_NOT_YET_EXISTING_PATHS {
+            if let Some(location) = missing_entry_location(&path) {
+                push_unique_path(&mut missing_paths, location);
+            }
             continue;
         }
         let location = match HostFilesystemLocation::capture(&path) {
@@ -586,7 +934,36 @@ fn merge_protected_paths(
         }
         merged.push(location);
     }
-    Ok(merged)
+    Ok(ProtectedSetup {
+        paths: merged,
+        missing: missing_paths,
+    })
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.contains(&path) {
+        paths.push(path);
+    }
+}
+
+/// Where an entry that is not there yet would be created: its deepest existing
+/// ancestor resolved, with the rest of the name as written. `None` when not
+/// even the root of the path resolves.
+fn missing_entry_location(path: &Path) -> Option<PathBuf> {
+    let mut missing: Vec<&std::ffi::OsStr> = Vec::new();
+    let mut ancestor = path;
+    loop {
+        match std::fs::canonicalize(ancestor) {
+            Ok(mut location) => {
+                location.extend(missing.iter().rev());
+                return Some(location);
+            }
+            Err(_) => {
+                missing.push(ancestor.file_name()?);
+                ancestor = ancestor.parent()?;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -610,33 +987,56 @@ mod builtin_protected_paths_tests {
     }
 
     #[test]
-    fn existing_entries_are_protected_and_absent_ones_are_skipped() {
+    fn existing_entries_are_protected_and_absent_ones_are_kept_for_the_carve() {
         let (_home, ssh, bashrc, missing) = fake_home();
 
-        let merged =
-            merge_protected_paths(Vec::new(), &[], vec![ssh.clone(), bashrc.clone(), missing])
-                .expect("an absent built-in entry must be skipped, not fatal");
+        let setup = merge_protected_paths(
+            Vec::new(),
+            &[],
+            vec![ssh.clone(), bashrc.clone(), missing.clone()],
+        )
+        .expect("an absent built-in entry must be skipped, not fatal");
 
-        assert!(merged.contains(&capture(&ssh)), "a directory entry");
-        assert!(merged.contains(&capture(&bashrc)), "a plain-file entry");
+        assert!(setup.paths.contains(&capture(&ssh)), "a directory entry");
+        assert!(
+            setup.paths.contains(&capture(&bashrc)),
+            "a plain-file entry"
+        );
         assert_eq!(
-            merged.len(),
+            setup.paths.len(),
             if PROTECTS_NOT_YET_EXISTING_PATHS {
                 3
             } else {
                 2
             }
         );
+        // ADR-F49 decision 8: where the backend cannot protect a path that is
+        // not there, the entry is remembered so the root that would hold it is
+        // carved instead — and where it can, there is nothing left to carve.
+        let expected_missing: Vec<PathBuf> = if PROTECTS_NOT_YET_EXISTING_PATHS {
+            Vec::new()
+        } else {
+            vec![
+                std::fs::canonicalize(missing.parent().expect("a parent"))
+                    .expect("canonical home")
+                    .join(".aws"),
+            ]
+        };
+        assert_eq!(setup.missing, expected_missing);
     }
 
     #[test]
     fn an_entry_the_caller_already_named_is_not_added_twice() {
         let (_home, ssh, _bashrc, _missing) = fake_home();
 
-        let merged = merge_protected_paths(vec![capture(&ssh)], &[], vec![ssh.clone()])
+        let setup = merge_protected_paths(vec![capture(&ssh)], &[], vec![ssh.clone()])
             .expect("merging the caller's own entry must succeed");
 
-        assert_eq!(merged.len(), 1, "the same object must not be pinned twice");
+        assert_eq!(
+            setup.paths.len(),
+            1,
+            "the same object must not be pinned twice"
+        );
     }
 
     /// A write grant *inside* a built-in entry is refused rather than silently
@@ -730,6 +1130,7 @@ mod builtin_protected_paths_tests {
             fs: SandboxFsPolicy::Restricted {
                 writable_paths: vec![capture(root.path())],
                 protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
             },
             network: SandboxNetPolicy::Blocked,
         })
@@ -790,14 +1191,17 @@ impl SandboxFsPolicy {
                 SandboxFsPolicy::Restricted {
                     writable_paths: writable_a,
                     protected_paths: protected_a,
+                    readable_paths: readable_a,
                 },
                 SandboxFsPolicy::Restricted {
                     writable_paths: writable_b,
                     protected_paths: protected_b,
+                    readable_paths: readable_b,
                 },
             ) => SandboxFsPolicy::Restricted {
                 writable_paths: merge_locations(writable_a, writable_b),
                 protected_paths: merge_locations(protected_a, protected_b),
+                readable_paths: merge_locations(readable_a, readable_b),
             },
         }
     }
@@ -953,6 +1357,13 @@ struct FsSetup {
     allow_fs_write: bool,
     writable_paths: Vec<HostFilesystemLocation>,
     protected_paths: Vec<HostFilesystemLocation>,
+    /// See [`ProtectedSetup::missing`]. Only Bubblewrap has to keep a missing
+    /// entry from being created; the other backends protect it by path.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    missing_protected_paths: Vec<PathBuf>,
+    /// ADR-F49 decision 14: what the command may read among the read-hidden
+    /// entries, checked where this platform can (see [`check_readable_paths`]).
+    readable_paths: Vec<HostFilesystemLocation>,
 }
 
 /// Resolved network plan derived from [`SandboxNetPolicy`]. For the restricted
@@ -1015,29 +1426,37 @@ impl Sandbox {
     /// availability is checked separately via [`Sandbox::can_create`].
     pub fn new(policy: SandboxPolicy) -> Result<Self, SandboxError> {
         let fs = match policy.fs {
-            SandboxFsPolicy::Unrestricted { protected_paths } => FsSetup {
-                allow_fs_write: true,
-                writable_paths: Vec::new(),
+            SandboxFsPolicy::Unrestricted { protected_paths } => {
                 // Even "allow every write" does not hand out the account's ssh
                 // keys or let the command rewrite this fork's own settings —
                 // same rule the SSH-remote helper applies under
                 // `--allow-fs-write` (ADR-F18).
-                protected_paths: add_builtin_protected_paths(protected_paths, &[])?,
-            },
+                let protected = add_builtin_protected_paths(protected_paths, &[])?;
+                FsSetup {
+                    allow_fs_write: true,
+                    writable_paths: Vec::new(),
+                    protected_paths: protected.paths,
+                    missing_protected_paths: protected.missing,
+                    readable_paths: Vec::new(),
+                }
+            }
             SandboxFsPolicy::Restricted {
                 writable_paths,
                 protected_paths,
+                readable_paths,
             } => {
                 validate_writable_paths_do_not_overlap_protected_paths(
                     &writable_paths,
                     &protected_paths,
                 )?;
-                let protected_paths =
-                    add_builtin_protected_paths(protected_paths, &writable_paths)?;
+                let protected = add_builtin_protected_paths(protected_paths, &writable_paths)?;
+                check_readable_paths(&readable_paths)?;
                 FsSetup {
                     allow_fs_write: false,
                     writable_paths,
-                    protected_paths,
+                    protected_paths: protected.paths,
+                    missing_protected_paths: protected.missing,
+                    readable_paths,
                 }
             }
         };
@@ -1117,6 +1536,16 @@ impl Sandbox {
     /// Transform `command` into the invocation that runs it inside this sandbox.
     /// The returned [`WrappedCommand`] is plain data; keep `self` alive while it
     /// runs (it owns the proxy and any per-command policy file).
+    ///
+    /// **Spawn the result from a thread that outlives the command.** On Linux
+    /// the sandbox is torn down with the process that started it
+    /// (`bwrap --die-with-parent`, and `PR_SET_PDEATHSIG` in the remote
+    /// helper), and the kernel sends that death signal when the *thread* that
+    /// created the child exits, not when the whole process does. Spawning from
+    /// a thread that goes away on its own — one of `smol`'s blocking-pool
+    /// threads, which retire when they sit idle — kills a command that is still
+    /// running. Spawn on the executor's long-lived threads, or on one of your
+    /// own that lives as long as the command.
     pub async fn wrap(&mut self, command: &CommandAndArgs) -> Result<WrappedCommand, SandboxError> {
         #[cfg(target_os = "linux")]
         {
@@ -1246,6 +1675,15 @@ impl Sandbox {
             allow_fs_write: self.fs.allow_fs_write,
         };
         let protected_paths = self.protected_paths();
+        // The roots as the user approved them, for the decisions that are about
+        // grants rather than mounts: what has to stay reachable among the
+        // hidden entries, and which directories are covered around them.
+        let roots: Vec<&Path> = self
+            .fs
+            .writable_paths
+            .iter()
+            .map(HostFilesystemLocation::linux_canonical_path)
+            .collect();
         // Build the writable binds as (captured fd, bind path) pairs in lockstep.
         // The bind *path* is the verified canonical path of each location — for a
         // persisted grant, `HostFilesystemLocation::reopen` already proved this
@@ -1254,33 +1692,29 @@ impl Sandbox {
         // validator compares the mounted inode against, catching any swap between
         // that host-side check and the mount. The two lists stay in the same
         // order so each fd lines up with its path on the validator side.
-        let mut writable_owned: Vec<PathBuf> = Vec::new();
-        let mut writable_fds: Vec<std::os::fd::OwnedFd> = Vec::new();
-        for location in &self.fs.writable_paths {
-            let path = location.linux_canonical_path().to_path_buf();
-            match location.linux_dup_fd() {
-                Ok(fd) => {
-                    writable_owned.push(path);
-                    writable_fds.push(fd);
-                }
-                Err(error) => {
-                    // Fail closed: a bind we can't pin a verifiable fd for is
-                    // dropped rather than bound unverified.
-                    log::warn!(
-                        "[sandbox] could not duplicate fd for writable bind {}: {error}",
-                        path.display()
-                    );
-                }
-            }
-        }
+        let (writable_owned, writable_fds): (Vec<PathBuf>, Vec<std::os::fd::OwnedFd>) =
+            carve_writable_binds(&self.fs.writable_paths, &self.fs.missing_protected_paths)?
+                .into_iter()
+                .unzip();
         let writable: Vec<&Path> = writable_owned.iter().map(PathBuf::as_path).collect();
         let protected_owned: Vec<PathBuf> = protected_paths
             .iter()
             .map(|location| location.linux_canonical_path().to_path_buf())
             .collect();
         let protected_paths: Vec<&Path> = protected_owned.iter().map(PathBuf::as_path).collect();
-        let read_hidden_owned = local_read_hidden_paths(&writable)?;
-        let read_hidden: Vec<&Path> = read_hidden_owned.iter().map(PathBuf::as_path).collect();
+        let readable: Vec<&Path> = self
+            .fs
+            .readable_paths
+            .iter()
+            .map(HostFilesystemLocation::linux_canonical_path)
+            .collect();
+        let read_hiding = local_read_hiding(&roots, &readable, self.fs.allow_fs_write)?;
+        let read_hidden: Vec<&Path> = read_hiding.hidden.iter().map(PathBuf::as_path).collect();
+        let enclosures: Vec<&Path> = read_hiding
+            .enclosures
+            .iter()
+            .map(PathBuf::as_path)
+            .collect();
 
         // Stand up the host endpoint that sends the captured fds to the
         // in-sandbox validator, when this run has writable binds to verify. It's
@@ -1316,9 +1750,13 @@ impl Sandbox {
         let (program, args) = linux_bubblewrap::wrap_invocation(
             bridge_program,
             permissions,
-            &writable,
-            &protected_paths,
-            &read_hidden,
+            linux_bubblewrap::BwrapMounts {
+                writable_directories: &writable,
+                protected_paths: &protected_paths,
+                read_hidden_paths: &read_hidden,
+                enclosures: &enclosures,
+                readable_paths: &readable,
+            },
             command.cwd.as_deref(),
             &command.program,
             &command.args,
@@ -1375,8 +1813,19 @@ impl Sandbox {
             .iter()
             .map(HostFilesystemLocation::macos_canonical_path)
             .collect();
-        let read_hidden_owned = local_read_hidden_paths(&writable)?;
-        let read_hidden: Vec<&Path> = read_hidden_owned.iter().map(PathBuf::as_path).collect();
+        let readable: Vec<&Path> = self
+            .fs
+            .readable_paths
+            .iter()
+            .map(HostFilesystemLocation::macos_canonical_path)
+            .collect();
+        let read_hiding = local_read_hiding(&writable, &readable, self.fs.allow_fs_write)?;
+        let read_hidden: Vec<&Path> = read_hiding.hidden.iter().map(PathBuf::as_path).collect();
+        let enclosures: Vec<&Path> = read_hiding
+            .enclosures
+            .iter()
+            .map(PathBuf::as_path)
+            .collect();
 
         // The command's environment is applied by `/usr/bin/env` inside the
         // sandbox, so `sandbox-exec` itself is started with none of it.
@@ -1394,6 +1843,8 @@ impl Sandbox {
             &protected,
             &[],
             &read_hidden,
+            &enclosures,
+            &readable,
             permissions,
         )
         .map_err(map_anyhow_error)?;
@@ -1438,11 +1889,20 @@ impl Sandbox {
             .iter()
             .map(|location| location.windows_requested_path().to_path_buf())
             .collect();
+        // Checked by the helper inside WSL, where they are resolved and where
+        // the home they have to lie in is (see `check_readable_paths`).
+        let readable_paths: Vec<PathBuf> = self
+            .fs
+            .readable_paths
+            .iter()
+            .map(|location| location.windows_canonical_path().to_path_buf())
+            .collect();
         let (program, args) = windows_wsl::wrap_invocation(
             command.program.clone(),
             command.args.clone(),
             writable_paths,
             protected_paths,
+            readable_paths,
             permissions,
             command.cwd.clone(),
             command.env.clone(),
@@ -1527,9 +1987,14 @@ pub enum RemoteSandboxNetwork {
     /// (no slirp, no proxy).
     Blocked,
     /// Any host, still only through the enforcing proxy (so the `--outbound-addr`
-    /// isolation and the `AF_UNIX` seccomp guard still apply).
+    /// isolation and the `AF_UNIX` seccomp guard still apply), and only at a
+    /// public address: loopback, private, link-local and shared address space —
+    /// the host's own services and its LAN — stay out of reach. Only an
+    /// editor-wide allowlist, which just the local WSL backend sends, decides
+    /// about those instead.
     AnyHost,
-    /// Only these host patterns (exact host or leading-`*.` wildcard).
+    /// Only these host patterns (exact host or leading-`*.` wildcard). A name
+    /// that resolves into local address space is refused as well.
     Hosts(Vec<String>),
 }
 
@@ -1537,12 +2002,18 @@ pub enum RemoteSandboxNetwork {
 /// sandboxed command, up to and including the trailing `--`. The caller appends
 /// the inner `program` and its `args` after the returned vector.
 ///
+/// `readable_paths` are what the command may read among the entries hidden
+/// from it (ADR-F49 decision 14); the helper refuses the whole command unless
+/// each lies inside an agent installation or Zed's Node.js in the remote
+/// account's Zed data directory (see [`SandboxFsPolicy::Restricted`]).
+///
 /// Pure and platform-independent (the client is often Windows), so it is unit
 /// tested on every platform. Its decode half lives in the Linux-only
 /// `linux_remote_helper` module and is round-trip tested there.
 pub fn build_remote_sandbox_helper_argv(
     writable_paths: &[String],
     protected_paths: &[String],
+    readable_paths: &[String],
     network: &RemoteSandboxNetwork,
     allow_fs_write: bool,
     chdir: Option<&str>,
@@ -1550,6 +2021,7 @@ pub fn build_remote_sandbox_helper_argv(
     let mut argv = remote_sandbox_helper_policy_argv(
         writable_paths,
         protected_paths,
+        readable_paths,
         network,
         allow_fs_write,
         chdir,
@@ -1587,6 +2059,7 @@ pub(crate) struct WslHelperOptions<'a> {
 pub(crate) fn build_wsl_sandbox_helper_argv(
     writable_paths: &[String],
     protected_paths: &[String],
+    readable_paths: &[String],
     network: &RemoteSandboxNetwork,
     allow_fs_write: bool,
     chdir: Option<&str>,
@@ -1595,6 +2068,7 @@ pub(crate) fn build_wsl_sandbox_helper_argv(
     let mut argv = remote_sandbox_helper_policy_argv(
         writable_paths,
         protected_paths,
+        readable_paths,
         network,
         allow_fs_write,
         chdir,
@@ -1633,6 +2107,7 @@ pub(crate) fn build_wsl_sandbox_helper_argv(
 fn remote_sandbox_helper_policy_argv(
     writable_paths: &[String],
     protected_paths: &[String],
+    readable_paths: &[String],
     network: &RemoteSandboxNetwork,
     allow_fs_write: bool,
     chdir: Option<&str>,
@@ -1656,6 +2131,9 @@ fn remote_sandbox_helper_policy_argv(
     }
     for path in protected_paths {
         argv.extend(["--protected".to_string(), path.clone()]);
+    }
+    for path in readable_paths {
+        argv.extend(["--readable".to_string(), path.clone()]);
     }
     if let Some(chdir) = chdir {
         argv.extend(["--chdir".to_string(), chdir.to_string()]);
@@ -1827,6 +2305,7 @@ mod remote_sandbox_helper_argv_tests {
         let argv = build_remote_sandbox_helper_argv(
             &["/home/u/proj".to_string()],
             &["/home/u/proj/.git".to_string()],
+            &[],
             &RemoteSandboxNetwork::Blocked,
             false,
             Some("/home/u/proj"),
@@ -1853,6 +2332,7 @@ mod remote_sandbox_helper_argv_tests {
         let argv = build_remote_sandbox_helper_argv(
             &[],
             &[],
+            &[],
             &RemoteSandboxNetwork::Hosts(vec!["example.com".into(), "*.rust-lang.org".into()]),
             false,
             None,
@@ -1876,6 +2356,7 @@ mod remote_sandbox_helper_argv_tests {
     fn any_network_and_allow_fs_write() {
         let argv = build_remote_sandbox_helper_argv(
             &["/w".to_string()],
+            &[],
             &[],
             &RemoteSandboxNetwork::AnyHost,
             true,
@@ -2264,6 +2745,7 @@ mod windows_tests {
             build_wsl_sandbox_helper_argv(
                 &[],
                 &[],
+                &[],
                 &RemoteSandboxNetwork::AnyHost,
                 false,
                 None,
@@ -2312,6 +2794,7 @@ mod windows_tests {
     fn wsl_helper_argv_carries_the_interactive_session() {
         let argv = |session: &InteractiveSession| {
             build_wsl_sandbox_helper_argv(
+                &[],
                 &[],
                 &[],
                 &RemoteSandboxNetwork::Blocked,
@@ -2365,6 +2848,7 @@ mod windows_tests {
             fs: SandboxFsPolicy::Restricted {
                 writable_paths: Vec::new(),
                 protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
             },
             network: SandboxNetPolicy::Restricted {
                 allowed_domains: vec!["github.com".to_string()],
@@ -2553,6 +3037,7 @@ mod tests {
                 fs: SandboxFsPolicy::Restricted {
                     writable_paths: vec![writable_path],
                     protected_paths: vec![protected_git.clone()],
+                    readable_paths: Vec::new(),
                 },
                 network: SandboxNetPolicy::Blocked,
             });
@@ -2585,6 +3070,7 @@ mod tests {
             fs: SandboxFsPolicy::Restricted {
                 writable_paths: vec![writable_displayed_inside_git],
                 protected_paths: vec![protected_git],
+                readable_paths: Vec::new(),
             },
             network: SandboxNetPolicy::Blocked,
         })
@@ -2606,16 +3092,19 @@ mod tests {
         let a = SandboxFsPolicy::Restricted {
             writable_paths: vec![location(&dir_a), location(&dir_b)],
             protected_paths: vec![location(&dir_c)],
+            readable_paths: Vec::new(),
         };
         let b = SandboxFsPolicy::Restricted {
             writable_paths: vec![location(&dir_b), location(&dir_c)],
             protected_paths: vec![location(&dir_c), location(&dir_d)],
+            readable_paths: Vec::new(),
         };
         assert_eq!(
             a.clone().merge(b),
             SandboxFsPolicy::Restricted {
                 writable_paths: vec![location(&dir_a), location(&dir_b), location(&dir_c)],
                 protected_paths: vec![location(&dir_c), location(&dir_d)],
+                readable_paths: Vec::new(),
             }
         );
         assert_eq!(
@@ -2633,10 +3122,174 @@ mod tests {
             .merge(SandboxFsPolicy::Restricted {
                 writable_paths: vec![location(&dir_a)],
                 protected_paths: vec![location(&dir_c)],
+                readable_paths: Vec::new(),
             }),
             SandboxFsPolicy::Unrestricted {
                 protected_paths: vec![location(&dir_d), location(&dir_c)],
             }
+        );
+    }
+
+    /// ADR-F49 decision 14: what may be read unions like the writable paths,
+    /// and an unrestricted policy, which has no such list, dominates.
+    #[test]
+    fn fs_merge_unions_readable_paths() {
+        let dir_a = tempfile::tempdir().expect("create temp dir a");
+        let dir_b = tempfile::tempdir().expect("create temp dir b");
+        let readable = |dirs: &[&tempfile::TempDir]| SandboxFsPolicy::Restricted {
+            writable_paths: Vec::new(),
+            protected_paths: Vec::new(),
+            readable_paths: dirs
+                .iter()
+                .map(|dir| HostFilesystemLocation::capture(dir.path()).expect("capture temp dir"))
+                .collect(),
+        };
+        assert_eq!(
+            readable(&[&dir_a]).merge(readable(&[&dir_b, &dir_a])),
+            readable(&[&dir_a, &dir_b])
+        );
+        assert_eq!(
+            readable(&[&dir_a]).merge(SandboxFsPolicy::Unrestricted {
+                protected_paths: Vec::new(),
+            }),
+            SandboxFsPolicy::Unrestricted {
+                protected_paths: Vec::new(),
+            }
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    fn data_directory(home: &Path) -> PathBuf {
+        home.join(".local").join("share").join("zed-jp-enhance")
+    }
+
+    #[cfg(target_os = "macos")]
+    fn data_directory(home: &Path) -> PathBuf {
+        home.join("Library")
+            .join("Application Support")
+            .join("Zed-JP-Enhance")
+    }
+
+    /// ADR-F49 decision 14: a readable location outside an agent installation
+    /// or Zed's Node.js refuses the whole policy, saying why in Japanese; one
+    /// inside them is accepted.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn readable_paths_outside_the_agent_runtime_refuse_the_policy() {
+        let temporary = tempfile::tempdir().expect("create a home");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let data = data_directory(&home);
+        let node = data.join("node");
+        let database = data.join("db");
+        std::fs::create_dir_all(&node).expect("create node");
+        std::fs::create_dir_all(&database).expect("create db");
+        let capture = |path: &Path| HostFilesystemLocation::capture(path).expect("capture");
+
+        check_readable_paths_for(&[capture(&node)], &data, &home).expect("Node.js may be read");
+        for refused in [&database, &data, &home] {
+            match check_readable_paths_for(&[capture(&node), capture(refused)], &data, &home) {
+                Err(SandboxError::InvalidRequest(message)) => {
+                    assert!(message.contains("読み取り専用で見せる"), "{message}")
+                }
+                other => panic!("{} must be refused: {other:?}", refused.display()),
+            }
+        }
+
+        // The account's real data directory holds no temporary directory.
+        let outside = tempfile::tempdir().expect("create a directory");
+        let result = Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Restricted {
+                writable_paths: Vec::new(),
+                protected_paths: Vec::new(),
+                readable_paths: vec![capture(outside.path())],
+            },
+            network: SandboxNetPolicy::Blocked,
+        });
+        assert!(matches!(result, Err(SandboxError::InvalidRequest(_))));
+    }
+
+    /// ADR-F49 decisions 14 and 15 for the local backends: the agents'
+    /// configuration directory and this fork's data directory are covered
+    /// around what the command was granted in them, nothing on the way to what
+    /// may be read is hidden, and the credentials are hidden as ever.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn local_read_hiding_covers_what_holds_the_grants_and_hides_the_rest() {
+        let temporary = tempfile::tempdir().expect("create a home");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let data = data_directory(&home);
+        let agents = data.join("external_agents").join("registry").join("npx");
+        let agent = agents.join("claude");
+        let configurations = home.join(".zed-jp-enhance-claude");
+        let projects = configurations.join("projects");
+        let own = projects.join("own").join("config");
+        let work = home.join("work");
+        for directory in [
+            &agent,
+            &agents.join("other"),
+            &data.join("db"),
+            &own,
+            &projects.join("other").join("config"),
+            &work,
+            &home.join(".ssh"),
+        ] {
+            std::fs::create_dir_all(directory).expect("create");
+        }
+
+        let hiding = local_read_hiding_for_home(&home, &[&work, &own], &[&agent], false);
+        assert_eq!(
+            hiding.enclosures,
+            vec![configurations.clone(), data.clone()]
+        );
+        assert!(
+            hiding.hidden.contains(&home.join(".ssh")),
+            "a credential store is hidden: {:?}",
+            hiding.hidden
+        );
+        assert!(
+            !hiding.hidden.iter().any(|path| agent.starts_with(path)),
+            "nothing on the way to what may be read is hidden: {:?}",
+            hiding.hidden
+        );
+        for covered in [&data, &configurations] {
+            assert!(
+                !hiding.hidden.iter().any(|path| path.starts_with(covered)),
+                "the cover hides what is in {}: {:?}",
+                covered.display(),
+                hiding.hidden
+            );
+        }
+
+        // A command that may write everywhere names no roots, so there is
+        // nothing to bind back into a cover and the backends make none.
+        let unrestricted = local_read_hiding_for_home(&home, &[], &[], true);
+        assert!(unrestricted.enclosures.is_empty());
+        assert!(unrestricted.hidden.contains(&data));
+    }
+
+    /// ADR-F49 decision 11: what a command may reach is used exactly as it was
+    /// captured and checked. A location swapped for a symlink into a credential
+    /// store after the fact takes no cover off — the entry stays hidden where
+    /// it really is.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn a_location_that_now_leads_into_a_hidden_entry_takes_no_cover_off() {
+        let temporary = tempfile::tempdir().expect("create a home");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let keys = home.join(".ssh");
+        let work = home.join("work");
+        std::fs::create_dir_all(&keys).expect("create .ssh");
+        std::fs::create_dir(&work).expect("create a worktree");
+        // As a captured location is used: its path text. What lives there now
+        // is a link into the credential store.
+        std::fs::remove_dir(&work).expect("remove the worktree");
+        std::os::unix::fs::symlink(&keys, &work).expect("symlink");
+
+        let hiding = local_read_hiding_for_home(&home, &[&work], &[], false);
+        assert!(
+            hiding.hidden.contains(&keys),
+            "the credential store stays hidden: {:?}",
+            hiding.hidden
         );
     }
 
@@ -2700,6 +3353,7 @@ mod tests {
             fs: SandboxFsPolicy::Restricted {
                 writable_paths: Vec::new(),
                 protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
             },
             network: SandboxNetPolicy::Unrestricted,
         })

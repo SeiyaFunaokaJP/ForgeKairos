@@ -2061,6 +2061,50 @@ async fn sandbox_session_does_not_follow_links_inside_the_worktree(cx: &mut Test
     assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
 }
 
+/// 外部エージェントの ACP の fs の要求の前に使うリンクの確認。ワークツリーの中にとどまる
+/// リンクは通し、外へ出るリンクとたどれないリンクは断る。
+#[gpui::test]
+async fn resolves_paths_only_through_links_that_stay_inside(cx: &mut TestAppContext) {
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/test"),
+        json!({ "main.rs": "", "sub": { "inner.rs": "" } }),
+    )
+    .await;
+    fs.insert_tree(path!("/outside"), json!({ "secret.rs": "" }))
+        .await;
+    fs.insert_symlink(path!("/test/alias"), PathBuf::from(path!("/test/sub")))
+        .await;
+    fs.insert_symlink(path!("/test/escape"), PathBuf::from(path!("/outside")))
+        .await;
+    fs.insert_symlink(
+        path!("/test/dangling.rs"),
+        PathBuf::from(path!("/nowhere/missing.rs")),
+    )
+    .await;
+    let fs: Arc<dyn project::Fs> = fs;
+    let paths = util::path_mapping::SandboxPaths::new(
+        sandbox_mapper(),
+        vec![PathBuf::from(path!("/test"))],
+    );
+    let executor = cx.executor();
+    for (path, stays_inside) in [
+        (path!("/test/main.rs"), true),
+        (path!("/test/sub/inner.rs"), true),
+        (path!("/test/alias/inner.rs"), true),
+        (path!("/test/alias"), true),
+        (path!("/test/new/file.rs"), true),
+        (path!("/test/escape/secret.rs"), false),
+        (path!("/test/escape"), false),
+        (path!("/test/dangling.rs"), false),
+        (path!("/outside/secret.rs"), false),
+        (path!("/test/../outside/secret.rs"), false),
+    ] {
+        let resolved = crate::resolve_inside_roots(&paths, Path::new(path), &fs, &executor).await;
+        assert_eq!(resolved.is_ok(), stays_inside, "{path}: {resolved:?}");
+    }
+}
+
 /// ワークツリーの中にあっても外を指すリンクのファイルは、選択の本文もパスも送らない。
 #[gpui::test]
 async fn sandbox_session_hides_the_selection_in_a_file_that_links_outside(cx: &mut TestAppContext) {

@@ -28,6 +28,10 @@ use util::{ResultExt as _, debug_panic};
 
 use crate::ProjectEnvironment;
 use crate::agent_registry_store::{AgentRegistryStore, RegistryAgent, RegistryTargetConfig};
+use crate::agent_sandbox::{
+    AgentSandboxCommand, AgentSandboxHosts, AgentSandboxState, SandboxedAgentProfile,
+    readable_paths_in_data_dir,
+};
 
 use crate::worktree_store::WorktreeStore;
 
@@ -38,6 +42,10 @@ pub struct AgentServerCommand {
     #[serde(default)]
     pub args: Vec<String>,
     pub env: Option<HashMap<String, String>>,
+    /// ADR-F49 第 2a 段: the command's part in the sandbox. `None` for one
+    /// that says nothing about it (a remote host's too old to, a test's).
+    #[serde(skip)]
+    pub sandbox: Option<AgentSandboxCommand>,
 }
 
 impl std::fmt::Debug for AgentServerCommand {
@@ -61,6 +69,7 @@ impl std::fmt::Debug for AgentServerCommand {
             .field("path", &self.path)
             .field("args", &self.args)
             .field("env", &filtered_env)
+            .field("sandbox", &self.sandbox)
             .finish()
     }
 }
@@ -365,6 +374,7 @@ impl AgentServerStore {
                         ExternalAgentEntry::new(
                             Box::new(LocalCustomAgent {
                                 command: command.clone(),
+                                agent_id: Arc::from(name.as_str()),
                                 project_environment: project_environment.clone(),
                             }) as Box<dyn ExternalAgentServer>,
                             ExternalAgentSource::Custom,
@@ -400,6 +410,7 @@ impl AgentServerStore {
                                         http_client: http_client.clone(),
                                         node_runtime: node_runtime.clone(),
                                         project_environment: project_environment.clone(),
+                                        registry_id: Arc::from(name.as_str()),
                                         installation_dir: paths::external_agents_dir()
                                             .join("registry")
                                             .join(sanitize_path_component(name)),
@@ -705,6 +716,35 @@ impl AgentServerStore {
             http_client::apply_child_process_proxy_env(&mut env);
         }
 
+        let (sandbox, sandbox_error) = match command.sandbox {
+            Some(sandbox) if !envelope.payload.project_roots.is_empty() => {
+                match Self::place_agent_sandbox_on_this_host(
+                    &this,
+                    sandbox,
+                    &envelope.payload.project_roots,
+                    &mut cx,
+                )
+                .await
+                {
+                    Ok(sandbox) => (sandbox, None),
+                    // The client then refuses to start the agent and offers
+                    // to start it outside the sandbox instead (ADR-F49
+                    // decision 19); failing the whole request would take that
+                    // choice away.
+                    Err(error) => {
+                        log::warn!("could not place an agent's sandbox on this host: {error:#}");
+                        (
+                            None,
+                            Some(format!(
+                                "接続先でエージェントの設定フォルダーを用意できませんでした: {error:#}"
+                            )),
+                        )
+                    }
+                }
+            }
+            _ => (None, None),
+        };
+
         Ok(proto::AgentServerCommand {
             path: command.path.to_string_lossy().into_owned(),
             args: command.args,
@@ -714,7 +754,62 @@ impl AgentServerStore {
                 .root_dir
                 .unwrap_or_else(|| paths::home_dir().to_string_lossy().to_string()),
             login: None,
+            sandbox,
+            sandbox_error,
         })
+    }
+
+    /// ADR-F49: places a remote agent in the project that asked for it, on
+    /// this host — the one it runs on — and describes it for the client,
+    /// which starts it in this host's sandbox helper. Nothing is placed for a
+    /// fake file system (tests), whose paths are not this host's.
+    async fn place_agent_sandbox_on_this_host(
+        this: &Entity<Self>,
+        sandbox: AgentSandboxCommand,
+        project_roots: &[String],
+        cx: &mut AsyncApp,
+    ) -> Result<Option<proto::AgentServerSandbox>> {
+        // Only a Linux host's helper takes an agent, and only a Unix one can
+        // make the folder safely.
+        if !cfg!(unix) {
+            return Ok(None);
+        }
+        let fs = this.read_with(cx, |this, _| match &this.state {
+            AgentServerStoreState::Local { fs, .. } => Some(fs.clone()),
+            AgentServerStoreState::Remote { .. } | AgentServerStoreState::Collab => None,
+        });
+        let Some(fs) = fs.filter(|fs| !fs.is_fake()) else {
+            return Ok(None);
+        };
+        let canonical_roots = crate::agent_sandbox::canonical_project_key_roots(
+            &fs,
+            project_roots.iter().map(PathBuf::from).collect(),
+        )
+        .await;
+        let placed = cx
+            .background_spawn(async move {
+                let home = crate::agent_sandbox::sandboxed_agents_home();
+                sandbox.resolve_for_project(&home, &canonical_roots)
+            })
+            .await?;
+        let AgentSandboxState::Resolved { config_dir, hosts } = placed.state else {
+            bail!("the agent's sandbox was not placed in the project");
+        };
+        let (hosts, hosts_from_editor_allowlist) = match hosts {
+            AgentSandboxHosts::Listed(hosts) => (hosts, false),
+            AgentSandboxHosts::EditorAllowlist => (Vec::new(), true),
+        };
+        Ok(Some(proto::AgentServerSandbox {
+            config_dir: config_dir.to_string_lossy().into_owned(),
+            env: placed.env.into_iter().collect(),
+            readable_paths: placed
+                .readable_paths
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+            hosts,
+            hosts_from_editor_allowlist,
+        }))
     }
 
     async fn handle_external_agents_updated(
@@ -776,6 +871,7 @@ impl AgentServerStore {
                         upstream_client: upstream_client.clone(),
                         worktree_store: worktree_store.clone(),
                         name: agent_id.clone(),
+                        source,
                         new_version_available_tx: new_version_available_txs.remove(&agent_id),
                         loading_status_tx: loading_status_txs.remove(&agent_id),
                     };
@@ -828,11 +924,54 @@ impl AgentServerStore {
     }
 }
 
+/// ADR-F49 MEDIUM-5: what a host it connects to says it placed for the agent,
+/// taken only as far as this client's own policy for the agent goes — its
+/// folder is the one the profile names, the environment that points the agent
+/// at it is this side's, and the hosts are within the profile's. Everything
+/// else the host resolved (the agent's own settings and distribution) is its
+/// to decide: it is the host the agent runs on.
+fn accept_remote_agent_sandbox(
+    profile: &SandboxedAgentProfile,
+    sandbox: proto::AgentServerSandbox,
+    extra_env: &HashMap<String, String>,
+) -> Result<AgentSandboxCommand> {
+    let config_dir = crate::agent_sandbox::accept_remote_config_dir(&sandbox.config_dir, profile)?;
+    let hosts = crate::agent_sandbox::accept_remote_hosts(
+        profile,
+        if sandbox.hosts_from_editor_allowlist {
+            AgentSandboxHosts::EditorAllowlist
+        } else {
+            AgentSandboxHosts::Listed(sandbox.hosts)
+        },
+    );
+    let mut env: HashMap<String, String> = sandbox.env.into_iter().collect();
+    // What the host resolved — the agent's settings and its distribution —
+    // wins over what this side adds.
+    for (name, value) in extra_env {
+        env.entry(name.clone()).or_insert_with(|| value.clone());
+    }
+    // The names that confine the agent are this side's, spelled for the
+    // host's file system.
+    env.extend(profile.posix_environment(&sandbox.config_dir));
+    Ok(AgentSandboxCommand {
+        env,
+        readable_paths: sandbox
+            .readable_paths
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+        state: AgentSandboxState::Resolved { config_dir, hosts },
+    })
+}
+
 struct RemoteExternalAgentServer {
     project_id: u64,
     upstream_client: Entity<RemoteClient>,
     worktree_store: Entity<WorktreeStore>,
     name: AgentId,
+    /// ADR-F49: where the agent came from, which with its id decides its
+    /// profile — on this side, never on the host's word.
+    source: ExternalAgentSource,
     new_version_available_tx: Option<watch::Sender<Option<String>>>,
     loading_status_tx: Option<watch::Sender<Option<String>>>,
 }
@@ -864,13 +1003,17 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
         let name = self.name.to_string();
         let upstream_client = self.upstream_client.downgrade();
         let worktree_store = self.worktree_store.clone();
+        // ADR-F49 MEDIUM-5: the agent's policy is this side's, from its id and
+        // where it came from, whatever the host says.
+        let profile = SandboxedAgentProfile::for_agent(
+            self.name.as_ref(),
+            matches!(self.source, ExternalAgentSource::Registry),
+        );
         cx.spawn(async move |cx| {
-            let root_dir = worktree_store.read_with(cx, |worktree_store, cx| {
-                crate::Project::default_visible_worktree_paths(worktree_store, cx)
-                    .into_iter()
-                    .next()
-                    .map(|path| path.display().to_string())
+            let project_roots = worktree_store.read_with(cx, |worktree_store, cx| {
+                crate::agent_sandbox::project_key_roots(worktree_store, cx)
             });
+            let root_dir = project_roots.first().map(|path| path.display().to_string());
 
             let mut response = upstream_client
                 .update(cx, |upstream_client, _| {
@@ -880,9 +1023,39 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
                             project_id,
                             name,
                             root_dir,
+                            project_roots: project_roots
+                                .iter()
+                                .map(|path| path.to_string_lossy().into_owned())
+                                .collect(),
                         })
                 })?
                 .await?;
+            let mut sandbox_error = response.sandbox_error.take();
+            let sandbox = response.sandbox.take().and_then(|sandbox| {
+                match accept_remote_agent_sandbox(&profile, sandbox, &extra_env) {
+                    Ok(sandbox) => Some(sandbox),
+                    // Refusing here rather than starting the agent under a
+                    // policy this side did not decide (ADR-F49 MEDIUM-5); the
+                    // client then offers to start it outside the sandbox.
+                    Err(error) => {
+                        log::warn!("the host's agent sandbox was refused: {error:#}");
+                        sandbox_error.get_or_insert_with(|| {
+                            format!(
+                                "接続先が用意したエージェントのサンドボックスは、このエディターの方針と\
+                                 合いません: {error:#}"
+                            )
+                        });
+                        None
+                    }
+                }
+            });
+            let sandbox = sandbox.or_else(|| {
+                sandbox_error.map(|reason| AgentSandboxCommand {
+                    env: HashMap::default(),
+                    readable_paths: Vec::new(),
+                    state: AgentSandboxState::Unavailable { reason },
+                })
+            });
             response.args.extend(extra_args);
             response.env.extend(extra_env);
 
@@ -890,6 +1063,7 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
                 path: response.path.into(),
                 args: response.args,
                 env: Some(response.env.into_iter().collect()),
+                sandbox,
             })
         })
     }
@@ -1129,6 +1303,7 @@ struct LocalRegistryArchiveAgent {
     http_client: Arc<dyn HttpClient>,
     node_runtime: NodeRuntime,
     project_environment: Entity<ProjectEnvironment>,
+    registry_id: Arc<str>,
     installation_dir: PathBuf,
     version: SharedString,
     targets: HashMap<String, RegistryTargetConfig>,
@@ -1168,6 +1343,7 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
         let http_client = self.http_client.clone();
         let node_runtime = self.node_runtime.clone();
         let project_environment = self.project_environment.downgrade();
+        let registry_id = self.registry_id.clone();
         let installation_dir = self.installation_dir.clone();
         let targets = self.targets.clone();
         let settings_env = self.env.clone();
@@ -1216,9 +1392,12 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
                 )
             })?;
 
-            env.extend(target_config.env.clone());
-            env.extend(extra_env);
-            env.extend(settings_env);
+            // ADR-F49: the sandbox takes the agent's own environment only, not
+            // the host's it is layered over here.
+            let mut agent_env = target_config.env.clone();
+            agent_env.extend(extra_env);
+            agent_env.extend(settings_env);
+            env.extend(agent_env.clone());
 
             let archive_url = &target_config.archive;
             let version_dir = versioned_archive_cache_dir(
@@ -1326,7 +1505,17 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
             let mut args = target_config.args.clone();
             args.extend(extra_args);
 
+            let mut runs_from = vec![dir.clone()];
+            let managed_node = paths::data_dir().join("node");
+            if cmd_path.starts_with(&managed_node) {
+                runs_from.push(managed_node);
+            }
             let command = AgentServerCommand {
+                sandbox: Some(AgentSandboxCommand::new(
+                    SandboxedAgentProfile::for_agent(&registry_id, true),
+                    agent_env,
+                    readable_paths_in_data_dir(paths::data_dir(), &runs_from),
+                )),
                 path: cmd_path,
                 args,
                 env: Some(env),
@@ -1415,6 +1604,16 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
             .await?;
 
             let node_binary = node_runtime.binary_path().await?;
+            // ADR-F49: in the sandbox the agent reaches the network through the
+            // sandbox's own proxy, so the environment it takes there has none
+            // of the child-process proxy's, and none of the host's.
+            let mut agent_env: HashMap<String, String> =
+                node_runtime::npm_command_env(&node_binary, node_runtime::NpmProxyRouting::Direct)
+                    .into_iter()
+                    .collect();
+            agent_env.extend(distribution_env.clone());
+            agent_env.extend(extra_env.clone());
+            agent_env.extend(settings_env.clone());
             // The agent process itself runs inside the egress gate (ADR-F14), so
             // its environment carries the child-process proxy along with PATH.
             env.extend(node_runtime::npm_command_env(
@@ -1429,7 +1628,17 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
             command_args.extend(args);
             command_args.extend(extra_args);
 
+            let mut runs_from = vec![install_dir.clone()];
+            let managed_node = paths::data_dir().join("node");
+            if node_binary.starts_with(&managed_node) {
+                runs_from.push(managed_node);
+            }
             let command = AgentServerCommand {
+                sandbox: Some(AgentSandboxCommand::new(
+                    SandboxedAgentProfile::for_agent(&registry_id, true),
+                    agent_env,
+                    readable_paths_in_data_dir(paths::data_dir(), &runs_from),
+                )),
                 path: node_binary,
                 args: command_args,
                 env: Some(env),
@@ -1484,6 +1693,7 @@ fn bounded_npm_package_spec(package_spec: &str) -> (&str, String) {
 
 struct LocalCustomAgent {
     project_environment: Entity<ProjectEnvironment>,
+    agent_id: Arc<str>,
     command: AgentServerCommand,
 }
 
@@ -1496,6 +1706,7 @@ impl ExternalAgentServer for LocalCustomAgent {
     ) -> Task<Result<AgentServerCommand>> {
         let mut command = self.command.clone();
         let project_environment = self.project_environment.downgrade();
+        let profile = SandboxedAgentProfile::for_agent(&self.agent_id, false);
         cx.spawn(async move |cx| {
             let mut env = project_environment
                 .update(cx, |project_environment, cx| {
@@ -1503,10 +1714,13 @@ impl ExternalAgentServer for LocalCustomAgent {
                 })?
                 .await
                 .unwrap_or_default();
-            env.extend(command.env.unwrap_or_default());
-            env.extend(extra_env);
+            // ADR-F49: the sandbox takes the agent's own environment only.
+            let mut agent_env = command.env.take().unwrap_or_default();
+            agent_env.extend(extra_env);
+            env.extend(agent_env.clone());
             command.env = Some(env);
             command.args.extend(extra_args);
+            command.sandbox = Some(AgentSandboxCommand::new(profile, agent_env, Vec::new()));
             Ok(command)
         })
     }
@@ -1652,6 +1866,7 @@ impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
                     path: PathBuf::from(shellexpand::tilde(&path.to_string_lossy()).as_ref()),
                     args,
                     env: Some(env),
+                    sandbox: None,
                 },
                 default_mode,
                 default_config_options,
@@ -1760,6 +1975,7 @@ mod tests {
                 http_client,
                 node_runtime: NodeRuntime::unavailable(),
                 project_environment,
+                registry_id: Arc::from("test-agent"),
                 installation_dir,
                 version: "1.0.0".into(),
                 targets,

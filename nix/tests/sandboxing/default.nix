@@ -213,13 +213,32 @@ in
         succeeds = true;
       }
 
-      # Write inside the granted subtree: allowed.
+      # Write inside the granted subtree: allowed. Inside an existing
+      # directory of it, not directly at its root — see the root-carve case
+      # below (ADR-F49 decision 8). The helper creates the target's parent on
+      # the host before the policy is built, so `sub/` is an existing entry of
+      # the root and is granted with it.
       {
         fs = "restricted";
         writablePaths = [ "/sandbox-test/writable" ];
         networkAccess = "blocked";
-        write = "/sandbox-test/writable/ok.txt";
+        write = "/sandbox-test/writable/sub/ok.txt";
         succeeds = true;
+      }
+
+      # ADR-F49 decision 8: the agent configurations a host agent acts on
+      # (`.claude/`, `.mcp.json`, ...) must not be creatable in a worktree that
+      # does not have them yet — a `.claude/settings.local.json` written there
+      # runs hooks outside the sandbox at the next turn. Bubblewrap can only
+      # re-bind what exists, so the root is carved instead: everything already
+      # in it stays writable and nothing new can be created directly in it.
+      {
+        name = "a worktree root takes no new entry";
+        fs = "restricted";
+        writablePaths = [ "/sandbox-test/writable" ];
+        networkAccess = "blocked";
+        write = "/sandbox-test/writable/new-at-the-root.txt";
+        succeeds = false;
       }
 
       # Write outside the granted subtree: denied.
@@ -244,12 +263,13 @@ in
         succeeds = false;
       }
 
-      # ...and the not-yet-existing path itself is created and writable.
+      # ...and the not-yet-existing path itself is created and writable
+      # (inside it, since the root of a grant is carved).
       {
         fs = "restricted";
         writablePaths = [ "/sandbox-test/not-yet-created/deep" ];
         networkAccess = "blocked";
-        write = "/sandbox-test/not-yet-created/deep/ok.txt";
+        write = "/sandbox-test/not-yet-created/deep/sub/ok.txt";
         succeeds = true;
       }
 
@@ -270,7 +290,7 @@ in
         seedFiles = [ "/sandbox-test/single-file-worktree/settings.json" ];
         protectedPaths = [ "/sandbox-test/single-file-worktree/settings.json/.git" ];
         networkAccess = "blocked";
-        write = "/sandbox-test/single-file-worktree/ok.txt";
+        write = "/sandbox-test/single-file-worktree/sub/ok.txt";
         succeeds = true;
       }
 

@@ -233,6 +233,26 @@ pub enum WorktreeStoreEvent {
 
 impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
 
+/// ADR-F49: what an agent is told when the host that holds the files never
+/// confirmed where a path it asked to read leads.
+const UNCONFIRMED_VERIFIED_READ: &str = "The remote server did not confirm that this path leads to \
+    the file it names, so nothing was read. A remote server from an older Zed cannot do this; \
+    reconnect to update it.";
+
+const UNVERIFIABLE_COLLAB_READ: &str = "Zed cannot check where this path leads in a project shared \
+    by someone else, so it did not read it.";
+
+/// ADR-F49: the remote server's answer to a verified read. No answer in time,
+/// or an answer that nothing handles such a request — a server from before
+/// them — both mean the path was not checked, so nothing is read.
+pub async fn await_verified_read(
+    response: impl Future<Output = Result<proto::Ack>>,
+    timeout: impl Future<Output = ()>,
+) -> Result<()> {
+    crate::buffer_store::await_verified(response, timeout, UNCONFIRMED_VERIFIED_READ).await?;
+    Ok(())
+}
+
 impl WorktreeStore {
     pub fn init(client: &AnyProtoClient) {
         client.add_entity_request_handler(Self::handle_create_project_entry);
@@ -243,6 +263,7 @@ impl WorktreeStore {
         client.add_entity_request_handler(Self::handle_expand_project_entry);
         client.add_entity_request_handler(Self::handle_expand_all_for_project_entry);
         client.add_entity_request_handler(Self::handle_rescan_project_worktree);
+        client.add_entity_request_handler(Self::handle_verify_agent_read);
     }
 
     pub fn init_remote(client: &AnyProtoClient) {
@@ -1475,6 +1496,64 @@ impl WorktreeStore {
                 .context("worktree not found")
         })?;
         Worktree::handle_rescan(worktree, cx).await
+    }
+
+    /// ADR-F49 decision 11: checks that `path` in `worktree` can be read
+    /// through no link at all before Zed reads it for a sandboxed agent, on the
+    /// host that holds the files — this machine, or the remote server, which
+    /// does the same check there ([`Self::handle_verify_agent_read`]).
+    pub fn verify_agent_read(
+        &self,
+        worktree: &Entity<Worktree>,
+        path: Arc<RelPath>,
+        cx: &App,
+    ) -> Task<Result<()>> {
+        let root = worktree.read(cx).abs_path().to_path_buf();
+        match &self.state {
+            WorktreeStoreState::Local { fs } => {
+                let fs = fs.clone();
+                cx.background_spawn(async move { fs.verify_read(&root, path.as_std_path()).await })
+            }
+            WorktreeStoreState::Remote {
+                upstream_client,
+                upstream_project_id,
+                ..
+            } => {
+                if upstream_client.is_via_collab() {
+                    // Only the host can look at the files, and this is not a
+                    // question it is asked over the collab protocol.
+                    return Task::ready(Err(anyhow!(UNVERIFIABLE_COLLAB_READ)));
+                }
+                let response = upstream_client.request(proto::VerifyAgentRead {
+                    project_id: *upstream_project_id,
+                    worktree_id: worktree.read(cx).id().to_proto(),
+                    path: path.as_unix_str().to_owned(),
+                });
+                let timeout = cx
+                    .background_executor()
+                    .timer(crate::buffer_store::VERIFIED_REQUEST_TIMEOUT);
+                cx.background_spawn(await_verified_read(response, timeout))
+            }
+        }
+    }
+
+    /// ADR-F49: the same check on the host that holds the files, for a client
+    /// whose worktree is there.
+    pub async fn handle_verify_agent_read(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::VerifyAgentRead>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::Ack> {
+        let path = RelPath::from_unix_str(&envelope.payload.path)?;
+        let verify = this.update(&mut cx, |this, cx| {
+            let worktree_id = WorktreeId::from_proto(envelope.payload.worktree_id);
+            let worktree = this
+                .worktree_for_id(worktree_id, cx)
+                .context("worktree not found")?;
+            anyhow::Ok(this.verify_agent_read(&worktree, path.into(), cx))
+        })?;
+        verify.await?;
+        Ok(proto::Ack {})
     }
 
     pub async fn handle_allocate_worktree_id(

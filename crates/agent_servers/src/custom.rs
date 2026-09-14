@@ -246,6 +246,7 @@ impl AgentServer for CustomAgentServer {
             }
         }
         let store = delegate.store.downgrade();
+        let run_outside_sandbox = delegate.run_outside_sandbox;
         cx.spawn(async move |cx| {
             if is_registry_agent && agent_id.as_ref() == GEMINI_ID {
                 if let Some(api_key) = cx.update(api_key_for_gemini_cli).await.ok() {
@@ -273,6 +274,7 @@ impl AgentServer for CustomAgentServer {
                 store.clone(),
                 default_mode,
                 default_config_options,
+                run_outside_sandbox,
                 cx,
             )
             .await?;

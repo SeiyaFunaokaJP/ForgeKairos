@@ -934,6 +934,7 @@ mod imp {
                         .filter_map(|path| HostFilesystemLocation::capture(path).ok())
                         .collect(),
                     protected_paths,
+                    readable_paths: Vec::new(),
                 }
             },
             network: match permissions.network {

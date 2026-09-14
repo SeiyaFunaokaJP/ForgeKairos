@@ -23,7 +23,7 @@
 
 use crate::allowlist::Allowlist;
 use std::collections::HashSet;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs as _};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs as _};
 
 /// Why pinning a host failed.
 #[derive(Debug, thiserror::Error)]
@@ -135,6 +135,25 @@ impl PinnedHost {
         })
     }
 
+    /// This host without every address `forbidden` refuses, for a caller that
+    /// decides about addresses rather than names (see
+    /// [`crate::DestinationPolicy::forbids_address`]). Applied to the pinned
+    /// answer, so the addresses that survive are the ones connected to. With
+    /// nothing left there is no safe endpoint, which is the same outcome as a
+    /// host that resolved only to forbidden addresses.
+    pub fn without_addresses(
+        mut self,
+        forbidden: impl Fn(IpAddr) -> bool,
+    ) -> Result<Self, PinnedHostError> {
+        self.addrs.retain(|addr| !forbidden(addr.ip()));
+        if self.addrs.is_empty() {
+            return Err(PinnedHostError::AllAddressesForbidden {
+                host: self.untrusted_host_for_display,
+            });
+        }
+        Ok(self)
+    }
+
     /// The vetted addresses to connect to. Connecting to one of these — rather
     /// than re-resolving the hostname — is what keeps the check and the use
     /// pinned to the same answer.
@@ -169,8 +188,8 @@ pub fn is_forbidden_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_forbidden_ipv4(v4),
         IpAddr::V6(v6) => {
-            if let Some(v4) = v6.to_ipv4_mapped() {
-                return is_forbidden_ipv4(v4);
+            if embedded_ipv4(v6).is_some_and(is_forbidden_ipv4) {
+                return true;
             }
             v6.is_loopback()
                 || v6.is_unspecified()
@@ -180,6 +199,28 @@ pub fn is_forbidden_ip(ip: IpAddr) -> bool {
                 || (v6.segments()[0] & 0xffc0) == 0xfe80
                 || (v6.segments()[0] & 0xfe00) == 0xfc00
         }
+    }
+}
+
+/// The IPv4 address an IPv6 one carries, in the forms that actually reach that
+/// IPv4 address: IPv4-mapped (`::ffff:0:0/96`, what a dual-stack socket
+/// connects with), IPv4-compatible (`::/96`), the well-known NAT64 prefix
+/// (`64:ff9b::/96`) and 6to4 (`2002::/16`). Without this an address whose IPv4
+/// half is loopback, private or a metadata endpoint passes the filter as an
+/// ordinary IPv6 address.
+///
+/// Exported for the SSH-remote sandbox's own-host check, which folds the same
+/// embedded forms before comparing an address against this host's interfaces so
+/// a `CONNECT` cannot reach the host's own public IPv4 service dressed as IPv6.
+pub fn embedded_ipv4(ip: Ipv6Addr) -> Option<Ipv4Addr> {
+    let segments = ip.segments();
+    let address = |high: u16, low: u16| Ipv4Addr::from((u32::from(high) << 16) | u32::from(low));
+    match segments {
+        [0, 0, 0, 0, 0, 0xffff, high, low]
+        | [0, 0, 0, 0, 0, 0, high, low]
+        | [0x64, 0xff9b, 0, 0, 0, 0, high, low]
+        | [0x2002, high, low, ..] => Some(address(high, low)),
+        _ => None,
     }
 }
 
@@ -221,12 +262,18 @@ mod tests {
     #[test]
     fn forbidden_ip_covers_v6_ranges() {
         for ip in [
-            "::1",              // loopback
-            "::",               // unspecified
-            "fe80::1",          // link-local
-            "fc00::1",          // unique-local
-            "::ffff:127.0.0.1", // IPv4-mapped loopback
-            "::ffff:10.0.0.1",  // IPv4-mapped private
+            "::1",                // loopback
+            "::",                 // unspecified
+            "fe80::1",            // link-local
+            "fc00::1",            // unique-local
+            "::ffff:127.0.0.1",   // IPv4-mapped loopback
+            "::ffff:10.0.0.1",    // IPv4-mapped private
+            "::127.0.0.1",        // IPv4-compatible loopback
+            "::192.168.1.1",      // IPv4-compatible private
+            "64:ff9b::7f00:1",    // NAT64 of 127.0.0.1
+            "64:ff9b::a9fe:a9fe", // NAT64 of the metadata endpoint
+            "2002:c0a8:101::1",   // 6to4 of 192.168.1.1
+            "2002:7f00:1::",      // 6to4 of 127.0.0.1
         ] {
             assert!(
                 is_forbidden_ip(ip.parse().unwrap()),
@@ -241,6 +288,9 @@ mod tests {
             "93.184.215.14",
             "8.8.8.8",
             "2606:2800:220:1:248:1893:25c8:1946",
+            // The same embedding forms carrying a public IPv4 address.
+            "64:ff9b::808:808",
+            "2002:808:808::1",
         ] {
             assert!(
                 !is_forbidden_ip(ip.parse().unwrap()),
@@ -274,6 +324,28 @@ mod tests {
             PinnedHost::resolve_allowing_any("127.0.0.1", 80).expect("allow-any keeps loopback");
         let addrs: HashSet<SocketAddr> = pinned.socket_addrs().collect();
         assert_eq!(addrs, HashSet::from(["127.0.0.1:80".parse().unwrap()]));
+    }
+
+    /// A policy that decides about addresses drops them from the pinned answer,
+    /// and refuses the destination when it leaves nothing to connect to.
+    #[test]
+    fn without_addresses_drops_what_a_policy_refuses() {
+        let pinned = PinnedHost::resolve("93.184.215.14", 443).expect("public IP should pin");
+        let error = pinned
+            .without_addresses(|address| {
+                address == "93.184.215.14".parse::<IpAddr>().expect("an address")
+            })
+            .expect_err("nothing is left to connect to");
+        assert!(matches!(
+            error,
+            PinnedHostError::AllAddressesForbidden { .. }
+        ));
+
+        let kept = PinnedHost::resolve("93.184.215.14", 443)
+            .expect("public IP should pin")
+            .without_addresses(|_| false)
+            .expect("nothing is refused");
+        assert_eq!(kept.socket_addrs().count(), 1);
     }
 
     #[test]

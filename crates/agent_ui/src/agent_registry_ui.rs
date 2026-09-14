@@ -139,7 +139,18 @@ pub(crate) fn registry_install_requirement(
 /// Adds `hosts` to `network_allowlist.json` off the main thread, using the
 /// comment-preserving rewrite both this page and the settings allowlist page
 /// share (`egress_policy::add_allowed_hosts`).
+///
+/// A consent is for named hosts only: a pattern (`*.example.com`, `*`) opens
+/// the whole IDE's allowlist to more than what was asked about, so it is
+/// refused here rather than written. The user can still add one themselves on
+/// the allowlist page, where the pattern is what they typed.
 pub(crate) fn add_consented_hosts(hosts: Vec<String>, cx: &App) -> Task<anyhow::Result<()>> {
+    if let Some(pattern) = hosts.iter().find(|host| host.contains('*')) {
+        let pattern = pattern.clone();
+        return Task::ready(Err(anyhow::anyhow!(
+            "ワイルドカードを含むホスト ({pattern}) は、同意からは許可リストに追加できません。"
+        )));
+    }
     let fs = <dyn Fs>::global(cx);
     let path = paths::network_allowlist_file().clone();
     cx.background_spawn(async move {
@@ -1335,5 +1346,31 @@ mod tests {
             // no consent step, the download stays gated either way.
             assert!(registry_install_requirement(&AgentId::new("not-in-registry"), cx).is_none());
         });
+    }
+
+    /// ADR-F49 MEDIUM-5: a consent names hosts. A pattern would open the
+    /// IDE-wide allowlist to more than the user was asked about, so it is
+    /// refused rather than written.
+    #[gpui::test]
+    async fn a_wildcard_is_never_added_by_a_consent(cx: &mut gpui::TestAppContext) {
+        let refused = cx
+            .update(|cx| {
+                add_consented_hosts(
+                    vec!["api.anthropic.com".to_string(), "*.example.com".to_string()],
+                    cx,
+                )
+            })
+            .await
+            .expect_err("a pattern is refused");
+        assert!(
+            format!("{refused:#}").contains("*.example.com"),
+            "{refused:#}"
+        );
+
+        let refused = cx
+            .update(|cx| add_consented_hosts(vec!["*".to_string()], cx))
+            .await
+            .expect_err("so is everything");
+        assert!(format!("{refused:#}").contains('*'), "{refused:#}");
     }
 }

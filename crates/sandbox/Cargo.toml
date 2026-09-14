@@ -73,7 +73,9 @@ serde_json = { workspace = true, optional = true }
 libc.workspace = true
 # Safe wrappers for the SCM_RIGHTS fd-passing and `fstat` the bind validator
 # needs, so that code doesn't hand-roll `msghdr`/`CMSG_*`/`mem::zeroed` unsafe.
-nix = { workspace = true, features = ["fs", "socket", "uio"] }
+# `net` is for `getifaddrs`: the egress proxy refuses the addresses the host it
+# runs on holds, which no list of host patterns can name (ADR-F49).
+nix = { workspace = true, features = ["fs", "net", "socket", "uio"] }
 # Builds the in-sandbox seccomp-BPF filter that blocks the untrusted command from
 # creating `AF_UNIX` (and other non-IP) sockets, `io_uring`, `ptrace`, etc. — the
 # syscall-level half of preventing session-IPC-socket sandbox escapes.

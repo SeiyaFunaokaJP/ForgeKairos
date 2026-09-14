@@ -93,6 +93,20 @@ impl fmt::Debug for ProxyConfig {
 /// implementation *narrows* the base decision instead of replacing it.
 pub trait DestinationPolicy: Send + Sync + 'static {
     fn evaluate(&self, host: &str, port: u16) -> PolicyDecision;
+
+    /// Whether one address the destination resolved to is out of reach whatever
+    /// [`Self::evaluate`] decided about the destination itself.
+    ///
+    /// Asked for every address the proxy is about to connect to, after
+    /// resolution and after [`Self::evaluate`], so that a name resolving to a
+    /// refused address — the answer changed between the two (DNS rebinding), or
+    /// a name that always pointed there — is refused as well. A policy whose
+    /// decision needs no more than the destination's name leaves this alone; the
+    /// sandbox's own policy uses it to keep a command off the addresses the host
+    /// it runs on holds, which no list of host patterns can name.
+    fn forbids_address(&self, _address: std::net::IpAddr) -> bool {
+        false
+    }
 }
 
 /// What a [`DestinationPolicy`] decided about one destination.

@@ -622,11 +622,16 @@ const RESOLVE_NATIVE_FS: &str = "native-fs";
 /// deterministic); instead it guarantees that dropping the future kills any
 /// in-flight `wsl.exe` child. Parameters are owned so the returned future is
 /// `Send + 'static`.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "each part of the policy is mapped into WSL on its own"
+)]
 pub async fn wrap_invocation<S: BuildHasher>(
     program: String,
     args: Vec<String>,
     writable_paths: Vec<WritablePath>,
     protected_paths: Vec<PathBuf>,
+    readable_paths: Vec<PathBuf>,
     permissions: SandboxPermissions,
     cwd: Option<PathBuf>,
     env: HashMap<String, String, S>,
@@ -683,13 +688,24 @@ pub async fn wrap_invocation<S: BuildHasher>(
             })
         })
         .collect::<Result<Vec<_>>>()?;
+    // What the command may read among the hidden entries has to be there: the
+    // helper refuses the whole command over one it cannot check.
+    let readable_mappings = readable_paths
+        .iter()
+        .map(|path| {
+            path_to_wsl(path).with_context(|| {
+                format!("failed to map readable path `{}` into WSL", path.display())
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     let distro = select_distro(
         cwd_mapping.as_ref(),
         writable_requested_mappings
             .iter()
             .chain(writable_mappings.iter())
-            .chain(protected_mappings.iter()),
+            .chain(protected_mappings.iter())
+            .chain(readable_mappings.iter()),
     )?;
     ensure_distro_registered(distro.as_deref())?;
     let wsl_exe = wsl_exe_path();
@@ -706,7 +722,10 @@ pub async fn wrap_invocation<S: BuildHasher>(
     // skips those, and would itself protect the distro account's home.
     let has_cwd = cwd_mapping.is_some();
     let writable_path_count = writable_mappings.len();
-    let mut mappings = Vec::with_capacity(writable_mappings.len() + protected_mappings.len() + 1);
+    let readable_path_count = readable_mappings.len();
+    let mut mappings = Vec::with_capacity(
+        writable_mappings.len() + readable_mappings.len() + protected_mappings.len() + 1,
+    );
     if let Some(mapping) = cwd_mapping {
         mappings.push((mapping, "terminal cwd", true));
     }
@@ -716,18 +735,24 @@ pub async fn wrap_invocation<S: BuildHasher>(
             .map(|mapping| (mapping, "writable path", true)),
     );
     mappings.extend(
+        readable_mappings
+            .into_iter()
+            .map(|mapping| (mapping, "readable path", true)),
+    );
+    mappings.extend(
         protected_mappings
             .into_iter()
             .map(|mapping| (mapping, "protected path", false)),
     );
     let resolved = resolve_paths(&wsl_exe, distro.as_deref(), &mappings).await?;
-    let (cwd, writable_paths, protected_paths) =
-        split_resolved_paths(has_cwd, writable_path_count, resolved)?;
+    let (cwd, writable_paths, readable_paths, protected_paths) =
+        split_resolved_paths(has_cwd, writable_path_count, readable_path_count, resolved)?;
 
     let environment = forwarded_environment(&env);
     let helper_argv = crate::build_wsl_sandbox_helper_argv(
         &writable_paths,
         &protected_paths,
+        &readable_paths,
         &permissions.network,
         permissions.allow_fs_write,
         cwd.as_deref(),
@@ -833,8 +858,9 @@ fn parse_canonical_grant_output(stdout: &str) -> Result<ResolvedGrant> {
 fn split_resolved_paths(
     has_cwd: bool,
     writable_path_count: usize,
+    readable_path_count: usize,
     resolved: Vec<Option<String>>,
-) -> Result<(Option<String>, Vec<String>, Vec<String>)> {
+) -> Result<(Option<String>, Vec<String>, Vec<String>, Vec<String>)> {
     let mut resolved = resolved.into_iter();
     let cwd = if has_cwd {
         Some(
@@ -857,7 +883,22 @@ fn split_resolved_paths(
         );
     }
 
-    Ok((cwd, writable_paths, resolved.flatten().collect()))
+    let mut readable_paths = Vec::with_capacity(readable_path_count);
+    for _ in 0..readable_path_count {
+        readable_paths.push(
+            resolved
+                .next()
+                .context("bug: missing resolved readable path")?
+                .context("bug: required readable path resolved as missing")?,
+        );
+    }
+
+    Ok((
+        cwd,
+        writable_paths,
+        readable_paths,
+        resolved.flatten().collect(),
+    ))
 }
 
 fn select_distro<'a>(
@@ -2741,6 +2782,7 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             SandboxPermissions {
                 network: RemoteSandboxNetwork::Blocked,
                 network_ceiling: None,
@@ -2764,6 +2806,7 @@ mod tests {
         let helper_argv = crate::build_wsl_sandbox_helper_argv(
             &["/mnt/c/proj".to_string()],
             &["/mnt/c/proj/.git".to_string()],
+            &[],
             &RemoteSandboxNetwork::Hosts(vec!["github.com".to_string()]),
             false,
             Some("/mnt/c/proj"),
@@ -3179,12 +3222,14 @@ mod tests {
 
     #[test]
     fn split_resolved_paths_keeps_existing_protected_paths_and_skips_missing_ones() {
-        let (cwd, writable_paths, protected_paths) = split_resolved_paths(
+        let (cwd, writable_paths, readable_paths, protected_paths) = split_resolved_paths(
             true,
+            1,
             1,
             vec![
                 Some("/home/me/project".to_string()),
                 Some("/home/me/project".to_string()),
+                Some("/home/me/.local/share/zed-jp-enhance/node".to_string()),
                 None,
                 Some("/mnt/c/external/.git".to_string()),
             ],
@@ -3193,12 +3238,29 @@ mod tests {
 
         assert_eq!(cwd.as_deref(), Some("/home/me/project"));
         assert_eq!(writable_paths, vec!["/home/me/project".to_string()]);
+        assert_eq!(
+            readable_paths,
+            vec!["/home/me/.local/share/zed-jp-enhance/node".to_string()]
+        );
         assert_eq!(protected_paths, vec!["/mnt/c/external/.git".to_string()]);
+    }
+
+    /// What the command may read has to be there: the helper decides whether
+    /// it may be shown from where it really lies.
+    #[test]
+    fn split_resolved_paths_rejects_missing_readable_paths() {
+        let error = split_resolved_paths(false, 0, 1, vec![None]).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("required readable path resolved as missing"),
+            "unexpected error: {error:#}"
+        );
     }
 
     #[test]
     fn split_resolved_paths_rejects_missing_required_writable_paths() {
-        let error = split_resolved_paths(false, 1, vec![None]).unwrap_err();
+        let error = split_resolved_paths(false, 1, 0, vec![None]).unwrap_err();
         assert!(
             error
                 .to_string()

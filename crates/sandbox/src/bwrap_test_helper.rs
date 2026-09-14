@@ -213,6 +213,7 @@ mod imp {
                 SandboxFsPolicy::Restricted {
                     writable_paths,
                     protected_paths,
+                    readable_paths: Vec::new(),
                 }
             }
         };

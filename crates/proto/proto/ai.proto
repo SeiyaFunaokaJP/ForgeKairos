@@ -7,6 +7,9 @@ message GetAgentServerCommand {
   uint64 project_id = 1;
   string name = 2;
   optional string root_dir = 3;
+  // ADR-F49: every folder of the project, which names the agent's
+  // configuration folder on the host.
+  repeated string project_roots = 4;
 }
 
 message GetContextServerCommand {
@@ -28,6 +31,23 @@ message AgentServerCommand {
   string root_dir = 4;
 
   optional SpawnInTerminal login = 5;
+  // ADR-F49: set by a host that placed the agent in the project's sandbox.
+  // A host too old to leave it unset.
+  optional AgentServerSandbox sandbox = 6;
+  // ADR-F49: why a host that tried to place the agent could not.
+  optional string sandbox_error = 7;
+}
+
+message AgentServerSandbox {
+  // The agent's configuration folder on the host, which it may write.
+  string config_dir = 1;
+  // The agent's own environment and its profile's, none of the host's.
+  map<string, string> env = 2;
+  // What the agent runs from inside the host's Zed data directory.
+  repeated string readable_paths = 3;
+  // The hosts the agent talks to, unless it takes the IDE-wide allowlist.
+  repeated string hosts = 4;
+  bool hosts_from_editor_allowlist = 5;
 }
 
 message ExternalAgentsUpdated {

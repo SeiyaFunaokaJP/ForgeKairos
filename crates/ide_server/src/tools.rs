@@ -30,7 +30,9 @@ use smol::lock::Semaphore;
 use workspace::Workspace;
 
 use crate::diff_view::{self, ProposedDiff};
-use crate::path_mapping::{MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile, SandboxPaths};
+use util::path_mapping::SandboxPaths;
+
+use crate::path_mapping::{self, MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile};
 use crate::transport::{HOST_MAX_MESSAGE_BYTES, Outbox};
 use crate::{IdeServerDiff, IdeServerDiffOutcome};
 
@@ -742,7 +744,7 @@ struct SandboxRequest<'a> {
 impl<'a> SandboxRequest<'a> {
     async fn new(paths: &'a SandboxPaths, project: &Entity<Project>, cx: &mut AsyncApp) -> Self {
         let fs = project.read_with(cx, |project, _| project.fs().clone());
-        let real_roots = paths.real_roots(&fs).await;
+        let real_roots = path_mapping::real_roots(paths, &fs).await;
         Self {
             paths,
             fs,
@@ -758,9 +760,7 @@ impl<'a> SandboxRequest<'a> {
             .paths
             .to_host(text)
             .map_err(|error| client_error(error.to_string()))?;
-        match self
-            .paths
-            .has_link_below_root(&host_path, &self.fs, &self.executor)
+        match path_mapping::has_link_below_root(self.paths, &host_path, &self.fs, &self.executor)
             .await
         {
             Ok(false) => {}
@@ -834,9 +834,7 @@ impl<'a> SandboxRequest<'a> {
             "the file is outside the workspace"
         );
         anyhow::ensure!(
-            !self
-                .paths
-                .has_link_below_root(&abs_path, &self.fs, &self.executor)
+            !path_mapping::has_link_below_root(self.paths, &abs_path, &self.fs, &self.executor)
                 .await?,
             "the file goes through a link"
         );

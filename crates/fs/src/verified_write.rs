@@ -66,7 +66,8 @@ pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
 /// The user's own configuration of the agents that run on the host.
 pub const AGENT_CONFIGURATION_HOME_RELATIVE: &[&str] = &[".claude", ".gemini", ".codex"];
 
-/// Why [`crate::Fs::write_verified`] wrote nothing.
+/// Why [`crate::Fs::write_verified`] wrote nothing, or
+/// [`crate::Fs::verify_read`] refused a path.
 #[derive(Debug, thiserror::Error)]
 pub enum VerifiedWriteError {
     #[error("`{}` is not a plain path inside the folder", .0.display())]
@@ -287,6 +288,20 @@ pub(crate) fn plain_names(relative_path: &Path) -> Result<Vec<&OsStr>, VerifiedW
         .collect()
 }
 
+/// See [`crate::Fs::verify_read`].
+///
+/// The refusals of [`refusal_for`] are not applied here: they are about what an
+/// agent may *change*, and a sandboxed agent reads Git's own files (`.git/HEAD`
+/// and the like) inside its sandbox as well. What this refuses is only a path
+/// that leads somewhere else than where it is spelled.
+pub(crate) fn verify_read_blocking(
+    root: &Path,
+    relative_path: &Path,
+) -> Result<(), VerifiedWriteError> {
+    plain_names(relative_path)?;
+    platform::open_beneath(root, relative_path)
+}
+
 /// See [`crate::Fs::write_verified`].
 pub(crate) fn write_verified_blocking(
     root: &Path,
@@ -385,6 +400,64 @@ mod platform {
         Ok(())
     }
 
+    pub(super) fn open_beneath(
+        root: &Path,
+        relative_path: &Path,
+    ) -> Result<(), VerifiedWriteError> {
+        let names = plain_names(relative_path)?;
+        // The root is the folder the user opened, so a link there is theirs.
+        let root_folder = open_folder(root, true)?;
+        let Some((file_name, folder_names)) = names.split_last() else {
+            return check_root_file(root);
+        };
+
+        let mut expected = final_path(&root_folder)?;
+        let mut open_folders = vec![root_folder];
+        for name in folder_names {
+            expected.push(name);
+            let folder = open_folder(&expected, false)?;
+            let attributes = file_information(&folder)?.dwFileAttributes;
+            if attributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
+                return Err(VerifiedWriteError::Redirected(expected));
+            }
+            if attributes & FILE_ATTRIBUTE_DIRECTORY.0 == 0 {
+                return Err(VerifiedWriteError::NotAFolder(expected));
+            }
+            let actual = final_path(&folder)?;
+            if !same_path_ignoring_case(&actual, &expected) {
+                return Err(VerifiedWriteError::Elsewhere { expected, actual });
+            }
+            open_folders.push(folder);
+        }
+
+        expected.push(file_name);
+        let file = open_folder(&expected, false)?;
+        let information = file_information(&file)?;
+        if information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
+            return Err(VerifiedWriteError::Redirected(expected));
+        }
+        if information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0 {
+            return Err(VerifiedWriteError::NotAFile(expected));
+        }
+        let actual = final_path(&file)?;
+        if !same_path_ignoring_case(&actual, &expected) {
+            return Err(VerifiedWriteError::Elsewhere { expected, actual });
+        }
+        drop(open_folders);
+        Ok(())
+    }
+
+    /// A file the user opened on its own: a link to it is theirs to follow.
+    fn check_root_file(root: &Path) -> Result<(), VerifiedWriteError> {
+        let file = open_folder(root, true)?;
+        if file_information(&file)?.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0 {
+            return Err(VerifiedWriteError::NotAFile(root.to_path_buf()));
+        }
+        Ok(())
+    }
+
+    /// Opens a folder, or — with `FILE_FLAG_BACKUP_SEMANTICS` — any other kind
+    /// of entry, for reading its attributes and its real path only.
     fn open_folder(path: &Path, follow_link: bool) -> io::Result<File> {
         let mut flags = FILE_FLAG_BACKUP_SEMANTICS.0;
         if !follow_link {
@@ -582,6 +655,75 @@ mod platform {
         }
         rustix::fs::ftruncate(&descriptor, 0).map_err(io::Error::from)?;
         std::fs::File::from(descriptor).write_all(content)?;
+        Ok(())
+    }
+
+    pub(super) fn open_beneath(
+        root: &Path,
+        relative_path: &Path,
+    ) -> Result<(), VerifiedWriteError> {
+        let names = plain_names(relative_path)?;
+        // The root is the folder the user opened, so a link there is theirs.
+        let root_folder =
+            rustix::fs::open(root, folder_flags(), Mode::empty()).map_err(io::Error::from)?;
+        let Some((file_name, folder_names)) = names.split_last() else {
+            return check_root_file(root);
+        };
+
+        let mut expected = descriptor_path(&root_folder)?;
+        let mut folder = root_folder;
+        for name in folder_names {
+            expected.push(name);
+            folder =
+                open_folder_at(&folder, name).map_err(|errno| redirected_or(errno, &expected))?;
+        }
+
+        expected.push(file_name);
+        // `O_NONBLOCK` so that a named pipe left in the folder opens instead of
+        // waiting for a writer; the check below refuses it either way.
+        let descriptor = rustix::fs::openat(
+            &folder,
+            *file_name,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|errno| redirected_or(errno, &expected))?;
+        check_readable(&descriptor, &expected)
+    }
+
+    /// A file the user opened on its own: a link to it is theirs to follow.
+    fn check_root_file(root: &Path) -> Result<(), VerifiedWriteError> {
+        let descriptor = rustix::fs::open(
+            root,
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(io::Error::from)?;
+        let stat = rustix::fs::fstat(&descriptor).map_err(io::Error::from)?;
+        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
+            return Err(VerifiedWriteError::NotAFile(root.to_path_buf()));
+        }
+        Ok(())
+    }
+
+    /// The link count is deliberately not checked here, unlike in a verified
+    /// write: a hard link inside the folder is a second name for a file the
+    /// sandboxed agent can open itself, so refusing it would only turn away
+    /// ordinary reads (a package manager links its store into the project),
+    /// while a symbolic link into what the sandbox hides — which it cannot
+    /// follow itself — is refused above.
+    fn check_readable(descriptor: &OwnedFd, expected: &Path) -> Result<(), VerifiedWriteError> {
+        let stat = rustix::fs::fstat(descriptor).map_err(io::Error::from)?;
+        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
+            return Err(VerifiedWriteError::NotAFile(expected.to_path_buf()));
+        }
+        let actual = descriptor_path(descriptor)?;
+        if !same_path(&actual, expected) {
+            return Err(VerifiedWriteError::Elsewhere {
+                expected: expected.to_path_buf(),
+                actual,
+            });
+        }
         Ok(())
     }
 

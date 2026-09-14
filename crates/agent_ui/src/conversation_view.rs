@@ -11,7 +11,7 @@ use agent::{NativeAgentServer, NoModelConfiguredError, ThreadStore};
 use agent_client_protocol::schema::v1 as acp;
 #[cfg(test)]
 use agent_servers::AgentServerDelegate;
-use agent_servers::{AgentServer, GEMINI_TERMINAL_AUTH_METHOD_ID};
+use agent_servers::{AcpConnection, AgentServer, GEMINI_TERMINAL_AUTH_METHOD_ID};
 use agent_settings::{AgentProfileId, AgentSettings};
 use anyhow::{Result, anyhow};
 #[cfg(feature = "audio")]
@@ -29,9 +29,9 @@ use futures::FutureExt as _;
 use gpui::{
     Action, Animation, AnimationExt, AnyWindowHandle, App, ClickEvent, ClipboardItem, CursorStyle,
     ElementId, Empty, Entity, EventEmitter, FocusHandle, Focusable, Hsla, ListOffset, ListState,
-    ObjectFit, PlatformDisplay, ScrollHandle, SharedString, StyledText, Subscription, Task,
-    TextRun, TextStyle, WeakEntity, Window, WindowHandle, div, ease_in_out, img, linear_color_stop,
-    linear_gradient, list, pulsating_between,
+    ObjectFit, PlatformDisplay, PromptButton, PromptLevel, ScrollHandle, SharedString, StyledText,
+    Subscription, Task, TextRun, TextStyle, WeakEntity, Window, WindowHandle, div, ease_in_out,
+    img, linear_color_stop, linear_gradient, list, pulsating_between,
 };
 use language::{Buffer, Language, Rope};
 use language_model::LanguageModelCompletionError;
@@ -81,6 +81,7 @@ use crate::ModeSelector;
 use crate::ModelSelectorPopover;
 use crate::agent_connection_store::{
     AgentConnectedState, AgentConnectionEntryEvent, AgentConnectionStore,
+    OutsideSandboxConnectionId,
 };
 use crate::agent_diff::AgentDiff;
 use crate::completion_provider::{AgentContextSelection, AvailableSkill};
@@ -106,6 +107,41 @@ const STOPWATCH_THRESHOLD: Duration = Duration::from_secs(30);
 const TOKEN_THRESHOLD: u64 = 250;
 
 pub(crate) const DRAFT_PROMPT_PERSIST_DEBOUNCE: Duration = Duration::from_millis(250);
+
+const START_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で起動 (今回のみ)";
+const OUTSIDE_SANDBOX_RUNNING_LABEL: &str =
+    "このスレッドのエージェントはサンドボックスの外で実行中です";
+const OUTSIDE_SANDBOX_EXPLANATION: &str = "サンドボックスの外で起動すると、このエージェントは \
+     Zed 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前に毎回確認します。";
+const AGENT_HOSTS_MESSAGE: &str = "エージェントの通信に許可リストへの追加が必要です";
+const ADD_AGENT_HOSTS_LABEL: &str = "許可リストに追加して起動";
+const DECLINE_AGENT_HOSTS_LABEL: &str = "追加せず中止";
+/// How long a start waits, at most, for the allowlist's watcher to take in
+/// the hosts just added.
+const ALLOWLIST_RELOAD_POLLS: usize = 30;
+const ALLOWLIST_RELOAD_INTERVAL: Duration = Duration::from_millis(100);
+
+/// ADR-F49: the consent's detail, as for the sandboxed Claude Code CLI: the
+/// hosts go into the IDE-wide allowlist, where the built-in agent's commands
+/// can reach them too.
+fn agent_hosts_detail(agent: &AgentId, hosts: &[SharedString], missing: &[SharedString]) -> String {
+    let hosts = hosts
+        .iter()
+        .map(|host| {
+            let state = if missing.contains(host) {
+                "未登録"
+            } else {
+                "登録済み"
+            };
+            format!("{host} ({state})")
+        })
+        .collect::<Vec<_>>()
+        .join("、");
+    format!(
+        "サンドボックスの {agent} は次のホストにだけ接続します。これらのホストは IDE 全体の\
+         許可リストに追加し、内蔵エージェントのコマンドにも適用されます。\n許可が必要なホスト: {hosts}"
+    )
+}
 
 pub(crate) mod elicitation;
 mod message_queue;
@@ -602,6 +638,10 @@ pub struct ConversationView {
     agent: Rc<dyn AgentServer>,
     connection_store: Entity<AgentConnectionStore>,
     connection_key: Agent,
+    /// ADR-F49 decision 19: this view's own connection, started outside the
+    /// agent's sandbox after the user confirmed it here. Other views and new
+    /// threads keep connecting in the sandbox.
+    outside_sandbox: Option<OutsideSandboxConnectionId>,
     agent_server_store: Entity<AgentServerStore>,
     workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
@@ -733,6 +773,30 @@ impl ConversationView {
                 conversation.set_work_dirs(work_dirs.clone(), cx);
             });
         }
+    }
+}
+
+/// ADR-F49 decision 16: holds the sandbox a sign-in was wrapped in for as
+/// long as its terminal runs, and releases it (and the network proxy that
+/// sandbox owns) when the sign-in is over — whether it succeeded, failed, or
+/// was dropped with the view.
+struct LoginSandboxGuard {
+    connection: Rc<AcpConnection>,
+    task_id: String,
+}
+
+impl LoginSandboxGuard {
+    fn new(connection: Rc<AcpConnection>, task_id: String) -> Self {
+        Self {
+            connection,
+            task_id,
+        }
+    }
+}
+
+impl Drop for LoginSandboxGuard {
+    fn drop(&mut self) {
+        self.connection.release_terminal_auth_sandbox(&self.task_id);
     }
 }
 
@@ -876,6 +940,7 @@ impl ConversationView {
             agent: agent.clone(),
             connection_store: connection_store.clone(),
             connection_key: connection_key.clone(),
+            outside_sandbox: None,
             agent_server_store,
             workspace,
             project: project.clone(),
@@ -886,6 +951,7 @@ impl ConversationView {
                 agent.clone(),
                 connection_store,
                 connection_key,
+                None,
                 resume_session_id,
                 work_dirs,
                 title,
@@ -1011,10 +1077,23 @@ impl ConversationView {
         self.clear_resolved_request_elicitations(cx);
         self.loading_status = None;
 
+        // A connection that has gone (it failed to start, or the agent was
+        // removed) takes the view back into the sandbox, and another start
+        // outside it has to be confirmed again.
+        if self.outside_sandbox.is_some_and(|id| {
+            self.connection_store
+                .read(cx)
+                .outside_sandbox_connection(id)
+                .is_none()
+        }) {
+            self.outside_sandbox = None;
+        }
+
         let state = Self::initial_state(
             self.agent.clone(),
             self.connection_store.clone(),
             self.connection_key.clone(),
+            self.outside_sandbox,
             resume_session_id,
             work_dirs,
             title,
@@ -1040,6 +1119,7 @@ impl ConversationView {
         agent: Rc<dyn AgentServer>,
         connection_store: Entity<AgentConnectionStore>,
         connection_key: Agent,
+        outside_sandbox: Option<OutsideSandboxConnectionId>,
         resume_session_id: Option<acp::SessionId>,
         work_dirs: Option<PathList>,
         title: Option<SharedString>,
@@ -1061,7 +1141,9 @@ impl ConversationView {
         let session_work_dirs = work_dirs.unwrap_or_else(|| project.read(cx).default_path_list(cx));
 
         let connection_entry = connection_store.update(cx, |store, cx| {
-            store.request_connection(connection_key, agent.clone(), cx)
+            outside_sandbox
+                .and_then(|id| store.outside_sandbox_connection(id))
+                .unwrap_or_else(|| store.request_connection(connection_key, agent.clone(), cx))
         });
 
         let connection_entry_subscription =
@@ -1562,6 +1644,14 @@ impl ConversationView {
                     format!("{} が終了しました", self.agent.agent_id()).into()
                 }
                 LoadError::Other(_) => format!("{} の読み込みエラー", self.agent.agent_id()).into(),
+                LoadError::SandboxUnavailable(_) => {
+                    format!("{} をサンドボックスで起動できません", self.agent.agent_id()).into()
+                }
+                LoadError::SandboxHostsNotAllowed(_) => format!(
+                    "{} の通信に許可リストへの追加が必要です",
+                    self.agent.agent_id()
+                )
+                .into(),
             },
         }
     }
@@ -1936,6 +2026,12 @@ impl ConversationView {
         };
 
         let agent_telemetry_id = connection.telemetry_id();
+        let runs_in_sandbox = connection.terminal_auth_runs_in_sandbox();
+        // ADR-F49 decision 16: the sandbox the sign-in is wrapped in is the
+        // connection's until this terminal is over.
+        let sandboxed_login = runs_in_sandbox
+            .then(|| connection.clone().downcast::<AcpConnection>())
+            .flatten();
 
         if let Some(login_task) = connection.terminal_auth_task(&method, cx) {
             pending_auth_method.replace(method.clone());
@@ -1954,6 +2050,8 @@ impl ConversationView {
                                 project,
                                 method.clone(),
                                 false,
+                                runs_in_sandbox,
+                                sandboxed_login,
                                 window,
                                 cx,
                             )
@@ -2117,45 +2215,69 @@ impl ConversationView {
         project: Entity<Project>,
         method: acp::AuthMethodId,
         previous_attempt: bool,
+        runs_in_sandbox: bool,
+        sandboxed_login: Option<Rc<AcpConnection>>,
         window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<()>> {
         let Some(terminal_panel) = workspace.read(cx).panel::<TerminalPanel>(cx) else {
             return Task::ready(Err(anyhow!("Terminal panel is unavailable")));
         };
+        // Dropped when this sign-in is over, however it ends: the sandbox it
+        // was wrapped in goes with it, and with that its network proxy.
+        let sandbox_guard = sandboxed_login
+            .clone()
+            .map(|connection| LoginSandboxGuard::new(connection, login.id.0.clone()));
 
         window.spawn(cx, async move |cx| {
-            let mut task = login.clone();
-            if let Some(cmd) = &task.command {
-                // Have "node" command use Zed's managed Node runtime by default
-                if cmd == "node" {
-                    let resolved_node_runtime = project.update(cx, |project, cx| {
-                        let agent_server_store = project.agent_server_store().clone();
-                        agent_server_store.update(cx, |store, cx| {
-                            store.node_runtime().map(|node_runtime| {
-                                cx.background_spawn(async move { node_runtime.binary_path().await })
-                            })
+            let _sandbox_guard = sandbox_guard;
+            let terminal = if runs_in_sandbox {
+                // ADR-F49: already wrapped in the agent's sandbox, so it starts
+                // as it is, with nothing of the terminal's own around it.
+                let task = login.clone();
+                let reveal = task.reveal;
+                terminal_panel
+                    .update_in(cx, |terminal_panel, window, cx| {
+                        terminal_panel.add_terminal_with(reveal, window, cx, move |project, cx| {
+                            project.create_sandboxed_terminal_task(task, cx)
                         })
-                    });
+                    })?
+                    .await?
+            } else {
+                let mut task = login.clone();
+                if let Some(cmd) = &task.command {
+                    // Have "node" command use Zed's managed Node runtime by default
+                    if cmd == "node" {
+                        let resolved_node_runtime = project.update(cx, |project, cx| {
+                            let agent_server_store = project.agent_server_store().clone();
+                            agent_server_store.update(cx, |store, cx| {
+                                store.node_runtime().map(|node_runtime| {
+                                    cx.background_spawn(
+                                        async move { node_runtime.binary_path().await },
+                                    )
+                                })
+                            })
+                        });
 
-                    if let Some(resolve_task) = resolved_node_runtime {
-                        if let Ok(node_path) = resolve_task.await {
-                            task.command = Some(node_path.to_string_lossy().to_string());
+                        if let Some(resolve_task) = resolved_node_runtime {
+                            if let Ok(node_path) = resolve_task.await {
+                                task.command = Some(node_path.to_string_lossy().to_string());
+                            }
                         }
                     }
                 }
-            }
-            task.shell = task::Shell::WithArguments {
-                program: task.command.take().expect("login command should be set"),
-                args: std::mem::take(&mut task.args),
-                title_override: None,
-            };
+                task.shell = task::Shell::WithArguments {
+                    program: task.command.take().expect("login command should be set"),
+                    args: std::mem::take(&mut task.args),
+                    title_override: None,
+                };
 
-            let terminal = terminal_panel
-                .update_in(cx, |terminal_panel, window, cx| {
-                    terminal_panel.spawn_task(&task, window, cx)
-                })?
-                .await?;
+                terminal_panel
+                    .update_in(cx, |terminal_panel, window, cx| {
+                        terminal_panel.spawn_task(&task, window, cx)
+                    })?
+                    .await?
+            };
 
             let success_patterns = match method.0.as_ref() {
                 "claude-login" | GEMINI_TERMINAL_AUTH_METHOD_ID => vec![
@@ -2223,6 +2345,8 @@ impl ConversationView {
                                         project.clone(),
                                         method,
                                         true,
+                                        runs_in_sandbox,
+                                        sandboxed_login,
                                         window,
                                         cx,
                                     )
@@ -2706,6 +2830,8 @@ impl ConversationView {
             LoadError::FailedToInstall(_) => "failed_to_install",
             LoadError::Exited { .. } => "exited",
             LoadError::Other(_) => "other",
+            LoadError::SandboxUnavailable(_) => "sandbox_unavailable",
+            LoadError::SandboxHostsNotAllowed(_) => "sandbox_hosts_not_allowed",
         };
 
         let agent_name = self.agent.agent_id();
@@ -2752,6 +2878,37 @@ impl ConversationView {
                 "起動に失敗しました",
                 msg.into(),
                 Some(self.create_copy_button(msg.to_string()).into_any_element()),
+            ),
+            LoadError::SandboxUnavailable(reason) => (
+                "サンドボックスで起動できません",
+                format!("{reason}\n{OUTSIDE_SANDBOX_EXPLANATION}").into(),
+                Some(
+                    Button::new("start-agent-outside-sandbox", START_OUTSIDE_SANDBOX_LABEL)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.start_agent_outside_sandbox_once(window, cx)
+                        }))
+                        .into_any_element(),
+                ),
+            ),
+            LoadError::SandboxHostsNotAllowed(hosts) => (
+                "許可リストへの追加が必要です",
+                format!(
+                    "サンドボックスの {} は次のホストに接続しますが、IDE 全体の許可リストに\
+                     ありません: {}",
+                    self.agent.agent_id(),
+                    hosts.join("、")
+                )
+                .into(),
+                Some(
+                    Button::new("allow-agent-sandbox-hosts", ADD_AGENT_HOSTS_LABEL)
+                        .on_click(cx.listener({
+                            let hosts = hosts.clone();
+                            move |this, _, window, cx| {
+                                this.ask_to_allow_agent_hosts(hosts.clone(), window, cx)
+                            }
+                        }))
+                        .into_any_element(),
+                ),
             ),
         };
 
@@ -3288,6 +3445,135 @@ impl ConversationView {
         }
     }
 
+    /// ADR-F49 decision 19: whether this view's agent is the one started
+    /// outside its sandbox, which is this view's alone.
+    fn runs_outside_sandbox(&self, cx: &App) -> bool {
+        self.outside_sandbox.is_some_and(|id| {
+            self.connection_store
+                .read(cx)
+                .outside_sandbox_connection(id)
+                .is_some()
+        })
+    }
+
+    /// While that agent runs, the view says so: the confirmation was for this
+    /// start only, and the same agent in another view is still in its sandbox.
+    fn render_outside_sandbox_banner(&self, cx: &App) -> Option<impl IntoElement> {
+        if !self.runs_outside_sandbox(cx) {
+            return None;
+        }
+        Some(
+            h_flex()
+                .w_full()
+                .px_2()
+                .py_1()
+                .gap_1p5()
+                .bg(cx.theme().status().warning_background)
+                .border_b_1()
+                .border_color(cx.theme().colors().border)
+                .child(
+                    Icon::new(IconName::Warning)
+                        .size(IconSize::XSmall)
+                        .color(Color::Warning),
+                )
+                .child(
+                    Label::new(OUTSIDE_SANDBOX_RUNNING_LABEL)
+                        .size(LabelSize::Small)
+                        .color(Color::Warning),
+                ),
+        )
+    }
+
+    /// ADR-F49 decision 19: asks, every time and with no "always", before
+    /// the agent starts outside its sandbox, for this once.
+    fn start_agent_outside_sandbox_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let on_remote_host = self.project.read(cx).is_via_remote_server();
+        let program = self.agent.agent_id().to_string();
+        let confirmed = crate::sandboxed_claude_code::confirm_running_outside_sandbox(
+            &program,
+            on_remote_host,
+            None,
+            window,
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if !confirmed.await {
+                return;
+            }
+            this.update_in(cx, |this, window, cx| {
+                let key = this.connection_key.clone();
+                let agent = this.agent.clone();
+                // Kept apart from the connections other views share: the user
+                // confirmed this start here, for this view.
+                let id = this.connection_store.update(cx, |store, cx| {
+                    store.connect_outside_sandbox(key, agent, cx)
+                });
+                this.outside_sandbox = Some(id);
+                this.reset(window, cx);
+            })
+            .log_err();
+        })
+        .detach();
+    }
+
+    /// ADR-F49 decision 13: the consent the sandboxed Claude Code CLI asks
+    /// for, then the hosts go into the IDE-wide allowlist and the agent starts
+    /// again once the allowlist has them.
+    fn ask_to_allow_agent_hosts(
+        &mut self,
+        hosts: Vec<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let missing = crate::agent_registry_ui::missing_hosts(&hosts, cx);
+        let detail = agent_hosts_detail(&self.agent.agent_id(), &hosts, &missing);
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            AGENT_HOSTS_MESSAGE,
+            Some(&detail),
+            &[
+                PromptButton::ok(ADD_AGENT_HOSTS_LABEL),
+                PromptButton::cancel(DECLINE_AGENT_HOSTS_LABEL),
+            ],
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if !answer.await.is_ok_and(|index| index == 0) {
+                return;
+            }
+            let added = missing.iter().map(ToString::to_string).collect::<Vec<_>>();
+            let written =
+                match cx.update(|_, cx| crate::agent_registry_ui::add_consented_hosts(added, cx)) {
+                    Ok(task) => task.await,
+                    Err(error) => Err(error),
+                };
+            if let Err(error) = written {
+                this.update_in(cx, |this, window, cx| {
+                    let message = crate::agent_registry_ui::allowlist_write_error(&error);
+                    this.handle_load_error(LoadError::Other(message), window, cx);
+                })
+                .log_err();
+                return;
+            }
+            // The allowlist's watcher takes the file in a little later, and
+            // the agent is refused until it has.
+            for _ in 0..ALLOWLIST_RELOAD_POLLS {
+                let still_missing = cx
+                    .update(|_, cx| crate::agent_registry_ui::missing_hosts(&hosts, cx))
+                    .unwrap_or_default();
+                if still_missing.is_empty() {
+                    break;
+                }
+                cx.background_executor()
+                    .timer(ALLOWLIST_RELOAD_INTERVAL)
+                    .await;
+            }
+            this.update_in(cx, |this, window, cx| this.reset(window, cx))
+                .log_err();
+        })
+        .detach();
+    }
+
     fn create_copy_button(&self, message: impl Into<String>) -> impl IntoElement {
         let message = message.into();
 
@@ -3578,6 +3864,7 @@ impl Render for ConversationView {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(cx.theme().colors().panel_background)
+            .children(self.render_outside_sandbox_banner(cx))
             .child(v_flex().flex_1().min_h_0().child(content))
             .when(!active_thread_renders_request_elicitations, |this| {
                 this.children(request_elicitation_connection.as_ref().map_or_else(
@@ -6008,6 +6295,223 @@ pub(crate) mod tests {
         fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
             self
         }
+    }
+
+    /// Agent server whose `connect()` is refused for want of a sandbox unless
+    /// the start was confirmed to run outside it.
+    struct SandboxRefusingAgentServer {
+        connection: StubAgentConnection,
+        outside_starts: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl AgentServer for SandboxRefusingAgentServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            "Sandboxed".into()
+        }
+
+        fn connect(
+            &self,
+            delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            _cx: &mut App,
+        ) -> Task<gpui::Result<Rc<dyn AgentConnection>>> {
+            if delegate.runs_outside_sandbox() {
+                self.outside_starts
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Task::ready(Ok(Rc::new(self.connection.clone())))
+            } else {
+                Task::ready(Err(anyhow!(LoadError::SandboxUnavailable(
+                    "`bwrap` が見つかりません".into()
+                ))))
+            }
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    /// ADR-F49 decision 19: an agent its sandbox cannot take is not started;
+    /// the user may start it outside the sandbox, once, after confirming it.
+    #[gpui::test]
+    async fn test_an_agent_the_sandbox_cannot_take_starts_outside_it_only_when_confirmed(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let outside_starts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let server = SandboxRefusingAgentServer {
+            connection: StubAgentConnection::new(),
+            outside_starts: outside_starts.clone(),
+        };
+        let (conversation_view, cx) = setup_conversation_view(server, cx).await;
+        cx.run_until_parked();
+        let refused = |cx: &mut VisualTestContext| {
+            conversation_view.read_with(cx, |view, _| {
+                matches!(
+                    view.server_state,
+                    ServerState::LoadError {
+                        error: LoadError::SandboxUnavailable(_),
+                        ..
+                    }
+                )
+            })
+        };
+        assert!(refused(cx), "the agent is not started without a sandbox");
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.start_agent_outside_sandbox_once(window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("キャンセル");
+        cx.run_until_parked();
+        assert_eq!(
+            outside_starts.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "nothing starts unless the user confirms"
+        );
+        assert!(refused(cx));
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.start_agent_outside_sandbox_once(window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.run_until_parked();
+        assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
+        conversation_view.read_with(cx, |view, _| {
+            assert!(
+                matches!(view.server_state, ServerState::Connected(_)),
+                "started outside the sandbox, this once"
+            );
+        });
+    }
+
+    /// ADR-F49 decision 19 (HIGH-2): the start outside the sandbox belongs to
+    /// the view that confirmed it. Another view — and a new thread — connects
+    /// in the sandbox as usual, and is refused again where the sandbox cannot
+    /// be built.
+    #[gpui::test]
+    async fn an_agent_started_outside_its_sandbox_is_not_reused_by_other_views(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let outside_starts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let server: Rc<dyn AgentServer> = Rc::new(SandboxRefusingAgentServer {
+            connection: StubAgentConnection::new(),
+            outside_starts: outside_starts.clone(),
+        });
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+        let thread_store = cx.update(|_window, cx| cx.new(|cx| ThreadStore::new(cx)));
+        let connection_store =
+            cx.update(|_window, cx| cx.new(|cx| AgentConnectionStore::new(project.clone(), cx)));
+        let agent_key = Agent::Custom { id: "Test".into() };
+
+        let new_view = |cx: &mut VisualTestContext| {
+            let server = server.clone();
+            let connection_store = connection_store.clone();
+            let agent_key = agent_key.clone();
+            let workspace = workspace.downgrade();
+            let project = project.clone();
+            let thread_store = thread_store.clone();
+            cx.update(|window, cx| {
+                cx.new(|cx| {
+                    ConversationView::new(
+                        server,
+                        connection_store,
+                        agent_key,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        workspace,
+                        project,
+                        Some(thread_store),
+                        AgentThreadSource::AgentPanel,
+                        window,
+                        cx,
+                    )
+                })
+            })
+        };
+        let confirming_view = new_view(cx);
+        let other_view = new_view(cx);
+        cx.run_until_parked();
+
+        let refused = |view: &Entity<ConversationView>, cx: &mut VisualTestContext| {
+            view.read_with(cx, |view, _| {
+                matches!(
+                    view.server_state,
+                    ServerState::LoadError {
+                        error: LoadError::SandboxUnavailable(_),
+                        ..
+                    }
+                )
+            })
+        };
+        assert!(refused(&confirming_view, cx));
+        assert!(refused(&other_view, cx));
+
+        confirming_view.update_in(cx, |view, window, cx| {
+            view.start_agent_outside_sandbox_once(window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.run_until_parked();
+        assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
+        confirming_view.read_with(cx, |view, cx| {
+            assert!(matches!(view.server_state, ServerState::Connected(_)));
+            assert!(
+                view.runs_outside_sandbox(cx),
+                "the view that confirmed it says so"
+            );
+        });
+
+        // The other view is untouched, and asking it to connect again keeps
+        // it in the sandbox.
+        assert!(refused(&other_view, cx));
+        other_view.update_in(cx, |view, window, cx| view.reset(window, cx));
+        cx.run_until_parked();
+        assert!(refused(&other_view, cx), "still the sandbox's own start");
+        other_view.read_with(cx, |view, cx| {
+            assert!(!view.runs_outside_sandbox(cx));
+        });
+        assert_eq!(
+            outside_starts.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "nothing else started outside the sandbox"
+        );
+
+        // A new thread in the confirming view goes back into the sandbox:
+        // the connection it was given is for the start it confirmed.
+        confirming_view.update_in(cx, |view, window, cx| {
+            view.outside_sandbox = None;
+            view.reset(window, cx);
+        });
+        cx.run_until_parked();
+        assert!(refused(&confirming_view, cx));
+        assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn the_agent_hosts_consent_says_they_apply_to_the_whole_ide() {
+        let detail = agent_hosts_detail(
+            &AgentId::new("codex-acp"),
+            &["api.openai.com".into(), "chatgpt.com".into()],
+            &["chatgpt.com".into()],
+        );
+        assert!(detail.contains("IDE 全体の許可リスト"), "{detail}");
+        assert!(detail.contains("api.openai.com (登録済み)"), "{detail}");
+        assert!(detail.contains("chatgpt.com (未登録)"), "{detail}");
     }
 
     fn build_test_thread(

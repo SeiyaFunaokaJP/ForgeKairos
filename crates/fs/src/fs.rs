@@ -149,6 +149,17 @@ pub trait Fs: Send + Sync {
         relative_path: &Path,
         content: Vec<u8>,
     ) -> Result<()>;
+    /// Checks that reading `relative_path` inside `root` reads that file and no
+    /// other: every folder on the way, and the file itself, is opened without
+    /// following a link, and what the handle turns out to be must be exactly
+    /// that path and a regular file. The read side of [`Self::write_verified`]
+    /// (ADR-F49 decision 11): Zed reads a file for an agent with its own
+    /// rights, so it must not read through a link that the agent's sandbox
+    /// would refuse to follow itself. `root` itself may be a link.
+    ///
+    /// Nothing is read: Zed answers the agent from the buffer it opens, so what
+    /// this settles is where the path leads, not what is in it.
+    async fn verify_read(&self, root: &Path, relative_path: &Path) -> Result<()>;
     async fn canonicalize(&self, path: &Path) -> Result<PathBuf>;
     async fn is_file(&self, path: &Path) -> bool;
     async fn is_dir(&self, path: &Path) -> bool;
@@ -1027,6 +1038,17 @@ impl Fs for RealFs {
         self.executor
             .spawn(async move {
                 verified_write::write_verified_blocking(&root, &relative_path, &content)?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn verify_read(&self, root: &Path, relative_path: &Path) -> Result<()> {
+        let root = root.to_owned();
+        let relative_path = relative_path.to_owned();
+        self.executor
+            .spawn(async move {
+                verified_write::verify_read_blocking(&root, &relative_path)?;
                 Ok(())
             })
             .await
@@ -3318,6 +3340,62 @@ impl Fs for FakeFs {
         events.push((current, kind));
         state.emit_event(events);
         Ok(())
+    }
+
+    async fn verify_read(&self, root: &Path, relative_path: &Path) -> Result<()> {
+        self.simulate_random_delay().await;
+        let names = verified_write::plain_names(relative_path)?;
+        let root = normalize_path(root);
+        let mut state = self.state.lock();
+        let mut current = state
+            .canonicalize(&root, true)
+            .with_context(|| format!("path does not exist: {root:?}"))?;
+        let Some((file_name, folder_names)) = names.split_last() else {
+            // A file the user opened on its own: a link to it is theirs to
+            // follow.
+            anyhow::ensure!(
+                state
+                    .try_entry(&current, true)
+                    .is_some_and(|(entry, _)| entry.is_file()),
+                VerifiedWriteError::NotAFile(current)
+            );
+            return Ok(());
+        };
+
+        for name in folder_names {
+            current.push(name);
+            let refusal = state
+                .try_entry(&current, false)
+                .with_context(|| format!("path does not exist: {current:?}"))
+                .map(|(entry, _)| match entry {
+                    FakeFsEntry::Dir { .. } => None,
+                    FakeFsEntry::Symlink { .. } => {
+                        Some(VerifiedWriteError::Redirected(current.clone()))
+                    }
+                    FakeFsEntry::File { .. } => {
+                        Some(VerifiedWriteError::NotAFolder(current.clone()))
+                    }
+                })?;
+            if let Some(refusal) = refusal {
+                return Err(refusal.into());
+            }
+        }
+
+        current.push(file_name);
+        let refusal = state
+            .try_entry(&current, false)
+            .with_context(|| format!("path does not exist: {current:?}"))
+            .map(|(entry, _)| match entry {
+                FakeFsEntry::File { .. } => None,
+                FakeFsEntry::Symlink { .. } => {
+                    Some(VerifiedWriteError::Redirected(current.clone()))
+                }
+                FakeFsEntry::Dir { .. } => Some(VerifiedWriteError::NotAFile(current.clone())),
+            })?;
+        match refusal {
+            Some(refusal) => Err(refusal.into()),
+            None => Ok(()),
+        }
     }
 
     async fn canonicalize(&self, path: &Path) -> Result<PathBuf> {

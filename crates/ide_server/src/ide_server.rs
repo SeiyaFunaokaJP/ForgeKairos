@@ -55,13 +55,17 @@ use util::ResultExt as _;
 use workspace::Workspace;
 
 pub use diff_view::{IdeServerDiff, IdeServerDiffOutcome};
-pub use path_mapping::{IdentityPathMapper, PathMapper, WslPathMapper};
+pub use path_mapping::{
+    MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile, has_link_below_root, real_roots,
+    resolve_inside_roots,
+};
 pub use protocol::{LockFileContents, lock_file_directory, lock_file_path};
 pub use sandbox_client::{
     SandboxIdeSessionHandle, SandboxSessionInfo, sandbox_lock_file_contents, start_sandbox_session,
 };
 pub use status_item::IdeServerStatusItem;
 pub(crate) use tools::{SelectionSnapshot, ToolHost};
+pub use util::path_mapping::{IdentityPathMapper, PathMapper, WslPathMapper};
 
 /// Claude Code CLI が「どのインスタンスに繋げばよいか」を決めるための環境変数。
 ///

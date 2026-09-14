@@ -1373,6 +1373,133 @@ async fn test_real_fs_write_verified(executor: BackgroundExecutor) {
     );
 }
 
+/// ADR-F49 decision 11: a verified read reaches the files the folder holds
+/// itself, and no link — a folder on the way, the file itself, or one that
+/// stays inside the root, since a sandboxed command can point it elsewhere the
+/// moment after.
+#[gpui::test]
+async fn test_fake_fs_verify_read_follows_no_link(executor: BackgroundExecutor) {
+    let fs = FakeFs::new(executor);
+    fs.insert_tree(
+        path!("/root"),
+        json!({
+            "src": { "main.rs": "fn main() {}\n" },
+            ".git": { "config": "[core]\n" },
+        }),
+    )
+    .await;
+    fs.insert_symlink(
+        path!("/root/key"),
+        PathBuf::from(path!("/home/user/.ssh/id_rsa")),
+    )
+    .await;
+    fs.insert_symlink(
+        path!("/root/folder_link"),
+        PathBuf::from(path!("/root/src")),
+    )
+    .await;
+    fs.insert_symlink(
+        path!("/root/inside"),
+        PathBuf::from(path!("/root/src/main.rs")),
+    )
+    .await;
+    let root = Path::new(path!("/root"));
+
+    fs.verify_read(root, Path::new("src/main.rs"))
+        .await
+        .unwrap();
+    // Git's own files are read inside the sandbox as well, so a verified read
+    // does not refuse what a verified write does.
+    fs.verify_read(root, Path::new(".git/config"))
+        .await
+        .unwrap();
+
+    for relative in ["key", "inside", "folder_link/main.rs"] {
+        let error = fs
+            .verify_read(root, Path::new(relative))
+            .await
+            .expect_err(relative);
+        assert!(
+            matches!(
+                verified_write_error(&error),
+                Some(VerifiedWriteError::Redirected(_))
+            ),
+            "{relative}: {error:#}"
+        );
+    }
+
+    let error = fs
+        .verify_read(root, Path::new("../root/src/main.rs"))
+        .await
+        .expect_err("a way out of the root");
+    assert!(
+        matches!(
+            verified_write_error(&error),
+            Some(VerifiedWriteError::NotBeneath(_))
+        ),
+        "{error:#}"
+    );
+    let error = fs
+        .verify_read(root, Path::new("src"))
+        .await
+        .expect_err("a folder is not a file to read");
+    assert!(
+        matches!(
+            verified_write_error(&error),
+            Some(VerifiedWriteError::NotAFile(_))
+        ),
+        "{error:#}"
+    );
+    fs.verify_read(root, Path::new("src/missing.rs"))
+        .await
+        .expect_err("a file that is not there");
+}
+
+/// ADR-F49 decision 11: the same on the real filesystem, where a hard link is
+/// a second name for a file the sandboxed agent can open itself, so a read of
+/// one is not refused.
+#[gpui::test]
+async fn test_real_fs_verify_read(executor: BackgroundExecutor) {
+    let fs = RealFs::new(None, executor);
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().join("project");
+    let outside = temp_dir.path().join("outside");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(root.join("src").join("main.rs"), "fn main() {}\n").unwrap();
+    std::fs::write(outside.join("id_rsa"), "-----BEGIN\n").unwrap();
+
+    fs.verify_read(&root, Path::new("src/main.rs"))
+        .await
+        .unwrap();
+
+    std::fs::hard_link(root.join("src").join("main.rs"), root.join("hard_link")).unwrap();
+    fs.verify_read(&root, Path::new("hard_link")).await.unwrap();
+
+    link_folder(&outside, &root.join("folder_link"));
+    #[cfg(windows)]
+    link_folder(&outside, &root.join("key"));
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(outside.join("id_rsa"), root.join("key")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(root.join("src").join("main.rs"), root.join("inside")).unwrap();
+
+    let mut refused = vec!["folder_link/id_rsa", "key"];
+    if cfg!(unix) {
+        refused.push("inside");
+    }
+    for relative in refused {
+        let error = fs
+            .verify_read(&root, Path::new(relative))
+            .await
+            .expect_err(relative);
+        assert!(
+            verified_write_error(&error).is_some(),
+            "{relative}: {error:#}"
+        );
+    }
+}
+
 /// ADR-F49: a verified write refuses Git metadata by itself, whoever asks for
 /// it, in any spelling that reaches it.
 #[gpui::test]

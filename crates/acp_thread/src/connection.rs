@@ -105,6 +105,21 @@ pub trait AgentConnection {
         false
     }
 
+    /// ADR-F49 decision 18: where this agent's process can write when it runs
+    /// in a sandbox (its worktrees and its configuration folder), which is
+    /// then all its turns write to. `None`: it runs without one and can write
+    /// anywhere on the project's host.
+    fn sandbox_write_scope(&self) -> Option<Vec<std::path::PathBuf>> {
+        None
+    }
+
+    /// Whether [`Self::terminal_auth_task`] comes back already wrapped in the
+    /// agent's sandbox (ADR-F49 decision 16), to be spawned as it is, with
+    /// nothing of the terminal's own around it.
+    fn terminal_auth_runs_in_sandbox(&self) -> bool {
+        false
+    }
+
     fn new_session(
         self: Rc<Self>,
         project: Entity<Project>,
@@ -769,6 +784,7 @@ mod test_support {
         supports_session_additional_directories: bool,
         agent_id: AgentId,
         telemetry_id: SharedString,
+        sandbox_write_scope: Option<Vec<std::path::PathBuf>>,
     }
 
     struct Session {
@@ -792,7 +808,14 @@ mod test_support {
                 supports_session_additional_directories: false,
                 agent_id: AgentId::new("stub"),
                 telemetry_id: "stub".into(),
+                sandbox_write_scope: None,
             }
+        }
+
+        /// Makes the stub an agent run in a sandbox that may write `paths`.
+        pub fn with_sandbox_write_scope(mut self, paths: Vec<std::path::PathBuf>) -> Self {
+            self.sandbox_write_scope = Some(paths);
+            self
         }
 
         pub fn set_next_prompt_updates(&self, updates: Vec<acp::SessionUpdate>) {
@@ -905,6 +928,10 @@ mod test_support {
     impl AgentConnection for StubAgentConnection {
         fn agent_id(&self) -> AgentId {
             self.agent_id.clone()
+        }
+
+        fn sandbox_write_scope(&self) -> Option<Vec<std::path::PathBuf>> {
+            self.sandbox_write_scope.clone()
         }
 
         fn telemetry_id(&self) -> SharedString {

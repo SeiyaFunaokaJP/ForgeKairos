@@ -17,6 +17,9 @@ use futures::channel::mpsc;
 use futures::future::Shared;
 use futures::io::BufReader;
 use futures::{AsyncBufReadExt as _, Future, FutureExt as _, StreamExt as _};
+use project::agent_sandbox::{
+    AgentSandboxCommand, AgentSandboxHosts, AgentSandboxState, SandboxedAgentProfile,
+};
 use project::agent_server_store::{
     AgentServerCommand, AgentServerStore, AllAgentServersSettings, CustomAgentServerSettings,
 };
@@ -24,6 +27,7 @@ use project::{AgentId, Project};
 use remote::remote_client::Interactive;
 use serde::Deserialize;
 use settings::{AgentConfigOptionValue, Settings as _, SettingsStore};
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 use std::rc::Rc;
@@ -34,6 +38,7 @@ use thiserror::Error;
 use util::ResultExt as _;
 use util::path_list::PathList;
 use util::process::Child;
+use util::rel_path::RelPath;
 
 use anyhow::{Context as _, Result};
 use gpui::{App, AppContext as _, AsyncApp, Entity, SharedString, Subscription, Task, WeakEntity};
@@ -407,6 +412,18 @@ pub struct AcpConnection {
     request_elicitations: Entity<ElicitationStore>,
     defaults: AcpConnectionDefaults,
     child: Option<Child>,
+    /// ADR-F49 第 2a 段: how the agent was started in its sandbox, for its
+    /// turns and its sign-in; `None` when it runs outside one.
+    sandbox_session: Option<Rc<AgentSandboxSession>>,
+    /// This machine's sandbox the agent itself runs in. It owns the command's
+    /// network proxy, so it lives as long as the connection.
+    _agent_sandbox: Option<sandbox::Sandbox>,
+    /// The same for a sign-in, which runs on a terminal of its own: kept by
+    /// the sign-in's task id, so that starting the sign-in again replaces it
+    /// and the terminal's end releases it
+    /// ([`AcpConnection::release_terminal_auth_sandbox`]) rather than piling
+    /// proxies up for as long as the connection lives.
+    login_sandboxes: Rc<RefCell<HashMap<String, sandbox::Sandbox>>>,
     session_list: Option<Rc<AcpSessionList>>,
     debug_log: AcpDebugLog,
     _settings_subscription: Subscription,
@@ -646,6 +663,7 @@ pub async fn connect(
     agent_server_store: WeakEntity<AgentServerStore>,
     default_mode: Option<acp::SessionModeId>,
     default_config_options: HashMap<String, AgentConfigOptionValue>,
+    run_outside_sandbox: bool,
     cx: &mut AsyncApp,
 ) -> Result<Rc<dyn AgentConnection>> {
     let conn = AcpConnection::stdio(
@@ -655,6 +673,7 @@ pub async fn connect(
         agent_server_store,
         default_mode,
         default_config_options,
+        run_outside_sandbox,
         cx,
     )
     .await?;
@@ -812,6 +831,7 @@ impl AcpConnection {
         agent_server_store: WeakEntity<AgentServerStore>,
         default_mode: Option<acp::SessionModeId>,
         default_config_options: HashMap<String, AgentConfigOptionValue>,
+        run_outside_sandbox: bool,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
         let root_dir = project.read_with(cx, |project, cx| {
@@ -822,57 +842,67 @@ impl AcpConnection {
                 .cloned()
         });
         let original_command = command.clone();
-        let remote = project.read_with(cx, |project, cx| {
-            project.remote_client().and_then(|client| {
-                let template = client
-                    .read(cx)
-                    .build_command(
-                        Some(command.path.display().to_string()),
-                        &command.args,
-                        &command.env.clone().into_iter().flatten().collect(),
-                        root_dir.as_ref().map(|path| path.display().to_string()),
-                        None,
-                        Interactive::No,
-                    )
-                    .log_err()?;
-                Some((template.program, template.args, template.env))
-            })
-        });
-        let runs_on_this_machine = remote.is_none();
-        let (path, args, mut env) = remote.unwrap_or_else(|| {
-            (
-                command.path.display().to_string(),
-                command.args,
-                command.env.unwrap_or_default(),
-            )
-        });
-
-        // ADR-F13 (F2-7): point the agent at the fork's loopback egress proxy
-        // so its runtime traffic is judged by the same allowlist the app's own
-        // requests are. Only for an agent running on this machine — a remote
-        // one would be handed a loopback port that means something else there.
-        if runs_on_this_machine {
-            http_client::apply_child_process_proxy_env(&mut env);
-        }
-
-        let builder = ShellBuilder::new(&Shell::System, cfg!(windows)).non_interactive();
-        let mut child = builder.build_std_command(Some(path.clone()), &args);
-        child.envs(env.clone());
-        if let Some(cwd) = project.read_with(cx, |project, _cx| {
-            if project.is_local() {
-                root_dir.as_ref()
+        let (is_local, remote_helper_binary) = project.read_with(cx, |project, cx| {
+            let remote_helper_binary = if project.remote_supports_agent_sandbox(cx) {
+                project
+                    .remote_client()
+                    .and_then(|client| client.read(cx).remote_server_binary_path())
             } else {
                 None
+            };
+            (project.is_local(), remote_helper_binary)
+        });
+        let launch = choose_agent_launch(
+            run_outside_sandbox,
+            is_local,
+            cfg!(windows),
+            remote_helper_binary,
+            command.sandbox.as_ref(),
+        )
+        .map_err(anyhow::Error::new)?;
+        let (child, sandbox_session, agent_sandbox) = match launch {
+            AgentLaunch::Host => (
+                host_agent_command(&project, &command, root_dir.as_ref(), cx),
+                None,
+                None,
+            ),
+            AgentLaunch::LocalSandbox => {
+                let (child, session, sandbox) = local_sandboxed_agent_command(
+                    &agent_id,
+                    &project,
+                    &command,
+                    root_dir.clone(),
+                    cx,
+                )
+                .await?;
+                (child, Some(Rc::new(session)), Some(sandbox))
             }
-        }) {
-            child.current_dir(cwd);
-        }
+            AgentLaunch::RemoteHelper { remote_binary } => {
+                let (child, session) = remote_sandboxed_agent_command(
+                    &project,
+                    &command,
+                    remote_binary,
+                    root_dir.clone(),
+                    cx,
+                )?;
+                (child, Some(Rc::new(session)), None)
+            }
+        };
         let mut child = Child::spawn(child, Stdio::piped(), Stdio::piped(), Stdio::piped())?;
 
         let stdout = child.stdout.take().context("Failed to take stdout")?;
         let stdin = child.stdin.take().context("Failed to take stdin")?;
         let stderr = child.stderr.take().context("Failed to take stderr")?;
-        log::debug!("Spawning external agent server: {:?}, {:?}", path, args);
+        log::debug!(
+            "Spawning external agent server{}: {:?}, {:?}",
+            if sandbox_session.is_some() {
+                " in its sandbox"
+            } else {
+                ""
+            },
+            command.path,
+            command.args
+        );
         log::trace!("Spawned (pid: {})", child.id());
 
         let sessions = Rc::new(RefCell::new(HashMap::default()));
@@ -1077,11 +1107,18 @@ impl AcpConnection {
         let auth_methods = if agent_id.0.as_ref() == GEMINI_ID {
             let mut gemini_args = original_command.args.clone();
             gemini_args.retain(|a| a != "--experimental-acp" && a != "--acp");
+            // In a sandbox the sign-in takes the agent's own environment when
+            // it is wrapped, never the host's this command was resolved with.
+            let env = if sandbox_session.is_some() {
+                HashMap::default()
+            } else {
+                original_command.env.unwrap_or_default()
+            };
             let value = serde_json::json!({
                 "label": "gemini /auth",
                 "command": original_command.path.to_string_lossy(),
                 "args": gemini_args,
-                "env": original_command.env.unwrap_or_default(),
+                "env": env,
             });
             let meta = acp::Meta::from_iter([("terminal-auth".to_string(), value)]);
             vec![acp::AuthMethod::Agent(
@@ -1119,6 +1156,9 @@ impl AcpConnection {
             _wait_task: wait_task,
             _stderr_task: stderr_task,
             child: Some(child),
+            sandbox_session,
+            _agent_sandbox: agent_sandbox,
+            login_sandboxes: Rc::default(),
         })
     }
 
@@ -1154,6 +1194,9 @@ impl AcpConnection {
             request_elicitations,
             defaults,
             child: None,
+            sandbox_session: None,
+            _agent_sandbox: None,
+            login_sandboxes: Rc::default(),
             session_list: None,
             debug_log: AcpDebugLog::default(),
             _settings_subscription: settings_subscription,
@@ -1170,6 +1213,14 @@ impl AcpConnection {
     ) -> Result<SessionDirectories> {
         let supports_additional_directories = self.supports_session_additional_directories();
         session_directories_from_work_dirs(work_dirs, supports_additional_directories)
+    }
+
+    /// ADR-F49 decision 16: releases the sandbox a sign-in was wrapped in
+    /// once its terminal is over — with it goes the network proxy that
+    /// sandbox owns. The agent's own sandbox is untouched: it lives as long
+    /// as the connection does.
+    pub fn release_terminal_auth_sandbox(&self, task_id: &str) {
+        self.login_sandboxes.borrow_mut().remove(task_id);
     }
 
     fn open_or_create_session(
@@ -1213,11 +1264,17 @@ impl AcpConnection {
             Err(error) => return Task::ready(Err(error)),
         };
 
+        // ADR-F49 decision 18 / ADR-F50: the agent's own process already writes
+        // while its session is being made — Claude Code's `SessionStart` hook,
+        // the MCP servers the agent starts — so it is a writer of what it can
+        // write from here until the session is there.
+        let session_writer = acp_thread::register_agent_process_writer(self.as_ref(), &project, cx);
         let shared_task = cx
             .spawn({
                 let session_id = session_id.clone();
                 let this = self.clone();
                 async move |cx| {
+                    let _session_writer = session_writer;
                     let action_log = cx.new(|_| ActionLog::new(project.clone()));
                     let thread: Entity<AcpThread> = cx.new(|cx| {
                         AcpThread::new(
@@ -1542,24 +1599,659 @@ impl Drop for AcpConnection {
     }
 }
 
-// A login task runs in an ordinary terminal on this machine, not in the sandbox
-// (ADR-F49): only the user starts it, from the agent's sign-in prompt, and it
-// stores credentials for the agent process, which runs here too.
+/// ADR-F49 第 2a 段: how an agent's process is started.
+#[derive(Debug, PartialEq)]
+enum AgentLaunch {
+    /// As a process of this machine's (or of the remote host's, through its
+    /// transport), the way every agent ran before: on Windows until 第 2b 段,
+    /// and once the user confirmed a start outside the sandbox.
+    Host,
+    /// In this machine's sandbox: Bubblewrap on Linux, Seatbelt on macOS.
+    LocalSandbox,
+    /// In the remote host's sandbox helper.
+    RemoteHelper { remote_binary: Arc<RelPath> },
+}
+
+const REMOTE_WITHOUT_SANDBOX_REASON: &str = "このリモートホストでは、エージェントをサンドボックスで\
+     起動できません (Linux 以外のホストか、サンドボックスのヘルパーを置けないホストです)。";
+const OLD_REMOTE_SERVER_REASON: &str = "接続先の Zed のサーバーが古いため、エージェントを\
+     サンドボックスで起動できません。接続し直してサーバーを更新してください。";
+
+/// Where the agent starts. A start the sandbox cannot take is refused with
+/// the reason (ADR-F49 decision 19): the user may then start it outside the
+/// sandbox, once, after a confirmation, which is `run_outside_sandbox`.
+fn choose_agent_launch(
+    run_outside_sandbox: bool,
+    is_local: bool,
+    windows_client: bool,
+    remote_helper_binary: Option<Arc<RelPath>>,
+    sandbox: Option<&AgentSandboxCommand>,
+) -> Result<AgentLaunch, LoadError> {
+    if run_outside_sandbox {
+        return Ok(AgentLaunch::Host);
+    }
+    if is_local {
+        return Ok(if windows_client {
+            AgentLaunch::Host
+        } else {
+            AgentLaunch::LocalSandbox
+        });
+    }
+    let Some(remote_binary) = remote_helper_binary else {
+        return Err(LoadError::SandboxUnavailable(
+            REMOTE_WITHOUT_SANDBOX_REASON.into(),
+        ));
+    };
+    match sandbox.map(|sandbox| &sandbox.state) {
+        Some(AgentSandboxState::Resolved { .. }) => Ok(AgentLaunch::RemoteHelper { remote_binary }),
+        Some(AgentSandboxState::Unavailable { reason }) => {
+            Err(LoadError::SandboxUnavailable(reason.clone().into()))
+        }
+        Some(AgentSandboxState::Unresolved { .. }) | None => Err(LoadError::SandboxUnavailable(
+            OLD_REMOTE_SERVER_REASON.into(),
+        )),
+    }
+}
+
+/// ADR-F49 第 2a 段: how an agent was started in its sandbox, which its
+/// turns and its sign-in follow.
+struct AgentSandboxSession {
+    /// ADR-F50: everything it can write — the project's worktrees and its
+    /// configuration folder.
+    write_scope: Vec<PathBuf>,
+    /// What it was started with, which its sign-in is started with too.
+    env: HashMap<String, String>,
+    cwd: Option<PathBuf>,
+    route: AgentSandboxRoute,
+}
+
+enum AgentSandboxRoute {
+    Local {
+        policy: sandbox::SandboxPolicy,
+    },
+    Remote {
+        remote_binary: Arc<RelPath>,
+        wrap: acp_thread::SandboxWrap,
+        readable_paths: Vec<String>,
+    },
+}
+
+/// The agent as a plain process, outside any sandbox.
+fn host_agent_command(
+    project: &Entity<Project>,
+    command: &AgentServerCommand,
+    root_dir: Option<&PathBuf>,
+    cx: &mut AsyncApp,
+) -> std::process::Command {
+    let remote = project.read_with(cx, |project, cx| {
+        project.remote_client().and_then(|client| {
+            let template = client
+                .read(cx)
+                .build_command(
+                    Some(command.path.display().to_string()),
+                    &command.args,
+                    &command.env.clone().into_iter().flatten().collect(),
+                    root_dir.map(|path| path.display().to_string()),
+                    None,
+                    Interactive::No,
+                )
+                .log_err()?;
+            Some((template.program, template.args, template.env))
+        })
+    });
+    let runs_on_this_machine = remote.is_none();
+    let (path, args, mut env) = remote.unwrap_or_else(|| {
+        (
+            command.path.display().to_string(),
+            command.args.clone(),
+            command.env.clone().unwrap_or_default(),
+        )
+    });
+
+    // ADR-F13 (F2-7): point the agent at the fork's loopback egress proxy
+    // so its runtime traffic is judged by the same allowlist the app's own
+    // requests are. Only for an agent running on this machine — a remote
+    // one would be handed a loopback port that means something else there.
+    if runs_on_this_machine {
+        http_client::apply_child_process_proxy_env(&mut env);
+    }
+
+    let builder = ShellBuilder::new(&Shell::System, cfg!(windows)).non_interactive();
+    let mut child = builder.build_std_command(Some(path), &args);
+    child.envs(env);
+    if project.read_with(cx, |project, _| project.is_local())
+        && let Some(cwd) = root_dir
+    {
+        child.current_dir(cwd);
+    }
+    child
+}
+
+fn sandbox_unavailable(reason: impl Into<SharedString>) -> anyhow::Error {
+    anyhow::Error::new(LoadError::SandboxUnavailable(reason.into()))
+}
+
+/// ADR-F49 decision 13: the agent's hosts the IDE-wide allowlist does not
+/// permit yet. It caps every sandboxed command, so the agent could not reach
+/// them; the user is asked to add them before it starts.
+fn hosts_missing_from_editor_allowlist(hosts: &AgentSandboxHosts, cx: &App) -> Vec<SharedString> {
+    let AgentSandboxHosts::Listed(hosts) = hosts else {
+        return Vec::new();
+    };
+    let Some(allowlist) = cx.try_global::<egress_policy::EgressAllowlistGlobal>() else {
+        return Vec::new();
+    };
+    hosts
+        .iter()
+        .filter(|host| {
+            !http_client::RequestHost::parse(host).is_some_and(|host| allowlist.0.allows(&host))
+        })
+        .map(|host| SharedString::from(host.clone()))
+        .collect()
+}
+
+fn editor_allowlist_entries(cx: &App) -> Option<Vec<String>> {
+    let allowlist = cx.try_global::<egress_policy::EgressAllowlistGlobal>()?;
+    Some(
+        allowlist
+            .0
+            .snapshot()
+            .patterns()
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    )
+}
+
+fn ensure_hosts_allowed(hosts: &AgentSandboxHosts, cx: &mut AsyncApp) -> Result<()> {
+    let missing = cx.update(|cx| hosts_missing_from_editor_allowlist(hosts, cx));
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::Error::new(LoadError::SandboxHostsNotAllowed(
+            missing,
+        )))
+    }
+}
+
+/// What an agent in a sandbox is started with: its own environment and its
+/// profile's, and of this process's only what any program needs to run —
+/// its `PATH` and locale — and the proxy the sandbox's own chains to, unless
+/// the agent was given one. Nothing else of this process's environment, which
+/// on Linux and macOS is the login shell's, reaches it.
+fn sandboxed_agent_environment(
+    mut env: HashMap<String, String>,
+    upstream_proxy: HashMap<String, String>,
+) -> HashMap<String, String> {
+    for name in ["PATH", "LANG", "LC_ALL", "LC_CTYPE"] {
+        if !env.contains_key(name)
+            && let Ok(value) = std::env::var(name)
+        {
+            env.insert(name.to_string(), value);
+        }
+    }
+    let sets_a_proxy = [
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ]
+    .iter()
+    .any(|name| env.contains_key(*name));
+    if !sets_a_proxy {
+        env.extend(upstream_proxy);
+    }
+    env
+}
+
+/// ADR-F49 decision 13: what the agent may do in this machine's sandbox —
+/// write its worktrees and its configuration folder, read back what it runs
+/// from in Zed's data directory, reach its hosts (under the IDE-wide
+/// allowlist, which caps every sandboxed command) — with the `.git`
+/// directories protected as for the commands it asks Zed to run.
+fn local_agent_sandbox_policy(
+    write_scope: &[PathBuf],
+    git_dirs: &[PathBuf],
+    readable_paths: &[PathBuf],
+    hosts: &AgentSandboxHosts,
+) -> Result<sandbox::SandboxPolicy> {
+    let mut writable_paths = Vec::with_capacity(write_scope.len());
+    for path in write_scope {
+        writable_paths.push(
+            sandbox::HostFilesystemLocation::capture(path).with_context(|| {
+                format!(
+                    "書込を許可するフォルダー `{}` を確認できませんでした",
+                    path.display()
+                )
+            })?,
+        );
+    }
+    // As for the agent's commands: a `.git` that cannot be captured is not
+    // there to protect.
+    let protected_paths = git_dirs
+        .iter()
+        .filter_map(|path| sandbox::HostFilesystemLocation::capture(path).ok())
+        .collect();
+    let mut readable = Vec::with_capacity(readable_paths.len());
+    for path in readable_paths {
+        readable.push(
+            sandbox::HostFilesystemLocation::capture(path).with_context(|| {
+                format!(
+                    "エージェントのインストール先 `{}` を確認できませんでした",
+                    path.display()
+                )
+            })?,
+        );
+    }
+    let network = match hosts {
+        AgentSandboxHosts::Listed(hosts) => sandbox::SandboxNetPolicy::Restricted {
+            allowed_domains: hosts.clone(),
+        },
+        AgentSandboxHosts::EditorAllowlist => sandbox::SandboxNetPolicy::Unrestricted,
+    };
+    Ok(sandbox::SandboxPolicy {
+        fs: sandbox::SandboxFsPolicy::Restricted {
+            writable_paths: sandbox::normalize_host_filesystem_locations(
+                writable_paths.into_iter(),
+            ),
+            protected_paths,
+            readable_paths: readable,
+        },
+        network,
+    })
+}
+
+/// ADR-F49 第 2a 段: the agent in this machine's sandbox, from its own
+/// environment and profile only (no login shell, no direnv, no ADR-F14
+/// proxy variables: the sandbox's proxy takes their place), started directly
+/// rather than through a shell.
+async fn local_sandboxed_agent_command(
+    agent_id: &AgentId,
+    project: &Entity<Project>,
+    command: &AgentServerCommand,
+    root_dir: Option<PathBuf>,
+    cx: &mut AsyncApp,
+) -> Result<(std::process::Command, AgentSandboxSession, sandbox::Sandbox)> {
+    let (fs, key_roots, worktree_roots, git_dirs) = project.read_with(cx, |project, cx| {
+        (
+            project.fs().clone(),
+            project::agent_sandbox::project_key_roots(project.worktree_store().read(cx), cx),
+            acp_thread::sandbox_worktree_writable_paths(project, cx),
+            acp_thread::sandbox_git_dirs(project, cx),
+        )
+    });
+    let canonical_roots = project::agent_sandbox::canonical_project_key_roots(&fs, key_roots).await;
+    let sandbox_command = command.sandbox.clone().unwrap_or_else(|| {
+        AgentSandboxCommand::new(
+            SandboxedAgentProfile::for_agent(agent_id.as_ref(), false),
+            command.env.clone().unwrap_or_default(),
+            Vec::new(),
+        )
+    });
+    let placed = cx
+        .background_spawn(async move {
+            let home = project::agent_sandbox::sandboxed_agents_home();
+            sandbox_command.resolve_for_project(&home, &canonical_roots)
+        })
+        .await
+        .map_err(|error| {
+            sandbox_unavailable(format!(
+                "エージェントの設定フォルダーを用意できませんでした: {error:#}"
+            ))
+        })?;
+    let AgentSandboxState::Resolved { config_dir, hosts } = placed.state.clone() else {
+        return Err(sandbox_unavailable(
+            "エージェントの設定フォルダーを用意できませんでした。",
+        ));
+    };
+    ensure_hosts_allowed(&hosts, cx)?;
+
+    let mut write_scope = worktree_roots;
+    write_scope.push(config_dir);
+    let policy =
+        local_agent_sandbox_policy(&write_scope, &git_dirs, &placed.readable_paths, &hosts)
+            .map_err(|error| sandbox_unavailable(format!("{error:#}")))?;
+    let upstream_proxy = cx.update(|cx| crate::upstream_proxy_env(cx));
+    let env = sandboxed_agent_environment(placed.env, upstream_proxy);
+    let agent = sandbox::CommandAndArgs {
+        program: command.path.to_string_lossy().into_owned(),
+        args: command.args.clone(),
+        env: env.clone().into_iter().collect(),
+        cwd: root_dir.clone(),
+    };
+    let (wrapped, sandbox) = cx
+        .background_spawn({
+            let policy = policy.clone();
+            async move {
+                // Whether Bubblewrap is there and works: a brief probe.
+                sandbox::Sandbox::can_create(&policy).map_err(|error| {
+                    acp_thread::LinuxWslSandboxError::from(error).user_facing_message()
+                })?;
+                let mut sandbox =
+                    sandbox::Sandbox::new(policy).map_err(|error| error.to_string())?;
+                let wrapped = sandbox
+                    .wrap(&agent)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                Ok::<_, String>((wrapped, sandbox))
+            }
+        })
+        .await
+        .map_err(sandbox_unavailable)?;
+
+    let mut child = util::command::new_std_command(&wrapped.program);
+    child.args(&wrapped.args);
+    // Nothing of this process's environment: the wrapped command carries all
+    // the agent is given.
+    child.env_clear();
+    child.envs(&wrapped.env);
+    if let Some(cwd) = &wrapped.cwd {
+        child.current_dir(cwd);
+    }
+    Ok((
+        child,
+        AgentSandboxSession {
+            write_scope,
+            env,
+            cwd: root_dir,
+            route: AgentSandboxRoute::Local { policy },
+        },
+        sandbox,
+    ))
+}
+
+/// How an agent is started by a remote host's sandbox helper.
+struct RemoteAgentPlan {
+    program: String,
+    args: Vec<String>,
+    write_scope: Vec<PathBuf>,
+    wrap: acp_thread::SandboxWrap,
+    readable_paths: Vec<String>,
+}
+
+/// ADR-F49 decision 13: the network an agent gets in a remote host's sandbox
+/// helper. The IDE-wide allowlist is not shipped to an SSH host, so the part
+/// of the agent's hosts that the allowlist permits is taken here, and an agent
+/// with no hosts of its own gets the allowlist itself.
+///
+/// No allowlist at all is not "everything": the ceiling that would judge the
+/// agent's traffic is missing, so the agent reaches nothing (`editor_allows`
+/// answers false for every host, and `editor_allowlist` is `None`).
+fn remote_agent_network(
+    hosts: &AgentSandboxHosts,
+    editor_allowlist: Option<&[String]>,
+    editor_allows: impl Fn(&str) -> bool,
+) -> acp_thread::SandboxNetworkAccess {
+    let patterns = match hosts {
+        AgentSandboxHosts::Listed(hosts) => hosts
+            .iter()
+            .filter(|host| editor_allows(host))
+            .cloned()
+            .collect::<Vec<_>>(),
+        AgentSandboxHosts::EditorAllowlist => match editor_allowlist {
+            Some(entries) => entries.to_vec(),
+            None => return acp_thread::SandboxNetworkAccess::None,
+        },
+    };
+    let patterns = patterns
+        .iter()
+        .filter_map(|pattern| match http_proxy::HostPattern::parse(pattern) {
+            Ok(pattern) => Some(pattern),
+            Err(error) => {
+                log::warn!("not passing host pattern '{pattern}' to the remote sandbox: {error}");
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    if patterns.is_empty() {
+        acp_thread::SandboxNetworkAccess::None
+    } else {
+        acp_thread::SandboxNetworkAccess::Restricted(http_proxy::Allowlist::from_patterns(patterns))
+    }
+}
+
+/// ADR-F49 第 2a 段: the helper invocation that starts the agent in the
+/// remote host's sandbox, as the host resolved it. The helper takes the
+/// agent's whole environment through `--setenv`; its own process gets none.
+fn plan_remote_agent(
+    remote_binary: &RelPath,
+    sandbox_command: &AgentSandboxCommand,
+    worktree_roots: Vec<PathBuf>,
+    git_dirs: Vec<PathBuf>,
+    network: acp_thread::SandboxNetworkAccess,
+    cwd: Option<&Path>,
+    program: String,
+    args: Vec<String>,
+) -> Result<RemoteAgentPlan> {
+    let AgentSandboxState::Resolved { config_dir, .. } = &sandbox_command.state else {
+        anyhow::bail!("the host did not place the agent in the project");
+    };
+    let mut write_scope = worktree_roots;
+    write_scope.push(config_dir.clone());
+    let wrap = acp_thread::SandboxWrap {
+        writable_paths: write_scope.clone(),
+        extra_write_paths: Vec::new(),
+        network,
+        protected_paths: git_dirs,
+        allow_fs_write: false,
+        is_local: false,
+    };
+    let readable_paths = sandbox_command
+        .readable_paths
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let (program, args) = acp_thread::build_remote_sandbox_command(
+        remote_binary,
+        &wrap,
+        cwd,
+        &sandbox_command.env,
+        &readable_paths,
+        false,
+        program,
+        args,
+    );
+    Ok(RemoteAgentPlan {
+        program,
+        args,
+        write_scope,
+        wrap,
+        readable_paths,
+    })
+}
+
+fn remote_sandboxed_agent_command(
+    project: &Entity<Project>,
+    command: &AgentServerCommand,
+    remote_binary: Arc<RelPath>,
+    root_dir: Option<PathBuf>,
+    cx: &mut AsyncApp,
+) -> Result<(std::process::Command, AgentSandboxSession)> {
+    let sandbox_command = command
+        .sandbox
+        .as_ref()
+        .ok_or_else(|| sandbox_unavailable(OLD_REMOTE_SERVER_REASON))?;
+    let AgentSandboxState::Resolved { hosts, .. } = &sandbox_command.state else {
+        return Err(sandbox_unavailable(OLD_REMOTE_SERVER_REASON));
+    };
+    ensure_hosts_allowed(hosts, cx)?;
+    let (worktree_roots, git_dirs, network, remote_client) =
+        project.read_with(cx, |project, cx| {
+            let allowlist = cx.try_global::<egress_policy::EgressAllowlistGlobal>();
+            let editor_allowlist = editor_allowlist_entries(cx);
+            let network = remote_agent_network(hosts, editor_allowlist.as_deref(), |host| {
+                allowlist.is_some_and(|allowlist| {
+                    http_client::RequestHost::parse(host)
+                        .is_some_and(|host| allowlist.0.allows(&host))
+                })
+            });
+            (
+                acp_thread::sandbox_worktree_writable_paths(project, cx),
+                acp_thread::sandbox_git_dirs(project, cx),
+                network,
+                project.remote_client(),
+            )
+        });
+    let plan = plan_remote_agent(
+        &remote_binary,
+        sandbox_command,
+        worktree_roots,
+        git_dirs,
+        network,
+        root_dir.as_deref(),
+        command.path.to_string_lossy().into_owned(),
+        command.args.clone(),
+    )?;
+    let remote_client = remote_client.context("the project is no longer connected to its host")?;
+    // ADR-F46: the transports refuse an environment for the helper's own
+    // process; everything the agent is given went in through `--setenv`.
+    let template = remote_client.read_with(cx, |client, _| {
+        client.build_command(
+            Some(plan.program.clone()),
+            &plan.args,
+            &HashMap::default(),
+            None,
+            None,
+            Interactive::No,
+        )
+    })?;
+    let mut child = util::command::new_std_command(&template.program);
+    child.args(&template.args);
+    child.envs(template.env);
+    Ok((
+        child,
+        AgentSandboxSession {
+            write_scope: plan.write_scope,
+            env: sandbox_command.env.clone(),
+            cwd: root_dir,
+            route: AgentSandboxRoute::Remote {
+                remote_binary,
+                wrap: plan.wrap,
+                readable_paths: plan.readable_paths,
+            },
+        },
+    ))
+}
+
+/// What a sign-in wrapped in the agent's sandbox is started with: the
+/// environment the agent itself was started with — its own, its profile's and
+/// this process's `PATH` and locale — and, for the names it says nothing
+/// about, what the sign-in method asked for. What confines the agent wins;
+/// nothing of the host's login shell, direnv or ADR-F14 proxy is here, since
+/// `terminal_auth_task` keeps them out of the sign-in's own environment.
+fn sandboxed_login_environment(
+    session_env: &HashMap<String, String>,
+    login_env: HashMap<String, String>,
+) -> HashMap<String, String> {
+    let mut env = session_env.clone();
+    for (name, value) in login_env {
+        env.entry(name).or_insert(value);
+    }
+    env
+}
+
+/// ADR-F49 decision 16: the sign-in runs where the agent does — in its
+/// sandbox, with its configuration folder and its hosts — as an interactive
+/// session on a terminal, so a code can be pasted into it.
+async fn wrap_login_in_sandbox(
+    mut login: SpawnInTerminal,
+    session: &AgentSandboxSession,
+    login_sandboxes: &Rc<RefCell<HashMap<String, sandbox::Sandbox>>>,
+    cx: &mut AsyncApp,
+) -> Result<SpawnInTerminal> {
+    let program = login.command.take().context("the sign-in has no command")?;
+    let args = std::mem::take(&mut login.args);
+    let env = sandboxed_login_environment(&session.env, std::mem::take(&mut login.env));
+    match &session.route {
+        AgentSandboxRoute::Local { policy } => {
+            let policy = policy.clone();
+            let command = sandbox::CommandAndArgs {
+                program,
+                args,
+                env: env.into_iter().collect(),
+                cwd: session.cwd.clone(),
+            };
+            let (wrapped, sandbox) = cx
+                .background_spawn(async move {
+                    let mut sandbox = sandbox::Sandbox::new(policy)?;
+                    let wrapped = sandbox.wrap(&command).await?;
+                    anyhow::Ok((wrapped, sandbox))
+                })
+                .await
+                .map_err(|error| {
+                    sandbox_unavailable(format!(
+                        "サインインをサンドボックスで起動できませんでした: {error:#}"
+                    ))
+                })?;
+            login_sandboxes
+                .borrow_mut()
+                .insert(login.id.0.clone(), sandbox);
+            login.command = Some(wrapped.program);
+            login.args = wrapped.args;
+            login.env = wrapped.env.into_iter().collect();
+            login.cwd = wrapped.cwd;
+        }
+        AgentSandboxRoute::Remote {
+            remote_binary,
+            wrap,
+            readable_paths,
+        } => {
+            let (program, args) = acp_thread::build_remote_sandbox_command(
+                remote_binary,
+                wrap,
+                session.cwd.as_deref(),
+                &env,
+                readable_paths,
+                true,
+                program,
+                args,
+            );
+            login.command = Some(program);
+            login.args = args;
+            login.env = HashMap::default();
+            // The helper's path is relative to the remote home, where the
+            // transport starts it, and it changes directory itself.
+            login.cwd = None;
+        }
+    }
+    Ok(login)
+}
+
+// A login task runs on a terminal: in the agent's sandbox when the agent runs
+// in one (see `wrap_login_in_sandbox`), and otherwise as an ordinary terminal
+// on this machine, where the agent process runs too.
 fn terminal_auth_task_id(agent_id: &AgentId, method_id: &acp::AuthMethodId) -> String {
     format!("external-agent-{}-{}-login", agent_id.0, method_id.0)
 }
 
+/// ADR-F49 decision 16: in a sandbox the sign-in is started with the agent's
+/// own environment — its settings', its distribution's and this method's, the
+/// same the agent process was given — and never with the environment this
+/// command was resolved against on the host (the login shell, direnv and the
+/// ADR-F14 proxy variables), which is the sandbox's to provide.
 fn terminal_auth_task(
     command: &AgentServerCommand,
     agent_id: &AgentId,
     method: &acp::AuthMethodTerminal,
+    in_sandbox: bool,
 ) -> SpawnInTerminal {
+    let env = if in_sandbox {
+        command
+            .sandbox
+            .as_ref()
+            .map(|sandbox| sandbox.env.clone())
+            .unwrap_or_default()
+    } else {
+        command.env.clone().unwrap_or_default()
+    };
     acp_thread::build_terminal_auth_task(
         terminal_auth_task_id(agent_id, &method.id),
         method.name.clone(),
         command.path.to_string_lossy().into_owned(),
         command.args.clone(),
-        command.env.clone().unwrap_or_default(),
+        env,
     )
 }
 
@@ -1621,9 +2313,13 @@ impl AgentConnection for AcpConnection {
             Err(error) => return Task::ready(Err(error)),
         };
         let name = self.id.0.clone();
-        let mcp_servers = mcp_servers_for_project(&project, cx);
+        let mcp_servers = mcp_servers_for_project(&project, self.sandbox_session.is_none(), cx);
+        // ADR-F49 decision 18 / ADR-F50: see `open_or_create_session` — the
+        // agent writes while the session is being created as well.
+        let session_writer = acp_thread::register_agent_process_writer(self.as_ref(), &project, cx);
 
         cx.spawn(async move |cx| {
+            let _session_writer = session_writer;
             let response = self
                 .connection
                 .send_request(directories.into_new_session_request(mcp_servers))
@@ -1752,7 +2448,7 @@ impl AgentConnection for AcpConnection {
             ))));
         }
 
-        let mcp_servers = mcp_servers_for_project(&project, cx);
+        let mcp_servers = mcp_servers_for_project(&project, self.sandbox_session.is_none(), cx);
         self.open_or_create_session(
             session_id,
             project,
@@ -1796,7 +2492,7 @@ impl AgentConnection for AcpConnection {
             ))));
         }
 
-        let mcp_servers = mcp_servers_for_project(&project, cx);
+        let mcp_servers = mcp_servers_for_project(&project, self.sandbox_session.is_none(), cx);
         self.open_or_create_session(
             session_id,
             project,
@@ -1906,12 +2602,13 @@ impl AgentConnection for AcpConnection {
             .iter()
             .find(|method| method.id() == method_id)?;
 
-        match method {
+        let in_sandbox = self.sandbox_session.is_some();
+        let login = match method {
             acp::AuthMethod::Terminal(terminal) if cx.has_flag::<AcpBetaFeatureFlag>() => {
                 let agent_id = self.id.clone();
                 let terminal = terminal.clone();
                 let store = self.agent_server_store.clone();
-                Some(cx.spawn(async move |cx| {
+                cx.spawn(async move |cx| {
                     let command = store
                         .update(cx, |store, cx| {
                             let agent = store
@@ -1925,12 +2622,31 @@ impl AgentConnection for AcpConnection {
                         })?
                         .context("Failed to get agent command")?
                         .await?;
-                    Ok(terminal_auth_task(&command, &agent_id, &terminal))
-                }))
+                    Ok(terminal_auth_task(
+                        &command, &agent_id, &terminal, in_sandbox,
+                    ))
+                })
             }
-            _ => meta_terminal_auth_task(&self.id, method_id, method)
-                .map(|task| Task::ready(Ok(task))),
-        }
+            _ => Task::ready(Ok(meta_terminal_auth_task(&self.id, method_id, method)?)),
+        };
+        let Some(session) = self.sandbox_session.clone() else {
+            return Some(login);
+        };
+        let login_sandboxes = self.login_sandboxes.clone();
+        Some(cx.spawn(async move |cx| {
+            let login = login.await?;
+            wrap_login_in_sandbox(login, &session, &login_sandboxes, cx).await
+        }))
+    }
+
+    fn terminal_auth_runs_in_sandbox(&self) -> bool {
+        self.sandbox_session.is_some()
+    }
+
+    fn sandbox_write_scope(&self) -> Option<Vec<PathBuf>> {
+        self.sandbox_session
+            .as_ref()
+            .map(|session| session.write_scope.clone())
     }
 
     fn authenticate(&self, method_id: acp::AuthMethodId, cx: &mut App) -> Task<Result<()>> {
@@ -2719,6 +3435,437 @@ mod tests {
     use super::*;
     use feature_flags::FeatureFlag as _;
 
+    const CONFIG_DIR: &str = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/config";
+
+    fn placed_sandbox(
+        env: &[(&str, &str)],
+        readable: &[&str],
+        hosts: AgentSandboxHosts,
+    ) -> AgentSandboxCommand {
+        AgentSandboxCommand {
+            env: env
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
+            readable_paths: readable.iter().map(PathBuf::from).collect(),
+            state: AgentSandboxState::Resolved {
+                config_dir: PathBuf::from(CONFIG_DIR),
+                hosts,
+            },
+        }
+    }
+
+    fn remote_helper() -> Arc<RelPath> {
+        RelPath::from_unix_str(".zed_server/zed-remote-server-stable-1.17.2")
+            .expect("a valid relative path")
+            .into_arc()
+    }
+
+    /// ADR-F49 第 2a 段: where an agent starts, and when it does not.
+    #[test]
+    fn an_agent_starts_in_the_sandbox_its_project_has() {
+        let placed = placed_sandbox(&[], &[], AgentSandboxHosts::EditorAllowlist);
+        let unplaced =
+            AgentSandboxCommand::new(SandboxedAgentProfile::Codex, HashMap::default(), Vec::new());
+
+        assert_eq!(
+            choose_agent_launch(false, true, false, None, None).ok(),
+            Some(AgentLaunch::LocalSandbox),
+            "on Linux and macOS"
+        );
+        assert_eq!(
+            choose_agent_launch(false, true, true, None, None).ok(),
+            Some(AgentLaunch::Host),
+            "on Windows, until 第 2b 段"
+        );
+        assert_eq!(
+            choose_agent_launch(false, false, true, Some(remote_helper()), Some(&placed)).ok(),
+            Some(AgentLaunch::RemoteHelper {
+                remote_binary: remote_helper()
+            })
+        );
+        assert!(
+            matches!(
+                choose_agent_launch(false, false, false, None, Some(&placed)),
+                Err(LoadError::SandboxUnavailable(_))
+            ),
+            "a remote host without the sandbox helper"
+        );
+        for too_old in [None, Some(&unplaced)] {
+            assert!(
+                matches!(
+                    choose_agent_launch(false, false, false, Some(remote_helper()), too_old),
+                    Err(LoadError::SandboxUnavailable(reason)) if reason.as_ref() == OLD_REMOTE_SERVER_REASON
+                ),
+                "a host whose server did not place the agent"
+            );
+        }
+        let not_placed = AgentSandboxCommand {
+            env: HashMap::default(),
+            readable_paths: Vec::new(),
+            state: AgentSandboxState::Unavailable {
+                reason: "a link on the way".to_string(),
+            },
+        };
+        assert!(
+            matches!(
+                choose_agent_launch(false, false, false, Some(remote_helper()), Some(&not_placed)),
+                Err(LoadError::SandboxUnavailable(reason)) if reason.as_ref() == "a link on the way"
+            ),
+            "the host's reason for not placing the agent"
+        );
+        assert_eq!(
+            choose_agent_launch(true, false, false, None, None).ok(),
+            Some(AgentLaunch::Host),
+            "outside the sandbox, once the user confirmed it"
+        );
+    }
+
+    /// ADR-F49 decision 13: an SSH host is given no ceiling, so the client
+    /// passes the part of the agent's hosts the IDE-wide allowlist permits,
+    /// and for an agent with no hosts of its own the allowlist itself.
+    #[test]
+    fn a_remote_agent_reaches_the_part_of_its_hosts_the_ide_allows() {
+        let listed = AgentSandboxHosts::Listed(vec![
+            "api.anthropic.com".to_string(),
+            "platform.claude.com".to_string(),
+        ]);
+        let hosts_of = |network: acp_thread::SandboxNetworkAccess| match network {
+            acp_thread::SandboxNetworkAccess::Restricted(allowlist) => allowlist
+                .patterns()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            other => panic!("expected a list of hosts, got {other:?}"),
+        };
+
+        assert_eq!(
+            hosts_of(remote_agent_network(&listed, Some(&[]), |host| {
+                host == "api.anthropic.com"
+            })),
+            ["api.anthropic.com"]
+        );
+        assert!(matches!(
+            remote_agent_network(&listed, None, |_| false),
+            acp_thread::SandboxNetworkAccess::None
+        ));
+        assert_eq!(
+            hosts_of(remote_agent_network(
+                &AgentSandboxHosts::EditorAllowlist,
+                Some(&["*.example.com".to_string()]),
+                |_| false
+            )),
+            ["*.example.com"]
+        );
+        assert!(
+            matches!(
+                remote_agent_network(&AgentSandboxHosts::EditorAllowlist, None, |_| true),
+                acp_thread::SandboxNetworkAccess::None
+            ),
+            "no allowlist to take a part of is not every host (fail-closed)"
+        );
+    }
+
+    /// ADR-F49 第 2a 段: a remote agent is started by the host's helper, with
+    /// its worktrees and its folder writable, what it runs from shown back,
+    /// and its whole environment going in through `--setenv`.
+    #[test]
+    fn a_remote_agent_is_started_by_the_hosts_helper() {
+        let readable =
+            "/home/u/.local/share/zed-jp-enhance/external_agents/registry/npx/claude-acp";
+        let node = "/home/u/.local/share/zed-jp-enhance/node/bin/node";
+        let sandbox = placed_sandbox(
+            &[("CLAUDE_CONFIG_DIR", CONFIG_DIR), ("PATH", "/usr/bin")],
+            &[readable],
+            AgentSandboxHosts::Listed(vec!["api.anthropic.com".to_string()]),
+        );
+        let AgentSandboxState::Resolved { hosts, .. } = &sandbox.state else {
+            panic!("the sandbox was placed");
+        };
+        let network = remote_agent_network(hosts, Some(&[]), |_| true);
+
+        let plan = plan_remote_agent(
+            &remote_helper(),
+            &sandbox,
+            vec![PathBuf::from("/home/u/project")],
+            vec![PathBuf::from("/home/u/project/.git")],
+            network,
+            Some(Path::new("/home/u/project")),
+            node.to_string(),
+            vec!["agent.js".to_string()],
+        )
+        .expect("planned");
+
+        assert_eq!(plan.program, ".zed_server/zed-remote-server-stable-1.17.2");
+        let [_, payload] = plan.args.as_slice() else {
+            panic!(
+                "the argv travels as one hex-encoded argument: {:?}",
+                plan.args
+            );
+        };
+        let argv =
+            sandbox::decode_remote_sandbox_helper_argv(payload).expect("the packed argv decodes");
+        let separator = argv
+            .iter()
+            .position(|arg| arg == "--")
+            .expect("the policy ends with `--`");
+        let (policy, command) = argv.split_at(separator);
+        assert_eq!(command, ["--", node, "agent.js"]);
+        let values_of = |flag: &str| {
+            policy
+                .windows(2)
+                .filter_map(|window| match window {
+                    [name, value] if name == flag => Some(value.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(values_of("--writable"), ["/home/u/project", CONFIG_DIR]);
+        assert_eq!(values_of("--allow-host"), ["api.anthropic.com"]);
+        let forwarded = policy
+            .windows(3)
+            .filter_map(|window| match window {
+                [flag, name, value] if flag == "--setenv" => Some((name.as_str(), value.as_str())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            forwarded,
+            [("CLAUDE_CONFIG_DIR", CONFIG_DIR), ("PATH", "/usr/bin")]
+        );
+        // What it runs from reaches the helper's policy as its readable paths.
+        let expected_policy = sandbox::build_remote_sandbox_helper_argv(
+            &["/home/u/project".to_string(), CONFIG_DIR.to_string()],
+            &["/home/u/project/.git".to_string()],
+            &[readable.to_string()],
+            &sandbox::RemoteSandboxNetwork::Hosts(vec!["api.anthropic.com".to_string()]),
+            false,
+            Some("/home/u/project"),
+        );
+        let (_, expected_policy) = expected_policy
+            .split_last()
+            .expect("the policy ends with `--`");
+        assert!(
+            policy.starts_with(expected_policy),
+            "{policy:?} does not start with {expected_policy:?}"
+        );
+        assert_eq!(
+            plan.write_scope,
+            [PathBuf::from("/home/u/project"), PathBuf::from(CONFIG_DIR)]
+        );
+        assert_eq!(plan.readable_paths, [readable]);
+    }
+
+    #[test]
+    fn a_local_agent_may_write_its_worktrees_and_folder_and_reach_its_hosts() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let config = tempfile::tempdir().expect("tempdir");
+        let install = tempfile::tempdir().expect("tempdir");
+        let policy = local_agent_sandbox_policy(
+            &[worktree.path().to_path_buf(), config.path().to_path_buf()],
+            &[worktree.path().join(".git")],
+            &[install.path().to_path_buf()],
+            &AgentSandboxHosts::Listed(vec!["chatgpt.com".to_string()]),
+        )
+        .expect("a policy");
+        let sandbox::SandboxFsPolicy::Restricted {
+            writable_paths,
+            readable_paths,
+            ..
+        } = &policy.fs
+        else {
+            panic!("its writes are confined");
+        };
+        assert_eq!(writable_paths.len(), 2);
+        assert_eq!(readable_paths.len(), 1);
+        assert_eq!(
+            policy.network,
+            sandbox::SandboxNetPolicy::Restricted {
+                allowed_domains: vec!["chatgpt.com".to_string()]
+            }
+        );
+
+        let without_hosts = local_agent_sandbox_policy(
+            &[worktree.path().to_path_buf()],
+            &[],
+            &[],
+            &AgentSandboxHosts::EditorAllowlist,
+        )
+        .expect("a policy");
+        assert_eq!(
+            without_hosts.network,
+            sandbox::SandboxNetPolicy::Unrestricted,
+            "an agent with no hosts of its own is capped by the IDE-wide allowlist alone"
+        );
+    }
+
+    #[test]
+    fn a_sandboxed_agent_gets_its_own_environment_and_little_of_this_process() {
+        let upstream =
+            HashMap::from_iter([("HTTPS_PROXY".to_string(), "http://corp:3128".to_string())]);
+        let env = sandboxed_agent_environment(
+            HashMap::from_iter([("CODEX_HOME".to_string(), "/c".to_string())]),
+            upstream.clone(),
+        );
+        assert_eq!(env.get("CODEX_HOME").map(String::as_str), Some("/c"));
+        assert_eq!(
+            env.get("HTTPS_PROXY").map(String::as_str),
+            Some("http://corp:3128"),
+            "the sandbox's proxy chains to the one this process goes through"
+        );
+        assert_eq!(env.get("PATH").cloned(), std::env::var("PATH").ok());
+        assert!(
+            !env.contains_key("HOME"),
+            "the agent's home is its profile's"
+        );
+
+        let own_proxy = sandboxed_agent_environment(
+            HashMap::from_iter([("HTTP_PROXY".to_string(), "http://own:1".to_string())]),
+            upstream,
+        );
+        assert!(
+            !own_proxy.contains_key("HTTPS_PROXY"),
+            "a proxy the agent was given wins whole"
+        );
+    }
+
+    /// ADR-F49 decision 16: the sign-in is started like the agent — with the
+    /// agent's own environment — and not with the host environment the
+    /// command was resolved against.
+    #[test]
+    fn a_sign_in_in_the_sandbox_takes_the_agents_environment_not_the_hosts() {
+        let command = AgentServerCommand {
+            path: "/path/to/agent".into(),
+            args: vec!["--acp".into()],
+            env: Some(HashMap::from_iter([
+                ("PATH".into(), "/host/bin".into()),
+                ("DIRENV_DIR".into(), "/work".into()),
+                ("HTTPS_PROXY".into(), "http://127.0.0.1:1".into()),
+            ])),
+            sandbox: Some(placed_sandbox(
+                &[("CODEX_HOME", "/c/home/.codex"), ("AUTH_MODE", "code")],
+                &[],
+                AgentSandboxHosts::Listed(vec!["chatgpt.com".to_string()]),
+            )),
+        };
+        let method = acp::AuthMethodTerminal::new("login", "Login");
+
+        let outside = terminal_auth_task(&command, &AgentId::new("codex-acp"), &method, false);
+        assert_eq!(
+            outside.env.get("DIRENV_DIR").map(String::as_str),
+            Some("/work"),
+            "outside a sandbox the sign-in is the host's own process"
+        );
+
+        let inside = terminal_auth_task(&command, &AgentId::new("codex-acp"), &method, true);
+        assert_eq!(
+            inside.env,
+            HashMap::from_iter([
+                ("CODEX_HOME".into(), "/c/home/.codex".into()),
+                ("AUTH_MODE".into(), "code".into()),
+            ]),
+            "nothing of the login shell, direnv or the ADR-F14 proxy"
+        );
+
+        // What the agent itself runs with then covers it, as it confines it.
+        let session_env = HashMap::from_iter([
+            ("CODEX_HOME".to_string(), "/agent/home/.codex".to_string()),
+            ("PATH".to_string(), "/usr/bin".to_string()),
+        ]);
+        let wrapped = sandboxed_login_environment(&session_env, inside.env);
+        assert_eq!(
+            wrapped,
+            HashMap::from_iter([
+                ("CODEX_HOME".into(), "/agent/home/.codex".into()),
+                ("PATH".into(), "/usr/bin".into()),
+                ("AUTH_MODE".into(), "code".into()),
+            ])
+        );
+    }
+
+    /// ADR-F49 decision 13: the IDE-wide allowlist caps every sandboxed
+    /// command, so the agent's hosts it does not allow yet are asked for
+    /// before the agent starts.
+    #[gpui::test]
+    fn the_agents_hosts_are_checked_against_the_ide_allowlist(cx: &mut gpui::TestAppContext) {
+        let hosts = AgentSandboxHosts::Listed(vec![
+            "api.anthropic.com".to_string(),
+            "platform.claude.com".to_string(),
+        ]);
+        cx.update(|cx| {
+            assert!(
+                hosts_missing_from_editor_allowlist(&hosts, cx).is_empty(),
+                "without an allowlist there is nothing to add to"
+            );
+            let (policy, errors) =
+                http_client::EgressPolicy::from_host_strings(["api.anthropic.com"]);
+            assert!(errors.is_empty(), "{errors:?}");
+            cx.set_global(egress_policy::EgressAllowlistGlobal(
+                http_client::EgressPolicyHandle::new(policy),
+            ));
+            assert_eq!(
+                hosts_missing_from_editor_allowlist(&hosts, cx),
+                ["platform.claude.com"]
+            );
+            assert!(
+                hosts_missing_from_editor_allowlist(&AgentSandboxHosts::EditorAllowlist, cx)
+                    .is_empty(),
+                "an agent with no hosts of its own asks for nothing"
+            );
+        });
+    }
+
+    /// ADR-F49 decision 17: Zed's own IDE server is not handed to an agent in
+    /// a sandbox — its loopback endpoint is not reachable from there and its
+    /// token grants far more than the agent is allowed.
+    #[test]
+    fn an_agent_in_a_sandbox_is_given_no_ide_mcp_server() {
+        let endpoint = || {
+            Some(ide_server::McpEndpoint {
+                url: "http://127.0.0.1:39254/mcp".to_string(),
+                authorization: "Bearer secret".to_string(),
+            })
+        };
+        assert!(
+            matches!(
+                ide_server_for_agent(true, endpoint, false),
+                Some(acp::McpServer::Http(_))
+            ),
+            "outside a sandbox the agent reaches Zed's IDE server"
+        );
+        assert_eq!(
+            ide_server_for_agent(false, endpoint, false),
+            None,
+            "in a sandbox it does not"
+        );
+        assert_eq!(
+            ide_server_for_agent(false, || panic!("the endpoint is not asked for"), false),
+            None
+        );
+    }
+
+    /// The project's own sessions still get the servers the user configured:
+    /// the agent starts them inside its sandbox.
+    #[gpui::test]
+    async fn a_sandboxed_session_still_lists_the_configured_mcp_servers(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_feature_flags_test(cx);
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({}))
+            .await;
+        let project =
+            project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+
+        let (outside, inside) = cx.update(|cx| {
+            (
+                mcp_servers_for_project(&project, true, cx),
+                mcp_servers_for_project(&project, false, cx),
+            )
+        });
+        assert_eq!(outside, inside, "no IDE server is running in this test");
+    }
+
     fn init_feature_flags_test(cx: &mut gpui::TestAppContext) {
         cx.update(|cx| {
             let mut settings_store = SettingsStore::test(cx);
@@ -3095,10 +4242,11 @@ mod tests {
                 ("SHARED".into(), "override".into()),
                 ("EXTRA".into(), "2".into()),
             ])),
+            sandbox: None,
         };
         let method = acp::AuthMethodTerminal::new("login", "Login");
 
-        let task = terminal_auth_task(&command, &AgentId::new("test-agent"), &method);
+        let task = terminal_auth_task(&command, &AgentId::new("test-agent"), &method, false);
 
         assert_eq!(task.command.as_deref(), Some("/path/to/agent"));
         assert_eq!(task.args, vec!["--acp", "--verbose", "/auth"]);
@@ -3191,11 +4339,12 @@ mod tests {
                 ("BASE".into(), "1".into()),
                 ("AUTH_MODE".into(), "first-class".into()),
             ])),
+            sandbox: None,
         };
 
         let task = match &method {
             acp::AuthMethod::Terminal(terminal) => {
-                terminal_auth_task(&command, &AgentId::new("test-agent"), terminal)
+                terminal_auth_task(&command, &AgentId::new("test-agent"), terminal, false)
             }
             _ => unreachable!(),
         };
@@ -3821,9 +4970,12 @@ mod tests {
                 r#"printf '%s\n' 'npm error code ETARGET' 'npm error notarget No matching version found for @agentclientprotocol/claude-agent-acp@0.32.0 with a date before 4/28/2026, 12:11:38 PM.' >&2; exit 1"#.into(),
             ],
             env: None,
+            sandbox: None,
         };
 
         let mut async_cx = cx.to_async();
+        // Started as a plain process: what is tested is how a start that
+        // fails is reported, not the sandbox around it.
         let startup = AcpConnection::stdio(
             AgentId::new("test-agent"),
             project,
@@ -3831,6 +4983,7 @@ mod tests {
             agent_server_store,
             None,
             HashMap::default(),
+            true,
             &mut async_cx,
         )
         .fuse();
@@ -4427,6 +5580,64 @@ mod tests {
         );
     }
 
+    /// ADR-F49 decision 18 / ADR-F50: an external agent's process writes while
+    /// its session is being made — the hooks it runs at the start, the MCP
+    /// servers it launches — so it is a writer of what it can write from the
+    /// request until the session is there, not only once it answers a prompt.
+    #[gpui::test]
+    async fn test_a_session_being_loaded_is_already_a_writer(cx: &mut gpui::TestAppContext) {
+        let (connection, project, _load_count, _close_count, _updates, load_session_gate, _agent) =
+            connect_fake_agent(cx).await;
+
+        let (gate_tx, gate_rx) = async_channel::bounded::<()>(1);
+        *load_session_gate
+            .lock()
+            .expect("load_session_gate mutex poisoned") = Some(gate_rx);
+
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let writer_running = |cx: &mut gpui::TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .details(worktree_id)
+                    .is_some_and(|details| details.sandboxed_writer_running)
+            })
+        };
+        assert!(!writer_running(cx));
+
+        let load = cx.update(|cx| {
+            connection.clone().load_session(
+                acp::SessionId::new("session-writer"),
+                project.clone(),
+                util::path_list::PathList::new(&[std::path::Path::new("/a")]),
+                None,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(
+            writer_running(cx),
+            "the agent is running, and writing, while its session is being loaded"
+        );
+
+        gate_tx.send(()).await.expect("gate send failed");
+        drop(gate_tx);
+        load.await.expect("the session loads");
+        cx.run_until_parked();
+        assert!(
+            !writer_running(cx),
+            "once the session is there, only its turns are writers"
+        );
+    }
+
     async fn project_with_sandbox_settings(
         standing: SandboxPermissions,
         cx: &mut gpui::TestAppContext,
@@ -4898,14 +6109,43 @@ fn ide_server_entry(
     ))
 }
 
-fn mcp_servers_for_project(project: &Entity<Project>, cx: &App) -> Vec<acp::McpServer> {
+/// ADR-F49 decision 17: Zed's own IDE server is left out of an agent's
+/// session when the agent runs in a sandbox — its endpoint is on this
+/// machine's loopback, which the sandbox's network namespace does not reach,
+/// and its token grants far more than such an agent is allowed.
+fn ide_server_for_agent(
+    include_ide_server: bool,
+    endpoint: impl FnOnce() -> Option<ide_server::McpEndpoint>,
+    user_configured: bool,
+) -> Option<acp::McpServer> {
+    if !include_ide_server {
+        return None;
+    }
+    ide_server_entry(endpoint(), user_configured)
+}
+
+/// The MCP servers an agent's session is given. `include_ide_server` is
+/// false for an agent in a sandbox (ADR-F49 decision 17): Zed's own IDE
+/// server listens on this machine's loopback, which the sandbox's network
+/// namespace does not reach, and its token grants far more than such an agent
+/// is allowed. The servers the user configured still go to it, and it starts
+/// them inside its sandbox.
+fn mcp_servers_for_project(
+    project: &Entity<Project>,
+    include_ide_server: bool,
+    cx: &App,
+) -> Vec<acp::McpServer> {
     let context_server_store = project.read(cx).context_server_store().read(cx);
     let is_local = project.read(cx).is_local();
     let configured_server_ids = context_server_store.configured_server_ids();
-    let ide_server = ide_server_entry(
-        ide_server::mcp_endpoint(project, cx),
-        // A project-defined server that waits for approval is not forwarded,
-        // so it must not keep the built-in one out either (ADR-F42).
+    let ide_server = ide_server_for_agent(
+        include_ide_server,
+        // Asked for only where it may be given, so that a sandboxed agent's
+        // session does not start the server for nothing.
+        || ide_server::mcp_endpoint(project, cx),
+        // A project-defined server that waits for approval is not
+        // forwarded, so it must not keep the built-in one out either
+        // (ADR-F42).
         configured_server_ids.iter().any(|id| {
             id.0.as_ref() == ide_server::MCP_SERVER_NAME
                 && context_server_store.status_for_server(id)

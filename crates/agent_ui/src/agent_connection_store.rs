@@ -66,9 +66,39 @@ pub struct ActiveAcpConnection {
     pub connection: Rc<AcpConnection>,
 }
 
+/// ADR-F49 decision 19: which view a connection started outside its sandbox
+/// belongs to. The user confirms such a start for one view and one time, so
+/// the connection is kept apart from the shared ones and handed back to that
+/// view alone; every other view and every new thread asks for a connection in
+/// the sandbox as usual.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OutsideSandboxConnectionId(u64);
+
+#[derive(Clone)]
+enum ConnectionSlot {
+    Shared(Agent),
+    OutsideSandbox {
+        id: OutsideSandboxConnectionId,
+        agent: Agent,
+    },
+}
+
+impl ConnectionSlot {
+    fn agent(&self) -> &Agent {
+        match self {
+            ConnectionSlot::Shared(agent) => agent,
+            ConnectionSlot::OutsideSandbox { agent, .. } => agent,
+        }
+    }
+}
+
 pub struct AgentConnectionStore {
     project: Entity<Project>,
     entries: HashMap<Agent, Entity<AgentConnectionEntry>>,
+    /// Connections started outside their sandbox, by the view that confirmed
+    /// each of them.
+    outside_sandbox: HashMap<OutsideSandboxConnectionId, (Agent, Entity<AgentConnectionEntry>)>,
+    next_outside_sandbox_id: u64,
     /// Versions reported by [`AgentConnectionEntryEvent::NewVersionAvailable`],
     /// kept after the event has been delivered. The event fires once and drops
     /// the connection entry with it, so without this the agent registry page
@@ -84,6 +114,8 @@ impl AgentConnectionStore {
         Self {
             project,
             entries: HashMap::default(),
+            outside_sandbox: HashMap::default(),
+            next_outside_sandbox_id: 0,
             new_versions: HashMap::default(),
             _subscriptions: vec![subscription],
         }
@@ -120,6 +152,7 @@ impl AgentConnectionStore {
     pub fn active_acp_connections(&self, cx: &App) -> Vec<ActiveAcpConnection> {
         self.entries
             .values()
+            .chain(self.outside_sandbox.values().map(|(_, entry)| entry))
             .filter_map(|entry| match entry.read(cx) {
                 AgentConnectionEntry::Connected(state) => state
                     .connection
@@ -161,25 +194,98 @@ impl AgentConnectionStore {
         if let Some(entry) = self.entries.get(&key) {
             return entry.clone();
         }
+        self.insert_connection(ConnectionSlot::Shared(key), server, false, cx)
+    }
 
+    /// ADR-F49 decision 19: connects the agent again, started outside its
+    /// sandbox this once, after the user confirmed it. The connection is the
+    /// confirming view's alone — [`Self::outside_sandbox_connection`] hands
+    /// it back to that view; nothing else finds it.
+    pub fn connect_outside_sandbox(
+        &mut self,
+        key: Agent,
+        server: Rc<dyn AgentServer>,
+        cx: &mut Context<Self>,
+    ) -> OutsideSandboxConnectionId {
+        let id = OutsideSandboxConnectionId(self.next_outside_sandbox_id);
+        self.next_outside_sandbox_id += 1;
+        self.insert_connection(
+            ConnectionSlot::OutsideSandbox { id, agent: key },
+            server,
+            true,
+            cx,
+        );
+        id
+    }
+
+    /// The connection `id` names, while it is still there: it is dropped when
+    /// it fails to start or the agent goes away, and the view then connects
+    /// in the sandbox again (and has to confirm another start outside it).
+    pub fn outside_sandbox_connection(
+        &self,
+        id: OutsideSandboxConnectionId,
+    ) -> Option<Entity<AgentConnectionEntry>> {
+        self.outside_sandbox
+            .get(&id)
+            .map(|(_, entry)| entry.clone())
+    }
+
+    fn slot_entry(&self, slot: &ConnectionSlot) -> Option<&Entity<AgentConnectionEntry>> {
+        match slot {
+            ConnectionSlot::Shared(key) => self.entries.get(key),
+            ConnectionSlot::OutsideSandbox { id, .. } => {
+                self.outside_sandbox.get(id).map(|(_, entry)| entry)
+            }
+        }
+    }
+
+    fn insert_slot_entry(&mut self, slot: &ConnectionSlot, entry: Entity<AgentConnectionEntry>) {
+        match slot {
+            ConnectionSlot::Shared(key) => {
+                self.entries.insert(key.clone(), entry);
+            }
+            ConnectionSlot::OutsideSandbox { id, agent } => {
+                self.outside_sandbox.insert(*id, (agent.clone(), entry));
+            }
+        }
+    }
+
+    fn remove_slot_entry(&mut self, slot: &ConnectionSlot) {
+        match slot {
+            ConnectionSlot::Shared(key) => {
+                self.entries.remove(key);
+            }
+            ConnectionSlot::OutsideSandbox { id, .. } => {
+                self.outside_sandbox.remove(id);
+            }
+        }
+    }
+
+    fn insert_connection(
+        &mut self,
+        slot: ConnectionSlot,
+        server: Rc<dyn AgentServer>,
+        run_outside_sandbox: bool,
+        cx: &mut Context<Self>,
+    ) -> Entity<AgentConnectionEntry> {
         let (mut new_version_rx, mut loading_status_rx, connect_task) =
-            self.start_connection(server, cx);
+            self.start_connection(server, run_outside_sandbox, cx);
         let connect_task = connect_task.shared();
 
         let entry = cx.new(|_cx| AgentConnectionEntry::Connecting {
             connect_task: connect_task.clone(),
         });
 
-        self.entries.insert(key.clone(), entry.clone());
+        self.insert_slot_entry(&slot, entry.clone());
         cx.notify();
 
         cx.spawn({
-            let key = key.clone();
+            let slot = slot.clone();
             let entry = entry.downgrade();
             async move |this, cx| match connect_task.await {
                 Ok(connected_state) => {
                     this.update(cx, move |this, cx| {
-                        if this.entries.get(&key) != entry.upgrade().as_ref() {
+                        if this.slot_entry(&slot) != entry.upgrade().as_ref() {
                             return;
                         }
 
@@ -197,7 +303,7 @@ impl AgentConnectionStore {
                 }
                 Err(error) => {
                     this.update(cx, move |this, cx| {
-                        if this.entries.get(&key) != entry.upgrade().as_ref() {
+                        if this.slot_entry(&slot) != entry.upgrade().as_ref() {
                             return;
                         }
 
@@ -209,7 +315,7 @@ impl AgentConnectionStore {
                                 }
                             })
                             .ok();
-                        this.entries.remove(&key);
+                        this.remove_slot_entry(&slot);
                         cx.notify();
                     })
                     .ok();
@@ -219,7 +325,7 @@ impl AgentConnectionStore {
         .detach();
 
         cx.spawn({
-            let key = key.clone();
+            let slot = slot.clone();
             let entry = entry.downgrade();
             async move |this, cx| {
                 while let Ok(version) = new_version_rx.recv().await {
@@ -228,18 +334,19 @@ impl AgentConnectionStore {
                     };
 
                     this.update(cx, move |this, cx| {
-                        if this.entries.get(&key) != entry.upgrade().as_ref() {
+                        if this.slot_entry(&slot) != entry.upgrade().as_ref() {
                             return;
                         }
 
                         let version = SharedString::from(version);
-                        this.new_versions.insert(key.clone(), version.clone());
+                        this.new_versions
+                            .insert(slot.agent().clone(), version.clone());
                         entry
                             .update(cx, move |_entry, cx| {
                                 cx.emit(AgentConnectionEntryEvent::NewVersionAvailable(version));
                             })
                             .ok();
-                        this.entries.remove(&key);
+                        this.remove_slot_entry(&slot);
                         cx.notify();
                     })
                     .ok();
@@ -254,10 +361,10 @@ impl AgentConnectionStore {
             async move |this, cx| {
                 while let Ok(status) = loading_status_rx.recv().await {
                     let status = status.map(SharedString::from);
-                    let key = key.clone();
+                    let slot = slot.clone();
                     let entry = entry.clone();
                     this.update(cx, move |this, cx| {
-                        if this.entries.get(&key) != entry.upgrade().as_ref() {
+                        if this.slot_entry(&slot) != entry.upgrade().as_ref() {
                             return;
                         }
 
@@ -284,18 +391,21 @@ impl AgentConnectionStore {
         cx: &mut Context<Self>,
     ) {
         let store = store.read(cx);
-        self.entries.retain(|key, _| match key {
+        let still_there = |key: &Agent| match key {
             Agent::NativeAgent => true,
             Agent::Custom { id } => store.external_agents.contains_key(id),
             #[cfg(any(test, feature = "test-support"))]
             Agent::Stub => true,
-        });
+        };
+        self.entries.retain(|key, _| still_there(key));
+        self.outside_sandbox.retain(|_, (key, _)| still_there(key));
         cx.notify();
     }
 
     fn start_connection(
         &self,
         server: Rc<dyn AgentServer>,
+        run_outside_sandbox: bool,
         cx: &mut Context<Self>,
     ) -> (
         Receiver<Option<String>>,
@@ -306,11 +416,14 @@ impl AgentConnectionStore {
         let (loading_status_tx, loading_status_rx) = watch::channel::<Option<String>>(None);
 
         let agent_server_store = self.project.read(cx).agent_server_store().clone();
-        let delegate = AgentServerDelegate::new(
+        let mut delegate = AgentServerDelegate::new(
             agent_server_store,
             Some(new_version_tx),
             Some(loading_status_tx),
         );
+        if run_outside_sandbox {
+            delegate = delegate.outside_sandbox_once();
+        }
 
         let connect_task = server.connect(delegate, self.project.clone(), cx);
         let connect_task = cx.spawn(async move |_this, _cx| match connect_task.await {

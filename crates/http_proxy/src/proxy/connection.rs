@@ -529,6 +529,17 @@ fn plan_route(
     } else {
         PinnedHost::resolve(host, port)
     };
+    // Each policy also decides about the addresses themselves, on the pinned
+    // answer: what one refuses is out of reach however the name resolved, and
+    // whether or not the grant waived the rebinding filter.
+    let resolved = resolved.and_then(|pinned| {
+        pinned.without_addresses(|address| {
+            [state.policy.as_ref(), state.outer_policy.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|policy| policy.forbids_address(address))
+        })
+    });
     match resolved {
         Ok(pinned) => Ok(Route::Direct(pinned)),
         Err(PinnedHostError::AllAddressesForbidden { host }) => {
@@ -1071,6 +1082,45 @@ mod tests {
         match evaluate_destination("example.com", 443, &state) {
             Err(DenyReason::NotPermittedByPolicy { host, .. }) => assert_eq!(host, "example.com"),
             other => panic!("expected a policy denial, got {other:?}"),
+        }
+    }
+
+    /// A policy that refuses an address refuses it after the name resolved —
+    /// where a list of host patterns cannot reach — whether the policy is the
+    /// inner one or the ceiling, and whether or not local addresses were
+    /// waived.
+    #[test]
+    fn a_policy_refusing_an_address_denies_the_route() {
+        struct NoLoopback;
+        impl crate::DestinationPolicy for NoLoopback {
+            fn evaluate(&self, _host: &str, _port: u16) -> PolicyDecision {
+                PolicyDecision::Allow {
+                    permit_local_addresses: true,
+                }
+            }
+
+            fn forbids_address(&self, address: std::net::IpAddr) -> bool {
+                address.is_loopback()
+            }
+        }
+
+        for outer in [false, true] {
+            let mut state = runtime_state(Allowlist::any());
+            if outer {
+                state.outer_policy = Some(Arc::new(NoLoopback));
+            } else {
+                state.policy = Some(Arc::new(NoLoopback));
+            }
+            let grant = evaluate_destination("localhost", 80, &state).expect("the name is allowed");
+            assert!(grant.permit_local_addresses);
+            match plan_route("localhost", 80, &grant, &state) {
+                Err(RouteFailure::Denied(DenyReason::ResolvedToForbiddenIp { host })) => {
+                    assert_eq!(host, "localhost");
+                }
+                Ok(_) => panic!("expected the address to be refused, got a route"),
+                Err(RouteFailure::Denied(reason)) => panic!("unexpected deny reason: {reason:?}"),
+                Err(RouteFailure::Error(error)) => panic!("expected a denial, got error: {error}"),
+            }
         }
     }
 

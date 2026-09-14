@@ -97,11 +97,18 @@ impl SeatbeltConfigFile {
     ///
     /// `read_hidden_paths` lists paths whose contents the command may not read
     /// at all (ADR-F49 decision 11); see [`read_hidden_rules`].
+    ///
+    /// `enclosures` lists directories nothing in which the command may read or
+    /// write except what it was granted inside them — the writable directories,
+    /// and `readable_paths` for reading only (ADR-F49 decisions 14 and 15); see
+    /// [`enclosure_rules`].
     pub fn new(
         writable_directories: &[&Path],
         protected_paths: &[&Path],
         allowed_unix_socket_paths: &[&Path],
         read_hidden_paths: &[&Path],
+        enclosures: &[&Path],
+        readable_paths: &[&Path],
         permissions: SandboxPermissions,
     ) -> Result<Self> {
         let mut file =
@@ -111,6 +118,8 @@ impl SeatbeltConfigFile {
             writable_directories,
             protected_paths,
             allowed_unix_socket_paths,
+            enclosures,
+            readable_paths,
             permissions,
         )?;
         config.push_str(&read_hidden_rules(read_hidden_paths)?);
@@ -149,11 +158,20 @@ impl SeatbeltConfigFile {
 ///   disabled. This does not permit sending packets to other machines.
 /// * `read_hidden_paths` - Paths whose contents the command may not read at
 ///   all: credential stores and agent configurations (ADR-F49 decision 11).
+/// * `enclosures` - Directories nothing in which the command may read or write
+///   except what it was granted inside them (ADR-F49 decisions 14 and 15).
+/// * `readable_paths` - What the command may read inside a covered directory,
+///   and nowhere else: an agent installation and this fork's Node.js, in the
+///   data directory that is otherwise covered whole (ADR-F49 decision 14).
 /// * `permissions` - Sandbox relaxations requested for this command.
 ///
 /// # Returns
 /// A tuple of `(program, args, config_file)` where `config_file` must be
 /// kept alive.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "each list is a different kind of rule in the generated profile"
+)]
 pub fn wrap_invocation(
     program: &str,
     args: &[String],
@@ -161,6 +179,8 @@ pub fn wrap_invocation(
     protected_paths: &[&Path],
     allowed_unix_socket_paths: &[&Path],
     read_hidden_paths: &[&Path],
+    enclosures: &[&Path],
+    readable_paths: &[&Path],
     permissions: SandboxPermissions,
 ) -> Result<(String, Vec<String>, SeatbeltConfigFile)> {
     let config_file = SeatbeltConfigFile::new(
@@ -168,6 +188,8 @@ pub fn wrap_invocation(
         protected_paths,
         allowed_unix_socket_paths,
         read_hidden_paths,
+        enclosures,
+        readable_paths,
         permissions,
     )?;
 
@@ -213,6 +235,8 @@ fn generate_seatbelt_config(
     writable_directories: &[&Path],
     protected_paths: &[&Path],
     allowed_unix_socket_paths: &[&Path],
+    enclosures: &[&Path],
+    readable_paths: &[&Path],
     permissions: SandboxPermissions,
 ) -> Result<String> {
     // These paths are already the canonical identities captured once, at
@@ -350,6 +374,12 @@ fn generate_seatbelt_config(
         );
     }
 
+    config.push_str(&enclosure_rules(
+        enclosures,
+        &canonical_writable_directories,
+        readable_paths,
+    )?);
+
     for protected_path in &canonical_protected_paths {
         let escaped_path = escape_sandbox_path(protected_path)?;
         // `subpath` already matches the path itself plus everything beneath it,
@@ -471,6 +501,100 @@ fn read_hidden_rules(read_hidden_paths: &[&Path]) -> Result<String> {
     Ok(rules)
 }
 
+/// ADR-F49 decisions 14 and 15: rules keeping the command out of everything in
+/// each of `enclosures` — the sandboxed agents' configuration directory, and
+/// this fork's data directory — except what it was granted inside it: the
+/// directories of `writable_directories` there, and `readable_paths` for
+/// reading only.
+///
+/// Rules match paths, so one written for the directory also covers what appears
+/// in it while the command runs: another project's agent configuration, or an
+/// agent installed while this one runs. Nothing in it is writable but the
+/// command's own grants, which is what protects the other projects'
+/// configurations (ADR-F49 decision 8) — the enclosure itself included, so
+/// nothing new can be put in it.
+///
+/// The way down to each grant stays *stat-able* (`file-read-metadata` on each
+/// ancestor inside the enclosure, allowed after the denial so it wins): without
+/// it `realpath` and Node's `fs.realpathSync` fail with `EPERM` on a path the
+/// command is meant to use. Only the ancestors, and only metadata: the
+/// enclosure cannot be listed, so the other projects' names stay out of sight.
+fn enclosure_rules(
+    enclosures: &[&Path],
+    writable_directories: &[PathBuf],
+    readable_paths: &[&Path],
+) -> Result<String> {
+    let mut rules = String::new();
+    for enclosure in enclosures {
+        let escaped_enclosure = escape_sandbox_path(enclosure)?;
+        let inside = |path: &&Path| path.starts_with(enclosure) && **path != **enclosure;
+        let writable_inside: Vec<&Path> = writable_directories
+            .iter()
+            .map(PathBuf::as_path)
+            .filter(|path| inside(path))
+            .collect();
+        let readable_inside: Vec<&Path> = readable_paths
+            .iter()
+            .copied()
+            .filter(|path| inside(path))
+            .collect();
+        let carve_outs = |paths: &[&Path]| -> Result<String> {
+            let mut text = String::new();
+            for path in paths {
+                let escaped = escape_sandbox_path(path)?;
+                text.push_str(&format!("\n        (require-not (subpath \"{escaped}\"))"));
+            }
+            Ok(text)
+        };
+        let readable_carve_outs = carve_outs(
+            &writable_inside
+                .iter()
+                .chain(&readable_inside)
+                .copied()
+                .collect::<Vec<&Path>>(),
+        )?;
+        let writable_carve_outs = carve_outs(&writable_inside)?;
+        rules.push_str(&format!(
+            r#"
+; Keep the command out of everything in this directory but its own grants
+(deny file-read*
+    (require-all
+        (subpath "{escaped_enclosure}"){readable_carve_outs}))
+(deny file-write*
+    (require-all
+        (subpath "{escaped_enclosure}"){writable_carve_outs}))
+"#
+        ));
+
+        let mut ancestors: Vec<&Path> = Vec::new();
+        for granted in writable_inside.iter().chain(&readable_inside) {
+            let mut ancestor = granted.parent();
+            while let Some(current) = ancestor {
+                if !current.starts_with(enclosure) {
+                    break;
+                }
+                if !ancestors.contains(&current) {
+                    ancestors.push(current);
+                }
+                if current == *enclosure {
+                    break;
+                }
+                ancestor = current.parent();
+            }
+        }
+        if !ancestors.is_empty() {
+            rules
+                .push_str("; …but let the way down to them be resolved\n(allow file-read-metadata");
+            for ancestor in ancestors {
+                let escaped = escape_sandbox_path(ancestor)?;
+                rules.push_str(&format!("\n    (literal \"{escaped}\")"));
+            }
+            rules.push_str(")\n");
+        }
+    }
+    Ok(rules)
+}
+
 /// Escape a path for use in a Seatbelt config string.
 ///
 /// Seatbelt configs use a Scheme-like syntax where certain characters need
@@ -507,9 +631,15 @@ mod tests {
     #[test]
     fn test_generate_seatbelt_config_contains_read_and_project_write_permissions_by_default() {
         let dir = PathBuf::from("/Users/test/projects/myproject");
-        let config =
-            generate_seatbelt_config(&[dir.as_path()], &[], &[], SandboxPermissions::default())
-                .unwrap();
+        let config = generate_seatbelt_config(
+            &[dir.as_path()],
+            &[],
+            &[],
+            &[],
+            &[],
+            SandboxPermissions::default(),
+        )
+        .unwrap();
 
         assert!(config.contains("(allow file-read*)"));
         assert!(config.contains("/Users/test/projects/myproject"));
@@ -523,6 +653,8 @@ mod tests {
         let dir = PathBuf::from("/Users/test/projects/myproject");
         let config = generate_seatbelt_config(
             &[dir.as_path()],
+            &[],
+            &[],
             &[],
             &[],
             SandboxPermissions {
@@ -542,9 +674,15 @@ mod tests {
     #[test]
     fn test_generate_seatbelt_config_allows_terminal_ioctls_by_default() {
         let dir = PathBuf::from("/Users/test/projects/myproject");
-        let config =
-            generate_seatbelt_config(&[dir.as_path()], &[], &[], SandboxPermissions::default())
-                .unwrap();
+        let config = generate_seatbelt_config(
+            &[dir.as_path()],
+            &[],
+            &[],
+            &[],
+            &[],
+            SandboxPermissions::default(),
+        )
+        .unwrap();
 
         assert!(config.contains("(allow file-ioctl"));
         assert!(config.contains("/dev/ptmx"));
@@ -554,9 +692,15 @@ mod tests {
     #[test]
     fn test_generate_seatbelt_config_scopes_mach_lookup_and_excludes_escape_services() {
         let dir = PathBuf::from("/Users/test/projects/myproject");
-        let config =
-            generate_seatbelt_config(&[dir.as_path()], &[], &[], SandboxPermissions::default())
-                .unwrap();
+        let config = generate_seatbelt_config(
+            &[dir.as_path()],
+            &[],
+            &[],
+            &[],
+            &[],
+            SandboxPermissions::default(),
+        )
+        .unwrap();
         // Assert on the rules only: the mach-lookup comment intentionally spells
         // out the blanket `(allow mach-lookup)` form it avoids, which a raw
         // `config.contains` would match.
@@ -586,6 +730,8 @@ mod tests {
             &[dir.as_path()],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions {
                 network: NetworkAccess::All,
                 allow_fs_write: false,
@@ -610,6 +756,8 @@ mod tests {
             &[dir.as_path()],
             &[],
             &[socket_path.as_path()],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -677,6 +825,8 @@ mod tests {
             &[],
             &[socket_path.as_path(), canonical_socket_path.as_path()],
             &[],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -709,6 +859,8 @@ mod tests {
             &[],
             &[],
             &[ssh.as_path(), npmrc.as_path(), quoted.as_path()],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -734,6 +886,8 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -745,6 +899,106 @@ mod tests {
         );
     }
 
+    /// ADR-F49 decisions 14 and 15: nothing in a covered directory is readable
+    /// or writable but what the command was granted inside it — its own
+    /// configuration directory, and what it may read, for reading only — the
+    /// directory itself takes no new entry, and the way down to each grant
+    /// stays stat-able without the directory being listable.
+    #[test]
+    fn test_generate_seatbelt_config_encloses_a_directory_around_its_grants() {
+        let configurations = PathBuf::from("/Users/test/.zed-jp-enhance-claude");
+        let project = configurations.join("projects").join("0123456789abcdef");
+        let own = project.join("config");
+        let data = PathBuf::from("/Users/test/Library/Application Support/Zed-JP-Enhance");
+        let agent = data.join("external_agents").join("claude");
+        let work = PathBuf::from("/Users/test/work");
+        let config = generate_seatbelt_config(
+            &[work.as_path(), own.as_path()],
+            &[],
+            &[],
+            &[configurations.as_path(), data.as_path()],
+            &[agent.as_path()],
+            SandboxPermissions::default(),
+        )
+        .unwrap();
+
+        let subpath = |path: &Path| format!("(subpath \"{}\")", path.display());
+        let carve_out = |path: &Path| format!("(require-not {})", subpath(path));
+        let deny_read = config
+            .find("(deny file-read*\n    (require-all\n        (subpath")
+            .expect("what is covered is denied");
+        let own_allow = config
+            .find(&subpath(&own))
+            .expect("the session's own root is writable");
+        assert!(
+            own_allow < deny_read,
+            "the carve-out keeps the earlier allow"
+        );
+        assert!(config.contains(&carve_out(&own)));
+        assert!(config.contains(&carve_out(&agent)));
+        assert!(
+            !config.contains(&carve_out(&work)),
+            "a root outside the covered directories is not carved out of them"
+        );
+
+        // What may be read is carved out of the read denial only: the data
+        // directory's write denial has no exception at all.
+        let write_denial = config
+            .find(&format!(
+                "(deny file-write*\n    (require-all\n        {}",
+                subpath(&data)
+            ))
+            .expect("the data directory takes no writes");
+        let after = config.get(write_denial..).unwrap_or_default();
+        let next_rule = after.find("\n\n").unwrap_or(after.len());
+        assert!(
+            !after
+                .get(..next_rule)
+                .unwrap_or_default()
+                .contains("require-not"),
+            "nothing may be written in the data directory: {after}"
+        );
+
+        // ADR-F49 (MEDIUM): `realpath` of a grant has to work, so each
+        // directory on the way to it is stat-able — and only stat-able, so the
+        // other projects' names stay out of sight.
+        for ancestor in [
+            configurations.as_path(),
+            &configurations.join("projects"),
+            project.as_path(),
+            data.as_path(),
+            &data.join("external_agents"),
+        ] {
+            assert!(
+                config.contains(&format!(
+                    "(allow file-read-metadata\n    (literal \"{}\")",
+                    ancestor.display()
+                )) || config.contains(&format!("\n    (literal \"{}\")", ancestor.display())),
+                "{} must stay stat-able:\n{config}",
+                ancestor.display()
+            );
+        }
+        assert!(
+            !config.contains(&format!(
+                "(allow file-read* (literal \"{}\"",
+                data.display()
+            )),
+            "a covered directory is never listable"
+        );
+
+        let without = generate_seatbelt_config(
+            &[work.as_path()],
+            &[],
+            &[],
+            &[],
+            &[],
+            SandboxPermissions::default(),
+        )
+        .unwrap();
+        assert!(!without.contains("require-not"));
+        assert!(!without.contains("file-read-metadata"));
+    }
+
     #[test]
     fn test_generate_seatbelt_config_denies_protected_path_writes() {
         let dir = PathBuf::from("/Users/test/projects/myproject");
@@ -752,6 +1006,8 @@ mod tests {
         let config = generate_seatbelt_config(
             &[dir.as_path()],
             &[protected.as_path()],
+            &[],
+            &[],
             &[],
             SandboxPermissions::default(),
         )
@@ -789,6 +1045,8 @@ mod tests {
             ],
             &[dir.as_path()],
             &[protected_file.as_path()],
+            &[],
+            &[],
             &[],
             &[],
             SandboxPermissions::default(),
@@ -837,6 +1095,8 @@ mod tests {
             &[protected_file.as_path()],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions {
                 network: NetworkAccess::None,
                 allow_fs_write: true,
@@ -868,6 +1128,8 @@ mod tests {
             &[dir.as_path()],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions {
                 network: NetworkAccess::All,
                 allow_fs_write: false,
@@ -886,6 +1148,8 @@ mod tests {
         let dir = PathBuf::from("/Users/test/projects/myproject");
         let config = generate_seatbelt_config(
             &[dir.as_path()],
+            &[],
+            &[],
             &[],
             &[],
             SandboxPermissions {
@@ -907,6 +1171,8 @@ mod tests {
         let scratch_dir = PathBuf::from("/private/tmp/zed-agent-command");
         let config = generate_seatbelt_config(
             &[project_dir.as_path(), scratch_dir.as_path()],
+            &[],
+            &[],
             &[],
             &[],
             SandboxPermissions::default(),
@@ -947,6 +1213,8 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -968,6 +1236,8 @@ mod tests {
             "/bin/sh",
             &["-c".to_string(), "cat /etc/hosts".to_string()],
             &[temp_dir.path()],
+            &[],
+            &[],
             &[],
             &[],
             &[],
@@ -999,6 +1269,8 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -1024,6 +1296,8 @@ mod tests {
             "/bin/sh",
             &["-c".to_string(), "echo test 2>/dev/null".to_string()],
             &[temp_dir.path()],
+            &[],
+            &[],
             &[],
             &[],
             &[],
@@ -1060,6 +1334,8 @@ mod tests {
                 format!("echo 'hello' > '{}'", test_file.display()),
             ],
             &[temp_dir.path()],
+            &[],
+            &[],
             &[],
             &[],
             &[],
@@ -1105,6 +1381,8 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -1142,6 +1420,8 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
+            &[],
             SandboxPermissions::default(),
         )
         .unwrap();
@@ -1174,6 +1454,8 @@ mod tests {
                 format!("echo 'hello' > '{}'", test_file.display()),
             ],
             &[project_dir.path()],
+            &[],
+            &[],
             &[],
             &[],
             &[],
@@ -1215,6 +1497,8 @@ mod tests {
                 format!("echo 'hello' > '{}'", forbidden_file.display()),
             ],
             &[project_dir.path()],
+            &[],
+            &[],
             &[],
             &[],
             &[],

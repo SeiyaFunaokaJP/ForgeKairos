@@ -297,6 +297,17 @@ fn main() {
         return;
     }
 
+    // ADR-F49 decisions 11 and 14: tell the sandbox where this Zed really keeps
+    // its data and configuration, now that `--user-data-dir` has been applied.
+    // It protects and hides them wherever they are, and recognises the agents
+    // and the Node.js it installed in the data directory as the one thing a
+    // sandboxed agent may be shown there. The sandbox must not read the
+    // environment to decide that, so this is the only place it learns it.
+    sandbox::register_application_directories(
+        paths::data_dir().clone(),
+        paths::config_dir().clone(),
+    );
+
     zlog::init();
 
     if stdout_is_a_pty() {

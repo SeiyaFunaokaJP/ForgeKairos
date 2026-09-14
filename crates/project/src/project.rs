@@ -1,4 +1,5 @@
 pub mod agent_registry_store;
+pub mod agent_sandbox;
 pub mod agent_server_store;
 pub mod bookmark_store;
 pub mod buffer_store;
@@ -3698,6 +3699,19 @@ impl Project {
         self.buffer_store.update(cx, |buffer_store, cx| {
             buffer_store.save_buffer_verified(buffer, cx)
         })
+    }
+
+    /// Checks that reading `project_path` reads the file it names and no other:
+    /// the read side of [`Self::save_buffer_verified`], for what an agent whose
+    /// own sandbox hides the credential stores from it asks Zed to read. On a
+    /// remote project the remote server checks its own files (ADR-F49).
+    pub fn verify_agent_read(&self, project_path: &ProjectPath, cx: &App) -> Task<Result<()>> {
+        let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) else {
+            return Task::ready(Err(anyhow!("no such worktree")));
+        };
+        self.worktree_store
+            .read(cx)
+            .verify_agent_read(&worktree, project_path.path.clone(), cx)
     }
 
     pub fn save_buffer_as(

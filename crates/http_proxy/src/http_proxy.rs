@@ -54,7 +54,7 @@ mod pinned_host;
 mod proxy;
 
 pub use allowlist::{Allowlist, HostPattern, HostPatternError};
-pub use pinned_host::{PinnedHost, PinnedHostError, is_forbidden_ip};
+pub use pinned_host::{PinnedHost, PinnedHostError, embedded_ipv4, is_forbidden_ip};
 pub use proxy::{
     DenyReason, DestinationPolicy, PolicyDecision, ProxyConfig, ProxyEvent, ProxyHandle,
     RequestMethod, RequestOutcome, UpstreamProxy,

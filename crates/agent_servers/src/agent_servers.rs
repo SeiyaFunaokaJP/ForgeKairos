@@ -1,4 +1,5 @@
 mod acp;
+pub mod acp_paths;
 mod custom;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -31,6 +32,7 @@ pub struct AgentServerDelegate {
     store: Entity<AgentServerStore>,
     new_version_available: Option<watch::Sender<Option<String>>>,
     loading_status: Option<watch::Sender<Option<String>>>,
+    run_outside_sandbox: bool,
 }
 
 impl AgentServerDelegate {
@@ -43,7 +45,19 @@ impl AgentServerDelegate {
             store,
             new_version_available: new_version_tx,
             loading_status: loading_status_tx,
+            run_outside_sandbox: false,
         }
+    }
+
+    /// ADR-F49 decision 19: for the one start the user confirmed, the agent
+    /// runs outside its sandbox.
+    pub fn outside_sandbox_once(mut self) -> Self {
+        self.run_outside_sandbox = true;
+        self
+    }
+
+    pub fn runs_outside_sandbox(&self) -> bool {
+        self.run_outside_sandbox
     }
 }
 
@@ -107,6 +121,42 @@ impl dyn AgentServer {
     pub fn downcast<T: 'static + AgentServer + Sized>(self: Rc<Self>) -> Option<Rc<T>> {
         self.into_any().downcast().ok()
     }
+}
+
+/// ADR-F49: the proxy an agent in a sandbox has to go through beyond the
+/// sandbox's own, which chains to it — Zed's `proxy` setting, else this
+/// process's proxy variables — as the variables the sandbox reads it from.
+pub(crate) fn upstream_proxy_env(cx: &App) -> HashMap<String, String> {
+    let mut env = HashMap::default();
+    let proxy_url = cx
+        .read_global(|settings: &SettingsStore, _| settings.get::<ProxySettings>(None).proxy_url());
+    if let Some(proxy_url) = proxy_url {
+        let name = if proxy_url.scheme() == "https" {
+            "HTTPS_PROXY"
+        } else {
+            "HTTP_PROXY"
+        };
+        env.insert(name.to_owned(), proxy_url.to_string());
+        if let Some(no_proxy) = read_no_proxy_from_env() {
+            env.insert("NO_PROXY".to_owned(), no_proxy);
+        }
+        return env;
+    }
+    for name in [
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "NO_PROXY",
+        "no_proxy",
+    ] {
+        if let Ok(value) = std::env::var(name) {
+            env.insert(name.to_owned(), value);
+        }
+    }
+    env
 }
 
 /// Load the default proxy environment variables to pass through to the agent

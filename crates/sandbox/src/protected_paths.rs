@@ -191,12 +191,21 @@ const LOCAL_PROTECTED_HOME_RELATIVE: &[&str] = UNIX_PROTECTED_HOME_RELATIVE;
 /// The default locations are home-relative and listed here; a user who moved
 /// them with `XDG_*` / `%APPDATA%` is covered by
 /// [`app_state_directories_from_environment`].
+/// ADR-F49 decision 15: [`SANDBOXED_AGENT_CONFIG_HOME_RELATIVE`] is in both
+/// lists because a sandboxed agent's own configuration — the hooks it runs and
+/// the `apiKeyHelper` it calls — is read by the *next* session for that
+/// project: a command that can write another project's configuration there has
+/// injected code into that session. The session that owns one of them writes it
+/// through its write grant, and the directory is then covered around that grant
+/// rather than protected flat (see [`enclosures_to_cover`] and
+/// [`builtin_protected_paths`]).
 #[cfg(target_os = "linux")]
 const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[
     ".config/zed-jp-enhance",
     ".local/state/zed-jp-enhance",
     ".config/autostart",
     ".config/systemd/user",
+    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
 ];
 
 #[cfg(target_os = "macos")]
@@ -205,6 +214,7 @@ const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[
     ".config/zed-jp-enhance",
     ".local/state/Zed-JP-Enhance",
     "Library/LaunchAgents",
+    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
 ];
 
 /// Windows keeps its application directories in the main list above (they are
@@ -293,7 +303,9 @@ pub(crate) fn local_builtin_protected_paths(
 /// directories under `home`; this fork's own configuration and state
 /// directories, wherever the environment puts them; and in each worktree root
 /// the agent configurations a host agent acts on
-/// ([`WORKTREE_PROTECTED_RELATIVE`]). Some of them may not exist.
+/// ([`WORKTREE_PROTECTED_RELATIVE`]), except in a sandboxed agent's own
+/// configuration directory (see [`is_sandboxed_agent_configuration`]). Some of
+/// them may not exist.
 ///
 /// For code outside the sandbox that has to enforce the same rule, such as the
 /// guard on an external agent's file writes, so that it uses this list rather
@@ -301,11 +313,64 @@ pub(crate) fn local_builtin_protected_paths(
 /// `USERPROFILE`), falling back to the account database, and the worktree
 /// roots from the directories it grants write access to.
 pub fn builtin_protected_paths(home: &Path, worktree_roots: &[PathBuf]) -> Vec<PathBuf> {
-    let mut paths = local_builtin_protected_paths(home, &protected_directories_from_environment());
-    for path in worktree_protected_paths(worktree_roots) {
+    let mut paths = local_builtin_protected_paths(home, &protected_directories_from_process());
+    // A directory covered around a root inside it is protected by the cover —
+    // an empty read-only one, with only that root bound back into it — and
+    // protecting it flat as well would take the root away again. Where the
+    // cover does not apply (it is not the real directory it is named as, or
+    // nothing is written inside it) the entry stays, and a write grant inside
+    // it is then refused like any other overlap.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        let roots: Vec<&Path> = worktree_roots.iter().map(PathBuf::as_path).collect();
+        let covered = enclosures_to_cover(&[sandboxed_agent_configuration_directory(home)], &roots);
+        paths.retain(|path| {
+            !covered.iter().any(|enclosure| {
+                path == enclosure
+                    || std::fs::canonicalize(path).is_ok_and(|resolved| resolved == *enclosure)
+            })
+        });
+    }
+    for path in worktree_protected_paths(home, worktree_roots) {
         push_unique(&mut paths, path);
     }
     paths
+}
+
+/// How deep in the sandboxed agents' projects directory one agent's own
+/// configuration directory for one project lies: `<project key>/<agent
+/// directory>` (ADR-F49 decision 15 — Claude's is `config`, Codex's `codex`,
+/// a custom agent's `agent-<id>`).
+const AGENT_CONFIGURATION_DEPTH: usize = 2;
+
+/// ADR-F49 decision 15: whether `root`, a directory a command may write, is one
+/// agent's own configuration directory for one project — exactly
+/// `<projects>/<project key>/<agent directory>` under `home`, no deeper and no
+/// shallower. No agent on the host reads one as configuration; only the
+/// sandboxed agent pointed at it does. So the names a host agent acts on in a
+/// worktree are not protected in it, and the agent can create what it keeps
+/// right at its top (its credentials, at the first login).
+///
+/// Decided on where `root` really lies, never from a flag or the environment,
+/// and `root` must already *be* where it lies: a path that resolves elsewhere
+/// (a symlink planted in the projects directory leading into a worktree) is a
+/// worktree like any other, which is the same rule the remote helper applies to
+/// a write grant it must trust (`CanonicalPathBuf::from_canonical`). A root
+/// that does not resolve is taken for a worktree too.
+pub(crate) fn is_sandboxed_agent_configuration(root: &Path, home: &Path) -> bool {
+    let mut projects = home.to_path_buf();
+    // Component by component, so that it is spelled with this platform's
+    // separators.
+    projects.extend(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE.split('/'));
+    let projects = std::fs::canonicalize(&projects).unwrap_or(projects);
+    if !std::fs::canonicalize(root).is_ok_and(|resolved| resolved == root) {
+        return false;
+    }
+    root.strip_prefix(&projects).is_ok_and(|relative| {
+        let mut components = relative.components();
+        components.all(|component| matches!(component, std::path::Component::Normal(_)))
+            && relative.components().count() == AGENT_CONFIGURATION_DEPTH
+    })
 }
 
 /// Paths, relative to a worktree root, that a program on the *host* reads and
@@ -320,19 +385,36 @@ pub fn builtin_protected_paths(home: &Path, worktree_roots: &[PathBuf]) -> Vec<P
 /// asks the user before it writes one of these.
 pub const WORKTREE_PROTECTED_RELATIVE: &[&str] = &[".claude", ".mcp.json", ".gemini", ".codex"];
 
-/// [`WORKTREE_PROTECTED_RELATIVE`] resolved against each of `worktree_roots`.
-pub(crate) fn worktree_protected_paths(worktree_roots: &[PathBuf]) -> Vec<PathBuf> {
+/// [`WORKTREE_PROTECTED_RELATIVE`] resolved against each of `worktree_roots`
+/// but the sandboxed agents' own configuration directories under `home` (see
+/// [`is_sandboxed_agent_configuration`]).
+pub(crate) fn worktree_protected_paths(home: &Path, worktree_roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for root in worktree_roots {
-        for relative in WORKTREE_PROTECTED_RELATIVE {
-            let mut path = root.clone();
-            // Component by component, so that it is spelled with this
-            // platform's separators.
-            path.extend(relative.split('/'));
+        if is_sandboxed_agent_configuration(root, home) {
+            continue;
+        }
+        for path in worktree_entries(root) {
             push_unique(&mut paths, path);
         }
     }
     paths
+}
+
+/// [`WORKTREE_PROTECTED_RELATIVE`] resolved against one root, for a caller that
+/// decides for itself whether the root is a worktree (the remote helper, which
+/// judges a root only after pinning it).
+pub(crate) fn worktree_entries(root: &Path) -> Vec<PathBuf> {
+    WORKTREE_PROTECTED_RELATIVE
+        .iter()
+        .map(|relative| {
+            let mut path = root.to_path_buf();
+            // Component by component, so that it is spelled with this
+            // platform's separators.
+            path.extend(relative.split('/'));
+            path
+        })
+        .collect()
 }
 
 /// Git's configuration directory below `$XDG_CONFIG_HOME`, when that names an
@@ -364,6 +446,20 @@ pub(crate) fn protected_directories_from_environment() -> Vec<PathBuf> {
                 local.join("Microsoft").join("WindowsApps"),
             );
         }
+    }
+    directories
+}
+
+/// [`protected_directories_from_environment`] plus the directories this process
+/// really uses, which it registered at startup
+/// ([`crate::register_application_directories`]): a `--user-data-dir` puts the
+/// settings, the thread database and the logs where neither the home-relative
+/// defaults nor the environment name them, and a sandboxed command must not be
+/// able to write them.
+pub(crate) fn protected_directories_from_process() -> Vec<PathBuf> {
+    let mut directories = protected_directories_from_environment();
+    for directory in crate::registered_application_directories() {
+        push_unique(&mut directories, directory);
     }
     directories
 }
@@ -544,14 +640,253 @@ fn split_around(entry: &Path, reachable: &[PathBuf], hidden: &mut Vec<PathBuf>) 
 /// those mounts runs the command without them and says so.) Exposed for code
 /// outside the sandbox that has to enforce the same rule.
 pub fn builtin_read_hidden_paths(home: &Path, worktree_roots: &[PathBuf]) -> Vec<PathBuf> {
+    around_reachable(read_hidden_entries(home), worktree_roots)
+}
+
+/// The locations whose contents no sandboxed command may read, before they are
+/// split around anything: [`READ_HIDDEN_HOME_RELATIVE`] under `home` (on
+/// Windows with all of `AppData`), this platform's extras, and this fork's own
+/// directories wherever the environment moved them or this process registered
+/// them ([`crate::register_application_directories`] — otherwise a
+/// `--user-data-dir` leaves the thread database and the logs readable).
+pub(crate) fn read_hidden_entries(home: &Path) -> Vec<PathBuf> {
     let mut paths = read_hidden_home_paths(home, cfg!(target_os = "windows"));
     for path in resolve_home_relative(home, LOCAL_READ_HIDDEN_EXTRA) {
         push_unique(&mut paths, path);
     }
-    for directory in app_state_directories_from_environment() {
+    for directory in app_state_directories_from_environment()
+        .into_iter()
+        .chain(crate::registered_application_directories())
+    {
         push_unique(&mut paths, directory);
     }
-    around_reachable(paths, worktree_roots)
+    paths
+}
+
+/// ADR-F49 decision 14: this fork's data directory (`paths::data_dir()` where
+/// no environment variable moved it), relative to a home, on the platforms
+/// whose sandbox decides what a command may be shown inside it.
+#[cfg(target_os = "linux")]
+const DATA_DIRECTORY_HOME_RELATIVE: &str = ".local/share/zed-jp-enhance";
+#[cfg(target_os = "macos")]
+const DATA_DIRECTORY_HOME_RELATIVE: &str = "Library/Application Support/Zed-JP-Enhance";
+
+/// ADR-F49 decision 14: what inside this fork's data directory a command may
+/// be shown although the read hiding covers the directory: the agents Zed
+/// installed (`external_agents`: the registry's binaries and npx packages) and
+/// the Node.js Zed runs them with (`node`). Nothing else in it — the thread
+/// database, the logs, the remote server's state — ever is.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) const AGENT_RUNTIME_DATA_RELATIVE: &[&str] = &["external_agents", "node"];
+
+/// Why a command may not be shown a location (ADR-F49 decision 14).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[derive(Debug)]
+pub(crate) enum ReadableRefusal {
+    /// It could not be resolved: it does not exist, or cannot be reached.
+    Unresolvable(std::io::Error),
+    /// Where it really lies is outside every agent installation and Zed's
+    /// Node.js.
+    OutsideAgentRuntime {
+        canonical: PathBuf,
+        data_directory: PathBuf,
+    },
+    /// It is, holds or lies inside another entry whose contents stay hidden.
+    TouchesHiddenEntry { canonical: PathBuf, entry: PathBuf },
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+impl std::fmt::Display for ReadableRefusal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadableRefusal::Unresolvable(error) => {
+                write!(formatter, "cannot be resolved: {error}")
+            }
+            ReadableRefusal::OutsideAgentRuntime {
+                canonical,
+                data_directory,
+            } => {
+                write!(
+                    formatter,
+                    "resolves to {}, which is inside neither an agent installation nor \
+                     this Zed's Node.js (",
+                    canonical.display()
+                )?;
+                for (index, relative) in AGENT_RUNTIME_DATA_RELATIVE.iter().enumerate() {
+                    if index > 0 {
+                        write!(formatter, ", ")?;
+                    }
+                    write!(formatter, "{}", data_directory.join(relative).display())?;
+                }
+                write!(formatter, ")")
+            }
+            ReadableRefusal::TouchesHiddenEntry { canonical, entry } => write!(
+                formatter,
+                "resolves to {}, which overlaps {}, whose contents stay hidden",
+                canonical.display(),
+                entry.display()
+            ),
+        }
+    }
+}
+
+/// ADR-F49 decision 14: where this fork keeps the agents it installed and the
+/// Node.js it runs them with — the data directory this process registered
+/// ([`crate::register_application_directories`]), or the default place under
+/// `home` where nothing was registered: an embedder that never registers one.
+///
+/// The **in-process** sandbox (local bwrap, Seatbelt) uses this: the editor has
+/// registered its real data directory, so a `--user-data-dir` or moved
+/// `XDG_DATA_HOME` is already accounted for without this crate reading the
+/// environment (decision 27). The SSH-remote helper runs in a separate process
+/// where nothing is registered and must instead learn the location from the
+/// environment — see [`remote_agent_runtime_data_directory`].
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn agent_runtime_data_directory(home: &Path) -> PathBuf {
+    crate::registered_data_directory().unwrap_or_else(|| home.join(DATA_DIRECTORY_HOME_RELATIVE))
+}
+
+/// ADR-F49 decisions 14 and 27: the data directory the **SSH-remote helper**
+/// looks in for the agent installations and Node.js a command may be shown
+/// read-only, and whose cover keeps the rest of it hidden.
+///
+/// The helper is a separate process from the remote server that spawned it (it
+/// re-executes the server binary), so nothing is registered in it
+/// ([`crate::register_application_directories`] runs only in the editor) and
+/// [`agent_runtime_data_directory`] would resolve to the home-relative default
+/// alone. It must instead learn the location the same way the read hiding does:
+/// from the environment (`XDG_DATA_HOME`, the base `paths::data_dir()` follows
+/// on the remote host), falling back to the home-relative default where the
+/// variable is unset — exactly the data directory
+/// [`app_state_directories_from_environment`] already covers.
+///
+/// Trusting the environment for the *location* here adds no attack surface. The
+/// read hiding already hides this same env-named directory, so pointing
+/// `readable` at it only lets `external_agents`/`node` back out of a directory
+/// that is otherwise hidden — never a new one, and only when it actually
+/// exists (see [`resolve_readable_path`]). The list of what stays hidden is
+/// unchanged (decision 11): the environment moves the folder, it does not
+/// choose the entries.
+#[cfg(target_os = "linux")]
+pub(crate) fn remote_agent_runtime_data_directory(home: &Path) -> PathBuf {
+    app_state_directory_from_environment("XDG_DATA_HOME")
+        .unwrap_or_else(|| home.join(DATA_DIRECTORY_HOME_RELATIVE))
+}
+
+/// ADR-F49 decision 14: where `requested` really lies, when a command may be
+/// shown it although the read hiding covers it — inside one of
+/// [`AGENT_RUNTIME_DATA_RELATIVE`] in `data_directory`, and neither holding nor
+/// inside any other entry that stays hidden.
+///
+/// Decided on the resolved path, so a symlink leading anywhere else is refused.
+/// The allowed directories themselves are named *below* the resolved data
+/// directory and are deliberately not resolved: an `external_agents` or `node`
+/// that is a link to the data directory — or to anything holding it — would
+/// otherwise make all of it showable, credential stores kept inside it
+/// included. Which data directory that is comes from the application, never
+/// from the environment: a variable a project can set must not be a way to
+/// un-hide a credential store. The environment only adds entries to stay clear
+/// of.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn resolve_readable_path(
+    requested: &Path,
+    data_directory: &Path,
+    home: &Path,
+) -> Result<PathBuf, ReadableRefusal> {
+    let resolved = |path: PathBuf| std::fs::canonicalize(&path).unwrap_or(path);
+    let canonical = std::fs::canonicalize(requested).map_err(ReadableRefusal::Unresolvable)?;
+    let data_directory = resolved(data_directory.to_path_buf());
+    let inside_runtime = AGENT_RUNTIME_DATA_RELATIVE
+        .iter()
+        .any(|relative| canonical.starts_with(data_directory.join(relative)));
+    if !inside_runtime {
+        return Err(ReadableRefusal::OutsideAgentRuntime {
+            canonical,
+            data_directory,
+        });
+    }
+    for entry in read_hidden_entries(home) {
+        let entry = resolved(entry);
+        if entry == data_directory {
+            continue;
+        }
+        if canonical.starts_with(&entry) || entry.starts_with(&canonical) {
+            return Err(ReadableRefusal::TouchesHiddenEntry { canonical, entry });
+        }
+    }
+    Ok(canonical)
+}
+
+/// ADR-F49 decisions 14 and 15: the directories a command is shown nothing of
+/// but what it is granted inside them — covered whole with empty content and
+/// only those grants bound back — rather than by hiding their entries one by
+/// one, which could only hide the entries there when the command started:
+///
+/// * the sandboxed agents' configuration directory under `home`, holding one
+///   directory per project: a session sees its own project's and no other's,
+///   however many are added while it runs, and cannot write anything else in
+///   it (decision 15, and the write protection of ADR-F49 decision 8 for a
+///   session that writes its own);
+/// * `data_directory`, where the agent installations and Node.js a command may
+///   be shown lie among the rest of this fork's data (decision 14): the thread
+///   database, the settings and the logs stay hidden, and so does anything
+///   added to it while the command runs.
+///
+/// Where they really are, as the roots and the read-hidden targets are: under
+/// a home reached through a symlink they are covered where they really lie.
+/// A directory only gets a cover when the command is granted something inside
+/// it (see [`enclosures_to_cover`]); otherwise the ordinary hiding applies.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn enclosed_directories(home: &Path) -> Vec<PathBuf> {
+    enclosed_directories_in(home, &agent_runtime_data_directory(home))
+}
+
+/// As [`enclosed_directories`], for a caller that already knows the data
+/// directory rather than deriving it from the registration: the SSH-remote
+/// helper, which learns it from the environment
+/// ([`remote_agent_runtime_data_directory`]) because nothing is registered in
+/// its process. The readable check and this cover then agree on the one data
+/// directory, so what a command may be shown is exactly what is bound back.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn enclosed_directories_in(home: &Path, data_directory: &Path) -> Vec<PathBuf> {
+    let mut directories = vec![sandboxed_agent_configuration_directory(home)];
+    push_unique(
+        &mut directories,
+        std::fs::canonicalize(data_directory).unwrap_or_else(|_| data_directory.to_path_buf()),
+    );
+    directories
+}
+
+/// The sandboxed agents' configuration directory under `home`, where it really
+/// is. It is the one enclosure whose *write* protection comes from its cover
+/// instead of the always-protected set (see [`builtin_protected_paths`]): the
+/// session that owns one directory in it writes that directory. The data
+/// directory stays protected whether or not it is covered — what a command may
+/// be shown in it, it may never write.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn sandboxed_agent_configuration_directory(home: &Path) -> PathBuf {
+    let home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE)
+}
+
+/// Those of `enclosures` to cover for a command granted `granted` inside them —
+/// the roots it may write and the locations it may read: a real directory where
+/// it is named, which holds one of them without being one itself. Anything else
+/// is left to the split around the roots (see [`around_reachable`]): a cover
+/// with nothing to bind back into it would only take away what the command was
+/// never given, and one on a symlink would land where the link points.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn enclosures_to_cover(enclosures: &[PathBuf], granted: &[&Path]) -> Vec<PathBuf> {
+    enclosures
+        .iter()
+        .filter(|enclosure| {
+            std::fs::symlink_metadata(enclosure).is_ok_and(|metadata| metadata.is_dir())
+                && std::fs::canonicalize(enclosure).is_ok_and(|canonical| canonical == **enclosure)
+                && granted.iter().all(|path| *path != enclosure.as_path())
+                && granted.iter().any(|path| path.starts_with(enclosure))
+        })
+        .cloned()
+        .collect()
 }
 
 /// Where the Windows backend installs its WSL sandbox helper (the bundled Linux
@@ -599,7 +934,23 @@ pub(crate) fn home_dir_from_environment() -> Option<PathBuf> {
 /// `containerEnv`.
 #[cfg(target_os = "linux")]
 pub(crate) fn home_dir_from_account() -> Option<PathBuf> {
-    home_dir_from_passwd()
+    account_from_passwd().map(|account| account.home)
+}
+
+/// The account this process acts as, from the account database alone (its home
+/// directory and its login name). For the sandbox helper, which builds the
+/// command's environment from nothing and cannot trust its own — the client on
+/// a remote host does not know where the account's home is, so `HOME` / `USER`
+/// / `LOGNAME` are read here rather than passed in.
+#[cfg(target_os = "linux")]
+pub(crate) struct Account {
+    pub home: PathBuf,
+    pub name: std::ffi::OsString,
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn account_from_passwd() -> Option<Account> {
+    read_passwd()
 }
 
 /// zsh's startup files in `$ZDOTDIR`, when the environment names an absolute
@@ -638,10 +989,16 @@ fn absolute_env_path(name: &str) -> Option<PathBuf> {
     path.is_absolute().then_some(path)
 }
 
-/// `getpwuid(geteuid())->pw_dir`: the home directory of the account this
-/// process acts as.
+/// See [`home_dir_from_account`]: the home directory alone.
 #[cfg(target_os = "linux")]
 fn home_dir_from_passwd() -> Option<PathBuf> {
+    read_passwd().map(|account| account.home)
+}
+
+/// `getpwuid(geteuid())`: the home directory (which must be absolute) and login
+/// name of the account this process acts as.
+#[cfg(target_os = "linux")]
+fn read_passwd() -> Option<Account> {
     use std::os::unix::ffi::OsStrExt as _;
 
     // The reentrant variant: the editor calls this from `Sandbox::new` on
@@ -676,7 +1033,18 @@ fn home_dir_from_passwd() -> Option<PathBuf> {
     // SAFETY: `pw_dir` is a NUL-terminated string inside `buffer`, still alive.
     let dir = unsafe { std::ffi::CStr::from_ptr(passwd.pw_dir) };
     let home = PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes()));
-    home.is_absolute().then_some(home)
+    if !home.is_absolute() {
+        return None;
+    }
+    // The login name may be absent (`pw_name` null) even when the home is there.
+    let name = if passwd.pw_name.is_null() {
+        std::ffi::OsString::new()
+    } else {
+        // SAFETY: `pw_name` is a NUL-terminated string inside `buffer`, alive.
+        let name = unsafe { std::ffi::CStr::from_ptr(passwd.pw_name) };
+        std::ffi::OsStr::from_bytes(name.to_bytes()).to_os_string()
+    };
+    Some(Account { home, name })
 }
 
 /// The directories this fork keeps its own config/data/state in, as the
@@ -700,15 +1068,24 @@ pub(crate) fn app_state_directories_from_environment() -> Vec<PathBuf> {
 
     let mut directories = Vec::new();
     for variable in base_variables {
-        let Some(base) = absolute_env_path(variable) else {
+        let Some(directory) = app_state_directory_from_environment(variable) else {
             continue;
         };
-        let directory = base.join(APP_DIRECTORY_NAME);
         if !directories.contains(&directory) {
             directories.push(directory);
         }
     }
     directories
+}
+
+/// This fork's directory inside the config/data/state base directory the
+/// environment variable `name` points at, or `None` when it is unset or a
+/// relative path. The single place this fork's directory name is joined onto an
+/// env-named base, shared by [`app_state_directories_from_environment`] and
+/// [`remote_agent_runtime_data_directory`] so the readable check lands in the
+/// very directory the read hiding covers.
+fn app_state_directory_from_environment(name: &str) -> Option<PathBuf> {
+    absolute_env_path(name).map(|base| base.join(APP_DIRECTORY_NAME))
 }
 
 #[cfg(test)]
@@ -843,6 +1220,227 @@ mod tests {
         let hidden = around_reachable(vec![entry.clone()], std::slice::from_ref(&project));
         assert!(hidden.contains(&entry.join("credentials.db")), "{hidden:?}");
         assert!(!hidden.contains(&entry.join("link")), "{hidden:?}");
+    }
+
+    /// ADR-F49 decision 14: only what lies, once resolved, inside an agent
+    /// installation or Zed's Node.js may be shown. The rest of Zed's data, a
+    /// credential store, a directory holding one, a symlink leading out of the
+    /// allowed directories and a path that is not there are all refused.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn only_an_agent_installation_or_node_may_be_shown() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let data = home.join(DATA_DIRECTORY_HOME_RELATIVE);
+        let agent = data
+            .join("external_agents")
+            .join("registry")
+            .join("npx")
+            .join("claude");
+        let node = data.join("node").join("node-v22.0.0");
+        for directory in [
+            &agent,
+            &node,
+            &data.join("db"),
+            &data.join("external_agents_old"),
+            &home.join(".ssh"),
+        ] {
+            std::fs::create_dir_all(directory).expect("create");
+        }
+        std::os::unix::fs::symlink(home.join(".ssh"), agent.join("keys")).expect("symlink");
+        std::os::unix::fs::symlink(data.join("db"), node.join("db")).expect("symlink");
+
+        for allowed in [
+            agent.clone(),
+            node.clone(),
+            data.join("external_agents"),
+            data.join("node"),
+        ] {
+            let resolved = resolve_readable_path(&allowed, &data, &home);
+            assert!(
+                resolved.is_ok(),
+                "{} must be allowed: {resolved:?}",
+                allowed.display()
+            );
+        }
+        assert_eq!(
+            resolve_readable_path(&agent.join("..").join("claude"), &data, &home).expect("allowed"),
+            agent,
+            "the resolved path is what is shown"
+        );
+
+        for refused in [
+            data.clone(),
+            data.join("db"),
+            data.join("external_agents_old"),
+            data.join("external_agents").join("..").join("db"),
+            home.join(".ssh"),
+            home.clone(),
+            PathBuf::from("/"),
+            agent.join("keys"),
+            node.join("db"),
+        ] {
+            assert!(
+                matches!(
+                    resolve_readable_path(&refused, &data, &home),
+                    Err(ReadableRefusal::OutsideAgentRuntime { .. })
+                ),
+                "{} must be refused",
+                refused.display()
+            );
+        }
+        assert!(matches!(
+            resolve_readable_path(&agent.join("missing"), &data, &home),
+            Err(ReadableRefusal::Unresolvable(_))
+        ));
+    }
+
+    /// An `external_agents` or `node` that is itself a link to the data
+    /// directory — or to anything holding it — shows nothing: the allowed
+    /// directories are named below the data directory and never resolved
+    /// themselves, so what the link leads to simply does not lie in one.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn a_link_where_an_agent_installation_belongs_shows_nothing() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let data = home.join(DATA_DIRECTORY_HOME_RELATIVE);
+        std::fs::create_dir_all(data.join("db")).expect("create");
+        std::os::unix::fs::symlink(&data, data.join("external_agents")).expect("symlink");
+        std::os::unix::fs::symlink(&home, data.join("node")).expect("symlink");
+
+        for refused in [
+            data.join("external_agents"),
+            data.join("external_agents").join("db"),
+            data.join("node"),
+            data.join("node").join(".ssh"),
+        ] {
+            assert!(
+                resolve_readable_path(&refused, &data, &home).is_err(),
+                "{} must be refused",
+                refused.display()
+            );
+        }
+    }
+
+    /// A data directory that really lies inside a credential store shows
+    /// nothing of it.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn a_data_directory_inside_a_hidden_entry_shows_nothing() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let inside_keys = home.join(".ssh").join("zed");
+        std::fs::create_dir_all(inside_keys.join("node")).expect("create");
+        let data = home.join(DATA_DIRECTORY_HOME_RELATIVE);
+        std::fs::create_dir_all(data.parent().expect("a parent")).expect("create");
+        std::os::unix::fs::symlink(&inside_keys, &data).expect("symlink");
+
+        assert!(matches!(
+            resolve_readable_path(&data.join("node"), &data, &home),
+            Err(ReadableRefusal::TouchesHiddenEntry { .. })
+        ));
+    }
+
+    /// What a command may be shown it may never write: the data directory
+    /// holding it is always protected, locally and by the remote helper.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn what_may_be_shown_is_inside_a_protected_entry() {
+        let home = PathBuf::from("/home/u");
+        let data = home.join(DATA_DIRECTORY_HOME_RELATIVE);
+        assert!(
+            local_builtin_protected_paths(&home, &[])
+                .iter()
+                .any(|protected| data.starts_with(protected)),
+            "the local sandbox protects {}",
+            data.display()
+        );
+        #[cfg(target_os = "linux")]
+        assert!(
+            remote_builtin_protected_paths(&home)
+                .iter()
+                .any(|protected| data.starts_with(protected)),
+            "the remote helper protects {}",
+            data.display()
+        );
+    }
+
+    /// ADR-F49 decisions 14 and 15: the agents' configuration directory and the
+    /// data directory are covered only around what the command was granted
+    /// inside them, and only where they really are.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn an_enclosure_is_covered_only_around_what_is_granted_in_it() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let configurations = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
+        let own = home
+            .join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)
+            .join("0123456789abcdef")
+            .join("config");
+        let data = home.join(DATA_DIRECTORY_HOME_RELATIVE);
+        let agent = data.join("external_agents").join("claude");
+        std::fs::create_dir_all(&own).expect("create");
+        std::fs::create_dir_all(&agent).expect("create");
+        let work = home.join("work");
+        std::fs::create_dir(&work).expect("create");
+
+        let enclosures = enclosed_directories(&home);
+        assert_eq!(enclosures, vec![configurations.clone(), data.clone()]);
+        assert_eq!(
+            enclosures_to_cover(&enclosures, &[&work, &own]),
+            std::slice::from_ref(&configurations)
+        );
+        assert_eq!(
+            enclosures_to_cover(&enclosures, &[&work, &own, &agent]),
+            vec![configurations.clone(), data],
+            "the data directory is covered around what may be read in it"
+        );
+        assert_eq!(
+            enclosures_to_cover(&enclosures, &[&home, &own]),
+            std::slice::from_ref(&configurations),
+            "a root above it does not stop the cover"
+        );
+        assert!(enclosures_to_cover(&enclosures, &[&work]).is_empty());
+        assert!(enclosures_to_cover(&enclosures, &[&configurations]).is_empty());
+
+        let moved = home.join("moved");
+        std::fs::rename(&configurations, &moved).expect("move it away");
+        std::os::unix::fs::symlink(&moved, &configurations).expect("symlink");
+        assert!(
+            enclosures_to_cover(&enclosures, &[&configurations.join("projects")]).is_empty(),
+            "a symlink in its place is not covered"
+        );
+    }
+
+    /// ADR-F49 decisions 8 and 15: the agents' configuration directory is
+    /// protected like any other credential store — a hook written in another
+    /// project's directory runs in that project's next session — and steps
+    /// aside only for the session that writes its own, whose cover protects
+    /// the rest of it.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn the_agents_configuration_directory_is_protected_unless_it_is_covered() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let configurations = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
+        let own = home
+            .join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)
+            .join("0123456789abcdef")
+            .join("config");
+        std::fs::create_dir_all(&own).expect("create");
+        let work = home.join("work");
+        std::fs::create_dir(&work).expect("create");
+
+        assert!(
+            builtin_protected_paths(&home, std::slice::from_ref(&work)).contains(&configurations),
+            "an ordinary command may not write any of it"
+        );
+        assert!(
+            !builtin_protected_paths(&home, &[work, own]).contains(&configurations),
+            "the session that writes its own is left to the cover around it"
+        );
     }
 
     /// The Windows-home variant the WSL helper applies to every Windows user.
@@ -1027,7 +1625,10 @@ mod tests {
         } else {
             (PathBuf::from("/work/one"), PathBuf::from("/two"))
         };
-        let paths = worktree_protected_paths(&[first.clone(), second.clone(), first.clone()]);
+        let paths = worktree_protected_paths(
+            Path::new("/home/u"),
+            &[first.clone(), second.clone(), first.clone()],
+        );
         assert_eq!(paths.len(), 2 * WORKTREE_PROTECTED_RELATIVE.len());
         for root in [&first, &second] {
             for expected in [
@@ -1039,6 +1640,48 @@ mod tests {
                 assert!(paths.contains(&expected), "{}", expected.display());
             }
         }
+    }
+
+    /// ADR-F49 decision 15: a writable root that really lies inside the
+    /// sandboxed agents' projects directory gets none of the worktree entries;
+    /// a worktree, the projects directory itself, and a symlink in it that
+    /// leads to a worktree still do.
+    #[test]
+    fn an_agent_configuration_directory_gets_no_worktree_entries() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let projects = home.join(".zed-jp-enhance-claude").join("projects");
+        let configuration = projects.join("0123456789abcdef").join("config");
+        let work = home.join("work");
+        std::fs::create_dir_all(&configuration).expect("create");
+        std::fs::create_dir_all(&work).expect("create");
+        let roots = vec![configuration.clone(), work.clone(), projects.clone()];
+        #[cfg(unix)]
+        let roots = {
+            let link = projects.join("link");
+            std::os::unix::fs::symlink(&work, &link).expect("symlink");
+            let mut roots = roots;
+            roots.push(link);
+            roots
+        };
+
+        let paths = worktree_protected_paths(&home, &roots);
+        assert!(
+            !paths.iter().any(|path| path.starts_with(&configuration)),
+            "{paths:?}"
+        );
+        assert!(paths.contains(&work.join(".claude")), "{paths:?}");
+        assert!(paths.contains(&projects.join(".claude")), "{paths:?}");
+        #[cfg(unix)]
+        assert!(
+            paths.contains(&projects.join("link").join(".claude")),
+            "{paths:?}"
+        );
+        assert!(
+            builtin_protected_paths(&home, std::slice::from_ref(&configuration))
+                .iter()
+                .all(|path| !path.starts_with(&configuration))
+        );
     }
 
     /// The public list is the local home-relative set — git's global

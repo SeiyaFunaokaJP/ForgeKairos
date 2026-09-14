@@ -9,7 +9,7 @@
 //!   ([`sandbox_lock_file_contents`])
 //! - `ide_server.enabled` とは無関係に動く。認証トークンはセッションごと
 //! - ツールは CLI が実際に呼ぶ 4 本だけで、パスは WSL ↔ Windows を変換したうえで
-//!   ワークツリーの中に閉じ込める ([`crate::path_mapping`])。こちらから送る通知
+//!   ワークツリーの中に閉じ込める ([`util::path_mapping`])。こちらから送る通知
 //!   (`selection_changed` / `at_mentioned`) のパスも CLI 側の形に直し、ワークツリーの外は
 //!   見せない
 //! - サンドボックスの中のプロセスはロックファイルからトークンを読めるので、認証を通った
@@ -33,7 +33,8 @@ use serde_json::Value;
 use smol::lock::Semaphore;
 use workspace::Workspace;
 
-use crate::path_mapping::{self, PathMapper, SandboxPaths};
+use util::path_mapping::{self, PathMapper, SandboxPaths};
+
 use crate::protocol::LockFileContents;
 use crate::tools::{self, OpenDiffs, SelectionSnapshot, ToolHost, ToolScope};
 use crate::transport::Outbox;

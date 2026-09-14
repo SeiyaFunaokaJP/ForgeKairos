@@ -47,10 +47,15 @@ const PROXY_SOCKET_SANDBOX_PATH_PREFIX: &str = "/tmp/zed-sandbox";
 const VALIDATION_SOCKET_SANDBOX_PATH_PREFIX: &str = "/tmp/zed-sandbox-validate";
 const SANDBOX_SETUP_FAILED_EXIT_CODE: i32 = 126;
 const PUMP_BUFFER_SIZE: usize = 64 * 1024;
-/// Upper bound on writable binds validated in a single `SCM_RIGHTS` message,
-/// kept comfortably below the kernel's per-message fd limit (`SCM_MAX_FD`, 253).
-/// Exceeding it fails closed rather than silently validating a subset.
-const MAX_VALIDATED_BINDS: usize = 200;
+/// Descriptors per `SCM_RIGHTS` message, kept comfortably below the kernel's
+/// per-message limit (`SCM_MAX_FD`, 253). More than this are sent in several
+/// messages and counted on the way in.
+const FDS_PER_MESSAGE: usize = 200;
+/// Upper bound on the writable binds of one command, which are all validated:
+/// a carved worktree root (ADR-F49 decision 8) is bound entry by entry, and a
+/// home directory opened as a project has hundreds. A sanity bound only —
+/// exceeding it fails closed rather than silently validating a subset.
+const MAX_VALIDATED_BINDS: usize = 4096;
 
 /// Network-access setting for a sandboxed command.
 ///
@@ -206,6 +211,27 @@ fn probe_bwrap(bwrap: &Path, bwrap_args: &[String]) -> bool {
     }
 }
 
+/// What one command's sandbox is built out of, as the policy decided it
+/// (ADR-F49 decisions 8, 11, 14 and 15). Every path is a canonical location
+/// captured once at validation time and used verbatim here.
+#[derive(Clone, Copy, Default)]
+pub struct BwrapMounts<'a> {
+    /// Bound read-write: a root the user approved, or one entry of a root that
+    /// had to be carved so that nothing new can be created directly in it.
+    pub writable_directories: &'a [&'a Path],
+    /// Bound read-only over whatever is writable beneath them.
+    pub protected_paths: &'a [&'a Path],
+    /// Covered with empty content: the command may read nothing of them.
+    pub read_hidden_paths: &'a [&'a Path],
+    /// Covered whole, with only the writable and readable locations inside them
+    /// bound back — so that what is added to one while the command runs is not
+    /// there for it either.
+    pub enclosures: &'a [&'a Path],
+    /// Bound read-only inside a cover: what the command may read although the
+    /// cover hides everything else.
+    pub readable_paths: &'a [&'a Path],
+}
+
 /// Build the `bwrap` argument list (everything after the `bwrap` program and
 /// before the trailing `-- <command>`) for the given policy.
 ///
@@ -213,9 +239,7 @@ fn probe_bwrap(bwrap: &Path, bwrap_args: &[String]) -> bool {
 /// [`NetworkAccess::LocalhostPort`]. It is bind-mounted to a unique path inside
 /// the sandbox where the bridge connects to it.
 pub fn build_bwrap_args(
-    writable_directories: &[&Path],
-    protected_paths: &[&Path],
-    read_hidden_paths: &[&Path],
+    mounts: BwrapMounts<'_>,
     permissions: SandboxPermissions,
     cwd: Option<&Path>,
     proxy_socket_path: Option<&Path>,
@@ -224,9 +248,7 @@ pub fn build_bwrap_args(
         .filter(|_| matches!(permissions.network, NetworkAccess::LocalhostPort(_)))
         .map(|_| unique_proxy_socket_sandbox_path());
     build_bwrap_args_with_sandbox_paths(
-        writable_directories,
-        protected_paths,
-        read_hidden_paths,
+        mounts,
         permissions,
         cwd,
         proxy_socket_path,
@@ -241,9 +263,7 @@ pub fn build_bwrap_args(
     reason = "a flat arg list mirrors the bwrap flags this assembles"
 )]
 fn build_bwrap_args_with_sandbox_paths(
-    writable_directories: &[&Path],
-    protected_paths: &[&Path],
-    read_hidden_paths: &[&Path],
+    mounts: BwrapMounts<'_>,
     permissions: SandboxPermissions,
     cwd: Option<&Path>,
     proxy_socket_path: Option<&Path>,
@@ -265,26 +285,84 @@ fn build_bwrap_args_with_sandbox_paths(
     args.push("--proc".to_string());
     args.push("/proc".to_string());
 
+    let inside_a_cover = |path: &Path| {
+        mounts
+            .enclosures
+            .iter()
+            .any(|enclosure| path.starts_with(enclosure))
+    };
+
+    // Bind each writable directory at its *exact* path, **verbatim** — never
+    // re-`canonicalize`d here. The path was already resolved once, at capture
+    // time, to the pinned inode's current path (`readlink` of the `O_PATH` fd);
+    // re-resolving it now would reopen the time-of-check-to-time-of-use gap a
+    // malicious swap exploits. We must also never widen to an existing
+    // ancestor, so a path that doesn't exist is skipped rather than falling
+    // back to a parent. Whatever inode bwrap actually binds is verified after
+    // the mounts by the in-sandbox launcher (see `validate_binds`), which fails
+    // closed on a mismatch.
+    let push_writable_bind = |args: &mut Vec<String>, directory: &Path| {
+        if !directory.exists() {
+            return;
+        }
+        let path = directory.to_string_lossy().into_owned();
+        push_bind(args, "--bind", &path, &path);
+    };
+
     if !permissions.allow_fs_write {
         args.push("--tmpfs".to_string());
         args.push("/tmp".to_string());
 
-        for directory in writable_directories {
-            // Bind each writable directory at its *exact* path, **verbatim** —
-            // never re-`canonicalize`d here. The path was already resolved once,
-            // at capture time, to the pinned inode's current path (`readlink` of
-            // the `O_PATH` fd); re-resolving it now would reopen the
-            // time-of-check-to-time-of-use gap a malicious swap exploits. We must
-            // also never widen to an existing ancestor, so a path that doesn't
-            // exist is skipped rather than falling back to a parent. Whatever
-            // inode bwrap actually binds is verified after the mounts by the
-            // in-sandbox launcher (see `validate_binds`), which fails closed on a
-            // mismatch.
-            if !directory.exists() {
+        // The writable binds *outside* every cover come first, so that a cover
+        // can then be laid over one of them: a worktree that is the home
+        // directory holds the agent configuration directory, and the cover
+        // belongs on top of the worktree's own bind, not under it.
+        for directory in mounts
+            .writable_directories
+            .iter()
+            .filter(|directory| !inside_a_cover(directory))
+        {
+            push_writable_bind(&mut args, directory);
+        }
+    }
+
+    // ADR-F49 decisions 14 and 15: an empty tmpfs over each covered directory,
+    // then only what the command was granted inside it bound back onto the
+    // cover. Made read-only at the very end, once those binds are in place, so
+    // that nothing can be put in the cover itself.
+    for enclosure in mounts.enclosures {
+        args.push("--tmpfs".to_string());
+        args.push(enclosure.to_string_lossy().into_owned());
+    }
+
+    // Outermost first, so a location inside another lands on top of it.
+    let mut inside_covers: Vec<(&Path, bool)> = Vec::new();
+    if !permissions.allow_fs_write {
+        inside_covers.extend(
+            mounts
+                .writable_directories
+                .iter()
+                .filter(|directory| inside_a_cover(directory))
+                .map(|directory| (*directory, false)),
+        );
+    }
+    inside_covers.extend(
+        mounts
+            .readable_paths
+            .iter()
+            .filter(|path| inside_a_cover(path))
+            .map(|path| (*path, true)),
+    );
+    inside_covers.sort_by_key(|(path, _)| path.components().count());
+    for (path, read_only) in &inside_covers {
+        if *read_only {
+            if !path.exists() {
                 continue;
             }
-            let path = directory.to_string_lossy().into_owned();
-            push_bind(&mut args, "--bind", &path, &path);
+            let path = path.to_string_lossy().into_owned();
+            push_bind(&mut args, "--ro-bind", &path, &path);
+        } else {
+            push_writable_bind(&mut args, path);
         }
     }
 
@@ -292,8 +370,20 @@ fn build_bwrap_args_with_sandbox_paths(
     // bind (order matters: later binds win). Unlike Seatbelt, bwrap can't deny
     // writes while allowing content reads with a policy rule, so a protected path
     // is read-only — its contents stay readable but can't be written. A
-    // not-yet-existing path can't be bound, so it's skipped.
-    for protected_path in protected_paths {
+    // not-yet-existing path can't be bound, so it's skipped (the policy keeps the
+    // command from creating it by carving the root that would hold it instead).
+    for protected_path in mounts.protected_paths {
+        // One inside a cover is protected by the cover already, and binding the
+        // host's own directory back over the cover would undo it — every other
+        // project's agent configuration would be there again. Only one inside
+        // something bound back into the cover still needs its own bind.
+        if inside_a_cover(protected_path)
+            && !inside_covers
+                .iter()
+                .any(|(bound, read_only)| !*read_only && protected_path.starts_with(bound))
+        {
+            continue;
+        }
         if !protected_path.exists() {
             continue;
         }
@@ -304,8 +394,14 @@ fn build_bwrap_args_with_sandbox_paths(
     // ADR-F49 decision 11: hide the contents of credential stores and agent
     // configurations — last, so they cover every bind above, a writable root
     // they lie inside included. An empty read-only tmpfs over a directory,
-    // `/dev/null` over a file; one that does not exist has nothing to hide.
-    for hidden_path in read_hidden_paths {
+    // `/dev/null` over a file; one that does not exist has nothing to hide. One
+    // inside a cover is hidden by it already, and a tmpfs of its own would only
+    // be a mount point in the cover the command can see the name of.
+    for hidden_path in mounts
+        .read_hidden_paths
+        .iter()
+        .filter(|path| !inside_a_cover(path))
+    {
         let Ok(metadata) = std::fs::metadata(hidden_path) else {
             continue;
         };
@@ -320,6 +416,15 @@ fn build_bwrap_args_with_sandbox_paths(
         } else {
             push_bind(&mut args, "--ro-bind", "/dev/null", &path);
         }
+    }
+
+    // Read-only only now, so that nothing can be put in a cover itself; what was
+    // bound back into it keeps its own access. Whatever the command may write,
+    // this holds: a cover exists to keep the command out of everything in the
+    // directory but its own grants.
+    for enclosure in mounts.enclosures {
+        let path = enclosure.to_string_lossy().into_owned();
+        args.extend(["--remount-ro".to_string(), path]);
     }
 
     for flag in [
@@ -566,7 +671,7 @@ fn prepare_sandbox(
     // directory. None of those affect createability, and binding them would make
     // the probe depend on per-command layout (e.g. a worktree under the `/tmp`
     // tmpfs that `--chdir` then can't reach).
-    let bwrap_args = build_bwrap_args(&[], &[], &[], permissions, None, None);
+    let bwrap_args = build_bwrap_args(BwrapMounts::default(), permissions, None, None);
     if !probe_bwrap(&bwrap, &bwrap_args) {
         return Err(LauncherStatus::SandboxProbeFailed);
     }
@@ -606,9 +711,7 @@ pub struct ValidationSocket<'a> {
 pub fn wrap_invocation(
     bridge_program: &str,
     permissions: SandboxPermissions,
-    writable_dirs: &[&Path],
-    protected_paths: &[&Path],
-    read_hidden_paths: &[&Path],
+    mounts: BwrapMounts<'_>,
     cwd: Option<&Path>,
     program: &str,
     args: &[String],
@@ -616,6 +719,7 @@ pub fn wrap_invocation(
     proxy_socket_path: Option<&Path>,
     validation_socket: Option<ValidationSocket<'_>>,
 ) -> Result<(String, Vec<String>)> {
+    let writable_dirs = mounts.writable_directories;
     if matches!(permissions.network, NetworkAccess::LocalhostPort(_)) && proxy_socket_path.is_none()
     {
         bail!("restricted Linux network access requires a proxy Unix socket path");
@@ -654,9 +758,7 @@ pub fn wrap_invocation(
         NetworkAccess::None | NetworkAccess::All => None,
     };
     let mut bwrap_args = build_bwrap_args_with_sandbox_paths(
-        writable_dirs,
-        protected_paths,
-        read_hidden_paths,
+        mounts,
         permissions,
         cwd,
         proxy_socket_path,
@@ -912,7 +1014,7 @@ fn command_with_environment(
 fn validate_binds(socket_path: &Path, paths: &[PathBuf]) -> Result<()> {
     let stream = UnixStream::connect(socket_path)
         .with_context(|| format!("connecting to validation socket {}", socket_path.display()))?;
-    let fds = recv_fds(&stream).context("receiving validation descriptors")?;
+    let fds = recv_fds(&stream, paths.len()).context("receiving validation descriptors")?;
     if fds.len() != paths.len() {
         bail!(
             "expected {} validation descriptor(s), received {}",
@@ -1178,58 +1280,72 @@ fn run_bridge(socket_path: PathBuf, port: u16, mut command: Command) -> ! {
 /// the descriptors as `SCM_RIGHTS` ancillary data.
 fn send_fds(stream: &UnixStream, fds: &[RawFd]) -> std::io::Result<()> {
     use nix::sys::socket::{ControlMessage, MsgFlags, sendmsg};
-    let payload = [0u8; 1];
-    let iov = [std::io::IoSlice::new(&payload)];
-    let control = [ControlMessage::ScmRights(fds)];
-    sendmsg::<()>(
-        stream.as_raw_fd(),
-        &iov,
-        &control,
-        MsgFlags::MSG_NOSIGNAL,
-        None,
-    )
-    .map_err(std::io::Error::from)?;
+    // One message per [`FDS_PER_MESSAGE`]: a carved root can have more
+    // descriptors than a single `SCM_RIGHTS` message carries, and the receiver
+    // reads until it has the number of paths it expects.
+    for chunk in fds.chunks(FDS_PER_MESSAGE) {
+        let payload = [0u8; 1];
+        let iov = [std::io::IoSlice::new(&payload)];
+        let control = [ControlMessage::ScmRights(chunk)];
+        sendmsg::<()>(
+            stream.as_raw_fd(),
+            &iov,
+            &control,
+            MsgFlags::MSG_NOSIGNAL,
+            None,
+        )
+        .map_err(std::io::Error::from)?;
+    }
     Ok(())
 }
 
-/// Receive the descriptors sent via `SCM_RIGHTS` on `stream`. They arrive with
-/// `O_CLOEXEC` (via `MSG_CMSG_CLOEXEC`) so they don't leak into the command
-/// that's `exec`'d after validation. The ancillary buffer is sized for the
-/// protocol maximum ([`MAX_VALIDATED_BINDS`]); a sender exceeding it trips
-/// `MSG_CTRUNC` and a mismatched count is rejected by the caller.
-fn recv_fds(stream: &UnixStream) -> std::io::Result<Vec<OwnedFd>> {
+/// Receive `expected` descriptors sent via `SCM_RIGHTS` on `stream`, over as
+/// many messages as the sender needed ([`FDS_PER_MESSAGE`] each). They arrive
+/// with `O_CLOEXEC` (via `MSG_CMSG_CLOEXEC`) so they don't leak into the command
+/// that's `exec`'d after validation. The ancillary buffer is sized for one
+/// message; a sender exceeding that trips `MSG_CTRUNC`, and any count but
+/// `expected` is rejected by the caller.
+fn recv_fds(stream: &UnixStream, expected: usize) -> std::io::Result<Vec<OwnedFd>> {
     use nix::sys::socket::{ControlMessageOwned, MsgFlags, recvmsg};
-    let mut payload = [0u8; 1];
-    let mut iov = [std::io::IoSliceMut::new(&mut payload)];
-    let mut control = nix::cmsg_space!([RawFd; MAX_VALIDATED_BINDS]);
-    let message = recvmsg::<()>(
-        stream.as_raw_fd(),
-        &mut iov,
-        Some(&mut control),
-        MsgFlags::MSG_CMSG_CLOEXEC,
-    )
-    .map_err(std::io::Error::from)?;
-    if message.flags.contains(MsgFlags::MSG_CTRUNC) {
-        return Err(std::io::Error::other(
-            "validation descriptors were truncated in transit",
-        ));
-    }
-
     let mut fds = Vec::new();
-    for control_message in message.cmsgs().map_err(std::io::Error::from)? {
-        if let ControlMessageOwned::ScmRights(raw_fds) = control_message {
-            for raw in raw_fds {
-                // SAFETY: the kernel installs each `SCM_RIGHTS` descriptor as a
-                // freshly-allocated, open fd in *our* table for this message
-                // (with `O_CLOEXEC` via `MSG_CMSG_CLOEXEC`), so it's valid and
-                // can't alias an fd we already hold. `nix`'s `ScmRights` does not
-                // take ownership of received fds (closing them is the caller's
-                // responsibility), so wrapping each exactly once here makes us
-                // their sole owner. Both hold for any peer, which is why this
-                // (and `recv_fds`) is sound as a safe fn rather than needing an
-                // `unsafe fn` precondition on the caller.
-                fds.push(unsafe { OwnedFd::from_raw_fd(raw) });
+    while fds.len() < expected {
+        let mut payload = [0u8; 1];
+        let mut iov = [std::io::IoSliceMut::new(&mut payload)];
+        let mut control = nix::cmsg_space!([RawFd; FDS_PER_MESSAGE]);
+        let message = recvmsg::<()>(
+            stream.as_raw_fd(),
+            &mut iov,
+            Some(&mut control),
+            MsgFlags::MSG_CMSG_CLOEXEC,
+        )
+        .map_err(std::io::Error::from)?;
+        if message.flags.contains(MsgFlags::MSG_CTRUNC) {
+            return Err(std::io::Error::other(
+                "validation descriptors were truncated in transit",
+            ));
+        }
+        let mut received = 0;
+        for control_message in message.cmsgs().map_err(std::io::Error::from)? {
+            if let ControlMessageOwned::ScmRights(raw_fds) = control_message {
+                for raw in raw_fds {
+                    // SAFETY: the kernel installs each `SCM_RIGHTS` descriptor as a
+                    // freshly-allocated, open fd in *our* table for this message
+                    // (with `O_CLOEXEC` via `MSG_CMSG_CLOEXEC`), so it's valid and
+                    // can't alias an fd we already hold. `nix`'s `ScmRights` does not
+                    // take ownership of received fds (closing them is the caller's
+                    // responsibility), so wrapping each exactly once here makes us
+                    // their sole owner. Both hold for any peer, which is why this
+                    // (and `recv_fds`) is sound as a safe fn rather than needing an
+                    // `unsafe fn` precondition on the caller.
+                    fds.push(unsafe { OwnedFd::from_raw_fd(raw) });
+                    received += 1;
+                }
             }
+        }
+        // Nothing left to come: the sender closed before it had sent them all,
+        // and the caller's count check turns that into a closed failure.
+        if received == 0 {
+            break;
         }
     }
     Ok(fds)
@@ -1367,9 +1483,10 @@ mod tests {
         let missing = existing.join("does-not-exist").join("nested");
 
         let args = build_bwrap_args(
-            &[missing.as_path()],
-            &[],
-            &[],
+            BwrapMounts {
+                writable_directories: &[missing.as_path()],
+                ..Default::default()
+            },
             SandboxPermissions::default(),
             None,
             None,
@@ -1391,9 +1508,10 @@ mod tests {
     fn test_build_bwrap_args_default_binds_writable_dirs_read_write() {
         let writable = tempfile::tempdir().unwrap();
         let args = build_bwrap_args(
-            &[writable.path()],
-            &[],
-            &[],
+            BwrapMounts {
+                writable_directories: &[writable.path()],
+                ..Default::default()
+            },
             SandboxPermissions::default(),
             Some(writable.path()),
             None,
@@ -1414,13 +1532,16 @@ mod tests {
 
     #[test]
     fn test_build_bwrap_args_network_namespace_follows_permission() {
-        let denied = build_bwrap_args(&[], &[], &[], SandboxPermissions::default(), None, None);
+        let denied = build_bwrap_args(
+            BwrapMounts::default(),
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
         assert!(denied.iter().any(|arg| arg == "--unshare-net"));
 
         let allowed = build_bwrap_args(
-            &[],
-            &[],
-            &[],
+            BwrapMounts::default(),
             SandboxPermissions {
                 network: NetworkAccess::All,
                 allow_fs_write: false,
@@ -1432,9 +1553,7 @@ mod tests {
 
         let socket = PathBuf::from("/tmp/zed-proxy.sock");
         let restricted = build_bwrap_args(
-            &[],
-            &[],
-            &[],
+            BwrapMounts::default(),
             SandboxPermissions {
                 network: NetworkAccess::LocalhostPort(8080),
                 allow_fs_write: false,
@@ -1462,9 +1581,12 @@ mod tests {
         let missing = home_path.join(".aws");
 
         let args = build_bwrap_args(
-            &[home_path.as_path()],
-            &[ssh.as_path()],
-            &[ssh.as_path(), npmrc.as_path(), missing.as_path()],
+            BwrapMounts {
+                writable_directories: &[home_path.as_path()],
+                protected_paths: &[ssh.as_path()],
+                read_hidden_paths: &[ssh.as_path(), npmrc.as_path(), missing.as_path()],
+                ..Default::default()
+            },
             SandboxPermissions::default(),
             None,
             None,
@@ -1501,6 +1623,369 @@ mod tests {
         );
     }
 
+    /// ADR-F49 decisions 14 and 15: a covered directory gets an empty tmpfs
+    /// *after* the writable binds outside it (so a cover can land on top of a
+    /// worktree that holds it) and before those inside it, what may be read
+    /// inside one is bound back read-only, and the cover is made read-only once
+    /// everything has been bound back.
+    #[test]
+    fn test_build_bwrap_args_covers_a_directory_around_what_is_granted_in_it() {
+        let home = tempfile::tempdir().expect("create a home");
+        let home_path = home.path().canonicalize().expect("canonical home");
+        let enclosure = home_path.join(".zed-jp-enhance-claude");
+        let own = enclosure
+            .join("projects")
+            .join("0123456789abcdef")
+            .join("config");
+        let data = home_path
+            .join(".local")
+            .join("share")
+            .join("zed-jp-enhance");
+        let agent = data.join("external_agents").join("claude");
+        let work = home_path.join("work");
+        std::fs::create_dir_all(&own).expect("create the configuration");
+        std::fs::create_dir_all(&agent).expect("create the agent");
+        std::fs::create_dir(&work).expect("create a worktree");
+        let text = |path: &Path| path.to_string_lossy().into_owned();
+
+        let args = build_bwrap_args(
+            BwrapMounts {
+                // The home is the worktree, so it holds both covered
+                // directories: each cover has to be laid over its own bind.
+                writable_directories: &[home_path.as_path(), own.as_path()],
+                enclosures: &[enclosure.as_path(), data.as_path()],
+                readable_paths: &[agent.as_path()],
+                ..Default::default()
+            },
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
+        let position = |window: &[&str]| {
+            args.windows(window.len())
+                .position(|candidate| candidate.iter().zip(window).all(|(a, b)| a == b))
+        };
+        let home_bind = position(&["--bind", &text(&home_path), &text(&home_path)])
+            .expect("the worktree is bound");
+        let cover = position(&["--tmpfs", &text(&enclosure)]).expect("the enclosure is covered");
+        let bind = position(&["--bind", &text(&own), &text(&own)])
+            .expect("the session's own configuration is bound back");
+        let remount =
+            position(&["--remount-ro", &text(&enclosure)]).expect("the cover is made read-only");
+        assert!(
+            home_bind < cover && cover < bind && bind < remount,
+            "{args:?}"
+        );
+
+        let data_cover =
+            position(&["--tmpfs", &text(&data)]).expect("the data directory is covered");
+        let agent_bind = position(&["--ro-bind", &text(&agent), &text(&agent)])
+            .expect("what may be read is bound back read-only");
+        let data_remount =
+            position(&["--remount-ro", &text(&data)]).expect("the data cover is made read-only");
+        assert!(
+            data_cover < agent_bind && agent_bind < data_remount,
+            "{args:?}"
+        );
+        assert!(
+            !windows_contains(&args, &["--bind", &text(&agent), &text(&agent)]),
+            "what may be read is never bound writable: {args:?}"
+        );
+
+        let uncovered = build_bwrap_args(
+            BwrapMounts {
+                writable_directories: &[work.as_path()],
+                ..Default::default()
+            },
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
+        assert!(!uncovered.contains(&text(&enclosure)), "{uncovered:?}");
+    }
+
+    /// A protected path inside a covered directory keeps its cover: binding the
+    /// host's own directory back over it would put everything the cover exists
+    /// to hide there again.
+    #[test]
+    fn test_build_bwrap_args_never_binds_a_protected_path_over_a_cover() {
+        let home = tempfile::tempdir().expect("create a home");
+        let home_path = home.path().canonicalize().expect("canonical home");
+        let data = home_path
+            .join(".local")
+            .join("share")
+            .join("zed-jp-enhance");
+        let agent = data.join("external_agents").join("claude");
+        let work = home_path.join("work");
+        std::fs::create_dir_all(&agent).expect("create the agent");
+        std::fs::create_dir(&work).expect("create a worktree");
+        let text = |path: &Path| path.to_string_lossy().into_owned();
+
+        let args = build_bwrap_args(
+            BwrapMounts {
+                writable_directories: &[work.as_path()],
+                // The data directory is protected *and* covered.
+                protected_paths: &[data.as_path()],
+                enclosures: &[data.as_path()],
+                readable_paths: &[agent.as_path()],
+                ..Default::default()
+            },
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
+        assert!(
+            !windows_contains(&args, &["--ro-bind", &text(&data), &text(&data)]),
+            "the cover must not be undone by the protected bind: {args:?}"
+        );
+        assert!(windows_contains(&args, &["--remount-ro", &text(&data)]));
+    }
+
+    /// ADR-F49 decisions 14 and 15 on a real Bubblewrap: what the command may
+    /// read among the hidden entries is readable and not writable, the rest of
+    /// this fork's data is not there at all, and in the agents' configuration
+    /// directory only the session's own project is. Skipped where `bwrap`
+    /// cannot create a sandbox (it needs unprivileged user namespaces), and
+    /// where there is no `/var/tmp` — the fake home cannot be under `/tmp`,
+    /// which the sandbox replaces with an empty one.
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test runs bwrap synchronously to check the mounts it builds"
+    )]
+    fn test_bubblewrap_shows_what_may_be_read_and_covers_the_rest() {
+        if let Err(status) = check_can_create_sandbox(SandboxPermissions::default()) {
+            eprintln!("skipped: {}", status.describe());
+            return;
+        }
+        let Ok(bwrap) = resolve_bwrap() else {
+            eprintln!("skipped: no bwrap");
+            return;
+        };
+        let Ok(temporary) = tempfile::Builder::new()
+            .prefix("zed-bwrap-test-")
+            .tempdir_in("/var/tmp")
+        else {
+            eprintln!("skipped: no /var/tmp");
+            return;
+        };
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let data = home.join(".local").join("share").join("zed-jp-enhance");
+        let agents = data.join("external_agents").join("registry").join("npx");
+        let agent = agents.join("claude");
+        let configurations = home.join(".zed-jp-enhance-claude");
+        let projects = configurations.join("projects");
+        let own = projects.join("own").join("config");
+        let work = home.join("work");
+        for (directory, file, contents) in [
+            (&agent, "agent.js", "agent"),
+            (&agents.join("other"), "secret", "other agent"),
+            (&data.join("db"), "threads.db", "database"),
+            (&home.join(".ssh"), "id_test", "key"),
+            (&own, "settings.json", "own"),
+            (
+                &projects.join("other").join("config"),
+                "token",
+                "other project",
+            ),
+            (&work, "main.rs", "work"),
+        ] {
+            std::fs::create_dir_all(directory).expect("create");
+            std::fs::write(directory.join(file), contents).expect("write");
+        }
+
+        let writable = [work.as_path(), own.as_path()];
+        let readable = [agent.as_path()];
+        let hiding = crate::local_read_hiding_for_home(&home, &writable, &readable, false);
+        let hidden: Vec<&Path> = hiding.hidden.iter().map(PathBuf::as_path).collect();
+        let enclosures: Vec<&Path> = hiding.enclosures.iter().map(PathBuf::as_path).collect();
+        assert_eq!(hiding.enclosures, vec![configurations, data.clone()]);
+
+        let quoted = |path: &Path| format!("'{}'", path.display());
+        let script = format!(
+            "cat {agent_file} && echo; echo readable-ok; \
+             cat {other_agent} 2>/dev/null && echo other-agent-visible; \
+             cat {database} 2>/dev/null && echo database-visible; \
+             cat {key} 2>/dev/null && echo key-visible; \
+             touch {agent_new} 2>/dev/null && echo agent-writable; \
+             echo data=$(ls -A {data}); \
+             echo projects=$(ls -A {projects}); \
+             cat {other_project} 2>/dev/null && echo other-project-visible; \
+             touch {projects_new} 2>/dev/null && echo projects-writable; \
+             touch {own_new} && echo own-writable",
+            agent_file = quoted(&agent.join("agent.js")),
+            other_agent = quoted(&agents.join("other").join("secret")),
+            database = quoted(&data.join("db").join("threads.db")),
+            key = quoted(&home.join(".ssh").join("id_test")),
+            agent_new = quoted(&agent.join("new")),
+            data = quoted(&data),
+            projects = quoted(&projects),
+            other_project = quoted(&projects.join("other").join("config").join("token")),
+            projects_new = quoted(&projects.join("new")),
+            own_new = quoted(&own.join("new")),
+        );
+        let mut args = build_bwrap_args(
+            BwrapMounts {
+                writable_directories: &writable,
+                read_hidden_paths: &hidden,
+                enclosures: &enclosures,
+                readable_paths: &readable,
+                ..Default::default()
+            },
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
+        args.extend([
+            "--".to_string(),
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            script,
+        ]);
+        let output = std::process::Command::new(&bwrap)
+            .args(&args)
+            .output()
+            .expect("run bwrap");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        for expected in [
+            "agent",
+            "readable-ok",
+            // Only the way down to what may be read is there, so nothing added
+            // to the data directory while the command runs is either.
+            "data=external_agents",
+            "projects=own",
+            "own-writable",
+        ] {
+            assert!(
+                lines.contains(&expected),
+                "missing {expected}: {stdout} / {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        for unexpected in [
+            "other-agent-visible",
+            "database-visible",
+            "key-visible",
+            "agent-writable",
+            "other-project-visible",
+            "projects-writable",
+        ] {
+            assert!(!lines.contains(&unexpected), "{unexpected}: {stdout}");
+        }
+    }
+
+    /// ADR-F49 decision 8 on a real Bubblewrap: where a protected entry that is
+    /// not there yet would go — a worktree's `.claude/`, which a host agent
+    /// runs the hooks of — the root is carved, so the command cannot create it,
+    /// or anything else directly in the root, while everything already in the
+    /// root stays writable. Skipped where `bwrap` cannot create a sandbox.
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test runs bwrap synchronously to check the mounts it builds"
+    )]
+    fn test_bubblewrap_carves_a_root_that_would_hold_a_missing_protected_entry() {
+        if let Err(status) = check_can_create_sandbox(SandboxPermissions::default()) {
+            eprintln!("skipped: {}", status.describe());
+            return;
+        }
+        let Ok(bwrap) = resolve_bwrap() else {
+            eprintln!("skipped: no bwrap");
+            return;
+        };
+        let Ok(temporary) = tempfile::Builder::new()
+            .prefix("zed-bwrap-carve-")
+            .tempdir_in("/var/tmp")
+        else {
+            eprintln!("skipped: no /var/tmp");
+            return;
+        };
+        let work = std::fs::canonicalize(temporary.path()).expect("canonical worktree");
+        let source = work.join("src");
+        let nested = work.join("deep").join("nested");
+        std::fs::create_dir_all(&source).expect("create src");
+        std::fs::create_dir_all(&nested).expect("create the nested directory");
+        std::fs::write(work.join("Cargo.toml"), "[package]\n").expect("write Cargo.toml");
+        std::fs::write(nested.join("notes.txt"), "notes\n").expect("write notes.txt");
+        std::os::unix::fs::symlink("/etc", work.join("link")).expect("symlink");
+        // As the policy hands them over: `.claude/` is not there, and the
+        // agent configuration below `deep/` is not either.
+        let missing = [work.join(".claude"), nested.join(".mcp.json")];
+
+        let location = crate::HostFilesystemLocation::capture(&work).expect("capture the worktree");
+        let binds = crate::carve_writable_binds(std::slice::from_ref(&location), &missing)
+            .expect("carve the worktree");
+        let (paths, fds): (Vec<PathBuf>, Vec<OwnedFd>) = binds.into_iter().unzip();
+        let writable: Vec<&Path> = paths.iter().map(PathBuf::as_path).collect();
+        assert!(
+            !writable.contains(&work.as_path()),
+            "the root itself is not bound: {writable:?}"
+        );
+        assert!(
+            !writable.iter().any(|path| *path == work.join("link")),
+            "a symlink is never bound: {writable:?}"
+        );
+        drop(fds);
+
+        let quoted = |path: &Path| format!("'{}'", path.display());
+        let script = format!(
+            "touch {new_at_the_root} 2>/dev/null && echo new-at-the-root; \
+             mkdir {agent_configuration} 2>/dev/null && echo agent-configuration-created; \
+             touch {deep_configuration} 2>/dev/null && echo deep-configuration-created; \
+             touch {new_in_src} && echo new-in-src; \
+             echo more >> {existing} && echo existing-written; \
+             echo more >> {existing_in_nested} && echo nested-existing-written; \
+             touch {new_in_nested} 2>/dev/null && echo new-in-nested",
+            new_at_the_root = quoted(&work.join("new-at-the-root")),
+            agent_configuration = quoted(&work.join(".claude")),
+            deep_configuration = quoted(&nested.join(".mcp.json")),
+            new_in_src = quoted(&source.join("new.rs")),
+            existing = quoted(&work.join("Cargo.toml")),
+            existing_in_nested = quoted(&nested.join("notes.txt")),
+            new_in_nested = quoted(&nested.join("main.rs")),
+        );
+        let mut args = build_bwrap_args(
+            BwrapMounts {
+                writable_directories: &writable,
+                ..Default::default()
+            },
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
+        args.extend([
+            "--".to_string(),
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            script,
+        ]);
+        let output = std::process::Command::new(&bwrap)
+            .args(&args)
+            .output()
+            .expect("run bwrap");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        for expected in ["new-in-src", "existing-written", "nested-existing-written"] {
+            assert!(
+                lines.contains(&expected),
+                "missing {expected}: {stdout} / {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        for unexpected in [
+            "new-at-the-root",
+            "agent-configuration-created",
+            // A directory deeper down that would hold one is carved in turn,
+            // so it takes no new entry either — the same rule, applied where
+            // the entry would go.
+            "deep-configuration-created",
+            "new-in-nested",
+        ] {
+            assert!(!lines.contains(&unexpected), "{unexpected}: {stdout}");
+        }
+    }
+
     #[test]
     fn test_build_bwrap_args_allow_fs_write_binds_root_read_write() {
         let permissions = SandboxPermissions {
@@ -1508,7 +1993,15 @@ mod tests {
             allow_fs_write: true,
         };
         let protected = Path::new("/tmp");
-        let args = build_bwrap_args(&[], &[protected], &[], permissions, None, None);
+        let args = build_bwrap_args(
+            BwrapMounts {
+                protected_paths: &[protected],
+                ..Default::default()
+            },
+            permissions,
+            None,
+            None,
+        );
         assert!(windows_contains(&args, &["--bind", "/", "/"]));
         assert!(!windows_contains(&args, &["--ro-bind", "/", "/"]));
         assert!(windows_contains(&args, &["--ro-bind", "/tmp", "/tmp"]));
@@ -1684,9 +2177,7 @@ mod tests {
             NetworkAccess::None | NetworkAccess::All => None,
         };
         let mut bwrap_args = build_bwrap_args_with_sandbox_paths(
-            &[],
-            &[],
-            &[],
+            BwrapMounts::default(),
             permissions,
             None,
             proxy_socket_path,
@@ -1913,9 +2404,10 @@ mod tests {
                 network: NetworkAccess::None,
                 allow_fs_write: false,
             },
-            &[unbindable.as_path()],
-            &[],
-            &[],
+            BwrapMounts {
+                writable_directories: &[unbindable.as_path()],
+                ..Default::default()
+            },
             None,
             "/bin/true",
             &[],

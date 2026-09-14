@@ -37,7 +37,12 @@ use std::ops::Range;
 use std::process::ExitStatus;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
-use std::{fmt::Display, mem, path::PathBuf, sync::Arc};
+use std::{
+    fmt::Display,
+    mem,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use task::{Shell, ShellBuilder};
 pub use terminal::*;
 use text::Bias;
@@ -2124,9 +2129,81 @@ struct RunningTurn {
     id: u32,
     send_task: Task<()>,
     /// ADR-F50: an external agent writes files itself, anywhere its process
-    /// can, so its turn is a writer of every worktree on the project's host
-    /// until it ends.
-    worktree_code_writer: Option<project::SandboxedWriterGuard>,
+    /// can, so its turn is a writer of the worktrees it can write until it
+    /// ends.
+    worktree_code_writer: Option<TurnWorktreeWriter>,
+}
+
+/// ADR-F49 decision 11: what a sandboxed agent is told when Zed would not read
+/// a file for it. The agent reads this, not the user.
+fn refused_read(path: &Path, error: anyhow::Error) -> acp::Error {
+    if let Some(fs::VerifiedWriteError::Io(io_error)) =
+        error.downcast_ref::<fs::VerifiedWriteError>()
+        && io_error.kind() == std::io::ErrorKind::NotFound
+    {
+        return acp::Error::resource_not_found(Some(path.display().to_string()));
+    }
+    log::warn!("refused to read {} for an agent: {error:#}", path.display());
+    acp::Error::invalid_params().data(format!(
+        "Zed did not read `{}`: {error:#}. A file an agent that runs in a sandbox asks for is \
+         read only where the project's folders hold it themselves, with no symbolic link, \
+         junction or other redirection on the way.",
+        path.display()
+    ))
+}
+
+/// ADR-F50 and ADR-F49 decision 18: an external agent's turn as a writer of
+/// the worktrees its process can write — every one on its host, or only
+/// where its sandbox lets it. Registered when the turn starts and released
+/// when it ends, both here.
+struct TurnWorktreeWriter {
+    guard: project::SandboxedWriterGuard,
+}
+
+impl TurnWorktreeWriter {
+    fn start(
+        connection: &dyn AgentConnection,
+        project: &Entity<Project>,
+        cx: &mut App,
+    ) -> Option<Self> {
+        register_agent_process_writer(connection, project, cx).map(|guard| Self { guard })
+    }
+
+    fn end(self) {
+        drop(self.guard);
+    }
+}
+
+/// ADR-F50 and ADR-F49 decision 18: registers an external agent's own process
+/// as a writer of the worktrees it can write — every one on its host, or only
+/// where its sandbox lets it — for as long as the returned guard lives. `None`
+/// for an agent whose every change goes through Zed's own tools, which pause
+/// the worktrees themselves.
+///
+/// A turn holds one of these, and so does the creation or loading of a session:
+/// the agent's process already writes before it ever answers (Claude Code's
+/// `SessionStart` hook, the MCP servers the agent starts), and what those write
+/// is the agent's doing, not the user's.
+pub fn register_agent_process_writer(
+    connection: &dyn AgentConnection,
+    project: &Entity<Project>,
+    cx: &mut App,
+) -> Option<project::SandboxedWriterGuard> {
+    if connection.changes_files_through_zed() {
+        return None;
+    }
+    let scope = match connection.sandbox_write_scope() {
+        Some(paths) => project::AgentWriteScope::Paths(paths),
+        None => project::AgentWriteScope::Anywhere,
+    };
+    Some(project.update(cx, |project, cx| {
+        let (guard, other_spellings) =
+            project.register_agent_writer(scope, project::AgentWriterKind::AgentTurn, cx);
+        // The agent's process is already running, so there is nothing to hold
+        // back until these are covered too.
+        other_spellings.detach();
+        guard
+    }))
 }
 
 pub struct AcpThread {
@@ -2282,6 +2359,13 @@ pub enum LoadError {
         stderr: Option<SharedString>,
     },
     Other(SharedString),
+    /// ADR-F49 decision 19: the agent was not started because its sandbox
+    /// cannot be made here, for the reason given. The user may start it
+    /// outside the sandbox, once, after a confirmation.
+    SandboxUnavailable(SharedString),
+    /// ADR-F49 decision 13: the agent was not started because it talks to
+    /// hosts the IDE-wide allowlist does not have yet.
+    SandboxHostsNotAllowed(Vec<SharedString>),
 }
 
 impl Display for LoadError {
@@ -2300,6 +2384,12 @@ impl Display for LoadError {
             LoadError::FailedToInstall(msg) => write!(f, "Failed to install: {msg}"),
             LoadError::Exited { status, .. } => write!(f, "Server exited with status {status}"),
             LoadError::Other(msg) => write!(f, "{msg}"),
+            LoadError::SandboxUnavailable(reason) => write!(f, "{reason}"),
+            LoadError::SandboxHostsNotAllowed(hosts) => write!(
+                f,
+                "IDE 全体の許可リストに次のホストがありません: {}",
+                hosts.join("、")
+            ),
         }
     }
 }
@@ -3866,16 +3956,8 @@ impl AcpThread {
 
         self.turn_id += 1;
         let turn_id = self.turn_id;
-        let worktree_code_writer = (!self.connection.changes_files_through_zed()).then(|| {
-            self.project.update(cx, |project, cx| {
-                let (writer, _) = project.register_agent_writer(
-                    project::AgentWriteScope::Anywhere,
-                    project::AgentWriterKind::AgentTurn,
-                    cx,
-                );
-                writer
-            })
-        });
+        let worktree_code_writer =
+            TurnWorktreeWriter::start(self.connection.as_ref(), &self.project, cx);
         self.running_turn = Some(RunningTurn {
             id: turn_id,
             send_task: cx.spawn(async move |this, cx| {
@@ -3891,8 +3973,13 @@ impl AcpThread {
 
             // ADR-F50: the turn is over, whatever becomes of its checkpoint.
             this.update(cx, |this, _| {
-                if let Some(turn) = this.running_turn.as_mut().filter(|turn| turn.id == turn_id) {
-                    turn.worktree_code_writer = None;
+                if let Some(writer) = this
+                    .running_turn
+                    .as_mut()
+                    .filter(|turn| turn.id == turn_id)
+                    .and_then(|turn| turn.worktree_code_writer.take())
+                {
+                    writer.end();
                 }
             })?;
 
@@ -4057,8 +4144,21 @@ impl AcpThread {
         self.connection.cancel(&self.session_id, cx);
         cx.emit(AcpThreadEvent::StatusChanged);
 
-        // Wait for the send task to complete
-        cx.background_spawn(turn.send_task)
+        // Wait for the send task to complete. ADR-F50: the agent is still
+        // answering the cancellation, and what it writes until it does is
+        // still this turn's, so the turn stays a writer until the task ends
+        // rather than only until the entry is dropped here.
+        let RunningTurn {
+            send_task,
+            worktree_code_writer,
+            ..
+        } = turn;
+        cx.background_spawn(async move {
+            send_task.await;
+            if let Some(writer) = worktree_code_writer {
+                writer.end();
+            }
+        })
     }
 
     fn cancel_pending_turn_entries(&mut self, cx: &mut Context<Self>) {
@@ -4363,17 +4463,37 @@ impl AcpThread {
         let project = self.project.clone();
         let action_log = self.action_log.clone();
         let should_update_agent_location = self.parent_session_id.is_none();
+        // ADR-F49 decision 11: an agent Zed wrapped in a sandbox cannot read
+        // the credential stores itself — they are covered where it runs — so
+        // Zed must not read them on its behalf through a link the agent put in
+        // the project. An agent that runs with the user's own rights anyway
+        // (no sandbox) is read for as before.
+        let verify_read = self.connection.sandbox_write_scope().is_some();
         cx.spawn(async move |this, cx| {
-            let load = project.update(cx, |project, cx| {
-                let path = project
+            let (project_path, verify) = project.update(cx, |project, cx| {
+                let project_path = project
                     .project_path_for_absolute_path(&path, cx)
                     .ok_or_else(|| {
                         acp::Error::resource_not_found(Some(path.display().to_string()))
                     })?;
-                Ok::<_, acp::Error>(project.open_buffer(path, cx))
+                let verify = verify_read.then(|| project.verify_agent_read(&project_path, cx));
+                Ok::<_, acp::Error>((project_path, verify))
             })?;
 
-            let buffer = load.await?;
+            // Before the buffer is opened, so that a file Zed may not read for
+            // this agent is not loaded into the project either. An already open
+            // buffer is answered from all the same: what it holds is this
+            // file's content, and that the path still leads to this file is
+            // what was just checked.
+            if let Some(verify) = verify
+                && let Err(error) = verify.await
+            {
+                return Err(refused_read(&path, error));
+            }
+
+            let buffer = project
+                .update(cx, |project, cx| project.open_buffer(project_path, cx))
+                .await?;
 
             let snapshot = if reuse_shared_snapshot {
                 this.read_with(cx, |this, _| {
@@ -4665,6 +4785,8 @@ impl AcpThread {
                         &wrap,
                         cwd.as_deref(),
                         &environment,
+                        &[],
+                        false,
                         inner_command,
                         inner_args,
                     );
@@ -4804,6 +4926,27 @@ impl AcpThread {
                 // ADR-F46: a wrapped command's terminal adds nothing of its own
                 // outside the wrapper; an unwrapped one keeps the full terminal.
                 let sandboxed = route == TerminalSpawnRoute::LocalSandbox;
+                // ADR-F49: and it starts from nothing, since the PTY would
+                // otherwise hand the wrapper Zed's own environment. On Windows
+                // the wrapper is `wsl.exe`, where no variable crosses into
+                // Linux unless `WSLENV` names it, and the helper inside sets
+                // the command's environment itself.
+                #[cfg(not(target_os = "windows"))]
+                let (task_command, task_args, task_env) = if sandboxed {
+                    // What the terminal sets on every command it starts (`TERM`
+                    // and the like) is named here as well: nothing of the
+                    // terminal's own reaches past the wrapper once the
+                    // environment is cleared. The remote route sends the same
+                    // variables through its helper.
+                    let mut environment =
+                        cx.update(|cx| project::terminals::zed_terminal_environment(cx));
+                    environment.extend(task_env);
+                    let (task_command, task_args) =
+                        start_from_an_empty_environment(task_command, task_args, &environment);
+                    (task_command, task_args, HashMap::default())
+                } else {
+                    (task_command, task_args, task_env)
+                };
                 let terminal = project
                     .update(cx, |project, cx| {
                         let spawn_task = task::SpawnInTerminal {
@@ -6500,6 +6643,30 @@ mod tests {
         thread.read_with(cx, |thread, _| {
             assert!(thread.entries.is_empty(), "an ordinary write asks nothing");
         });
+
+        // A link that stays inside the project is refused too: the write goes
+        // through a handle Zed opened without following one, and where a link
+        // leads can change between the judgement and the write.
+        fs.insert_symlink(
+            path!("/test/inside.rs"),
+            PathBuf::from(path!("/test/src/main.rs")),
+        )
+        .await;
+        let error = thread
+            .update(cx, |thread, cx| {
+                thread.write_text_file(
+                    PathBuf::from(path!("/test/inside.rs")),
+                    "// through a link\n".to_string(),
+                    cx,
+                )
+            })
+            .await
+            .expect_err("a link inside the project is not written through either");
+        assert!(error.to_string().contains("redirection"), "{error:#}");
+        assert_eq!(
+            String::from_utf8(fs.read_file_sync(path!("/test/src/main.rs")).unwrap()).unwrap(),
+            "fn main() { println!(\"hi\"); }\n"
+        );
     }
 
     /// ADR-F50: an external agent's write pauses its worktree's code before it
@@ -6866,6 +7033,159 @@ mod tests {
         );
     }
 
+    /// ADR-F50: a cancelled turn is not over the moment the user asks for it —
+    /// the agent is still answering, and it writes until it has. So the turn
+    /// stays a writer until its own task ends, not until the entry is taken.
+    #[gpui::test]
+    async fn test_a_cancelled_turn_writes_until_the_agent_has_answered(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let (end_turn, turn_ended) = oneshot::channel::<()>();
+        let turn_ended = Rc::new(RefCell::new(Some(turn_ended)));
+        let connection = Rc::new(FakeAgentConnection::new().on_user_message({
+            let turn_ended = turn_ended.clone();
+            move |_, _, _| {
+                let turn_ended = turn_ended.borrow_mut().take();
+                async move {
+                    if let Some(turn_ended) = turn_ended {
+                        turn_ended.await.ok();
+                    }
+                    Ok(acp::PromptResponse::new(acp::StopReason::Cancelled))
+                }
+                .boxed_local()
+            }
+        }));
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .expect("the session starts");
+        cx.run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let writer_running = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .details(worktree_id)
+                    .is_some_and(|details| details.sandboxed_writer_running)
+            })
+        };
+
+        let turn = thread.update(cx, |thread, cx| thread.send_raw("Fix the build", cx));
+        cx.run_until_parked();
+        assert!(writer_running(cx));
+
+        let cancelled = thread.update(cx, |thread, cx| thread.cancel(cx));
+        cx.run_until_parked();
+        assert!(
+            writer_running(cx),
+            "the agent is still answering the cancellation, and writing until it does"
+        );
+
+        end_turn.send(()).expect("the turn is still waiting");
+        cancelled.await;
+        turn.await.expect("the turn ends");
+        cx.run_until_parked();
+        assert!(
+            !writer_running(cx),
+            "once the agent has answered, the turn is no longer a writer"
+        );
+    }
+
+    /// ADR-F49 decision 18: an agent run in a sandbox writes only where the
+    /// sandbox lets it, so its turn is a writer of those worktrees only.
+    #[gpui::test]
+    async fn test_a_sandboxed_agents_turn_writes_only_where_its_sandbox_lets_it(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        fs.insert_tree(path!("/elsewhere"), json!({ "notes.md": "" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let elsewhere = Project::test(fs.clone(), [path!("/elsewhere").as_ref()], cx).await;
+        let (end_turn, turn_ended) = oneshot::channel::<()>();
+        let turn_ended = Rc::new(RefCell::new(Some(turn_ended)));
+        let connection = Rc::new(
+            FakeAgentConnection::new()
+                .with_sandbox_write_scope(vec![
+                    PathBuf::from(path!("/test")),
+                    PathBuf::from(path!("/config/codex")),
+                ])
+                .on_user_message({
+                    let turn_ended = turn_ended.clone();
+                    move |_, _, _| {
+                        let turn_ended = turn_ended.borrow_mut().take();
+                        async move {
+                            if let Some(turn_ended) = turn_ended {
+                                turn_ended.await.ok();
+                            }
+                            Ok(acp::PromptResponse::new(acp::StopReason::EndTurn))
+                        }
+                        .boxed_local()
+                    }
+                }),
+        );
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .expect("the session starts");
+        cx.run_until_parked();
+        fn is_paused(project: &Entity<Project>, cx: &mut TestAppContext) -> bool {
+            project.read_with(cx, |project, cx| {
+                !project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .paused_worktrees()
+                    .is_empty()
+            })
+        }
+
+        let turn = thread.update(cx, |thread, cx| thread.send_raw("Fix the build", cx));
+        cx.run_until_parked();
+        assert!(
+            is_paused(&project, cx),
+            "the worktree its sandbox may write is paused"
+        );
+        assert!(
+            !is_paused(&elsewhere, cx),
+            "one its sandbox may not write is left alone"
+        );
+
+        end_turn.send(()).expect("the turn is still waiting");
+        turn.await.expect("the turn ends");
+    }
+
     /// ADR-F49: a write to a project's `.zed` settings asks the user every time,
     /// on a card that auto-approval can't answer; a denial reaches the agent as
     /// an error and leaves the file alone.
@@ -7019,6 +7339,109 @@ mod tests {
                 .expect("the card stays in the thread");
             assert!(matches!(tool_call.status, ToolCallStatus::Failed));
         });
+    }
+
+    /// ADR-F49 decision 11: what Zed reads for an agent it wrapped in a
+    /// sandbox is what the project's folders hold themselves. The agent's own
+    /// commands can leave a link in the worktree, and where one leads its
+    /// sandbox hides from it — so Zed does not follow one on its behalf, not
+    /// even one that stays inside the project. An agent that runs with the
+    /// user's own rights anyway is read for as before.
+    #[gpui::test]
+    async fn test_reading_for_a_sandboxed_agent_follows_no_link(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/tmp"),
+            json!({ "project": { "foo": "one\n" }, "secret": "key\n" }),
+        )
+        .await;
+        fs.insert_symlink(
+            path!("/tmp/project/key"),
+            PathBuf::from(path!("/tmp/secret")),
+        )
+        .await;
+        fs.insert_symlink(
+            path!("/tmp/project/inside"),
+            PathBuf::from(path!("/tmp/project/foo")),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/tmp/project").as_ref()], cx).await;
+        cx.run_until_parked();
+
+        let work_dirs = PathList::new(&[Path::new(path!("/tmp/project"))]);
+        let sandboxed = Rc::new(
+            FakeAgentConnection::new()
+                .with_sandbox_write_scope(vec![PathBuf::from(path!("/tmp/project"))]),
+        );
+        let thread = cx
+            .update(|cx| sandboxed.new_session(project.clone(), work_dirs.clone(), cx))
+            .await
+            .unwrap();
+
+        let content = thread
+            .update(cx, |thread, cx| {
+                thread.read_text_file(path!("/tmp/project/foo").into(), None, None, false, cx)
+            })
+            .await
+            .unwrap();
+        assert_eq!(content, "one\n");
+
+        for path in [path!("/tmp/project/key"), path!("/tmp/project/inside")] {
+            let error = thread
+                .update(cx, |thread, cx| {
+                    thread.read_text_file(path.into(), None, None, false, cx)
+                })
+                .await
+                .expect_err(path);
+            assert!(error.to_string().contains("redirection"), "{path}: {error}");
+        }
+
+        let unsandboxed = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| unsandboxed.new_session(project, work_dirs, cx))
+            .await
+            .unwrap();
+        let content = thread
+            .update(cx, |thread, cx| {
+                thread.read_text_file(path!("/tmp/project/key").into(), None, None, false, cx)
+            })
+            .await
+            .unwrap();
+        assert_eq!(content, "key\n");
+    }
+
+    /// ADR-F46 / ADR-F49: only the folders the user opened are writable inside
+    /// an agent's sandbox. Going to a definition in a dependency, or dropping a
+    /// file on the window, adds a worktree the project panel doesn't show and
+    /// the user never offered to the agent.
+    #[gpui::test]
+    async fn test_only_the_opened_folders_are_writable(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/tmp"),
+            json!({
+                "project": { "foo": "one\n" },
+                "registry": { "dependency.rs": "pub fn one() {}\n" },
+            }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/tmp/project").as_ref()], cx).await;
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(path!("/tmp/registry/dependency.rs"), false, cx)
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        let writable = project.read_with(cx, |project, cx| {
+            sandbox_worktree_writable_paths(project, cx)
+        });
+        assert_eq!(writable, vec![PathBuf::from(path!("/tmp/project"))]);
     }
 
     #[gpui::test]
@@ -9719,6 +10142,7 @@ mod tests {
                     + 'static,
             >,
         >,
+        sandbox_write_scope: Option<Vec<PathBuf>>,
     }
 
     impl FakeAgentConnection {
@@ -9729,7 +10153,13 @@ mod tests {
                 on_user_message: None,
                 sessions: Arc::default(),
                 set_title_calls: Default::default(),
+                sandbox_write_scope: None,
             }
+        }
+
+        fn with_sandbox_write_scope(mut self, paths: Vec<PathBuf>) -> Self {
+            self.sandbox_write_scope = Some(paths);
+            self
         }
 
         fn without_truncate_support(mut self) -> Self {
@@ -9760,6 +10190,10 @@ mod tests {
     impl AgentConnection for FakeAgentConnection {
         fn agent_id(&self) -> AgentId {
             AgentId::new("fake")
+        }
+
+        fn sandbox_write_scope(&self) -> Option<Vec<PathBuf>> {
+            self.sandbox_write_scope.clone()
         }
 
         fn telemetry_id(&self) -> SharedString {

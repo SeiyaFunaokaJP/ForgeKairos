@@ -534,7 +534,8 @@ message Envelope {
     ProjectLaunchApprovalRevoked project_launch_approval_revoked = 502;
     WithdrawProjectLaunchApproval withdraw_project_launch_approval = 503;
     SetWorktreeCodeExecution set_worktree_code_execution = 504;
-    SaveBufferVerified save_buffer_verified = 505; // current max
+    SaveBufferVerified save_buffer_verified = 505;
+    VerifyAgentRead verify_agent_read = 506; // current max
   }
 
   reserved 87 to 88;

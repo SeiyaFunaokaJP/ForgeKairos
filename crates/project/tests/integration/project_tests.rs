@@ -1,6 +1,7 @@
 #![allow(clippy::format_collect)]
 
 mod agent_registry_store;
+mod agent_sandbox;
 mod bookmark_store;
 mod color_extractor;
 mod context_server_store;
@@ -17773,6 +17774,40 @@ async fn test_verified_save_fails_closed_on_an_old_remote_server(_cx: &mut gpui:
     let refused = project::buffer_store::await_verified_save(
         future::ready(Err(anyhow::anyhow!(
             "`d` is a symbolic link, junction or other redirection"
+        ))),
+        future::pending(),
+    )
+    .await;
+    assert!(format!("{:#}", refused.unwrap_err()).contains("symbolic link"));
+}
+
+/// ADR-F49 decision 11: the same for a verified read — a server that cannot
+/// say where a path leads is not read from, so an agent Zed wrapped in a
+/// sandbox is not handed a file through a link it could not follow itself.
+#[gpui::test]
+async fn test_verified_read_fails_closed_on_an_old_remote_server(_cx: &mut gpui::TestAppContext) {
+    let never_answered =
+        project::worktree_store::await_verified_read(future::pending(), future::ready(())).await;
+    assert!(
+        format!("{:#}", never_answered.unwrap_err()).contains("did not confirm"),
+        "no answer must refuse the read"
+    );
+
+    let unhandled = project::worktree_store::await_verified_read(
+        future::ready(Err(anyhow::anyhow!(
+            "no handler registered for VerifyAgentRead"
+        ))),
+        future::pending(),
+    )
+    .await;
+    assert!(
+        format!("{:#}", unhandled.unwrap_err()).contains("did not confirm"),
+        "an unhandled request must refuse the read"
+    );
+
+    let refused = project::worktree_store::await_verified_read(
+        future::ready(Err(anyhow::anyhow!(
+            "`key` is a symbolic link, junction or other redirection"
         ))),
         future::pending(),
     )

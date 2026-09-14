@@ -16,6 +16,7 @@ pub mod shell_env;
 pub mod disambiguate;
 pub mod markdown;
 pub mod path_list;
+pub mod path_mapping;
 pub mod paths;
 pub mod redact;
 pub mod schemars;

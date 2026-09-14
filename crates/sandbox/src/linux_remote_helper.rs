@@ -51,11 +51,13 @@
 //! The parent outlives the command in every mode: it owns the egress and IDE
 //! relays and the scratch directories. It ignores SIGINT / SIGQUIT / SIGTSTP —
 //! a terminal sends those to its whole foreground process group, the command
-//! included — and passes SIGHUP / SIGTERM on to the command. It is also a
-//! `PR_SET_CHILD_SUBREAPER`: there is no PID namespace (Bubblewrap's took
-//! everything down with it), so whatever the command leaves running, daemons
-//! that `setsid` away included, is reparented to the parent and killed once
-//! the command has exited.
+//! included — and passes SIGHUP / SIGTERM on to the command. The command runs
+//! in a PID namespace of its own, under an init the holder forks (see
+//! [`enter_command_namespaces`]): when that init exits the kernel stops
+//! everything left in the namespace, daemons that `setsid` away included. A
+//! host that refuses the PID namespace fails closed (`pidns-failed`) today.
+//! The parent is also a `PR_SET_CHILD_SUBREAPER`, so whatever still ends up
+//! reparented to it is killed once the command has exited.
 //!
 //! # IDE forward (ADR-F49)
 //!
@@ -79,11 +81,11 @@ use std::time::{Duration, Instant};
 use crate::RemoteSandboxNetwork;
 use crate::linux_bubblewrap::install_command_seccomp_filter;
 use crate::protected_paths::{
-    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE, SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE,
-    UNIX_PROTECTED_HOME_RELATIVE, WSL_SANDBOX_HELPER_HOME_RELATIVE,
-    app_state_directories_from_environment, around_reachable,
-    git_config_directory_from_environment, home_dir_from_account,
-    merge_remote_builtin_protected_paths, read_hidden_home_paths, worktree_protected_paths,
+    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE, UNIX_PROTECTED_HOME_RELATIVE,
+    WSL_SANDBOX_HELPER_HOME_RELATIVE, account_from_passwd, app_state_directories_from_environment,
+    around_reachable, git_config_directory_from_environment, home_dir_from_account,
+    is_sandboxed_agent_configuration, merge_remote_builtin_protected_paths, read_hidden_home_paths,
+    remote_agent_runtime_data_directory, resolve_readable_path, worktree_entries,
     zsh_startup_files_from_environment,
 };
 use crate::util::CanonicalPathBuf;
@@ -272,6 +274,10 @@ struct Stage1Invocation {
     allow_fs_write: bool,
     writable_paths: Vec<PathBuf>,
     protected_paths: Vec<PathBuf>,
+    /// ADR-F49 decision 14: what the command may read among the read-hidden
+    /// entries (`--readable`), as the client named it; checked, and resolved,
+    /// before anything runs (see [`resolve_readable_paths`]).
+    readable_paths: Vec<PathBuf>,
     chdir: Option<PathBuf>,
     /// ADR-F46: invoked by the local Windows backend inside WSL (see
     /// [`WSL_HELPER_MODE_FLAG`] for what changes).
@@ -287,9 +293,11 @@ struct Stage1Invocation {
     set_environment: Vec<(OsString, OsString)>,
     /// Variables to remove from the command's environment.
     unset_environment: Vec<OsString>,
-    /// ADR-F49: the IDE channel of an interactive session (`--interactive`,
-    /// which nothing else needs to know about: the signal policy and the
-    /// clean-up are the same for every command).
+    /// ADR-F49: a long-running program on a terminal (`--interactive`), whose
+    /// standard streams are the terminal's and are handed to it as they are.
+    /// The signal policy and the clean-up are the same for every command.
+    interactive: bool,
+    /// ADR-F49: the IDE channel of an interactive session.
     ide_forward: Option<IdeForwardRequest>,
     program: OsString,
     args: Vec<OsString>,
@@ -311,6 +319,7 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
     let mut allow_fs_write = false;
     let mut writable_paths = Vec::new();
     let mut protected_paths = Vec::new();
+    let mut readable_paths = Vec::new();
     let mut chdir = None;
     let mut wsl = false;
     let mut slirp_sha256 = None;
@@ -351,6 +360,10 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
             "--protected" => {
                 let value = args.next().context("--protected requires a value")?;
                 protected_paths.push(PathBuf::from(value));
+            }
+            "--readable" => {
+                let value = args.next().context("--readable requires a value")?;
+                readable_paths.push(PathBuf::from(value));
             }
             "--chdir" => {
                 let value = args.next().context("--chdir requires a value")?;
@@ -429,12 +442,14 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
         allow_fs_write,
         writable_paths,
         protected_paths,
+        readable_paths,
         chdir,
         wsl,
         on_wsl: wsl,
         slirp_sha256,
         set_environment,
         unset_environment,
+        interactive,
         ide_forward,
         program,
         args: trailing,
@@ -462,6 +477,14 @@ fn network_requested(network: &RemoteSandboxNetwork) -> bool {
 )]
 fn run_helper(mut invocation: Stage1Invocation) -> ! {
     init_helper_logging();
+    // Before anything opens a descriptor: whatever started the helper may have
+    // left one of the standard three closed, and the next `pipe2` would then
+    // take its number. The client's end would be a pipe of our own, which the
+    // hangup watch below would see close and take for the client going away.
+    let standard_streams = match ensure_standard_descriptors() {
+        Ok(streams) => streams,
+        Err(error) => fail_closed("fd-failed", &format!("{error:#}")),
+    };
     // Reclaim scratch directories from earlier runs that died before their own
     // cleanup. Cheap, and these hosts have small disks.
     sweep_stale_temp_dirs();
@@ -487,19 +510,53 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
              so the paths that must always be protected cannot be determined",
         );
     };
+    // The home the read hiding applies to: the account's own, or the fake one
+    // the test helper points it at so that no real home is touched.
+    let hidden_home = read_hidden_home(&home);
+
+    // Pinned before anything is decided about them: what the client named is
+    // only a name until it is pinned, and every decision below — which roots
+    // are a worktree, what stays reachable among the hidden entries, what is
+    // covered — is about where a root really is.
+    let original_open_file_limit = raise_open_file_limit();
+    let writable_pins = match pin_writable_paths(&invocation.writable_paths, invocation.wsl) {
+        Ok(pins) => pins,
+        Err(error) => fail_closed("writable-redirected", &format!("{error:#}")),
+    };
+
     invocation.protected_paths =
         merge_remote_builtin_protected_paths(invocation.protected_paths, &home);
     // The client names each root's `.git`; the agent configurations beside it
     // (ADR-F49) come from the roots the command may write, so that no client
-    // can forget them. The environment can only add protection here.
+    // can forget them — but not in a sandboxed agent's own configuration
+    // directory, which no host agent reads (decision 15). The environment can
+    // only add protection here.
     let additions = zsh_startup_files_from_environment()
         .into_iter()
         .chain(git_config_directory_from_environment())
-        .chain(worktree_protected_paths(&invocation.writable_paths));
+        .chain(worktree_protected_additions(
+            &invocation,
+            &writable_pins,
+            &hidden_home,
+        ));
     for path in additions {
         if !invocation.protected_paths.contains(&path) {
             invocation.protected_paths.push(path);
         }
+    }
+    // The sandboxed agents' configuration: a hook or an `apiKeyHelper` written
+    // in another project's directory runs in that project's next session, with
+    // its grants — a command that can write there has injected code into it.
+    // Protected on every host (decision 15 puts these directories on SSH hosts
+    // and local machines too), and not only where the read hiding can cover
+    // them: on a host that refuses the mounts this is all there is. A session's
+    // own directory is inside it and comes from its write grant, which this
+    // does not narrow (see [`holds_writable_root`]).
+    // Where the enclosure around it is, so that the protection and the one
+    // root it steps aside for are decided about the same directory.
+    let agent_configs = hidden_home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
+    if !invocation.protected_paths.contains(&agent_configs) {
+        invocation.protected_paths.push(agent_configs);
     }
     if invocation.on_wsl {
         // Where the Windows side installs this very binary, stages agent
@@ -513,26 +570,57 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         if !invocation.protected_paths.contains(&install_root) {
             invocation.protected_paths.push(install_root);
         }
-        // The sandboxed Claude Code sessions' configuration: a hook or an
-        // `apiKeyHelper` written there runs in the next session with its
-        // grants. A session's own directory is inside it and comes from its
-        // write grant, which this does not narrow.
-        let agent_configs = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
-        if !invocation.protected_paths.contains(&agent_configs) {
-            invocation.protected_paths.push(agent_configs);
-        }
     }
     // ADR-F49 decision 11: what the command may not read, taken here from the
     // environment the caller gave, like the protected set above; init covers
     // them once the filesystem backend's own mounts are in place, split around
     // the roots the command has to keep reaching.
+    // ADR-F49 decision 14: what the client asked to show among those entries,
+    // checked before anything runs, so that one that may not be shown fails
+    // the command rather than being dropped, and pinned like a write grant so
+    // the cover binds back the very object that was checked.
+    let data_directory = remote_agent_runtime_data_directory(&hidden_home);
+    let readable =
+        match resolve_readable_paths(&invocation.readable_paths, &data_directory, &hidden_home) {
+            Ok(readable) => readable,
+            Err(error) => fail_closed("readable-refused", &format!("{error:#}")),
+        };
+    let readable_pins = match pin_readable_paths(&readable) {
+        Ok(pins) => pins,
+        Err(error) => fail_closed("readable-refused", &format!("{error:#}")),
+    };
     let reachable = reachable_paths(&invocation, &home);
-    let enclosures = enclosed_directories(&home);
-    let mut read_hidden = read_hidden_home_paths(&read_hidden_home(&home), false);
+    let enclosures = enclosed_directories(&hidden_home, &data_directory);
+    let mut read_hidden = read_hidden_home_paths(&hidden_home, false);
     for directory in app_state_directories_from_environment() {
         if !read_hidden.contains(&directory) {
             read_hidden.push(directory);
         }
+    }
+    // Decided here, where the command can still be refused: what the command is
+    // shown must not overlap what the hiding covers. Leaving the cover off
+    // instead — which is what dropping the target would do — would hand it a
+    // credential store, and for good: the entry would stay uncovered for every
+    // command that follows.
+    let (_, targets) = read_hiding_plan(
+        &read_hidden,
+        &reachable,
+        &enclosures,
+        &writable_pins,
+        &readable_pins,
+    );
+    let shown: Vec<PathBuf> = readable_pins
+        .iter()
+        .map(|pin| pin.path().to_path_buf())
+        .chain(
+            reachable
+                .iter()
+                .filter(|path| !invocation.writable_paths.contains(path))
+                .cloned(),
+        )
+        .collect();
+    if let Err(error) = check_nothing_shown_is_covered(&shown, &targets) {
+        fail_closed("read-hiding-overlap", &format!("{error:#}"));
     }
     log::info!(
         "[remote-sandbox] protecting {} paths ({} built-ins under HOME {})",
@@ -564,14 +652,9 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         None
     };
 
-    // Pinned and planned here, before the fork, so that this process holds
-    // every inode the holder relies on until the command exits (see
-    // `FilesystemPlan`).
-    let original_open_file_limit = raise_open_file_limit();
-    let writable_pins = match pin_writable_paths(&invocation.writable_paths, invocation.wsl) {
-        Ok(pins) => pins,
-        Err(error) => fail_closed("writable-redirected", &format!("{error:#}")),
-    };
+    // Planned here, before the fork, so that this process holds every inode the
+    // holder relies on until the command exits (see `FilesystemPlan`); the
+    // roots were pinned at the very start, for the same reason.
     let protected = match classify_protected_paths(&invocation.protected_paths) {
         Ok(entries) => entries,
         Err(error) => fail_closed("protected-pin-failed", &format!("{error:#}")),
@@ -637,6 +720,12 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         Ok(pair) => pair,
         Err(error) => fail_closed("pipe-failed", &error.to_string()),
     };
+    // The command's standard streams (ADR-F49 decision 9): the parent's own
+    // pipes, so the client's end stays out of the sandbox.
+    let stdio_relay = match StdioRelay::new(&invocation, standard_streams) {
+        Ok(relay) => relay,
+        Err(error) => fail_closed("pipe-failed", &format!("{error:#}")),
+    };
     let ready_write_fd = ready.write.as_raw_fd();
     let go_read_fd = go.read.as_raw_fd();
     let relay_holder_fd = relay.holder.as_raw_fd();
@@ -653,11 +742,18 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     if child_pid == 0 {
         // Holder. Never returns. (`invocation` and `fs_backend` are moved in only
         // on this diverging path, so the parent below still owns them.)
+        // The command's end of the relay first, so that nothing that runs from
+        // here on — the holder, init, the command — holds the client's own
+        // descriptors.
+        if let Err(error) = stdio_relay.enter_command_side() {
+            fail_closed("pipe-failed", &format!("{error:#}"));
+        }
         run_holder(
             HolderSetup {
                 invocation,
                 fs_backend,
                 writable_pins: &writable_pins,
+                readable_pins: &readable_pins,
                 protected: &protected,
                 plan: &plan,
                 original_open_file_limit,
@@ -673,6 +769,7 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
             relay_holder_fd,
         );
     }
+    let stdio_relay = stdio_relay.into_parent_side();
 
     // --- Parent -----------------------------------------------------------
     if let Err(error) = install_command_signal_policy(child_pid) {
@@ -715,11 +812,7 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     // threads never entered the holder — then attach slirp to the holder's
     // network namespace.
     let proxy = if network_on {
-        match start_egress_proxy(
-            &invocation.network,
-            invocation.network_ceiling.as_ref(),
-            invocation.on_wsl,
-        ) {
+        match start_egress_proxy(&invocation.network, invocation.network_ceiling.as_ref()) {
             Ok(proxy) => Some(proxy),
             Err(error) => abort_holder(child_pid, "proxy-failed", &format!("{error:#}")),
         }
@@ -778,6 +871,23 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     drop(go_write);
     drop(relay_parent);
 
+    // Started with the signals still blocked, as the relays are.
+    let stdio_relay = match stdio_relay.start() {
+        Ok(relay) => relay,
+        Err(error) => abort_holder(
+            child_pid,
+            "pipe-failed",
+            &format!("relaying the command's standard streams: {error}"),
+        ),
+    };
+    if let Err(error) = watch_for_client_hangup(standard_streams) {
+        abort_holder(
+            child_pid,
+            "signals-failed",
+            &format!("watching for the client's hangup: {error}"),
+        );
+    }
+
     // From here on this thread takes the signals held back since the fork; the
     // relay and proxy threads started above keep them blocked.
     restore_signal_mask(&original_signal_mask);
@@ -786,6 +896,9 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         reclaim_terminal(descriptor, group);
     }
     terminate_remaining_descendants();
+    // Nothing of the command is left to write, so what is still on its way to
+    // the client is all there will be: hand it over before exiting.
+    stdio_relay.wait_until_drained();
     // Only now; see `FilesystemPlan` for why the parent holds these open.
     drop(plan);
     drop(protected);
@@ -877,6 +990,10 @@ struct HolderSetup<'a> {
     invocation: Stage1Invocation,
     fs_backend: FsBackend,
     writable_pins: &'a [CanonicalPathBuf],
+    /// ADR-F49 decision 14: what the command may read among the hidden entries,
+    /// pinned as the roots are, so a cover binds back the very object that was
+    /// checked.
+    readable_pins: &'a [CanonicalPathBuf],
     protected: &'a [ProtectedEntry],
     plan: &'a FilesystemPlan,
     /// The soft open-file limit to hand back to the command (see
@@ -1028,10 +1145,15 @@ fn enter_command_namespaces(
 /// Apply the filesystem backend to what the parent pinned and planned,
 /// returning the directory the command's `TMPDIR` should name. `scratch_pid`
 /// names the per-command scratch directories, as the parent removes them.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the backend applies every part of the policy the parent worked out"
+)]
 fn apply_filesystem_backend(
     fs_backend: FsBackend,
     invocation: &Stage1Invocation,
     writable_pins: &[CanonicalPathBuf],
+    readable_pins: &[CanonicalPathBuf],
     protected: &[ProtectedEntry],
     plan: &FilesystemPlan,
     scratch_pid: libc::pid_t,
@@ -1073,6 +1195,7 @@ fn apply_filesystem_backend(
                     reachable,
                     enclosures,
                     writable_pins,
+                    readable_pins,
                     None,
                     false,
                 )
@@ -1090,6 +1213,7 @@ fn apply_filesystem_backend(
                     reachable,
                     enclosures,
                     writable_pins,
+                    readable_pins,
                     invocation.on_wsl.then_some(invocation),
                     true,
                 )
@@ -1120,6 +1244,7 @@ fn apply_filesystem_backend(
                 reachable,
                 enclosures,
                 writable_pins,
+                readable_pins,
                 invocation.on_wsl.then_some(invocation),
                 false,
             )
@@ -1129,35 +1254,106 @@ fn apply_filesystem_backend(
     }
 }
 
-/// The command's environment: the caller's settings, then the sandbox's own
-/// temp-dir and proxy settings, which always win over them.
-fn set_command_environment(invocation: &Stage1Invocation, tmpdir: &Path, relay_port: Option<u16>) {
-    // SAFETY: single-threaded here (a forked, not-yet-exec'd child), so
-    // `set_var` / `remove_var` are sound; the names were validated at parse time.
+/// What a command's `PATH` is when the client names none: the default a login
+/// gets on any Linux, and nothing else.
+const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
+/// The command's whole environment, built from nothing (ADR-F46 C-1).
+///
+/// Whatever started the helper has an environment of its own — an SSH session's
+/// `SSH_AUTH_SOCK` and `SSH_CONNECTION`, whatever the remote login shell
+/// exported on the way in, `wsl.exe`'s interop variables — and until now the
+/// command inherited all of it. An agent running for hours inside the sandbox
+/// with the user's forwarded agent socket in its environment is exactly what
+/// the sandbox exists to prevent, so the command gets only:
+///
+/// * what the client asked for (`--setenv`), which is the project's own
+///   settings and the agent's, resolved outside the sandbox;
+/// * a default `PATH`, so a command still finds the system's own programs;
+/// * `HOME` / `USER` / `LOGNAME` from the account database — never from the
+///   environment, which is the session's — so that `git`, `npm` and `cargo`
+///   find their configuration and caches. The client on a remote host does not
+///   know where the account's home is, so it cannot send these itself;
+/// * the locale (`LANG`, `LC_*`) and, for an interactive session, `TERM`:
+///   those describe the terminal the client is showing, not the session's
+///   identity, and without them a command's output is wrong;
+/// * the sandbox's own settings — its private temp directory and its proxy —
+///   which always win over the rest.
+fn command_environment(
+    invocation: &Stage1Invocation,
+    tmpdir: &Path,
+    relay_port: Option<u16>,
+) -> Vec<(OsString, OsString)> {
+    let mut environment: Vec<(OsString, OsString)> = Vec::new();
+    let set = |environment: &mut Vec<(OsString, OsString)>, name: &OsStr, value: OsString| {
+        match environment
+            .iter_mut()
+            .find(|(existing, _)| existing == name)
+        {
+            Some((_, existing)) => *existing = value,
+            None => environment.push((name.to_os_string(), value)),
+        }
+    };
+    set(
+        &mut environment,
+        OsStr::new("PATH"),
+        OsString::from(DEFAULT_PATH),
+    );
+    // Before the client's `--setenv`, so that a value the client sends
+    // explicitly (a test, a `HOME` an agent wants elsewhere) wins over the
+    // account database. Read from the account this process acts as, not from
+    // its environment: on WSL that is the Windows side's, and on any host a
+    // `HOME` inherited from the session is the very thing the sandbox drops.
+    if let Some(account) = account_from_passwd() {
+        set(
+            &mut environment,
+            OsStr::new("HOME"),
+            account.home.into_os_string(),
+        );
+        // `pw_name` can be empty; leave `USER` / `LOGNAME` unset rather than
+        // set them to nothing.
+        if !account.name.is_empty() {
+            set(&mut environment, OsStr::new("USER"), account.name.clone());
+            set(&mut environment, OsStr::new("LOGNAME"), account.name);
+        }
+    }
+    for (name, value) in std::env::vars_os() {
+        let Some(text) = name.to_str() else {
+            continue;
+        };
+        let describes_the_terminal =
+            text == "LANG" || text.starts_with("LC_") || (invocation.interactive && text == "TERM");
+        if describes_the_terminal {
+            set(&mut environment, &name, value);
+        }
+    }
     for (name, value) in &invocation.set_environment {
-        unsafe { std::env::set_var(name, value) };
+        set(&mut environment, name, value.clone());
     }
     for name in &invocation.unset_environment {
-        unsafe { std::env::remove_var(name) };
+        environment.retain(|(existing, _)| existing != name);
     }
     // How a process inside WSL finds the Windows interop socket. The seccomp
     // filter already makes that socket unusable; this stops a command from even
-    // trying, whichever transport started the helper.
+    // trying, whichever transport started the helper and whatever the client
+    // asked to set.
     if invocation.on_wsl {
         for name in ["WSL_INTEROP", "WSLENV"] {
-            // SAFETY: as above.
-            unsafe { std::env::remove_var(name) };
+            environment.retain(|(existing, _)| existing != OsStr::new(name));
         }
     }
-    for key in ["TMPDIR", "TMP", "TEMP"] {
-        // SAFETY: as above.
-        unsafe { std::env::set_var(key, tmpdir) };
+    for name in ["TMPDIR", "TMP", "TEMP"] {
+        set(
+            &mut environment,
+            OsStr::new(name),
+            tmpdir.as_os_str().to_os_string(),
+        );
     }
     // The in-namespace relay listener: the sandbox's own loopback, not the
     // host's.
     if let Some(relay_port) = relay_port {
-        let url = format!("http://127.0.0.1:{relay_port}");
-        for key in [
+        let url = OsString::from(format!("http://127.0.0.1:{relay_port}"));
+        for name in [
             "HTTP_PROXY",
             "http_proxy",
             "HTTPS_PROXY",
@@ -1165,14 +1361,13 @@ fn set_command_environment(invocation: &Stage1Invocation, tmpdir: &Path, relay_p
             "ALL_PROXY",
             "all_proxy",
         ] {
-            // SAFETY: as above.
-            unsafe { std::env::set_var(key, &url) };
+            set(&mut environment, OsStr::new(name), url.clone());
         }
-        for key in ["NO_PROXY", "no_proxy"] {
-            // SAFETY: as above.
-            unsafe { std::env::set_var(key, "") };
+        for name in ["NO_PROXY", "no_proxy"] {
+            set(&mut environment, OsStr::new(name), OsString::new());
         }
     }
+    environment
 }
 
 /// Drop capabilities, install the seccomp filter, restore the signal mask and
@@ -1186,6 +1381,7 @@ fn set_command_environment(invocation: &Stage1Invocation, tmpdir: &Path, relay_p
 fn finalize_and_exec_command(
     invocation: &Stage1Invocation,
     original_signal_mask: &libc::sigset_t,
+    environment: &[(OsString, OsString)],
 ) -> (&'static str, anyhow::Error) {
     // WSL runs commands as root by default, as can a dev container's
     // `remoteUser`, and root in this user namespace would keep every capability
@@ -1208,8 +1404,13 @@ fn finalize_and_exec_command(
     // could decide whom to hand them to).
     reset_touched_signals_to_default();
     restore_signal_mask(original_signal_mask);
+    // `env_clear` first: the command's environment is the one built for it, not
+    // this process's (see [`command_environment`]). `PATH` is among what is set,
+    // so looking the program up by name uses the command's own `PATH`.
     let error = Command::new(&invocation.program)
         .args(&invocation.args)
+        .env_clear()
+        .envs(environment.iter().map(|(name, value)| (name, value)))
         .exec();
     (
         "exec-failed",
@@ -1309,6 +1510,7 @@ fn prepare_and_run_command(
         invocation,
         fs_backend,
         writable_pins,
+        readable_pins,
         protected,
         plan,
         original_open_file_limit,
@@ -1332,6 +1534,7 @@ fn prepare_and_run_command(
         fs_backend,
         &invocation,
         writable_pins,
+        readable_pins,
         protected,
         plan,
         scratch_pid,
@@ -1339,7 +1542,7 @@ fn prepare_and_run_command(
         reachable,
         enclosures,
     )?;
-    set_command_environment(&invocation, &tmpdir, relay_port);
+    let environment = command_environment(&invocation, &tmpdir, relay_port);
     // After the FS jail is in place, so the path resolves inside the jail.
     if let Some(dir) = &invocation.chdir {
         std::env::set_current_dir(dir)
@@ -1361,7 +1564,8 @@ fn prepare_and_run_command(
         ));
     }
     if command == 0 {
-        let (code, error) = become_command(&invocation, &original_signal_mask, terminal);
+        let (code, error) =
+            become_command(&invocation, &original_signal_mask, terminal, &environment);
         fail_closed(code, &format!("{error:#}"));
     }
     // Done on both sides of the fork, whichever gets there first, as a shell
@@ -1396,6 +1600,7 @@ fn become_command(
     invocation: &Stage1Invocation,
     original_signal_mask: &libc::sigset_t,
     terminal: Option<RawFd>,
+    environment: &[(OsString, OsString)],
 ) -> (&'static str, anyhow::Error) {
     // `kill(0, …)` reaches the caller's whole process group, and a process
     // group is not confined to a PID namespace: left in the helper's group, the
@@ -1411,7 +1616,7 @@ fn become_command(
         // SAFETY: `getpid` takes no arguments and cannot fail.
         hand_terminal_to(terminal, unsafe { libc::getpid() });
     }
-    finalize_and_exec_command(invocation, original_signal_mask)
+    finalize_and_exec_command(invocation, original_signal_mask, environment)
 }
 
 /// Init's half of putting the command in a process group of its own and
@@ -2272,6 +2477,401 @@ fn terminate_remaining_descendants() {
     }
 }
 
+/// How long a command has to stop once its client went away, before the
+/// sandbox is taken down around it.
+const HANGUP_GRACE: Duration = Duration::from_secs(5);
+/// How long the parent waits, once the command and everything it left are gone,
+/// for what they wrote to reach the client.
+const DRAIN_GRACE: Duration = Duration::from_secs(5);
+/// Copied between the client and the command in one go.
+const RELAY_BUFFER_SIZE: usize = 64 * 1024;
+
+/// Whether the client has already been found gone, so that whichever notices
+/// first does the stopping and the other leaves it alone.
+static CLIENT_GONE: AtomicBool = AtomicBool::new(false);
+
+/// ADR-F49 decision 9: stop the command once nobody can read its output any
+/// more — `ssh`, `wsl.exe` or Zed itself gone, or the terminal closed. The
+/// command gets SIGHUP, as from a terminal that went away, and after
+/// [`HANGUP_GRACE`] the holder is killed, which takes the command's PID
+/// namespace down with it. The command's stdin closing is left to the command:
+/// an ACP agent ends its session on it, a build keeps building.
+fn client_went_away(reason: &str) {
+    if CLIENT_GONE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    log::info!("[remote-sandbox] the client went away ({reason}); stopping the command");
+    forward_to_command(libc::SIGHUP);
+    // The grace period waits in a thread of its own, so whoever noticed goes on
+    // with its own work: the relay keeps draining what the command writes, and
+    // a command blocked on a full pipe can act on the SIGHUP instead of sitting
+    // there until it is killed.
+    let kill = std::thread::Builder::new()
+        .name("zed-remote-sandbox-hangup".to_string())
+        .spawn(|| {
+            std::thread::sleep(HANGUP_GRACE);
+            forward_to_command(libc::SIGKILL);
+        });
+    if let Err(error) = kill {
+        log::warn!("[remote-sandbox] no thread for the hangup grace period: {error}");
+        std::thread::sleep(HANGUP_GRACE);
+        forward_to_command(libc::SIGKILL);
+    }
+}
+
+/// Watch the client's own end of the command's output for the client going
+/// away, for a command that writes nothing (the relay below notices when it
+/// writes). A pipe reports its reader gone (`POLLERR`), a terminal or a socket
+/// its other side (`POLLHUP`).
+fn watch_for_client_hangup(streams: StandardStreams) -> std::io::Result<()> {
+    if !streams.output_was_open {
+        // Nothing was there to watch when the helper started, and what
+        // `ensure_standard_descriptors` put in its place is ours.
+        return Ok(());
+    }
+    std::thread::Builder::new()
+        .name("zed-remote-sandbox-watch".to_string())
+        .spawn(|| {
+            if output_hung_up(libc::STDOUT_FILENO) {
+                client_went_away("its end of the command's output is closed");
+            }
+        })
+        .map(drop)
+}
+
+/// Blocks until the other end of `fd` is gone and returns `true`; returns
+/// `false` at once when `fd` is not open. One that can never report it — a
+/// file, `/dev/null` — keeps it waiting for good.
+fn output_hung_up(fd: RawFd) -> bool {
+    loop {
+        let mut poll_fd = libc::pollfd {
+            fd,
+            events: 0,
+            revents: 0,
+        };
+        // SAFETY: one valid `pollfd` for the duration of the call. No events are
+        // asked for, so only those always reported — `POLLERR`, `POLLHUP`,
+        // `POLLNVAL` — end the wait.
+        let ready = unsafe { libc::poll(&mut poll_fd, 1, -1) };
+        if ready < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            // Watching is over, and the command keeps running: say so, rather
+            // than leaving a sandbox nobody is watching look like one that is.
+            log::warn!(
+                "[remote-sandbox] no longer watching for the client's hangup: poll: {error}"
+            );
+            return false;
+        }
+        if poll_fd.revents & libc::POLLNVAL != 0 {
+            log::warn!(
+                "[remote-sandbox] no longer watching for the client's hangup: stdout closed"
+            );
+            return false;
+        }
+        if poll_fd.revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+            return true;
+        }
+    }
+}
+
+/// What the helper's standard streams were when it started (see
+/// [`ensure_standard_descriptors`]).
+#[derive(Clone, Copy)]
+struct StandardStreams {
+    /// Whether the client's end of the command's input is a pipe or a socket —
+    /// what a client that spawned the helper with redirected streams gives it,
+    /// and what the relay is for.
+    input_is_a_pipe: bool,
+    output_is_a_pipe: bool,
+    /// Whether the command's output was open at all when the helper started.
+    output_was_open: bool,
+}
+
+/// Make sure the three standard descriptors are open, opening `/dev/null` for
+/// one that is not, and report what they are.
+///
+/// A helper started with, say, its output closed would otherwise hand
+/// descriptor 1 to the first pipe it creates — and the hangup watch would then
+/// take that pipe's own end closing for the client going away and kill a
+/// perfectly healthy command.
+fn ensure_standard_descriptors() -> Result<StandardStreams> {
+    let mut streams = StandardStreams {
+        input_is_a_pipe: false,
+        output_is_a_pipe: false,
+        output_was_open: true,
+    };
+    for fd in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+        match nix::sys::stat::fstat(fd) {
+            Ok(stat) => {
+                let kind = stat.st_mode & libc::S_IFMT;
+                let is_a_pipe = kind == libc::S_IFIFO || kind == libc::S_IFSOCK;
+                if fd == libc::STDIN_FILENO {
+                    streams.input_is_a_pipe = is_a_pipe;
+                }
+                if fd == libc::STDOUT_FILENO {
+                    streams.output_is_a_pipe = is_a_pipe;
+                }
+            }
+            Err(nix::errno::Errno::EBADF) => {
+                if fd == libc::STDOUT_FILENO {
+                    streams.output_was_open = false;
+                }
+                open_dev_null_at(fd)?;
+            }
+            Err(errno) => bail!("fstat of descriptor {fd}: {errno}"),
+        }
+    }
+    Ok(streams)
+}
+
+/// Open `/dev/null` as descriptor `fd`, which has to be closed for this to be
+/// called at all.
+fn open_dev_null_at(fd: RawFd) -> Result<()> {
+    // SAFETY: a NUL-terminated literal path and scalar flags; `open` takes no
+    // mode without `O_CREAT`.
+    let opened = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if opened < 0 {
+        bail!(
+            "opening /dev/null for descriptor {fd}: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    if opened == fd {
+        // `O_CLOEXEC` would close it again at the command's `exec`, and the
+        // point is that the descriptor stays taken.
+        clear_close_on_exec(fd)?;
+        return Ok(());
+    }
+    // SAFETY: both are open descriptors of ours; `dup2` leaves the copy without
+    // `O_CLOEXEC`.
+    let duplicated = unsafe { libc::dup2(opened, fd) };
+    let error = std::io::Error::last_os_error();
+    // SAFETY: `opened` is ours and is not needed any more.
+    unsafe { libc::close(opened) };
+    if duplicated < 0 {
+        bail!("placing /dev/null at descriptor {fd}: {error}");
+    }
+    Ok(())
+}
+
+fn clear_close_on_exec(fd: RawFd) -> Result<()> {
+    // SAFETY: `fcntl` with scalar arguments on a descriptor of ours.
+    if unsafe { libc::fcntl(fd, libc::F_SETFD, 0) } < 0 {
+        bail!(
+            "keeping descriptor {fd} open across exec: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    Ok(())
+}
+
+/// ADR-F49 decision 9: the parent's own pipes between the client's standard
+/// streams and the command's.
+///
+/// The command never gets the client's own descriptors. Handed the write end of
+/// the client's pipe, it can open that pipe for *reading* through
+/// `/proc/self/fd/1`: the pipe then has a reader whatever the client does, no
+/// `POLLERR` ever comes, and a command that ignores the end of its input
+/// outlives the session that started it — the one thing the hangup watch
+/// exists to prevent. Relayed, the client's end is the parent's alone, and what
+/// the command holds is a pipe of ours whose readers it may add as it likes.
+///
+/// Only for streams that are pipes or sockets, and never for an interactive
+/// session: there the streams are the terminal, which the command must have as
+/// its own (its controlling terminal, its window size, its job control), and a
+/// terminal reports its hangup to everyone holding it anyway.
+struct StdioRelay {
+    /// Client → command.
+    input: Option<Pipe>,
+    /// Command → client.
+    output: Option<Pipe>,
+}
+
+impl StdioRelay {
+    fn new(invocation: &Stage1Invocation, streams: StandardStreams) -> Result<Self> {
+        if invocation.interactive || !streams.output_is_a_pipe {
+            return Ok(Self {
+                input: None,
+                output: None,
+            });
+        }
+        Ok(Self {
+            input: streams.input_is_a_pipe.then(Pipe::new).transpose()?,
+            output: Some(Pipe::new()?),
+        })
+    }
+
+    /// In the holder, right after the fork: put the command's ends of the
+    /// relay at descriptors 0 and 1 and close everything else of it, so that
+    /// nothing inside the sandbox holds the client's own descriptors.
+    fn enter_command_side(self) -> Result<()> {
+        if let Some(input) = &self.input {
+            place_descriptor(input.read.as_raw_fd(), libc::STDIN_FILENO)?;
+        }
+        if let Some(output) = &self.output {
+            place_descriptor(output.write.as_raw_fd(), libc::STDOUT_FILENO)?;
+        }
+        drop(self);
+        Ok(())
+    }
+
+    /// In the parent: keep the ends the relay threads use and close the
+    /// command's.
+    fn into_parent_side(self) -> ParentRelay {
+        ParentRelay {
+            input: self.input.map(|pipe| pipe.write),
+            output: self.output.map(|pipe| pipe.read),
+        }
+    }
+}
+
+/// The parent's ends of [`StdioRelay`].
+struct ParentRelay {
+    input: Option<OwnedFd>,
+    output: Option<OwnedFd>,
+}
+
+impl ParentRelay {
+    /// Start relaying. The threads run with the command's signals still
+    /// blocked, as the other parent threads do.
+    fn start(self) -> std::io::Result<RunningRelay> {
+        if let Some(input) = self.input {
+            std::thread::Builder::new()
+                .name("zed-remote-sandbox-input".to_string())
+                .spawn(move || {
+                    match relay_stream(libc::STDIN_FILENO, input.as_raw_fd()) {
+                        // Dropping `input` closes the command's stdin, which
+                        // reaches it as the end of its input — exactly what the
+                        // client's own pipe would have done.
+                        RelayOutcome::SourceEnded | RelayOutcome::TargetGone => {}
+                        RelayOutcome::Failed(error) => {
+                            log::warn!("[remote-sandbox] relaying the client's input: {error}");
+                        }
+                    }
+                    drop(input);
+                })?;
+        }
+        let Some(output) = self.output else {
+            return Ok(RunningRelay { drained: None });
+        };
+        let (drained, receiver) = std::sync::mpsc::sync_channel(1);
+        std::thread::Builder::new()
+            .name("zed-remote-sandbox-output".to_string())
+            .spawn(move || {
+                match relay_stream(output.as_raw_fd(), libc::STDOUT_FILENO) {
+                    RelayOutcome::SourceEnded => {}
+                    RelayOutcome::TargetGone => {
+                        client_went_away("its end of the command's output is closed");
+                        // Keep reading and dropping what is still written, so a
+                        // command blocked on a full pipe can act on the SIGHUP.
+                        discard_stream(output.as_raw_fd());
+                    }
+                    RelayOutcome::Failed(error) => {
+                        log::warn!("[remote-sandbox] relaying the command's output: {error}");
+                    }
+                }
+                // The command and everything it left have closed their end, so
+                // the client has everything they wrote.
+                if drained.try_send(()).is_err() {
+                    log::debug!("[remote-sandbox] nobody was waiting for the output to drain");
+                }
+            })?;
+        Ok(RunningRelay {
+            drained: Some(receiver),
+        })
+    }
+}
+
+/// A relay that is running (see [`ParentRelay::start`]).
+struct RunningRelay {
+    drained: Option<std::sync::mpsc::Receiver<()>>,
+}
+
+impl RunningRelay {
+    /// Wait for what the command wrote to reach the client, once nothing of the
+    /// command is left to write more. Without this the parent could exit — and
+    /// take the relay with it — with the command's last answer still in the
+    /// pipe.
+    fn wait_until_drained(&self) {
+        let Some(drained) = &self.drained else {
+            return;
+        };
+        if let Err(error) = drained.recv_timeout(DRAIN_GRACE) {
+            log::warn!(
+                "[remote-sandbox] the command's output did not drain before the helper exited: \
+                 {error}"
+            );
+        }
+    }
+}
+
+/// Why [`relay_stream`] stopped.
+enum RelayOutcome {
+    /// Nothing more will be written to it: every writer closed.
+    SourceEnded,
+    /// Nobody is reading what is relayed any more.
+    TargetGone,
+    Failed(std::io::Error),
+}
+
+/// Copy everything from `from` to `to` until one end gives out.
+fn relay_stream(from: RawFd, to: RawFd) -> RelayOutcome {
+    let mut buffer = vec![0u8; RELAY_BUFFER_SIZE];
+    loop {
+        // SAFETY: `buffer` is valid for `buffer.len()` bytes for the call.
+        let read = unsafe { libc::read(from, buffer.as_mut_ptr().cast(), buffer.len()) };
+        if read < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return RelayOutcome::Failed(error);
+        }
+        if read == 0 {
+            return RelayOutcome::SourceEnded;
+        }
+        let written = buffer.get(..read as usize).unwrap_or_default();
+        if let Err(error) = write_all_bytes(to, written) {
+            return if error.kind() == std::io::ErrorKind::BrokenPipe {
+                RelayOutcome::TargetGone
+            } else {
+                RelayOutcome::Failed(error)
+            };
+        }
+    }
+}
+
+/// Read `fd` to its end and drop what it carries.
+fn discard_stream(fd: RawFd) {
+    let mut buffer = vec![0u8; RELAY_BUFFER_SIZE];
+    loop {
+        // SAFETY: as in `relay_stream`.
+        let read = unsafe { libc::read(fd, buffer.as_mut_ptr().cast(), buffer.len()) };
+        if read < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+            continue;
+        }
+        if read <= 0 {
+            return;
+        }
+    }
+}
+
+/// Put `descriptor` at `target`, leaving it open across `exec`.
+fn place_descriptor(descriptor: RawFd, target: RawFd) -> Result<()> {
+    // SAFETY: both are open descriptors of ours; `dup2` closes whatever `target`
+    // was and leaves the copy without `O_CLOEXEC`.
+    if unsafe { libc::dup2(descriptor, target) } < 0 {
+        bail!(
+            "placing descriptor {descriptor} at {target}: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    Ok(())
+}
+
 fn reap_exited_children() {
     loop {
         let mut status = 0;
@@ -2503,11 +3103,23 @@ fn start_slirp(slirp: &SlirpExecutable, holder_pid: libc::pid_t) -> Result<std::
         .stdin(std::process::Stdio::null());
     // slirp4netns reports its progress on stdout and stderr, which here are the
     // command's own: keep that out of the output the user and the model read,
-    // unless the helper's diagnostics were asked for (see `init_helper_logging`).
+    // unless the helper's diagnostics were asked for (see `init_helper_logging`),
+    // and even then off stdout, which an ACP agent's client reads as JSON-RPC.
     if std::env::var_os("ZED_REMOTE_SANDBOX_LOG").is_none() {
         command
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
+    } else {
+        use std::os::fd::AsFd as _;
+        match std::io::stderr().as_fd().try_clone_to_owned() {
+            Ok(stderr) => {
+                command.stdout(std::process::Stdio::from(stderr));
+            }
+            Err(error) => {
+                log::warn!("[remote-sandbox] slirp4netns's reports go nowhere: {error}");
+                command.stdout(std::process::Stdio::null());
+            }
+        }
     }
 
     // SAFETY: the closure runs post-fork/pre-exec in slirp's child. `dup2` is
@@ -2536,12 +3148,22 @@ fn start_slirp(slirp: &SlirpExecutable, holder_pid: libc::pid_t) -> Result<std::
     Ok(child)
 }
 
-/// A command's own decision under an any-host grant in WSL mode when no
-/// editor-wide allowlist was sent: every host, but only at a public address.
-/// From WSL, local addresses include the distro's own services, the Windows
-/// host behind the NAT gateway, and with mirrored networking Windows'
-/// loopback too. With an allowlist in force it decides about those instead,
-/// exactly as the in-process proxy's ceiling does elsewhere.
+/// A command's own decision under an any-host grant when no editor-wide
+/// allowlist was sent — always on an SSH host, which is never sent one: every
+/// host, but only at a public address. Local addresses are the host's own
+/// services (its sshd, a local model server, a database), its LAN and on a
+/// cloud host the metadata service; from WSL also the Windows host behind the
+/// NAT gateway, and with mirrored networking Windows' loopback. With an
+/// allowlist in force it decides about those instead, exactly as the
+/// in-process proxy's ceiling does elsewhere, however the helper was started.
+/// The addresses the host itself holds are local too, whatever their range: the
+/// proxy runs in the host's own network namespace, so a `CONNECT` to the host's
+/// global IPv6 address or its public IPv4 one reaches whatever is bound to
+/// `0.0.0.0` or `::` there — its sshd, a database, a local model server. The
+/// rebinding filter cannot know them (they are perfectly ordinary public
+/// addresses), so they are read from the interfaces at the moment of the
+/// connection: an address added or given up since the helper started is
+/// accounted for, and a name that resolves to one is refused as well.
 struct PublicAddressesOnly;
 
 impl http_proxy::DestinationPolicy for PublicAddressesOnly {
@@ -2550,6 +3172,67 @@ impl http_proxy::DestinationPolicy for PublicAddressesOnly {
             permit_local_addresses: false,
         }
     }
+
+    fn forbids_address(&self, address: std::net::IpAddr) -> bool {
+        is_an_address_of_this_host(address)
+    }
+}
+
+/// Whether `address` is one this host holds, comparing what
+/// `getifaddrs` reports interface by interface. An IPv4 address an IPv6 one
+/// stands for is compared as IPv4 (a dual-stack socket reaches the host's own
+/// IPv4 service through `::ffff:a.b.c.d`, and NAT64, 6to4 or an IPv4-compatible
+/// route reaches it through the other embedded forms), and a failure to read
+/// the interfaces refuses the address: not knowing is not a reason to connect.
+fn is_an_address_of_this_host(address: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+
+    // The same folding `is_forbidden_ip` uses, so an embedded-IPv4 encoding of
+    // this host's own public address is caught, not only the IPv4-mapped one.
+    let comparable = |address: IpAddr| match address {
+        IpAddr::V6(v6) => http_proxy::embedded_ipv4(v6).map_or(address, IpAddr::V4),
+        IpAddr::V4(_) => address,
+    };
+    let wanted = comparable(address);
+    let interfaces = match nix::ifaddrs::getifaddrs() {
+        Ok(interfaces) => interfaces,
+        Err(errno) => {
+            log::warn!(
+                "[remote-sandbox] refusing {address}: this host's own addresses cannot be read \
+                 ({errno})"
+            );
+            return true;
+        }
+    };
+    for interface in interfaces {
+        let Some(storage) = interface.address else {
+            continue;
+        };
+        let own = match (storage.as_sockaddr_in(), storage.as_sockaddr_in6()) {
+            (Some(v4), _) => IpAddr::V4(v4.ip()),
+            (_, Some(v6)) => IpAddr::V6(v6.ip()),
+            _ => continue,
+        };
+        if comparable(own) == wanted {
+            return true;
+        }
+    }
+    false
+}
+
+/// What replaces the allowlist's own decision in the egress proxy:
+/// [`PublicAddressesOnly`] for an any-host grant that no editor-wide allowlist
+/// caps, because `Allowlist::any()` on its own waives the proxy's filter on
+/// local addresses.
+fn any_host_policy(
+    network: &RemoteSandboxNetwork,
+    network_ceiling: Option<&Arc<crate::EditorAllowlistCeiling>>,
+) -> Option<Arc<dyn http_proxy::DestinationPolicy>> {
+    if network_ceiling.is_none() && matches!(network, RemoteSandboxNetwork::AnyHost) {
+        Some(Arc::new(PublicAddressesOnly))
+    } else {
+        None
+    }
 }
 
 /// Stand up the host-loopback egress proxy enforcing the per-command allowlist,
@@ -2557,16 +3240,10 @@ impl http_proxy::DestinationPolicy for PublicAddressesOnly {
 fn start_egress_proxy(
     network: &RemoteSandboxNetwork,
     network_ceiling: Option<&Arc<crate::EditorAllowlistCeiling>>,
-    wsl: bool,
 ) -> Result<http_proxy::ProxyHandle> {
     use http_proxy::{Allowlist, DestinationPolicy, HostPattern, ProxyConfig, ProxyHandle};
 
-    let policy: Option<Arc<dyn DestinationPolicy>> =
-        if wsl && network_ceiling.is_none() && matches!(network, RemoteSandboxNetwork::AnyHost) {
-            Some(Arc::new(PublicAddressesOnly))
-        } else {
-            None
-        };
+    let policy = any_host_policy(network, network_ceiling);
     let allowlist = match network {
         RemoteSandboxNetwork::Blocked => Allowlist::from_patterns(Vec::new()),
         RemoteSandboxNetwork::AnyHost => Allowlist::any(),
@@ -4062,68 +4739,206 @@ fn path_identity(path: &Path) -> Option<(u64, u64)> {
         .map(|metadata| (metadata.dev(), metadata.ino()))
 }
 
+/// ADR-F49 decisions 8 and 15: the agent configurations a host agent acts on
+/// (`.claude/`, `.mcp.json`, …), in each root the command may write that is a
+/// worktree.
+///
+/// Judged after pinning, on where the root really is. A root is one agent's own
+/// configuration directory — where those names are *not* protected, so the
+/// agent can keep its own — only when it sits exactly where such a directory
+/// sits *and* the client named it exactly there: a symlink planted in the
+/// projects directory and pointed at a worktree would otherwise strip that
+/// worktree's protections, and a root named through a symlink is treated as a
+/// worktree here for the same reason `--wsl` mode insists a grant still be the
+/// canonical path the user approved.
+fn worktree_protected_additions(
+    invocation: &Stage1Invocation,
+    writable_pins: &[CanonicalPathBuf],
+    home: &Path,
+) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    for pin in writable_pins {
+        let root = pin.path();
+        let named_where_it_lies = invocation
+            .writable_paths
+            .iter()
+            .any(|requested| requested == root);
+        if named_where_it_lies && is_sandboxed_agent_configuration(root, home) {
+            continue;
+        }
+        for path in worktree_entries(root) {
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    }
+    paths
+}
+
 /// What has to stay reachable however it lies among the read-hidden entries:
-/// the roots the command may write, and the agent binaries staged for it.
-/// Nothing from the environment: a variable a project can set would be a way
-/// to un-hide a credential store.
+/// the roots the command may write, as the client named them (their pinned
+/// canonical paths are added where the entries are split, see
+/// [`read_hidden_targets`]), and in WSL mode the agent binaries staged for it.
+///
+/// **Nothing here is resolved again.** A path is kept because the user approved
+/// it, or because the helper's own side put something there; resolving one now
+/// would decide on what it points at *this moment*. A single symlink planted in
+/// the staging directory (`agents -> ~/.ssh`, which a command with a write
+/// grant there can make) would otherwise take the cover off a credential store
+/// — for that command and every command on the host afterwards. The staged
+/// directory is therefore kept only where it really is the directory it is
+/// named as, and only on WSL, where the Windows side stages into it. Nothing
+/// from the environment either: a variable a project can set would be another
+/// way to un-hide a credential store.
 fn reachable_paths(invocation: &Stage1Invocation, home: &Path) -> Vec<PathBuf> {
     let mut reachable = invocation.writable_paths.clone();
-    reachable.push(home.join(WSL_SANDBOX_HELPER_HOME_RELATIVE).join("agents"));
+    if invocation.on_wsl {
+        let home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+        let agents = home.join(WSL_SANDBOX_HELPER_HOME_RELATIVE).join("agents");
+        let is_a_real_directory = std::fs::symlink_metadata(&agents)
+            .is_ok_and(|metadata| metadata.is_dir())
+            && std::fs::canonicalize(&agents).is_ok_and(|canonical| canonical == agents);
+        if is_a_real_directory {
+            reachable.push(agents);
+        }
+    }
     reachable
 }
 
-/// The directories [`cover_enclosure`] covers whole when a root the command
-/// writes lies inside: the sandboxed Claude Code sessions' projects directory,
-/// where a session's own configuration sits beside every other project's.
-fn enclosed_directories(home: &Path) -> Vec<PathBuf> {
-    let home = read_hidden_home(home);
-    // Canonical, as the roots and the read-hidden targets are: under a home
-    // reached through a symlink it is covered where it really is.
-    let home = std::fs::canonicalize(&home).unwrap_or(home);
-    vec![home.join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)]
-}
-
-/// Those of `enclosures` to cover: a real directory where it is named that
-/// holds a root the command writes, without being one itself (a read-hidden
-/// entry that is a root is left alone as well). Anything else is left to the
-/// split around the roots (see [`read_hidden_targets`]).
-fn enclosures_to_cover(enclosures: &[PathBuf], writable_pins: &[CanonicalPathBuf]) -> Vec<PathBuf> {
-    enclosures
+/// ADR-F49 decision 14: where each of `requested` really lies, when every one
+/// may be shown among the entries hidden from the command (see
+/// [`resolve_readable_path`]). One that may not fails them all. A host that
+/// refuses the hiding mounts shows everything anyway; the check still applies
+/// there, so a request means the same wherever it runs.
+fn resolve_readable_paths(
+    requested: &[PathBuf],
+    data_directory: &Path,
+    home: &Path,
+) -> Result<Vec<PathBuf>> {
+    requested
         .iter()
-        .filter(|enclosure| {
-            std::fs::symlink_metadata(enclosure).is_ok_and(|metadata| metadata.is_dir())
-                && std::fs::canonicalize(enclosure).is_ok_and(|canonical| canonical == **enclosure)
-                && writable_pins
-                    .iter()
-                    .all(|pin| pin.path() != enclosure.as_path())
-                && writable_pins
-                    .iter()
-                    .any(|pin| pin.path().starts_with(enclosure))
+        .map(|path| {
+            resolve_readable_path(path, data_directory, home)
+                .map_err(|refusal| anyhow!("--readable {}: {refusal}", path.display()))
         })
-        .cloned()
         .collect()
 }
 
-/// Cover `enclosure` with an empty read-only tmpfs and bind back only the
-/// roots the command writes inside it, as [`cover_windows_drives`] does for
-/// the drives. The sessions' projects directory then shows a session its own
-/// configuration and nothing else, however many projects are added while it
-/// runs — hiding the other entries one by one could only hide those there at
-/// the start. Each root is opened before the cover and bound back only when
-/// it is still the inode that was pinned; one that is not stays covered, and
-/// the command does without it. Each mount made is added to `mounted`.
+/// Pin what may be shown, on the resolved paths the check above returned: the
+/// cover binds back the very object that was checked, and a path that is not
+/// where it was by then fails the command closed rather than being bound from
+/// wherever it leads now.
+fn pin_readable_paths(readable: &[PathBuf]) -> Result<Vec<CanonicalPathBuf>> {
+    readable
+        .iter()
+        .map(|path| {
+            CanonicalPathBuf::from_canonical(path.clone())
+                .with_context(|| format!("pinning what may be read: {}", path.display()))
+        })
+        .collect()
+}
+
+/// The directories [`cover_enclosure`] covers whole when the command is granted
+/// something inside one (see
+/// [`crate::protected_paths::enclosed_directories_in`]). `data_directory` is the
+/// env-derived one this process resolved ([`remote_agent_runtime_data_directory`]),
+/// so the cover binds back exactly what the readable check accepted inside it.
+fn enclosed_directories(home: &Path, data_directory: &Path) -> Vec<PathBuf> {
+    crate::protected_paths::enclosed_directories_in(home, data_directory)
+}
+
+/// Those of `enclosures` to cover (see
+/// [`crate::protected_paths::enclosures_to_cover`]). Anything else is left to
+/// the split around the roots (see [`read_hidden_targets`]).
+fn enclosures_to_cover(
+    enclosures: &[PathBuf],
+    writable_pins: &[CanonicalPathBuf],
+    readable_pins: &[CanonicalPathBuf],
+) -> Vec<PathBuf> {
+    let granted: Vec<&Path> = writable_pins
+        .iter()
+        .chain(readable_pins)
+        .map(|pin| pin.path())
+        .collect();
+    crate::protected_paths::enclosures_to_cover(enclosures, &granted)
+}
+
+/// What the read hiding does: the directories covered whole, and the entries
+/// covered one by one beside them. Worked out twice from the same inputs — once
+/// in the parent, where the command can still be refused, and once in init,
+/// where the mounts are made.
+fn read_hiding_plan(
+    read_hidden: &[PathBuf],
+    reachable: &[PathBuf],
+    enclosures: &[PathBuf],
+    writable_pins: &[CanonicalPathBuf],
+    readable_pins: &[CanonicalPathBuf],
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let enclosures = enclosures_to_cover(enclosures, writable_pins, readable_pins);
+    // What lies in a covered directory is hidden by its cover, whether it is
+    // there yet or not.
+    let targets = read_hidden_targets(read_hidden, reachable, writable_pins)
+        .into_iter()
+        .filter(|target| {
+            !enclosures
+                .iter()
+                .any(|enclosure| target.starts_with(enclosure))
+        })
+        .collect();
+    (enclosures, targets)
+}
+
+/// ADR-F49 decisions 11 and 14: nothing the command is *shown* — what the
+/// client asked to show, the staged agent binaries — may be or hold something
+/// the hiding covers.
+///
+/// Where they overlap, the old answer was to leave that cover off, which hands
+/// the command whatever the entry holds. The command is refused instead: a
+/// credential store that one symlink can un-hide would stay un-hidden for every
+/// command that follows, while a refusal is loud and fixable.
+fn check_nothing_shown_is_covered(shown: &[PathBuf], targets: &[PathBuf]) -> Result<()> {
+    for path in shown {
+        let overlapping = targets
+            .iter()
+            .find(|target| path.starts_with(target) || target.starts_with(path));
+        if let Some(target) = overlapping {
+            bail!(
+                "{} is shown to the command but overlaps {}, whose contents stay hidden",
+                path.display(),
+                target.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Cover `enclosure` with an empty read-only tmpfs and bind back only what the
+/// command was granted inside it — the roots it may write, and what it may read
+/// (read-only) — as [`cover_windows_drives`] does for the drives.
+///
+/// The sessions' configuration directory then shows a session its own project's
+/// directory and nothing else, however many projects are added while it runs,
+/// and this fork's data directory shows the agent installation and the Node.js
+/// the command was given and nothing else of it; hiding the other entries one
+/// by one could only hide those there at the start. Each location is opened
+/// before the cover and bound back only when it is still the inode that was
+/// pinned; one that is not stays covered, and the command does without it. Each
+/// mount made is added to `mounted`.
 fn cover_enclosure(
     enclosure: &Path,
     writable_pins: &[CanonicalPathBuf],
+    readable_pins: &[CanonicalPathBuf],
     mounted: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    let mut inside: Vec<&CanonicalPathBuf> = writable_pins
+    let mut inside: Vec<(&CanonicalPathBuf, bool)> = writable_pins
         .iter()
-        .filter(|pin| pin.path() != enclosure && pin.path().starts_with(enclosure))
+        .map(|pin| (pin, false))
+        .chain(readable_pins.iter().map(|pin| (pin, true)))
+        .filter(|(pin, _)| pin.path() != enclosure && pin.path().starts_with(enclosure))
         .collect();
-    inside.sort_by_key(|pin| pin.path().components().count());
+    inside.sort_by_key(|(pin, _)| pin.path().components().count());
     let mut binds: Vec<BindBack> = Vec::new();
-    for pin in inside {
+    for (pin, read_only) in inside {
         let path = pin.path();
         if binds.iter().any(|outer| path.starts_with(&outer.target)) {
             continue;
@@ -4146,7 +4961,7 @@ fn cover_enclosure(
         binds.push(BindBack {
             target: path.to_path_buf(),
             source,
-            read_only: false,
+            read_only,
         });
     }
     cover_and_bind_back(enclosure, &binds, mounted)
@@ -4168,26 +4983,27 @@ fn cover_enclosure(
 /// come off again, since a set only partly covered would pass for protection
 /// while leaving the rest readable. What a refusal means is the caller's
 /// decision (see [`read_hiding_refused`]); the error says what state it left.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "hiding needs every part of the policy that decides what stays visible"
+)]
 fn hide_read_hidden_entries(
     read_hidden: &[PathBuf],
     reachable: &[PathBuf],
     enclosures: &[PathBuf],
     writable_pins: &[CanonicalPathBuf],
+    readable_pins: &[CanonicalPathBuf],
     drives: Option<&Stage1Invocation>,
     needs_mount_namespace: bool,
 ) -> Result<()> {
     let started = Instant::now();
-    let enclosures = enclosures_to_cover(enclosures, writable_pins);
-    // What lies in an enclosure is hidden by its cover, whether it is there
-    // yet or not.
-    let targets: Vec<PathBuf> = read_hidden_targets(read_hidden, reachable, writable_pins)
-        .into_iter()
-        .filter(|target| {
-            !enclosures
-                .iter()
-                .any(|enclosure| target.starts_with(enclosure))
-        })
-        .collect();
+    let (enclosures, targets) = read_hiding_plan(
+        read_hidden,
+        reachable,
+        enclosures,
+        writable_pins,
+        readable_pins,
+    );
     if targets.is_empty() && enclosures.is_empty() && drives.is_none() {
         return Ok(());
     }
@@ -4217,7 +5033,7 @@ fn hide_read_hidden_entries(
         let covering = if refused_on_purpose(step) {
             Err(anyhow!("refused on purpose by the test helper"))
         } else {
-            cover_enclosure(enclosure, writable_pins, &mut covered)
+            cover_enclosure(enclosure, writable_pins, readable_pins, &mut covered)
         };
         if let Err(error) = covering {
             return Err(refused_cover(enclosure, error, &covered));
@@ -4312,6 +5128,14 @@ fn read_hiding_refused(
 /// that resolves is hidden where it resolves to), split around a root kept
 /// inside it (see [`around_reachable`]), once each, and never one that is or
 /// holds a root the command must keep reaching.
+///
+/// What is kept is used exactly as it was approved and pinned — the client's
+/// spelling of each root, and the canonical path its pin proved. Resolving
+/// those again here is what let one symlink un-hide a credential store: a path
+/// that resolved into `~/.ssh` would count as kept, and the cover over `~/.ssh`
+/// would be left off for good (see [`reachable_paths`]). What the command is
+/// shown beyond its roots is checked against the result instead
+/// ([`check_nothing_shown_is_covered`]).
 fn read_hidden_targets(
     read_hidden: &[PathBuf],
     reachable: &[PathBuf],
@@ -4319,11 +5143,6 @@ fn read_hidden_targets(
 ) -> Vec<PathBuf> {
     let mut kept = reachable.to_vec();
     kept.extend(writable_pins.iter().map(|pin| pin.path().to_path_buf()));
-    let canonical_kept: Vec<PathBuf> = kept
-        .iter()
-        .filter_map(|path| std::fs::canonicalize(path).ok())
-        .collect();
-    kept.extend(canonical_kept);
 
     let mut entries: Vec<PathBuf> = Vec::new();
     for entry in read_hidden {
@@ -4724,12 +5543,30 @@ fn apply_mount_jail(
     mount(Some(Path::new("tmpfs")), &jail_tmp, Some("tmpfs"), 0, None)
         .context("mounting private /tmp")?;
 
-    // Re-bind each writable path read-write over the RO root.
-    for pin in writable_pins {
+    // Re-bind the writable paths read-write and the protected ones read-only
+    // over the read-only root, **outermost first** and, at the same depth, the
+    // protection last. Each mount lands on top of the ones before it, so a
+    // protected entry inside a writable root stays read-only — and a writable
+    // root inside a protected entry stays writable instead of being shadowed by
+    // the protection of what holds it, which is how a sandboxed agent writes
+    // its own configuration directory inside the agents' directory (ADR-F49
+    // decision 15) on the kernels that use this backend.
+    let mut binds: Vec<(&CanonicalPathBuf, bool)> = writable_pins
+        .iter()
+        .map(|pin| (pin, false))
+        .chain(protected_pins.iter().map(|pin| (pin, true)))
+        .collect();
+    binds.sort_by_key(|(pin, read_only)| (pin.path().components().count(), *read_only));
+    for (pin, read_only) in binds {
         let target = join_absolute(&new_root, pin.path());
-        if !ensure_bind_target(&target) {
+        if read_only {
+            if !target.exists() {
+                continue;
+            }
+        } else if !ensure_bind_target(&target) {
             continue;
         }
+        let what = if read_only { "ro" } else { "rw" };
         mount(
             Some(pin.path()),
             &target,
@@ -4737,39 +5574,21 @@ fn apply_mount_jail(
             libc::MS_BIND | libc::MS_REC,
             None,
         )
-        .with_context(|| format!("rw-binding {}", pin.path().display()))?;
-        // Verify the bound inode is the one we pinned (TOCTOU backstop).
-        verify_same_inode(pin, &target)
-            .with_context(|| format!("verifying rw bind of {}", pin.path().display()))?;
-    }
-
-    // Re-bind protected paths read-only over the (now writable) worktree.
-    for protected_pin in protected_pins {
-        let target = join_absolute(&new_root, protected_pin.path());
-        if !target.exists() {
-            continue;
-        }
-        mount(
-            Some(protected_pin.path()),
-            &target,
-            None,
-            libc::MS_BIND | libc::MS_REC,
-            None,
-        )
-        .with_context(|| format!("ro-binding protected {}", protected_pin.path().display()))?;
-        mount(
-            None,
-            &target,
-            None,
-            libc::MS_REMOUNT | libc::MS_BIND | libc::MS_RDONLY,
-            None,
-        )
-        .with_context(|| {
-            format!(
-                "remounting protected {} read-only",
-                protected_pin.path().display()
+        .with_context(|| format!("{what}-binding {}", pin.path().display()))?;
+        if read_only {
+            mount(
+                None,
+                &target,
+                None,
+                libc::MS_REMOUNT | libc::MS_BIND | libc::MS_RDONLY,
+                None,
             )
-        })?;
+            .with_context(|| format!("remounting protected {} read-only", pin.path().display()))?;
+        } else {
+            // Verify the bound inode is the one we pinned (TOCTOU backstop).
+            verify_same_inode(pin, &target)
+                .with_context(|| format!("verifying rw bind of {}", pin.path().display()))?;
+        }
     }
 
     // pivot_root into new_root, putting the old root under /tmp/.oldroot.
@@ -4888,6 +5707,7 @@ fn path_to_cstring(path: &Path) -> Result<CString> {
 mod tests {
     use super::*;
     use crate::build_remote_sandbox_helper_argv;
+    use crate::protected_paths::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE;
     use crate::protected_paths::remote_builtin_protected_paths;
     use http_proxy::DestinationPolicy as _;
 
@@ -5019,6 +5839,7 @@ mod tests {
         let mut argv = build_remote_sandbox_helper_argv(
             &["/home/u/proj".to_string(), "/home/u/scratch".to_string()],
             &["/home/u/proj/.git".to_string()],
+            &["/home/u/.local/share/zed-jp-enhance/node".to_string()],
             &RemoteSandboxNetwork::Hosts(vec!["example.com".into()]),
             false,
             Some("/home/u/proj/sub"),
@@ -5053,6 +5874,10 @@ mod tests {
             decoded.protected_paths,
             vec![PathBuf::from("/home/u/proj/.git")]
         );
+        assert_eq!(
+            decoded.readable_paths,
+            vec![PathBuf::from("/home/u/.local/share/zed-jp-enhance/node")]
+        );
         assert_eq!(decoded.chdir, Some(PathBuf::from("/home/u/proj/sub")));
         assert_eq!(decoded.program, OsString::from("/bin/bash"));
         assert_eq!(
@@ -5063,6 +5888,63 @@ mod tests {
 
     fn decode_for_test(args: &[String]) -> Stage1Invocation {
         parse_stage1_args(args.iter().map(OsString::from)).expect("the builder's argv must parse")
+    }
+
+    /// ADR-F46 C-1: the command's environment is built from nothing, but `HOME`
+    /// / `USER` / `LOGNAME` are filled in from the account database — a remote
+    /// client cannot send them (it does not know the account's home) and `git`
+    /// / `npm` / `cargo` break without `HOME`. A value the client sends
+    /// explicitly wins over the account database, and the default `PATH` is
+    /// there.
+    #[test]
+    fn the_command_environment_fills_home_and_user_from_the_account() {
+        let account = account_from_passwd().expect("this account has a passwd entry");
+        let tmpdir = PathBuf::from("/tmp/zed-remote-sandbox-1");
+
+        let filled_in = command_environment(&invocation_writing(&[]), &tmpdir, None);
+        let value = |name: &str| {
+            filled_in
+                .iter()
+                .find(|(existing, _)| existing == OsStr::new(name))
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(value("HOME"), Some(account.home.clone().into_os_string()));
+        assert_eq!(value("PATH"), Some(OsString::from(DEFAULT_PATH)));
+        if account.name.is_empty() {
+            assert_eq!(value("USER"), None);
+            assert_eq!(value("LOGNAME"), None);
+        } else {
+            assert_eq!(value("USER"), Some(account.name.clone()));
+            assert_eq!(value("LOGNAME"), Some(account.name));
+        }
+
+        // What the client sends explicitly wins over the account database.
+        let mut invocation = invocation_writing(&[]);
+        invocation.set_environment = vec![
+            (OsString::from("HOME"), OsString::from("/somewhere/else")),
+            (OsString::from("USER"), OsString::from("someone")),
+        ];
+        let overridden = command_environment(&invocation, &tmpdir, None);
+        let value = |name: &str| {
+            overridden
+                .iter()
+                .find(|(existing, _)| existing == OsStr::new(name))
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(value("HOME"), Some(OsString::from("/somewhere/else")));
+        assert_eq!(value("USER"), Some(OsString::from("someone")));
+        // And each of them appears exactly once — the account value is
+        // overwritten, not left beside the client's.
+        for name in ["HOME", "USER"] {
+            assert_eq!(
+                overridden
+                    .iter()
+                    .filter(|(existing, _)| existing == OsStr::new(name))
+                    .count(),
+                1,
+                "{name} appears once"
+            );
+        }
     }
 
     /// The WSL backend's argv selects WSL mode, carries the environment, and
@@ -5077,6 +5959,7 @@ mod tests {
         let mut argv = crate::build_wsl_sandbox_helper_argv(
             &["/mnt/c/proj".to_string()],
             &["/mnt/c/proj/.git".to_string()],
+            &[],
             &RemoteSandboxNetwork::AnyHost,
             false,
             Some("/mnt/c/proj"),
@@ -5226,7 +6109,7 @@ mod tests {
                 .expect("valid allowlist"),
         );
 
-        let proxy = start_egress_proxy(&RemoteSandboxNetwork::AnyHost, Some(&ceiling), true)
+        let proxy = start_egress_proxy(&RemoteSandboxNetwork::AnyHost, Some(&ceiling))
             .expect("start the proxy");
         let refused = connect_response(proxy.port(), "evil.example:443");
         assert!(refused.starts_with("HTTP/1.1 511"), "{refused}");
@@ -5237,33 +6120,158 @@ mod tests {
         let proxy = start_egress_proxy(
             &RemoteSandboxNetwork::Hosts(vec!["evil.example".to_string()]),
             Some(&ceiling),
-            true,
         )
         .expect("start the proxy");
         let refused = connect_response(proxy.port(), "evil.example:443");
         assert!(refused.contains("Via: 1.1 zed-egress-proxy"), "{refused}");
     }
 
-    /// Without an editor-wide allowlist, an any-host grant in WSL mode reaches
-    /// public addresses only; an SSH host keeps its documented behavior.
+    /// Without an editor-wide allowlist — always so on an SSH host — an
+    /// any-host grant reaches public addresses only, however the helper was
+    /// started: the host's own services, its LAN, the metadata service and
+    /// every other local address are refused, as is a name resolving there.
     #[test]
-    fn an_uncapped_wsl_any_host_grant_refuses_local_addresses() {
+    fn an_uncapped_any_host_grant_refuses_local_addresses() {
         let local_service =
             std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind a local service");
-        let local_target = format!(
-            "127.0.0.1:{}",
-            local_service.local_addr().expect("local address").port()
+        let port = local_service.local_addr().expect("local address").port();
+
+        let proxy =
+            start_egress_proxy(&RemoteSandboxNetwork::AnyHost, None).expect("start the proxy");
+        for target in [
+            format!("127.0.0.1:{port}"),
+            format!("localhost:{port}"),
+            format!("[::1]:{port}"),
+            format!("[::ffff:127.0.0.1]:{port}"),
+            "127.0.0.2:22".to_string(),
+            "10.1.2.3:443".to_string(),
+            "172.16.0.1:443".to_string(),
+            "192.168.100.150:22".to_string(),
+            "169.254.169.254:80".to_string(),
+            "100.64.0.1:443".to_string(),
+            "0.0.0.0:22".to_string(),
+            "[fe80::1]:22".to_string(),
+            "[fd00::1]:22".to_string(),
+        ] {
+            let response = connect_response(proxy.port(), &target);
+            assert!(response.starts_with("HTTP/1.1 511"), "{target}: {response}");
+        }
+    }
+
+    /// The limit to public addresses replaces the allowlist's own decision
+    /// only for an uncapped any-host grant, and lets every public host
+    /// through; a host list and an editor-wide allowlist keep deciding for
+    /// themselves.
+    #[test]
+    fn only_an_uncapped_any_host_grant_is_limited_to_public_addresses() {
+        let policy = any_host_policy(&RemoteSandboxNetwork::AnyHost, None)
+            .expect("an uncapped any-host grant is limited");
+        for host in [
+            "example.com",
+            "93.184.215.14",
+            "2606:2800:21f:cb07:6820:80da:af6b:8b2c",
+        ] {
+            assert!(
+                matches!(
+                    policy.evaluate(host, 443),
+                    http_proxy::PolicyDecision::Allow {
+                        permit_local_addresses: false
+                    }
+                ),
+                "{host}"
+            );
+        }
+        let ceiling = Arc::new(
+            crate::EditorAllowlistCeiling::parse(&["example.com".to_string()])
+                .expect("valid allowlist"),
         );
+        assert!(any_host_policy(&RemoteSandboxNetwork::AnyHost, Some(&ceiling)).is_none());
+        assert!(
+            any_host_policy(
+                &RemoteSandboxNetwork::Hosts(vec!["example.com".to_string()]),
+                None
+            )
+            .is_none()
+        );
+        assert!(any_host_policy(&RemoteSandboxNetwork::Blocked, None).is_none());
+    }
 
-        let wsl = start_egress_proxy(&RemoteSandboxNetwork::AnyHost, None, true)
-            .expect("start the proxy");
-        let refused = connect_response(wsl.port(), &local_target);
-        assert!(refused.starts_with("HTTP/1.1 511"), "{refused}");
+    /// ADR-F49: every address this host holds is out of reach under an uncapped
+    /// any-host grant, whatever range it is in. The proxy runs in the host's own
+    /// network namespace, so its *public* addresses reach whatever is bound to
+    /// `0.0.0.0` or `::` there — its sshd, a local model server — and no list of
+    /// host patterns can name them. A public address that is not this host's
+    /// stays reachable.
+    #[test]
+    fn an_uncapped_any_host_grant_refuses_this_host_s_own_addresses() {
+        let policy = any_host_policy(&RemoteSandboxNetwork::AnyHost, None)
+            .expect("an uncapped any-host grant is limited");
+        let mut own = 0;
+        for interface in nix::ifaddrs::getifaddrs().expect("this host's own addresses") {
+            let Some(storage) = interface.address else {
+                continue;
+            };
+            let address = match (storage.as_sockaddr_in(), storage.as_sockaddr_in6()) {
+                (Some(v4), _) => std::net::IpAddr::V4(v4.ip()),
+                (_, Some(v6)) => std::net::IpAddr::V6(v6.ip()),
+                _ => continue,
+            };
+            assert!(
+                policy.forbids_address(address),
+                "{address} is one of this host's own"
+            );
+            own += 1;
+        }
+        assert!(own > 0, "this host holds at least its loopback address");
+        assert!(
+            !policy.forbids_address("93.184.215.14".parse().expect("an address")),
+            "a public address that is not this host's stays reachable"
+        );
+    }
 
-        let ssh = start_egress_proxy(&RemoteSandboxNetwork::AnyHost, None, false)
-            .expect("start the proxy");
-        let local = connect_response(ssh.port(), &local_target);
-        assert!(local.starts_with("HTTP/1.1 200"), "{local}");
+    /// ADR-F49 decision 27 (final review, F-2): an address of this host reached
+    /// through an embedded-IPv4 encoding other than IPv4-mapped — NAT64
+    /// (`64:ff9b::/96`), 6to4 (`2002::/16`) or IPv4-compatible (`::/96`) — is
+    /// refused too, so a `CONNECT` cannot reach the host's own public IPv4
+    /// service by dressing it as an ordinary IPv6 address.
+    #[test]
+    fn an_uncapped_any_host_grant_refuses_embedded_ipv4_forms_of_this_host() {
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+        let policy = any_host_policy(&RemoteSandboxNetwork::AnyHost, None)
+            .expect("an uncapped any-host grant is limited");
+        let embedded_forms = |v4: Ipv4Addr| {
+            let value = u32::from(v4);
+            let high = (value >> 16) as u16;
+            let low = (value & 0xffff) as u16;
+            [
+                Ipv6Addr::new(0, 0, 0, 0, 0, 0, high, low), // IPv4-compatible ::/96
+                Ipv6Addr::new(0x64, 0xff9b, 0, 0, 0, 0, high, low), // NAT64 64:ff9b::/96
+                Ipv6Addr::new(0x2002, high, low, 0, 0, 0, 0, 0), // 6to4 2002::/16
+            ]
+        };
+
+        let mut own_ipv4 = 0;
+        for interface in nix::ifaddrs::getifaddrs().expect("this host's own addresses") {
+            let Some(storage) = interface.address else {
+                continue;
+            };
+            let Some(v4) = storage.as_sockaddr_in() else {
+                continue;
+            };
+            let v4 = v4.ip();
+            for form in embedded_forms(v4) {
+                assert!(
+                    policy.forbids_address(IpAddr::V6(form)),
+                    "the embedded-IPv4 form {form} of this host's own {v4} must be refused"
+                );
+            }
+            own_ipv4 += 1;
+        }
+        assert!(
+            own_ipv4 > 0,
+            "this host holds at least its loopback IPv4 address"
+        );
     }
 
     /// A name `setenv(3)` rejects is a malformed invocation, caught at parse time
@@ -5883,44 +6891,314 @@ mod tests {
         assert_eq!(granted(&plan), [configuration, root.join("notes.txt")]);
     }
 
-    /// The projects directory is covered only around a root inside it, and
-    /// only where it really is.
+    /// An invocation that writes `roots` and nothing else, as the client's own
+    /// argv decodes into one.
+    fn invocation_writing(roots: &[PathBuf]) -> Stage1Invocation {
+        let written: Vec<String> = roots
+            .iter()
+            .map(|root| root.display().to_string())
+            .collect();
+        let mut argv = build_remote_sandbox_helper_argv(
+            &written,
+            &[],
+            &[],
+            &RemoteSandboxNetwork::Blocked,
+            false,
+            None,
+        );
+        argv.push("/bin/true".to_string());
+        decode_for_test(&argv[1..])
+    }
+
+    /// ADR-F49 decisions 14 and 15: the agents' configuration directory and
+    /// this fork's data directory are covered only around what the command was
+    /// granted inside them, and only where they really are.
     #[test]
-    fn an_enclosure_is_covered_only_around_a_root_inside_it() {
+    fn an_enclosure_is_covered_only_around_what_is_granted_in_it() {
         let (_home, home) = canonical_tempdir();
+        let configurations = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
         let projects = home.join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
-        let own = projects.join("0123456789abcdef");
-        std::fs::create_dir_all(own.join("config")).expect("create the configuration");
+        let own = projects.join("0123456789abcdef").join("config");
+        let data = home.join(".local/share/zed-jp-enhance");
+        let agent = data.join("external_agents/claude");
+        std::fs::create_dir_all(&own).expect("create the configuration");
         std::fs::create_dir(projects.join("fedcba9876543210")).expect("create another");
+        std::fs::create_dir_all(&agent).expect("create an agent");
         let work = home.join("work");
         std::fs::create_dir(&work).expect("create a worktree");
         let pins = |paths: &[PathBuf]| pin_writable_paths(paths, true).expect("pin");
-        let enclosures = enclosed_directories(&home);
-        assert_eq!(enclosures, std::slice::from_ref(&projects));
+        let enclosures = enclosed_directories(&home, &data);
+        assert_eq!(enclosures, vec![configurations.clone(), data.clone()]);
 
         let session = pins(&[work.clone(), own.clone()]);
         assert_eq!(
-            enclosures_to_cover(&enclosures, &session),
-            std::slice::from_ref(&projects)
+            enclosures_to_cover(&enclosures, &session, &[]),
+            std::slice::from_ref(&configurations),
+            "the configuration directory is covered around the session's own"
+        );
+        let readable = pin_readable_paths(std::slice::from_ref(&agent)).expect("pin what is read");
+        assert_eq!(
+            enclosures_to_cover(&enclosures, &session, &readable),
+            vec![configurations.clone(), data],
+            "and the data directory around what may be read in it"
         );
         let home_session = pins(&[home.clone(), own]);
         assert_eq!(
-            enclosures_to_cover(&enclosures, &home_session),
-            std::slice::from_ref(&projects),
+            enclosures_to_cover(&enclosures, &home_session, &[]),
+            std::slice::from_ref(&configurations),
             "a root above it does not stop the cover"
         );
-        assert!(enclosures_to_cover(&enclosures, &pins(std::slice::from_ref(&work))).is_empty());
         assert!(
-            enclosures_to_cover(&enclosures, &pins(std::slice::from_ref(&projects))).is_empty()
+            enclosures_to_cover(&enclosures, &pins(std::slice::from_ref(&work)), &[]).is_empty()
+        );
+        assert!(
+            enclosures_to_cover(
+                &enclosures,
+                &pins(std::slice::from_ref(&configurations)),
+                &[]
+            )
+            .is_empty()
         );
 
         let moved = home.join("moved");
-        std::fs::rename(&projects, &moved).expect("move it away");
-        std::os::unix::fs::symlink(&moved, &projects).expect("symlink");
-        let through_link = pins(&[moved.join("0123456789abcdef")]);
+        std::fs::rename(&configurations, &moved).expect("move it away");
+        std::os::unix::fs::symlink(&moved, &configurations).expect("symlink");
+        let through_link = pins(&[moved.join("projects/0123456789abcdef/config")]);
         assert!(
-            enclosures_to_cover(&enclosures, &through_link).is_empty(),
+            enclosures_to_cover(&enclosures, &through_link, &[]).is_empty(),
             "a symlink in its place is not covered"
+        );
+    }
+
+    /// ADR-F49 decision 14: what may be read is checked before anything runs
+    /// and refused naming the flag; once accepted, the data directory holding
+    /// it is covered around it, so the thread database and the logs are not
+    /// there at all, while the credentials are hidden as ever.
+    #[test]
+    fn readable_paths_are_checked_then_covered_around() {
+        let (_home, home) = canonical_tempdir();
+        let data = home.join(".local/share/zed-jp-enhance");
+        let agent = data.join("external_agents/registry/npx/claude");
+        std::fs::create_dir_all(&agent).expect("create an agent");
+        std::fs::create_dir_all(data.join("db")).expect("create the database");
+        std::fs::create_dir_all(home.join(".ssh")).expect("create .ssh");
+
+        let refusal = resolve_readable_paths(&[agent.clone(), home.join(".ssh")], &data, &home)
+            .expect_err("a credential store may not be shown");
+        assert!(
+            format!("{refusal:#}").contains(&format!("--readable {}", home.join(".ssh").display())),
+            "{refusal:#}"
+        );
+
+        let readable = resolve_readable_paths(std::slice::from_ref(&agent), &data, &home)
+            .expect("an agent installation may be shown");
+        let readable_pins = pin_readable_paths(&readable).expect("pin what is read");
+        let invocation = invocation_writing(&[]);
+        let reachable = reachable_paths(&invocation, &home);
+        let (enclosures, targets) = read_hiding_plan(
+            &read_hidden_home_paths(&home, false),
+            &reachable,
+            &enclosed_directories(&home, &data),
+            &[],
+            &readable_pins,
+        );
+        assert_eq!(
+            enclosures,
+            vec![data.clone()],
+            "the data directory is covered around what may be read"
+        );
+        assert!(targets.contains(&home.join(".ssh")), "{targets:?}");
+        assert!(
+            !targets.iter().any(|target| target.starts_with(&data)),
+            "what is in the data directory is hidden by its cover: {targets:?}"
+        );
+        check_nothing_shown_is_covered(&[agent], &targets)
+            .expect("what may be read is not covered");
+    }
+
+    /// ADR-F49 decisions 14 and 27 (final review, F-1): when the remote host
+    /// moved its data directory with `XDG_DATA_HOME`, the helper — which has no
+    /// registration to consult, running as a separate process from the server —
+    /// follows it there. The agent installations and Node.js may be read out of
+    /// the moved directory, and its cover binds them back where they really
+    /// are, exactly as the read hiding hides the rest of it. With the variable
+    /// unset the home-relative default is unchanged.
+    #[test]
+    fn a_moved_data_directory_is_where_readable_and_its_cover_land() {
+        use std::sync::Mutex;
+        // Env reads and writes are process-wide; serialise the tests that touch
+        // them so setting `XDG_DATA_HOME` here cannot race one reading it.
+        static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
+        let _environment = ENVIRONMENT_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+
+        let (_home, home) = canonical_tempdir();
+        let (_moved, moved) = canonical_tempdir();
+        let previous = std::env::var_os("XDG_DATA_HOME");
+
+        // The default first, with the variable explicitly unset, so the check
+        // holds however the test environment was configured.
+        // SAFETY: the environment lock serialises this against the other env
+        // tests, and `previous` is restored before the guard is dropped.
+        unsafe { std::env::remove_var("XDG_DATA_HOME") };
+        assert_eq!(
+            remote_agent_runtime_data_directory(&home),
+            home.join(".local/share/zed-jp-enhance"),
+            "with XDG_DATA_HOME unset the home-relative default is unchanged"
+        );
+
+        // SAFETY: as above.
+        unsafe { std::env::set_var("XDG_DATA_HOME", &moved) };
+        let data = remote_agent_runtime_data_directory(&home);
+        assert_eq!(
+            data,
+            moved.join("zed-jp-enhance"),
+            "the helper follows XDG_DATA_HOME, not the home-relative default"
+        );
+
+        let agent = data.join("external_agents/registry/npx/claude");
+        let node = data.join("node/bin");
+        std::fs::create_dir_all(&agent).expect("create an agent");
+        std::fs::create_dir_all(&node).expect("create the node runtime");
+        std::fs::create_dir_all(data.join("db")).expect("create the database");
+        std::fs::create_dir_all(home.join(".ssh")).expect("create .ssh");
+
+        let readable = resolve_readable_paths(&[agent.clone(), node.clone()], &data, &home)
+            .expect("the agent and node in the moved data directory may be shown");
+        let readable_pins = pin_readable_paths(&readable).expect("pin what is read");
+
+        // The read hiding is fed the same env-named directory in production
+        // (`app_state_directories_from_environment`, helper `run_stage1`), so
+        // the rest of the moved data directory is hidden there.
+        let mut read_hidden = read_hidden_home_paths(&home, false);
+        read_hidden.extend(app_state_directories_from_environment());
+        let invocation = invocation_writing(&[]);
+        let reachable = reachable_paths(&invocation, &home);
+        let (enclosures, targets) = read_hiding_plan(
+            &read_hidden,
+            &reachable,
+            &enclosed_directories(&home, &data),
+            &[],
+            &readable_pins,
+        );
+        assert!(
+            enclosures.contains(&data),
+            "the moved data directory is covered around what may be read: {enclosures:?}"
+        );
+        assert!(
+            !targets.iter().any(|target| target.starts_with(&data)),
+            "what is in the moved data directory is hidden by its cover: {targets:?}"
+        );
+        check_nothing_shown_is_covered(&[agent, node], &targets)
+            .expect("what may be read is not covered");
+
+        // SAFETY: as above; restore what was there before the guard is dropped.
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("XDG_DATA_HOME", value),
+                None => std::env::remove_var("XDG_DATA_HOME"),
+            }
+        }
+    }
+
+    /// ADR-F49 decision 11: a link planted where the Windows side stages agent
+    /// binaries cannot take the cover off what it leads to — the credential
+    /// store stays hidden and the link is simply not kept — and what is shown
+    /// is never allowed to overlap a cover.
+    #[test]
+    fn a_link_in_the_staging_directory_does_not_un_hide_a_credential_store() {
+        let (_home, home) = canonical_tempdir();
+        let keys = home.join(".ssh");
+        std::fs::create_dir_all(&keys).expect("create .ssh");
+        let staging = home.join(WSL_SANDBOX_HELPER_HOME_RELATIVE);
+        std::fs::create_dir_all(&staging).expect("create the staging directory");
+        std::os::unix::fs::symlink(&keys, staging.join("agents")).expect("symlink");
+
+        let mut invocation = invocation_writing(&[]);
+        invocation.on_wsl = true;
+        let reachable = reachable_paths(&invocation, &home);
+        assert!(
+            reachable.is_empty(),
+            "a link where the staged binaries go is not kept: {reachable:?}"
+        );
+        let targets = read_hidden_targets(&read_hidden_home_paths(&home, false), &reachable, &[]);
+        assert!(
+            targets.contains(&keys),
+            "the credential store stays hidden: {targets:?}"
+        );
+
+        // And were something inside a covered entry shown anyway — a
+        // `--readable` that resolved there, or a staged directory that did —
+        // the command would be refused rather than run with the cover left
+        // off.
+        let refusal = check_nothing_shown_is_covered(&[keys.join("id_ed25519")], &targets)
+            .expect_err("what is shown may not overlap what is hidden");
+        assert!(
+            format!("{refusal:#}").contains(&keys.display().to_string()),
+            "{refusal:#}"
+        );
+    }
+
+    /// ADR-F49 decision 15: a writable root that is exactly one agent's own
+    /// configuration directory for one project, named where it lies, is granted
+    /// whole — the agent can create its credentials right at its top — while a
+    /// worktree is carved around the agent configurations a host agent acts on.
+    #[test]
+    fn an_agent_configuration_root_is_granted_whole_and_a_worktree_is_carved() {
+        let (_home, home) = canonical_tempdir();
+        let configuration = home
+            .join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)
+            .join("0123456789abcdef/config");
+        let work = home.join("work");
+        std::fs::create_dir_all(&configuration).expect("create the configuration");
+        std::fs::create_dir(&work).expect("create a worktree");
+        std::fs::write(work.join("main.rs"), "x").expect("write main.rs");
+        let roots = [configuration.clone(), work.clone()];
+
+        let invocation = invocation_writing(&roots);
+        let pins = pin_writable_paths(&roots, true).expect("pin the roots");
+        let protected =
+            classify_protected_paths(&worktree_protected_additions(&invocation, &pins, &home))
+                .expect("classify");
+        let plan = plan_filesystem(&pins, &protected, false, false, &|_| true).expect("plan");
+        let granted = granted(&plan);
+        assert!(granted.contains(&configuration), "{granted:?}");
+        assert!(!granted.contains(&work), "{granted:?}");
+        assert!(granted.contains(&work.join("main.rs")), "{granted:?}");
+    }
+
+    /// ADR-F49 decision 15: only a root at exactly that depth, named where it
+    /// lies, is one agent's own configuration. A project's directory itself, a
+    /// directory deeper inside one, and a link in the projects directory
+    /// pointing at a worktree are worktrees like any other — a link there would
+    /// otherwise strip the worktree's own protections.
+    #[test]
+    fn only_a_root_where_an_agent_configuration_sits_skips_the_worktree_entries() {
+        let (_home, home) = canonical_tempdir();
+        let projects = home.join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
+        let project = projects.join("0123456789abcdef");
+        let configuration = project.join("config");
+        let deeper = configuration.join("plugins");
+        let work = home.join("work");
+        std::fs::create_dir_all(&deeper).expect("create the configuration");
+        std::fs::create_dir(&work).expect("create a worktree");
+        let link = projects.join("link");
+        std::os::unix::fs::symlink(&work, &link).expect("symlink");
+
+        let carved = |root: &Path| {
+            let roots = [root.to_path_buf()];
+            let invocation = invocation_writing(&roots);
+            let pins = pin_writable_paths(&roots, false).expect("pin the root");
+            !worktree_protected_additions(&invocation, &pins, &home).is_empty()
+        };
+        assert!(!carved(&configuration), "one agent's own configuration");
+        assert!(carved(&project), "a project's directory holds several");
+        assert!(carved(&deeper), "deeper inside one is not one");
+        assert!(carved(&work), "a worktree");
+        assert!(
+            carved(&link),
+            "a link in the projects directory leading to a worktree is a worktree"
         );
     }
 
@@ -5980,6 +7258,7 @@ mod tests {
             }),
         };
         let mut argv = crate::build_wsl_sandbox_helper_argv(
+            &[],
             &[],
             &[],
             &RemoteSandboxNetwork::Blocked,

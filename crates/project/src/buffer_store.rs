@@ -179,7 +179,7 @@ impl RemoteBufferStore {
                 buffer_id,
                 version: serialize_version(&version),
             });
-            let timeout = cx.background_executor().timer(VERIFIED_SAVE_TIMEOUT);
+            let timeout = cx.background_executor().timer(VERIFIED_REQUEST_TIMEOUT);
             let response = await_verified_save(response, timeout).await?;
             let version = deserialize_version(&response.version);
             let mtime = response.mtime.map(|mtime| mtime.into());
@@ -410,10 +410,10 @@ impl RemoteBufferStore {
     }
 }
 
-/// How long a remote server gets to confirm a verified save. A server from
-/// before verified saves never answers one (its protocol has no such message),
-/// so this wait is what makes the write fail closed there.
-const VERIFIED_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// How long a remote server gets to confirm a verified save or read. A server
+/// from before those never answers one (its protocol has no such message), so
+/// this wait is what makes them fail closed there.
+pub(crate) const VERIFIED_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 const UNCONFIRMED_VERIFIED_SAVE: &str = "The remote server did not confirm that it wrote the file \
     exactly where it was checked to land, so nothing was written. A remote server from an older \
@@ -426,16 +426,28 @@ pub async fn await_verified_save(
     response: impl std::future::Future<Output = Result<proto::BufferSaved>>,
     timeout: impl std::future::Future<Output = ()>,
 ) -> Result<proto::BufferSaved> {
+    await_verified(response, timeout, UNCONFIRMED_VERIFIED_SAVE).await
+}
+
+/// ADR-F49: the remote server's answer to a request only it can carry out on
+/// the files it holds. No answer in time, or an answer that nothing handles the
+/// request, both mean it did not happen; any other error is the server's own
+/// refusal, which reaches the agent unchanged.
+pub(crate) async fn await_verified<T>(
+    response: impl std::future::Future<Output = Result<T>>,
+    timeout: impl std::future::Future<Output = ()>,
+    unconfirmed: &'static str,
+) -> Result<T> {
     match futures::future::select(std::pin::pin!(response), std::pin::pin!(timeout)).await {
-        futures::future::Either::Left((Ok(saved), _)) => Ok(saved),
+        futures::future::Either::Left((Ok(confirmed), _)) => Ok(confirmed),
         futures::future::Either::Left((Err(error), _)) => {
             if format!("{error:#}").contains("no handler registered") {
-                Err(anyhow!(UNCONFIRMED_VERIFIED_SAVE))
+                Err(anyhow!(unconfirmed))
             } else {
                 Err(error)
             }
         }
-        futures::future::Either::Right(((), _)) => Err(anyhow!(UNCONFIRMED_VERIFIED_SAVE)),
+        futures::future::Either::Right(((), _)) => Err(anyhow!(unconfirmed)),
     }
 }
 

@@ -81,6 +81,7 @@ regex.workspace = true
 release_channel.workspace = true
 remote.workspace = true
 rpc.workspace = true
+sandbox.workspace = true
 schemars.workspace = true
 semver.workspace = true
 serde.workspace = true

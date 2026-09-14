@@ -150,6 +150,52 @@ async fn test_remote_verified_save(cx: &mut TestAppContext, server_cx: &mut Test
     );
 }
 
+/// ADR-F49 decision 11: what Zed reads for a sandboxed agent in a remote
+/// project is checked on the remote host, which is where the links are — the
+/// client's own view of the worktree cannot settle where a path leads there.
+#[gpui::test]
+async fn test_remote_verified_read(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": { "src": { "lib.rs": "fn one() -> usize { 1 }" } },
+            "outside": { "id_rsa": "-----BEGIN" },
+        }),
+    )
+    .await;
+    fs.insert_symlink(
+        path!("/code/project1/key"),
+        PathBuf::from(path!("/code/outside/id_rsa")),
+    )
+    .await;
+
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.executor().run_until_parked();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+
+    project
+        .update(cx, |project, cx| {
+            project.verify_agent_read(&(worktree_id, rel_path("src/lib.rs")).into(), cx)
+        })
+        .await
+        .unwrap();
+
+    let error = project
+        .update(cx, |project, cx| {
+            project.verify_agent_read(&(worktree_id, rel_path("key")).into(), cx)
+        })
+        .await
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("symbolic link"), "{error:#}");
+}
+
 /// ADR-F49: the remote server refuses to write Git metadata in a verified save
 /// by itself, even when the client's judgement of the write was skipped.
 #[gpui::test]
@@ -4286,8 +4332,108 @@ async fn test_remote_external_agent_server(
                 ("NO_BROWSER".into(), "1".into()),
                 ("VAR".into(), "val".into()),
                 ("OTHER_VAR".into(), "other-val".into())
-            ]))
+            ])),
+            // The host's file system is a fake one here, so nothing is placed
+            // on it for the sandbox.
+            sandbox: None,
         }
+    );
+}
+
+/// ADR-F49 第 2a 段: on a real file system the host makes the agent's
+/// per-project configuration folder and describes it to the client, which
+/// takes it only as far as its own policy for the agent goes. A folder the
+/// host cannot make safely comes back as the reason, so that the client can
+/// refuse the start and offer one outside the sandbox (decision 19).
+#[cfg(unix)]
+#[gpui::test]
+async fn test_remote_external_agent_sandbox_is_placed_on_the_host(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    use project::agent_sandbox::{AgentSandboxHosts, AgentSandboxState};
+
+    let home = tempfile::tempdir().expect("a home for the test");
+    let project_dir = tempfile::tempdir().expect("a project for the test");
+    std::fs::write(project_dir.path().join("main.rs"), "fn main() {}\n").expect("a file");
+    project::agent_sandbox::set_sandboxed_agents_home_for_test(Some(home.path().to_path_buf()));
+    let _restore_home = util::defer(|| {
+        project::agent_sandbox::set_sandboxed_agents_home_for_test(None);
+    });
+
+    let server_fs: Arc<dyn Fs> = Arc::new(fs::RealFs::new(None, server_cx.executor()));
+    let (project, _headless_project) = init_test_with_fs(server_fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(project_dir.path(), true, cx)
+        })
+        .await
+        .unwrap();
+    server_cx.update_global::<SettingsStore, _>(|settings_store, cx| {
+        settings_store
+            .set_server_settings(
+                &json!({
+                    "agent_servers": {
+                        "foo": { "type": "custom", "command": "foo-cli" }
+                    }
+                })
+                .to_string(),
+                cx,
+            )
+            .unwrap();
+    });
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+
+    let get_command = |cx: &mut TestAppContext| {
+        project.update(cx, |project, cx| {
+            project.agent_server_store().update(cx, |store, cx| {
+                store
+                    .get_external_agent(&"foo".into())
+                    .unwrap()
+                    .get_command(vec![], HashMap::default(), &mut cx.to_async())
+            })
+        })
+    };
+
+    let command = get_command(cx).await.unwrap();
+    let sandbox = command.sandbox.expect("the host placed the agent");
+    let AgentSandboxState::Resolved { config_dir, hosts } = &sandbox.state else {
+        panic!("expected the agent to be placed, got {:?}", sandbox.state);
+    };
+    assert!(
+        config_dir.starts_with(home.path().join(".zed-jp-enhance-claude/projects")),
+        "{config_dir:?}"
+    );
+    assert_eq!(
+        config_dir.file_name().and_then(|name| name.to_str()),
+        Some("agent-foo"),
+        "a custom agent gets its own folder"
+    );
+    assert!(config_dir.join("home").is_dir(), "its home is made for it");
+    assert_eq!(
+        sandbox.env.get("HOME").map(String::as_str),
+        Some(config_dir.join("home").to_string_lossy().as_ref()),
+        "the environment that confines it points into the folder"
+    );
+    assert_eq!(
+        hosts,
+        &AgentSandboxHosts::EditorAllowlist,
+        "an agent with no profile of its own is capped by the IDE-wide allowlist"
+    );
+
+    // A level the host cannot open safely: the whole placement fails and the
+    // client is told why.
+    let projects = home.path().join(".zed-jp-enhance-claude/projects");
+    std::fs::remove_dir_all(&projects).expect("the projects directory");
+    std::os::unix::fs::symlink(project_dir.path(), &projects).expect("a link in its place");
+
+    let command = get_command(cx).await.unwrap();
+    let sandbox = command.sandbox.expect("the host reported why it could not");
+    assert!(
+        matches!(sandbox.state, AgentSandboxState::Unavailable { .. }),
+        "expected a reason, got {:?}",
+        sandbox.state
     );
 }
 
@@ -4818,7 +4964,16 @@ pub async fn init_test(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,
 ) -> (Entity<Project>, Entity<HeadlessProject>) {
-    let server_fs = server_fs.clone();
+    init_test_with_fs(server_fs.clone(), cx, server_cx).await
+}
+
+/// [`init_test`] for a host whose file system is not a fake one — a test that
+/// has the server touch real files.
+pub async fn init_test_with_fs(
+    server_fs: Arc<dyn Fs>,
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> (Entity<Project>, Entity<HeadlessProject>) {
     cx.update(|cx| {
         release_channel::init(semver::Version::new(0, 0, 0), cx);
     });

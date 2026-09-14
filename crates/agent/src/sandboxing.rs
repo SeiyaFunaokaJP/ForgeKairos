@@ -127,6 +127,7 @@ pub fn settings_sandbox_policy(persistent: &SandboxPermissions) -> SandboxPolicy
                     .filter_map(acp_thread::granted_write_path_to_location_or_log),
             ),
             protected_paths: Vec::new(),
+            readable_paths: Vec::new(),
         }
     };
     let network = if persistent.allow_all_hosts {
@@ -325,6 +326,7 @@ impl ThreadSandboxGrants {
                     .filter_map(acp_thread::granted_write_path_to_location_or_log),
             ),
             protected_paths: Vec::new(),
+            readable_paths: Vec::new(),
         };
         let network = if self.network_any_host {
             SandboxNetPolicy::Unrestricted
@@ -696,6 +698,7 @@ mod tests {
                     HostFilesystemLocation::capture(build_dir.path()).expect("capture temp dir")
                 ],
                 protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
             }
         );
         assert_eq!(
@@ -712,6 +715,7 @@ mod tests {
             SandboxFsPolicy::Restricted {
                 writable_paths: Vec::new(),
                 protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
             }
         );
         assert_eq!(empty.network, SandboxNetPolicy::Blocked);
@@ -726,6 +730,7 @@ mod tests {
             SandboxFsPolicy::Restricted {
                 writable_paths: Vec::new(),
                 protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
             }
         );
         assert_eq!(policy.network, SandboxNetPolicy::Unrestricted);
@@ -750,6 +755,7 @@ mod tests {
                     HostFilesystemLocation::capture(log_dir.path()).expect("capture temp dir")
                 ],
                 protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
             }
         );
         assert_eq!(
