@@ -34,6 +34,8 @@ pub fn register_fake_definition_server(
                 arguments: Vec::new(),
                 env: None,
             },
+            worktree_code_paused_mode: language::WorktreeCodePausedMode::Unaffected,
+            is_extension: false,
             capabilities: lsp::ServerCapabilities {
                 definition_provider: Some(lsp::OneOf::Left(true)),
                 type_definition_provider: Some(lsp::TypeDefinitionProviderCapability::Simple(true)),
