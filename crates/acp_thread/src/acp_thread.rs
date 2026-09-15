@@ -6726,6 +6726,95 @@ mod tests {
         );
     }
 
+    /// ADR-F49 decision 23: a project opened on a WSL share has worktrees
+    /// whose `abs_path` keeps the spelling Windows canonicalized it to
+    /// (`\\?\UNC\wsl.localhost\…`; `dunce` only folds a drive's `\\?\C:\…`).
+    /// An agent's read and write land in such a worktree when they arrive in
+    /// that spelling — which is why `SandboxPaths` answers the sandbox in each
+    /// root's own spelling: Zed finds the worktree for a path by comparing
+    /// spellings, so the `\\wsl.localhost\…` a path mapper builds on its own
+    /// would be judged as outside the project.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn test_agent_reads_and_writes_a_canonicalized_wsl_worktree(cx: &mut TestAppContext) {
+        const ROOT: &str = r"\\?\UNC\wsl.localhost\Ubuntu\root\p";
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(ROOT, json!({ "seed.txt": "seeded-by-zed\n" }))
+            .await;
+        let project = Project::test(fs.clone(), [Path::new(ROOT)], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| connection.new_session(project, PathList::new(&[Path::new(ROOT)]), cx))
+            .await
+            .unwrap();
+
+        let read = thread
+            .update(cx, |thread, cx| {
+                thread.read_text_file(
+                    PathBuf::from(format!(r"{ROOT}\seed.txt")),
+                    None,
+                    None,
+                    false,
+                    cx,
+                )
+            })
+            .await
+            .expect("the file is inside the worktree");
+        assert_eq!(read, "seeded-by-zed\n");
+
+        thread
+            .update(cx, |thread, cx| {
+                thread.write_text_file(
+                    PathBuf::from(format!(r"{ROOT}\observed.txt")),
+                    "observed".to_string(),
+                    cx,
+                )
+            })
+            .await
+            .expect("a write into the worktree is allowed");
+        assert_eq!(
+            String::from_utf8(
+                fs.read_file_sync(Path::new(&format!(r"{ROOT}\observed.txt")))
+                    .unwrap()
+            )
+            .unwrap()
+            .trim_end(),
+            "observed"
+        );
+        thread.read_with(cx, |thread, _| {
+            assert!(thread.entries.is_empty(), "an ordinary write asks nothing");
+        });
+
+        for (path, what) in [
+            // The spelling a WSL path mapper builds on its own names the same
+            // folder, but Zed compares spellings, so a write that arrives this
+            // way is refused: `SandboxPaths` is where it is put back into the
+            // worktree's own spelling.
+            (
+                r"\\wsl.localhost\Ubuntu\root\p\observed.txt",
+                "another spelling of the worktree",
+            ),
+            (
+                r"\\?\UNC\wsl.localhost\Ubuntu\root\q\escape.txt",
+                "a sibling folder",
+            ),
+        ] {
+            let error = thread
+                .update(cx, |thread, cx| {
+                    thread.write_text_file(PathBuf::from(path), "escaped".to_string(), cx)
+                })
+                .await
+                .expect_err("only the worktree's own spelling is written");
+            assert!(
+                error
+                    .to_string()
+                    .contains("not inside any of the project's folders"),
+                "{what}: {error:#}"
+            );
+        }
+    }
+
     /// ADR-F50: an external agent's write pauses its worktree's code before it
     /// lands; one that is refused changes nothing.
     #[gpui::test]

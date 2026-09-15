@@ -470,29 +470,25 @@ impl SandboxPaths {
     }
 
     /// CLI から来たパス (か `file://` URI) を、ワークツリーの中のホストのパスに直す。
+    /// 返すのはワークツリーのルートの綴りに合わせた形 ([`Self::in_root_spelling`])。
     pub fn to_host(&self, client_path: &str) -> Result<PathBuf> {
         let host_path = self
             .mapper
             .uri_to_host(client_path)
             .with_context(|| format!("{client_path} is not a path Zed can open"))?;
-        anyhow::ensure!(
-            self.contains(&host_path),
-            "{client_path} is outside the workspace"
-        );
-        Ok(host_path)
+        self.in_root_spelling(&host_path)
+            .with_context(|| format!("{client_path} is outside the workspace"))
     }
 
     /// サンドボックスの素のパス (URI は受けない) を、ワークツリーの中のホストのパスに直す。
+    /// 返すのはワークツリーのルートの綴りに合わせた形 ([`Self::in_root_spelling`])。
     pub fn client_path_to_host(&self, client_path: &str) -> Result<PathBuf, SandboxPathError> {
         let host_path = self
             .mapper
             .to_host(client_path)
             .ok_or(SandboxPathError::Unmappable)?;
-        if self.contains(&host_path) {
-            Ok(host_path)
-        } else {
-            Err(SandboxPathError::OutsideWorkspace)
-        }
+        self.in_root_spelling(&host_path)
+            .ok_or(SandboxPathError::OutsideWorkspace)
     }
 
     pub fn to_client(&self, host_path: &Path) -> Option<String> {
@@ -559,6 +555,28 @@ impl SandboxPaths {
     /// 変換器のホストの綴りで読んだ、比べるための形。
     pub fn comparable(&self, host_path: &Path) -> Option<ComparablePath> {
         ComparablePath::new(host_path, self.host_path_style())
+    }
+
+    /// ワークツリーのルートの綴りに合わせて組み直したホストのパス。ルートの外なら `None`。
+    ///
+    /// Zed のワークツリーの `abs_path` はプロジェクトを開いたときの綴りのままで、WSL の共有を
+    /// 開くと Windows の `canonicalize` が返す `\\?\UNC\wsl.localhost\<distro>\…` になる。
+    /// `Project` がパスからワークツリーを見つけるのは綴りの前方一致 (`PathStyle::strip_prefix`)
+    /// なので、変換器が作る `\\wsl.localhost\<distro>\…` のままでは、同じ場所を指していても
+    /// プロジェクトのどのフォルダーにも入っていないと判定され、`fs/read_text_file` も
+    /// `fs/write_text_file` も通らない (ADR-F49 決定 23)。どの綴りで書かれたルートでも
+    /// Zed がそのまま使えるように、ここでルートの綴りに戻す。
+    fn in_root_spelling(&self, host_path: &Path) -> Option<PathBuf> {
+        let style = self.host_path_style();
+        let (root, below_root) = self.split_at_root(host_path)?;
+        let mut spelling = root.to_str()?.to_string();
+        for name in below_root {
+            if !spelling.ends_with(style.separators_ch()) {
+                spelling.push_str(style.primary_separator());
+            }
+            spelling.push_str(&name);
+        }
+        Some(PathBuf::from(spelling))
     }
 
     /// `host_path` を含むワークツリーのルートと、そのルートより下の名前。
@@ -1187,6 +1205,87 @@ mod tests {
                 "{roots:?} in {distro:?} must be refused"
             );
         }
+    }
+
+    /// ADR-F49 決定 23: WSL の共有をプロジェクトとして開くと、Zed のワークツリーの `abs_path`
+    /// は Windows の `canonicalize` が返す `\\?\UNC\…` の綴りになる (`dunce` が畳めるのは
+    /// ドライブの `\\?\C:\…` だけ)。その綴りのルートでも変換器は組めて、サンドボックスから
+    /// 来たパスは **ルートと同じ綴りで** 返る (Zed がワークツリーを見つけるのは前方一致なので、
+    /// `\\wsl.localhost\…` のままでは同じ場所でもプロジェクトの外と判定される)。
+    #[test]
+    fn gives_back_the_spelling_of_a_canonicalized_wsl_root() {
+        let root = r"\\?\UNC\wsl.localhost\Ubuntu\root\p";
+        assert_eq!(
+            WslPathMapper::for_worktree_roots(&[PathBuf::from(root)], Some("Ubuntu")).ok(),
+            Some(wsl()),
+            "a canonicalized root names the same distribution"
+        );
+        let paths = SandboxPaths::new(Arc::new(wsl()), vec![PathBuf::from(root)]);
+        assert!(paths.contains(Path::new(r"\\wsl.localhost\Ubuntu\root\p\seed.txt")));
+        assert_eq!(
+            paths.client_path_to_host("/root/p/seed.txt"),
+            Ok(PathBuf::from(format!(r"{root}\seed.txt")))
+        );
+        assert_eq!(
+            paths.to_host("file:///root/p/sub/a.rs").ok(),
+            Some(PathBuf::from(format!(r"{root}\sub\a.rs")))
+        );
+        assert_eq!(
+            paths.client_path_to_host("/root/p"),
+            Ok(PathBuf::from(root)),
+            "the root itself keeps its own spelling too"
+        );
+        assert_eq!(
+            paths.to_client(Path::new(&format!(r"{root}\seed.txt"))),
+            Some("/root/p/seed.txt".to_string()),
+            "and the way back reads that spelling"
+        );
+        assert_eq!(
+            paths.client_path_to_host("/root/q/a.rs"),
+            Err(SandboxPathError::OutsideWorkspace)
+        );
+    }
+
+    /// ルートがどの綴りで書かれていても、返すパスはそのルートの綴りに合わせる。ドライブの
+    /// ワークツリーは今までどおり (綴りは `canonicalize` を通しても `I:\…` のまま)。
+    #[test]
+    fn answers_in_the_spelling_of_each_root() {
+        for (root, client_path, expected) in [
+            (
+                r"\\wsl$\Ubuntu\root\p",
+                "/root/p/a.rs",
+                r"\\wsl$\Ubuntu\root\p\a.rs",
+            ),
+            (
+                r"\\wsl.localhost\Ubuntu\root\p",
+                "/root/p/a.rs",
+                r"\\wsl.localhost\Ubuntu\root\p\a.rs",
+            ),
+            (r"I:\proj", "/mnt/i/proj/a.rs", r"I:\proj\a.rs"),
+            // 末尾の区切りがあっても重ねない。
+            (r"I:\proj\", "/mnt/i/proj/a.rs", r"I:\proj\a.rs"),
+            (r"I:\", "/mnt/i/a.rs", r"I:\a.rs"),
+        ] {
+            let paths = SandboxPaths::new(Arc::new(wsl()), vec![PathBuf::from(root)]);
+            assert_eq!(
+                paths.client_path_to_host(client_path),
+                Ok(PathBuf::from(expected)),
+                "{client_path} under {root}"
+            );
+        }
+        // POSIX のホストでは区切りは `/` だけ。
+        let paths = SandboxPaths::new(
+            Arc::new(IdentityPathMapper),
+            vec![PathBuf::from("/proj"), PathBuf::from("/other/")],
+        );
+        assert_eq!(
+            paths.client_path_to_host("/proj/src/a.rs"),
+            Ok(PathBuf::from("/proj/src/a.rs"))
+        );
+        assert_eq!(
+            paths.client_path_to_host("/other/a.rs"),
+            Ok(PathBuf::from("/other/a.rs"))
+        );
     }
 
     fn two_worktrees() -> SandboxPaths {

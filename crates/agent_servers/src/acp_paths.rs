@@ -921,6 +921,69 @@ mod tests {
         );
     }
 
+    /// ADR-F49 決定 23: WSL の共有 (ext4) をプロジェクトとして開くと、ワークツリーの
+    /// `abs_path` は Windows の `canonicalize` が返す `\\?\UNC\wsl.localhost\…` になる。
+    /// `Project` がパスからワークツリーを見つけるのは綴りの前方一致なので、fs と terminal の
+    /// 要求はその綴りのまま返す (`\\wsl.localhost\…` で返すと、同じ場所でも読み取りは
+    /// `resource_not_found`、書き込みは「プロジェクトのフォルダーの中にない」と断られる)。
+    #[test]
+    fn maps_file_requests_into_a_canonicalized_wsl_worktree() {
+        let root = r"\\?\UNC\wsl.localhost\Ubuntu\root\p";
+        let translator = AcpPathTranslator::for_wsl(vec![PathBuf::from(root)], Some("Ubuntu"))
+            .expect("a canonicalized WSL share names one distribution");
+        assert_eq!(
+            translator
+                .read_text_file_to_host(acp::ReadTextFileRequest::new(
+                    session_id(),
+                    "/root/p/seed.txt"
+                ))
+                .map(|request| request.path),
+            Ok(PathBuf::from(format!(r"{root}\seed.txt")))
+        );
+        assert_eq!(
+            translator
+                .write_text_file_to_host(acp::WriteTextFileRequest::new(
+                    session_id(),
+                    "/root/p/observed.txt",
+                    "text",
+                ))
+                .map(|request| request.path),
+            Ok(PathBuf::from(format!(r"{root}\observed.txt")))
+        );
+        assert_eq!(
+            translator
+                .create_terminal_to_host(
+                    acp::CreateTerminalRequest::new(session_id(), "./run.sh")
+                        .cwd(Some(PathBuf::from("/root/p/sub")))
+                )
+                .map(|request| request.cwd),
+            Ok(Some(PathBuf::from(format!(r"{root}\sub"))))
+        );
+        assert_eq!(
+            translator
+                .tool_call_to_host(
+                    tool_call("Read")
+                        .locations(vec![acp::ToolCallLocation::new("/root/p/seed.txt")])
+                )
+                .locations,
+            vec![acp::ToolCallLocation::new(format!(r"{root}\seed.txt"))],
+            "what the agent points at is shown in the worktree's own spelling"
+        );
+        assert_eq!(
+            translator
+                .paths()
+                .to_client(Path::new(&format!(r"{root}\seed.txt"))),
+            Some("/root/p/seed.txt".to_string()),
+            "and Zed's own spelling still reaches the agent"
+        );
+        assert_eq!(
+            translator
+                .read_text_file_to_host(acp::ReadTextFileRequest::new(session_id(), "/root/q/a.rs"))
+                .map_err(|error| error.code),
+            Err(acp::ErrorCode::ResourceNotFound)
+        );
+    }
+
     #[test]
     fn maps_the_terminal_folder_and_leaves_the_command_alone() {
         let translator = translator();
