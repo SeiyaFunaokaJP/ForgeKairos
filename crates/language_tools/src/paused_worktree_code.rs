@@ -15,8 +15,8 @@ use project::{
     Project, WorktreeCodeExecution, WorktreeId,
     project_launch_approvals::escape_for_display,
     worktree_code_execution::{
-        PausedLanguageServer, PausedWorktreeDetails, RemoteHostPause, ResumeOutcome,
-        WorktreeCodeExecutionEvent,
+        LeftoverSandboxProcessReports, LeftoverSandboxProcesses, PausedLanguageServer,
+        PausedWorktreeDetails, RemoteHostPause, ResumeOutcome, WorktreeCodeExecutionEvent,
     },
 };
 use ui::prelude::*;
@@ -173,6 +173,9 @@ struct PausedWorktreeCodeDialog {
     written_since_shown: bool,
     resuming: Option<Task<()>>,
     _execution_subscription: Subscription,
+    /// ADR-F49 decision 18 (C): what agents left running in their sandboxes
+    /// changes on its own while the dialog is open.
+    _leftover_processes_subscription: Subscription,
 }
 
 impl PausedWorktreeCodeDialog {
@@ -185,6 +188,9 @@ impl PausedWorktreeCodeDialog {
                 cx.notify()
             });
         let shown_generations = current_generations(execution.read(cx));
+        let leftover_processes = LeftoverSandboxProcessReports::global(cx);
+        let leftover_processes_subscription =
+            cx.observe(&leftover_processes, |_, _, cx| cx.notify());
         Self {
             project,
             focus_handle,
@@ -192,6 +198,7 @@ impl PausedWorktreeCodeDialog {
             written_since_shown: false,
             resuming: None,
             _execution_subscription: execution_subscription,
+            _leftover_processes_subscription: leftover_processes_subscription,
         }
     }
 
@@ -275,7 +282,74 @@ fn language_server_names(details: &PausedWorktreeDetails, how: PausedLanguageSer
         .join(", ")
 }
 
-fn render_folder(name: String, details: PausedWorktreeDetails) -> impl IntoElement {
+/// ADR-F49 decision 18 (C): how long a leftover process has been running, in
+/// the units a user reads at a glance.
+fn running_for(duration: std::time::Duration) -> String {
+    let seconds = duration.as_secs();
+    if seconds == 0 {
+        return "起動時間不明".to_string();
+    }
+    if seconds < 60 {
+        return format!("{seconds} 秒前から");
+    }
+    let minutes = seconds / 60;
+    if minutes < 60 {
+        return format!("{minutes} 分前から");
+    }
+    format!("{} 時間 {} 分前から", minutes / 60, minutes % 60)
+}
+
+fn render_leftover_processes(
+    leftovers: &[LeftoverSandboxProcesses],
+    stop: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let lines = leftovers
+        .iter()
+        .flat_map(|report| {
+            let agent = escape_for_display(report.agent.as_ref()).into_owned();
+            report.processes.iter().map(move |process| {
+                // A process that cleared its own command line, or one whose
+                // host could not read it, is named by what is left: its pid.
+                let command = escape_for_display(process.command.as_ref()).into_owned();
+                let command = if command.is_empty() {
+                    "コマンド名が読めないプロセス".to_string()
+                } else {
+                    command
+                };
+                detail_line(format!(
+                    "{command} ({}、PID {}、{})",
+                    agent,
+                    process.pid,
+                    running_for(process.running_for),
+                ))
+            })
+        })
+        .collect::<Vec<_>>();
+    v_flex()
+        .w_full()
+        .min_w_0()
+        .gap_0p5()
+        .child(render_notice(
+            IconName::Warning,
+            Color::Warning,
+            "エージェントの応答が残したプロセスがサンドボックスの中で動いています。終わるまで再開できません。",
+        ))
+        .children(lines)
+        .child(
+            h_flex().child(
+                Button::new("paused-worktree-code-stop-processes", "残ったプロセスを止める")
+                    .style(ButtonStyle::Subtle)
+                    .on_click(move |_, window, cx| stop(window, cx)),
+            ),
+        )
+}
+
+fn render_folder(
+    name: String,
+    details: PausedWorktreeDetails,
+    leftovers: Vec<LeftoverSandboxProcesses>,
+    stop_leftovers: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     let restricted = language_server_names(&details, PausedLanguageServer::Restricted);
     let stopped = language_server_names(&details, PausedLanguageServer::Stopped);
     let formatters = details
@@ -332,7 +406,10 @@ fn render_folder(name: String, details: PausedWorktreeDetails) -> impl IntoEleme
                     .to_string(),
             ))
         })
-        .when(details.agent_turn_running, |this| {
+        .when(!leftovers.is_empty(), |this| {
+            this.child(render_leftover_processes(&leftovers, stop_leftovers))
+        })
+        .when(details.agent_turn_running && leftovers.is_empty(), |this| {
             this.child(render_notice(
                 IconName::Warning,
                 Color::Warning,
@@ -340,7 +417,7 @@ fn render_folder(name: String, details: PausedWorktreeDetails) -> impl IntoEleme
             ))
         })
         .when(
-            details.sandboxed_writer_running && !details.agent_turn_running,
+            details.sandboxed_writer_running && !details.agent_turn_running && leftovers.is_empty(),
             |this| {
                 this.child(render_notice(
                     IconName::Warning,
@@ -362,9 +439,17 @@ impl Render for PausedWorktreeCodeDialog {
             .filter_map(|worktree_id| {
                 let details = execution.details(worktree_id)?;
                 writer_running |= details.sandboxed_writer_running;
+                let leftovers = execution.leftover_sandbox_processes(worktree_id, cx);
+                let stopping = leftovers.iter().map(|report| report.id).collect::<Vec<_>>();
                 Some(render_folder(
                     folder_name(project, worktree_id, cx)?,
                     details,
+                    leftovers,
+                    move |_window, cx| {
+                        for report in &stopping {
+                            LeftoverSandboxProcessReports::stop(*report, cx);
+                        }
+                    },
                 ))
             })
             .collect::<Vec<_>>();

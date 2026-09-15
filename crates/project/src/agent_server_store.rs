@@ -275,6 +275,62 @@ impl AgentServerStore {
 
     pub fn init_headless(session: &AnyProtoClient) {
         session.add_entity_request_handler(Self::handle_get_agent_server_command);
+        session.add_entity_request_handler(Self::handle_list_sandbox_processes);
+        session.add_entity_request_handler(Self::handle_stop_sandbox_processes);
+    }
+
+    /// ADR-F49 decision 18 (C): what still runs in a sandbox this host built
+    /// for an agent. Answered from outside that sandbox — the helper's parent
+    /// registered which PID namespace belongs to which session id, in a
+    /// directory the sandbox cannot write — so nothing inside it can shape the
+    /// answer.
+    async fn handle_list_sandbox_processes(
+        _this: Entity<Self>,
+        envelope: TypedEnvelope<proto::ListSandboxProcesses>,
+        cx: AsyncApp,
+    ) -> Result<proto::ListSandboxProcessesResponse> {
+        let session_id = envelope.payload.session_id;
+        let processes = cx
+            .background_spawn(async move { list_sandbox_processes_on_this_host(&session_id) })
+            .await?;
+        Ok(proto::ListSandboxProcessesResponse {
+            processes: processes
+                .into_iter()
+                .map(|process| proto::SandboxProcess {
+                    pid: process.pid,
+                    start_time: process.start_time,
+                    running_for: process.running_for.as_secs(),
+                    command: process.command,
+                })
+                .collect(),
+        })
+    }
+
+    /// ADR-F49 decision 18 (C): stops exactly the processes the client names,
+    /// and only where the pid still carries the start time the client saw.
+    async fn handle_stop_sandbox_processes(
+        _this: Entity<Self>,
+        envelope: TypedEnvelope<proto::StopSandboxProcesses>,
+        cx: AsyncApp,
+    ) -> Result<proto::StopSandboxProcessesResponse> {
+        let session_id = envelope.payload.session_id;
+        let processes = envelope
+            .payload
+            .processes
+            .into_iter()
+            .map(|process| sandbox::SandboxProcessKey {
+                pid: process.pid,
+                start_time: process.start_time,
+            })
+            .collect::<Vec<_>>();
+        let stopped = cx
+            .background_spawn(async move {
+                stop_sandbox_processes_on_this_host(&session_id, &processes)
+            })
+            .await?;
+        Ok(proto::StopSandboxProcessesResponse {
+            stopped: stopped as u32,
+        })
     }
 
     fn agent_servers_settings_changed(&mut self, cx: &mut Context<Self>) {
@@ -1908,6 +1964,41 @@ impl settings::Settings for AllAgentServersSettings {
     }
 }
 
+/// ADR-F49 decision 18 (C): the sandbox sessions this account registered, and
+/// what runs in them. Only the host a sandbox was built on can answer, so this
+/// lives where the remote server runs.
+#[cfg(target_os = "linux")]
+fn list_sandbox_processes_on_this_host(session_id: &str) -> Result<Vec<sandbox::SandboxProcess>> {
+    let directory = sandbox::sandbox_processes::sandbox_sessions_directory_for_this_account()
+        .context("this account has no home directory, so no sandbox session is registered")?;
+    sandbox::sandbox_processes::list_sandbox_session_processes(&directory, session_id)
+}
+
+#[cfg(target_os = "linux")]
+fn stop_sandbox_processes_on_this_host(
+    session_id: &str,
+    processes: &[sandbox::SandboxProcessKey],
+) -> Result<usize> {
+    let directory = sandbox::sandbox_processes::sandbox_sessions_directory_for_this_account()
+        .context("this account has no home directory, so no sandbox session is registered")?;
+    sandbox::sandbox_processes::stop_sandbox_session_processes(&directory, session_id, processes)
+}
+
+/// A host whose sandbox has no process boundary this side can look through
+/// (macOS) answers that it cannot follow them; the client then keeps the agent
+/// a writer for its whole session (ADR-F49 decision 18, case B).
+#[cfg(not(target_os = "linux"))]
+fn list_sandbox_processes_on_this_host(_session_id: &str) -> Result<Vec<sandbox::SandboxProcess>> {
+    bail!("this host cannot follow the processes of a sandbox")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn stop_sandbox_processes_on_this_host(
+    _session_id: &str,
+    _processes: &[sandbox::SandboxProcessKey],
+) -> Result<usize> {
+    bail!("this host cannot follow the processes of a sandbox")
+}
 #[cfg(test)]
 mod tests {
     use super::*;

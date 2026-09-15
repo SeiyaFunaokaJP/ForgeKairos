@@ -3,6 +3,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -17,8 +18,14 @@ use gpui::{Action as _, Anchor, App, Entity, Subscription, Task, TaskExt, WeakEn
 use language::{BinaryStatus, BufferId, ServerHealth};
 use lsp::{LanguageServerId, LanguageServerName, LanguageServerSelector};
 use project::{
-    LspStore, LspStoreEvent, Worktree, lsp_store::log_store::GlobalLogStore,
-    project_settings::ProjectSettings, trusted_worktrees::TrustedWorktrees,
+    LspStore, LspStoreEvent, Worktree,
+    lsp_store::log_store::GlobalLogStore,
+    project_launch_approvals::{
+        LaunchApprovalKey, LaunchDecision, LaunchDecisionRecord, LaunchHost, LaunchKind,
+        ProjectLaunchApprovals,
+    },
+    project_settings::ProjectSettings,
+    trusted_worktrees::TrustedWorktrees,
 };
 use settings::{Settings as _, SettingsStore};
 use ui::{
@@ -308,6 +315,11 @@ impl LanguageServerState {
             );
         }
 
+        // ADR-F42 / ADR-F50: a project-defined binary runs because the user
+        // approved exactly it, and taking that approval back is what stops the
+        // server — here, or on the host the project is opened from.
+        let launch_approvals = LaunchApprovalsOfProject::of(&self.workspace, &self.lsp_store, cx);
+
         let server_metadata = self
             .lsp_store
             .update(cx, |lsp_store, _| {
@@ -440,6 +452,8 @@ impl LanguageServerState {
                     let lsp_store = self.lsp_store.clone();
                     let state = cx.entity().downgrade();
                     let can_stop = submenu_server_info.can_stop();
+                    let approval_to_revoke = launch_approvals
+                        .approved_launch_of(submenu_server_info.id, &submenu_server_name);
                     let process_memory_cache = process_memory_cache.clone();
 
                     move |menu, _window, _cx| {
@@ -643,6 +657,21 @@ impl LanguageServerState {
                                         })
                                         .ok();
                                 });
+                        }
+
+                        if let Some(approval_to_revoke) = approval_to_revoke.clone() {
+                            let workspace_for_revoke = workspace.clone();
+                            submenu = submenu.entry(
+                                "起動の承認を取り消す",
+                                None,
+                                move |_window, cx| {
+                                    revoke_language_server_approval(
+                                        approval_to_revoke.clone(),
+                                        workspace_for_revoke.clone(),
+                                        cx,
+                                    );
+                                },
+                            );
                         }
 
                         submenu = submenu.separator().custom_row({
@@ -1501,6 +1530,142 @@ impl Render for LspButton {
     }
 }
 
+/// Where to find the ADR-F42 approval that let a language server of this
+/// project start.
+enum LaunchApprovalsOfProject {
+    /// The servers run here, and the store kept the decision each one started
+    /// under: two worktrees can define a server of the same name, which the
+    /// stored decisions cannot be told apart by.
+    StartedHere(HashMap<LanguageServerId, LaunchApprovalKey>),
+    /// The servers run on the remote host, which keeps no approvals of its own
+    /// (ADR-F50 decision 1): the decisions kept here are matched by what they
+    /// were made for.
+    DecidedFor {
+        records: Vec<LaunchDecisionRecord>,
+        host: LaunchHost,
+        worktree_abs_paths: Vec<Arc<Path>>,
+    },
+}
+
+impl LaunchApprovalsOfProject {
+    fn of(workspace: &WeakEntity<Workspace>, lsp_store: &WeakEntity<LspStore>, cx: &App) -> Self {
+        let (Some(workspace), Some(lsp_store)) = (workspace.upgrade(), lsp_store.upgrade()) else {
+            return Self::none();
+        };
+        let lsp_store = lsp_store.read(cx);
+        if lsp_store.as_remote().is_none() {
+            return Self::StartedHere(
+                lsp_store
+                    .language_server_statuses()
+                    .filter_map(|(server_id, _)| {
+                        Some((server_id, lsp_store.approved_binary_launch(server_id)?))
+                    })
+                    .collect(),
+            );
+        }
+        let project = workspace.read(cx).project().clone();
+        let host = project
+            .read(cx)
+            .remote_connection_options(cx)
+            .map(|options| LaunchHost::from_remote_connection(&options))
+            .unwrap_or(LaunchHost::ThisMachine);
+        let worktree_abs_paths = project
+            .read(cx)
+            .worktrees(cx)
+            .map(|worktree| worktree.read(cx).abs_path())
+            .collect();
+        let records = match ProjectLaunchApprovals::try_global(cx) {
+            Some(approvals) => approvals
+                .read(cx)
+                .decision_records()
+                .unwrap_or_else(|error| {
+                    // Still loading, or unreadable: the settings page says so,
+                    // and here it only means there is nothing to revoke yet.
+                    log::debug!("no launch approvals to offer in the menu: {error:#}");
+                    Vec::new()
+                }),
+            None => Vec::new(),
+        };
+        Self::DecidedFor {
+            records,
+            host,
+            worktree_abs_paths,
+        }
+    }
+
+    fn none() -> Self {
+        Self::StartedHere(HashMap::default())
+    }
+
+    /// The approval that let this server start, if the user gave one. A denial
+    /// is not offered here: the server it stopped is not in this menu.
+    fn approved_launch_of(
+        &self,
+        server_id: LanguageServerId,
+        server_name: &LanguageServerName,
+    ) -> Option<LaunchApprovalKey> {
+        match self {
+            Self::StartedHere(started_under) => started_under.get(&server_id).cloned(),
+            Self::DecidedFor {
+                records,
+                host,
+                worktree_abs_paths,
+            } => approved_launch_of(records, server_name, host, worktree_abs_paths),
+        }
+    }
+}
+
+fn approved_launch_of(
+    records: &[LaunchDecisionRecord],
+    server_name: &LanguageServerName,
+    host: &LaunchHost,
+    worktree_abs_paths: &[Arc<Path>],
+) -> Option<LaunchApprovalKey> {
+    // An edited binary is approved under a key of its own, so the approval of
+    // a definition that no longer runs stays in the store next to the one the
+    // running server started under: the newest is the one to take back.
+    records
+        .iter()
+        .filter(|record| {
+            record.decision == LaunchDecision::Approved
+                && worktree_abs_paths.iter().any(|worktree_abs_path| {
+                    record.is_for(
+                        LaunchKind::LanguageServerBinary,
+                        server_name.0.as_ref(),
+                        host,
+                        worktree_abs_path,
+                    )
+                })
+        })
+        .max_by_key(|record| record.timestamp)
+        .map(LaunchDecisionRecord::approval_key)
+}
+
+/// Revoking goes through the approval service, which is what stops the server
+/// (here or on the remote host) and asks again the next time its binary is
+/// needed.
+fn revoke_language_server_approval(
+    key: LaunchApprovalKey,
+    workspace: WeakEntity<Workspace>,
+    cx: &mut App,
+) {
+    let Some(approvals) = ProjectLaunchApprovals::try_global(cx) else {
+        return;
+    };
+    let revoked = approvals.update(cx, |approvals, cx| approvals.revoke(&key, cx));
+    cx.spawn(async move |cx| {
+        let Err(error) = revoked.await else {
+            return;
+        };
+        workspace
+            .update(cx, |workspace, cx| {
+                workspace.show_error(format!("承認を取り消せませんでした: {error:#}"), cx);
+            })
+            .log_err();
+    })
+    .detach();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1657,6 +1822,189 @@ mod tests {
         assert!(
             state.health_statuses.contains_key(&server_id(2)),
             "the new server's health entry is present",
+        );
+    }
+
+    fn approval_record(
+        kind: LaunchKind,
+        name: &str,
+        decision: LaunchDecision,
+        host: Option<&str>,
+        worktree: &str,
+    ) -> LaunchDecisionRecord {
+        LaunchDecisionRecord {
+            key: format!("key-{name}-{worktree}"),
+            kind,
+            name: name.to_string(),
+            worktree: worktree.to_string(),
+            host: host.map(str::to_string),
+            summary: "tools/lsp".to_string(),
+            decision,
+            timestamp: 0,
+            session_only: false,
+        }
+    }
+
+    /// The submenu offers to take back the approval that let this server start,
+    /// and nothing else: a decision belongs to one worktree on one host, and a
+    /// denial stopped a server that is not in this menu.
+    #[test]
+    fn offers_to_revoke_only_the_approval_of_this_project_s_server() {
+        let worktrees: Vec<Arc<Path>> = vec![Arc::from(Path::new("/project"))];
+        let elsewhere = LaunchHost::Remote {
+            identity: "ssh://me@build".into(),
+            display_name: "me@build".into(),
+        };
+        let approved = approval_record(
+            LaunchKind::LanguageServerBinary,
+            "rust-analyzer",
+            LaunchDecision::Approved,
+            None,
+            "/project",
+        );
+        assert_eq!(
+            approved_launch_of(
+                std::slice::from_ref(&approved),
+                &server_name("rust-analyzer"),
+                &LaunchHost::ThisMachine,
+                &worktrees,
+            ),
+            Some(approved.approval_key())
+        );
+        assert_eq!(
+            approved_launch_of(
+                std::slice::from_ref(&approved),
+                &server_name("rust-analyzer"),
+                &elsewhere,
+                &worktrees,
+            ),
+            None,
+            "the same definition on another host has its own decision"
+        );
+        assert_eq!(
+            approved_launch_of(
+                std::slice::from_ref(&approved),
+                &server_name("typos-lsp"),
+                &LaunchHost::ThisMachine,
+                &worktrees,
+            ),
+            None
+        );
+
+        for record in [
+            approval_record(
+                LaunchKind::LanguageServerBinary,
+                "rust-analyzer",
+                LaunchDecision::Approved,
+                None,
+                "/other",
+            ),
+            approval_record(
+                LaunchKind::LanguageServerBinary,
+                "rust-analyzer",
+                LaunchDecision::Denied,
+                None,
+                "/project",
+            ),
+            approval_record(
+                LaunchKind::ContextServer,
+                "rust-analyzer",
+                LaunchDecision::Approved,
+                None,
+                "/project",
+            ),
+        ] {
+            assert_eq!(
+                approved_launch_of(
+                    std::slice::from_ref(&record),
+                    &server_name("rust-analyzer"),
+                    &LaunchHost::ThisMachine,
+                    &worktrees,
+                ),
+                None,
+                "{record:?}"
+            );
+        }
+    }
+
+    /// Editing the binary in settings leaves the approval of the definition
+    /// that no longer runs behind, and taking that one back would neither stop
+    /// the server nor ask about it again.
+    #[test]
+    fn revokes_the_newest_approval_of_the_same_server() {
+        let worktrees: Vec<Arc<Path>> = vec![Arc::from(Path::new("/project"))];
+        let mut superseded = approval_record(
+            LaunchKind::LanguageServerBinary,
+            "rust-analyzer",
+            LaunchDecision::Approved,
+            None,
+            "/project",
+        );
+        superseded.key = "key-of-the-edited-away-definition".to_string();
+        superseded.timestamp = 10;
+        let mut running = approval_record(
+            LaunchKind::LanguageServerBinary,
+            "rust-analyzer",
+            LaunchDecision::Approved,
+            None,
+            "/project",
+        );
+        running.timestamp = 20;
+        assert_eq!(
+            approved_launch_of(
+                &[superseded, running.clone()],
+                &server_name("rust-analyzer"),
+                &LaunchHost::ThisMachine,
+                &worktrees,
+            ),
+            Some(running.approval_key())
+        );
+    }
+
+    /// Two worktrees of one project can define a language server of the same
+    /// name, and their approvals are two decisions: the menu has to take back
+    /// the one this very server started under, which only the store knows.
+    #[test]
+    fn revokes_the_approval_the_running_server_started_under() {
+        let of_this_worktree = approval_record(
+            LaunchKind::LanguageServerBinary,
+            "rust-analyzer",
+            LaunchDecision::Approved,
+            None,
+            "/project",
+        );
+        let of_the_other_worktree = approval_record(
+            LaunchKind::LanguageServerBinary,
+            "rust-analyzer",
+            LaunchDecision::Approved,
+            None,
+            "/project/vendored",
+        );
+        let started_here = LaunchApprovalsOfProject::StartedHere(HashMap::from_iter([
+            (server_id(1), of_this_worktree.approval_key()),
+            (server_id(2), of_the_other_worktree.approval_key()),
+        ]));
+        assert_eq!(
+            started_here.approved_launch_of(server_id(2), &server_name("rust-analyzer")),
+            Some(of_the_other_worktree.approval_key()),
+            "the decision of the worktree this server was started for"
+        );
+        assert_eq!(
+            started_here.approved_launch_of(server_id(3), &server_name("rust-analyzer")),
+            None,
+            "a server that did not start from an approved binary has nothing to take back"
+        );
+
+        // The servers of a remote project started on the other host, which
+        // keeps no approvals: the decisions here are all there is to match.
+        let decided_for = LaunchApprovalsOfProject::DecidedFor {
+            records: vec![of_this_worktree.clone()],
+            host: LaunchHost::ThisMachine,
+            worktree_abs_paths: vec![Arc::from(Path::new("/project"))],
+        };
+        assert_eq!(
+            decided_for.approved_launch_of(server_id(3), &server_name("rust-analyzer")),
+            Some(of_this_worktree.approval_key())
         );
     }
 }

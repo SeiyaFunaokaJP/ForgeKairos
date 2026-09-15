@@ -60,6 +60,15 @@ pub use protected_paths::{
     WORKTREE_PROTECTED_RELATIVE, builtin_protected_paths, builtin_read_hidden_paths,
 };
 
+/// ADR-F49 decision 18: what still runs inside a sandbox, as the trusted side
+/// outside it sees it.
+pub mod sandbox_processes;
+pub use sandbox_processes::{
+    SANDBOX_KILL_FLAG, SANDBOX_PROCESSES_FAILURE_MARKER, SANDBOX_PROCESSES_FLAG, SandboxProcess,
+    SandboxProcessKey, decode_sandbox_processes, encode_sandbox_processes,
+    validate_sandbox_session_id,
+};
+
 mod util;
 
 #[cfg(target_os = "macos")]
@@ -1975,6 +1984,12 @@ pub fn run_sandbox_launcher_if_invoked() {
 /// (any OS) builds this into the command it runs on the remote host; the remote
 /// `remote_server` binary detects it at the top of `main`.
 pub const REMOTE_SANDBOX_HELPER_FLAG: &str = "--remote-sandbox-helper";
+
+/// ADR-F49 decision 18: names the sandbox the helper is about to build, so
+/// that what the command leaves running can be followed from outside it (see
+/// [`sandbox_processes`]). Appended by the caller that wants to follow the
+/// command; a command with no id is registered nowhere.
+pub const SANDBOX_SESSION_FLAG: &str = "--session";
 
 /// Outbound-network intent for a remote sandboxed command, as the client
 /// requests it. On an SSH host the remote proxy enforces exactly this: the

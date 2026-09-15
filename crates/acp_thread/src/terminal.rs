@@ -392,6 +392,15 @@ pub(crate) fn wsl_sandbox_timeout_message() -> String {
 /// ADR-F49: `readable_paths` are what the command runs from inside the
 /// read-hidden data directory (an external agent's installation), and
 /// `interactive` keeps its standard input live for a terminal session.
+///
+/// ADR-F49 decision 18: `session_id` names the sandbox so that what the
+/// command leaves running in it can be listed from outside it later. Only an
+/// agent's own process is given one; a one-off command is followed by its
+/// turn, which outlives it.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one argument per part of what the helper is told about the command"
+)]
 pub fn build_remote_sandbox_command(
     remote_binary: &RelPath,
     wrap: &SandboxWrap,
@@ -399,6 +408,7 @@ pub fn build_remote_sandbox_command(
     environment: &HashMap<String, String>,
     readable_paths: &[String],
     interactive: bool,
+    session_id: Option<&str>,
     inner_command: String,
     inner_args: Vec<String>,
 ) -> (String, Vec<String>) {
@@ -451,6 +461,12 @@ pub fn build_remote_sandbox_command(
     let separator = args.pop_if(|arg| arg == "--");
     if interactive {
         args.push("--interactive".to_string());
+    }
+    if let Some(session_id) = session_id {
+        args.extend([
+            sandbox::SANDBOX_SESSION_FLAG.to_string(),
+            session_id.to_string(),
+        ]);
     }
     let mut environment = environment
         .iter()
@@ -658,6 +674,26 @@ const READ_HIDING_UNAVAILABLE_WARNING: &str = "read-hiding-unavailable";
 /// What Zed adds right after that warning, for the user.
 const READ_HIDING_UNAVAILABLE_NOTE: &str = "このホストでは、サンドボックス内のコマンドから認証情報 (`~/.ssh` など) の読み取りを防げません (ユーザー名前空間内の mount が拒否されました)。書き込みの保護とネットワークの隔離は有効です。";
 
+/// ADR-F49 decision 11: the warning for the same host when Landlock hid the
+/// credential stores instead of the refused mounts. The protection is in
+/// place; what it costs the command is not obvious, so it is said too.
+const READ_HIDING_BY_LANDLOCK_WARNING: &str = "read-hiding-by-landlock";
+
+/// What Zed adds right after that warning, for the user.
+const READ_HIDING_BY_LANDLOCK_NOTE: &str = "このホストではユーザー名前空間内の mount が拒否されるため、認証情報 (`~/.ssh` など) の読み取りは Landlock で拒否しています (保護は有効です)。代償として、サンドボックス内のコマンドはホームディレクトリ・`~/.config`・`/` などの一覧 (`ls ~`) が拒否され、コマンドの開始後に作られたそれらの直下の項目は読めません。";
+
+/// The helper's read-hiding warnings and the note Zed puts after each.
+const READ_HIDING_WARNINGS: [(&str, &str); 2] = [
+    (
+        READ_HIDING_UNAVAILABLE_WARNING,
+        READ_HIDING_UNAVAILABLE_NOTE,
+    ),
+    (
+        READ_HIDING_BY_LANDLOCK_WARNING,
+        READ_HIDING_BY_LANDLOCK_NOTE,
+    ),
+];
+
 /// Shared Japanese lead-in for every remote sandbox-creation failure
 /// (GLOSSARY §5).
 const REMOTE_SANDBOX_FAILURE_PREFIX: &str =
@@ -801,35 +837,45 @@ pub fn annotate_sandbox_setup_failure(output: String, exit_code: Option<u32>) ->
 /// Whether the helper said, ahead of the command's output, that it could not
 /// hide the credential stores from the command, which then ran without that.
 pub fn sandbox_read_hiding_unavailable(output: &str) -> bool {
-    read_hiding_warning_end(output).is_some()
+    read_hiding_warning_end(output, READ_HIDING_UNAVAILABLE_WARNING).is_some()
 }
 
-/// Puts [`READ_HIDING_UNAVAILABLE_NOTE`] right after the helper's read-hiding
-/// warning, once.
+/// ADR-F49 decision 11: whether the helper said that it hid the credential
+/// stores with Landlock instead, the host having refused the mounts. The
+/// command ran protected, but without being able to list the directories on the
+/// way down to a hidden entry.
+pub fn sandbox_read_hiding_by_landlock(output: &str) -> bool {
+    read_hiding_warning_end(output, READ_HIDING_BY_LANDLOCK_WARNING).is_some()
+}
+
+/// Puts the note for the helper's read-hiding warning right after it, once.
 fn explain_read_hiding_warning(output: String) -> String {
     let (preamble, _) = split_sandbox_preamble(&output);
-    if preamble.contains(READ_HIDING_UNAVAILABLE_NOTE) {
-        return output;
+    for (warning, note) in READ_HIDING_WARNINGS {
+        if preamble.contains(note) {
+            continue;
+        }
+        let Some(warning_end) = read_hiding_warning_end(&output, warning) else {
+            continue;
+        };
+        let (before, after) = output.split_at(warning_end);
+        let line_break = if before.ends_with('\n') { "" } else { "\n" };
+        return format!("{before}{line_break}{note}\n{after}");
     }
-    let Some(warning_end) = read_hiding_warning_end(&output) else {
-        return output;
-    };
-    let (before, after) = output.split_at(warning_end);
-    let line_break = if before.ends_with('\n') { "" } else { "\n" };
-    format!("{before}{line_break}{READ_HIDING_UNAVAILABLE_NOTE}\n{after}")
+    output
 }
 
-/// Where the line holding the helper's read-hiding warning ends, when the
-/// warnings ahead of the output include one.
-fn read_hiding_warning_end(output: &str) -> Option<usize> {
+/// Where the line holding the helper's `warning` ends, when the warnings ahead
+/// of the output include it.
+fn read_hiding_warning_end(output: &str, warning: &str) -> Option<usize> {
     let (preamble, _) = split_sandbox_preamble(output);
     let mut end = 0;
     for line in preamble.split_inclusive('\n') {
         end += line.len();
-        let is_read_hiding = sandbox_warning(line.trim()).is_some_and(|warning| {
-            warning
+        let is_read_hiding = sandbox_warning(line.trim()).is_some_and(|reported| {
+            reported
                 .split_once(':')
-                .is_some_and(|(code, _)| code.trim() == READ_HIDING_UNAVAILABLE_WARNING)
+                .is_some_and(|(code, _)| code.trim() == warning)
         });
         if is_read_hiding {
             return Some(end);
@@ -851,7 +897,7 @@ fn split_sandbox_preamble(output: &str) -> (&str, &str) {
         let line = line.trim();
         if warnings < MAX_LEADING_SANDBOX_WARNINGS && sandbox_warning(line).is_some() {
             warnings += 1;
-        } else if !explained && line == READ_HIDING_UNAVAILABLE_NOTE {
+        } else if !explained && READ_HIDING_WARNINGS.iter().any(|(_, note)| line == *note) {
             explained = true;
         } else {
             break;
@@ -1847,6 +1893,40 @@ mod remote_sandbox_failure_tests {
         );
         assert!(!sandbox_read_hiding_unavailable(&echoed));
     }
+
+    /// ADR-F49 decision 11: where the host refused the covers but Landlock hid
+    /// the credential stores instead, the note says what that costs — and the
+    /// "the command ran with nothing hidden" detection must not fire for it,
+    /// since something very much is.
+    #[test]
+    fn a_landlock_read_hiding_warning_says_what_it_costs() {
+        const WARNING: &str = "zed-remote-sandbox-warning: read-hiding-by-landlock: \
+             unshare(CLONE_NEWNS): Operation not permitted (os error 1); nothing is hidden; \
+             Landlock denies reading them instead, from 71 grants";
+        let output = format!("{WARNING}\nhello\n");
+        let explained = annotate_sandbox_setup_failure(output.clone(), Some(0));
+        assert_eq!(
+            explained,
+            format!("{WARNING}\n{READ_HIDING_BY_LANDLOCK_NOTE}\nhello\n")
+        );
+        assert!(explained.contains("ls ~"), "{explained}");
+        assert_eq!(
+            annotate_sandbox_setup_failure(explained.clone(), Some(0)),
+            explained,
+            "annotating twice must not repeat the note"
+        );
+        for text in [&output, &explained] {
+            assert!(sandbox_read_hiding_by_landlock(text), "{text}");
+            assert!(!sandbox_read_hiding_unavailable(text), "{text}");
+        }
+
+        // A fail-closed marker after it is still recognized.
+        let failed = annotate_sandbox_setup_failure(
+            format!("{WARNING}\nzed-remote-sandbox: seccomp-failed: x\n"),
+            Some(126),
+        );
+        assert!(failed.contains("システムコール制限"), "{failed}");
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]
@@ -2046,6 +2126,7 @@ mod sandboxed_spawn_tests {
             &environment,
             &[],
             false,
+            None,
             "/bin/sh".to_string(),
             vec!["-c".to_string(), "make".to_string()],
         );

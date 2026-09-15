@@ -20,7 +20,8 @@ use project::{
         *,
     },
     project_launch_approvals::{
-        LaunchApprovalKey, LaunchKind, ProjectLaunchApprovals, ProjectLaunchApprovalsEvent,
+        LaunchApprovalKey, LaunchDecision, LaunchHost, LaunchKind, ProjectLaunchApprovals,
+        ProjectLaunchApprovalsEvent,
     },
 };
 use serde_json::json;
@@ -541,6 +542,153 @@ async fn test_revoking_a_language_server_binary_approval_stops_it(cx: &mut TestA
         .expect("the approval is revoked");
     cx.run_until_parked();
     assert!(!running(cx), "the server stops with its approval");
+}
+
+// The settings page lists decisions rather than pending launches: taking one
+// back by its record has to reach the same path the MCP servers page takes,
+// down to stopping the server and asking again.
+#[gpui::test]
+async fn test_revoking_a_listed_decision_stops_the_server_and_asks_again(cx: &mut TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/the-root"),
+        json!({
+            ".zed": {
+                "settings.json": json!({
+                    "languages": { "Rust": { "language_servers": ["project_lsp"] } },
+                    "lsp": { "project_lsp": { "binary": { "path": "project-lsp-binary" } } },
+                })
+                .to_string(),
+            },
+            "src": { "main.rs": "fn main() {}" },
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/the-root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "project_lsp",
+            ..Default::default()
+        },
+    );
+    cx.run_until_parked();
+    let _buffer_with_lsp = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/the-root/src/main.rs"), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let approvals = cx.update(ProjectLaunchApprovals::global);
+    let key = approvals
+        .read_with(cx, |approvals, _| {
+            approvals
+                .pending_launches()
+                .first()
+                .map(|pending| pending.key.clone())
+        })
+        .expect("the binary waits for approval");
+    approvals
+        .update(cx, |approvals, cx| approvals.approve_pending(&key, cx))
+        .await
+        .expect("the approval is stored");
+    fake_servers
+        .next()
+        .await
+        .expect("the language server starts once approved");
+    cx.run_until_parked();
+    let running = |cx: &mut TestAppContext| {
+        project.read_with(cx, |project, cx| {
+            project
+                .lsp_store()
+                .read(cx)
+                .language_server_statuses()
+                .any(|(_, status)| &*status.name.0 == "project_lsp")
+        })
+    };
+    assert!(running(cx));
+
+    let record = approvals
+        .read_with(cx, |approvals, _| {
+            approvals
+                .decision_records()
+                .expect("the decisions are readable")
+                .into_iter()
+                .find(|record| record.kind == LaunchKind::LanguageServerBinary)
+        })
+        .expect("the approval is listed for review");
+    assert_eq!(record.name, "project_lsp");
+    assert_eq!(record.decision, LaunchDecision::Approved);
+    assert_eq!(record.approval_key(), key);
+    assert!(
+        record.is_for(
+            LaunchKind::LanguageServerBinary,
+            "project_lsp",
+            &LaunchHost::ThisMachine,
+            Path::new(path!("/the-root")),
+        ),
+        "the row has to be findable from the server it started: {record:?}"
+    );
+
+    // A revoked launch has to raise its notification again: the dialog that
+    // approves a language server is only reachable from it, so without one the
+    // binary would wait for an approval nothing can give until Zed restarts.
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let events = events.clone();
+        cx.subscribe(&approvals, move |_, event, _| {
+            events.borrow_mut().push(event.clone())
+        })
+    });
+    approvals
+        .update(cx, |approvals, cx| {
+            approvals.revoke(&record.approval_key(), cx)
+        })
+        .await
+        .expect("the approval is revoked");
+    cx.run_until_parked();
+    assert!(!running(cx), "the server stops with its approval");
+    assert_eq!(
+        approvals.read_with(cx, |approvals, _| approvals
+            .decision_records()
+            .expect("the decisions are readable")
+            .len()),
+        0,
+        "the revoked decision leaves the list"
+    );
+
+    project.update(cx, |project, cx| {
+        project.lsp_store().update(cx, |lsp_store, cx| {
+            lsp_store.restart_all_language_servers(cx)
+        });
+    });
+    cx.run_until_parked();
+    assert!(
+        approvals.read_with(cx, |approvals, _| {
+            approvals
+                .pending_launches()
+                .iter()
+                .any(|pending| pending.name == "project_lsp")
+        }),
+        "the binary asks to be approved again"
+    );
+    assert!(
+        events.borrow().iter().any(|event| matches!(
+            event,
+            ProjectLaunchApprovalsEvent::PendingLaunchAppeared(details)
+                if details.name.as_ref() == "project_lsp"
+        )),
+        "and notifies about it: {:?}",
+        events.borrow()
+    );
+    assert!(!running(cx), "and does not run in the meantime");
 }
 
 // A language server waiting for its binary to be approved asks for its own

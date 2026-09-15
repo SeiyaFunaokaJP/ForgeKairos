@@ -987,6 +987,10 @@ pub struct SettingsWindow {
     /// context server store, plus per-server connection test and client secret
     /// input state.
     pub(crate) mcp_page: pages::McpPageState,
+    /// Live state of the page listing the decisions about the programs a
+    /// project would launch (ADR-F42), which come from the approval service
+    /// rather than from `SettingsStore`.
+    pub(crate) launch_approvals: pages::LaunchApprovalsPageState,
     /// Stable focus handle for the MCP "Add Server" button, so it can show a
     /// focus ring when the page auto-focuses it on open (which happens via mouse,
     /// where `focus_visible` styling would otherwise be suppressed).
@@ -1672,6 +1676,9 @@ enum SubPageType {
     /// The MCP servers page, whose live state comes from the active project's
     /// `ContextServerStore` and so has to subscribe to it when it opens.
     McpServers,
+    /// The page listing decisions about project-defined launches, which have
+    /// to be read from the approval service when it opens.
+    LaunchApprovals,
     #[default]
     Other,
 }
@@ -2034,6 +2041,7 @@ impl SettingsWindow {
             llm_provider_add_focus_handle: cx.focus_handle(),
             mcp_server_form: None,
             mcp_page: pages::McpPageState::default(),
+            launch_approvals: pages::LaunchApprovalsPageState::default(),
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
@@ -4342,6 +4350,11 @@ impl SettingsWindow {
         if sub_page_link.r#type == SubPageType::McpServers {
             pages::open_mcp_servers_page(self, cx);
         }
+        // Likewise: its rows are the approval service's decisions, and a
+        // decision made elsewhere has to reach the open list.
+        if sub_page_link.r#type == SubPageType::LaunchApprovals {
+            pages::open_launch_approvals_page(self, cx);
+        }
         self.sub_page_stack
             .push(SubPage::new(sub_page_link, section_header));
         self.content_focus_handle.focus_handle(cx).focus(window, cx);
@@ -4553,6 +4566,9 @@ impl SettingsWindow {
             match popped.link.r#type {
                 SubPageType::SkillCreator => self.skill_creator_page = None,
                 SubPageType::McpServers => self.mcp_page = pages::McpPageState::default(),
+                SubPageType::LaunchApprovals => {
+                    self.launch_approvals = pages::LaunchApprovalsPageState::default()
+                }
                 _ => {}
             }
         }
@@ -5515,6 +5531,7 @@ pub mod test {
                 llm_provider_add_focus_handle: cx.focus_handle(),
                 mcp_server_form: None,
                 mcp_page: pages::McpPageState::default(),
+                launch_approvals: pages::LaunchApprovalsPageState::default(),
                 mcp_add_server_focus_handle: cx.focus_handle(),
                 custom_agent_form: None,
                 external_agent_add_focus_handle: cx.focus_handle(),
@@ -5658,6 +5675,7 @@ pub mod test {
             llm_provider_add_focus_handle: cx.focus_handle(),
             mcp_server_form: None,
             mcp_page: pages::McpPageState::default(),
+            launch_approvals: pages::LaunchApprovalsPageState::default(),
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),

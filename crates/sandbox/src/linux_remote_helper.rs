@@ -24,7 +24,12 @@
 //!   in-namespace **mount-jail** (`pivot_root` + read-only `/` + a read-write
 //!   worktree bind) on older kernels (5.4, so 18.04). Either way a **seccomp**
 //!   filter (shared with the Bubblewrap backend) blocks the command from ever
-//!   creating an `AF_UNIX` socket.
+//!   creating an `AF_UNIX` socket. The credential stores are hidden on top of
+//!   that by mounting empty content over them (ADR-F49 decision 11) — and where
+//!   even that is refused (24.04 again: an unprivileged user namespace may not
+//!   mount), by having Landlock *deny reads* everywhere but the locations a
+//!   carve grants them ([`plan_read_denial`]), which is the same hiding at the
+//!   cost of not being able to list the directories on the way down to one.
 //! - Anything missing (no `slirp4netns`, no user namespaces, neither FS backend)
 //!   is **fail-closed**: the command never runs and the helper exits 126 with a
 //!   machine-readable line on stderr the client turns into a Japanese error.
@@ -88,10 +93,11 @@ use crate::protected_paths::{
     remote_agent_runtime_data_directory, resolve_readable_path, worktree_entries,
     zsh_startup_files_from_environment,
 };
+use crate::sandbox_processes::{SANDBOX_KILL_FLAG, SANDBOX_PROCESSES_FLAG};
 use crate::util::CanonicalPathBuf;
 use crate::{
-    IDE_BRIDGE_FLAG, REMOTE_SANDBOX_HELPER_FLAG, WSL_HELPER_MODE_FLAG, WSL_PROBE_RESULT_PREFIX,
-    WSL_SANDBOX_PROBE_FLAG, WSL_SANDBOX_RESOLVE_FLAG,
+    IDE_BRIDGE_FLAG, REMOTE_SANDBOX_HELPER_FLAG, SANDBOX_SESSION_FLAG, WSL_HELPER_MODE_FLAG,
+    WSL_PROBE_RESULT_PREFIX, WSL_SANDBOX_PROBE_FLAG, WSL_SANDBOX_RESOLVE_FLAG,
 };
 
 /// Exit code for "the sandbox could not be built" (mirrors the Bubblewrap
@@ -134,12 +140,19 @@ pub(crate) fn run_if_invoked() {
         && flag != WSL_SANDBOX_PROBE_FLAG
         && flag != REMOTE_SANDBOX_HELPER_FLAG
         && flag != IDE_BRIDGE_FLAG
+        && flag != SANDBOX_PROCESSES_FLAG
+        && flag != SANDBOX_KILL_FLAG
     {
         return;
     }
     close_verified_exec_descriptor();
     if flag == IDE_BRIDGE_FLAG {
         crate::ide_bridge::run_ide_bridge(rest);
+    }
+    // ADR-F49 decision 18: the listing and the stop run outside every sandbox,
+    // as this account, and touch nothing but `/proc` and the session registry.
+    if flag == SANDBOX_PROCESSES_FLAG || flag == SANDBOX_KILL_FLAG {
+        crate::sandbox_processes::run_subcommand(flag == SANDBOX_PROCESSES_FLAG, rest);
     }
     if flag == WSL_SANDBOX_RESOLVE_FLAG {
         run_wsl_resolve(rest);
@@ -258,7 +271,27 @@ fn fail_closed(code: &str, detail: &str) -> ! {
         REMOTE_FAILURE_MARKER
     };
     eprintln!("{marker}: {code}: {detail}");
+    unregister_sandbox_session();
     std::process::exit(SANDBOX_SETUP_FAILED_EXIT_CODE);
+}
+
+/// ADR-F49 decision 18: the parent's registration of the command's PID
+/// namespace, kept here because every way out of the parent is a
+/// `std::process::exit`, which runs no destructor. Only the parent ever sets
+/// it: the holder forks before this point and its copy stays empty.
+static SANDBOX_SESSION: std::sync::Mutex<Option<crate::sandbox_processes::SandboxSessionGuard>> =
+    std::sync::Mutex::new(None);
+
+fn unregister_sandbox_session() {
+    let guard = match SANDBOX_SESSION.lock() {
+        Ok(mut session) => session.take(),
+        // Poisoned by a panic elsewhere in the parent; the registration still
+        // has to go.
+        Err(poisoned) => poisoned.into_inner().take(),
+    };
+    if let Some(guard) = guard {
+        guard.unregister();
+    }
 }
 
 // ===========================================================================
@@ -299,6 +332,11 @@ struct Stage1Invocation {
     interactive: bool,
     /// ADR-F49: the IDE channel of an interactive session.
     ide_forward: Option<IdeForwardRequest>,
+    /// ADR-F49 decision 18: the opaque id the client gave this sandbox, under
+    /// which the parent registers the command's PID namespace so that what
+    /// the command leaves running can be followed from outside (see
+    /// [`crate::sandbox_processes`]). `None` for a command nobody follows.
+    session_id: Option<String>,
     program: OsString,
     args: Vec<OsString>,
 }
@@ -328,6 +366,7 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
     let mut interactive = false;
     let mut ide_listen: Option<u16> = None;
     let mut ide_rendezvous: Option<PathBuf> = None;
+    let mut session_id: Option<String> = None;
     let mut program = None;
     let mut trailing = Vec::new();
 
@@ -405,6 +444,15 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
                 );
                 ide_rendezvous = Some(path);
             }
+            SANDBOX_SESSION_FLAG => {
+                let value = args.next().context("--session requires an id")?;
+                let value = value
+                    .to_str()
+                    .context("the sandbox session id is not text")?
+                    .to_string();
+                crate::sandbox_processes::validate_sandbox_session_id(&value)?;
+                session_id = Some(value);
+            }
             "--" => {
                 program = args.next();
                 trailing = args.collect();
@@ -451,6 +499,7 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
         unset_environment,
         interactive,
         ide_forward,
+        session_id,
         program,
         args: trailing,
     })
@@ -580,6 +629,24 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     // the command rather than being dropped, and pinned like a write grant so
     // the cover binds back the very object that was checked.
     let data_directory = remote_agent_runtime_data_directory(&hidden_home);
+    // ADR-F49 decision 18: the session registry, which says which PID
+    // namespace belongs to which sandbox. It lies inside the data directory,
+    // which the built-in list already protects under its home-relative name —
+    // named again here so the protection holds wherever `XDG_DATA_HOME` puts
+    // the directory (decision 27). A command that could write here could point
+    // the listing at a namespace of its choosing.
+    let sandbox_sessions = crate::sandbox_processes::sandbox_sessions_directory(&data_directory);
+    if invocation.session_id.is_some()
+        && let Err(error) =
+            crate::sandbox_processes::create_sandbox_sessions_directory(&sandbox_sessions)
+    {
+        // Made before the protected set is pinned, so the rule covers the
+        // directory itself rather than a name that is not there yet.
+        fail_closed("session-register-failed", &format!("{error:#}"));
+    }
+    if !invocation.protected_paths.contains(&sandbox_sessions) {
+        invocation.protected_paths.push(sandbox_sessions.clone());
+    }
     let readable =
         match resolve_readable_paths(&invocation.readable_paths, &data_directory, &hidden_home) {
             Ok(readable) => readable,
@@ -672,6 +739,32 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
         },
         FsBackend::MountJail => FilesystemPlan::default(),
     };
+    // ADR-F49 decision 11: and the read denial the holder falls back to when
+    // the host refuses the covers, planned here for the same reason and one
+    // more — the holder is inside a user namespace by the time it learns that,
+    // and 24.04's AppArmor profile for one refuses it even a listing of `/`
+    // (see [`plan_read_denial`]). Nothing is planned where it could not hide
+    // everything the covers do: on a WSL kernel (whose mounts are known to work
+    // anyway) that is the Windows drives, which the carve says nothing about
+    // and whose credentials would stay readable behind a warning claiming they
+    // are hidden. Nor for the mount jail, which is chosen only where there is
+    // no Landlock to deny anything with.
+    let read_plan = match fs_backend {
+        FsBackend::Landlock(_) if !invocation.on_wsl => match plan_read_denial(
+            &read_hidden,
+            &reachable,
+            &enclosures,
+            &writable_pins,
+            &readable_pins,
+        ) {
+            Ok(read_grants) => Some(read_grants),
+            Err(error) => {
+                log::warn!("[remote-sandbox] no read denial to fall back to: {error:#}");
+                None
+            }
+        },
+        FsBackend::Landlock(_) | FsBackend::MountJail => None,
+    };
 
     let ide_rendezvous = match &invocation.ide_forward {
         Some(forward) => match IdeRendezvous::open(&forward.rendezvous, &protected, &writable_pins)
@@ -763,6 +856,7 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
                 read_hidden: &read_hidden,
                 reachable: &reachable,
                 enclosures: &enclosures,
+                read_plan: read_plan.as_deref(),
             },
             ready_write_fd,
             go_read_fd,
@@ -806,6 +900,28 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     // stay writable and the command doesn't run as `nobody`.
     if let Err(error) = write_id_maps(child_pid) {
         abort_holder(child_pid, "uidmap-failed", &format!("{error:#}"));
+    }
+
+    // ADR-F49 decision 18: record which PID namespace this sandbox is, now
+    // that the holder has made it and before the command can run in it. This
+    // process is outside every namespace it built, and the directory it writes
+    // to is one the command cannot write, so what the listing later reports
+    // cannot have been shaped from inside the sandbox.
+    if let Some(session_id) = invocation.session_id.as_deref() {
+        match crate::sandbox_processes::register_sandbox_session(
+            &sandbox_sessions,
+            session_id,
+            child_pid,
+        ) {
+            Ok(guard) => match SANDBOX_SESSION.lock() {
+                Ok(mut session) => *session = Some(guard),
+                Err(poisoned) => *poisoned.into_inner() = Some(guard),
+            },
+            // Fail closed: the client asked to be able to follow what this
+            // command leaves running, and a command it cannot follow is one
+            // whose leftovers would silently pass for none.
+            Err(error) => abort_holder(child_pid, "session-register-failed", &format!("{error:#}")),
+        }
     }
 
     // Stand up the egress proxy (host loopback) now — after the fork, so its
@@ -910,6 +1026,8 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     // outlives the command, so we are the one left to remove them — on every
     // path, including the failing ones below.
     remove_command_temp_dirs(child_pid);
+
+    unregister_sandbox_session();
 
     match status {
         Ok(code) => std::process::exit(code),
@@ -1018,6 +1136,10 @@ struct HolderSetup<'a> {
     /// Directories covered whole around the roots inside them (see
     /// [`cover_enclosure`]).
     enclosures: &'a [PathBuf],
+    /// ADR-F49 decision 11: the read grants that hide the same entries where
+    /// the covers are refused (see [`plan_read_denial`]), worked out by the
+    /// parent because in here the carve could not even list `/`.
+    read_plan: Option<&'a [CanonicalPathBuf]>,
 }
 
 fn run_holder_inner(
@@ -1160,10 +1282,14 @@ fn apply_filesystem_backend(
     read_hidden: &[PathBuf],
     reachable: &[PathBuf],
     enclosures: &[PathBuf],
+    read_plan: Option<&[CanonicalPathBuf]>,
 ) -> std::result::Result<PathBuf, (&'static str, anyhow::Error)> {
     match fs_backend {
         FsBackend::Landlock(abi) => {
             let mut temporary_writable = Vec::new();
+            // Only set where the covers were refused and Landlock hides the
+            // entries instead (see `hide_by_landlock_instead`).
+            let mut read_grants: Option<&[CanonicalPathBuf]> = None;
             let tmpdir = if invocation.wsl {
                 enter_private_mount_namespace().map_err(|error| ("mount-failed", error))?;
                 // First, so that the read-only binds of protected entries in a
@@ -1208,7 +1334,7 @@ fn apply_filesystem_backend(
                 // Nothing else here needs a mount namespace of the command's
                 // own, the hiding does: entered only when there is something
                 // to hide.
-                hide_read_hidden_entries(
+                let covered = hide_read_hidden_entries(
                     read_hidden,
                     reachable,
                     enclosures,
@@ -1216,12 +1342,20 @@ fn apply_filesystem_backend(
                     readable_pins,
                     invocation.on_wsl.then_some(invocation),
                     true,
-                )
-                .or_else(|error| read_hiding_refused(invocation.wsl, error))?;
+                );
+                if let Err(error) = covered {
+                    read_grants = hide_by_landlock_instead(invocation, error, read_plan)?;
+                }
                 private_tmp
             };
-            apply_landlock(abi, &plan.grants, &temporary_writable, invocation.on_wsl)
-                .map_err(|error| ("landlock-failed", error))?;
+            apply_landlock(
+                abi,
+                &plan.grants,
+                read_grants,
+                &temporary_writable,
+                invocation.on_wsl,
+            )
+            .map_err(|error| ("landlock-failed", error))?;
             Ok(tmpdir)
         }
         FsBackend::MountJail => {
@@ -1520,6 +1654,7 @@ fn prepare_and_run_command(
         read_hidden,
         reachable,
         enclosures,
+        read_plan,
     } = setup;
     set_parent_death_signal().map_err(|error| ("signals-failed", error))?;
     // Checked after the request, so a holder that died before it is seen here
@@ -1541,6 +1676,7 @@ fn prepare_and_run_command(
         read_hidden,
         reachable,
         enclosures,
+        read_plan,
     )?;
     let environment = command_environment(&invocation, &tmpdir, relay_port);
     // After the FS jail is in place, so the path resolves inside the jail.
@@ -3318,24 +3454,12 @@ fn select_fs_backend(require_landlock: bool) -> Result<FsBackend> {
 const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1 << 0;
 const LANDLOCK_RULE_PATH_BENEATH: libc::c_int = 1;
 
-// The read/execute accesses are intentionally never *handled* (so reads and
-// execs stay allowed everywhere); they are kept here as a complete, documented
-// reference of the ABI-1 access set.
-#[allow(
-    dead_code,
-    reason = "documents the read/execute accesses we leave unhandled"
-)]
+// The read/execute accesses are *handled* only where the read hiding falls back
+// to Landlock (see [`plan_read_denial`]); everywhere else they stay unhandled,
+// so reads and execs are allowed on the whole filesystem as they always were.
 const LANDLOCK_ACCESS_FS_EXECUTE: u64 = 1 << 0;
 const LANDLOCK_ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
-#[allow(
-    dead_code,
-    reason = "documents the read/execute accesses we leave unhandled"
-)]
 const LANDLOCK_ACCESS_FS_READ_FILE: u64 = 1 << 2;
-#[allow(
-    dead_code,
-    reason = "documents the read/execute accesses we leave unhandled"
-)]
 const LANDLOCK_ACCESS_FS_READ_DIR: u64 = 1 << 3;
 const LANDLOCK_ACCESS_FS_REMOVE_DIR: u64 = 1 << 4;
 const LANDLOCK_ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
@@ -3414,8 +3538,9 @@ fn landlock_handled_write_access(abi: i32) -> u64 {
 /// `>/dev/null` redirect works. Deliberately omits every directory-only access
 /// (`MAKE_*`, `REMOVE_*`, `READ_DIR`, `REFER`): Landlock rejects a `PATH_BENEATH`
 /// rule with `EINVAL` if it grants any of those on the fd of a non-directory.
-/// `READ_FILE` is likewise omitted — reads are never *handled*, so re-granting
-/// them would exceed the ruleset's handled set (also `EINVAL`).
+/// The read accesses are likewise not here: they are a grant of their own (see
+/// [`LANDLOCK_READ_ACCESS`]), and where they are not handled at all, asking for
+/// one would exceed the ruleset's handled set (also `EINVAL`).
 fn landlock_file_write_access(abi: i32) -> u64 {
     let mut access = LANDLOCK_ACCESS_FS_WRITE_FILE;
     if abi >= 3 {
@@ -3449,6 +3574,55 @@ fn landlock_entry_write_access(is_dir: bool, abi: i32, handled: u64) -> u64 {
         landlock_file_write_access(abi)
     };
     requested & handled
+}
+
+/// The read-type accesses, all of them ABI 1. Handled only where the read
+/// hiding falls back to Landlock (see [`plan_read_denial`]), which is what makes
+/// reads, listings and execs *denied by default* so that giving no rule to an
+/// entry hides it.
+const LANDLOCK_READ_ACCESS: u64 =
+    LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_EXECUTE;
+
+/// The subset a single **non-directory** may be granted: `READ_DIR` is a
+/// directory-only access, and Landlock rejects a rule asking for it on a file's
+/// fd with `EINVAL`, exactly as it does for the directory-only write accesses.
+const LANDLOCK_FILE_READ_ACCESS: u64 = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_EXECUTE;
+
+/// What a rule gives on one pinned entry.
+#[derive(Clone, Copy)]
+enum GrantKind {
+    /// Writes, for the planned writable roots ([`plan_filesystem`]).
+    Write,
+    /// Reads, listings and execs, for the read carve ([`plan_read_denial`]).
+    Read,
+    /// Both, for the fixed locations that are always available whatever the
+    /// carves decided: the harmless device nodes and the command's private temp
+    /// directories.
+    WriteAndRead,
+}
+
+/// The accesses to *allow* on one pinned entry, from what the grant is for and
+/// whether the entry is a directory, clamped to the ruleset's `handled` mask
+/// (see [`landlock_entry_write_access`] for why the inode type decides, and why
+/// clamping is what keeps `landlock_add_rule` from failing with `EINVAL`).
+fn landlock_entry_access(kind: GrantKind, is_dir: bool, abi: i32, handled: u64) -> u64 {
+    let writes = match kind {
+        GrantKind::Write | GrantKind::WriteAndRead => {
+            landlock_entry_write_access(is_dir, abi, handled)
+        }
+        GrantKind::Read => 0,
+    };
+    let reads = match kind {
+        GrantKind::Read | GrantKind::WriteAndRead => {
+            if is_dir {
+                LANDLOCK_READ_ACCESS
+            } else {
+                LANDLOCK_FILE_READ_ACCESS
+            }
+        }
+        GrantKind::Write => 0,
+    };
+    (writes | reads) & handled
 }
 
 /// Whether the inode behind `fd` is a directory. `fd` may be an `O_PATH` handle
@@ -3580,16 +3754,31 @@ fn entry_location(path: &Path) -> Result<PathBuf> {
 /// directories). `scope_signals` additionally stops the command from
 /// signalling processes outside the sandbox (ABI 6; silently unavailable
 /// before that). Bubblewrap got the same effect from its PID namespace.
+///
+/// `read_grants` is what the read hiding fell back to Landlock for (ADR-F49
+/// decision 11, see [`plan_read_denial`]): with it the ruleset *handles* the
+/// read accesses as well, so reads, listings and execs are denied everywhere
+/// but there — and the entries that stay hidden are simply the ones no grant
+/// names. Without it (the covers worked, or there is nothing to hide) the
+/// ruleset is exactly what it always was, and reads stay allowed everywhere.
 fn apply_landlock(
     abi: i32,
     grants: &[CanonicalPathBuf],
+    read_grants: Option<&[CanonicalPathBuf]>,
     temporary_writable: &[PathBuf],
     scope_signals: bool,
 ) -> Result<()> {
     // No-new-privs is a precondition for `landlock_restrict_self`.
     set_no_new_privs()?;
 
-    let handled = landlock_handled_write_access(abi);
+    let handled =
+        landlock_handled_write_access(abi) | read_grants.map_or(0, |_| LANDLOCK_READ_ACCESS);
+    // The fixed locations below are granted whatever the carves worked out, so
+    // they must carry reads too once reads are denied by default.
+    let fixed = match read_grants {
+        Some(_) => GrantKind::WriteAndRead,
+        None => GrantKind::Write,
+    };
     let attr = LandlockRulesetAttr {
         handled_access_fs: handled,
         handled_access_net: 0,
@@ -3625,9 +3814,24 @@ fn apply_landlock(
         // closed (that is how an `EINVAL` on plain files once blocked every
         // command on 24.04): it is skipped, which denies writes there and
         // nothing else.
-        if let Err(error) = add_pin_rule(ruleset.as_raw_fd(), grant, handled, abi) {
+        if let Err(error) = add_pin_rule(ruleset.as_raw_fd(), grant, handled, abi, GrantKind::Write)
+        {
             log::warn!(
                 "[remote-sandbox] not granting write on {}: {error:#}",
+                grant.path().display()
+            );
+        }
+    }
+
+    for grant in read_grants.unwrap_or_default() {
+        // Skipped like a write grant above, but the other way round: what is
+        // skipped here stays *unreadable*, which can cost the command a
+        // location it needs — handing out the entry the carve was made around
+        // is the one thing that must not happen instead.
+        if let Err(error) = add_pin_rule(ruleset.as_raw_fd(), grant, handled, abi, GrantKind::Read)
+        {
+            log::warn!(
+                "[remote-sandbox] not granting read on {}: {error:#}",
                 grant.path().display()
             );
         }
@@ -3646,7 +3850,8 @@ fn apply_landlock(
         "/dev/urandom",
     ] {
         // A missing node is simply skipped.
-        if let Err(error) = add_path_rule(ruleset.as_raw_fd(), Path::new(dev), handled, abi) {
+        if let Err(error) = add_path_rule(ruleset.as_raw_fd(), Path::new(dev), handled, abi, fixed)
+        {
             log::debug!("[remote-sandbox] not granting write on {dev}: {error:#}");
         }
     }
@@ -3655,7 +3860,7 @@ fn apply_landlock(
     // `.git` inside a `/tmp` worktree). In WSL mode `/tmp` itself is a private
     // tmpfs, set up so that this holds (see `provide_private_tmp`).
     for path in temporary_writable {
-        add_path_rule(ruleset.as_raw_fd(), path, handled, abi)
+        add_path_rule(ruleset.as_raw_fd(), path, handled, abi, fixed)
             .with_context(|| format!("allowing write on {}", path.display()))?;
     }
 
@@ -3901,31 +4106,57 @@ fn plan_subtree(
 /// Add a `LANDLOCK_RULE_PATH_BENEATH` rule granting write beneath `path`, for
 /// the few fixed locations that are not planned (device nodes, the private
 /// temp directories).
-fn add_path_rule(ruleset_fd: RawFd, path: &Path, handled: u64, abi: i32) -> Result<()> {
+fn add_path_rule(
+    ruleset_fd: RawFd,
+    path: &Path,
+    handled: u64,
+    abi: i32,
+    kind: GrantKind,
+) -> Result<()> {
     // `open_o_path` rather than `OpenOptions::custom_flags`: std masks custom
     // flags with `!O_ACCMODE`, and musl's `O_ACCMODE` contains `O_PATH` — see
     // the note on `open_o_path`. Without it this became a real read-open, which
     // blocks forever on a FIFO.
     let fd = crate::util::open_o_path(path, crate::util::FollowSymlinks::Yes)
         .with_context(|| format!("opening {}", path.display()))?;
-    add_fd_rule(ruleset_fd, fd.as_raw_fd(), path, handled, abi)
+    add_fd_rule(ruleset_fd, fd.as_raw_fd(), path, handled, abi, kind)
 }
 
 /// Add the rule for a planned grant, on the very inode that was pinned, so no
 /// path is re-resolved at enforcement time.
-fn add_pin_rule(ruleset_fd: RawFd, pin: &CanonicalPathBuf, handled: u64, abi: i32) -> Result<()> {
-    add_fd_rule(ruleset_fd, pin.fd().as_raw_fd(), pin.path(), handled, abi)
+fn add_pin_rule(
+    ruleset_fd: RawFd,
+    pin: &CanonicalPathBuf,
+    handled: u64,
+    abi: i32,
+    kind: GrantKind,
+) -> Result<()> {
+    add_fd_rule(
+        ruleset_fd,
+        pin.fd().as_raw_fd(),
+        pin.path(),
+        handled,
+        abi,
+        kind,
+    )
 }
 
-/// The access is chosen from the inode's type via
-/// [`landlock_entry_write_access`]: a directory receives the full handled write
-/// set, a non-directory only file-type accesses — otherwise Landlock rejects the
+/// The access is chosen from what the grant is for and the inode's type via
+/// [`landlock_entry_access`]: a directory receives the full set of its kind, a
+/// non-directory only the file-type accesses — otherwise Landlock rejects the
 /// rule with `EINVAL`. `handled` is the ruleset's handled mask and `abi` the
 /// detected Landlock ABI (both bound the accesses that can be requested).
-fn add_fd_rule(ruleset_fd: RawFd, fd: RawFd, path: &Path, handled: u64, abi: i32) -> Result<()> {
+fn add_fd_rule(
+    ruleset_fd: RawFd,
+    fd: RawFd,
+    path: &Path,
+    handled: u64,
+    abi: i32,
+    kind: GrantKind,
+) -> Result<()> {
     let is_dir =
         fd_is_dir(fd).with_context(|| format!("determining inode type of {}", path.display()))?;
-    let access = landlock_entry_write_access(is_dir, abi, handled);
+    let access = landlock_entry_access(kind, is_dir, abi, handled);
     let attr = LandlockPathBeneathAttr {
         allowed_access: access,
         parent_fd: fd,
@@ -4044,9 +4275,10 @@ fn create_private_tmpdir(scratch_pid: libc::pid_t) -> Result<PathBuf> {
 
 /// Raise the soft open-file limit to the hard one, returning the original. The
 /// parent holds every planned grant open while the command runs (see
-/// [`FilesystemPlan`]), which in a large home directory can take more
-/// descriptors than the default soft limit allows. The command gets the
-/// original back ([`restore_open_file_limit`]).
+/// [`FilesystemPlan`], and [`plan_read_denial`], which pins every entry its
+/// carve walks past), which in a large home directory can take more descriptors
+/// than the default soft limit allows. The command gets the original back
+/// ([`restore_open_file_limit`]).
 fn raise_open_file_limit() -> Option<libc::rlimit> {
     let mut limit = libc::rlimit {
         rlim_cur: 0,
@@ -4977,12 +5209,15 @@ fn cover_enclosure(
 /// the backends that set up none of their own need — and only when there is
 /// something to hide.
 ///
-/// Landlock handles only writes, so reads of the whole filesystem stay allowed
-/// there and read-only binds do not help: the entries are hidden by mounting
-/// over them. All or none: when one cover is refused, the ones already made
-/// come off again, since a set only partly covered would pass for protection
-/// while leaving the rest readable. What a refusal means is the caller's
-/// decision (see [`read_hiding_refused`]); the error says what state it left.
+/// Landlock as the backend applies it handles only writes, so reads of the
+/// whole filesystem stay allowed there and read-only binds do not help: the
+/// entries are hidden by mounting over them. All or none: when one cover is
+/// refused, the ones already made come off again, since a set only partly
+/// covered would pass for protection while leaving the rest readable. What a
+/// refusal means is the caller's decision — on an SSH host, having Landlock
+/// deny the reads instead ([`hide_by_landlock_instead`]) and, failing that,
+/// running with nothing hidden ([`read_hiding_refused`]); the error says what
+/// state it left.
 #[allow(
     clippy::too_many_arguments,
     reason = "hiding needs every part of the policy that decides what stays visible"
@@ -5119,8 +5354,212 @@ fn read_hiding_refused(
     if wsl {
         return Err(("mount-failed", error));
     }
-    eprintln!("{REMOTE_FAILURE_MARKER}-warning: read-hiding-unavailable: {error:#}");
+    eprintln!("{REMOTE_FAILURE_MARKER}-warning: {READ_HIDING_UNAVAILABLE_WARNING}: {error:#}");
     Ok(())
+}
+
+/// The warning code for a command that ran with nothing hidden from it.
+const READ_HIDING_UNAVAILABLE_WARNING: &str = "read-hiding-unavailable";
+
+/// The warning code for a command whose credential stores Landlock hides
+/// instead of the covers, with the cost that comes with it (see
+/// [`plan_read_denial`]). Zed turns both into a Japanese note for the user and
+/// an English one for the model.
+const READ_HIDING_BY_LANDLOCK_WARNING: &str = "read-hiding-by-landlock";
+
+/// ADR-F49 decision 11 for a host that refuses the covers: hide the very
+/// entries they would have by **denying reads by default** and granting them
+/// back everywhere else ([`carve_read_grants`]), rather than running the
+/// command with nothing hidden at all.
+///
+/// Worked out in the **parent**, before the holder is forked, and used only if
+/// the covers are then refused: inside the user namespace 24.04's AppArmor
+/// profile for an unprivileged one refuses to let the holder so much as list
+/// `/`, so a carve started there grants nothing at all and the fallback is not
+/// there when it is needed. Planning it for every command on the backend that
+/// can use it is the price of only finding out from inside. The rules are added
+/// on the pins taken here, which the parent holds until the command exits.
+///
+/// The plan is the same one the covers work from ([`read_hiding_plan`]), so
+/// what stays hidden does not depend on how it is hidden: the entries covered
+/// one by one and the directories covered whole (decisions 14 and 15) are alike
+/// just locations no grant may name, and what the command is *shown* inside one
+/// of them — the roots it may write, and what it may read — is granted back
+/// from the pins the parent already proved, never resolved again. The overlap
+/// between the two is refused before any of this runs, wherever the command
+/// runs ([`check_nothing_shown_is_covered`]) — except for a root the command
+/// may write that *holds* a hidden entry, which the covers hide inside the root
+/// and a grant cannot: that root is carved around it too.
+///
+/// **Cost** (the covers have none of it): a directory on the way down to a
+/// hidden entry cannot be granted without granting the entry with it, so the
+/// home itself, `~/.config` and `/` are not listable, and an entry created in
+/// one of them after the command started cannot be read — which also closes,
+/// for this host, the hole the covers leave open (a `gh auth login` mid-session
+/// leaves `~/.config/gh` readable under them).
+fn plan_read_denial(
+    read_hidden: &[PathBuf],
+    reachable: &[PathBuf],
+    enclosures: &[PathBuf],
+    writable_pins: &[CanonicalPathBuf],
+    readable_pins: &[CanonicalPathBuf],
+) -> Result<Vec<CanonicalPathBuf>> {
+    let started = Instant::now();
+    let (enclosures, targets) = read_hiding_plan(
+        read_hidden,
+        reachable,
+        enclosures,
+        writable_pins,
+        readable_pins,
+    );
+    let mut denied = enclosures;
+    denied.extend(targets);
+    ensure!(
+        !denied.is_empty(),
+        "there is nothing to hide, so there is nothing to deny either"
+    );
+
+    // Every entry the carve looks at, pinned as it is looked at: the rules are
+    // then added on those very inodes, with nothing resolved a second time
+    // between deciding about a path and granting it.
+    let mut pinned: Vec<CanonicalPathBuf> = Vec::new();
+    // What the command is shown that the carve from `/` does not reach by
+    // itself: granted whole, or carved around what it holds.
+    let mut shown_whole: Vec<&CanonicalPathBuf> = Vec::new();
+    let mut shown_carved: Vec<PathBuf> = Vec::new();
+    let granted = {
+        let mut list = |directory: &Path| -> Option<Vec<PathBuf>> {
+            let entries = match std::fs::read_dir(directory) {
+                Ok(entries) => entries,
+                Err(error) => {
+                    log::warn!(
+                        "[remote-sandbox] granting no read under {} (cannot list it: {error})",
+                        directory.display()
+                    );
+                    return None;
+                }
+            };
+            let mut children = Vec::new();
+            for entry in entries.filter_map(std::result::Result::ok) {
+                // `pin_path` follows symlinks and opens `O_PATH`, so a named
+                // pipe among the entries cannot block the way an ordinary open
+                // would, and what is returned is where the entry really lies.
+                let path = entry.path();
+                match pin_path(&path) {
+                    Ok(pin) => {
+                        children.push(pin.path().to_path_buf());
+                        pinned.push(pin);
+                    }
+                    // Left out of the listing, so nothing below it is granted:
+                    // an entry that cannot be pinned is one the command does
+                    // without, never one handed out unpinned.
+                    Err(error) => log::debug!(
+                        "[remote-sandbox] granting no read on {}: {error:#}",
+                        path.display()
+                    ),
+                }
+            }
+            Some(children)
+        };
+        let granted = crate::protected_paths::carve_read_grants(Path::new("/"), &denied, &mut list);
+        // What the command is shown inside a directory covered whole, which the
+        // carve above stops at, and what it is shown below a directory the
+        // carve was refused a listing of. A root it may write is not readable
+        // through its write grant: the two are separate rules.
+        //
+        // One that *holds* something hidden is carved around it instead of
+        // granted whole, or the grant that keeps the command working would undo
+        // the hiding: a worktree that is the home directory, or a project
+        // opened at `~/.config`, would be handed every key below it. The
+        // overlap between the two is refused only for what is shown *beyond*
+        // the roots ([`check_nothing_shown_is_covered`]), because a cover
+        // inside a root hides the entry without taking the root away — which a
+        // Landlock grant on the root cannot do.
+        for pin in writable_pins.iter().chain(readable_pins) {
+            let held: Vec<PathBuf> = denied
+                .iter()
+                .filter(|entry| entry.as_path() != pin.path() && entry.starts_with(pin.path()))
+                .cloned()
+                .collect();
+            if held.is_empty() {
+                shown_whole.push(pin);
+            } else {
+                shown_carved.extend(crate::protected_paths::carve_read_grants(
+                    pin.path(),
+                    &held,
+                    &mut list,
+                ));
+            }
+        }
+        granted
+    };
+
+    let mut read_grants: Vec<CanonicalPathBuf> = Vec::new();
+    let grant_reads_on = |paths: Vec<PathBuf>, read_grants: &mut Vec<CanonicalPathBuf>| {
+        for path in paths {
+            if read_grants.iter().any(|grant| grant.path() == path) {
+                continue;
+            }
+            match pinned.iter().find(|pin| pin.path() == path) {
+                Some(pin) => read_grants.push(pin.clone()),
+                // Only a carve's own root can be granted without having been
+                // listed as an entry: `/` is granted only when nothing is
+                // denied, which is refused above, and the roots carved below
+                // hold something denied, so they are never granted either.
+                None => log::warn!(
+                    "[remote-sandbox] granting no read on {}: it was not pinned",
+                    path.display()
+                ),
+            }
+        }
+    };
+    grant_reads_on(granted, &mut read_grants);
+    ensure!(
+        !read_grants.is_empty(),
+        "nothing could be granted for reading, which would leave the command unable to read \
+         anything at all"
+    );
+    grant_reads_on(shown_carved, &mut read_grants);
+    for pin in shown_whole {
+        if !read_grants.iter().any(|grant| grant.path() == pin.path()) {
+            read_grants.push(pin.clone());
+        }
+    }
+    log::info!(
+        "[remote-sandbox] planned {} read grants around {} hidden locations in {} ms",
+        read_grants.len(),
+        denied.len(),
+        started.elapsed().as_millis()
+    );
+    Ok(read_grants)
+}
+
+/// What it means that the covers were refused where Landlock can hide the same
+/// entries instead (ADR-F49 decisions 11 and 19): the command runs, with the
+/// read denial the parent planned if there is one and with nothing hidden if
+/// there is not, and the warning line says which of the two it is. In WSL mode
+/// the covers are known to work, so a refusal there still fails closed.
+fn hide_by_landlock_instead<'a>(
+    invocation: &Stage1Invocation,
+    refusal: anyhow::Error,
+    read_plan: Option<&'a [CanonicalPathBuf]>,
+) -> std::result::Result<Option<&'a [CanonicalPathBuf]>, (&'static str, anyhow::Error)> {
+    if invocation.wsl {
+        return Err(("mount-failed", refusal));
+    }
+    let Some(read_grants) = read_plan else {
+        read_hiding_refused(
+            invocation.wsl,
+            anyhow!("{refusal:#}; and there is no read denial to fall back to"),
+        )?;
+        return Ok(None);
+    };
+    eprintln!(
+        "{REMOTE_FAILURE_MARKER}-warning: {READ_HIDING_BY_LANDLOCK_WARNING}: {refusal:#}; \
+         Landlock denies reading them instead, from {} grants",
+        read_grants.len()
+    );
+    Ok(Some(read_grants))
 }
 
 /// The entries [`hide_read_hidden_entries`] covers: each of `read_hidden` that
@@ -5890,6 +6329,54 @@ mod tests {
         parse_stage1_args(args.iter().map(OsString::from)).expect("the builder's argv must parse")
     }
 
+    /// ADR-F49 decision 18 (C): the client names the sandbox so that what the
+    /// agent leaves running in it can be listed from outside; an id that could
+    /// name a path is refused before anything runs.
+    #[test]
+    fn a_session_id_travels_and_only_a_safe_one_is_taken() {
+        let mut argv = build_remote_sandbox_helper_argv(
+            &["/home/u/proj".to_string()],
+            &[],
+            &[],
+            &RemoteSandboxNetwork::Blocked,
+            false,
+            None,
+        );
+        let separator = argv.pop().expect("the policy ends with `--`");
+        assert_eq!(separator, "--");
+        argv.extend([SANDBOX_SESSION_FLAG.to_string(), "abc-123_DEF".to_string()]);
+        argv.push(separator);
+        argv.push("/bin/true".to_string());
+
+        let decoded = decode_for_test(&argv[1..]);
+        assert_eq!(decoded.session_id.as_deref(), Some("abc-123_DEF"));
+
+        // A command with no session is followed by its turn, which outlives it.
+        let mut plain = build_remote_sandbox_helper_argv(
+            &["/home/u/proj".to_string()],
+            &[],
+            &[],
+            &RemoteSandboxNetwork::Blocked,
+            false,
+            None,
+        );
+        plain.push("/bin/true".to_string());
+        assert_eq!(decode_for_test(&plain[1..]).session_id, None);
+
+        for refused in ["../other", "a/b", "", "a b", "a.session"] {
+            let mut argv = vec![
+                SANDBOX_SESSION_FLAG.to_string(),
+                refused.to_string(),
+                "--".to_string(),
+                "/bin/true".to_string(),
+            ];
+            assert!(
+                parse_stage1_args(argv.drain(..).map(OsString::from)).is_err(),
+                "{refused:?} must not be taken as a session id"
+            );
+        }
+    }
+
     /// ADR-F46 C-1: the command's environment is built from nothing, but `HOME`
     /// / `USER` / `LOGNAME` are filled in from the account database — a remote
     /// client cannot send them (it does not know the account's home) and `git`
@@ -6439,6 +6926,7 @@ mod tests {
                             grant,
                             landlock_handled_write_access(abi),
                             abi,
+                            GrantKind::Write,
                         )?;
                     }
                 }
@@ -6673,7 +7161,13 @@ mod tests {
         let tmp_path = private_tmp.path().to_path_buf();
 
         let results = std::thread::spawn(move || -> Result<Vec<(&'static str, bool)>> {
-            apply_landlock(abi, &plan.grants, std::slice::from_ref(&tmp_path), false)?;
+            apply_landlock(
+                abi,
+                &plan.grants,
+                None,
+                std::slice::from_ref(&tmp_path),
+                false,
+            )?;
             let append =
                 |path: PathBuf| std::fs::OpenOptions::new().append(true).open(path).is_ok();
             let create = |path: PathBuf| {
@@ -6753,6 +7247,197 @@ mod tests {
             allowed["tmp/new.txt"],
             "the private temp dir stays writable"
         );
+    }
+
+    /// ADR-F49 decision 11 where the host refuses the covers: the read denial
+    /// hides exactly what they would have — a credential store, the same store
+    /// reached through a symlink, and the other sessions' configuration inside
+    /// a directory covered whole (decision 15) — while the worktree, an
+    /// ordinary dotfile beside the hidden ones and the session's own
+    /// configuration stay readable, and writes are neither taken away nor
+    /// handed out with a read. Its cost is asserted too: the directories on the
+    /// way down to a hidden entry cannot be listed.
+    #[test]
+    fn landlock_hides_the_credential_stores_where_the_covers_are_refused() {
+        let abi = landlock_abi();
+        if abi < 1 {
+            // No Landlock on this kernel (18.04's 5.4), which uses the mount
+            // jail — and whose covers work.
+            return;
+        }
+        let (_home, home) = canonical_tempdir();
+        let project = home.join("project");
+        let sessions = home
+            .join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE)
+            .join("projects");
+        let own_session = sessions.join("mine");
+        let other_session = sessions.join("other");
+        for directory in [
+            &home.join(".ssh"),
+            &home.join(".config/gh"),
+            &home.join(".config/nvim"),
+            &project,
+            &own_session,
+            &other_session,
+        ] {
+            std::fs::create_dir_all(directory).expect("create a directory of the fake home");
+        }
+        std::fs::write(home.join(".ssh/id_ed25519"), "PRIVATE KEY").expect("write the key");
+        std::fs::write(home.join(".bashrc"), "export PATH=x").expect("write .bashrc");
+        std::fs::write(home.join(".config/gh/hosts.yml"), "oauth_token: t").expect("write gh");
+        std::fs::write(home.join(".config/nvim/init.lua"), "vim.o").expect("write nvim");
+        std::fs::write(project.join("file.txt"), "worktree").expect("write the worktree file");
+        std::fs::write(own_session.join("config.json"), "mine").expect("write the own session");
+        std::fs::write(other_session.join("config.json"), "other").expect("write the other");
+        std::os::unix::fs::symlink(home.join(".ssh"), home.join("keys")).expect("symlink keys");
+
+        let roots = [project.clone(), own_session.clone()];
+        let writable = pin_writable_paths(&roots, false).expect("pinning the writable roots");
+        let plan =
+            plan_filesystem(&writable, &[], false, false, &|_| true).expect("the write plan");
+        let read_grants = plan_read_denial(
+            &read_hidden_home_paths(&home, false),
+            &roots,
+            // The data directory of the fake home does not exist, so the
+            // sessions' configuration is the one directory covered whole.
+            &enclosed_directories(&home, &home.join(".local/share/zed-jp-enhance")),
+            &writable,
+            &[],
+        )
+        .expect("planning the read denial");
+
+        let checks = move || -> Result<Vec<(&'static str, bool)>> {
+            apply_landlock(abi, &plan.grants, Some(&read_grants), &[], false)?;
+            let read = |path: PathBuf| std::fs::read(path).is_ok();
+            let list = |path: PathBuf| std::fs::read_dir(path).is_ok();
+            Ok(vec![
+                ("the key", read(home.join(".ssh/id_ed25519"))),
+                ("the key through a link", read(home.join("keys/id_ed25519"))),
+                ("list .ssh", list(home.join(".ssh"))),
+                ("the gh token", read(home.join(".config/gh/hosts.yml"))),
+                ("another session", read(other_session.join("config.json"))),
+                ("list the sessions", list(sessions)),
+                ("list .config", list(home.join(".config"))),
+                ("list the home", list(home.clone())),
+                (".bashrc", read(home.join(".bashrc"))),
+                ("the nvim config", read(home.join(".config/nvim/init.lua"))),
+                ("the worktree file", read(project.join("file.txt"))),
+                ("list the worktree", list(project.clone())),
+                ("the own session", read(own_session.join("config.json"))),
+                ("/etc/passwd", read(PathBuf::from("/etc/passwd"))),
+                ("list /", list(PathBuf::from("/"))),
+                (
+                    "write the worktree",
+                    std::fs::write(project.join("new.txt"), "x").is_ok(),
+                ),
+                (
+                    "write /etc/passwd",
+                    std::fs::OpenOptions::new()
+                        .append(true)
+                        .open("/etc/passwd")
+                        .is_ok(),
+                ),
+            ])
+        };
+        let allowed: std::collections::HashMap<&str, bool> = std::thread::spawn(checks)
+            .join()
+            .expect("the enforcing thread panicked")
+            .expect("applying landlock")
+            .into_iter()
+            .collect();
+
+        for hidden in [
+            "the key",
+            "the key through a link",
+            "list .ssh",
+            "the gh token",
+            "another session",
+            "list the sessions",
+        ] {
+            assert!(!allowed[hidden], "{hidden} must stay hidden");
+        }
+        for reachable in [
+            ".bashrc",
+            "the nvim config",
+            "the worktree file",
+            "list the worktree",
+            "the own session",
+            "/etc/passwd",
+            "write the worktree",
+        ] {
+            assert!(allowed[reachable], "{reachable} must stay reachable");
+        }
+        assert!(
+            !allowed["write /etc/passwd"],
+            "a read grant must not hand out a write with it"
+        );
+        for cost in ["list the home", "list .config", "list /"] {
+            assert!(
+                !allowed[cost],
+                "the accepted trade-off: {cost} is refused, since Landlock cannot allow it \
+                 without allowing the hidden entries below it as well"
+            );
+        }
+    }
+
+    /// ADR-F49 decision 11 where the covers are refused and the worktree *is*
+    /// the home directory (or `~/.config`): the roots the command may write are
+    /// granted for reading as well, and a root holding a hidden entry has to be
+    /// granted around it. A grant on the root itself would hand the command
+    /// every credential below it — the one thing the covers, which hide the
+    /// entry inside the root, never do.
+    #[test]
+    fn the_read_denial_carves_a_writable_root_that_holds_a_hidden_entry() {
+        let (_home, home) = canonical_tempdir();
+        for directory in [
+            home.join(".ssh"),
+            home.join(".config/gh"),
+            home.join(".config/nvim"),
+            home.join("project"),
+        ] {
+            std::fs::create_dir_all(&directory).expect("create a directory of the fake home");
+        }
+        std::fs::write(home.join(".ssh/id_ed25519"), "PRIVATE KEY").expect("write the key");
+        std::fs::write(home.join(".bashrc"), "export PATH=x").expect("write .bashrc");
+        std::fs::write(home.join(".config/gh/hosts.yml"), "oauth_token: t").expect("write gh");
+
+        let roots = [home.clone()];
+        let writable = pin_writable_paths(&roots, false).expect("pinning the home as the worktree");
+        let read_hidden = read_hidden_home_paths(&home, false);
+        let enclosures = enclosed_directories(&home, &home.join(".local/share/zed-jp-enhance"));
+        let (covered, targets) =
+            read_hiding_plan(&read_hidden, &roots, &enclosures, &writable, &[]);
+        let mut denied = covered;
+        denied.extend(targets);
+        assert!(
+            denied.contains(&home.join(".ssh")) && denied.contains(&home.join(".config/gh")),
+            "{denied:?}"
+        );
+
+        let read_grants = plan_read_denial(&read_hidden, &roots, &enclosures, &writable, &[])
+            .expect("planning the read denial");
+        for grant in &read_grants {
+            for entry in &denied {
+                assert!(
+                    !entry.starts_with(grant.path()),
+                    "reading {} is granted, which hands out {}",
+                    grant.path().display(),
+                    entry.display()
+                );
+            }
+        }
+        let granted: Vec<&Path> = read_grants.iter().map(|grant| grant.path()).collect();
+        for readable in [
+            home.join(".bashrc"),
+            home.join("project"),
+            home.join(".config/nvim"),
+        ] {
+            assert!(
+                granted.contains(&readable.as_path()),
+                "what is not hidden stays readable inside the worktree: {} is not in {granted:?}",
+                readable.display()
+            );
+        }
     }
 
     fn canonical_tempdir() -> (tempfile::TempDir, PathBuf) {
@@ -7245,6 +7930,42 @@ mod tests {
         // rejects the rule with EINVAL regardless of inode type.
         assert_eq!(file & !handled, 0);
         assert_eq!(dir & !handled, 0);
+
+        // The same rule for the read grants of the read denial, whose
+        // `READ_DIR` is directory-only too — and a write grant must stay a
+        // write grant even once reads are handled, or the read carve's
+        // locations would become writable with it.
+        let handled = handled | LANDLOCK_READ_ACCESS;
+        let read_dir = landlock_entry_access(GrantKind::Read, true, abi, handled);
+        let read_file = landlock_entry_access(GrantKind::Read, false, abi, handled);
+        assert_eq!(read_dir, LANDLOCK_READ_ACCESS);
+        assert_eq!(read_file, LANDLOCK_FILE_READ_ACCESS);
+        assert_eq!(read_file & LANDLOCK_ACCESS_FS_READ_DIR, 0);
+        assert_eq!(
+            (read_dir | read_file) & landlock_handled_write_access(abi),
+            0,
+            "a read grant must give no write"
+        );
+        assert_eq!(
+            landlock_entry_access(GrantKind::Write, true, abi, handled) & LANDLOCK_READ_ACCESS,
+            0,
+            "a write grant must give no read"
+        );
+        assert_eq!(
+            landlock_entry_access(GrantKind::WriteAndRead, true, abi, handled),
+            handled,
+            "the fixed locations carry both"
+        );
+        assert_eq!(
+            landlock_entry_access(
+                GrantKind::Read,
+                true,
+                abi,
+                landlock_handled_write_access(abi)
+            ),
+            0,
+            "where reads are not handled, asking for one would be EINVAL"
+        );
     }
 
     /// The Windows side's IDE flags decode into the forward the helper serves,

@@ -1179,6 +1179,16 @@ const READ_HIDING_UNAVAILABLE_MODEL_NOTE: &str = "Note: this host's sandbox cann
 commands from reading credentials such as `~/.ssh` (the host refuses mounts inside a user \
 namespace). Writes are still restricted and the network is still isolated.";
 
+/// ADR-F49 decision 11: said once to the model when the same host hid the
+/// credential files with Landlock instead, so that it does not keep retrying a
+/// listing the sandbox will never allow.
+const READ_HIDING_BY_LANDLOCK_MODEL_NOTE: &str = "Note: this host's sandbox hides credentials \
+such as `~/.ssh` by denying reads with Landlock (it refuses mounts inside a user namespace). \
+As a result, listing the home directory, `~/.config`, `/` or any other directory that holds \
+one of those credentials fails with a permission error, and files created in one of them after \
+this command started cannot be read — that is the sandbox, not a broken command, and retrying \
+will not help. Everything else reads normally, the files in the worktree included.";
+
 /// Whether terminal output contains the kernel-style diagnostics WSL prints
 /// when a Windows executable is launched inside the sandbox, whose seccomp
 /// filter refuses the socket interop needs (`UtilBindVsockAnyPort: socket
@@ -1307,15 +1317,18 @@ fn process_content(
     with_read_hiding_note(content, &output.output)
 }
 
-/// Adds [`READ_HIDING_UNAVAILABLE_MODEL_NOTE`] to `result` when the sandbox
-/// helper warned, ahead of the terminal's `output`, that it could not hide the
-/// credential stores.
+/// Adds the note for whichever read-hiding warning the sandbox helper printed
+/// ahead of the terminal's `output`: that it could not hide the credential
+/// stores, or that Landlock hid them at the cost of some listings.
 fn with_read_hiding_note(result: String, output: &str) -> String {
-    if acp_thread::sandbox_read_hiding_unavailable(output) {
-        format!("{result}\n\n{READ_HIDING_UNAVAILABLE_MODEL_NOTE}")
+    let note = if acp_thread::sandbox_read_hiding_unavailable(output) {
+        READ_HIDING_UNAVAILABLE_MODEL_NOTE
+    } else if acp_thread::sandbox_read_hiding_by_landlock(output) {
+        READ_HIDING_BY_LANDLOCK_MODEL_NOTE
     } else {
-        result
-    }
+        return result;
+    };
+    format!("{result}\n\n{note}")
 }
 
 fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Option<PathBuf>> {
@@ -2196,6 +2209,39 @@ mod tests {
             !result.contains(READ_HIDING_UNAVAILABLE_MODEL_NOTE),
             "{result}"
         );
+    }
+
+    /// ADR-F49 decision 11: where Landlock hid the credentials instead, the
+    /// model is told that the listings it will see refused are the sandbox,
+    /// and never that the credentials were left readable.
+    #[test]
+    fn test_process_content_notes_landlock_read_hiding() {
+        let warning = "zed-remote-sandbox-warning: read-hiding-by-landlock: mount: EPERM; \
+                       Landlock denies reading them instead, from 71 grants";
+        let raw = format!("{warning}\nhello");
+        for text in [
+            raw.clone(),
+            acp_thread::annotate_sandbox_setup_failure(raw, Some(0)),
+        ] {
+            let output = acp::TerminalOutputResponse::new(text, false)
+                .exit_status(acp::TerminalExitStatus::new().exit_code(0));
+            let result = process_content(
+                output,
+                "ls ~",
+                false,
+                false,
+                TerminalOutputSelection::default(),
+            );
+            assert_eq!(
+                result.matches(READ_HIDING_BY_LANDLOCK_MODEL_NOTE).count(),
+                1,
+                "{result}"
+            );
+            assert!(
+                !result.contains(READ_HIDING_UNAVAILABLE_MODEL_NOTE),
+                "{result}"
+            );
+        }
     }
 
     #[test]

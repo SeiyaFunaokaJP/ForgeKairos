@@ -52,6 +52,9 @@ project.workspace = true
 release_channel.workspace = true
 remote.workspace = true
 reqwest_client = { workspace = true, optional = true }
+# ADR-F49 decision 18: the proto requests that ask a remote host what still
+# runs in the sandbox it built for an agent.
+rpc.workspace = true
 sandbox.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -62,6 +65,8 @@ thiserror.workspace = true
 ui.workspace = true
 terminal.workspace = true
 util.workspace = true
+# ADR-F49 decision 18: names an agent's sandbox for the host that registers it.
+uuid.workspace = true
 watch.workspace = true
 zed_credentials_provider.workspace = true
 

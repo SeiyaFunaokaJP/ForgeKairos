@@ -535,7 +535,11 @@ message Envelope {
     WithdrawProjectLaunchApproval withdraw_project_launch_approval = 503;
     SetWorktreeCodeExecution set_worktree_code_execution = 504;
     SaveBufferVerified save_buffer_verified = 505;
-    VerifyAgentRead verify_agent_read = 506; // current max
+    VerifyAgentRead verify_agent_read = 506;
+    ListSandboxProcesses list_sandbox_processes = 507;
+    ListSandboxProcessesResponse list_sandbox_processes_response = 508;
+    StopSandboxProcesses stop_sandbox_processes = 509;
+    StopSandboxProcessesResponse stop_sandbox_processes_response = 510; // current max
   }
 
   reserved 87 to 88;

@@ -50,6 +50,52 @@ message AgentServerSandbox {
   bool hosts_from_editor_allowlist = 5;
 }
 
+// ADR-F49 decision 18 (C): what still runs inside the sandbox an agent was
+// started in, as the host sees it from *outside* that sandbox. The client
+// cannot ask the agent itself: anything a sandboxed command can write, it can
+// also lie on, and a leftover process that reports itself gone is exactly what
+// the pause exists to catch. A server from before this message cannot decode
+// it and never answers, so the client gives up after a while and keeps the
+// agent a writer for as long as its session lasts (decision 18, case B).
+message ListSandboxProcesses {
+  uint64 project_id = 1;
+  // The opaque id the client gave the sandbox when it started the agent.
+  string session_id = 2;
+}
+
+message SandboxProcess {
+  // The pid on the host, never the one the process sees inside its namespace.
+  uint32 pid = 1;
+  // Ticks since boot at which it started, so a recycled pid is not mistaken
+  // for the process that held it.
+  uint64 start_time = 2;
+  string command = 3;
+  // How long it has been running, in seconds, worked out on the host: its
+  // start time is in that kernel's ticks since that host's boot.
+  uint64 running_for = 4;
+}
+
+message ListSandboxProcessesResponse {
+  repeated SandboxProcess processes = 1;
+}
+
+// ADR-F49 decision 18 (C): stops exactly these processes of that sandbox —
+// never the agent itself, which the user stops from its own panel.
+message StopSandboxProcesses {
+  uint64 project_id = 1;
+  string session_id = 2;
+  repeated SandboxProcessKey processes = 3;
+}
+
+message SandboxProcessKey {
+  uint32 pid = 1;
+  uint64 start_time = 2;
+}
+
+message StopSandboxProcessesResponse {
+  uint32 stopped = 1;
+}
+
 message ExternalAgentsUpdated {
   uint64 project_id = 1;
   repeated string names = 2;

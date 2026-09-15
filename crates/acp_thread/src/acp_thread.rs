@@ -2,6 +2,9 @@ mod agent_write_guard;
 mod connection;
 mod diff;
 mod mention;
+/// ADR-F49 decision 18 (C): what an external agent's answer left running in
+/// its sandbox, and how long that keeps it a writer.
+mod sandbox_processes;
 mod terminal;
 pub use ::terminal::HeadlessTerminal;
 use action_log::{ActionLog, ActionLogTelemetry};
@@ -28,6 +31,7 @@ use project::{
     AgentLocation, Project,
     git_store::{GitStoreCheckpoint, GitStoreEvent, RepositoryEvent},
 };
+pub use sandbox_processes::{SandboxProcessMonitor, SandboxProcessSource};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string_pretty;
 use std::collections::HashMap;
@@ -2172,6 +2176,12 @@ impl TurnWorktreeWriter {
     fn end(self) {
         drop(self.guard);
     }
+
+    /// ADR-F49 decision 18 (C): hands the registration on, so that what the
+    /// answer left running in the sandbox keeps it alive.
+    fn into_guard(self) -> project::SandboxedWriterGuard {
+        self.guard
+    }
 }
 
 /// ADR-F50 and ADR-F49 decision 18: registers an external agent's own process
@@ -2196,14 +2206,25 @@ pub fn register_agent_process_writer(
         Some(paths) => project::AgentWriteScope::Paths(paths),
         None => project::AgentWriteScope::Anywhere,
     };
-    Some(project.update(cx, |project, cx| {
+    Some(register_agent_writer(scope, project, cx))
+}
+
+/// ADR-F49 decision 18: the same registration for a caller that already knows
+/// the scope — what follows an agent's sandbox, which outlives the connection
+/// object it was made from.
+pub fn register_agent_writer(
+    scope: project::AgentWriteScope,
+    project: &Entity<Project>,
+    cx: &mut App,
+) -> project::SandboxedWriterGuard {
+    project.update(cx, |project, cx| {
         let (guard, other_spellings) =
             project.register_agent_writer(scope, project::AgentWriterKind::AgentTurn, cx);
         // The agent's process is already running, so there is nothing to hold
         // back until these are covered too.
         other_spellings.detach();
         guard
-    }))
+    })
 }
 
 pub struct AcpThread {
@@ -2238,6 +2259,10 @@ pub struct AcpThread {
     draft_prompt: Option<Vec<acp::ContentBlock>>,
     /// The initial scroll position for the thread view, set during session registration.
     ui_scroll_position: Option<gpui::ListOffset>,
+    /// ADR-F49 decision 18 (C): what follows the agent's sandbox, held by its
+    /// connection. `None` for an agent there is nothing to follow (it writes
+    /// through Zed's own tools, or it runs outside a sandbox).
+    sandbox_processes: Option<Entity<SandboxProcessMonitor>>,
     /// Buffer for smooth text streaming. Holds text that has been received from
     /// the model but not yet revealed in the UI. A timer task drains this buffer
     /// gradually to create a fluid typing effect instead of choppy chunk-at-a-time
@@ -2443,6 +2468,11 @@ impl AcpThread {
             })
         });
 
+        // ADR-F49 decision 18 (C): an answer that leaves a process running in
+        // the sandbox keeps the agent a writer until that process ends. The
+        // connection owns it, so closing this thread does not stop it.
+        let sandbox_processes = connection.sandbox_process_monitor();
+
         Self {
             parent_session_id,
             work_dirs,
@@ -2473,7 +2503,14 @@ impl AcpThread {
             draft_prompt: None,
             ui_scroll_position: None,
             streaming_text_buffer: None,
+            sandbox_processes,
         }
+    }
+
+    /// ADR-F49 decision 18 (C): what follows this agent's sandbox, for a test
+    /// to drive without waiting for its intervals.
+    pub fn sandbox_process_monitor(&self) -> Option<&Entity<SandboxProcessMonitor>> {
+        self.sandbox_processes.as_ref()
     }
 
     pub fn parent_session_id(&self) -> Option<&acp::SessionId> {
@@ -3958,10 +3995,20 @@ impl AcpThread {
         let turn_id = self.turn_id;
         let worktree_code_writer =
             TurnWorktreeWriter::start(self.connection.as_ref(), &self.project, cx);
+        // ADR-F49 decision 18 (C): what already runs in the sandbox is this
+        // answer's baseline, and is taken before the prompt reaches the agent
+        // so nothing the answer starts lands in its own baseline.
+        let baseline = self
+            .sandbox_processes
+            .as_ref()
+            .map(|monitor| monitor.update(cx, |monitor, cx| monitor.begin_turn(cx)));
         self.running_turn = Some(RunningTurn {
             id: turn_id,
             send_task: cx.spawn(async move |this, cx| {
                 cancel_task.await;
+                if let Some(baseline) = baseline {
+                    baseline.await;
+                }
                 tx.send(f(this, cx).await).ok();
             }),
             worktree_code_writer,
@@ -3972,14 +4019,21 @@ impl AcpThread {
             let response = rx.await;
 
             // ADR-F50: the turn is over, whatever becomes of its checkpoint.
-            this.update(cx, |this, _| {
+            // ADR-F49 decision 18 (C): its registration goes to what follows
+            // the sandbox, which holds it while anything the answer left
+            // running is still running.
+            this.update(cx, |this, cx| {
                 if let Some(writer) = this
                     .running_turn
                     .as_mut()
                     .filter(|turn| turn.id == turn_id)
                     .and_then(|turn| turn.worktree_code_writer.take())
                 {
-                    writer.end();
+                    match &this.sandbox_processes {
+                        Some(monitor) => monitor
+                            .update(cx, |monitor, cx| monitor.end_turn(writer.into_guard(), cx)),
+                        None => writer.end(),
+                    }
                 }
             })?;
 
@@ -4787,6 +4841,9 @@ impl AcpThread {
                         &environment,
                         &[],
                         false,
+                        // A one-off command is followed by the turn that
+                        // started it, which does not end before it does.
+                        None,
                         inner_command,
                         inner_args,
                     );
@@ -5228,7 +5285,7 @@ mod tests {
     use settings::SettingsStore;
     use std::{
         any::Any,
-        cell::RefCell,
+        cell::{Cell, RefCell},
         path::Path,
         rc::Rc,
         sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
@@ -6735,6 +6792,401 @@ mod tests {
             .await
             .unwrap();
         assert!(is_paused(cx));
+    }
+
+    /// ADR-F49 decision 18 (C): a process an answer leaves running in the
+    /// sandbox keeps the agent a writer until it ends, so the worktree cannot
+    /// be resumed in the meantime; what was already running when the answer
+    /// began does not.
+    #[gpui::test]
+    async fn test_a_process_an_answer_leaves_running_holds_the_resume(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let sandbox = FakeSandboxProcesses::new(vec![PathBuf::from(path!("/test"))]);
+        // The agent's own process, and an MCP server its start-up brought
+        // with it: the first baseline, not something an answer left behind.
+        sandbox.start(1, "claude --acp");
+        sandbox.start(2, "mcp-server");
+        let connection = Rc::new(cx.update(|cx| {
+            let started_by_the_answer = sandbox.clone();
+            FakeAgentConnection::new()
+                .with_sandbox_processes(sandbox.clone(), &project, cx)
+                .on_user_message(move |_, thread, mut cx| {
+                    // What the answer itself starts, and does not stop.
+                    started_by_the_answer.start(3, "npm run dev");
+                    async move {
+                        thread
+                            .update(&mut cx, |thread, cx| {
+                                thread.write_text_file(
+                                    PathBuf::from(path!("/test/src/main.rs")),
+                                    "fn main() { /* agent */ }\n".to_string(),
+                                    cx,
+                                )
+                            })?
+                            .await?;
+                        Ok(acp::PromptResponse::new(acp::StopReason::EndTurn))
+                    }
+                    .boxed_local()
+                })
+        }));
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let paused_and_writer_running = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                let execution = project.worktree_code_execution().read(cx);
+                (
+                    execution.is_paused(worktree_id),
+                    execution
+                        .details(worktree_id)
+                        .is_some_and(|details| details.sandboxed_writer_running),
+                )
+            })
+        };
+        assert_eq!(
+            paused_and_writer_running(cx),
+            (false, false),
+            "what was running before the first answer is nobody's leftover"
+        );
+
+        // The answer writes, and leaves a development server behind.
+        let send =
+            cx.update(|cx| thread.update(cx, |thread, cx| thread.send(vec!["hi".into()], cx)));
+        send.await.unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            paused_and_writer_running(cx),
+            (true, true),
+            "the answer's writer is held by what it left running"
+        );
+        let leftovers = project.read_with(cx, |project, cx| {
+            project
+                .worktree_code_execution()
+                .read(cx)
+                .leftover_sandbox_processes(worktree_id, cx)
+        });
+        assert_eq!(leftovers.len(), 1);
+        assert_eq!(leftovers[0].processes.len(), 1, "{leftovers:?}");
+        assert_eq!(leftovers[0].processes[0].pid, 3);
+        assert_eq!(leftovers[0].processes[0].command.as_ref(), "npm run dev");
+        let outcome = project
+            .update(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .update(cx, |execution, cx| {
+                        let generation = execution.generation(worktree_id).expect("a generation");
+                        execution.resume(worktree_id, generation, cx)
+                    })
+            })
+            .await;
+        assert_eq!(
+            outcome,
+            project::worktree_code_execution::ResumeOutcome::WriterRunning,
+            "the resume is refused while the leftover runs"
+        );
+
+        // The user stops it from the dialog.
+        let report = leftovers[0].id;
+        cx.update(|cx| project::LeftoverSandboxProcessReports::stop(report, cx));
+        cx.run_until_parked();
+        assert_eq!(sandbox.stopped.borrow().len(), 1);
+        assert_eq!(sandbox.stopped.borrow()[0].pid, 3);
+        cx.executor().advance_clock(Duration::from_secs(3));
+        cx.run_until_parked();
+        assert_eq!(
+            paused_and_writer_running(cx),
+            (true, false),
+            "the writer goes with the process; the pause stays until the user resumes"
+        );
+        assert!(
+            project
+                .read_with(cx, |project, cx| project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .leftover_sandbox_processes(worktree_id, cx))
+                .is_empty()
+        );
+        let outcome = project
+            .update(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .update(cx, |execution, cx| {
+                        let generation = execution.generation(worktree_id).expect("a generation");
+                        execution.resume(worktree_id, generation, cx)
+                    })
+            })
+            .await;
+        assert_eq!(
+            outcome,
+            project::worktree_code_execution::ResumeOutcome::Resumed
+        );
+    }
+
+    /// ADR-F49 decision 18 (C): a process that appears between two answers
+    /// makes the agent a writer again, and one that was there when an answer
+    /// began is that answer's baseline rather than its leftover.
+    #[gpui::test]
+    async fn test_a_process_that_appears_between_answers_pauses_again(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let sandbox = FakeSandboxProcesses::new(vec![PathBuf::from(path!("/test"))]);
+        sandbox.start(1, "claude --acp");
+        let connection = Rc::new(cx.update(|cx| {
+            FakeAgentConnection::new().with_sandbox_processes(sandbox.clone(), &project, cx)
+        }));
+        let _thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let paused = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .is_paused(worktree_id)
+            })
+        };
+        assert!(!paused(cx));
+
+        // Nothing is being answered, and a process appears anyway: something
+        // the agent left behind earlier has started one of its own.
+        sandbox.start(4, "python build_watch.py");
+        cx.executor().advance_clock(Duration::from_secs(11));
+        cx.run_until_parked();
+        assert!(
+            paused(cx),
+            "a process nobody asked for makes the agent a writer again"
+        );
+
+        sandbox.end(4);
+        cx.executor().advance_clock(Duration::from_secs(3));
+        cx.run_until_parked();
+        assert!(
+            paused(cx),
+            "the pause itself only the user lifts, from the dialog"
+        );
+        let writer_running = project.read_with(cx, |project, cx| {
+            project
+                .worktree_code_execution()
+                .read(cx)
+                .details(worktree_id)
+                .is_some_and(|details| details.sandboxed_writer_running)
+        });
+        assert!(!writer_running, "but the writer goes with the process");
+    }
+
+    /// ADR-F49 decision 18 (C), case B: a sandbox this side cannot look into —
+    /// macOS's Seatbelt, a host that does not answer — keeps the agent a
+    /// writer for as long as its connection lasts.
+    #[gpui::test]
+    async fn test_a_sandbox_that_cannot_be_looked_into_holds_the_writer(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let writer_running = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .details(worktree_id)
+                    .is_some_and(|details| details.sandboxed_writer_running)
+            })
+        };
+
+        let seatbelt = FakeSandboxProcesses::untrackable(vec![PathBuf::from(path!("/test"))]);
+        let monitor = cx
+            .update(|cx| SandboxProcessMonitor::new(seatbelt, &project, cx))
+            .expect("a sandboxed agent is followed one way or the other");
+        assert!(
+            monitor.read_with(cx, |monitor, _| monitor.follows_the_whole_session()),
+            "nothing to look through means the writer stays"
+        );
+        assert!(writer_running(cx));
+
+        // And a host that stops answering comes to the same thing.
+        let refusing = FakeSandboxProcesses::new(vec![PathBuf::from(path!("/test"))]);
+        refusing.refuses.set(true);
+        let refused = cx
+            .update(|cx| SandboxProcessMonitor::new(refusing, &project, cx))
+            .expect("it is followed");
+        cx.run_until_parked();
+        assert!(
+            refused.read_with(cx, |monitor, _| monitor.follows_the_whole_session()),
+            "a host that cannot say is not a host that said nothing is running"
+        );
+
+        drop(monitor);
+        drop(refused);
+        // An entity's own drop runs on the next flush, which is what releases
+        // the registration it holds.
+        cx.update(|_| {});
+        cx.run_until_parked();
+        assert!(
+            !writer_running(cx),
+            "the sandbox goes with the connection, and so does the writer"
+        );
+    }
+
+    /// ADR-F49 decision 18 (C): the sandbox is followed from the moment the
+    /// agent is spawned, and its host has not finished building it — let alone
+    /// started the agent in it — when the first look goes out. An empty
+    /// sandbox is one that is not up yet, never a baseline: taking it for one
+    /// would make the agent's own process the first answer's leftover and
+    /// leave the worktree paused for as long as the agent is connected.
+    #[gpui::test]
+    async fn test_a_sandbox_that_is_not_up_yet_is_not_an_empty_baseline(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let sandbox = FakeSandboxProcesses::new(vec![PathBuf::from(path!("/test"))]);
+        let monitor = cx
+            .update(|cx| SandboxProcessMonitor::new(sandbox.clone(), &project, cx))
+            .expect("a sandboxed agent is followed");
+        cx.run_until_parked();
+
+        // The agent's own process reaches the sandbox a moment later.
+        sandbox.start(1, "claude --acp");
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+        assert!(
+            monitor.read_with(cx, |monitor, _| monitor.leftovers().is_empty()),
+            "the agent's own process is not something an answer left behind"
+        );
+        assert!(!project.read_with(cx, |project, cx| {
+            project
+                .worktree_code_execution()
+                .read(cx)
+                .is_paused(worktree_id)
+        }));
+
+        // What appears after that still is a leftover.
+        sandbox.start(2, "npm run dev");
+        cx.executor().advance_clock(Duration::from_secs(11));
+        cx.run_until_parked();
+        assert_eq!(
+            monitor
+                .read_with(cx, |monitor, _| monitor.leftovers())
+                .len(),
+            1,
+            "and the sandbox is followed from there as usual"
+        );
+    }
+
+    /// ADR-F49 decision 18 (C): a later answer's baseline can only shrink. A
+    /// process the answer before it started — one no look has taken in yet
+    /// because the user stopped that answer and asked again at once — must not
+    /// be absorbed into it, or interrupting an agent would be all it takes to
+    /// leave a process behind that nothing accounts for.
+    #[gpui::test]
+    async fn test_a_later_baseline_does_not_absorb_an_earlier_answers_leftover(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let sandbox = FakeSandboxProcesses::new(vec![PathBuf::from(path!("/test"))]);
+        sandbox.start(1, "claude --acp");
+        let monitor = cx
+            .update(|cx| SandboxProcessMonitor::new(sandbox.clone(), &project, cx))
+            .expect("a sandboxed agent is followed");
+        cx.run_until_parked();
+
+        // The first answer starts a development server and is stopped before
+        // the sandbox is looked at again.
+        cx.update(|cx| monitor.update(cx, |monitor, cx| monitor.begin_turn(cx)))
+            .await;
+        sandbox.start(2, "npm run dev");
+
+        // The user asks again at once.
+        cx.update(|cx| monitor.update(cx, |monitor, cx| monitor.begin_turn(cx)))
+            .await;
+        cx.update(|cx| {
+            monitor.update(cx, |monitor, cx| {
+                monitor.end_turn(project::SandboxedWriterGuard::default(), cx)
+            })
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            monitor
+                .read_with(cx, |monitor, _| monitor.leftovers())
+                .len(),
+            1,
+            "the development server is still the first answer's leftover"
+        );
     }
 
     /// ADR-F50: a command an agent runs, natively or through ACP's
@@ -10143,6 +10595,7 @@ mod tests {
             >,
         >,
         sandbox_write_scope: Option<Vec<PathBuf>>,
+        sandbox_processes: Option<Entity<SandboxProcessMonitor>>,
     }
 
     impl FakeAgentConnection {
@@ -10154,11 +10607,25 @@ mod tests {
                 sessions: Arc::default(),
                 set_title_calls: Default::default(),
                 sandbox_write_scope: None,
+                sandbox_processes: None,
             }
         }
 
         fn with_sandbox_write_scope(mut self, paths: Vec<PathBuf>) -> Self {
             self.sandbox_write_scope = Some(paths);
+            self
+        }
+
+        /// ADR-F49 decision 18 (C): gives the agent a sandbox whose processes
+        /// `source` decides, followed the way a real one is.
+        fn with_sandbox_processes(
+            mut self,
+            source: Rc<FakeSandboxProcesses>,
+            project: &Entity<Project>,
+            cx: &mut App,
+        ) -> Self {
+            self.sandbox_write_scope = Some(source.write_scope.clone());
+            self.sandbox_processes = SandboxProcessMonitor::new(source, project, cx);
             self
         }
 
@@ -10187,6 +10654,87 @@ mod tests {
         }
     }
 
+    /// ADR-F49 decision 18 (C): a sandbox whose processes a test writes down.
+    struct FakeSandboxProcesses {
+        tracking: SandboxProcessTracking,
+        write_scope: Vec<PathBuf>,
+        running: RefCell<Vec<sandbox::SandboxProcess>>,
+        /// Makes every look fail, as a host that cannot answer does.
+        refuses: Cell<bool>,
+        stopped: RefCell<Vec<sandbox::SandboxProcessKey>>,
+    }
+
+    impl FakeSandboxProcesses {
+        fn new(write_scope: Vec<PathBuf>) -> Rc<Self> {
+            Rc::new(Self {
+                tracking: SandboxProcessTracking::Trackable,
+                write_scope,
+                running: RefCell::default(),
+                refuses: Cell::new(false),
+                stopped: RefCell::default(),
+            })
+        }
+
+        fn untrackable(write_scope: Vec<PathBuf>) -> Rc<Self> {
+            Rc::new(Self {
+                tracking: SandboxProcessTracking::Untrackable,
+                write_scope,
+                running: RefCell::default(),
+                refuses: Cell::new(false),
+                stopped: RefCell::default(),
+            })
+        }
+
+        fn start(&self, pid: u32, command: &str) {
+            self.running.borrow_mut().push(sandbox::SandboxProcess {
+                pid,
+                start_time: u64::from(pid) * 10,
+                running_for: Duration::from_secs(3),
+                command: command.to_string(),
+            });
+        }
+
+        fn end(&self, pid: u32) {
+            self.running
+                .borrow_mut()
+                .retain(|process| process.pid != pid);
+        }
+    }
+
+    impl SandboxProcessSource for FakeSandboxProcesses {
+        fn tracking(&self) -> SandboxProcessTracking {
+            self.tracking
+        }
+
+        fn write_scope(&self) -> Option<Vec<PathBuf>> {
+            Some(self.write_scope.clone())
+        }
+
+        fn agent(&self) -> SharedString {
+            "fake-agent".into()
+        }
+
+        fn list(&self, _cx: &App) -> Task<Result<Vec<sandbox::SandboxProcess>>> {
+            if self.refuses.get() {
+                return Task::ready(Err(anyhow!("the host did not answer")));
+            }
+            Task::ready(Ok(self.running.borrow().clone()))
+        }
+
+        fn stop(
+            &self,
+            processes: Vec<sandbox::SandboxProcessKey>,
+            _cx: &App,
+        ) -> Task<Result<usize>> {
+            let stopped = processes.len();
+            for process in &processes {
+                self.end(process.pid);
+            }
+            self.stopped.borrow_mut().extend(processes);
+            Task::ready(Ok(stopped))
+        }
+    }
+
     impl AgentConnection for FakeAgentConnection {
         fn agent_id(&self) -> AgentId {
             AgentId::new("fake")
@@ -10194,6 +10742,10 @@ mod tests {
 
         fn sandbox_write_scope(&self) -> Option<Vec<PathBuf>> {
             self.sandbox_write_scope.clone()
+        }
+
+        fn sandbox_process_monitor(&self) -> Option<Entity<SandboxProcessMonitor>> {
+            self.sandbox_processes.clone()
         }
 
         fn telemetry_id(&self) -> SharedString {

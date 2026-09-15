@@ -801,6 +801,37 @@ mod stdio_e2e {
                     has("own-writable"),
                     &detail,
                 );
+            } else if stderr.contains("read-hiding-by-landlock") {
+                checks.info(
+                    "this host refuses the read-hiding mounts and Landlock denies the reads \
+                     instead (ADR-F49 decision 11)",
+                );
+                checks.expect(
+                    "the fallback is reported on stderr, never on stdout",
+                    !output.iter().any(|line| line.contains("read-hiding")),
+                    &detail,
+                );
+                checks.expect(
+                    "the rest of Zed's data, the other agents, the other projects and the \
+                     credentials are as unreadable as the covers would have made them",
+                    !has("database-visible")
+                        && !has("other-agent-visible")
+                        && !has("key-visible")
+                        && !has("other-project-visible"),
+                    &detail,
+                );
+                checks.expect(
+                    "what may be read is readable, the session writes its own configuration, \
+                     and the directory holding the projects takes nothing new",
+                    has("own-writable") && !has("projects-writable"),
+                    &detail,
+                );
+                checks.expect(
+                    "the cost of hiding them this way: a directory holding a hidden entry \
+                     cannot be listed at all, where a cover shows what it binds back",
+                    has("data=") && has("projects="),
+                    &detail,
+                );
             } else {
                 checks.expect(
                     "the rest of Zed's data, the other agents and the credentials stay hidden, \

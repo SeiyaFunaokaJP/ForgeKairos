@@ -25,6 +25,7 @@ use project::agent_server_store::{
 };
 use project::{AgentId, Project};
 use remote::remote_client::Interactive;
+use rpc::proto;
 use serde::Deserialize;
 use settings::{AgentConfigOptionValue, Settings as _, SettingsStore};
 use std::path::Path;
@@ -415,6 +416,10 @@ pub struct AcpConnection {
     /// ADR-F49 第 2a 段: how the agent was started in its sandbox, for its
     /// turns and its sign-in; `None` when it runs outside one.
     sandbox_session: Option<Rc<AgentSandboxSession>>,
+    /// ADR-F49 decision 18 (C): what follows the processes of that sandbox.
+    /// Held here rather than by a thread, because the sandbox outlives any one
+    /// conversation in it.
+    sandbox_processes: Option<Entity<acp_thread::SandboxProcessMonitor>>,
     /// This machine's sandbox the agent itself runs in. It owns the command's
     /// network proxy, so it lives as long as the connection.
     _agent_sandbox: Option<sandbox::Sandbox>,
@@ -860,11 +865,12 @@ impl AcpConnection {
             command.sandbox.as_ref(),
         )
         .map_err(anyhow::Error::new)?;
-        let (child, sandbox_session, agent_sandbox) = match launch {
+        let (child, sandbox_session, agent_sandbox, pending_processes) = match launch {
             AgentLaunch::Host => (
                 host_agent_command(&project, &command, root_dir.as_ref(), cx),
                 None,
                 None,
+                PendingSandboxProcessAccess::NotSandboxed,
             ),
             AgentLaunch::LocalSandbox => {
                 let (child, session, sandbox) = local_sandboxed_agent_command(
@@ -875,20 +881,44 @@ impl AcpConnection {
                     cx,
                 )
                 .await?;
-                (child, Some(Rc::new(session)), Some(sandbox))
+                (
+                    child,
+                    Some(Rc::new(session)),
+                    Some(sandbox),
+                    PendingSandboxProcessAccess::Local,
+                )
             }
             AgentLaunch::RemoteHelper { remote_binary } => {
-                let (child, session) = remote_sandboxed_agent_command(
+                let (child, session, session_id) = remote_sandboxed_agent_command(
                     &project,
                     &command,
                     remote_binary,
                     root_dir.clone(),
                     cx,
                 )?;
-                (child, Some(Rc::new(session)), None)
+                (
+                    child,
+                    Some(Rc::new(session)),
+                    None,
+                    PendingSandboxProcessAccess::Remote { session_id },
+                )
             }
         };
         let mut child = Child::spawn(child, Stdio::piped(), Stdio::piped(), Stdio::piped())?;
+        // ADR-F49 decision 18 (C): only now is the sandbox's own process there
+        // to be named. What the agent's answers leave running in it keeps the
+        // agent a writer until it ends.
+        let sandbox_processes = pending_processes.resolve(
+            agent_id.clone(),
+            sandbox_session
+                .as_ref()
+                .map(|session| session.write_scope.clone()),
+            child.id(),
+            &project,
+        );
+        let sandbox_processes = cx.update(|cx| {
+            acp_thread::SandboxProcessMonitor::new(Rc::new(sandbox_processes), &project, cx)
+        });
 
         let stdout = child.stdout.take().context("Failed to take stdout")?;
         let stdin = child.stdin.take().context("Failed to take stdin")?;
@@ -1157,6 +1187,7 @@ impl AcpConnection {
             _stderr_task: stderr_task,
             child: Some(child),
             sandbox_session,
+            sandbox_processes,
             _agent_sandbox: agent_sandbox,
             login_sandboxes: Rc::default(),
         })
@@ -1195,6 +1226,7 @@ impl AcpConnection {
             defaults,
             child: None,
             sandbox_session: None,
+            sandbox_processes: None,
             _agent_sandbox: None,
             login_sandboxes: Rc::default(),
             session_list: None,
@@ -1653,6 +1685,230 @@ fn choose_agent_launch(
     }
 }
 
+/// ADR-F49 decision 18 (C): how what still runs in an agent's sandbox is read
+/// from outside it. Everything here asks a **trusted** side — this process
+/// walking `/proc`, or the remote host's server — never the agent, which
+/// could answer that it left nothing.
+struct SandboxProcessAccess {
+    agent: AgentId,
+    /// Everything the agent's process can write, which is what a writer
+    /// registration for its leftovers covers.
+    write_scope: Option<Vec<PathBuf>>,
+    route: SandboxProcessRoute,
+}
+
+enum SandboxProcessRoute {
+    /// The agent runs on its host with no sandbox of this fork's making.
+    NotSandboxed,
+    /// It runs in a sandbox with no process boundary to look through: macOS's
+    /// Seatbelt, where it stays a writer for its whole session instead.
+    Untrackable,
+    /// This machine's Bubblewrap sandbox. `bwrap` is this process's own child
+    /// and stays outside the PID namespace it makes, so its pid is the handle
+    /// on that namespace and no registry is needed.
+    LocalPidNamespace { root_pid: u32 },
+    /// A remote host's helper, which registered the sandbox under this id in
+    /// a directory the sandbox cannot write.
+    Remote {
+        session_id: String,
+        project: WeakEntity<Project>,
+    },
+}
+
+/// How long the host has to answer before the sandbox counts as one this side
+/// cannot look into (a server from before this message never answers at all).
+/// Short, because the answer is awaited before every prompt reaches the agent.
+const SANDBOX_PROCESS_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The half of [`SandboxProcessAccess`] that is known before the agent's own
+/// process exists.
+enum PendingSandboxProcessAccess {
+    NotSandboxed,
+    Local,
+    Remote { session_id: String },
+}
+
+impl PendingSandboxProcessAccess {
+    fn resolve(
+        self,
+        agent: AgentId,
+        write_scope: Option<Vec<PathBuf>>,
+        root_pid: u32,
+        project: &Entity<Project>,
+    ) -> SandboxProcessAccess {
+        let route = match self {
+            Self::NotSandboxed => SandboxProcessRoute::NotSandboxed,
+            // Only Linux builds a PID namespace locally; Seatbelt has nothing
+            // to walk.
+            Self::Local if cfg!(target_os = "linux") => {
+                SandboxProcessRoute::LocalPidNamespace { root_pid }
+            }
+            Self::Local => SandboxProcessRoute::Untrackable,
+            Self::Remote { session_id } => SandboxProcessRoute::Remote {
+                session_id,
+                project: project.downgrade(),
+            },
+        };
+        SandboxProcessAccess {
+            agent,
+            write_scope,
+            route,
+        }
+    }
+}
+
+impl acp_thread::SandboxProcessSource for SandboxProcessAccess {
+    fn write_scope(&self) -> Option<Vec<PathBuf>> {
+        self.write_scope.clone()
+    }
+
+    fn agent(&self) -> SharedString {
+        self.agent.to_string().into()
+    }
+
+    fn tracking(&self) -> acp_thread::SandboxProcessTracking {
+        match &self.route {
+            SandboxProcessRoute::NotSandboxed => acp_thread::SandboxProcessTracking::NotSandboxed,
+            SandboxProcessRoute::Untrackable => acp_thread::SandboxProcessTracking::Untrackable,
+            SandboxProcessRoute::LocalPidNamespace { .. } | SandboxProcessRoute::Remote { .. } => {
+                acp_thread::SandboxProcessTracking::Trackable
+            }
+        }
+    }
+
+    fn list(&self, cx: &App) -> Task<Result<Vec<sandbox::SandboxProcess>>> {
+        match &self.route {
+            SandboxProcessRoute::NotSandboxed | SandboxProcessRoute::Untrackable => {
+                Task::ready(Err(anyhow!(
+                    "the processes of this agent's sandbox cannot be listed"
+                )))
+            }
+            SandboxProcessRoute::LocalPidNamespace { root_pid } => {
+                let root_pid = *root_pid;
+                cx.background_spawn(async move { list_local_sandbox_processes(root_pid) })
+            }
+            SandboxProcessRoute::Remote {
+                session_id,
+                project,
+            } => {
+                let request = proto::ListSandboxProcesses {
+                    project_id: proto::REMOTE_SERVER_PROJECT_ID,
+                    session_id: session_id.clone(),
+                };
+                let Some(response) = remote_sandbox_request(project, request, cx) else {
+                    return Task::ready(Err(anyhow!(
+                        "the project is no longer connected to the host of the agent's sandbox"
+                    )));
+                };
+                let timeout = cx
+                    .background_executor()
+                    .timer(SANDBOX_PROCESS_REQUEST_TIMEOUT);
+                cx.background_spawn(async move {
+                    let response = futures::select_biased! {
+                        response = response.fuse() => response?,
+                        _ = timeout.fuse() => anyhow::bail!(
+                            "the host did not say what runs in the agent's sandbox"
+                        ),
+                    };
+                    Ok(response
+                        .processes
+                        .into_iter()
+                        .map(|process| sandbox::SandboxProcess {
+                            pid: process.pid,
+                            start_time: process.start_time,
+                            running_for: std::time::Duration::from_secs(process.running_for),
+                            command: process.command,
+                        })
+                        .collect())
+                })
+            }
+        }
+    }
+
+    fn stop(&self, processes: Vec<sandbox::SandboxProcessKey>, cx: &App) -> Task<Result<usize>> {
+        match &self.route {
+            SandboxProcessRoute::NotSandboxed | SandboxProcessRoute::Untrackable => {
+                Task::ready(Err(anyhow!(
+                    "the processes of this agent's sandbox cannot be stopped"
+                )))
+            }
+            SandboxProcessRoute::LocalPidNamespace { root_pid } => {
+                let root_pid = *root_pid;
+                cx.background_spawn(
+                    async move { stop_local_sandbox_processes(root_pid, &processes) },
+                )
+            }
+            SandboxProcessRoute::Remote {
+                session_id,
+                project,
+            } => {
+                let request = proto::StopSandboxProcesses {
+                    project_id: proto::REMOTE_SERVER_PROJECT_ID,
+                    session_id: session_id.clone(),
+                    processes: processes
+                        .iter()
+                        .map(|process| proto::SandboxProcessKey {
+                            pid: process.pid,
+                            start_time: process.start_time,
+                        })
+                        .collect(),
+                };
+                let Some(response) = remote_sandbox_request(project, request, cx) else {
+                    return Task::ready(Err(anyhow!(
+                        "the project is no longer connected to the host of the agent's sandbox"
+                    )));
+                };
+                cx.background_spawn(async move { Ok(response.await?.stopped as usize) })
+            }
+        }
+    }
+}
+
+/// Sends `request` to the remote server that holds the agent's sandbox.
+/// `None` once the project or its connection is gone, which also means the
+/// sandbox is.
+fn remote_sandbox_request<R: proto::RequestMessage>(
+    project: &WeakEntity<Project>,
+    request: R,
+    cx: &App,
+) -> Option<impl Future<Output = Result<R::Response>> + use<R>> {
+    let project = project.upgrade()?;
+    let client = project.read(cx).remote_client()?;
+    Some(client.read(cx).proto_client().request(request))
+}
+
+#[cfg(target_os = "linux")]
+fn list_local_sandbox_processes(root_pid: u32) -> Result<Vec<sandbox::SandboxProcess>> {
+    sandbox::sandbox_processes::list_local_sandbox_processes(root_pid)
+}
+
+#[cfg(target_os = "linux")]
+fn stop_local_sandbox_processes(
+    root_pid: u32,
+    processes: &[sandbox::SandboxProcessKey],
+) -> Result<usize> {
+    sandbox::sandbox_processes::stop_local_sandbox_processes(root_pid, processes)
+}
+
+/// Off Linux there is no local PID namespace to walk; [`SandboxProcessAccess`]
+/// never names one, so these only keep the call sites platform-independent.
+#[cfg(not(target_os = "linux"))]
+fn list_local_sandbox_processes(_root_pid: u32) -> Result<Vec<sandbox::SandboxProcess>> {
+    Err(anyhow!(
+        "this machine's sandbox has no PID namespace to look into"
+    ))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn stop_local_sandbox_processes(
+    _root_pid: u32,
+    _processes: &[sandbox::SandboxProcessKey],
+) -> Result<usize> {
+    Err(anyhow!(
+        "this machine's sandbox has no PID namespace to look into"
+    ))
+}
+
 /// ADR-F49 第 2a 段: how an agent was started in its sandbox, which its
 /// turns and its sign-in follow.
 struct AgentSandboxSession {
@@ -2015,6 +2271,10 @@ fn remote_agent_network(
 /// ADR-F49 第 2a 段: the helper invocation that starts the agent in the
 /// remote host's sandbox, as the host resolved it. The helper takes the
 /// agent's whole environment through `--setenv`; its own process gets none.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one argument per part of what the helper is told about the agent"
+)]
 fn plan_remote_agent(
     remote_binary: &RelPath,
     sandbox_command: &AgentSandboxCommand,
@@ -2022,6 +2282,7 @@ fn plan_remote_agent(
     git_dirs: Vec<PathBuf>,
     network: acp_thread::SandboxNetworkAccess,
     cwd: Option<&Path>,
+    session_id: Option<&str>,
     program: String,
     args: Vec<String>,
 ) -> Result<RemoteAgentPlan> {
@@ -2050,6 +2311,7 @@ fn plan_remote_agent(
         &sandbox_command.env,
         &readable_paths,
         false,
+        session_id,
         program,
         args,
     );
@@ -2062,13 +2324,21 @@ fn plan_remote_agent(
     })
 }
 
+/// ADR-F49 decision 18 (C): the id under which the remote helper registers
+/// the sandbox it is about to build, so that what the agent leaves running in
+/// it can be listed later. Opaque and unguessable, because holding it is what
+/// lets a caller ask about that sandbox.
+fn new_sandbox_session_id() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}
+
 fn remote_sandboxed_agent_command(
     project: &Entity<Project>,
     command: &AgentServerCommand,
     remote_binary: Arc<RelPath>,
     root_dir: Option<PathBuf>,
     cx: &mut AsyncApp,
-) -> Result<(std::process::Command, AgentSandboxSession)> {
+) -> Result<(std::process::Command, AgentSandboxSession, String)> {
     let sandbox_command = command
         .sandbox
         .as_ref()
@@ -2094,6 +2364,7 @@ fn remote_sandboxed_agent_command(
                 project.remote_client(),
             )
         });
+    let session_id = new_sandbox_session_id();
     let plan = plan_remote_agent(
         &remote_binary,
         sandbox_command,
@@ -2101,6 +2372,7 @@ fn remote_sandboxed_agent_command(
         git_dirs,
         network,
         root_dir.as_deref(),
+        Some(session_id.as_str()),
         command.path.to_string_lossy().into_owned(),
         command.args.clone(),
     )?;
@@ -2132,6 +2404,7 @@ fn remote_sandboxed_agent_command(
                 readable_paths: plan.readable_paths,
             },
         },
+        session_id,
     ))
 }
 
@@ -2205,6 +2478,10 @@ async fn wrap_login_in_sandbox(
                 &env,
                 readable_paths,
                 true,
+                // The sign-in is its own short command, not the agent's
+                // process: nothing follows what it leaves behind, because it
+                // leaves nothing that can write the project.
+                None,
                 program,
                 args,
             );
@@ -2647,6 +2924,10 @@ impl AgentConnection for AcpConnection {
         self.sandbox_session
             .as_ref()
             .map(|session| session.write_scope.clone())
+    }
+
+    fn sandbox_process_monitor(&self) -> Option<Entity<acp_thread::SandboxProcessMonitor>> {
+        self.sandbox_processes.clone()
     }
 
     fn authenticate(&self, method_id: acp::AuthMethodId, cx: &mut App) -> Task<Result<()>> {
@@ -3591,6 +3872,7 @@ mod tests {
             vec![PathBuf::from("/home/u/project/.git")],
             network,
             Some(Path::new("/home/u/project")),
+            Some("s0me5ession1d"),
             node.to_string(),
             vec!["agent.js".to_string()],
         )
@@ -3648,6 +3930,13 @@ mod tests {
         assert!(
             policy.starts_with(expected_policy),
             "{policy:?} does not start with {expected_policy:?}"
+        );
+        // ADR-F49 decision 18: the sandbox is named, so the host can say later
+        // what the agent left running in it.
+        assert_eq!(
+            values_of(sandbox::SANDBOX_SESSION_FLAG),
+            ["s0me5ession1d"],
+            "the helper is told which session this sandbox is"
         );
         assert_eq!(
             plan.write_scope,

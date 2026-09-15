@@ -15,9 +15,10 @@ use crate::{
     all_language_names,
     pages::{
         open_audio_test_window, render_acknowledged_ai_providers_page,
-        render_edit_prediction_setup_page, render_external_agents_page, render_llm_providers_page,
-        render_mcp_servers_page, render_network_allowlist_page, render_sandbox_settings_page,
-        render_skills_setup_page, render_tool_permissions_setup_page,
+        render_edit_prediction_setup_page, render_external_agents_page,
+        render_launch_approvals_page, render_llm_providers_page, render_mcp_servers_page,
+        render_network_allowlist_page, render_sandbox_settings_page, render_skills_setup_page,
+        render_tool_permissions_setup_page,
     },
 };
 
@@ -297,7 +298,7 @@ fn general_page(cx: &App) -> SettingsPage {
             }),
         ]
     }
-    fn security_section() -> [SettingsPageItem; 2] {
+    fn security_section() -> [SettingsPageItem; 3] {
         [
             SettingsPageItem::SectionHeader("セキュリティ"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -321,6 +322,30 @@ fn general_page(cx: &App) -> SettingsPage {
                 }),
                 metadata: None,
                 files: USER,
+            }),
+            // The decisions ADR-F42 stores for MCP servers, language server
+            // binaries and external formatters, with the only place to take
+            // one back (`docs/jp-enhance/DESIGN.md` §4.42, §4.50).
+            SettingsPageItem::SubPageLink(SubPageLink {
+                title: "起動の許可・不許可の記録".into(),
+                r#type: SubPageType::LaunchApprovals,
+                json_path: None,
+                description: Some(
+                    "プロジェクトの設定が起動しようとした MCP サーバー・言語サーバー・外部フォーマッターについて、許可・不許可の記録を確認して取り消します。"
+                        .into(),
+                ),
+                search_aliases: &[
+                    "approval",
+                    "formatter",
+                    "language server",
+                    "launch",
+                    "lsp",
+                    "mcp",
+                    "revoke",
+                ],
+                in_json: false,
+                files: USER,
+                render: render_launch_approvals_page,
             }),
         ]
     }

@@ -62,8 +62,9 @@ pub use git_store::{
 pub use manifest_tree::ManifestTree;
 pub use project_search::{Search, SearchResults};
 pub use worktree_code_execution::{
-    AgentWriteScope, AgentWriterKind, ExternalAgentSessionGuard, SandboxedWriterGuard,
-    WorktreeCodeExecution,
+    AgentWriteScope, AgentWriterKind, ExternalAgentSessionGuard, LeftoverSandboxProcess,
+    LeftoverSandboxProcessReports, LeftoverSandboxProcesses, LeftoverSandboxProcessesHandle,
+    LeftoverSandboxProcessesId, SandboxedWriterGuard, WorktreeCodeExecution,
 };
 pub use worktree_store::WorktreePaths;
 

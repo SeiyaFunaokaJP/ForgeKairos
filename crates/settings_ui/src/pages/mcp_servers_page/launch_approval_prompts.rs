@@ -1,21 +1,31 @@
+//! The ADR-F42 approval UI that is not part of one program's own page:
+//! the notification about a launch waiting for a decision, the dialog for
+//! language servers and formatters, and the settings page that lists every
+//! decision so that it can be taken back. The MCP servers page draws its
+//! own rows from what is shared here.
+
+use collections::HashMap;
 use context_server::ContextServerId;
 use gpui::{
-    AnyElement, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Subscription,
-    WeakEntity, WindowHandle,
+    AnyElement, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, ScrollHandle,
+    Subscription, WeakEntity, WindowHandle,
 };
 use project::Project;
 use project::project_launch_approvals::{
     CHANGED_SINCE_SHOWN_MESSAGE, ExecutionHost, LaunchApprovalDetails, LaunchApprovalKey,
-    LaunchDecision, LaunchDefinitionFile, LaunchHost, LaunchKind, LaunchTarget,
-    ProjectLaunchApprovals, ProjectLaunchApprovalsEvent, UnboundWorktreeContent,
+    LaunchDecision, LaunchDecisionRecord, LaunchDefinitionFile, LaunchHost, LaunchKind,
+    LaunchTarget, ProjectLaunchApprovals, ProjectLaunchApprovalsEvent, UnboundWorktreeContent,
     escape_for_display,
 };
-use ui::{Tooltip, prelude::*};
+use time::{OffsetDateTime, UtcOffset};
+use ui::{Divider, Tooltip, prelude::*};
 use util::ResultExt as _;
 use workspace::{
     ModalView, MultiWorkspace, Workspace,
     notifications::{NotificationId, simple_message_notification::MessageNotification},
 };
+
+use crate::SettingsWindow;
 
 /// Shown instead of letting a decision be made that could not be stored.
 pub(super) const DECISION_BLOCKED_HINT: &str = "承認の記録を読み込めないため、決定できません。";
@@ -708,6 +718,307 @@ impl Render for LaunchApprovalDialog {
     }
 }
 
+/// Live state of the page that lists the decisions about what a project's
+/// settings would launch.
+#[derive(Default)]
+pub(crate) struct LaunchApprovalsPageState {
+    /// Decisions live in the approval service rather than in `SettingsStore`,
+    /// so without these the list would only change when something else redrew
+    /// the window. Loading them finishes with a notification rather than an
+    /// event, so both are watched.
+    subscriptions: Vec<Subscription>,
+    /// Why revoking failed, by the key of the decision it was asked for.
+    errors: HashMap<String, SharedString>,
+}
+
+pub(crate) fn open_launch_approvals_page(
+    settings_window: &mut SettingsWindow,
+    cx: &mut Context<SettingsWindow>,
+) {
+    settings_window.launch_approvals.errors.clear();
+    if settings_window.launch_approvals.subscriptions.is_empty() {
+        let approvals = ProjectLaunchApprovals::global(cx);
+        settings_window.launch_approvals.subscriptions = vec![
+            cx.subscribe(&approvals, |_, _, _: &ProjectLaunchApprovalsEvent, cx| {
+                cx.notify()
+            }),
+            cx.observe(&approvals, |_, _, cx| cx.notify()),
+        ];
+    }
+}
+
+/// Every decision ADR-F42 keeps, on a page of its own. The MCP servers page
+/// can only offer to revoke a server its store still knows about, and a
+/// language server's or a formatter's approval had nowhere to be revoked from
+/// at all — which ADR-F50 decision 1 needs, since revoking is also what stops
+/// the program on the remote host.
+pub(crate) fn render_launch_approvals_page(
+    settings_window: &SettingsWindow,
+    scroll_handle: &ScrollHandle,
+    _window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let (records, still_loading) = match ProjectLaunchApprovals::try_global(cx) {
+        Some(approvals) => {
+            let approvals = approvals.read(cx);
+            (
+                approvals
+                    .decision_records()
+                    .map_err(|error| SharedString::from(format!("{error}"))),
+                approvals.decisions_are_loading(),
+            )
+        }
+        None => (
+            Err(SharedString::from(
+                "承認の記録を扱えないため、一覧を表示できません。",
+            )),
+            false,
+        ),
+    };
+    // Waiting for the decisions to be read is not the same as a store that
+    // could not be read at all, which blocks every launch.
+    let (unavailable_icon, unavailable_color) = if still_loading {
+        (IconName::Info, Color::Muted)
+    } else {
+        (IconName::XCircle, Color::Error)
+    };
+    // Clock and time zone are read once, so that every row of one drawing
+    // agrees on what "today" means.
+    let now = OffsetDateTime::now_utc();
+    let timezone = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+
+    v_flex()
+        .id("launch-approvals-page")
+        .size_full()
+        .pt_2()
+        .pb_16()
+        .overflow_y_scroll()
+        .track_scroll(scroll_handle)
+        .child(
+            div().px_8().pb_2().child(
+                Label::new(
+                    "プロジェクトの設定が起動しようとしたプログラムについて、許可・不許可の記録です。取り消すと、動いているプログラムは止まり、次に起動が必要になったときにあらためて確認します。",
+                )
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+            ),
+        )
+        .map(|this| match records {
+            Err(error) => this.child(div().px_8().child(render_notice(
+                unavailable_icon,
+                unavailable_color,
+                error.to_string(),
+            ))),
+            Ok(records) if records.is_empty() => this.child(
+                div()
+                    .px_8()
+                    .child(Label::new("許可・不許可の記録はまだありません。").color(Color::Muted)),
+            ),
+            Ok(records) => {
+                let records = sorted_for_review(records);
+                let row_count = records.len();
+                this.children(records.into_iter().enumerate().flat_map(|(index, record)| {
+                    let mut elements = vec![render_launch_approval_row(
+                        settings_window,
+                        &record,
+                        now,
+                        timezone,
+                        cx,
+                    )];
+                    if index + 1 < row_count {
+                        elements.push(
+                            div()
+                                .px_8()
+                                .child(Divider::horizontal().flex_grow_1())
+                                .into_any_element(),
+                        );
+                    }
+                    elements
+                }))
+            }
+        })
+        .into_any_element()
+}
+
+/// Newest first, since a decision is usually revoked soon after it was made;
+/// the rest of the order only has to stay the same across redraws.
+fn sorted_for_review(mut records: Vec<LaunchDecisionRecord>) -> Vec<LaunchDecisionRecord> {
+    records.sort_by(|left, right| {
+        right
+            .timestamp
+            .cmp(&left.timestamp)
+            .then_with(|| left.name.cmp(&right.name))
+            .then_with(|| left.key.cmp(&right.key))
+    });
+    records
+}
+
+fn render_launch_approval_row(
+    settings_window: &SettingsWindow,
+    record: &LaunchDecisionRecord,
+    now: OffsetDateTime,
+    timezone: UtcOffset,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let error = settings_window
+        .launch_approvals
+        .errors
+        .get(&record.key)
+        .cloned();
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_start()
+        .py_3()
+        .px_8()
+        .gap_4()
+        .child(
+            v_flex()
+                .gap_0p5()
+                .min_w_0()
+                .flex_1()
+                .child(Label::new(launch_title(record.kind, &record.name)))
+                .child(render_detail_row("内容", record.summary.clone(), true, cx))
+                .child(render_detail_row(
+                    "ホスト",
+                    record_host_label(record.host.as_deref()),
+                    false,
+                    cx,
+                ))
+                .child(render_detail_row(
+                    "フォルダー",
+                    record.worktree.clone(),
+                    true,
+                    cx,
+                ))
+                .child(render_detail_row(
+                    "決定",
+                    decision_label(record.decision, record.timestamp, now, timezone),
+                    false,
+                    cx,
+                ))
+                .when(record.session_only, |this| {
+                    this.child(render_notice(
+                        IconName::Info,
+                        Color::Muted,
+                        SESSION_ONLY_NOTICE.to_string(),
+                    ))
+                })
+                .when_some(error, |this, error| {
+                    this.child(render_notice(
+                        IconName::XCircle,
+                        Color::Error,
+                        error.to_string(),
+                    ))
+                }),
+        )
+        .child(render_record_revoke_button(record, cx))
+        .into_any_element()
+}
+
+/// The host a decision was made for. Only its identity is stored with the
+/// decision, and that identity is what tells the same definition on two
+/// remote hosts apart.
+fn record_host_label(identity: Option<&str>) -> String {
+    match identity {
+        None => "この PC".to_string(),
+        Some(identity) => format!("接続先 ({identity})"),
+    }
+}
+
+fn decision_label(
+    decision: LaunchDecision,
+    timestamp: u64,
+    now: OffsetDateTime,
+    timezone: UtcOffset,
+) -> String {
+    let decision = match decision {
+        LaunchDecision::Approved => "許可",
+        LaunchDecision::Denied => "許可しない",
+    };
+    match decided_at(timestamp, now, timezone) {
+        Some(decided_at) => format!("{decision} ({decided_at})"),
+        None => decision.to_string(),
+    }
+}
+
+/// `None` for a timestamp no date can hold, which a decision written by a
+/// clock far ahead of this one would be.
+fn decided_at(timestamp: u64, now: OffsetDateTime, timezone: UtcOffset) -> Option<String> {
+    let timestamp = OffsetDateTime::from_unix_timestamp(i64::try_from(timestamp).ok()?).ok()?;
+    Some(time_format::format_localized_timestamp(
+        timestamp,
+        now,
+        timezone,
+        time_format::TimestampFormat::EnhancedAbsolute,
+    ))
+}
+
+fn render_record_revoke_button(
+    record: &LaunchDecisionRecord,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let (label, tooltip) = match record.decision {
+        LaunchDecision::Approved => (
+            "承認を取り消す",
+            "承認を取り消して、動いているプログラムを止めます。もう一度起動するには、あらためて許可が必要です。",
+        ),
+        LaunchDecision::Denied => (
+            "「許可しない」を取り消す",
+            "「許可しない」の記録を消します。次に同じ内容の起動を求められたら、あらためて確認します。",
+        ),
+    };
+    let key = record.approval_key();
+    let stored_key = record.key.clone();
+    Button::new(
+        SharedString::from(format!("launch-approval-revoke-{}", record.key)),
+        label,
+    )
+    .style(ButtonStyle::Outlined)
+    .label_size(LabelSize::Small)
+    .tab_index(0isize)
+    .tooltip(Tooltip::text(tooltip))
+    .on_click(cx.listener(move |this, _event, _window, cx| {
+        revoke_decision(this, key.clone(), stored_key.clone(), cx);
+    }))
+    .into_any_element()
+}
+
+/// Revoking goes through the approval service itself, the same path the MCP
+/// servers page takes: it is what stops a running language server or MCP
+/// server here, and what takes the decision back from a remote host.
+fn revoke_decision(
+    settings_window: &mut SettingsWindow,
+    key: LaunchApprovalKey,
+    stored_key: String,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(approvals) = ProjectLaunchApprovals::try_global(cx) else {
+        settings_window.launch_approvals.errors.insert(
+            stored_key,
+            "承認の記録を扱えないため、取り消せません。".into(),
+        );
+        cx.notify();
+        return;
+    };
+    settings_window.launch_approvals.errors.remove(&stored_key);
+    let task = approvals.update(cx, |approvals, cx| approvals.revoke(&key, cx));
+    cx.spawn(async move |this, cx| {
+        let Err(error) = task.await else {
+            return;
+        };
+        this.update(cx, |this, cx| {
+            this.launch_approvals
+                .errors
+                .insert(stored_key, format!("取り消せませんでした: {error}").into());
+            cx.notify();
+        })
+        .log_err();
+    })
+    .detach();
+    cx.notify();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1116,5 +1427,137 @@ mod tests {
         cx.run_until_parked();
         assert!(!dialog_is_open(window, cx));
         assert!(!notification_is_shown(window, "only", cx));
+    }
+
+    fn decision_record(
+        key: &str,
+        name: &str,
+        timestamp: u64,
+        decision: LaunchDecision,
+        host: Option<&str>,
+    ) -> LaunchDecisionRecord {
+        LaunchDecisionRecord {
+            key: key.to_string(),
+            kind: LaunchKind::LanguageServerBinary,
+            name: name.to_string(),
+            worktree: path!("/project").to_string(),
+            host: host.map(str::to_string),
+            summary: "tools/rust-analyzer".to_string(),
+            decision,
+            timestamp,
+            session_only: false,
+        }
+    }
+
+    #[test]
+    fn lists_the_newest_decision_first() {
+        let sorted = sorted_for_review(vec![
+            decision_record("a", "older", 10, LaunchDecision::Approved, None),
+            decision_record("c", "newest", 30, LaunchDecision::Denied, None),
+            decision_record("b", "middle", 20, LaunchDecision::Approved, None),
+        ]);
+        assert_eq!(
+            sorted
+                .iter()
+                .map(|record| record.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["newest", "middle", "older"]
+        );
+    }
+
+    #[test]
+    fn names_the_host_and_when_the_decision_was_made() {
+        assert_eq!(record_host_label(None), "この PC");
+        assert_eq!(
+            record_host_label(Some("ssh://me@build")),
+            "接続先 (ssh://me@build)"
+        );
+
+        let now = OffsetDateTime::from_unix_timestamp(1_760_000_000).expect("a valid instant");
+        let today = decision_label(LaunchDecision::Approved, 1_760_000_000, now, UtcOffset::UTC);
+        assert!(today.starts_with("許可 (今日 "), "{today}");
+        let older = decision_label(LaunchDecision::Denied, 1_600_000_000, now, UtcOffset::UTC);
+        assert!(older.starts_with("許可しない (2020年"), "{older}");
+        // A clock far enough ahead writes a timestamp no date can hold; the
+        // decision itself is still worth showing.
+        assert_eq!(
+            decision_label(LaunchDecision::Approved, u64::MAX, now, UtcOffset::UTC),
+            "許可"
+        );
+    }
+
+    /// The button on the page hands the key of the row it was drawn for to the
+    /// approval service, which is what stops the program and asks again.
+    #[gpui::test]
+    async fn test_the_page_revokes_the_decision_it_lists(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+            menu::init();
+            cx.set_global(db::AppDatabase::test_new());
+        });
+        let approvals = cx.update(ProjectLaunchApprovals::global);
+        approvals.update(cx, |approvals, cx| {
+            approvals.add_pending_launch_for_tests(
+                LaunchApprovalDetails::for_tests(
+                    "listed",
+                    LaunchKind::LanguageServerBinary,
+                    "rust-analyzer",
+                    LaunchTarget::Command {
+                        program: "tools/rust-analyzer".into(),
+                        arguments: Vec::new(),
+                    },
+                ),
+                cx,
+            );
+        });
+        approvals
+            .update(cx, |approvals, cx| {
+                approvals.approve_pending(&LaunchApprovalKey::for_tests("listed"), cx)
+            })
+            .await
+            .expect("the approval is stored");
+        let record = approvals
+            .read_with(cx, |approvals, _| {
+                approvals
+                    .decision_records()
+                    .expect("the decisions are readable")
+                    .into_iter()
+                    .next()
+            })
+            .expect("the approval is listed for review");
+        assert_eq!(record.decision, LaunchDecision::Approved);
+
+        let (settings_window, cx) =
+            cx.add_window_view(|window, cx| SettingsWindow::test(window, cx));
+        settings_window.update(cx, |settings_window, cx| {
+            open_launch_approvals_page(settings_window, cx);
+            revoke_decision(
+                settings_window,
+                record.approval_key(),
+                record.key.clone(),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            settings_window.read_with(cx, |settings_window, _| settings_window
+                .launch_approvals
+                .errors
+                .values()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()),
+            Vec::<String>::new()
+        );
+        assert!(
+            approvals.read_with(cx, |approvals, _| approvals
+                .decision_records()
+                .expect("the decisions are readable")
+                .is_empty()),
+            "the revoked decision leaves the list"
+        );
     }
 }

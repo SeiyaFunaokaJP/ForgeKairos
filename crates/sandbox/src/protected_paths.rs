@@ -626,6 +626,64 @@ fn split_around(entry: &Path, reachable: &[PathBuf], hidden: &mut Vec<PathBuf>) 
     }
 }
 
+/// ADR-F49 decision 11 on a host that refuses the covers (Ubuntu 24.04's
+/// default `apparmor_restrict_unprivileged_userns=1` leaves an unprivileged
+/// user namespace unable to mount): the locations a Landlock ruleset grants
+/// reads on, so that nothing at or below `denied` can be read, listed or
+/// executed while everything else still can.
+///
+/// Landlock only ever *adds* access, and a right on a directory reaches
+/// everything below it, so an entry is hidden by giving a rule neither to it
+/// nor to any of its ancestors: `root` is granted whole unless something denied
+/// lies below it, and otherwise its entries are granted one by one, descending
+/// into each that leads further down to a denied entry. This is the read-side
+/// mirror of the write carve and carries the mirror image of its cost — a
+/// directory on the way down to a denied entry (the home itself, `~/.config`)
+/// is never granted, so *listing* it is refused, and an entry created in it
+/// after the command started cannot be read either.
+///
+/// `list` gives a directory's entries, each where it really lies (symlinks
+/// followed), and `None` for one that cannot be listed — which grants nothing
+/// below it, denying reads there rather than handing out the entry it was
+/// carved around. An entry resolving outside the directory that holds it is
+/// left to wherever it really lies: granting `link -> /` through it would hand
+/// out every denied entry with it.
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn carve_read_grants(
+    root: &Path,
+    denied: &[PathBuf],
+    list: &mut dyn FnMut(&Path) -> Option<Vec<PathBuf>>,
+) -> Vec<PathBuf> {
+    let mut grants = Vec::new();
+    carve_read_subtree(root, denied, list, &mut grants);
+    grants
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn carve_read_subtree(
+    directory: &Path,
+    denied: &[PathBuf],
+    list: &mut dyn FnMut(&Path) -> Option<Vec<PathBuf>>,
+    grants: &mut Vec<PathBuf>,
+) {
+    if denied.iter().any(|entry| directory.starts_with(entry)) {
+        return;
+    }
+    if !denied.iter().any(|entry| entry.starts_with(directory)) {
+        push_unique(grants, directory.to_path_buf());
+        return;
+    }
+    let Some(children) = list(directory) else {
+        return;
+    };
+    for child in children {
+        if !child.starts_with(directory) || child == directory {
+            continue;
+        }
+        carve_read_subtree(&child, denied, list, grants);
+    }
+}
+
 /// ADR-F49 decision 11: the locations whose contents no sandboxed command may
 /// read, for an account whose home directory is `home` and a command that must
 /// keep reaching `worktree_roots`: [`READ_HIDDEN_HOME_RELATIVE`] (on Windows with
@@ -1719,5 +1777,145 @@ mod tests {
         for path in local_builtin_protected_paths(&home, &[]) {
             assert!(paths.contains(&path), "{}", path.display());
         }
+    }
+
+    /// The entries of `directory` in a tree of `(directory, [(name, where it
+    /// really lies)])`, so the carve can be checked without a filesystem. A
+    /// directory the tree does not name cannot be listed.
+    fn listed(tree: &[(&str, &[(&str, &str)])], directory: &Path) -> Option<Vec<PathBuf>> {
+        let entries = tree
+            .iter()
+            .find(|(listed, _)| Path::new(listed) == directory)?
+            .1;
+        Some(
+            entries
+                .iter()
+                .map(|(_, resolved)| PathBuf::from(resolved))
+                .collect(),
+        )
+    }
+
+    const TREE: &[(&str, &[(&str, &str)])] = &[
+        (
+            "/",
+            &[
+                // Two names of one location, as a merged-`/usr` system has.
+                ("bin", "/usr/bin"),
+                ("sbin", "/usr/bin"),
+                ("etc", "/etc"),
+                ("home", "/home"),
+                ("tmp", "/tmp"),
+                ("usr", "/usr"),
+            ],
+        ),
+        ("/home", &[("u", "/home/u"), ("other", "/home/other")]),
+        (
+            "/home/u",
+            &[
+                (".ssh", "/home/u/.ssh"),
+                (".bashrc", "/home/u/.bashrc"),
+                (".config", "/home/u/.config"),
+                ("project", "/home/u/project"),
+                // A link out of the home, and one back into the entry that
+                // stays hidden.
+                ("shared", "/srv/shared"),
+                ("keys", "/home/u/.ssh"),
+            ],
+        ),
+        (
+            "/home/u/.config",
+            &[
+                ("gh", "/home/u/.config/gh"),
+                ("nvim", "/home/u/.config/nvim"),
+            ],
+        ),
+    ];
+
+    /// ADR-F49 decision 11 where the covers are refused: the carve grants the
+    /// whole filesystem except the way down to each hidden entry, which is what
+    /// keeps `~/.ssh` unreadable — and what costs the listing of every
+    /// directory on that way down.
+    #[test]
+    fn the_read_carve_grants_everything_but_the_way_down_to_a_hidden_entry() {
+        let denied = [
+            PathBuf::from("/home/u/.ssh"),
+            PathBuf::from("/home/u/.config/gh"),
+        ];
+        let grants = carve_read_grants(Path::new("/"), &denied, &mut |directory| {
+            listed(TREE, directory)
+        });
+
+        let granted = |path: &str| grants.iter().any(|grant| grant == Path::new(path));
+        assert!(granted("/usr") && granted("/etc") && granted("/tmp"));
+        assert!(
+            granted("/home/other") && granted("/home/u/project") && granted("/home/u/.bashrc"),
+            "{grants:?}"
+        );
+        assert!(
+            granted("/home/u/.config/nvim"),
+            "a sibling of a hidden entry is granted on its own"
+        );
+        assert!(
+            !granted("/")
+                && !granted("/home")
+                && !granted("/home/u")
+                && !granted("/home/u/.config"),
+            "no ancestor of a hidden entry may be granted, or the entry comes with it"
+        );
+        assert!(
+            !granted("/home/u/.ssh") && !granted("/home/u/.config/gh"),
+            "{grants:?}"
+        );
+        assert!(
+            !granted("/srv/shared"),
+            "a link out of a carved directory is left to where it really lies, \
+             which the carve grants at the level it belongs to"
+        );
+        assert_eq!(
+            grants
+                .iter()
+                .filter(|grant| *grant == Path::new("/usr/bin"))
+                .count(),
+            1,
+            "two names of one location must not grant it twice"
+        );
+    }
+
+    /// A directory that cannot be listed grants nothing below it: the command
+    /// does without those reads rather than the hidden entry being handed out
+    /// with its parent.
+    #[test]
+    fn a_directory_that_cannot_be_listed_grants_nothing_below_it() {
+        let tree: &[(&str, &[(&str, &str)])] = &[
+            ("/", &[("home", "/home")]),
+            ("/home", &[("u", "/home/u")]),
+            // `/home/u` is missing from the tree, so it cannot be listed.
+        ];
+        let grants = carve_read_grants(
+            Path::new("/"),
+            &[PathBuf::from("/home/u/.ssh")],
+            &mut |directory| listed(tree, directory),
+        );
+        assert!(grants.is_empty(), "{grants:?}");
+    }
+
+    /// With nothing to hide the whole tree is granted with one rule, and a
+    /// carve whose root is itself hidden grants nothing at all.
+    #[test]
+    fn the_read_carve_is_one_rule_when_nothing_is_hidden() {
+        assert_eq!(
+            carve_read_grants(Path::new("/"), &[], &mut |directory| listed(
+                TREE, directory
+            )),
+            [PathBuf::from("/")]
+        );
+        assert!(
+            carve_read_grants(
+                Path::new("/home/u"),
+                &[PathBuf::from("/home")],
+                &mut |directory| listed(TREE, directory)
+            )
+            .is_empty()
+        );
     }
 }

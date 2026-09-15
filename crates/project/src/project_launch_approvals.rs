@@ -785,6 +785,30 @@ impl LaunchDecisionRecord {
             session_only,
         }
     }
+
+    /// The key this decision is stored under, to pass to
+    /// [`ProjectLaunchApprovals::revoke`]. A record is the decision itself, so
+    /// there is no definition to have changed since it was shown: an edited
+    /// definition is a different key with no decision of its own.
+    pub fn approval_key(&self) -> LaunchApprovalKey {
+        LaunchApprovalKey(self.key.clone().into())
+    }
+
+    /// Whether this decision is the one that lets `name` of `kind` launch from
+    /// `worktree_abs_path` of a project opened on `host`, for UI that starts
+    /// from a running program rather than from the list of decisions.
+    pub fn is_for(
+        &self,
+        kind: LaunchKind,
+        name: &str,
+        host: &LaunchHost,
+        worktree_abs_path: &Path,
+    ) -> bool {
+        self.kind == kind
+            && self.name == name
+            && self.host.as_deref() == host.identity()
+            && self.worktree == worktree_abs_path.to_string_lossy()
+    }
 }
 
 /// A definition gathered from settings, before the worktree content it runs
@@ -2726,6 +2750,12 @@ impl ProjectLaunchApprovals {
         })
     }
 
+    /// Whether the stored decisions are still being read, which the page
+    /// that lists them tells apart from a store that could not be read at all.
+    pub fn decisions_are_loading(&self) -> bool {
+        matches!(self.stored_decisions, StoredDecisions::Loading)
+    }
+
     /// Every decision, session-only approvals included, for a page that lets
     /// the user review them.
     pub fn decision_records(&self) -> Result<Vec<LaunchDecisionRecord>> {
@@ -2909,9 +2939,13 @@ impl ProjectLaunchApprovals {
         cx.notify();
     }
 
+    /// Taking a decision back is the user asking to be asked again, so the
+    /// notification the key was shown under is forgotten with it. The one
+    /// notification per key of ADR-F42 #6 keeps a project from raising them
+    /// over and over; it does not outlast a revocation the user chose.
     fn forget_decision(&mut self, key: &LaunchApprovalKey, cx: &mut Context<Self>) {
         self.decisions.remove(key);
-        self.notified_keys.insert(key.clone());
+        self.notified_keys.remove(key);
         cx.emit(ProjectLaunchApprovalsEvent::LaunchApprovalRevoked(
             key.clone(),
         ));

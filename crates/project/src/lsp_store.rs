@@ -12172,6 +12172,18 @@ impl LspStore {
         }
     }
 
+    /// The approval a project-defined binary started under (ADR-F42), for UI
+    /// that offers to take it back: the server itself says which decision let
+    /// it run, which two worktrees defining a server of the same name cannot
+    /// be told apart by otherwise. `None` on a remote store, where the servers
+    /// run on the other side.
+    pub fn approved_binary_launch(&self, server_id: LanguageServerId) -> Option<LaunchApprovalKey> {
+        self.as_local()?
+            .approved_binary_launches
+            .get(&server_id)
+            .cloned()
+    }
+
     pub fn language_server_statuses(
         &self,
     ) -> impl DoubleEndedIterator<Item = (LanguageServerId, &LanguageServerStatus)> {

@@ -18,6 +18,7 @@ use std::{
     ffi::OsString,
     mem,
     path::{Component, Path, PathBuf},
+    rc::Rc,
     sync::{Arc, Weak},
     time::Duration,
 };
@@ -29,8 +30,8 @@ use db::kvp::KeyValueStore;
 use fs::Fs;
 use futures::{FutureExt as _, StreamExt as _, channel::mpsc};
 use gpui::{
-    App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, Global, Subscription, Task,
-    TaskExt as _, WeakEntity,
+    App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, Global, SharedString,
+    Subscription, Task, TaskExt as _, WeakEntity,
 };
 use lsp::LanguageServerName;
 use parking_lot::Mutex;
@@ -250,6 +251,183 @@ impl Drop for SandboxedWriterGuard {
                 log::debug!("a worktree code execution state is gone; no writer to forget");
             }
         }
+    }
+}
+
+/// ADR-F49 decision 18 (C): one process an external agent's answer left
+/// running inside its sandbox.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeftoverSandboxProcess {
+    /// Its pid on the host that runs the sandbox, which is the only name the
+    /// user can look it up by there.
+    pub pid: u32,
+    /// Its command line, as the trusted side outside the sandbox read it.
+    /// Chosen by the process itself, so the dialog escapes it again.
+    pub command: SharedString,
+    /// How long it had been running when the report was taken.
+    pub running_for: Duration,
+}
+
+/// What one agent left running, as the resume dialog lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeftoverSandboxProcesses {
+    pub id: LeftoverSandboxProcessesId,
+    /// The agent whose answer left them, for the user to know which panel to
+    /// look at.
+    pub agent: SharedString,
+    pub processes: Vec<LeftoverSandboxProcess>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LeftoverSandboxProcessesId(u64);
+
+struct LeftoverReportToken;
+
+/// Keeps a report listed for as long as it lives. The agent side holds one
+/// per sandboxed session; dropping it (the session closed, which also stops
+/// the sandbox) takes the report away without needing a context.
+pub struct LeftoverSandboxProcessesHandle {
+    id: LeftoverSandboxProcessesId,
+    _token: Arc<LeftoverReportToken>,
+}
+
+impl LeftoverSandboxProcessesHandle {
+    pub fn id(&self) -> LeftoverSandboxProcessesId {
+        self.id
+    }
+}
+
+struct LeftoverReport {
+    id: LeftoverSandboxProcessesId,
+    token: Weak<LeftoverReportToken>,
+    host: String,
+    scope: AgentWriteScope,
+    agent: SharedString,
+    processes: Vec<LeftoverSandboxProcess>,
+    /// Stops exactly the processes listed above, and nothing else — not the
+    /// agent itself, which the user stops from its own panel.
+    stop: Rc<dyn Fn(&mut App)>,
+}
+
+/// ADR-F49 decision 18 (C): what external agents have left running in their
+/// sandboxes, for the resume dialog to list and to stop. One per application,
+/// because a pause is about a host and a path, not about a window.
+#[derive(Default)]
+pub struct LeftoverSandboxProcessReports {
+    next_id: u64,
+    reports: Vec<LeftoverReport>,
+}
+
+struct GlobalLeftoverSandboxProcessReports(Entity<LeftoverSandboxProcessReports>);
+
+impl Global for GlobalLeftoverSandboxProcessReports {}
+
+impl EventEmitter<()> for LeftoverSandboxProcessReports {}
+
+impl LeftoverSandboxProcessReports {
+    pub fn global(cx: &mut App) -> Entity<Self> {
+        if let Some(global) = cx.try_global::<GlobalLeftoverSandboxProcessReports>() {
+            return global.0.clone();
+        }
+        let reports = cx.new(|_| Self::default());
+        cx.set_global(GlobalLeftoverSandboxProcessReports(reports.clone()));
+        reports
+    }
+
+    pub fn try_global(cx: &App) -> Option<Entity<Self>> {
+        cx.try_global::<GlobalLeftoverSandboxProcessReports>()
+            .map(|global| global.0.clone())
+    }
+
+    /// Starts listing what an agent has left running within `scope` on `host`.
+    /// The list is empty until [`Self::report`] fills it, and is gone once the
+    /// returned handle is.
+    pub fn publish(
+        host: &str,
+        scope: AgentWriteScope,
+        agent: SharedString,
+        stop: Rc<dyn Fn(&mut App)>,
+        cx: &mut App,
+    ) -> LeftoverSandboxProcessesHandle {
+        let token = Arc::new(LeftoverReportToken);
+        let reports = Self::global(cx);
+        let id = reports.update(cx, |reports, cx| {
+            reports.forget_dropped();
+            reports.next_id += 1;
+            let id = LeftoverSandboxProcessesId(reports.next_id);
+            reports.reports.push(LeftoverReport {
+                id,
+                token: Arc::downgrade(&token),
+                host: host.to_string(),
+                scope,
+                agent,
+                processes: Vec::new(),
+                stop,
+            });
+            cx.notify();
+            id
+        });
+        LeftoverSandboxProcessesHandle { id, _token: token }
+    }
+
+    /// Replaces what `id` lists.
+    pub fn report(
+        id: LeftoverSandboxProcessesId,
+        processes: Vec<LeftoverSandboxProcess>,
+        cx: &mut App,
+    ) {
+        let Some(reports) = Self::try_global(cx) else {
+            return;
+        };
+        reports.update(cx, |reports, cx| {
+            reports.forget_dropped();
+            let Some(report) = reports.reports.iter_mut().find(|report| report.id == id) else {
+                return;
+            };
+            if report.processes == processes {
+                return;
+            }
+            report.processes = processes;
+            cx.notify();
+        });
+    }
+
+    /// Asks the agent that left them to stop exactly the processes `id`
+    /// lists. The report goes away on its own once they are gone.
+    pub fn stop(id: LeftoverSandboxProcessesId, cx: &mut App) {
+        let Some(reports) = Self::try_global(cx) else {
+            return;
+        };
+        let stop = reports.read(cx).reports.iter().find_map(|report| {
+            (report.id == id && report.token.strong_count() > 0).then(|| report.stop.clone())
+        });
+        if let Some(stop) = stop {
+            stop(cx);
+        }
+    }
+
+    fn forget_dropped(&mut self) {
+        self.reports
+            .retain(|report| report.token.strong_count() > 0);
+    }
+
+    fn listed(
+        &self,
+        covers: impl Fn(&str, &AgentWriteScope) -> bool,
+    ) -> Vec<LeftoverSandboxProcesses> {
+        self.reports
+            .iter()
+            .filter(|report| {
+                report.token.strong_count() > 0
+                    && !report.processes.is_empty()
+                    && covers(&report.host, &report.scope)
+            })
+            .map(|report| LeftoverSandboxProcesses {
+                id: report.id,
+                agent: report.agent.clone(),
+                processes: report.processes.clone(),
+            })
+            .collect()
     }
 }
 
@@ -907,6 +1085,23 @@ impl WorktreeCodeExecution {
                 Role::Local { .. } | Role::Headless { .. } | Role::Inert => None,
             },
         })
+    }
+
+    /// ADR-F49 decision 18 (C): what external agents' answers left running in
+    /// the sandboxes that can write this worktree. While any of these run the
+    /// worktree stays paused, because the next thing one writes is the
+    /// agent's write and not the user's.
+    pub fn leftover_sandbox_processes(
+        &self,
+        worktree_id: WorktreeId,
+        cx: &App,
+    ) -> Vec<LeftoverSandboxProcesses> {
+        let Some(reports) = LeftoverSandboxProcessReports::try_global(cx) else {
+            return Vec::new();
+        };
+        reports
+            .read(cx)
+            .listed(|host, scope| self.worktrees_within(host, scope).contains(&worktree_id))
     }
 
     /// How many times agents have written into the worktree, as far as this

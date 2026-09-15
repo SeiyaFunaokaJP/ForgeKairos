@@ -36,7 +36,10 @@ use zed_actions::ExtensionCategoryFilter;
 use crate::{PROJECT, SettingField, SettingItem, SettingsPageItem, SettingsWindow, USER};
 use mcp_json_import::{ImportedDefinition, ImportedServer, parse_mcp_json_snippet};
 
-pub(crate) use launch_approval_prompts::init as init_launch_approval_prompts;
+pub(crate) use launch_approval_prompts::{
+    LaunchApprovalsPageState, init as init_launch_approval_prompts, open_launch_approvals_page,
+    render_launch_approvals_page,
+};
 
 /// Live state the MCP servers page keeps while it is open.
 #[derive(Default)]
