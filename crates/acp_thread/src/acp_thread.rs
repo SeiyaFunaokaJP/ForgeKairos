@@ -7189,6 +7189,95 @@ mod tests {
         );
     }
 
+    /// ADR-F49 decision 18 (C): a stop the host never answers is given up on
+    /// after ten seconds, and giving up ends only the wait.
+    ///
+    /// The request would otherwise stay pending for as long as the connection
+    /// lasts. What must not happen is the monitor going with it: the leftover
+    /// is still running, so the writer stays held and the watch keeps looking —
+    /// which is what lets a stop that lands late still clear the list.
+    #[gpui::test]
+    async fn test_a_stop_the_host_never_answers_is_given_up_on_but_the_watch_goes_on(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let sandbox = FakeSandboxProcesses::new(vec![PathBuf::from(path!("/test"))]);
+        sandbox.start(1, "claude --acp");
+        let monitor = cx
+            .update(|cx| SandboxProcessMonitor::new(sandbox.clone(), &project, cx))
+            .expect("a sandboxed agent is followed");
+        cx.run_until_parked();
+
+        // An answer leaves a development server behind.
+        cx.update(|cx| monitor.update(cx, |monitor, cx| monitor.begin_turn(cx)))
+            .await;
+        sandbox.start(2, "npm run dev");
+        cx.update(|cx| {
+            monitor.update(cx, |monitor, cx| {
+                monitor.end_turn(project::SandboxedWriterGuard::default(), cx)
+            })
+        });
+        cx.run_until_parked();
+        let leftovers =
+            |cx: &mut TestAppContext| monitor.read_with(cx, |monitor, _| monitor.leftovers().len());
+        assert_eq!(leftovers(cx), 1);
+
+        // The user asks for it to be stopped, and the host says nothing. The
+        // folder is paused first, which is what puts the leftover in front of
+        // the user at all.
+        sandbox.stop_never_answers.set(true);
+        cx.update(project::WorktreeCodeExecution::note_agent_write_on_every_host);
+        cx.run_until_parked();
+        let report = project.read_with(cx, |project, cx| {
+            let execution = project.worktree_code_execution().read(cx);
+            let worktree_id = execution
+                .paused_worktrees()
+                .into_iter()
+                .next()
+                .expect("the folder is paused");
+            execution
+                .leftover_sandbox_processes(worktree_id, cx)
+                .first()
+                .expect("the leftover is listed")
+                .id
+        });
+        cx.update(|cx| project::LeftoverSandboxProcessReports::stop(report, cx));
+        cx.run_until_parked();
+        assert!(
+            !sandbox.stop_was_abandoned(),
+            "the request is waited on, not dropped at once"
+        );
+
+        cx.executor().advance_clock(Duration::from_secs(11));
+        cx.run_until_parked();
+        assert!(
+            sandbox.stop_was_abandoned(),
+            "and given up on once its time is out"
+        );
+        assert_eq!(
+            leftovers(cx),
+            1,
+            "the leftover is still running, so it is still followed"
+        );
+        assert!(
+            !monitor.read_with(cx, |monitor, _| monitor.follows_the_whole_session()),
+            "a stop that went unanswered is not a sandbox that cannot be looked into"
+        );
+
+        // And the watch goes on: the process ending still clears the list.
+        sandbox.end(2);
+        cx.executor().advance_clock(Duration::from_secs(3));
+        cx.run_until_parked();
+        assert_eq!(leftovers(cx), 0);
+    }
+
     /// ADR-F50: a command an agent runs, natively or through ACP's
     /// `terminal/create` (both reach `create_terminal`), is registered as a
     /// writer of the project's worktrees before it starts, until it is done.
@@ -10661,7 +10750,22 @@ mod tests {
         running: RefCell<Vec<sandbox::SandboxProcess>>,
         /// Makes every look fail, as a host that cannot answer does.
         refuses: Cell<bool>,
+        /// Makes every stop never answer, as a host that has gone quiet does.
+        stop_never_answers: Cell<bool>,
+        /// Set when such a stop is dropped, which is what the monitor giving
+        /// up on the request looks like from here.
+        stop_abandoned: Arc<AtomicBool>,
         stopped: RefCell<Vec<sandbox::SandboxProcessKey>>,
+    }
+
+    /// Marks [`FakeSandboxProcesses::stop_abandoned`] when the request it was
+    /// put in is dropped.
+    struct MarkWhenDropped(Arc<AtomicBool>);
+
+    impl Drop for MarkWhenDropped {
+        fn drop(&mut self) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
     }
 
     impl FakeSandboxProcesses {
@@ -10671,6 +10775,8 @@ mod tests {
                 write_scope,
                 running: RefCell::default(),
                 refuses: Cell::new(false),
+                stop_never_answers: Cell::new(false),
+                stop_abandoned: Arc::default(),
                 stopped: RefCell::default(),
             })
         }
@@ -10681,15 +10787,22 @@ mod tests {
                 write_scope,
                 running: RefCell::default(),
                 refuses: Cell::new(false),
+                stop_never_answers: Cell::new(false),
+                stop_abandoned: Arc::default(),
                 stopped: RefCell::default(),
             })
+        }
+
+        fn stop_was_abandoned(&self) -> bool {
+            self.stop_abandoned
+                .load(std::sync::atomic::Ordering::SeqCst)
         }
 
         fn start(&self, pid: u32, command: &str) {
             self.running.borrow_mut().push(sandbox::SandboxProcess {
                 pid,
                 start_time: u64::from(pid) * 10,
-                running_for: Duration::from_secs(3),
+                running_for: Some(Duration::from_secs(3)),
                 command: command.to_string(),
             });
         }
@@ -10724,8 +10837,16 @@ mod tests {
         fn stop(
             &self,
             processes: Vec<sandbox::SandboxProcessKey>,
-            _cx: &App,
+            cx: &App,
         ) -> Task<Result<usize>> {
+            if self.stop_never_answers.get() {
+                let mark = MarkWhenDropped(self.stop_abandoned.clone());
+                return cx.background_spawn(async move {
+                    std::future::pending::<()>().await;
+                    drop(mark);
+                    Ok(0)
+                });
+            }
             let stopped = processes.len();
             for process in &processes {
                 self.end(process.pid);

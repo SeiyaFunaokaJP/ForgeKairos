@@ -513,6 +513,13 @@ impl ContextMenu {
         self
     }
 
+    /// Whether nothing has been put in the menu. A menu built empty falls back
+    /// to the placeholder [`crate::List`] shows for an empty list, so a menu
+    /// that can come out empty should say so in its own words instead.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     pub fn header(mut self, title: impl Into<SharedString>) -> Self {
         self.items.push(ContextMenuItem::Header(title.into()));
         self

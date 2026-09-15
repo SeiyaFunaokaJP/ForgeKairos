@@ -223,6 +223,20 @@ impl SandboxedAgentProfile {
         }
         directories
     }
+
+    /// [`Self::directories_below`] as paths **relative to the configuration
+    /// folder**, POSIX-spelled. ADR-F49 第 2b 段: a Windows client asks the
+    /// WSL side to create the folder, and only that side knows where the
+    /// distro account's home — and hence the folder — is, so it is given the
+    /// names below the folder rather than whole paths this machine would have
+    /// to guess.
+    pub fn directories_below_relative(&self) -> Vec<String> {
+        let mut directories = vec![AGENT_HOME_FOLDER_NAME.to_string()];
+        if *self == Self::Codex {
+            directories.push(format!("{AGENT_HOME_FOLDER_NAME}/{CODEX_HOME_FOLDER_NAME}"));
+        }
+        directories
+    }
 }
 
 const CODEX_HOME_FOLDER_NAME: &str = ".codex";
@@ -677,6 +691,75 @@ pub struct AgentSandboxCommand {
     /// installation, Zed's node), which the sandbox shows back read-only.
     pub readable_paths: Vec<PathBuf>,
     pub state: AgentSandboxState,
+    /// ADR-F49 第 2b 段: `Some` when the command — its program, arguments,
+    /// environment, `readable_paths` and, once placed, `config_dir` — is a
+    /// Linux command inside this WSL distro, which a Windows client starts
+    /// through the distro's sandbox helper.
+    pub wsl: Option<WslAgentRuntime>,
+}
+
+/// ADR-F49 第 2b 段: the WSL distro an agent's Linux runtime lives in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WslAgentRuntime {
+    /// `None`: the default distro.
+    pub distro: Option<String>,
+}
+
+/// ADR-F49 第 2b 段 (decision 23): the WSL distro a Windows project's agent
+/// runs in — the one a `\\wsl.localhost\<distro>\` root names, else the
+/// default one (`None`) — and an error for folders spread over several
+/// distros. Elsewhere than Windows: `None`.
+#[cfg_attr(not(target_os = "windows"), expect(unused_variables))]
+pub fn wsl_distro_for_roots(roots: &[PathBuf]) -> Result<Option<String>> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut distro: Option<String> = None;
+        for root in roots {
+            let Some(root_distro) = sandbox::wsl_distro_for_path(root) else {
+                continue;
+            };
+            match &distro {
+                Some(existing) if !existing.eq_ignore_ascii_case(&root_distro) => anyhow::bail!(
+                    "複数の WSL ディストリビューション ({existing}、{root_distro}) にまたがるフォルダーでは起動できません。"
+                ),
+                _ => distro = Some(root_distro),
+            }
+        }
+        Ok(distro)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(None)
+    }
+}
+
+/// ADR-F50: what a session in a WSL distro's sandbox may write, spelled as
+/// worktrees are — the project's folders, and its configuration folder through
+/// the distro's share, since that folder lives on the distro's own filesystem
+/// and a worktree can hold it (the WSL home opened as a project). `distro` is
+/// the distro's registered name; without one (the default distro, whose name
+/// Zed does not know) the folder has no Windows spelling and is left out, so a
+/// worktree holding it is not paused for this session.
+///
+/// Shared by the sandboxed Claude Code CLI (第 1 段) and an external agent
+/// started in the WSL sandbox (第 2b 段), so both pause the same worktrees.
+pub fn wsl_session_write_scope(
+    roots: &[PathBuf],
+    config_dir: &str,
+    distro: Option<&str>,
+) -> Vec<PathBuf> {
+    let mapper = util::path_mapping::WslPathMapper {
+        distro: distro.unwrap_or_default().to_string(),
+    };
+    let mut scope = roots.to_vec();
+    match util::path_mapping::PathMapper::to_host(&mapper, config_dir) {
+        Some(host_path) => scope.push(host_path),
+        None => log::warn!(
+            "[agent-sandbox] {config_dir} has no Windows path (distro {distro:?}), so a \
+             worktree holding it is not paused for this session"
+        ),
+    }
+    scope
 }
 
 impl std::fmt::Debug for AgentSandboxCommand {
@@ -698,6 +781,7 @@ impl std::fmt::Debug for AgentSandboxCommand {
             .field("env", &env)
             .field("readable_paths", &self.readable_paths)
             .field("state", &self.state)
+            .field("wsl", &self.wsl)
             .finish()
     }
 }
@@ -712,6 +796,7 @@ impl AgentSandboxCommand {
             env,
             readable_paths,
             state: AgentSandboxState::Unresolved { profile },
+            wsl: None,
         }
     }
 
@@ -742,6 +827,7 @@ impl AgentSandboxCommand {
             env,
             readable_paths: self.readable_paths,
             state: AgentSandboxState::Resolved { config_dir, hosts },
+            wsl: self.wsl,
         })
     }
 

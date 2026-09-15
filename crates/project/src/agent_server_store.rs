@@ -28,6 +28,8 @@ use util::{ResultExt as _, debug_panic};
 
 use crate::ProjectEnvironment;
 use crate::agent_registry_store::{AgentRegistryStore, RegistryAgent, RegistryTargetConfig};
+#[cfg(target_os = "windows")]
+use crate::agent_sandbox::WslAgentRuntime;
 use crate::agent_sandbox::{
     AgentSandboxCommand, AgentSandboxHosts, AgentSandboxState, SandboxedAgentProfile,
     readable_paths_in_data_dir,
@@ -72,6 +74,19 @@ impl std::fmt::Debug for AgentServerCommand {
             .field("sandbox", &self.sandbox)
             .finish()
     }
+}
+
+/// ADR-F49 第 2b 段: where the command an agent server resolves is to run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentLaunchTarget {
+    /// This machine's sandbox: Bubblewrap on Linux, Seatbelt on macOS, and
+    /// on Windows the WSL distro the project's folders are in (`None`: the
+    /// default distro), where the command is a Linux command.
+    Sandbox { wsl_distro: Option<String> },
+    /// The host itself, outside any sandbox: the one start the user
+    /// confirmed (ADR-F49 decision 19), and a remote host resolving for its
+    /// own helper.
+    Host,
 }
 
 #[derive(
@@ -128,6 +143,7 @@ pub trait ExternalAgentServer {
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>>;
 
@@ -299,7 +315,7 @@ impl AgentServerStore {
                 .map(|process| proto::SandboxProcess {
                     pid: process.pid,
                     start_time: process.start_time,
-                    running_for: process.running_for.as_secs(),
+                    running_for: process.running_for.map(|running_for| running_for.as_secs()),
                     command: process.command,
                 })
                 .collect(),
@@ -314,15 +330,7 @@ impl AgentServerStore {
         cx: AsyncApp,
     ) -> Result<proto::StopSandboxProcessesResponse> {
         let session_id = envelope.payload.session_id;
-        let processes = envelope
-            .payload
-            .processes
-            .into_iter()
-            .map(|process| sandbox::SandboxProcessKey {
-                pid: process.pid,
-                start_time: process.start_time,
-            })
-            .collect::<Vec<_>>();
+        let processes = sandbox_process_keys(envelope.payload.processes)?;
         let stopped = cx
             .background_spawn(async move {
                 stop_sandbox_processes_on_this_host(&session_id, &processes)
@@ -489,6 +497,7 @@ impl AgentServerStore {
                                 ExternalAgentEntry::new(
                                     Box::new(LocalRegistryNpxAgent {
                                         fs: fs.clone(),
+                                        http_client: http_client.clone(),
                                         node_runtime: node_runtime.clone(),
                                         project_environment: project_environment.clone(),
                                         registry_id: Arc::from(name.as_str()),
@@ -498,6 +507,7 @@ impl AgentServerStore {
                                         distribution_env: agent.env.clone(),
                                         settings_env: env.clone(),
                                         new_version_available_tx: None,
+                                        loading_status_tx: None,
                                     })
                                         as Box<dyn ExternalAgentServer>,
                                     ExternalAgentSource::Registry,
@@ -756,7 +766,12 @@ impl AgentServerStore {
                 if let Some(loading_status_tx) = loading_status_tx {
                     agent.set_loading_status_tx(loading_status_tx);
                 }
-                anyhow::Ok(agent.get_command(vec![], extra_env, &mut cx.to_async()))
+                anyhow::Ok(agent.get_command(
+                    vec![],
+                    extra_env,
+                    AgentLaunchTarget::Host,
+                    &mut cx.to_async(),
+                ))
             })?
             .await?;
 
@@ -1017,6 +1032,7 @@ fn accept_remote_agent_sandbox(
             .map(PathBuf::from)
             .collect(),
         state: AgentSandboxState::Resolved { config_dir, hosts },
+        wsl: None,
     })
 }
 
@@ -1053,6 +1069,7 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
+        _target: AgentLaunchTarget,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>> {
         let project_id = self.project_id;
@@ -1110,6 +1127,7 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
                     env: HashMap::default(),
                     readable_paths: Vec::new(),
                     state: AgentSandboxState::Unavailable { reason },
+                    wsl: None,
                 })
             });
             response.args.extend(extra_args);
@@ -1266,7 +1284,19 @@ fn versioned_archive_cache_dir(
     archive_url: &str,
     sha256: Option<&str>,
 ) -> PathBuf {
-    let version = version.unwrap_or_default();
+    base_dir.join(archive_version_component(
+        version.unwrap_or_default(),
+        archive_url,
+        sha256,
+    ))
+}
+
+/// The directory name one version of one registry archive is kept under: its
+/// version, and what identifies the archive itself, so a version republished
+/// under another URL or digest gets a directory of its own. Shared with the
+/// WSL staging of the same archive (ADR-F49 第 2b 段), so the same rule holds
+/// inside the distro.
+fn archive_version_component(version: &str, archive_url: &str, sha256: Option<&str>) -> String {
     let sanitized_version = sanitize_path_component(version);
 
     let mut version_hasher = Sha256::new();
@@ -1281,11 +1311,11 @@ fn versioned_archive_cache_dir(
     }
     let archive_hash = format!("{:x}", archive_hasher.finalize());
 
-    base_dir.join(format!(
+    format!(
         "v_{sanitized_version}_{}_{}",
         &version_hash[..16],
         &archive_hash[..16],
-    ))
+    )
 }
 
 // The `v_` prefix here must stay in sync with `versioned_archive_cache_dir`,
@@ -1354,6 +1384,38 @@ async fn remove_stale_versioned_archive_cache_dirs(
     Ok(())
 }
 
+/// The SHA-256 a registry archive is checked against: the one the registry
+/// names, or — for a GitHub release asset — the digest GitHub reports for it.
+/// `None` when neither is available, which leaves HTTPS as the only assurance
+/// (ADR-F49 決定 25).
+async fn registry_archive_sha256(
+    http_client: &Arc<dyn HttpClient>,
+    archive_url: &str,
+    provided: Option<String>,
+) -> Option<String> {
+    if provided.is_some() {
+        return provided;
+    }
+    let github_archive = github_release_archive_from_url(archive_url)?;
+    let release = ::http_client::github::get_release_by_tag_name(
+        &github_archive.repo_name_with_owner,
+        &github_archive.tag,
+        http_client.clone(),
+    )
+    .await
+    .ok()?;
+    let asset = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == github_archive.asset_name)?;
+    asset.digest.as_ref().map(|digest| {
+        digest
+            .strip_prefix("sha256:")
+            .map(ToString::to_string)
+            .unwrap_or_else(|| digest.clone())
+    })
+}
+
 struct LocalRegistryArchiveAgent {
     fs: Arc<dyn Fs>,
     http_client: Arc<dyn HttpClient>,
@@ -1393,6 +1455,7 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>> {
         let fs = self.fs.clone();
@@ -1404,9 +1467,49 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
         let targets = self.targets.clone();
         let settings_env = self.env.clone();
         let version = self.version.clone();
-        let loading_status_tx = self.loading_status_tx.take();
+        // Only the WSL path reports progress step by step; the host path uses
+        // it once, below.
+        #[cfg_attr(not(target_os = "windows"), expect(unused_mut))]
+        let mut loading_status_tx = self.loading_status_tx.take();
 
         cx.spawn(async move |cx| {
+            // ADR-F49 第 2b 段: on Windows the agent runs inside the project's
+            // WSL distro, so it is the entry's **Linux** build that is
+            // obtained and staged, never this machine's Windows one.
+            #[cfg_attr(not(target_os = "windows"), expect(unused_mut))]
+            let mut sandbox_failure: Option<String> = None;
+            #[cfg(target_os = "windows")]
+            if let AgentLaunchTarget::Sandbox { wsl_distro } = &target {
+                match registry_archive_command_in_wsl(
+                    wsl_distro.clone(),
+                    cx.background_executor().clone(),
+                    http_client.clone(),
+                    fs.clone(),
+                    &registry_id,
+                    version.as_ref(),
+                    &targets,
+                    extra_env.clone(),
+                    settings_env.clone(),
+                    extra_args.clone(),
+                    &mut loading_status_tx,
+                )
+                .await
+                {
+                    Ok(command) => return Ok(command),
+                    // Not fatal: the client shows the reason and offers to
+                    // start the agent outside the sandbox once (決定 19).
+                    Err(error) => {
+                        log::warn!(
+                            "could not resolve the agent `{registry_id}` \
+                             for the WSL sandbox: {error:#}"
+                        );
+                        sandbox_failure = Some(format!("{error:#}"));
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            let _ = &target;
+
             let mut env = project_environment
                 .update(cx, |project_environment, cx| {
                     project_environment.default_environment(cx)
@@ -1470,35 +1573,12 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
                         .ok();
                 }
 
-                let sha256 = if let Some(provided_sha) = &target_config.sha256 {
-                    Some(provided_sha.clone())
-                } else if let Some(github_archive) = github_release_archive_from_url(archive_url) {
-                    if let Ok(release) = ::http_client::github::get_release_by_tag_name(
-                        &github_archive.repo_name_with_owner,
-                        &github_archive.tag,
-                        http_client.clone(),
-                    )
-                    .await
-                    {
-                        if let Some(asset) = release
-                            .assets
-                            .iter()
-                            .find(|a| a.name == github_archive.asset_name)
-                        {
-                            asset.digest.as_ref().and_then(|d| {
-                                d.strip_prefix("sha256:")
-                                    .map(|s| s.to_string())
-                                    .or_else(|| Some(d.clone()))
-                            })
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                let sha256 = registry_archive_sha256(
+                    &http_client,
+                    archive_url,
+                    target_config.sha256.clone(),
+                )
+                .await;
 
                 match registry_archive_kind_for_url(archive_url)? {
                     RegistryArchiveKind::Archive(asset_kind) => {
@@ -1567,10 +1647,13 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
                 runs_from.push(managed_node);
             }
             let command = AgentServerCommand {
-                sandbox: Some(AgentSandboxCommand::new(
-                    SandboxedAgentProfile::for_agent(&registry_id, true),
-                    agent_env,
-                    readable_paths_in_data_dir(paths::data_dir(), &runs_from),
+                sandbox: Some(sandbox_placement_failed(
+                    AgentSandboxCommand::new(
+                        SandboxedAgentProfile::for_agent(&registry_id, true),
+                        agent_env,
+                        readable_paths_in_data_dir(paths::data_dir(), &runs_from),
+                    ),
+                    sandbox_failure,
                 )),
                 path: cmd_path,
                 args,
@@ -1592,6 +1675,7 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
 
 struct LocalRegistryNpxAgent {
     fs: Arc<dyn Fs>,
+    http_client: Arc<dyn HttpClient>,
     node_runtime: NodeRuntime,
     project_environment: Entity<ProjectEnvironment>,
     registry_id: Arc<str>,
@@ -1601,6 +1685,7 @@ struct LocalRegistryNpxAgent {
     distribution_env: HashMap<String, String>,
     settings_env: HashMap<String, String>,
     new_version_available_tx: Option<watch::Sender<Option<String>>>,
+    loading_status_tx: Option<watch::Sender<Option<String>>>,
 }
 
 impl ExternalAgentServer for LocalRegistryNpxAgent {
@@ -1616,13 +1701,26 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
         self.new_version_available_tx = Some(tx);
     }
 
+    fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.loading_status_tx.take()
+    }
+
+    fn set_loading_status_tx(&mut self, tx: watch::Sender<Option<String>>) {
+        self.loading_status_tx = Some(tx);
+    }
+
     fn get_command(
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>> {
         let fs = self.fs.clone();
+        // Obtaining the Linux Node.js and saying how far it has got are the
+        // WSL path's; the host path installs with the Node.js it already has.
+        #[cfg_attr(not(target_os = "windows"), expect(unused_variables))]
+        let http_client = self.http_client.clone();
         let node_runtime = self.node_runtime.clone();
         let project_environment = self.project_environment.downgrade();
         let registry_id = self.registry_id.clone();
@@ -1630,8 +1728,55 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
         let args = self.args.clone();
         let distribution_env = self.distribution_env.clone();
         let settings_env = self.settings_env.clone();
+        #[cfg_attr(not(target_os = "windows"), expect(unused_mut, unused_variables))]
+        let mut loading_status_tx = self.loading_status_tx.take();
 
         cx.spawn(async move |cx| {
+            // ADR-F49 第 2b 段: on Windows the sandbox is the project's WSL
+            // distro, where the agent is a Linux command run from a Linux
+            // Node.js. What this host would install for itself is of no use
+            // there (the package's native parts are chosen per platform by its
+            // install scripts), so the whole runtime is resolved inside the
+            // distro instead.
+            #[cfg_attr(not(target_os = "windows"), expect(unused_mut))]
+            let mut sandbox_failure: Option<String> = None;
+            #[cfg(target_os = "windows")]
+            if let AgentLaunchTarget::Sandbox { wsl_distro } = &target {
+                let editor_network_allowlist =
+                    cx.update(|cx| wsl_runtime::editor_network_allowlist(cx));
+                let mut agent_env = distribution_env.clone();
+                agent_env.extend(extra_env.clone());
+                agent_env.extend(settings_env.clone());
+                match npx_agent_command_in_wsl(
+                    wsl_distro.clone(),
+                    cx.background_executor().clone(),
+                    http_client.clone(),
+                    fs.clone(),
+                    &registry_id,
+                    &package,
+                    args.clone(),
+                    extra_args.clone(),
+                    agent_env,
+                    editor_network_allowlist,
+                    &mut loading_status_tx,
+                )
+                .await
+                {
+                    Ok(command) => return Ok(command),
+                    // Not fatal: the client shows the reason and offers to
+                    // start the agent outside the sandbox once (決定 19).
+                    Err(error) => {
+                        log::warn!(
+                            "could not resolve the agent `{registry_id}` \
+                             for the WSL sandbox: {error:#}"
+                        );
+                        sandbox_failure = Some(format!("{error:#}"));
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            let _ = &target;
+
             let mut env = project_environment
                 .update(cx, |project_environment, cx| {
                     project_environment.default_environment(cx)
@@ -1690,10 +1835,13 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
                 runs_from.push(managed_node);
             }
             let command = AgentServerCommand {
-                sandbox: Some(AgentSandboxCommand::new(
-                    SandboxedAgentProfile::for_agent(&registry_id, true),
-                    agent_env,
-                    readable_paths_in_data_dir(paths::data_dir(), &runs_from),
+                sandbox: Some(sandbox_placement_failed(
+                    AgentSandboxCommand::new(
+                        SandboxedAgentProfile::for_agent(&registry_id, true),
+                        agent_env,
+                        readable_paths_in_data_dir(paths::data_dir(), &runs_from),
+                    ),
+                    sandbox_failure,
                 )),
                 path: node_binary,
                 args: command_args,
@@ -1758,6 +1906,7 @@ impl ExternalAgentServer for LocalCustomAgent {
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>> {
         let mut command = self.command.clone();
@@ -1774,6 +1923,39 @@ impl ExternalAgentServer for LocalCustomAgent {
             let mut agent_env = command.env.take().unwrap_or_default();
             agent_env.extend(extra_env);
             env.extend(agent_env.clone());
+
+            // ADR-F49 第 2b 段: on Windows the sandbox is the project's WSL
+            // distro, which can only run a Linux program. A command spelled as
+            // a Windows path is reported as one the sandbox cannot take,
+            // rather than started outside it without saying so (決定 19).
+            #[cfg(target_os = "windows")]
+            if let AgentLaunchTarget::Sandbox { wsl_distro } = target {
+                let mut sandbox = AgentSandboxCommand::new(profile, agent_env, Vec::new());
+                let path = command.path.to_string_lossy().into_owned();
+                if path.starts_with('/') && !path.starts_with("//") {
+                    sandbox.wsl = Some(WslAgentRuntime { distro: wsl_distro });
+                    // Everything a Linux command needs is in `sandbox.env`,
+                    // which the WSL helper sets inside the sandbox; this
+                    // machine's environment means nothing there.
+                    command.env = None;
+                } else {
+                    sandbox.state = AgentSandboxState::Unavailable {
+                        reason: format!(
+                            "Windows のプログラム `{path}` は WSL のサンドボックスの中では\
+                             実行できません。エージェントの設定で Linux のプログラムの絶対パス \
+                             (`/usr/local/bin/...` など) を指定するか、サンドボックスの外で\
+                             起動してください。"
+                        ),
+                    };
+                    command.env = Some(env);
+                }
+                command.args.extend(extra_args);
+                command.sandbox = Some(sandbox);
+                return Ok(command);
+            }
+            #[cfg(not(target_os = "windows"))]
+            let _ = &target;
+
             command.env = Some(env);
             command.args.extend(extra_args);
             command.sandbox = Some(AgentSandboxCommand::new(profile, agent_env, Vec::new()));
@@ -1964,6 +2146,36 @@ impl settings::Settings for AllAgentServersSettings {
     }
 }
 
+/// ADR-F49 decision 18 (C): the most processes one stop request may name.
+/// What a client asks to stop comes from a list it walked out of a single PID
+/// namespace a moment earlier, and a sandbox never holds anything like this
+/// many; the bound only keeps a malformed or hostile request from turning into
+/// an unbounded number of `/proc` reads and namespace walks on the host.
+const MAX_STOPPED_SANDBOX_PROCESSES: usize = 1024;
+
+/// What a stop request names, as the host acts on it. The whole request is
+/// refused above [`MAX_STOPPED_SANDBOX_PROCESSES`] rather than truncated: a
+/// client that asked for more than a sandbox can hold is not one whose list
+/// this host should be acting on at all, and a half-honoured stop would report
+/// a number the caller could not tell from a complete one.
+fn sandbox_process_keys(
+    processes: Vec<proto::SandboxProcessKey>,
+) -> Result<Vec<sandbox::SandboxProcessKey>> {
+    anyhow::ensure!(
+        processes.len() <= MAX_STOPPED_SANDBOX_PROCESSES,
+        "a request to stop {} processes of one sandbox names more than the \
+         {MAX_STOPPED_SANDBOX_PROCESSES} a sandbox's own list can hold",
+        processes.len(),
+    );
+    Ok(processes
+        .into_iter()
+        .map(|process| sandbox::SandboxProcessKey {
+            pid: process.pid,
+            start_time: process.start_time,
+        })
+        .collect())
+}
+
 /// ADR-F49 decision 18 (C): the sandbox sessions this account registered, and
 /// what runs in them. Only the host a sandbox was built on can answer, so this
 /// lives where the remote server runs.
@@ -2014,6 +2226,36 @@ mod tests {
 
     #[cfg(feature = "test-support")]
     const TEST_ARCHIVE_URL: &str = "https://example.test/agent";
+
+    /// ADR-F49 decision 18 (C): each named process costs a `/proc` read and a
+    /// namespace walk on the host before it is signalled, so a request far
+    /// above what one sandbox can hold is refused whole.
+    #[test]
+    fn a_stop_request_is_refused_above_what_a_sandbox_can_hold() {
+        let keys = |count: usize| {
+            (0..count)
+                .map(|index| proto::SandboxProcessKey {
+                    pid: index as u32 + 1,
+                    start_time: 1,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sandbox_process_keys(keys(0)).unwrap().len(), 0);
+        let accepted = sandbox_process_keys(keys(MAX_STOPPED_SANDBOX_PROCESSES))
+            .expect("the most a sandbox's list can hold is still acted on");
+        assert_eq!(accepted.len(), MAX_STOPPED_SANDBOX_PROCESSES);
+        assert_eq!(
+            accepted.first(),
+            Some(&sandbox::SandboxProcessKey {
+                pid: 1,
+                start_time: 1
+            })
+        );
+        assert!(
+            sandbox_process_keys(keys(MAX_STOPPED_SANDBOX_PROCESSES + 1)).is_err(),
+            "one more than that is refused rather than truncated"
+        );
+    }
 
     #[cfg(feature = "test-support")]
     fn static_http_client(body: Vec<u8>) -> Arc<dyn HttpClient> {
@@ -2075,6 +2317,231 @@ mod tests {
                 loading_status_tx: None,
             }
         })
+    }
+
+    /// ADR-F49 決定 19: an agent the host could not place in its sandbox keeps
+    /// its command but is described as unavailable, so the client refuses to
+    /// start it and offers to start it outside the sandbox once.
+    #[test]
+    fn a_sandbox_that_could_not_be_built_is_reported_rather_than_skipped() {
+        let sandbox = AgentSandboxCommand::new(
+            SandboxedAgentProfile::for_agent("claude-acp", true),
+            HashMap::default(),
+            Vec::new(),
+        );
+        assert!(matches!(
+            sandbox_placement_failed(sandbox.clone(), None).state,
+            AgentSandboxState::Unresolved { .. }
+        ));
+        let failed = sandbox_placement_failed(sandbox, Some("WSL がありません".to_string()));
+        assert_eq!(
+            failed.state,
+            AgentSandboxState::Unavailable {
+                reason: "WSL がありません".to_string()
+            }
+        );
+    }
+
+    #[cfg(all(target_os = "windows", feature = "test-support"))]
+    fn make_custom_agent(cx: &mut TestAppContext, command_path: &str) -> LocalCustomAgent {
+        let fs: Arc<dyn Fs> = Arc::new(fs::RealFs::new(None, cx.executor()));
+        cx.update(|cx| {
+            let worktree_store =
+                cx.new(|cx| WorktreeStore::local(false, fs.clone(), WorktreeIdCounter::get(cx)));
+            let project_environment = cx.new(|cx| {
+                crate::ProjectEnvironment::new(None, worktree_store.downgrade(), None, false, cx)
+            });
+            LocalCustomAgent {
+                project_environment,
+                agent_id: Arc::from("my-agent"),
+                command: AgentServerCommand {
+                    path: PathBuf::from(command_path),
+                    args: vec!["--acp".to_string()],
+                    env: Some(HashMap::from_iter([(
+                        "MY_AGENT_TOKEN".to_string(),
+                        "t".to_string(),
+                    )])),
+                    sandbox: None,
+                },
+            }
+        })
+    }
+
+    /// ADR-F49 第 2b 段: a custom agent spelled as a Linux absolute path is a
+    /// command inside the project's WSL distro, which is what the client
+    /// starts it as; its Windows environment is dropped, because none of it
+    /// means anything there.
+    #[cfg(all(target_os = "windows", feature = "test-support"))]
+    #[gpui::test]
+    async fn a_linux_custom_agent_is_a_command_inside_the_distro(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        let mut agent = make_custom_agent(cx, "/usr/local/bin/my-agent");
+        let command = cx
+            .update(|cx| {
+                agent.get_command(
+                    Vec::new(),
+                    HashMap::default(),
+                    AgentLaunchTarget::Sandbox {
+                        wsl_distro: Some("Ubuntu".to_string()),
+                    },
+                    &mut cx.to_async(),
+                )
+            })
+            .await
+            .expect("a Linux command");
+
+        let sandbox = command.sandbox.expect("a sandbox part");
+        assert_eq!(
+            sandbox.wsl,
+            Some(crate::agent_sandbox::WslAgentRuntime {
+                distro: Some("Ubuntu".to_string())
+            })
+        );
+        assert!(matches!(
+            sandbox.state,
+            AgentSandboxState::Unresolved { .. }
+        ));
+        assert_eq!(
+            sandbox.env.get("MY_AGENT_TOKEN").map(String::as_str),
+            Some("t"),
+            "the agent keeps its own environment inside the sandbox"
+        );
+        assert_eq!(
+            command.env, None,
+            "a Linux command takes none of this machine's environment"
+        );
+        assert_eq!(command.path, PathBuf::from("/usr/local/bin/my-agent"));
+    }
+
+    /// ADR-F49 第 2b 段 / 決定 19: a custom agent spelled as a Windows program
+    /// cannot run in the WSL sandbox, and says so in Japanese rather than
+    /// being started outside it without a word.
+    #[cfg(all(target_os = "windows", feature = "test-support"))]
+    #[gpui::test]
+    async fn a_windows_custom_agent_cannot_run_in_the_distro(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        for windows_path in [
+            "C:\\tools\\my-agent.exe",
+            "\\\\server\\share\\my-agent.exe",
+            "my-agent.exe",
+        ] {
+            let mut agent = make_custom_agent(cx, windows_path);
+            let command = cx
+                .update(|cx| {
+                    agent.get_command(
+                        Vec::new(),
+                        HashMap::default(),
+                        AgentLaunchTarget::Sandbox { wsl_distro: None },
+                        &mut cx.to_async(),
+                    )
+                })
+                .await
+                .expect("a command with a reason");
+
+            let sandbox = command.sandbox.expect("a sandbox part");
+            assert_eq!(sandbox.wsl, None, "{windows_path} is no Linux command");
+            let AgentSandboxState::Unavailable { reason } = sandbox.state else {
+                panic!("{windows_path} should not be placed in the sandbox");
+            };
+            assert!(
+                reason.contains(windows_path) && reason.contains("WSL"),
+                "the reason names the program and the sandbox: {reason}"
+            );
+            assert!(
+                command.env.is_some(),
+                "the host command keeps the host environment"
+            );
+        }
+    }
+
+    /// The start the user confirmed outside the sandbox (決定 19) is what it
+    /// was before 第 2b 段: the host's own command, with nothing of WSL in it.
+    #[cfg(all(target_os = "windows", feature = "test-support"))]
+    #[gpui::test]
+    async fn the_host_target_is_unchanged(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        let mut agent = make_custom_agent(cx, "/usr/local/bin/my-agent");
+        let command = cx
+            .update(|cx| {
+                agent.get_command(
+                    Vec::new(),
+                    HashMap::default(),
+                    AgentLaunchTarget::Host,
+                    &mut cx.to_async(),
+                )
+            })
+            .await
+            .expect("the host command");
+
+        let sandbox = command.sandbox.expect("a sandbox part");
+        assert_eq!(sandbox.wsl, None);
+        assert!(matches!(
+            sandbox.state,
+            AgentSandboxState::Unresolved { .. }
+        ));
+        assert!(command.env.is_some());
+    }
+
+    /// ADR-F49 決定 19: when the project's WSL distro cannot take the agent —
+    /// here because it is not registered at all — the host's own command comes
+    /// back *with the reason*, so the client refuses to start it and offers to
+    /// start it outside the sandbox once. Nothing is started unsandboxed
+    /// without a word, and nothing of WSL is claimed.
+    #[cfg(all(target_os = "windows", feature = "test-support"))]
+    #[gpui::test]
+    async fn a_registry_archive_says_why_the_distro_could_not_take_it(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let installation_dir = temp_dir.path().join("agent");
+        let contents = b"verified agent";
+        let expected_sha256 = format!("{:X}", Sha256::digest(contents));
+        let http_client = static_http_client(contents.to_vec());
+        let mut agent = make_registry_archive_agent(
+            cx,
+            installation_dir.clone(),
+            http_client,
+            Some(expected_sha256.clone()),
+        );
+        let get_command = cx.update(|cx| {
+            agent.get_command(
+                Vec::new(),
+                HashMap::default(),
+                AgentLaunchTarget::Sandbox {
+                    // No distro is ever registered under this name, so the
+                    // WSL half fails before it spawns anything.
+                    wsl_distro: Some("zed-jp-enhance-no-such-distro".to_string()),
+                },
+                &mut cx.to_async(),
+            )
+        });
+
+        let command = get_command.await.expect("the host command and a reason");
+        cx.run_until_parked();
+        let sandbox = command.sandbox.expect("a sandbox part");
+        assert_eq!(sandbox.wsl, None, "nothing was placed in a distro");
+        let AgentSandboxState::Unavailable { reason } = sandbox.state else {
+            panic!("an unregistered distro cannot take the agent");
+        };
+        assert!(
+            reason.contains("zed-jp-enhance-no-such-distro"),
+            "the reason names the distro: {reason}"
+        );
+        assert_eq!(
+            command.path,
+            versioned_archive_cache_dir(
+                &installation_dir,
+                Some("1.0.0"),
+                TEST_ARCHIVE_URL,
+                Some(&expected_sha256),
+            )
+            .join("agent"),
+            "the command that comes back is this host's own"
+        );
+        assert!(
+            command.env.is_some(),
+            "the host command keeps the host environment"
+        );
     }
 
     fn make_npx_agent(id: &str, version: &str) -> RegistryAgent {
@@ -2371,8 +2838,14 @@ mod tests {
             http_client,
             Some(expected_sha256.to_string()),
         );
-        let get_command =
-            cx.update(|cx| agent.get_command(Vec::new(), HashMap::default(), &mut cx.to_async()));
+        let get_command = cx.update(|cx| {
+            agent.get_command(
+                Vec::new(),
+                HashMap::default(),
+                AgentLaunchTarget::Host,
+                &mut cx.to_async(),
+            )
+        });
 
         let error = get_command.await.unwrap_err();
         assert!(
@@ -2407,8 +2880,14 @@ mod tests {
             http_client,
             Some(expected_sha256.clone()),
         );
-        let get_command =
-            cx.update(|cx| agent.get_command(Vec::new(), HashMap::default(), &mut cx.to_async()));
+        let get_command = cx.update(|cx| {
+            agent.get_command(
+                Vec::new(),
+                HashMap::default(),
+                AgentLaunchTarget::Host,
+                &mut cx.to_async(),
+            )
+        });
 
         let command = get_command.await.unwrap();
         cx.run_until_parked();
@@ -2436,8 +2915,14 @@ mod tests {
         let http_client = static_http_client(contents.to_vec());
         let mut agent =
             make_registry_archive_agent(cx, installation_dir.clone(), http_client, None);
-        let get_command =
-            cx.update(|cx| agent.get_command(Vec::new(), HashMap::default(), &mut cx.to_async()));
+        let get_command = cx.update(|cx| {
+            agent.get_command(
+                Vec::new(),
+                HashMap::default(),
+                AgentLaunchTarget::Host,
+                &mut cx.to_async(),
+            )
+        });
 
         let command = get_command.await.unwrap();
         cx.run_until_parked();
@@ -2658,5 +3143,661 @@ mod tests {
                 "agent-b tx should have been transferred"
             );
         });
+    }
+}
+
+/// ADR-F49 決定 19: an agent this host could not put in its sandbox is
+/// described *with the reason*, so the client refuses to start it and offers
+/// to start it outside the sandbox once — rather than quietly starting it
+/// unsandboxed.
+fn sandbox_placement_failed(
+    mut sandbox: AgentSandboxCommand,
+    reason: Option<String>,
+) -> AgentSandboxCommand {
+    if let Some(reason) = reason {
+        sandbox.state = AgentSandboxState::Unavailable { reason };
+    }
+    sandbox
+}
+
+/// ADR-F49 第 2b 段: the command for an npx-distributed registry agent as it
+/// runs **inside** the project's WSL distro — Zed's own Linux Node.js staged
+/// there, the package installed there by a sandboxed npm, and both shown back
+/// to the agent read-only.
+#[cfg(target_os = "windows")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one registry entry's whole description"
+)]
+async fn npx_agent_command_in_wsl(
+    wsl_distro: Option<String>,
+    executor: gpui::BackgroundExecutor,
+    http_client: Arc<dyn HttpClient>,
+    fs: Arc<dyn Fs>,
+    registry_id: &str,
+    package: &str,
+    args: Vec<String>,
+    extra_args: Vec<String>,
+    agent_env: HashMap<String, String>,
+    editor_network_allowlist: Option<Vec<String>>,
+    loading_status_tx: &mut Option<watch::Sender<Option<String>>>,
+) -> Result<AgentServerCommand> {
+    let distro = wsl_distro.as_deref();
+    let node_directory =
+        wsl_runtime::node_directory(distro, &executor, &http_client, &fs, loading_status_tx)
+            .await?;
+    let (install_directory, executable) = wsl_runtime::npm_package(
+        distro,
+        &executor,
+        &node_directory,
+        registry_id,
+        package,
+        editor_network_allowlist,
+        loading_status_tx,
+    )
+    .await?;
+
+    // The agent's environment is the one written for the distro: the staged
+    // Node.js first on `PATH`, then what the entry and the user's settings
+    // ask for. Nothing of this Windows process's environment goes in.
+    let mut env = HashMap::default();
+    env.insert("PATH".to_string(), wsl_runtime::linux_path(&node_directory));
+    env.extend(agent_env);
+
+    let mut command_args = vec![executable];
+    command_args.extend(args);
+    command_args.extend(extra_args);
+
+    Ok(AgentServerCommand {
+        sandbox: Some(AgentSandboxCommand {
+            env,
+            readable_paths: vec![
+                PathBuf::from(node_directory.clone()),
+                PathBuf::from(install_directory),
+            ],
+            state: AgentSandboxState::Unresolved {
+                profile: SandboxedAgentProfile::for_agent(registry_id, true),
+            },
+            wsl: Some(WslAgentRuntime { distro: wsl_distro }),
+        }),
+        path: PathBuf::from(format!("{node_directory}/bin/node")),
+        args: command_args,
+        // A Linux command takes no Windows environment: everything it needs is
+        // in `sandbox.env`, which the WSL helper sets inside the sandbox.
+        env: None,
+    })
+}
+
+/// ADR-F49 第 2b 段: the command for a registry agent distributed as an
+/// archive, as it runs **inside** the project's WSL distro — the entry's
+/// **Linux** build staged there rather than this machine's Windows one.
+#[cfg(target_os = "windows")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one registry entry's whole description"
+)]
+async fn registry_archive_command_in_wsl(
+    wsl_distro: Option<String>,
+    executor: gpui::BackgroundExecutor,
+    http_client: Arc<dyn HttpClient>,
+    fs: Arc<dyn Fs>,
+    registry_id: &str,
+    version: &str,
+    targets: &HashMap<String, RegistryTargetConfig>,
+    extra_env: HashMap<String, String>,
+    settings_env: HashMap<String, String>,
+    extra_args: Vec<String>,
+    loading_status_tx: &mut Option<watch::Sender<Option<String>>>,
+) -> Result<AgentServerCommand> {
+    let distro = wsl_distro.as_deref();
+    let machine = wsl_runtime::machine_architecture(distro, &executor).await?;
+    let architecture = match machine.as_str() {
+        "x86_64" | "amd64" => "x86_64",
+        "aarch64" | "arm64" => "aarch64",
+        other => bail!(
+            "WSL のアーキテクチャ `{other}` 向けの配布物は扱えないため、\
+             サンドボックスの中でエージェントを起動できません。"
+        ),
+    };
+    let platform_key = format!("linux-{architecture}");
+    let target_config = targets.get(&platform_key).with_context(|| {
+        format!(
+            "このエージェントには {platform_key} 向けの配布物がないため、WSL のサンドボックスの\
+             中では起動できません (用意されているのは {})。",
+            targets
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join("、")
+        )
+    })?;
+
+    let sha256 = registry_archive_sha256(
+        &http_client,
+        &target_config.archive,
+        target_config.sha256.clone(),
+    )
+    .await;
+    let runtime_directory = wsl_runtime::registry_archive(
+        distro,
+        &executor,
+        &http_client,
+        &fs,
+        registry_id,
+        version,
+        &target_config.archive,
+        sha256,
+        loading_status_tx,
+    )
+    .await?;
+
+    let mut readable_paths = vec![PathBuf::from(runtime_directory.clone())];
+    let mut env = HashMap::default();
+    let program = if target_config.cmd == "node" {
+        let node_directory =
+            wsl_runtime::node_directory(distro, &executor, &http_client, &fs, loading_status_tx)
+                .await?;
+        env.insert("PATH".to_string(), wsl_runtime::linux_path(&node_directory));
+        let program = format!("{node_directory}/bin/node");
+        readable_paths.push(PathBuf::from(node_directory));
+        program
+    } else {
+        let relative = target_config
+            .cmd
+            .strip_prefix("./")
+            .or_else(|| target_config.cmd.strip_prefix(".\\"))
+            .with_context(|| {
+                format!(
+                    "エージェントの実行ファイルの指定 `{}` は `./` で始まる相対パスである必要が\
+                     あります。",
+                    target_config.cmd
+                )
+            })?;
+        wsl_runtime::bounded(
+            &executor,
+            wsl_runtime::STEP_TIMEOUT,
+            "エージェントの実行ファイルの確認",
+            sandbox::wsl_runtime_executable(distro, &runtime_directory, relative),
+        )
+        .await?
+    };
+
+    let mut agent_env = target_config.env.clone();
+    agent_env.extend(extra_env);
+    agent_env.extend(settings_env);
+    env.extend(agent_env);
+
+    let mut args = target_config.args.clone();
+    args.extend(extra_args);
+
+    Ok(AgentServerCommand {
+        sandbox: Some(AgentSandboxCommand {
+            env,
+            readable_paths,
+            state: AgentSandboxState::Unresolved {
+                profile: SandboxedAgentProfile::for_agent(registry_id, true),
+            },
+            wsl: Some(WslAgentRuntime { distro: wsl_distro }),
+        }),
+        path: PathBuf::from(program),
+        args,
+        env: None,
+    })
+}
+
+/// ADR-F49 第 2b 段: resolving an agent's command for the WSL distro a
+/// Windows project's folders live in.
+///
+/// A Windows agent runs *inside* that distro (決定 20), so everything it needs
+/// — the Linux Node.js, the npm package or the Linux build of a registry entry
+/// — is obtained here under the editor's own egress control, checked, and
+/// staged into the distro's Zed data directory, where the sandbox helper
+/// protects it and may show it back read-only (決定 8 / 11 / 14). Nothing is
+/// unpacked on Windows (決定 20) and nothing of a package is run outside the
+/// sandbox (決定 22).
+#[cfg(target_os = "windows")]
+mod wsl_runtime {
+    use std::future::Future;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use anyhow::{Context as _, Result, anyhow, bail};
+    use fs::{Fs, RemoveOptions};
+    use gpui::{App, BackgroundExecutor, FutureExt as _};
+    use http_client::{HttpClient, github::AssetKind};
+    use semver::Version;
+    use util::ResultExt as _;
+
+    use super::{
+        RegistryArchiveKind, archive_version_component, registry_archive_kind_for_url,
+        sanitize_path_component,
+    };
+
+    /// Where the Linux runtimes live below the distro's Zed data directory.
+    /// `wsl-sandbox` keeps them apart from what a **WSL remote** connection
+    /// installs in the same data directory (its `remote_server` resolves
+    /// agents for itself, in `external_agents/registry/...`), so the two never
+    /// overwrite each other.
+    const NODE_RELATIVE: &str = "node/wsl-sandbox";
+    const NPX_RELATIVE: &str = "external_agents/wsl-sandbox/registry/npx";
+    const ARCHIVE_RELATIVE: &str = "external_agents/wsl-sandbox/registry/archive";
+
+    /// The registry an npm package is installed from, and the only host the
+    /// sandboxed npm may reach besides what the editor-wide allowlist permits.
+    const NPM_REGISTRY_HOST: &str = "registry.npmjs.org";
+
+    /// Where a runtime is downloaded to before it is copied into the distro.
+    /// Deliberately **not** below `paths::data_dir()/node`: this host's own
+    /// `ManagedNodeRuntime` empties that whole directory when it reinstalls
+    /// Node.js for itself, which would take a download in progress with it.
+    /// Each file is removed as soon as it has been staged.
+    fn downloads_directory() -> PathBuf {
+        paths::external_agents_dir().join("downloads")
+    }
+
+    /// The `PATH` an agent started in the distro gets: the staged Node.js
+    /// first, then the system's own directories.
+    pub(super) fn linux_path(node_directory: &str) -> String {
+        format!("{node_directory}/bin:/usr/local/bin:/usr/bin:/bin")
+    }
+
+    /// The editor-wide network allowlist as it stands now, which the WSL
+    /// helper's proxy nests an install's own hosts inside (ADR-F17 / 決定 13).
+    /// `None` in a process with no editor-wide allowlist, where the sandbox
+    /// has nothing to nest inside.
+    pub(super) fn editor_network_allowlist(cx: &App) -> Option<Vec<String>> {
+        let global = cx.try_global::<egress_policy::EgressAllowlistGlobal>()?;
+        Some(
+            global
+                .0
+                .snapshot()
+                .patterns()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        )
+    }
+
+    fn report(status: &mut Option<watch::Sender<Option<String>>>, message: &str) {
+        if let Some(status) = status.as_mut() {
+            status.send(Some(message.to_string())).ok();
+        }
+    }
+
+    /// One `wsl.exe` round trip, which a cold WSL can take this long to answer
+    /// (the same bound the interactive Claude session uses).
+    pub(super) const STEP_TIMEOUT: Duration = Duration::from_secs(90);
+    /// Copying a runtime into the distro, unpacking it there, or running a
+    /// whole `npm install` inside the sandbox — minutes of real work on a slow
+    /// link, but not forever.
+    const WORK_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+    /// Bounds one step inside WSL. The `sandbox` crate deliberately keeps no
+    /// timer of its own, and a wedged `wsl.exe` (a real failure mode when the
+    /// WSL service is unhealthy) would otherwise leave the agent starting for
+    /// ever; dropping the future here kills the `wsl.exe` it left running.
+    pub(super) async fn bounded<T>(
+        executor: &BackgroundExecutor,
+        timeout: Duration,
+        what: &str,
+        work: impl Future<Output = Result<T>>,
+    ) -> Result<T> {
+        work.with_timeout(timeout, executor).await.map_err(|_| {
+            anyhow!(
+                "{what}が {} 秒以内に終わりませんでした。しばらく待ってから再試行し、\
+                 改善しない場合は `wsl --shutdown` で WSL を再起動してください。",
+                timeout.as_secs()
+            )
+        })?
+    }
+
+    /// ADR-F49 決定 20 / 21: the Linux Node.js staged in `distro`, obtaining it
+    /// from nodejs.org against the digest this build pins if it is not there
+    /// yet. Returns its directory inside the distro.
+    pub(super) async fn node_directory(
+        distro: Option<&str>,
+        executor: &BackgroundExecutor,
+        http_client: &Arc<dyn HttpClient>,
+        fs: &Arc<dyn Fs>,
+        status: &mut Option<watch::Sender<Option<String>>>,
+    ) -> Result<String> {
+        let machine = machine_architecture(distro, executor).await?;
+        let architecture = match machine.as_str() {
+            "x86_64" | "amd64" => "x64",
+            "aarch64" | "arm64" => "arm64",
+            other => bail!(
+                "WSL のアーキテクチャ `{other}` 向けの Node.js は配布されていないため、\
+                 サンドボックスの中でエージェントを起動できません。"
+            ),
+        };
+        let archive =
+            node_runtime::pinned_node_archive("linux", architecture).with_context(|| {
+                format!("Linux ({architecture}) 向けの Node.js の取得情報がありません。")
+            })?;
+        anyhow::ensure!(
+            !archive.is_zip,
+            "Linux 向けの Node.js が zip 形式です (想定外)。"
+        );
+        let relative = format!("{NODE_RELATIVE}/{}", archive.directory_name());
+        if let Some(staged) = bounded(
+            executor,
+            STEP_TIMEOUT,
+            "WSL の Node.js の確認",
+            sandbox::staged_wsl_runtime(distro, &relative, Some(archive.sha256)),
+        )
+        .await?
+        {
+            return Ok(staged);
+        }
+
+        report(status, "Linux 版 Node.js を取得しています…");
+        let downloads = downloads_directory();
+        fs.create_dir(&downloads)
+            .await
+            .with_context(|| format!("creating {}", downloads.display()))?;
+        let local = downloads.join(&archive.file_name);
+        node_runtime::download_verified_file(
+            http_client.as_ref(),
+            &archive.url,
+            Some(archive.sha256),
+            &local,
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Linux 版 Node.js ({}) を取得できませんでした。エディターの接続許可リストに \
+                 `nodejs.org` が含まれているか確認してください。",
+                archive.url
+            )
+        })?;
+
+        report(status, "Linux 版 Node.js を WSL に配置しています…");
+        let staged = bounded(
+            executor,
+            WORK_TIMEOUT,
+            "Linux 版 Node.js の WSL への配置",
+            sandbox::stage_wsl_runtime_archive(
+                distro,
+                &relative,
+                &local,
+                archive.sha256,
+                sandbox::WslArchiveKind::TarGz,
+                // A Node.js tarball wraps everything in one
+                // `node-<version>-linux-<arch>/` directory.
+                true,
+            ),
+        )
+        .await;
+        remove_download(fs, &local).await;
+        staged
+    }
+
+    /// ADR-F49 決定 22: the npm package `package` installed in `distro` for
+    /// the registry entry `registry_id`, installed (inside the sandbox) if the
+    /// version there does not already satisfy what the registry asks for.
+    /// Returns its install directory and the executable to run with Node.js.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one registry entry's npm install, end to end"
+    )]
+    pub(super) async fn npm_package(
+        distro: Option<&str>,
+        executor: &BackgroundExecutor,
+        node_directory: &str,
+        registry_id: &str,
+        package: &str,
+        editor_network_allowlist: Option<Vec<String>>,
+        status: &mut Option<watch::Sender<Option<String>>>,
+    ) -> Result<(String, String)> {
+        let (package_name, package_spec) = super::bounded_npm_package_spec(package);
+        let relative = format!("{NPX_RELATIVE}/{}", sanitize_path_component(registry_id));
+        let data_directory = bounded(
+            executor,
+            STEP_TIMEOUT,
+            "WSL のデータフォルダーの確認",
+            sandbox::wsl_agent_runtime_data_directory(distro),
+        )
+        .await?;
+        let install_directory = format!("{data_directory}/{relative}");
+
+        // The same rule `should_install_npm_package` applies locally: what is
+        // installed is kept while it is at least the version the registry
+        // bounds the package at (npm resolves the newest version within that
+        // bound, so a newer one is fine).
+        let installed =
+            installed_npm_version(distro, executor, &install_directory, package_name).await;
+        let wanted = pinned_package_version(package);
+        let install = match (&installed, &wanted) {
+            (None, _) => true,
+            (Some(_), None) => false,
+            (Some(installed), Some(wanted)) => installed < wanted,
+        };
+        if install {
+            report(status, "サンドボックスの中で npm install を実行しています…");
+            bounded(
+                executor,
+                WORK_TIMEOUT,
+                "サンドボックスの中での npm install",
+                sandbox::install_npm_package_in_wsl(
+                    distro,
+                    node_directory,
+                    &package_spec,
+                    &relative,
+                    vec![NPM_REGISTRY_HOST.to_string()],
+                    editor_network_allowlist,
+                ),
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "`{package_spec}` を WSL のサンドボックスの中でインストールできませんでした。\
+                     エディターの接続許可リストに `{NPM_REGISTRY_HOST}` が含まれているか\
+                     確認してください。"
+                )
+            })?;
+        }
+
+        let package_json = bounded(
+            executor,
+            STEP_TIMEOUT,
+            "npm パッケージの確認",
+            sandbox::read_wsl_npm_package_json(distro, &install_directory, package_name),
+        )
+        .await?
+        .with_context(|| format!("WSL に `{package_name}` がインストールされていません。"))?;
+        let executable_relative =
+            node_runtime::package_json_executable(&package_json, package_name)?;
+        let executable = bounded(
+            executor,
+            STEP_TIMEOUT,
+            "npm パッケージの実行ファイルの確認",
+            sandbox::wsl_npm_package_executable(
+                distro,
+                &install_directory,
+                package_name,
+                &executable_relative,
+            ),
+        )
+        .await?;
+        Ok((install_directory, executable))
+    }
+
+    /// The version of `package_name` installed in the distro, or `None` when
+    /// nothing complete is installed (which is also how a `package.json` that
+    /// cannot be read is treated: it is installed again).
+    async fn installed_npm_version(
+        distro: Option<&str>,
+        executor: &BackgroundExecutor,
+        install_directory: &str,
+        package_name: &str,
+    ) -> Option<Version> {
+        bounded(
+            executor,
+            STEP_TIMEOUT,
+            "インストール済みの npm パッケージの確認",
+            sandbox::read_wsl_npm_package_json(distro, install_directory, package_name),
+        )
+        .await
+        .log_err()
+        .flatten()
+        .and_then(|package_json| node_runtime::package_json_version(&package_json).log_err())
+    }
+
+    /// The distro's machine architecture, bounded like every other step.
+    pub(super) async fn machine_architecture(
+        distro: Option<&str>,
+        executor: &BackgroundExecutor,
+    ) -> Result<String> {
+        bounded(
+            executor,
+            STEP_TIMEOUT,
+            "WSL のアーキテクチャの確認",
+            sandbox::wsl_machine_architecture(distro),
+        )
+        .await
+    }
+
+    /// The version a registry entry's package specification pins, when it
+    /// pins one (`name@1.2.3`).
+    fn pinned_package_version(package: &str) -> Option<Version> {
+        let (name, version) = package.rsplit_once('@')?;
+        if name.is_empty() {
+            return None;
+        }
+        Version::parse(version).ok()
+    }
+
+    /// ADR-F49 決定 20 / 25: the Linux build of a registry entry, staged in
+    /// `distro`. Returns the directory it was staged in, which the entry's
+    /// `cmd` is resolved against and which the sandbox shows the agent
+    /// read-only.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one registry target's whole description"
+    )]
+    pub(super) async fn registry_archive(
+        distro: Option<&str>,
+        executor: &BackgroundExecutor,
+        http_client: &Arc<dyn HttpClient>,
+        fs: &Arc<dyn Fs>,
+        registry_id: &str,
+        version: &str,
+        archive_url: &str,
+        sha256: Option<String>,
+        status: &mut Option<watch::Sender<Option<String>>>,
+    ) -> Result<String> {
+        let kind = registry_archive_kind_for_url(archive_url)?;
+        let (archive_kind, file_name) = match &kind {
+            RegistryArchiveKind::Archive(AssetKind::TarGz) => {
+                (sandbox::WslArchiveKind::TarGz, None)
+            }
+            RegistryArchiveKind::Archive(AssetKind::TarBz2) => {
+                (sandbox::WslArchiveKind::TarBz2, None)
+            }
+            RegistryArchiveKind::Archive(AssetKind::Gz) => bail!(
+                "この配布物の形式は WSL のサンドボックスでは展開できません。\
+                 tar.gz 形式の Linux 向け配布物を持つエージェントを選ぶか、\
+                 サンドボックスの外で起動してください。"
+            ),
+            RegistryArchiveKind::Archive(AssetKind::Zip) => bail!(
+                "この配布物は zip 形式のため、WSL のサンドボックスでは展開できません \
+                 (ディストリビューションに `unzip` がありません)。tar.gz 形式の Linux 向け\
+                 配布物を持つエージェントを選ぶか、サンドボックスの外で起動してください。"
+            ),
+            RegistryArchiveKind::RawBinary { file_name } => {
+                (sandbox::WslArchiveKind::TarGz, Some(file_name.clone()))
+            }
+        };
+        let relative = format!(
+            "{ARCHIVE_RELATIVE}/{}/{}",
+            sanitize_path_component(registry_id),
+            archive_version_component(version, archive_url, sha256.as_deref())
+        );
+        // A build already staged is reused: under the digest the registry
+        // names where there is one, and otherwise simply for being complete
+        // where this version at this URL puts it — the same identity the local
+        // installation is kept under (`versioned_archive_cache_dir`), and all
+        // there is to go on without a digest (ADR-F49 決定 25).
+        if let Some(directory) = bounded(
+            executor,
+            STEP_TIMEOUT,
+            "WSL のエージェントの実行環境の確認",
+            sandbox::staged_wsl_runtime(distro, &relative, sha256.as_deref()),
+        )
+        .await?
+        {
+            return Ok(directory);
+        }
+
+        report(status, "Linux 版のエージェントを取得しています…");
+        let downloads = downloads_directory();
+        fs.create_dir(&downloads)
+            .await
+            .with_context(|| format!("creating {}", downloads.display()))?;
+        let local = downloads.join(format!(
+            "agent-{}-{}",
+            sanitize_path_component(registry_id),
+            sanitize_path_component(version)
+        ));
+        let digest = node_runtime::download_verified_file(
+            http_client.as_ref(),
+            archive_url,
+            sha256.as_deref(),
+            &local,
+        )
+        .await
+        .with_context(|| format!("{archive_url} を取得できませんでした。"))?;
+
+        report(status, "Linux 版のエージェントを WSL に配置しています…");
+        let staged = match &file_name {
+            // ADR-F49 決定 25: published as a plain executable rather than an
+            // archive. Nothing vouches for it beyond HTTPS when the registry
+            // names no digest; the digest of what was downloaded still keeps
+            // the copy into the distro honest.
+            Some(name) => bounded(
+                executor,
+                WORK_TIMEOUT,
+                "Linux 版のエージェントの WSL への配置",
+                sandbox::stage_wsl_runtime_file(distro, &relative, name, &local, &digest, true),
+            )
+            .await
+            .map(|executable| {
+                executable
+                    .rsplit_once('/')
+                    .map(|(directory, _)| directory.to_string())
+                    .unwrap_or(executable)
+            }),
+            None => {
+                bounded(
+                    executor,
+                    WORK_TIMEOUT,
+                    "Linux 版のエージェントの WSL への配置",
+                    sandbox::stage_wsl_runtime_archive(
+                        distro,
+                        &relative,
+                        &local,
+                        &digest,
+                        archive_kind,
+                        false,
+                    ),
+                )
+                .await
+            }
+        };
+        remove_download(fs, &local).await;
+        staged
+    }
+
+    async fn remove_download(fs: &Arc<dyn Fs>, path: &PathBuf) {
+        fs.remove_file(
+            path,
+            RemoveOptions {
+                recursive: false,
+                ignore_if_not_exists: true,
+            },
+        )
+        .await
+        .log_err();
     }
 }

@@ -38,6 +38,31 @@ const MAX_HEAD_BYTES: usize = 16 * 1024;
 /// ホストの接続で受ける `POST /mcp` の本文と、WebSocket の 1 メッセージの上限。大きな
 /// ファイル (ロックファイルなど) の編集提案も `openDiff` の本文で運ばれてくるので、大きめに取る。
 pub const HOST_MAX_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
+
+/// 1 メッセージの上限。受け取る側と送る側で別々に置ける。
+///
+/// 別々に置けるのは、本文の長さを自分で見ている `POST /mcp` (制限セッションが話すのは
+/// こちらだけ、ADR-F49 決定 24)。WebSocket の [`WebSocketConfig::max_message_size`] は
+/// 送受信の両方に掛かる契約なので、そちらには [`MessageLimits::outgoing`] を渡し、こちらが
+/// 返す応答 (`getDiagnostics` はファイル 100 件ぶんになりうる) を切らないようにする。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MessageLimits {
+    /// 相手から受け取る 1 メッセージ (`POST /mcp` なら本文) の上限。
+    pub incoming: usize,
+    /// こちらから送る 1 メッセージの上限。
+    pub outgoing: usize,
+}
+
+impl MessageLimits {
+    /// 受け取る側も送る側も同じ上限。
+    pub fn same(bytes: usize) -> Self {
+        Self {
+            incoming: bytes,
+            outgoing: bytes,
+        }
+    }
+}
+
 /// 要求ヘッダー (HTTP なら本文も) を受け取り終えるまでの猶予。黙って繋ぎっぱなしにする
 /// 相手に接続を持たれ続けないため。
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -82,13 +107,19 @@ impl HttpHead {
     }
 
     /// CLI は WebSocket に専用ヘッダー、HTTP MCP は `Authorization: Bearer` を使う。
+    ///
+    /// RFC 7235 の認証スキームは大文字小文字を区別せず、スキームと値のあいだの空白も 1 つ
+    /// とは限らない。MCP のクライアントは `bearer <token>` を出すものもあるので、そのまま
+    /// 401 にしない (トークン自体の比較は呼び出し側で、こちらは完全一致)。
     pub fn presented_token(&self) -> Option<&str> {
         if let Some(token) = self.header(CLAUDE_CODE_AUTH_HEADER) {
             return Some(token);
         }
-        self.header("authorization")
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .map(str::trim)
+        let (scheme, token) = self.header("authorization")?.split_once(' ')?;
+        if !scheme.eq_ignore_ascii_case("bearer") {
+            return None;
+        }
+        Some(token.trim())
     }
 }
 
@@ -371,7 +402,7 @@ async fn read_head<S: AsyncRead + Unpin>(stream: &mut S) -> Result<(HttpHead, Ve
 pub async fn serve_connection<S>(
     mut stream: S,
     auth_token: Arc<str>,
-    max_message_bytes: usize,
+    limits: MessageLimits,
     incoming_tx: mpsc::Sender<String>,
     outgoing: OutboxReceiver,
     kind_tx: oneshot::Sender<ConnectionKind>,
@@ -399,7 +430,7 @@ where
             stream,
             head,
             leftover,
-            max_message_bytes,
+            limits.outgoing,
             incoming_tx,
             outgoing,
         )
@@ -410,7 +441,7 @@ where
             stream,
             head,
             leftover,
-            max_message_bytes,
+            limits.incoming,
             incoming_tx,
             outgoing,
             handshake_deadline,
@@ -491,7 +522,7 @@ async fn serve_http<S, D>(
     mut stream: S,
     head: HttpHead,
     leftover: Vec<u8>,
-    max_message_bytes: usize,
+    max_incoming_bytes: usize,
     mut incoming_tx: mpsc::Sender<String>,
     mut outgoing: OutboxReceiver,
     deadline: Pin<&mut D>,
@@ -528,7 +559,7 @@ where
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(0);
     anyhow::ensure!(
-        content_length <= max_message_bytes,
+        content_length <= max_incoming_bytes,
         "the POST /mcp body is too large"
     );
     let body =
@@ -613,6 +644,40 @@ mod tests {
              Authorization: secret-token\r\n\r\n",
         );
         assert_eq!(head.presented_token(), None);
+    }
+
+    /// RFC 7235 のスキームは大文字小文字を区別せず、値との間は空白 1 つとは限らない。
+    #[test]
+    fn reads_a_bearer_token_however_the_client_spells_the_scheme() {
+        for authorization in [
+            "Bearer secret-token",
+            "bearer secret-token",
+            "BEARER secret-token",
+            "BeArEr secret-token",
+            "Bearer  secret-token",
+            "bearer \tsecret-token",
+            "Bearer secret-token   ",
+        ] {
+            let head = head(&format!(
+                "POST /mcp HTTP/1.1\r\n\
+                 Host: 127.0.0.1:1234\r\n\
+                 Authorization: {authorization}\r\n\r\n"
+            ));
+            assert_eq!(
+                head.presented_token(),
+                Some("secret-token"),
+                "{authorization:?}"
+            );
+        }
+
+        for authorization in ["Basic secret-token", "Bearer", "bearertoken"] {
+            let head = head(&format!(
+                "POST /mcp HTTP/1.1\r\n\
+                 Host: 127.0.0.1:1234\r\n\
+                 Authorization: {authorization}\r\n\r\n"
+            ));
+            assert_eq!(head.presented_token(), None, "{authorization:?}");
+        }
     }
 
     #[test]

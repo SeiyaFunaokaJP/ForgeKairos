@@ -23,8 +23,8 @@ use editor::actions::OpenExcerpts;
 use sandbox::{SandboxFsPolicy, SandboxNetPolicy, SandboxPolicy};
 
 use crate::agent_registry_ui::{
-    InstallConsentAction, InstallConsentBanner, PendingInstallConsent, add_consented_hosts,
-    allowlist_write_error, missing_hosts, registry_install_requirement,
+    InstallConsentAction, InstallConsentBanner, PendingInstallConsent,
+    add_consented_hosts_and_await_pickup, missing_hosts, registry_install_requirement,
 };
 use crate::completion_provider::{AvailableSkill, PromptLocalCommand};
 use crate::message_editor::SharedSessionCapabilities;
@@ -12069,11 +12069,17 @@ impl ThreadView {
                             cx.listener(|this, _, window, cx| {
                                 this.confirm_agent_update(window, cx);
                             }),
-                            // An allowlist write already in flight is left to
-                            // finish rather than being torn out mid
-                            // read-modify-write; dropping the consent is
-                            // enough to keep it from reconnecting.
+                            // Cancelling once the hosts are on their way would
+                            // leave them added with nothing reconnected, so it
+                            // only stands until the confirm is under way.
                             cx.listener(|this, _, _, cx| {
+                                if this
+                                    .update_consent
+                                    .as_ref()
+                                    .is_some_and(|consent| consent.waiting)
+                                {
+                                    return;
+                                }
                                 this.update_consent = None;
                                 cx.notify();
                             }),
@@ -12119,18 +12125,28 @@ impl ThreadView {
 
     /// Adds the hosts the pending update consent still needs, then reconnects
     /// so the new version is downloaded. A failed allowlist write leaves the
-    /// banner up with the error instead of reconnecting anyway.
+    /// banner up with the error instead of reconnecting anyway. Reconnecting
+    /// waits for the running egress policy to have the hosts, because the
+    /// download reads that policy rather than the file.
     fn confirm_agent_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(consent) = self.update_consent.as_ref() else {
+        let Some(consent) = self.update_consent.as_mut() else {
             return;
         };
+        // A second click would replace - and so cancel - the task the first
+        // one started, which could leave the hosts half added.
+        if consent.waiting {
+            return;
+        }
         let hosts: Vec<String> = consent.hosts.iter().map(SharedString::to_string).collect();
         if hosts.is_empty() {
             self.reset_agent_server(window, cx);
             return;
         }
+        consent.waiting = true;
+        consent.error = None;
+        cx.notify();
 
-        let write_hosts = add_consented_hosts(hosts, cx);
+        let write_hosts = add_consented_hosts_and_await_pickup(hosts, cx);
         self._update_consent_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = write_hosts.await;
             this.update_in(cx, |this, window, cx| {
@@ -12141,9 +12157,10 @@ impl ThreadView {
                 }
                 match result {
                     Ok(()) => this.reset_agent_server(window, cx),
-                    Err(error) => {
+                    Err(failure) => {
                         if let Some(consent) = this.update_consent.as_mut() {
-                            consent.error = Some(allowlist_write_error(&error));
+                            consent.waiting = false;
+                            consent.error = Some(failure.message());
                         }
                         cx.notify();
                     }

@@ -8,7 +8,9 @@
 //! 2 つに絞る (それ以外の `mcp__ide__*` は CLI が内部から直接呼ぶ) ので、ここで余分に
 //! 公開してもモデルのツール一覧は膨らまない。
 //!
-//! サンドボックスのセッション (ADR-F49) には CLI が呼ぶ 4 本だけを出す ([`ToolScope`])。
+//! サンドボックスのセッション (ADR-F49) には CLI が呼ぶ 4 本だけを出し、外部の ACP
+//! エージェント用の制限セッション (ADR-F49 決定 24) には `getDiagnostics` だけを出す
+//! ([`ToolScope`])。
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -33,7 +35,7 @@ use crate::diff_view::{self, ProposedDiff};
 use util::path_mapping::SandboxPaths;
 
 use crate::path_mapping::{self, MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile};
-use crate::transport::{HOST_MAX_MESSAGE_BYTES, Outbox};
+use crate::transport::{HOST_MAX_MESSAGE_BYTES, MessageLimits, Outbox};
 use crate::{IdeServerDiff, IdeServerDiffOutcome};
 
 /// 全体診断で開くバッファーの上限。壊れたワークツリーで固まらないための保険。
@@ -49,6 +51,14 @@ pub const SANDBOX_TOOL_NAMES: [&str; 4] = [
     "getDiagnostics",
 ];
 
+/// 制限セッションで出すツール (ADR-F49 決定 24)。
+///
+/// サンドボックスの中の外部 ACP エージェント (Claude Code CLI 以外) に渡す MCP は、
+/// 読むだけの `getDiagnostics` 1 本に絞る。`openDiff` はユーザーが採用か拒否を決めるまで
+/// 応答を返さないので、決定を待てない ACP のツール呼び出しには出せない
+/// (`close_tab` / `closeAllDiffTabs` はその後始末なので、まとめて出さない)。
+pub const RESTRICTED_TOOL_NAMES: [&str; 1] = ["getDiagnostics"];
+
 /// どのツールを出し、ツールの引数と結果のパスをどう扱うか。
 #[derive(Clone)]
 pub enum ToolScope {
@@ -57,6 +67,9 @@ pub enum ToolScope {
     /// サンドボックスのセッション。ツールは [`SANDBOX_TOOL_NAMES`] だけで、パスは変換した
     /// うえでワークツリーの中に閉じ込める。
     Sandboxed(Arc<SandboxPaths>),
+    /// サンドボックスの制限セッション (ADR-F49 決定 24)。ツールは [`RESTRICTED_TOOL_NAMES`]
+    /// だけで、パスの扱いは [`ToolScope::Sandboxed`] と同じ。
+    SandboxedReadOnly(Arc<SandboxPaths>),
 }
 
 impl ToolScope {
@@ -64,6 +77,17 @@ impl ToolScope {
         match self {
             ToolScope::Full => true,
             ToolScope::Sandboxed(_) => SANDBOX_TOOL_NAMES.contains(&name),
+            ToolScope::SandboxedReadOnly(_) => RESTRICTED_TOOL_NAMES.contains(&name),
+        }
+    }
+
+    /// サンドボックス向けのパスの変換。ホストの TCP サーバーでは `None` で、これが `Some` の
+    /// あいだは相手をサンドボックスの中のプロセスとして扱う (パスを変換し、ワークツリーの外と
+    /// ホストのエラー文を見せない)。
+    pub fn sandbox_paths(&self) -> Option<&Arc<SandboxPaths>> {
+        match self {
+            ToolScope::Full => None,
+            ToolScope::Sandboxed(paths) | ToolScope::SandboxedReadOnly(paths) => Some(paths),
         }
     }
 }
@@ -269,8 +293,8 @@ pub trait ToolHost: 'static + Sized {
     }
 
     /// WebSocket の 1 メッセージ・HTTP の 1 本文の上限。
-    fn max_message_bytes(&self) -> usize {
-        HOST_MAX_MESSAGE_BYTES
+    fn message_limits(&self) -> MessageLimits {
+        MessageLimits::same(HOST_MAX_MESSAGE_BYTES)
     }
 
     /// 同時に開いておける差分タブの数。`None` なら上限なし。
@@ -305,16 +329,16 @@ fn too_many_diffs_error(limit: usize) -> anyhow::Error {
 /// ツールの失敗を、呼び出し元に見せる文にする。サンドボックスには [`ClientError`] だけを
 /// そのまま見せ、残りはホストのログにだけ残す。
 fn error_text(tool: &str, error: &anyhow::Error, scope: &ToolScope) -> String {
-    match scope {
-        ToolScope::Full => format!("{error:#}"),
-        ToolScope::Sandboxed(_) => match error.downcast_ref::<ClientError>() {
-            Some(visible) => visible.to_string(),
-            None => {
-                // 相手の求めごとに出るので、ログを埋めさせないよう debug に留める。
-                log::debug!("ide_server: {tool} failed for a sandboxed client: {error:#}");
-                format!("{tool} failed")
-            }
-        },
+    if scope.sandbox_paths().is_none() {
+        return format!("{error:#}");
+    }
+    match error.downcast_ref::<ClientError>() {
+        Some(visible) => visible.to_string(),
+        None => {
+            // 相手の求めごとに出るので、ログを埋めさせないよう debug に留める。
+            log::debug!("ide_server: {tool} failed for a sandboxed client: {error:#}");
+            format!("{tool} failed")
+        }
     }
 }
 
@@ -1130,9 +1154,9 @@ async fn collect_diagnostics(
     cx: &mut AsyncApp,
 ) -> Result<Value> {
     let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
-    let files = match scope {
-        ToolScope::Full => host_diagnostics(&project, uri, cx).await?,
-        ToolScope::Sandboxed(paths) => sandbox_diagnostics(&project, uri, paths, cx).await?,
+    let files = match scope.sandbox_paths() {
+        None => host_diagnostics(&project, uri, cx).await?,
+        Some(paths) => sandbox_diagnostics(&project, uri, paths, cx).await?,
     };
     Ok(Value::Array(files))
 }
@@ -1296,7 +1320,7 @@ fn close_tab<H: ToolHost>(
         ClosedDiff::Unknown => {}
     }
     // サンドボックスからは、自分が開いた差分タブしか閉じさせない。
-    if matches!(scope, ToolScope::Sandboxed(_)) {
+    if scope.sandbox_paths().is_some() {
         return Ok(());
     }
 
@@ -1369,14 +1393,14 @@ async fn open_diff<H: ToolHost>(
             .transpose()
     })?;
 
-    let (old_buffer, new_buffer, new_file_path) = match scope {
-        ToolScope::Full => {
+    let (old_buffer, new_buffer, new_file_path) = match scope.sandbox_paths() {
+        None => {
             let old_file_path = path_from_uri(old_text);
             let (old_buffer, new_buffer) =
                 project_diff_buffers(&project, &old_file_path, new_file_contents, cx).await?;
             (old_buffer, new_buffer, path_from_uri(new_text))
         }
-        ToolScope::Sandboxed(paths) => {
+        Some(paths) => {
             let request = SandboxRequest::new(paths, &project, cx).await;
             let old_file_path = request.resolve(old_text).await?;
             let new_file_path = request.resolve(new_text).await?;
@@ -1397,7 +1421,7 @@ async fn open_diff<H: ToolHost>(
 
     // 同じタブ名の提案を置き換えるのはサンドボックスのセッションだけ。ホストでは CLI が
     // ファイル名だけでタブを名付けるので、別のファイルの提案が同じ名前で並びうる。
-    let sandboxed = matches!(scope, ToolScope::Sandboxed(_));
+    let sandboxed = scope.sandbox_paths().is_some();
     let diff_id = DiffId::next();
     let register = {
         let server = server.downgrade();

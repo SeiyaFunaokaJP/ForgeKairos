@@ -39,6 +39,80 @@ pub fn resolve_canonical(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
     Ok(path.as_ref().to_path_buf())
 }
 
+/// ADR-F49 第 2b 段: a `\\wsl.localhost\<distro>\<rest>` path split into the
+/// distribution it names and the Linux-absolute path inside it.
+#[cfg(target_os = "windows")]
+pub(crate) struct WslSharePath {
+    /// The distribution name exactly as written. WSL matches it
+    /// case-insensitively and so must anything comparing two of them.
+    pub(crate) distro: String,
+    /// `/<rest>`, or `/` when the path names nothing below the share.
+    pub(crate) linux_path: String,
+}
+
+/// Split a `\\wsl.localhost\<distro>\<rest>` path — the only Windows spelling a
+/// location on a distribution's own filesystem has, and therefore the shape a
+/// worktree on ext4 reaches the sandbox as (ADR-F49 第 2b 段).
+///
+/// `\\wsl$\<distro>\…` (the older spelling), `/` as the separator, and the
+/// `\\?\UNC\` verbatim prefix Windows canonicalization produces are all folded
+/// into the same value, matching how `util::path_mapping::ComparablePath`
+/// compares two of these paths. `.` and empty components are dropped; a `..`
+/// component makes the whole path `None` rather than being resolved, because
+/// the location it would name is not the one the user was shown, and because a
+/// stored path holding one would compare unequal to the same location spelled
+/// plainly.
+#[cfg(target_os = "windows")]
+pub(crate) fn parse_wsl_share_path(path: &str) -> Option<WslSharePath> {
+    let path = path.replace('/', "\\");
+    let remainder = path
+        .strip_prefix(r"\\?\UNC\")
+        .or_else(|| path.strip_prefix(r"\\"))?;
+    let (server, remainder) = remainder.split_once('\\')?;
+    if !server.eq_ignore_ascii_case("wsl.localhost") && !server.eq_ignore_ascii_case("wsl$") {
+        return None;
+    }
+    let (distro, rest) = match remainder.split_once('\\') {
+        Some((distro, rest)) => (distro, rest),
+        None => (remainder, ""),
+    };
+    if distro.is_empty() || distro == "." || distro == ".." || distro.contains('\0') {
+        return None;
+    }
+    let mut linux_path = String::new();
+    for component in rest.split('\\') {
+        match component {
+            "" | "." => {}
+            ".." => return None,
+            component if component.contains('\0') => return None,
+            component => {
+                linux_path.push('/');
+                linux_path.push_str(component);
+            }
+        }
+    }
+    if linux_path.is_empty() {
+        linux_path.push('/');
+    }
+    Some(WslSharePath {
+        distro: distro.to_string(),
+        linux_path,
+    })
+}
+
+/// How a location inside `distro` is written on Windows, in the one spelling
+/// [`parse_wsl_share_path`] normalizes to, so that two spellings of the same
+/// location compare equal as plain paths.
+#[cfg(target_os = "windows")]
+pub(crate) fn wsl_share_path_spelling(distro: &str, linux_path: &str) -> String {
+    let relative = linux_path.trim_start_matches('/').replace('/', "\\");
+    if relative.is_empty() {
+        format!(r"\\wsl.localhost\{distro}")
+    } else {
+        format!(r"\\wsl.localhost\{distro}\{relative}")
+    }
+}
+
 /// Lexically normalize an absolute path (collapsing `.` and `..` and redundant
 /// separators) without touching the filesystem. Returns `None` for a relative
 /// path, which can't be compared to an absolute canonical path without a base.

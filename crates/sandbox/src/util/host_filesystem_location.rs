@@ -172,8 +172,10 @@ impl HostFilesystemLocation {
     }
 
     /// The requested path, for enforcement branches on platforms with no
-    /// captured identity of their own (the `not(linux/macos)` overlap check).
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    /// captured identity of their own. Windows is not one of them: its
+    /// canonical is the checked, normalized grant path, and the overlap and
+    /// worktree-root checks there use that instead.
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     pub(crate) fn untrusted_raw_path(&self) -> &Path {
         &self.untrusted_raw_path
     }

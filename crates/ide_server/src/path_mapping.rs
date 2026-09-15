@@ -27,42 +27,6 @@ pub async fn has_link_below_root(
         .is_empty())
 }
 
-/// サンドボックスが指したホストのパス (綴りの上ではワークツリーの中) が、ワークツリーの中に
-/// 置かれたリンクを通って外へ出ないことを確かめる (ADR-F49 決定 23)。外部エージェントの ACP の
-/// fs の読み書きは、ホストの Zed がファイルに触る前にこれを通す (`agent_servers::acp_paths` は
-/// 綴りしか見ない)。通れば `host_path` をそのまま返す。
-///
-/// - ルートより下の各段がリンクでなければ通す
-/// - リンクを通るときは、リンクごとにたどった先がワークツリーのルート (の実体) の中なら通し、
-///   外なら断る。たどれないリンク (壊れたリンクなど) は `canonicalize` が失敗するので断る
-/// - WSL の中で作られたリンクは、Windows の `canonicalize` ではたどれないことがある。失敗すれば
-///   断り、たどらずにリンクそのものの場所を返したとき (行き先が分からない) も断る。
-///   `\\wsl.localhost` の下のリンクと Linux の特殊ファイルは、`canonicalize` の結果を信じられない
-///   ので、行き先に関わらず断る
-/// - 確かめてから使うまでのあいだにリンクへ差し替えられうる (サンドボックスはワークツリーに
-///   書ける)。読むだけなら、1 つのハンドルで確かめてから読む [`RealRoots::read_file`] を使う
-pub async fn resolve_inside_roots(
-    paths: &SandboxPaths,
-    host_path: &Path,
-    fs: &Arc<dyn Fs>,
-    executor: &BackgroundExecutor,
-) -> Result<PathBuf> {
-    let links = links_below_root(paths, host_path, fs, executor).await?;
-    anyhow::ensure!(
-        links.is_empty()
-            || !paths
-                .comparable(host_path)
-                .is_some_and(|path| path.is_unc()),
-        "the path goes through a link or a special file inside WSL, which Zed cannot follow"
-    );
-    let real_roots = real_roots(paths, fs).await;
-    for link in &links {
-        ensure_link_stays_inside(link, &real_roots, fs).await?;
-    }
-    real_roots.ensure_contains(host_path, fs).await?;
-    Ok(host_path.to_path_buf())
-}
-
 /// ルートより下で、リンクか `\\wsl.localhost` の特殊ファイルである段 (ルートに近い順)。
 async fn links_below_root(
     paths: &SandboxPaths,
@@ -121,29 +85,6 @@ async fn links_below_root(
         }
     }
     Ok(links)
-}
-
-async fn ensure_link_stays_inside(
-    link: &Path,
-    real_roots: &RealRoots,
-    fs: &Arc<dyn Fs>,
-) -> Result<()> {
-    let target = fs
-        .canonicalize(link)
-        .await
-        .context("the link cannot be followed")?;
-    let (Some(parent), Some(name)) = (link.parent(), link.file_name()) else {
-        anyhow::bail!("the link has no parent folder");
-    };
-    let unfollowed = fs.canonicalize(parent).await?.join(name);
-    anyhow::ensure!(
-        !same_final_location(&target, &unfollowed),
-        "Zed cannot follow the link"
-    );
-    real_roots
-        .ensure_contains(&target, fs)
-        .await
-        .context("the link leads outside the workspace")
 }
 
 /// シンボリックリンクをたどったあとのワークツリーのルート (ルート自体がリンクでもよい)。

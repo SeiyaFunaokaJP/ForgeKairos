@@ -5,7 +5,10 @@
 //! paused, and without a way to what the agent changed, is what the pause
 //! exists to prevent. Nothing an agent can reach resumes a folder.
 
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use gpui::{
     Action as _, App, AppContext as _, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
@@ -15,8 +18,9 @@ use project::{
     Project, WorktreeCodeExecution, WorktreeId,
     project_launch_approvals::escape_for_display,
     worktree_code_execution::{
-        LeftoverSandboxProcessReports, LeftoverSandboxProcesses, PausedLanguageServer,
-        PausedWorktreeDetails, RemoteHostPause, ResumeOutcome, WorktreeCodeExecutionEvent,
+        LeftoverSandboxProcessReports, LeftoverSandboxProcesses, LeftoverSandboxProcessesId,
+        PausedLanguageServer, PausedWorktreeDetails, RemoteHostPause, ResumeOutcome,
+        WorktreeCodeExecutionEvent,
     },
 };
 use ui::prelude::*;
@@ -165,6 +169,28 @@ fn current_generations(execution: &WorktreeCodeExecution) -> HashMap<WorktreeId,
         .collect()
 }
 
+/// ADR-F49 decision 18 (C): how long the dialog waits for a stop it asked for
+/// to show in the list before it says it has not landed.
+///
+/// Longer than the agent's monitor gives the request itself (`acp_thread`'s
+/// own `STOP_TIMEOUT`, 10 s) plus the listing it takes straight afterwards: a
+/// host that answers at 9.9 s would otherwise be reported as not having
+/// answered, a tenth of a second before its answer could reach the list.
+const STOP_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// How often the list is looked at while that wait runs, so the button comes
+/// back as soon as the stop lands rather than at the end of the wait. The
+/// agent's own monitor is what refreshes the list; this only reads it.
+const STOP_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+
+/// What the dialog says once [`STOP_TIMEOUT`] has passed and the processes are
+/// still listed. It names no culprit: the host may not be answering, and the
+/// process may be ignoring the signal to end (it is killed after the grace
+/// period, which the next look reports). Giving up on the wait is not giving
+/// up on the stop — the monitor keeps looking, and the list is what says
+/// whether it worked.
+const STOP_DID_NOT_LAND: &str = "まだ止まっていません。ホストが応答していないか、プロセスが終了を無視しています。次の確認でまだ動いていれば一覧に残ります。";
+
 struct PausedWorktreeCodeDialog {
     project: Entity<Project>,
     focus_handle: FocusHandle,
@@ -172,6 +198,13 @@ struct PausedWorktreeCodeDialog {
     /// An agent wrote again after the dialog showed the folders.
     written_since_shown: bool,
     resuming: Option<Task<()>>,
+    /// ADR-F49 decision 18 (C): one wait per folder whose stop the user asked
+    /// for and which has neither shown in the list nor been given up on. Per
+    /// folder because the button and the warning are: a slow host behind one
+    /// agent must not disable the other folder's button or warn about it.
+    stopping: HashMap<WorktreeId, Task<()>>,
+    /// And the folders whose last stop had not landed when its wait ran out.
+    stops_that_did_not_land: HashSet<WorktreeId>,
     _execution_subscription: Subscription,
     /// ADR-F49 decision 18 (C): what agents left running in their sandboxes
     /// changes on its own while the dialog is open.
@@ -197,9 +230,81 @@ impl PausedWorktreeCodeDialog {
             shown_generations,
             written_since_shown: false,
             resuming: None,
+            stopping: HashMap::default(),
+            stops_that_did_not_land: HashSet::default(),
             _execution_subscription: execution_subscription,
             _leftover_processes_subscription: leftover_processes_subscription,
         }
+    }
+
+    /// ADR-F49 decision 18 (C): asks the agents that left them to stop exactly
+    /// what `worktree_id`'s block is showing, and gives up waiting for it to
+    /// show after [`STOP_TIMEOUT`]. Giving up only ends the wait: the agent's
+    /// monitor keeps looking at its sandbox, so a stop that lands late still
+    /// clears the list and lets the resume through.
+    fn stop_leftovers(
+        &mut self,
+        worktree_id: WorktreeId,
+        reports: Vec<LeftoverSandboxProcessesId>,
+        cx: &mut Context<Self>,
+    ) {
+        self.stops_that_did_not_land.remove(&worktree_id);
+        for report in &reports {
+            LeftoverSandboxProcessReports::stop(*report, cx);
+        }
+        let wait = cx.spawn(async move |this, cx| {
+            // The reports go away on their own once the processes do, so what
+            // is still listed is what the stop has not reached yet.
+            let mut waited = Duration::ZERO;
+            while waited < STOP_TIMEOUT {
+                cx.background_executor().timer(STOP_CHECK_INTERVAL).await;
+                waited += STOP_CHECK_INTERVAL;
+                let Ok(still_listed) = this.update(cx, |this, cx| this.still_listed(&reports, cx))
+                else {
+                    return;
+                };
+                if !still_listed {
+                    this.update(cx, |this, cx| {
+                        this.stopping.remove(&worktree_id);
+                        cx.notify();
+                    })
+                    .log_err();
+                    return;
+                }
+            }
+            this.update(cx, |this, cx| {
+                this.stopping.remove(&worktree_id);
+                this.stops_that_did_not_land.insert(worktree_id);
+                cx.notify();
+            })
+            .log_err();
+        });
+        self.stopping.insert(worktree_id, wait);
+        cx.notify();
+    }
+
+    /// Whether a stop the user asked for on `worktree_id` is still being
+    /// waited on, which is what disables that folder's button.
+    fn is_stopping(&self, worktree_id: WorktreeId) -> bool {
+        self.stopping.contains_key(&worktree_id)
+    }
+
+    /// And whether the last one there was given up on.
+    fn stop_did_not_land(&self, worktree_id: WorktreeId) -> bool {
+        self.stops_that_did_not_land.contains(&worktree_id)
+    }
+
+    /// Whether any of `reports` still lists a process of a folder this dialog
+    /// shows.
+    fn still_listed(&self, reports: &[LeftoverSandboxProcessesId], cx: &App) -> bool {
+        let project = self.project.read(cx);
+        let execution = project.worktree_code_execution().read(cx);
+        execution.paused_worktrees().into_iter().any(|worktree_id| {
+            execution
+                .leftover_sandbox_processes(worktree_id, cx)
+                .iter()
+                .any(|listed| reports.contains(&listed.id))
+        })
     }
 
     fn resume(&mut self, cx: &mut Context<Self>) {
@@ -283,11 +388,16 @@ fn language_server_names(details: &PausedWorktreeDetails, how: PausedLanguageSer
 }
 
 /// ADR-F49 decision 18 (C): how long a leftover process has been running, in
-/// the units a user reads at a glance.
-fn running_for(duration: std::time::Duration) -> String {
+/// the units a user reads at a glance. A process the host could not date at
+/// all reads differently from one that started within the last second — which
+/// is what an answer's own leftover looks like the moment it is first listed.
+fn running_for(duration: Option<Duration>) -> String {
+    let Some(duration) = duration else {
+        return "起動時間不明".to_string();
+    };
     let seconds = duration.as_secs();
     if seconds == 0 {
-        return "起動時間不明".to_string();
+        return "1 秒未満前から".to_string();
     }
     if seconds < 60 {
         return format!("{seconds} 秒前から");
@@ -301,6 +411,8 @@ fn running_for(duration: std::time::Duration) -> String {
 
 fn render_leftover_processes(
     leftovers: &[LeftoverSandboxProcesses],
+    stopping: bool,
+    timed_out: bool,
     stop: impl Fn(&mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let lines = leftovers
@@ -339,15 +451,25 @@ fn render_leftover_processes(
             h_flex().child(
                 Button::new("paused-worktree-code-stop-processes", "残ったプロセスを止める")
                     .style(ButtonStyle::Subtle)
+                    .disabled(stopping)
                     .on_click(move |_, window, cx| stop(window, cx)),
             ),
         )
+        .when(timed_out, |this| {
+            this.child(render_notice(
+                IconName::Warning,
+                Color::Warning,
+                STOP_DID_NOT_LAND,
+            ))
+        })
 }
 
 fn render_folder(
     name: String,
     details: PausedWorktreeDetails,
     leftovers: Vec<LeftoverSandboxProcesses>,
+    stopping: bool,
+    stop_timed_out: bool,
     stop_leftovers: impl Fn(&mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let restricted = language_server_names(&details, PausedLanguageServer::Restricted);
@@ -407,7 +529,12 @@ fn render_folder(
             ))
         })
         .when(!leftovers.is_empty(), |this| {
-            this.child(render_leftover_processes(&leftovers, stop_leftovers))
+            this.child(render_leftover_processes(
+                &leftovers,
+                stopping,
+                stop_timed_out,
+                stop_leftovers,
+            ))
         })
         .when(details.agent_turn_running && leftovers.is_empty(), |this| {
             this.child(render_notice(
@@ -433,6 +560,7 @@ impl Render for PausedWorktreeCodeDialog {
         let project = self.project.read(cx);
         let execution = project.worktree_code_execution().read(cx);
         let mut writer_running = false;
+        let dialog = cx.weak_entity();
         let folders = execution
             .paused_worktrees()
             .into_iter()
@@ -440,15 +568,20 @@ impl Render for PausedWorktreeCodeDialog {
                 let details = execution.details(worktree_id)?;
                 writer_running |= details.sandboxed_writer_running;
                 let leftovers = execution.leftover_sandbox_processes(worktree_id, cx);
-                let stopping = leftovers.iter().map(|report| report.id).collect::<Vec<_>>();
+                let reports = leftovers.iter().map(|report| report.id).collect::<Vec<_>>();
+                let dialog = dialog.clone();
                 Some(render_folder(
                     folder_name(project, worktree_id, cx)?,
                     details,
                     leftovers,
+                    self.is_stopping(worktree_id),
+                    self.stop_did_not_land(worktree_id),
                     move |_window, cx| {
-                        for report in &stopping {
-                            LeftoverSandboxProcessReports::stop(*report, cx);
-                        }
+                        dialog
+                            .update(cx, |this, cx| {
+                                this.stop_leftovers(worktree_id, reports.clone(), cx)
+                            })
+                            .log_err();
                     },
                 ))
             })
@@ -534,5 +667,169 @@ impl Render for PausedWorktreeCodeDialog {
                         )
                     }),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+    use project::{AgentWriteScope, FakeFs, LeftoverSandboxProcess};
+    use serde_json::json;
+    use settings::SettingsStore;
+    use std::{path::PathBuf, rc::Rc};
+    use util::path;
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+    }
+
+    /// ADR-F49 decision 18 (C): a leftover the host could not date reads
+    /// differently from one that has only just started. They used to read the
+    /// same, which said "起動時間不明" about the ordinary case — a process an
+    /// answer started in the second before it ended.
+    #[test]
+    fn an_unknown_age_is_not_a_process_that_just_started() {
+        assert_eq!(running_for(None), "起動時間不明");
+        assert_eq!(running_for(Some(Duration::ZERO)), "1 秒未満前から");
+        assert_eq!(
+            running_for(Some(Duration::from_millis(999))),
+            "1 秒未満前から"
+        );
+        assert_eq!(running_for(Some(Duration::from_secs(1))), "1 秒前から");
+        assert_eq!(running_for(Some(Duration::from_secs(59))), "59 秒前から");
+        assert_eq!(running_for(Some(Duration::from_secs(60))), "1 分前から");
+        assert_eq!(running_for(Some(Duration::from_secs(3599))), "59 分前から");
+        assert_eq!(
+            running_for(Some(Duration::from_secs(3600 * 2 + 60 * 3))),
+            "2 時間 3 分前から"
+        );
+    }
+
+    /// ADR-F49 decision 18 (C): the wait on a stop belongs to the folder it
+    /// was asked for.
+    ///
+    /// It is longer than the monitor's own cap on the request plus the listing
+    /// that follows it (M1: at 10 s both ran out together and a host that
+    /// answered at 9.9 s was reported as silent), it ends the moment the
+    /// processes leave the list, and neither it nor the warning it ends with
+    /// touches another folder's block (M2).
+    #[gpui::test]
+    async fn a_stop_is_waited_on_per_folder_and_outlasts_the_request(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/one"), json!({ "a.rs": "" })).await;
+        fs.insert_tree(path!("/two"), json!({ "b.rs": "" })).await;
+        let project = Project::test(
+            fs.clone(),
+            [path!("/one").as_ref(), path!("/two").as_ref()],
+            cx,
+        )
+        .await;
+        let (one, two) = project.read_with(cx, |project, cx| {
+            let mut worktrees = project.worktrees(cx);
+            let one = worktrees.next().expect("the first folder").read(cx).id();
+            let two = worktrees.next().expect("the second folder").read(cx).id();
+            (one, two)
+        });
+        let host = project
+            .read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .host_key()
+                    .map(str::to_string)
+            })
+            .expect("a local project has a host key");
+
+        // Both folders are paused; only the first has an agent's leftover, and
+        // the stop it offers never takes effect.
+        let report = cx.update(|cx| {
+            WorktreeCodeExecution::note_agent_write(&host, &AgentWriteScope::Anywhere, cx);
+            let report = LeftoverSandboxProcessReports::publish(
+                &host,
+                AgentWriteScope::Paths(vec![PathBuf::from(path!("/one"))]),
+                "fake-agent".into(),
+                Rc::new(|_cx: &mut App| {}),
+                cx,
+            );
+            LeftoverSandboxProcessReports::report(
+                report.id(),
+                vec![LeftoverSandboxProcess {
+                    pid: 7,
+                    command: "npm run dev".into(),
+                    running_for: Some(Duration::from_secs(3)),
+                }],
+                cx,
+            );
+            report
+        });
+        cx.run_until_parked();
+        let paused = project.read_with(cx, |project, cx| {
+            project
+                .worktree_code_execution()
+                .read(cx)
+                .paused_worktrees()
+        });
+        assert!(
+            paused.contains(&one) && paused.contains(&two),
+            "both folders are paused: {paused:?}"
+        );
+
+        let window =
+            cx.add_window(|window, cx| PausedWorktreeCodeDialog::new(project.clone(), window, cx));
+        let state = |cx: &mut TestAppContext| {
+            window
+                .read_with(cx, |dialog, _| {
+                    (
+                        dialog.is_stopping(one),
+                        dialog.stop_did_not_land(one),
+                        dialog.is_stopping(two),
+                        dialog.stop_did_not_land(two),
+                    )
+                })
+                .expect("the dialog is open")
+        };
+        let press_stop = |cx: &mut TestAppContext| {
+            window
+                .update(cx, |dialog, _window, cx| {
+                    dialog.stop_leftovers(one, vec![report.id()], cx)
+                })
+                .expect("the dialog is open");
+        };
+
+        press_stop(cx);
+        assert_eq!(
+            state(cx),
+            (true, false, false, false),
+            "the folder the stop was asked for waits; the other is untouched"
+        );
+
+        // Past what the monitor gives the request itself, and still waiting.
+        cx.executor().advance_clock(Duration::from_secs(12));
+        cx.run_until_parked();
+        assert_eq!(state(cx), (true, false, false, false));
+
+        cx.executor().advance_clock(Duration::from_secs(4));
+        cx.run_until_parked();
+        assert_eq!(
+            state(cx),
+            (false, true, false, false),
+            "the wait ends on that folder alone"
+        );
+
+        // Asked again, and this time the processes leave the list: the button
+        // comes back at the next look rather than at the end of the wait.
+        press_stop(cx);
+        assert_eq!(state(cx), (true, false, false, false));
+        cx.update(|cx| LeftoverSandboxProcessReports::report(report.id(), Vec::new(), cx));
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+        assert_eq!(state(cx), (false, false, false, false));
     }
 }

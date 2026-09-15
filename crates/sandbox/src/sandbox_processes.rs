@@ -71,8 +71,11 @@ pub struct SandboxProcess {
     pub start_time: u64,
     /// How long it has been running, worked out on the host it runs on: its
     /// start time is in that kernel's ticks since that host's boot, which
-    /// means nothing anywhere else.
-    pub running_for: std::time::Duration,
+    /// means nothing anywhere else. `None` where that host could not work it
+    /// out at all — the dialog then says so, rather than passing the process
+    /// off as one that started this very second (a real one does exist: the
+    /// leftover an answer started a moment before it ended).
+    pub running_for: Option<std::time::Duration>,
     /// Its command line, for the user to recognize it by. This is the one
     /// piece of the report the sandboxed command chooses, so it carries no
     /// control characters and is truncated.
@@ -127,8 +130,13 @@ pub fn validate_sandbox_session_id(id: &str) -> Result<()> {
     Ok(())
 }
 
+/// What an unknown running time is spelled as in a report, where every other
+/// field is a number.
+const UNKNOWN_RUNNING_FOR: &str = "-";
+
 /// One line per process: `<pid> <start time> <seconds running> <command as
-/// lowercase hex>`.
+/// lowercase hex>`, where the running time is [`UNKNOWN_RUNNING_FOR`] for a
+/// host that could not work it out.
 ///
 /// The command is hex so that the only attacker-chosen part of the report
 /// cannot forge a line, a marker or a field separator on its way through a
@@ -142,11 +150,13 @@ pub fn encode_sandbox_processes(processes: &[SandboxProcess]) -> String {
             .bytes()
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
+        let running_for = match process.running_for {
+            Some(running_for) => running_for.as_secs().to_string(),
+            None => UNKNOWN_RUNNING_FOR.to_string(),
+        };
         encoded.push_str(&format!(
-            "{} {} {} {command}\n",
-            process.pid,
-            process.start_time,
-            process.running_for.as_secs()
+            "{} {} {running_for} {command}\n",
+            process.pid, process.start_time,
         ));
     }
     encoded
@@ -180,11 +190,15 @@ pub fn decode_sandbox_processes(output: &str) -> Result<Vec<SandboxProcess>> {
             start_time: start_time
                 .parse()
                 .context("a sandbox process line's start time")?,
-            running_for: std::time::Duration::from_secs(
-                running_for
-                    .parse()
-                    .context("a sandbox process line's running time")?,
-            ),
+            running_for: if running_for == UNKNOWN_RUNNING_FOR {
+                None
+            } else {
+                Some(std::time::Duration::from_secs(
+                    running_for
+                        .parse()
+                        .context("a sandbox process line's running time")?,
+                ))
+            },
             command: decode_command(command)?,
         });
     }
@@ -388,11 +402,111 @@ pub(crate) fn register_sandbox_session(
     };
     create_private_directory(directory)?;
     let path = registration_path(directory, session_id);
+    remove_dead_registrations(directory, &path);
     let temporary = path.with_extension("tmp");
     write_private_file(&temporary, registration.encode().as_bytes())?;
     std::fs::rename(&temporary, &path)
         .with_context(|| format!("renaming {} into place", temporary.display()))?;
     Ok(SandboxSessionGuard { path })
+}
+
+/// How long a registration has to have been left behind before this sweeps it
+/// away. A helper registers, forks and runs a command that can last hours, so
+/// nothing recent is ever assumed to be finished — this only has to keep the
+/// directory from growing without bound over weeks of `SIGKILL`ed helpers.
+#[cfg(target_os = "linux")]
+const DEAD_REGISTRATION_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// How many are swept in one registration, so that a directory somebody filled
+/// cannot turn starting a sandbox into an unbounded amount of work.
+#[cfg(target_os = "linux")]
+const MAX_DEAD_REGISTRATIONS_REMOVED: usize = 256;
+
+/// Removes registrations of helpers that are gone, as the helper's parent
+/// registers its own.
+///
+/// A reader never needs this — [`live_registration`] checks the helper is
+/// still running and drops the file itself — but a helper killed with
+/// `SIGKILL` runs no destructor and nothing else ever asks about its session
+/// id again, so its file would stay for good.
+///
+/// Deliberately narrow: only `.session` and `.tmp` files (the second is what a
+/// helper killed between the write and the rename leaves), only regular files
+/// reached without following a link, only ones older than
+/// [`DEAD_REGISTRATION_AGE`], and never the caller's own, which is about to be
+/// written. A file that still names a living helper is left alone however old
+/// it is — the command it belongs to may well run for days.
+#[cfg(target_os = "linux")]
+fn remove_dead_registrations(directory: &std::path::Path, own: &std::path::Path) {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) => {
+            log::warn!(
+                "[sandbox-processes] could not list {} to sweep it: {error}",
+                directory.display()
+            );
+            return;
+        }
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        if removed >= MAX_DEAD_REGISTRATIONS_REMOVED {
+            return;
+        }
+        let path = entry.path();
+        if path == own
+            || !matches!(
+                path.extension().and_then(std::ffi::OsStr::to_str),
+                Some("session" | "tmp")
+            )
+        {
+            continue;
+        }
+        // Never followed: a link in here could only have been put there by
+        // something that can already write this directory, but removing what
+        // it points at is not this function's business either way.
+        let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        let old_enough = metadata.modified().is_ok_and(|modified| {
+            modified
+                .elapsed()
+                .is_ok_and(|age| age >= DEAD_REGISTRATION_AGE)
+        });
+        if !old_enough || !registration_is_dead(&path) {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => log::warn!(
+                "[sandbox-processes] could not sweep {}: {error}",
+                path.display()
+            ),
+        }
+    }
+}
+
+/// Whether the file at `path` names no session that could still exist: its
+/// helper is gone, or it is not a registration at all (a half-written `.tmp`,
+/// or a leftover of an older format). Reading it is enough — the PID namespace
+/// died with the helper, so nothing in it can still be running.
+#[cfg(target_os = "linux")]
+fn registration_is_dead(path: &std::path::Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        // Unreadable here means a file this process cannot judge, and a
+        // registration it could not read is one it would not act on either.
+        return false;
+    };
+    match SandboxSessionRegistration::parse(&text) {
+        Ok(registration) => {
+            process_start_time(registration.helper.pid) != Some(registration.helper.start_time)
+        }
+        Err(_) => true,
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -719,28 +833,33 @@ fn clock_ticks_per_second() -> Option<f64> {
 }
 
 /// How long a process whose `/proc` start time is `start_time` has been
-/// running. Zero where either half is unknown: the dialog then shows no age
-/// rather than an invented one.
+/// running. `None` where either half is unknown, which the dialog says as
+/// much: zero is a running time of its own here, for the process an answer
+/// started in the second before it ended.
 #[cfg(any(target_os = "linux", test))]
 fn running_for(
     start_time: u64,
     uptime: Option<f64>,
     ticks_per_second: Option<f64>,
-) -> std::time::Duration {
-    let (Some(uptime), Some(ticks_per_second)) = (uptime, ticks_per_second) else {
-        return std::time::Duration::ZERO;
-    };
+) -> Option<std::time::Duration> {
+    let (uptime, ticks_per_second) = (uptime?, ticks_per_second?);
     let seconds = uptime - start_time as f64 / ticks_per_second;
-    if !seconds.is_finite() || seconds <= 0.0 {
-        return std::time::Duration::ZERO;
+    if !seconds.is_finite() {
+        return None;
     }
-    std::time::Duration::from_secs(seconds as u64)
+    // A live `/proc` read is never exactly simultaneous, so a start time the
+    // kernel reports just after the uptime is a process that started now, not
+    // one whose age cannot be told.
+    if seconds <= 0.0 {
+        return Some(std::time::Duration::ZERO);
+    }
+    Some(std::time::Duration::from_secs(seconds as u64))
 }
 
 /// Ticks since boot at which `pid` started, from `/proc/<pid>/stat`.
 #[cfg(target_os = "linux")]
 fn process_start_time(pid: u32) -> Option<u64> {
-    Some(parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?.1)
+    parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?.start_time
 }
 
 /// The same, but `None` for a process that has already ended and only waits to
@@ -750,23 +869,51 @@ fn process_start_time(pid: u32) -> Option<u64> {
 #[cfg(target_os = "linux")]
 fn live_process_start_time(pid: u32) -> Option<u64> {
     match parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)? {
-        (ZOMBIE_STATE, _) => None,
-        (_, start_time) => Some(start_time),
+        ProcessStat {
+            state: ZOMBIE_STATE,
+            ..
+        } => None,
+        stat => stat.start_time,
     }
 }
 
 #[cfg(any(target_os = "linux", test))]
 const ZOMBIE_STATE: char = 'Z';
 
-/// `/proc/<pid>/stat` fields 3 (the state) and 22 (the start time). Everything
-/// before the last `)` is the pid and the command name, which may itself hold
-/// spaces and parentheses; the fields after it are plain and start at field 3.
+/// The fields of `/proc/<pid>/stat` this crate reads.
 #[cfg(any(target_os = "linux", test))]
-fn parse_stat(stat: &str) -> Option<(char, u64)> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ProcessStat {
+    /// Field 3: `Z` for a process that has ended and waits to be reaped, `X`
+    /// for one on its way out.
+    pub state: char,
+    /// Field 4: the pid of its parent.
+    pub parent: i32,
+    /// Field 22: ticks since boot at which it started. `None` for a line that
+    /// ends before it, which a real `/proc` never writes but a reader that
+    /// only wants the state and the parent should not fail over.
+    pub start_time: Option<u64>,
+}
+
+/// `/proc/<pid>/stat` fields 3 (the state), 4 (the parent) and 22 (the start
+/// time). Everything before the last `)` is the pid and the command name,
+/// which may itself hold spaces and parentheses; the fields after it are plain
+/// and start at field 3.
+///
+/// One parser for every reader in this crate — the helper's own child
+/// reaping reads the same line — so that the offsets are counted once.
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn parse_stat(stat: &str) -> Option<ProcessStat> {
     let after_name = stat.rsplit_once(')')?.1;
     let mut fields = after_name.split_ascii_whitespace();
     let state = fields.next()?.chars().next()?;
-    Some((state, fields.nth(18)?.parse().ok()?))
+    let parent = fields.next()?.parse().ok()?;
+    Some(ProcessStat {
+        state,
+        parent,
+        // Field 22 is the 18th after the parent.
+        start_time: fields.nth(17).and_then(|field| field.parse().ok()),
+    })
 }
 
 /// `pid`'s command line, or its thread name where it has none (a kernel-side
@@ -943,18 +1090,26 @@ mod tests {
             SandboxProcess {
                 pid: 7,
                 start_time: 123,
-                running_for: std::time::Duration::from_secs(45),
+                running_for: Some(std::time::Duration::from_secs(45)),
                 command: "node server.js".to_string(),
             },
             SandboxProcess {
                 pid: 9,
                 start_time: 4_294_967_296,
-                running_for: std::time::Duration::ZERO,
+                running_for: Some(std::time::Duration::ZERO),
                 command: format!("x\n1 1 1 {SANDBOX_PROCESSES_FAILURE_MARKER} nope"),
+            },
+            // An unknown running time stays unknown across the report, rather
+            // than arriving as a process that started this very second.
+            SandboxProcess {
+                pid: 11,
+                start_time: 4,
+                running_for: None,
+                command: String::new(),
             },
         ];
         let encoded = encode_sandbox_processes(&processes);
-        assert_eq!(encoded.lines().count(), 2);
+        assert_eq!(encoded.lines().count(), 3);
         assert_eq!(decode_sandbox_processes(&encoded).unwrap(), processes);
     }
 
@@ -992,14 +1147,46 @@ mod tests {
 
     #[test]
     fn a_command_name_with_spaces_and_parentheses_does_not_move_the_start_time() {
-        let stat = "1234 (my )( program) S 1 1234 1234 0 -1 4194304 100 0 0 0 5 6 0 0 20 0 1 0 \
+        let stat = "1234 (my )( program) S 7 1234 1234 0 -1 4194304 100 0 0 0 5 6 0 0 20 0 1 0 \
                     987654 10 20 30 40";
-        assert_eq!(parse_stat(stat), Some(('S', 987654)));
+        assert_eq!(
+            parse_stat(stat),
+            Some(ProcessStat {
+                state: 'S',
+                parent: 7,
+                start_time: Some(987654)
+            })
+        );
         assert_eq!(
             parse_stat(&stat.replacen(") S ", ") Z ", 1)),
-            Some((ZOMBIE_STATE, 987654))
+            Some(ProcessStat {
+                state: ZOMBIE_STATE,
+                parent: 7,
+                start_time: Some(987654)
+            })
         );
+        // The helper's own child reaping reads the same line for the state
+        // and the parent alone, and a line that stops before field 22 still
+        // answers for those two.
+        assert_eq!(
+            parse_stat("42 (sleep) S 7 42 42 0 -1"),
+            Some(ProcessStat {
+                state: 'S',
+                parent: 7,
+                start_time: None
+            })
+        );
+        assert_eq!(
+            parse_stat("43 (a) b (c)) Z 1 0"),
+            Some(ProcessStat {
+                state: ZOMBIE_STATE,
+                parent: 1,
+                start_time: None
+            })
+        );
+        assert_eq!(parse_stat("44 (x"), None);
         assert_eq!(parse_stat("nonsense"), None);
+        assert_eq!(parse_stat(""), None);
     }
 
     #[test]
@@ -1011,23 +1198,26 @@ mod tests {
     }
 
     #[test]
-    fn a_running_time_is_zero_rather_than_invented() {
+    fn an_unknown_running_time_is_not_a_process_that_started_now() {
         let second = std::time::Duration::from_secs(1);
-        assert_eq!(running_for(100, Some(30.0), Some(10.0)), 20 * second);
-        // Unknown halves, and a start time the kernel reports after the
-        // uptime (a live `/proc` read is never exactly simultaneous).
+        assert_eq!(running_for(100, Some(30.0), Some(10.0)), Some(20 * second));
+        // A process younger than a second, which is a running time and not an
+        // unknown one: an answer can leave behind what it started a moment
+        // before it ended.
         assert_eq!(
-            running_for(100, None, Some(10.0)),
-            std::time::Duration::ZERO
+            running_for(299, Some(30.0), Some(10.0)),
+            Some(std::time::Duration::ZERO)
         );
-        assert_eq!(
-            running_for(100, Some(30.0), None),
-            std::time::Duration::ZERO
-        );
+        // A start time the kernel reports after the uptime (a live `/proc`
+        // read is never exactly simultaneous) is that same "just now".
         assert_eq!(
             running_for(1000, Some(30.0), Some(10.0)),
-            std::time::Duration::ZERO
+            Some(std::time::Duration::ZERO)
         );
+        // Unknown halves, which no age at all can be told from.
+        assert_eq!(running_for(100, None, Some(10.0)), None);
+        assert_eq!(running_for(100, Some(30.0), None), None);
+        assert_eq!(running_for(100, Some(f64::NAN), Some(10.0)), None);
     }
 
     #[test]
@@ -1107,6 +1297,165 @@ mod linux_tests {
         );
         holder.kill().ok();
         holder.wait().ok();
+    }
+
+    /// Makes `path` look as old as `age`, so the sweep sees a registration
+    /// left behind rather than one written a moment ago.
+    fn age_file(path: &std::path::Path, age: std::time::Duration) {
+        let file = std::fs::File::options()
+            .write(true)
+            .open(path)
+            .expect("the file to age");
+        let when = std::time::SystemTime::now() - age;
+        file.set_times(std::fs::FileTimes::new().set_modified(when))
+            .expect("setting the modification time");
+    }
+
+    fn write_registration(path: &std::path::Path, registration: &SandboxSessionRegistration) {
+        std::fs::write(path, registration.encode().as_bytes()).expect("the registration");
+    }
+
+    /// A helper killed with `SIGKILL` runs no destructor, so its registration
+    /// stays; nothing ever asks about that session id again, so only the next
+    /// registration can clear it away.
+    #[test]
+    fn registering_sweeps_away_what_helpers_that_were_killed_left_behind() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let old = DEAD_REGISTRATION_AGE + std::time::Duration::from_secs(60);
+        let mut holder = Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("a holder to register");
+        // SAFETY: `getpid` takes no arguments and cannot fail.
+        let own_pid = unsafe { libc::getpid() } as u32;
+        let living = SandboxProcessKey {
+            pid: own_pid,
+            start_time: process_start_time(own_pid).expect("this process's start time"),
+        };
+        let dead = SandboxProcessKey {
+            start_time: living.start_time + 1,
+            ..living
+        };
+
+        let kept = [
+            // Its helper is still running, however long ago it registered: a
+            // sandboxed command may well run for days.
+            ("living-helper.session", dead_or_live(living, living), old),
+            // Dead, but not left behind long enough to be sure nothing is
+            // still standing the sandbox up.
+            (
+                "recent.session",
+                dead_or_live(dead, living),
+                std::time::Duration::ZERO,
+            ),
+        ];
+        for (name, registration, age) in &kept {
+            let path = directory.path().join(name);
+            write_registration(&path, registration);
+            age_file(&path, *age);
+        }
+        // Not a registration at all, and not this crate's file either.
+        let foreign = directory.path().join("notes.txt");
+        std::fs::write(&foreign, b"zed-sandbox-session 1\n").expect("a foreign file");
+        age_file(&foreign, old);
+        // A link is never followed, whatever it points at.
+        let link = directory.path().join("linked.session");
+        std::os::unix::fs::symlink(&foreign, &link).expect("a link");
+
+        let swept = [
+            ("killed.session", dead_or_live(dead, living)),
+            // What a helper killed between the write and the rename leaves.
+            ("half-written.tmp", dead_or_live(dead, dead)),
+        ];
+        for (name, registration) in &swept {
+            let path = directory.path().join(name);
+            write_registration(&path, registration);
+            age_file(&path, old);
+        }
+        let junk = directory.path().join("junk.session");
+        std::fs::write(&junk, b"not a registration").expect("the junk");
+        age_file(&junk, old);
+
+        let guard = register_sandbox_session(directory.path(), "sweeper", holder.id() as i32)
+            .expect("the registration");
+        for (name, _, _) in &kept {
+            assert!(
+                directory.path().join(name).exists(),
+                "{name} must be left alone"
+            );
+        }
+        assert!(link.exists(), "a link must not be followed or removed");
+        assert!(foreign.exists(), "another file's name is not ours to sweep");
+        for (name, _) in &swept {
+            assert!(
+                !directory.path().join(name).exists(),
+                "{name} must be swept away"
+            );
+        }
+        assert!(
+            !junk.exists(),
+            "a file that is no registration is swept too"
+        );
+        assert!(
+            directory.path().join("sweeper.session").exists(),
+            "and the registration that swept them is written"
+        );
+
+        drop(guard);
+        holder.kill().ok();
+        holder.wait().ok();
+    }
+
+    /// A directory somebody filled must not turn starting a sandbox into an
+    /// unbounded amount of work.
+    #[test]
+    fn a_sweep_removes_at_most_its_own_limit() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let old = DEAD_REGISTRATION_AGE + std::time::Duration::from_secs(60);
+        let mut holder = Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("a holder to register");
+        // SAFETY: `getpid` takes no arguments and cannot fail.
+        let own_pid = unsafe { libc::getpid() } as u32;
+        let living = SandboxProcessKey {
+            pid: own_pid,
+            start_time: process_start_time(own_pid).expect("this process's start time"),
+        };
+        let dead = SandboxProcessKey {
+            start_time: living.start_time + 1,
+            ..living
+        };
+        let total = MAX_DEAD_REGISTRATIONS_REMOVED + 3;
+        for index in 0..total {
+            let path = directory.path().join(format!("dead-{index}.session"));
+            write_registration(&path, &dead_or_live(dead, living));
+            age_file(&path, old);
+        }
+
+        let guard = register_sandbox_session(directory.path(), "limited", holder.id() as i32)
+            .expect("the registration");
+        let left = std::fs::read_dir(directory.path())
+            .expect("the directory")
+            .filter_map(std::result::Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("dead-"))
+            .count();
+        assert_eq!(left, total - MAX_DEAD_REGISTRATIONS_REMOVED);
+
+        drop(guard);
+        holder.kill().ok();
+        holder.wait().ok();
+    }
+
+    fn dead_or_live(
+        helper: SandboxProcessKey,
+        holder: SandboxProcessKey,
+    ) -> SandboxSessionRegistration {
+        SandboxSessionRegistration { helper, holder }
     }
 
     #[test]

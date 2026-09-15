@@ -61,8 +61,20 @@ pub(crate) struct SandboxPermissions {
     pub(crate) network_ceiling: Option<Vec<String>>,
     pub(crate) allow_fs_write: bool,
     /// ADR-F49: a long-running interactive program rather than a one-shot
-    /// command, with its IDE channel if it has one.
-    pub(crate) interactive_session: Option<crate::InteractiveSession>,
+    /// command.
+    pub(crate) interactive: bool,
+    /// ADR-F49: the IDE channel this command reaches Zed over, if it has one.
+    /// Merged by [`crate::Sandbox::wrap`] from the interactive session's
+    /// (decision 3) and the one a one-shot ACP agent is given on its own
+    /// (decision 24).
+    pub(crate) ide_forward: Option<crate::IdeForward>,
+    /// ADR-F49 第 2b 段: the command and its environment were written for
+    /// Linux rather than picked up from this Windows process, so the
+    /// environment is passed on as it is (see [`linux_environment`]).
+    pub(crate) linux_environment: bool,
+    /// ADR-F49 決定 18: the name this sandbox is registered under, so what the
+    /// command leaves running can be followed from outside it.
+    pub(crate) sandbox_session_id: Option<String>,
 }
 
 pub(crate) struct WritablePath {
@@ -142,13 +154,18 @@ actual=$(sha256sum <&3) || fail "cannot hash $helper"
 exec /proc/self/fd/3 "$@"
 "#;
 
-/// Copies one file into a directory below `$HOME`: stdin goes to a fresh
-/// temporary file there, whose size, SHA-256 (`-` without `sha256sum`) and path
-/// are reported for [`stage_file`] to check against what it sent. `$1` is the
-/// directory relative to `$HOME`, `$2` the file's final name.
+/// Copies one file into a directory below `$HOME` — or, when `$1` is itself an
+/// absolute Linux path, into that directory (ADR-F49 第 2b 段: a runtime
+/// archive goes into the distro's Zed data directory, which `XDG_DATA_HOME` can
+/// move out of the account's home): stdin goes to a fresh temporary file there,
+/// whose size, SHA-256 (`-` without `sha256sum`) and path are reported for
+/// [`stage_file`] to check against what it sent. `$2` is the file's final name.
 const STAGE_SCRIPT: &str = r#"
 set -eu
-dir="$HOME/$1"
+case "$1" in
+    /*) dir="$1" ;;
+    *) dir="$HOME/$1" ;;
+esac
 mkdir -p "$dir"
 staged=$(mktemp "$dir/.$2.XXXXXX")
 if ! cat > "$staged"; then
@@ -479,11 +496,12 @@ fn ensure_distro_registered(distro: Option<&str>) -> Result<()> {
 }
 
 /// Resolve a requested write grant to the path we persist for it, in
-/// **platform-native** form: a Windows drive path stays `C:\...` (NTFS) and a
-/// WSL path stays a Linux-absolute `/...`. In both cases the path is resolved to
-/// its symlink/junction-free canonical target (so a granted junction or symlink
-/// is followed and shown/stored as its real target), and its backing filesystem
-/// is classified.
+/// **platform-native** form: a Windows drive path stays `C:\...` (NTFS), a
+/// Linux-absolute path stays `/...`, and a `\\wsl.localhost\<distro>\...` share
+/// stays a share of the same distro. In every case the path is resolved to its
+/// symlink/junction-free canonical target (so a granted junction or symlink is
+/// followed and shown/stored as its real target), and its backing filesystem is
+/// classified.
 ///
 /// Crucially, *each side canonicalizes what it is authoritative about*:
 ///
@@ -499,8 +517,11 @@ fn ensure_distro_registered(distro: Option<&str>) -> Result<()> {
 /// runs (a writable root must still be exactly that path), so a component
 /// swapped for a symlink/junction after approval fails closed.
 ///
-/// There is no distro to pin — a sandboxed command runs in exactly one distro
-/// (the project's or WSL's default), so a bare Linux path is unambiguous.
+/// A bare Linux path pins no distro, and needs none: a sandboxed command runs in
+/// exactly one distro (the project's or WSL's default), so it is unambiguous
+/// there. A grant named through a share does pin one, and keeps it — the same
+/// `/root/p` is a different folder in a different distribution, so dropping the
+/// distribution would widen the grant to whichever one the next command runs in.
 pub async fn resolve_canonical_for_grant(requested: PathBuf) -> Result<ResolvedGrant> {
     let path_string = requested.to_string_lossy();
 
@@ -531,18 +552,29 @@ pub async fn resolve_canonical_for_grant(requested: PathBuf) -> Result<ResolvedG
         });
     }
 
-    // Otherwise the grant must be a Linux-absolute WSL path, which only WSL can
-    // canonicalize. `\\wsl.localhost\...` and other shapes are rejected.
-    let wsl_path = parse_wsl_absolute_path(&path_string).map_err(|_| {
+    // Otherwise the grant names a location on a distro's own filesystem, which
+    // only WSL can canonicalize: a Linux-absolute path in the distro the command
+    // runs in, or a `\\wsl.localhost\<distro>\…` share naming one distro.
+    let wsl_path = parse_distro_native_path(&path_string).map_err(|_| {
         anyhow::anyhow!(
             "cannot grant sandbox write access to `{}`: only Windows drive paths \
-             (`C:\\...`) and WSL absolute paths (`/...`) are supported",
+             (`C:\\...`), WSL absolute paths (`/...`) and folders in a WSL \
+             distribution (`\\\\wsl.localhost\\<distro>\\...`) are supported",
             requested.display()
         )
     })?;
+    let distro = wsl_path.distro.clone();
+    // A share with nothing under it is the distribution's whole root, which is
+    // never the folder the user was shown.
+    ensure!(
+        distro.is_none() || wsl_path.path != "/",
+        "cannot grant sandbox write access to `{}`: it names a whole WSL \
+         distribution rather than a folder in one",
+        requested.display()
+    );
     let mapping = PathMapping::Wsl(wsl_path);
 
-    ensure_distro_registered(None)?;
+    ensure_distro_registered(distro.as_deref())?;
     let wsl_exe = wsl_exe_path();
     if !wsl_exe.is_file() {
         return Err(unavailable(
@@ -550,16 +582,20 @@ pub async fn resolve_canonical_for_grant(requested: PathBuf) -> Result<ResolvedG
         ));
     }
 
-    let translated = resolve_paths(&wsl_exe, None, &[(mapping, "writable path", true)])
-        .await?
-        .into_iter()
-        .next()
-        .context("bug: missing resolved writable path")?
-        .context("bug: required writable path resolved as missing")?;
-    let helper = ensure_sandbox_helper(&wsl_exe, None).await?;
+    let translated = resolve_paths(
+        &wsl_exe,
+        distro.as_deref(),
+        &[(mapping, "writable path", true)],
+    )
+    .await?
+    .into_iter()
+    .next()
+    .context("bug: missing resolved writable path")?
+    .context("bug: required writable path resolved as missing")?;
+    let helper = ensure_sandbox_helper(&wsl_exe, distro.as_deref()).await?;
     let mut args = helper_invocation(&helper);
     args.extend([crate::WSL_SANDBOX_RESOLVE_FLAG.to_string(), translated]);
-    let output = run_wsl_command(&wsl_exe, None, &args, "書込許可の解決").await?;
+    let output = run_wsl_command(&wsl_exe, distro.as_deref(), &args, "書込許可の解決").await?;
     if !output.status.success() {
         return Err(anyhow::anyhow!(
             "failed to resolve writable path `{}`{}",
@@ -569,7 +605,7 @@ pub async fn resolve_canonical_for_grant(requested: PathBuf) -> Result<ResolvedG
     }
     let stdout = String::from_utf8(output.stdout)
         .context("WSL sandbox helper returned a non-UTF-8 canonical path")?;
-    parse_canonical_grant_output(&stdout)
+    parse_canonical_grant_output(&stdout, distro.as_deref())
 }
 
 /// Strip the `\\?\` verbatim prefix that `std::fs::canonicalize` prepends to a
@@ -636,11 +672,7 @@ pub async fn wrap_invocation<S: BuildHasher>(
     cwd: Option<PathBuf>,
     env: HashMap<String, String, S>,
 ) -> Result<(String, Vec<String>)> {
-    if let Some(forward) = permissions
-        .interactive_session
-        .as_ref()
-        .and_then(|session| session.ide_forward.as_ref())
-    {
+    if let Some(forward) = permissions.ide_forward.as_ref() {
         ensure!(
             forward.inner_port != 0,
             "the IDE port inside the sandbox must not be 0"
@@ -748,7 +780,11 @@ pub async fn wrap_invocation<S: BuildHasher>(
     let (cwd, writable_paths, readable_paths, protected_paths) =
         split_resolved_paths(has_cwd, writable_path_count, readable_path_count, resolved)?;
 
-    let environment = forwarded_environment(&env);
+    let environment = if permissions.linux_environment {
+        linux_environment(&env)
+    } else {
+        forwarded_environment(&env)
+    };
     let helper_argv = crate::build_wsl_sandbox_helper_argv(
         &writable_paths,
         &protected_paths,
@@ -764,7 +800,9 @@ pub async fn wrap_invocation<S: BuildHasher>(
                 .map(|digests| digests.slirp.as_str()),
             environment: &environment,
             unset_environment: &WSL_INTEROP_VARIABLES,
-            interactive_session: permissions.interactive_session.as_ref(),
+            interactive: permissions.interactive,
+            ide_forward: permissions.ide_forward.as_ref(),
+            sandbox_session_id: permissions.sandbox_session_id.as_deref(),
         },
     );
     let wsl_args = helper_command_line(
@@ -820,7 +858,14 @@ fn helper_invocation(helper: &InstalledHelper) -> Vec<String> {
     }
 }
 
-fn parse_canonical_grant_output(stdout: &str) -> Result<ResolvedGrant> {
+/// Read what `--wsl-sandbox-resolve-path` printed. `requested_distro` is the
+/// distribution the request named through its share, if it named one; the
+/// canonical is then spelled back as a share of that distribution instead of as
+/// a bare Linux path (see [`resolve_canonical_for_grant`]).
+fn parse_canonical_grant_output(
+    stdout: &str,
+    requested_distro: Option<&str>,
+) -> Result<ResolvedGrant> {
     let mut lines = stdout.lines();
     let distro = lines
         .next()
@@ -839,18 +884,58 @@ fn parse_canonical_grant_output(stdout: &str) -> Result<ResolvedGrant> {
     ensure!(
         lines.next().is_none()
             && !distro.is_empty()
-            && !distro.contains(['/', '\\'])
+            && !distro.contains(['/', '\\', '\0'])
+            && distro != "."
+            && distro != ".."
             && canonical.starts_with('/'),
         "WSL sandbox helper returned invalid canonical-path output: {stdout:?}"
     );
-    // Store the canonical as the Linux path the helper grants. The distro is
-    // pinned at enforcement from the *requested* path (see `wrap_invocation`),
-    // so it is not re-encoded here: spelling the canonical as
-    // `\\wsl.localhost\<distro>\...` would resurface the Windows-style path we
-    // avoid and, because it names the same object as the request, show as a
-    // spurious redirect in the approval UI.
+    let Some(requested_distro) = requested_distro else {
+        // Store the canonical as the Linux path the helper grants. The distro is
+        // pinned at enforcement from the *requested* path (see
+        // `wrap_invocation`), so it is not re-encoded here: spelling the
+        // canonical as `\\wsl.localhost\<distro>\...` would resurface the
+        // Windows-style path we avoid and, because it names the same object as
+        // the request, show as a spurious redirect in the approval UI.
+        return Ok(ResolvedGrant {
+            canonical: PathBuf::from(canonical),
+            on_windows_fs,
+        });
+    };
+    // The helper reports the distro it actually ran in (`WSL_DISTRO_NAME`).
+    // `wsl.exe -d` matches the requested name case-insensitively, so anything
+    // else means the grant was resolved somewhere other than where it was asked
+    // for — fail rather than persist a path pointing at the wrong distribution.
+    ensure!(
+        distro.eq_ignore_ascii_case(requested_distro),
+        "the WSL sandbox helper resolved a grant for distribution `{requested_distro}` \
+         in `{distro}` instead"
+    );
+    // A canonical the share spelling cannot carry back unchanged is refused
+    // rather than stored:
+    //
+    // * `\` is an ordinary character in a Linux file name and the separator
+    //   in a share path, so `/root/a\b` would be stored as a path that reads
+    //   back as `/root/a/b` — a different object, and one nobody approved;
+    // * `/` is the distribution's root, which spells a bare share, a shape
+    //   `require_windows_grant_shape` refuses — the grant would be approved
+    //   here and then never usable.
+    ensure!(
+        !canonical.contains('\\'),
+        "the WSL sandbox helper resolved a grant to {canonical:?}, which has no \
+         Windows spelling"
+    );
+    ensure!(
+        canonical != "/",
+        "the WSL sandbox helper resolved a grant to the whole root of \
+         distribution `{distro}` rather than to a folder in it"
+    );
+    // ADR-F49 第 2b 段: keep the request's spelling, so the stored canonical
+    // still says which distribution it is in and compares, component by
+    // component, with the worktree roots of an ext4 project — which reach the
+    // sandbox spelled the same way.
     Ok(ResolvedGrant {
-        canonical: PathBuf::from(canonical),
+        canonical: PathBuf::from(crate::util::wsl_share_path_spelling(distro, canonical)),
         on_windows_fs,
     })
 }
@@ -913,9 +998,13 @@ fn select_distro<'a>(
         match distro.as_deref() {
             // A bad request, not an environment problem: the model (or
             // project layout) asked for paths spanning two distros, which a
-            // single sandboxed command can't serve.
+            // single sandboxed command can't serve. Two *spellings* of one
+            // distro are not that: WSL matches a distro name
+            // case-insensitively, and so does
+            // `project::agent_sandbox::wsl_distro_for_roots`, which decides the
+            // session's distro from these very paths.
             Some(distro) => ensure!(
-                distro == path_distro,
+                distro.eq_ignore_ascii_case(path_distro),
                 "cannot sandbox a command whose paths mix WSL distros `{}` and `{}`",
                 distro,
                 path_distro
@@ -1145,6 +1234,10 @@ enum StagedKind {
     SandboxHelper,
     /// An agent binary Zed obtained for the sandbox (ADR-F49).
     AgentBinary,
+    /// ADR-F49 第 2b 段: an archive Zed obtained for the Linux runtime an
+    /// agent runs in inside WSL — the Linux Node.js, a registry entry's Linux
+    /// build — which is unpacked inside the distro, never on Windows.
+    RuntimeArchive,
 }
 
 impl StagedKind {
@@ -1153,6 +1246,7 @@ impl StagedKind {
         match self {
             Self::SandboxHelper => "サンドボックス用のヘルパー",
             Self::AgentBinary => "エージェントの実行ファイル",
+            Self::RuntimeArchive => "エージェントの実行環境のアーカイブ",
         }
     }
 
@@ -1161,6 +1255,7 @@ impl StagedKind {
         match self {
             Self::SandboxHelper => "サンドボックス用ヘルパーのコピー",
             Self::AgentBinary => "エージェントの実行ファイルのコピー",
+            Self::RuntimeArchive => "エージェントの実行環境のコピー",
         }
     }
 
@@ -1169,6 +1264,7 @@ impl StagedKind {
         match self {
             Self::SandboxHelper => "同梱のサンドボックス用ヘルパー",
             Self::AgentBinary => "エージェントの実行ファイル",
+            Self::RuntimeArchive => "取得したエージェントの実行環境のアーカイブ",
         }
     }
 
@@ -1177,6 +1273,7 @@ impl StagedKind {
         match self {
             Self::SandboxHelper => "Zed を再インストールしてください。",
             Self::AgentBinary => "エージェントを取得し直してください。",
+            Self::RuntimeArchive => "取得し直してください。",
         }
     }
 }
@@ -1992,6 +2089,115 @@ pub async fn ide_rendezvous_path(distro: Option<&str>, session_id: &str) -> Resu
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')),
         "invalid IDE session id {session_id:?}"
     );
+    let root = ide_rendezvous_root(distro).await?;
+    Ok(format!("{root}/{session_id}/{IDE_RENDEZVOUS_SOCKET_NAME}"))
+}
+
+/// Lists what the rendezvous directory (`$1`) holds under the prefix (`$2`)
+/// and removes each entry no running bridge — and no helper connecting to one
+/// — names on its command line. The directory is entered first and checked to
+/// be the one named, so one replaced by a symlink since is left alone.
+///
+/// **The order matters**: the candidates are listed *before* `/proc` is
+/// walked, as the 第 1 段 sweep does. A bridge's process is in `/proc` before
+/// it creates its directory, so walking `/proc` first and listing afterwards
+/// would take in a session that started in between — present in the listing,
+/// absent from the process list — and remove a rendezvous that is in use.
+/// This way a session that started during the sweep is simply not a candidate.
+/// Each name is checked again right before it is removed, so one that went
+/// away or was replaced in the meantime is left alone.
+const SWEEP_RENDEZVOUS_SCRIPT: &str = r#"set -u
+root=$1
+prefix=$2
+cd -P -- "$root" 2>/dev/null && [ "$(pwd -P)" = "$root" ] || exit 0
+candidates=""
+for entry in "$prefix"*; do
+    [ -d "$entry" ] || continue
+    case "$entry" in */*|.*|*[!A-Za-z0-9_-]*) continue ;; esac
+    candidates="$candidates $entry"
+done
+[ -n "$candidates" ] || exit 0
+running=""
+for cmdline in /proc/[0-9]*/cmdline; do
+    arguments=$(tr '\0\n' '  ' < "$cmdline" 2>/dev/null) || continue
+    case "$arguments" in
+        *--ide-bridge*|*--ide-rendezvous*) running="$running$arguments" ;;
+    esac
+done
+for entry in $candidates; do
+    case "$running" in *"$root/$entry/"*) continue ;; esac
+    [ -d "$entry" ] || continue
+    case "$entry" in "$prefix"*) ;; *) continue ;; esac
+    rm -rf -- "./$entry" && printf 'zed-sweep-removed %s\n' "$entry"
+done
+"#;
+
+const SWEEP_REMOVED_PREFIX: &str = "zed-sweep-removed ";
+
+/// ADR-F49: remove the rendezvous directories under `prefix` whose bridge is
+/// gone — what a Zed or a WSL that went down before the bridge could clean up
+/// leaves in `~/.cache/zed-jp-enhance/ide`. Returns the names removed.
+///
+/// A directory a running bridge (or a helper splicing to one) names on its
+/// command line is left alone, so this is safe to run while other sessions of
+/// this Zed or another are up. `prefix` tells one launcher's sessions from
+/// another's (`claude-`, `acp-`), and may hold letters, digits, `_` and `-`.
+pub async fn sweep_ide_rendezvous(distro: Option<&str>, prefix: &str) -> Result<Vec<String>> {
+    ensure!(
+        !prefix.is_empty()
+            && prefix.len() <= 32
+            && prefix
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')),
+        "invalid IDE session prefix {prefix:?}"
+    );
+    let root = ide_rendezvous_root(distro).await?;
+    let wsl_exe = installed_wsl_exe()?;
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        sweep_rendezvous_arguments(&root, prefix),
+        "IDE 連携の後始末",
+    )
+    .await?;
+    ensure!(
+        output.status.success(),
+        "the IDE rendezvous sweep failed{}",
+        command_failure_details(output.status.code(), &output.stderr)
+    );
+    Ok(removed_rendezvous_names(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+/// The `wsl.exe` arguments that run [`SWEEP_RENDEZVOUS_SCRIPT`] over `root`
+/// for `prefix`. The script reads them as `$1` and `$2`, so `zed-ide-sweep`
+/// (its `$0`) has to sit between the script and them.
+fn sweep_rendezvous_arguments<'a>(root: &'a str, prefix: &'a str) -> [&'a str; 7] {
+    [
+        "--exec",
+        "/bin/sh",
+        "-c",
+        SWEEP_RENDEZVOUS_SCRIPT,
+        "zed-ide-sweep",
+        root,
+        prefix,
+    ]
+}
+
+/// The rendezvous directories [`SWEEP_RENDEZVOUS_SCRIPT`] reported it removed;
+/// anything else it printed is ignored.
+fn removed_rendezvous_names(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix(SWEEP_REMOVED_PREFIX))
+        .map(|name| name.trim_end().to_string())
+        .collect()
+}
+
+/// `~/.cache/zed-jp-enhance/ide` in `distro`, where every session's rendezvous
+/// directory is.
+async fn ide_rendezvous_root(distro: Option<&str>) -> Result<String> {
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
     let helper = ensure_sandbox_helper(&wsl_exe, distro).await?;
@@ -1999,9 +2205,7 @@ pub async fn ide_rendezvous_path(distro: Option<&str>, session_id: &str) -> Resu
         Some(home) => home.to_string(),
         None => query_distro_home(&wsl_exe, distro).await?,
     };
-    Ok(format!(
-        "{home}/{IDE_RENDEZVOUS_HOME_RELATIVE}/{session_id}/{IDE_RENDEZVOUS_SOCKET_NAME}"
-    ))
+    Ok(format!("{home}/{IDE_RENDEZVOUS_HOME_RELATIVE}"))
 }
 
 /// The distro account's home, read off the path of an installed helper
@@ -2048,46 +2252,53 @@ async fn query_distro_home(wsl_exe: &Path, distro: Option<&str>) -> Result<Strin
 /// `distro` (`None`: the default distro; use the session's, see
 /// [`wsl_distro_for_path`]).
 ///
-/// The bridge listens on `rendezvous_path` (see [`ide_rendezvous_path`]),
-/// writes `lock_content` to `lock_file_path` — a new file, never through a
+/// The bridge listens on `rendezvous_path` (see [`ide_rendezvous_path`]) and
+/// multiplexes every connection over its standard I/O for
+/// [`crate::spawn_bridge_mux`]. It is this build's helper, started through the
+/// same verified start (checked against its SHA-256 first).
+///
+/// `lock` is a path and the content to write there: a new file, never through a
 /// symlink, in a directory of the distro account's reached by a per-component
-/// no-symlink walk, created if missing — and multiplexes every connection over
-/// its standard I/O for [`crate::spawn_bridge_mux`]. It is this build's helper,
-/// started through the same verified start (checked against its SHA-256 first).
+/// no-symlink walk, created if missing. It is how the Claude Code CLI is told
+/// where its IDE is (ADR-F49 decision 4). `None` for a session whose client
+/// learns that another way — an external ACP agent is handed the URL and the
+/// token in its `mcpServers` (decision 24) — and then no lock file is written
+/// and nothing is left to clean up.
 ///
 /// Returns the `wsl.exe` program, its arguments, and a **stdin preamble**: the
 /// caller must write the returned bytes to the bridge's stdin *before anything
-/// else*, then hand the same stdin to [`crate::spawn_bridge_mux`]. The lock
-/// content carries the CLI's IDE auth token, so it travels on stdin rather than
-/// on the command line, where `/proc/<pid>/cmdline` would leak it (ADR-F49
-/// item 5).
+/// else*, then hand the same stdin to [`crate::spawn_bridge_mux`] (empty
+/// without a `lock`, so the same order works either way). The lock content
+/// carries the CLI's IDE auth token, so it travels on stdin rather than on the
+/// command line, where `/proc/<pid>/cmdline` would leak it (ADR-F49 item 5).
 ///
 /// Spawn it with piped stdin and stdout, `CREATE_NO_WINDOW` and an empty
 /// `WSLENV`, as the sandbox's own `wsl.exe` is, and before the session it
 /// serves: the helper refuses a rendezvous directory that does not exist yet.
-/// Its stderr says `zed-ide-bridge: ready` once it listens, or
-/// `zed-ide-bridge: <code>: <detail>` before it exits with status 126 when it
-/// cannot set up — `session-running` when `exclusive_directory` is given and
-/// another bridge, from this Zed or another, holds it. It removes the socket
-/// and the lock file, and exits, when its stdin closes. Like
-/// [`wrap_invocation`], this may copy the helper into WSL first.
+/// [`start_ide_bridge`] does all of that. Its stderr says `zed-ide-bridge:
+/// ready` once it listens, or `zed-ide-bridge: <code>: <detail>` before it
+/// exits with status 126 when it cannot set up — `session-running` when
+/// `exclusive_directory` is given and another bridge, from this Zed or another,
+/// holds it. It removes the socket and the lock file, and exits, when its stdin
+/// closes. Like [`wrap_invocation`], this may copy the helper into WSL first.
 pub async fn ide_bridge_invocation(
     distro: Option<&str>,
     rendezvous_path: &str,
-    lock_file_path: &str,
-    lock_content: &[u8],
+    lock: Option<(&str, &[u8])>,
     exclusive_directory: Option<&str>,
 ) -> Result<(PathBuf, Vec<String>, Vec<u8>)> {
     ensure_linux_absolute_path(rendezvous_path, "IDE rendezvous")?;
-    ensure_linux_absolute_path(lock_file_path, "IDE lock file")?;
+    if let Some((lock_file_path, lock_content)) = lock {
+        ensure_linux_absolute_path(lock_file_path, "IDE lock file")?;
+        ensure!(
+            lock_content.len() <= crate::MAX_IDE_LOCK_CONTENT,
+            "the IDE lock content is larger than {} bytes",
+            crate::MAX_IDE_LOCK_CONTENT
+        );
+    }
     if let Some(directory) = exclusive_directory {
         ensure_linux_absolute_path(directory, "IDE bridge exclusive directory")?;
     }
-    ensure!(
-        lock_content.len() <= crate::MAX_IDE_LOCK_CONTENT,
-        "the IDE lock content is larger than {} bytes",
-        crate::MAX_IDE_LOCK_CONTENT
-    );
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
     let helper = ensure_sandbox_helper(&wsl_exe, distro).await?;
@@ -2095,10 +2306,13 @@ pub async fn ide_bridge_invocation(
         distro,
         &helper,
         rendezvous_path,
-        lock_file_path,
+        lock.map(|(path, _)| path),
         exclusive_directory,
     );
-    let preamble = crate::encode_ide_lock_preamble(lock_content);
+    let preamble = match lock {
+        Some((_, content)) => crate::encode_ide_lock_preamble(content),
+        None => Vec::new(),
+    };
     Ok((wsl_exe, args, preamble))
 }
 
@@ -2106,7 +2320,7 @@ fn ide_bridge_command_line(
     distro: Option<&str>,
     helper: &InstalledHelper,
     rendezvous_path: &str,
-    lock_file_path: &str,
+    lock_file_path: Option<&str>,
     exclusive_directory: Option<&str>,
 ) -> Vec<String> {
     let mut args = Vec::new();
@@ -2118,13 +2332,141 @@ fn ide_bridge_command_line(
         crate::IDE_BRIDGE_FLAG.to_string(),
         "--rendezvous".to_string(),
         rendezvous_path.to_string(),
-        "--lock-file".to_string(),
-        lock_file_path.to_string(),
     ]);
+    if let Some(path) = lock_file_path {
+        args.extend(["--lock-file".to_string(), path.to_string()]);
+    }
     if let Some(directory) = exclusive_directory {
         args.extend(["--exclusive-directory".to_string(), directory.to_string()]);
     }
     args
+}
+
+/// ADR-F49: how long the bridge is given to say it is listening. The caller
+/// hands [`start_ide_bridge`] a timer of exactly this length, because this
+/// crate has no timer of its own — they come from the caller's executor so
+/// that tests stay deterministic.
+pub const IDE_BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// [`start_ide_bridge`] was turned away because another bridge — this Zed's or
+/// another's — holds the exclusive directory it was given. Its own error type
+/// so the caller can say the session already runs instead of showing a
+/// start-up failure.
+#[derive(Debug)]
+pub struct IdeBridgeSessionRunning;
+
+impl std::fmt::Display for IdeBridgeSessionRunning {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("この構成の IDE 連携の中継はすでに実行中です")
+    }
+}
+
+impl std::error::Error for IdeBridgeSessionRunning {}
+
+/// A running IDE bridge (ADR-F49): the `wsl.exe` process and the standard I/O
+/// that [`crate::spawn_bridge_mux`] takes apart.
+pub struct IdeBridge {
+    /// Killed when dropped. Keeping it is what keeps the bridge running; its
+    /// stdin closing is what makes the bridge remove its socket and exit.
+    pub child: smol::process::Child,
+    pub stdin: smol::process::ChildStdin,
+    pub stdout: smol::process::ChildStdout,
+    /// What the bridge says on stderr from here on. Spawn it on an executor
+    /// that lives as long as the bridge: it logs those lines and keeps the
+    /// bridge's stderr pipe from filling up and stalling it.
+    pub log: futures::future::BoxFuture<'static, ()>,
+}
+
+/// ADR-F49: start the bridge [`ide_bridge_invocation`] described, hand it the
+/// stdin preamble, and wait until it says it is listening.
+///
+/// `ready_timeout` is a timer of [`IDE_BRIDGE_READY_TIMEOUT`] from the caller's
+/// executor; when it fires first, the returned error says so and dropping the
+/// child kills the `wsl.exe`. The error is [`IdeBridgeSessionRunning`] when
+/// another bridge holds the exclusive directory, and otherwise carries the
+/// Japanese reason the bridge reported.
+///
+/// Shared by the sandboxed Claude Code CLI (第 1 段) and the external ACP
+/// agents started in a WSL sandbox (決定 24), which differ only in whether
+/// they ask for a lock file.
+pub async fn start_ide_bridge(
+    program: &Path,
+    arguments: &[String],
+    preamble: &[u8],
+    ready_timeout: impl std::future::Future<Output = ()>,
+) -> Result<IdeBridge> {
+    use crate::ide_bridge::{
+        BridgeStatus, SESSION_RUNNING_CODE, bridge_failure_message, parse_bridge_status,
+    };
+    use futures::{AsyncBufReadExt as _, FutureExt as _, StreamExt as _};
+    use smol::process::windows::CommandExt as _;
+
+    const PREAMBLE_FAILED: &str = "IDE 連携の中継に接続情報を渡せませんでした";
+
+    let mut command = Command::new(program);
+    command
+        .args(arguments)
+        // `wsl.exe` is a Windows program of the user's own session and needs
+        // this process's environment to start at all, so it keeps it; the empty
+        // `WSLENV` is what stops any of it crossing into the distro.
+        .env("WSLENV", "")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .creation_flags(CREATE_NO_WINDOW);
+    let mut child = command
+        .spawn()
+        .context("IDE 連携の中継 (wsl.exe) を起動できませんでした")?;
+    let (Some(mut stdin), Some(stdout), Some(stderr)) =
+        (child.stdin.take(), child.stdout.take(), child.stderr.take())
+    else {
+        bail!("bug: the IDE bridge's standard I/O is not piped");
+    };
+    stdin.write_all(preamble).await.context(PREAMBLE_FAILED)?;
+    stdin.flush().await.context(PREAMBLE_FAILED)?;
+
+    let mut lines = futures::io::BufReader::new(stderr).lines();
+    // In a block of its own so that the borrow `setup` takes of `lines` ends
+    // before the logging future takes it over.
+    let ready = {
+        let setup = async {
+            while let Some(line) = lines.next().await {
+                let line = line.context("reading the IDE bridge's messages")?;
+                match parse_bridge_status(&line) {
+                    Some(BridgeStatus::Ready) => return Ok(()),
+                    Some(BridgeStatus::Failed {
+                        code: SESSION_RUNNING_CODE,
+                    }) => return Err(IdeBridgeSessionRunning.into()),
+                    Some(BridgeStatus::Failed { code }) => bail!(bridge_failure_message(code)),
+                    None => log::info!("[ide-bridge] {line}"),
+                }
+            }
+            bail!("IDE 連携の中継が準備を終える前に終了しました。")
+        };
+        futures::pin_mut!(setup);
+        futures::pin_mut!(ready_timeout);
+        match futures::future::select(setup, ready_timeout).await {
+            futures::future::Either::Left((outcome, _)) => outcome,
+            futures::future::Either::Right(((), _)) => Err(anyhow::anyhow!(
+                "IDE 連携の中継が {} 秒以内に準備を終えませんでした。",
+                IDE_BRIDGE_READY_TIMEOUT.as_secs()
+            )),
+        }
+    };
+    ready?;
+    let log = async move {
+        while let Some(Ok(line)) = lines.next().await {
+            log::info!("[ide-bridge] {line}");
+        }
+    }
+    .boxed();
+    Ok(IdeBridge {
+        child,
+        stdin,
+        stdout,
+        log,
+    })
 }
 
 /// ADR-F49: the WSL distro a sandboxed command started in `path` runs in: the
@@ -2577,6 +2919,26 @@ fn forwarded_environment<S: BuildHasher>(
     forwarded
 }
 
+/// ADR-F49 第 2b 段: the environment of a command this fork wrote for Linux —
+/// an agent's own settings, the `PATH` of the Node.js staged in the distro,
+/// the `HOME` inside its configuration folder — sorted by name so the command
+/// line is stable.
+///
+/// Unlike [`forwarded_environment`] nothing is dropped for being a Windows
+/// value: none of it came from this process's environment, and `PATH` and
+/// `HOME` are exactly what the command needs set. Only the names `setenv(3)`
+/// itself refuses (empty, or holding `=`) are skipped; the WSL interop
+/// variables are removed by the helper's `--unsetenv` either way.
+fn linux_environment<S: BuildHasher>(env: &HashMap<String, String, S>) -> Vec<(String, String)> {
+    let mut environment: Vec<(String, String)> = env
+        .iter()
+        .filter(|(name, _)| !name.is_empty() && !name.contains('='))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    environment.sort();
+    environment
+}
+
 /// Whether an environment variable should be forwarded into the Linux sandbox.
 ///
 /// The helper sets each one with `setenv(3)`, which rejects names that are
@@ -2660,6 +3022,14 @@ pub fn is_forwardable_env_var(name: &str) -> bool {
 }
 
 fn directory_to_wsl(path: &Path) -> Result<PathMapping> {
+    // A cwd inside the distro is a directory only WSL can see —
+    // `resolve_paths` requires it to be there. (A Windows drive cwd is checked
+    // here as well, because a mistyped one would otherwise only fail after the
+    // round-trip.)
+    let path_string = path.to_string_lossy();
+    if let Ok(wsl_path) = parse_distro_native_path(&path_string) {
+        return Ok(PathMapping::Wsl(wsl_path));
+    }
     ensure!(
         path.is_dir(),
         "Windows sandboxing via WSL can only use an existing directory as cwd: {}",
@@ -2670,7 +3040,7 @@ fn directory_to_wsl(path: &Path) -> Result<PathMapping> {
 
 fn path_to_wsl(path: &Path) -> Result<PathMapping> {
     let path_string = path.to_string_lossy();
-    if let Ok(path) = parse_wsl_absolute_path(&path_string) {
+    if let Ok(path) = parse_distro_native_path(&path_string) {
         return Ok(PathMapping::Wsl(path));
     }
 
@@ -2684,17 +3054,18 @@ fn path_to_wsl(path: &Path) -> Result<PathMapping> {
 
 fn path_to_wsl_allowing_missing(path: &Path) -> Result<PathMapping> {
     let path_string = path.to_string_lossy();
-    if let Ok(path) = parse_wsl_absolute_path(&path_string) {
+    if let Ok(path) = parse_distro_native_path(&path_string) {
         return Ok(PathMapping::Wsl(path));
     }
     map_path_to_wsl(path)
 }
 
+/// Map a Windows drive path (`C:\…`, or behind the `\\?\` verbatim prefix) to
+/// what the distro sees. Paths on the distro's own filesystem never come here —
+/// [`parse_distro_native_path`] takes them first, because Windows can neither
+/// follow their symlinks nor stat them without the distro running.
 fn map_path_to_wsl(path: &Path) -> Result<PathMapping> {
     let path_string = path.to_string_lossy();
-    if let Ok(path) = parse_wsl_unc_path(&path_string) {
-        return Ok(PathMapping::Wsl(path));
-    }
     let fallback = parse_native_drive_path(&path_string)?;
     let windows_path = path_string
         .strip_prefix(r"\\?\")
@@ -2704,6 +3075,18 @@ fn map_path_to_wsl(path: &Path) -> Result<PathMapping> {
         windows_path,
         fallback,
     })
+}
+
+/// A location on a distro's own filesystem, which only WSL can see: a
+/// Linux-absolute path in whichever distro the command runs in, or (ADR-F49
+/// 第 2b 段) a `\\wsl.localhost\<distro>\…` share naming one distro in
+/// particular — the shape a worktree on ext4 reaches the sandbox as.
+///
+/// Its existence and its symlinks are checked inside WSL by [`resolve_paths`],
+/// never here: Windows cannot follow a distro's symlinks, and even statting the
+/// share needs the distro started.
+fn parse_distro_native_path(path: &str) -> Result<WslPath> {
+    parse_wsl_absolute_path(path).or_else(|_| parse_wsl_unc_path(path))
 }
 
 fn parse_wsl_absolute_path(path: &str) -> Result<WslPath> {
@@ -2716,31 +3099,11 @@ fn parse_wsl_absolute_path(path: &str) -> Result<WslPath> {
 }
 
 fn parse_wsl_unc_path(path: &str) -> Result<WslPath> {
-    let path = path.replace('/', "\\");
-    let remainder = path
-        .strip_prefix("\\\\wsl.localhost\\")
-        .or_else(|| path.strip_prefix("\\\\wsl$\\"))
-        .or_else(|| path.strip_prefix("\\\\?\\UNC\\wsl.localhost\\"))
-        .or_else(|| path.strip_prefix("\\\\?\\UNC\\wsl$\\"))
+    let share = crate::util::parse_wsl_share_path(path)
         .with_context(|| format!("path is not a WSL UNC path: {path}"))?;
-
-    let (distro, rest) = remainder
-        .split_once('\\')
-        .map(|(distro, rest)| (distro, Some(rest)))
-        .unwrap_or((remainder, None));
-    ensure!(
-        !distro.is_empty(),
-        "WSL UNC path is missing a distro name: {path}"
-    );
-
-    let linux_path = match rest {
-        Some(rest) if !rest.is_empty() => format!("/{}", rest.replace('\\', "/")),
-        _ => "/".to_string(),
-    };
-
     Ok(WslPath {
-        distro: Some(distro.to_string()),
-        path: linux_path,
+        distro: Some(share.distro),
+        path: share.linux_path,
     })
 }
 
@@ -2767,6 +3130,1680 @@ fn parse_native_drive_path(path: &str) -> Result<WslPath> {
     })
 }
 
+// ===========================================================================
+// ADR-F49 第 2b 段: the Linux runtime an agent runs in, inside WSL
+// ===========================================================================
+
+/// The Linux spelling of this fork's directory inside a data/config/state base
+/// directory, and the default data base below a Linux home.
+///
+/// [`crate::APP_DIRECTORY_NAME`] and `protected_paths`'s
+/// `DATA_DIRECTORY_HOME_RELATIVE` hold the same two strings, but each compiled
+/// for the platform the crate is built for — and this code, built for Windows,
+/// has to name the *distro's* directory, which is the Linux build's. So they
+/// are spelled out here and checked against the Windows build's spelling by
+/// `the_linux_data_directory_matches_this_fork` below.
+const LINUX_APP_DIRECTORY_NAME: &str = "zed-jp-enhance";
+const LINUX_DEFAULT_DATA_HOME_RELATIVE: &str = ".local/share";
+
+/// ADR-F49 決定 22: where an npm install is put together inside the distro,
+/// relative to the account's home. Deliberately *beside* the Zed data
+/// directory rather than in it: the staging directory has to be writable from
+/// inside the sandbox, and everything in `.local/share/zed-jp-enhance` is
+/// protected and read-hidden. Path components are compared whole, so this name
+/// is not inside that one.
+const WSL_STAGING_HOME_RELATIVE: &str = ".local/share/zed-jp-enhance-staging";
+
+/// Prefix of the result line of the scripts that stage a runtime archive.
+const ARCHIVE_RESULT_PREFIX: &str = "zed-wsl-archive:";
+/// Prefix of the result line of the scripts that install and read an npm
+/// package.
+const NPM_RESULT_PREFIX: &str = "zed-wsl-npm:";
+/// Prefix of [`CONFIG_DIRECTORY_SCRIPT`]'s result line.
+const CONFIG_RESULT_PREFIX: &str = "zed-wsl-config:";
+/// Prefix of [`DATA_DIRECTORY_SCRIPT`]'s result line.
+const DATA_DIRECTORY_RESULT_PREFIX: &str = "zed-wsl-data:";
+/// Prefix of [`ARCHITECTURE_SCRIPT`]'s result line.
+const ARCHITECTURE_RESULT_PREFIX: &str = "zed-wsl-arch:";
+
+/// The largest `package.json` this reads out of a distro.
+const MAX_PACKAGE_JSON_BYTES: usize = 4 * 1024 * 1024;
+
+/// Reports the distro's Zed data directory the way the sandbox helper inside
+/// it derives its own (`app_state_directory_from_environment("XDG_DATA_HOME")`
+/// falling back to the home-relative default, ignoring a relative value
+/// exactly as `absolute_env_path` does). `$1` is the default base below
+/// `$HOME`, `$2` this fork's directory name.
+const DATA_DIRECTORY_SCRIPT: &str = r#"
+set -u
+case "${XDG_DATA_HOME:-}" in
+    /*) base=$XDG_DATA_HOME ;;
+    *) base="$HOME/$1" ;;
+esac
+printf 'zed-wsl-data: %s/%s\n' "$base" "$2"
+"#;
+
+/// Reports the distro's machine architecture, which decides which Linux build
+/// of Node.js and of a registry entry the runtime needs.
+const ARCHITECTURE_SCRIPT: &str = r#"printf 'zed-wsl-arch: %s\n' "$(uname -m)""#;
+
+/// Reports whether the runtime directory `$1` is already there and complete.
+/// `$3` is `exact` to require the marker in it to be `$2` (an archive's
+/// digest, or an npm package specification), or `any` for a runtime whose
+/// identity is the place it is in rather than anything it hashes to — a
+/// registry archive published without a digest, whose directory name is
+/// already taken from its version and URL (ADR-F49 決定 25).
+const ARCHIVE_CHECK_SCRIPT: &str = r#"
+set -u
+dir=$1
+if [ -d "$dir" ] && [ -f "$dir/.zed-complete" ]; then
+    have=$(cat "$dir/.zed-complete" 2>/dev/null) || have=
+    if [ "$3" = any ] || [ "$have" = "$2" ]; then
+        printf 'zed-wsl-archive: ready %s\n' "$dir"
+        exit 0
+    fi
+fi
+printf 'zed-wsl-archive: missing %s\n' "$dir"
+"#;
+
+/// ADR-F49 決定 20: unpacks a staged archive **inside the distro** — Windows
+/// would drop the execute bits and turn the symbolic links into copies — into
+/// a fresh temporary directory that is then moved into place in one step.
+///
+/// `$1` is the destination, `$2` the staged archive, `$3` its SHA-256 (checked
+/// again here, on what arrived), `$4` `targz` / `tarbz2` / `tarxz`, `$5` `1` to
+/// strip the archive's single top-level directory, `$6` a suffix for the
+/// temporary names.
+///
+/// What may come out of the archive is decided before anything is written: no
+/// member may be absolute or walk through `..`, and afterwards no symbolic
+/// link in the result may resolve outside it. The second check is made on the
+/// unpacked tree with `readlink -m`, not on `tar -tv` output, whose column
+/// layout differs between `tar` implementations; the first keeps the unpacking
+/// itself inside the temporary directory, where that check then runs before
+/// anything is moved into place.
+///
+/// The unpacked tree is then also refused if it holds anything that is not a
+/// plain file, a directory or a symbolic link, and every file's set-user-ID and
+/// set-group-ID bits are cleared: this runs as the distro's account (root in a
+/// stock image) outside every namespace, where `tar` creates device nodes and
+/// keeps mode bits — and the result is handed back to a sandboxed agent as a
+/// read grant (決定 14), which is the very boundary the read hiding (決定 11)
+/// draws. A distribution tarball has none of either, so nothing legitimate is
+/// lost; an archive published without a digest (決定 25) cannot use one to
+/// read the disk behind the sandbox's back.
+const ARCHIVE_EXTRACT_SCRIPT: &str = r#"
+set -u
+umask 077
+dest=$1
+staged=$2
+digest=$3
+mode=$4
+strip=$5
+suffix=$6
+tmp="$dest.tmp-$suffix"
+fail() {
+    rm -rf "$tmp" 2>/dev/null
+    rm -f "$tmp.links" "$staged" 2>/dev/null
+    printf 'zed-wsl-archive: error %s\n' "$1"
+    exit 1
+}
+command -v sha256sum >/dev/null 2>&1 || fail no-sha256sum
+command -v tar >/dev/null 2>&1 || fail no-tar
+command -v readlink >/dev/null 2>&1 || fail no-readlink
+command -v find >/dev/null 2>&1 || fail no-find
+sum=$(sha256sum < "$staged") || fail cannot-hash
+[ "${sum%% *}" = "$digest" ] || fail digest-mismatch
+case "$mode" in
+    targz) decompress=-z ;;
+    tarbz2) decompress=-j ;;
+    tarxz) decompress=-J ;;
+    *) fail unknown-archive-kind ;;
+esac
+names=$(tar $decompress -tf "$staged") || fail cannot-list
+if printf '%s\n' "$names" | grep -q -e '^/' -e '^\.\./' -e '/\.\./' -e '/\.\.$' -e '^\.\.$'; then
+    fail unsafe-entry
+fi
+parent=${dest%/*}
+[ -n "$parent" ] || parent=/
+mkdir -p "$parent" || fail cannot-create-parent
+rm -rf "$tmp" || fail cannot-clear-temporary
+mkdir "$tmp" || fail cannot-create-temporary
+if [ "$strip" = 1 ]; then
+    tar $decompress -xf "$staged" -C "$tmp" --no-same-owner --strip-components=1 || fail cannot-extract
+else
+    tar $decompress -xf "$staged" -C "$tmp" --no-same-owner || fail cannot-extract
+fi
+root=$(readlink -m "$tmp") || fail cannot-resolve-temporary
+find "$tmp" -type l > "$tmp.links" || fail cannot-scan
+while IFS= read -r link; do
+    [ -n "$link" ] || continue
+    target=$(readlink -m "$link") || fail cannot-resolve-link
+    case "$target" in
+        "$root"/*) ;;
+        *) fail escaping-link ;;
+    esac
+done < "$tmp.links"
+rm -f "$tmp.links"
+special=$(find "$tmp" ! -type d ! -type f ! -type l) || fail cannot-scan-entries
+if [ -n "$special" ]; then
+    fail special-entry
+fi
+find "$tmp" -type f -exec chmod u-s,g-s {} + || fail cannot-clear-setid
+printf '%s\n' "$digest" > "$tmp/.zed-complete" || fail cannot-write-marker
+old=
+if [ -e "$dest" ]; then
+    old="$dest.old-$suffix"
+    rm -rf "$old" || fail cannot-clear-previous
+    mv "$dest" "$old" || fail cannot-retire-previous
+fi
+if ! mv "$tmp" "$dest"; then
+    if [ -n "$old" ]; then
+        mv "$old" "$dest" 2>/dev/null
+    fi
+    fail cannot-install
+fi
+if [ -n "$old" ]; then
+    rm -rf "$old" 2>/dev/null
+fi
+rm -f "$staged"
+printf 'zed-wsl-archive: ready %s\n' "$dest"
+"#;
+
+/// ADR-F49 第 2b 段: which archive format a runtime archive is in. A `zip` is
+/// refused rather than unpacked: a Linux distribution is not shipped as one,
+/// and `unzip` is not in a stock WSL image.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WslArchiveKind {
+    TarGz,
+    TarBz2,
+    TarXz,
+    Zip,
+}
+
+impl WslArchiveKind {
+    /// The word [`ARCHIVE_EXTRACT_SCRIPT`] takes for it; `None` for a format
+    /// the distro cannot unpack.
+    fn script_mode(self) -> Option<&'static str> {
+        match self {
+            Self::TarGz => Some("targz"),
+            Self::TarBz2 => Some("tarbz2"),
+            Self::TarXz => Some("tarxz"),
+            Self::Zip => None,
+        }
+    }
+}
+
+/// A name no two staged runtimes of this Zed share, for the temporary
+/// directories a staging step moves into place. Not a secret and not relied on
+/// for safety — every temporary name is removed before it is created — just
+/// unique enough that two installs at once do not collide.
+fn unique_suffix() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanoseconds = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos() as u64)
+        .unwrap_or(0);
+    format!(
+        "{:x}-{:x}-{:x}",
+        std::process::id(),
+        nanoseconds,
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// A bad request unless `relative` names a place below the data directory with
+/// plain components: letters, digits, `.`, `_` and `-`, never `.`, `..`, an
+/// empty component or an absolute path.
+fn ensure_safe_relative_path(relative: &str, description: &str) -> Result<()> {
+    ensure!(
+        !relative.is_empty() && relative.len() <= 200 && !relative.starts_with('/'),
+        "the {description} `{relative}` is not a relative path below the data directory"
+    );
+    for segment in relative.split('/') {
+        ensure!(
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')),
+            "the {description} `{relative}` has an unusable component {segment:?}"
+        );
+    }
+    Ok(())
+}
+
+/// The components of a path below a package's own directory, with `.` dropped:
+/// what the no-follow walks in [`NPM_READ_SCRIPT`] and
+/// [`NPM_EXECUTABLE_SCRIPT`] take one at a time. A bad request for anything
+/// absolute or walking through `..`.
+fn linux_path_segments(path: &str, description: &str) -> Result<Vec<String>> {
+    ensure!(
+        !path.is_empty() && !path.starts_with('/') && !path.contains('\0'),
+        "the {description} `{path}` is not a relative path"
+    );
+    let mut segments = Vec::new();
+    for segment in path.split('/') {
+        if segment.is_empty() || segment == "." {
+            continue;
+        }
+        ensure!(
+            segment != "..",
+            "the {description} `{path}` walks out of the package"
+        );
+        segments.push(segment.to_string());
+    }
+    ensure!(
+        !segments.is_empty(),
+        "the {description} `{path}` names nothing"
+    );
+    Ok(segments)
+}
+
+/// A bad request unless `name` is an npm package name: `name` or `@scope/name`
+/// of lowercase letters, digits, `.`, `_`, `-` and at most that one `/`, with
+/// no component opening on one of those three (npm refuses `.` and `_` there,
+/// and a leading `-` would reach npm's own command line as an option).
+fn ensure_npm_package_name(name: &str) -> Result<()> {
+    let scoped = name.starts_with('@');
+    let body = name.strip_prefix('@').unwrap_or(name);
+    ensure!(
+        !name.is_empty() && name.len() <= 214 && body.matches('/').count() == usize::from(scoped),
+        "invalid npm package name {name:?}"
+    );
+    for segment in body.split('/') {
+        ensure!(
+            !segment.is_empty()
+                && !segment.starts_with(['.', '_', '-'])
+                && segment.bytes().all(|byte| byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || matches!(byte, b'.' | b'_' | b'-')),
+            "invalid npm package name {name:?}"
+        );
+    }
+    Ok(())
+}
+
+/// A bad request unless `spec` is a package specification npm can be handed on
+/// a command line of its own: a package name from the registry, optionally
+/// with the version or range this fork bounds it at
+/// (`project::agent_server_store::bounded_npm_package_spec`).
+///
+/// Nothing else is installed here — not an option, a local path, a tarball, a
+/// `file:` / `git:` / `npm:` specifier, a `github:owner/repo`, or a URL — all
+/// of which npm would take from somewhere other than the registry the sandbox
+/// lets it reach, and some of which would install from a directory the sandbox
+/// itself may write.
+fn ensure_npm_package_spec(spec: &str) -> Result<()> {
+    ensure!(
+        !spec.is_empty() && spec.len() <= 256 && !spec.starts_with('-'),
+        "invalid npm package specification {spec:?}"
+    );
+    // The `@` of a scope is the first character, so only a later one opens the
+    // version.
+    let (name, version) = match spec.rsplit_once('@') {
+        Some((name, version)) if !name.is_empty() => (name, Some(version)),
+        _ => (spec, None),
+    };
+    ensure_npm_package_name(name)
+        .with_context(|| format!("invalid npm package specification {spec:?}"))?;
+    if let Some(version) = version {
+        ensure!(
+            !version.is_empty()
+                && version.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric()
+                        || matches!(
+                            byte,
+                            b'.' | b'-'
+                                | b'+'
+                                | b' '
+                                | b'<'
+                                | b'>'
+                                | b'='
+                                | b'^'
+                                | b'~'
+                                | b'*'
+                                | b'|'
+                        )
+                }),
+            "invalid npm package specification {spec:?}"
+        );
+    }
+    Ok(())
+}
+
+/// The value of the last line of `stdout` that starts with `prefix` and a
+/// space.
+fn parse_prefixed_line<'a>(stdout: &'a str, prefix: &str) -> Option<&'a str> {
+    stdout
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix(prefix)?.strip_prefix(' '))
+}
+
+/// ADR-F49 第 2b 段 (決定 20): the distro's Zed data directory, derived exactly
+/// as the sandbox helper inside it derives its own — `$XDG_DATA_HOME`, or
+/// `$HOME/.local/share`, plus this fork's directory name — so that what is
+/// staged below it is what the helper's `--readable` check (決定 14) may show a
+/// sandboxed agent, and what its protection (決定 8 / 11) keeps every
+/// sandboxed command from writing or reading otherwise.
+///
+/// Memoized per distro for the life of the process: it changes only with the
+/// distro's own environment, which needs WSL restarted. Like
+/// [`wrap_invocation`] this runs `wsl.exe` and can take seconds while WSL
+/// starts.
+pub async fn wsl_agent_runtime_data_directory(distro: Option<&str>) -> Result<String> {
+    type DataDirectoryCache = HashMap<Option<String>, String>;
+    static CACHE: OnceLock<Mutex<DataDirectoryCache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+
+    let key = distro.map(str::to_string);
+    if let Some(directory) = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&key)
+    {
+        return Ok(directory.clone());
+    }
+
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            DATA_DIRECTORY_SCRIPT,
+            "zed-wsl-data",
+            LINUX_DEFAULT_DATA_HOME_RELATIVE,
+            LINUX_APP_DIRECTORY_NAME,
+        ],
+        "Zed のデータフォルダーの確認",
+    )
+    .await?;
+    let directory = parse_prefixed_line(
+        &String::from_utf8_lossy(&output.stdout),
+        DATA_DIRECTORY_RESULT_PREFIX,
+    )
+    .map(|directory| directory.trim_end_matches('/').to_string())
+    .filter(|directory| directory.starts_with('/'))
+    .ok_or_else(|| {
+        unavailable(format!(
+            "{}で Zed のデータフォルダーを確認できませんでした{}。",
+            wsl_distro_label(distro),
+            command_failure_details(output.status.code(), &output.stderr)
+        ))
+    })?;
+    cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(key, directory.clone());
+    Ok(directory)
+}
+
+/// ADR-F49 第 2b 段: the distro's machine architecture (`uname -m`), which
+/// decides which Linux build of Node.js and of a registry entry belongs in it
+/// — never this Windows process's own. Memoized per distro.
+pub async fn wsl_machine_architecture(distro: Option<&str>) -> Result<String> {
+    type ArchitectureCache = HashMap<Option<String>, String>;
+    static CACHE: OnceLock<Mutex<ArchitectureCache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+
+    let key = distro.map(str::to_string);
+    if let Some(architecture) = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&key)
+    {
+        return Ok(architecture.clone());
+    }
+
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        ["--exec", "sh", "-c", ARCHITECTURE_SCRIPT],
+        "WSL のアーキテクチャの確認",
+    )
+    .await?;
+    let architecture = parse_prefixed_line(
+        &String::from_utf8_lossy(&output.stdout),
+        ARCHITECTURE_RESULT_PREFIX,
+    )
+    .map(str::to_string)
+    .filter(|architecture| {
+        !architecture.is_empty()
+            && architecture
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    })
+    .ok_or_else(|| {
+        unavailable(format!(
+            "{}のアーキテクチャを確認できませんでした{}。",
+            wsl_distro_label(distro),
+            command_failure_details(output.status.code(), &output.stderr)
+        ))
+    })?;
+    cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(key, architecture.clone());
+    Ok(architecture)
+}
+
+/// ADR-F49 決定 20 / 21: put the runtime archive at `source_windows_path` —
+/// the Linux Node.js, a registry entry's Linux build — into the distro's Zed
+/// data directory at `destination_relative_to_data_dir`, and return where it
+/// ended up.
+///
+/// The archive is checked against `expected_sha256` on Windows before any of it
+/// is sent, and again inside the distro on what arrived. It is then **unpacked
+/// inside the distro**: unpacking on Windows would drop the execute bits and
+/// turn the symbolic links into copies. What may come out of it is decided
+/// first — no member may be absolute or walk through `..` — and the result is
+/// refused if any link in it resolves outside itself. Only then is it moved
+/// into place, in one step, behind a marker holding the digest; an
+/// installation already there under the same digest is reused untouched.
+///
+/// `strip_top_level_directory` drops the single directory a distribution
+/// tarball wraps everything in (`node-v24.11.0-linux-x64/`), so its contents
+/// land directly in the destination.
+///
+/// The destination is below the directory the helper protects and hides
+/// (決定 8 / 11), so a sandboxed command can neither write it nor read it
+/// unless that command names it among its readable paths (決定 14). The
+/// unpacking itself runs outside the sandbox, but it only unpacks data — none
+/// of the archive's code is run. Like [`wrap_invocation`] this runs `wsl.exe`,
+/// and the work is minutes rather than seconds.
+pub async fn stage_wsl_runtime_archive(
+    distro: Option<&str>,
+    destination_relative_to_data_dir: &str,
+    source_windows_path: &Path,
+    expected_sha256: &str,
+    kind: WslArchiveKind,
+    strip_top_level_directory: bool,
+) -> Result<String> {
+    ensure_safe_relative_path(destination_relative_to_data_dir, "runtime destination")?;
+    let digest = normalized_sha256(expected_sha256)?;
+    let Some(mode) = kind.script_mode() else {
+        bail!(
+            "zip 形式の配布物は WSL のサンドボックスでは展開できません \
+             (ディストリビューションに `unzip` がないため)。tar.gz などの形式の \
+             Linux 向け配布物を指定してください。"
+        );
+    };
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let data_directory = wsl_agent_runtime_data_directory(distro).await?;
+    let destination = format!("{data_directory}/{destination_relative_to_data_dir}");
+
+    if let HelperCheck::Ready(path) =
+        check_wsl_runtime(&wsl_exe, distro, &destination, Some(&digest)).await?
+    {
+        return Ok(path);
+    }
+
+    // Before a byte is sent, so an archive that is not the expected one is
+    // refused without copying it into the distro at all.
+    let source_digest = file_sha256(source_windows_path, StagedKind::RuntimeArchive).await?;
+    ensure!(
+        source_digest == digest,
+        "`{}` does not have the expected SHA-256 {digest} (it has {source_digest})",
+        source_windows_path.display()
+    );
+
+    let suffix = unique_suffix();
+    // Staged beside where it will be unpacked, so the unpacked tree is moved
+    // into place within one filesystem.
+    let staging_directory = destination
+        .rsplit_once('/')
+        .map(|(parent, _)| parent.to_string())
+        .unwrap_or_else(|| data_directory.clone());
+    let staged = stage_file(
+        &wsl_exe,
+        distro,
+        &staging_directory,
+        "runtime-archive",
+        source_windows_path,
+        false,
+        StagedKind::RuntimeArchive,
+    )
+    .await?;
+    if staged.sha256 != digest {
+        discard_staged_files(&wsl_exe, distro, [staged.path.as_str()]).await;
+        bail!(
+            "`{}` changed while it was being copied into WSL",
+            source_windows_path.display()
+        );
+    }
+
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            ARCHIVE_EXTRACT_SCRIPT,
+            "zed-wsl-archive-extract",
+            destination.as_str(),
+            staged.path.as_str(),
+            digest.as_str(),
+            mode,
+            if strip_top_level_directory { "1" } else { "0" },
+            suffix.as_str(),
+        ],
+        "エージェントの実行環境の展開",
+    )
+    .await?;
+    if !output.status.success() {
+        discard_staged_files(&wsl_exe, distro, [staged.path.as_str()]).await;
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            ARCHIVE_RESULT_PREFIX,
+            "エージェントの実行環境を展開できませんでした",
+        ));
+    }
+
+    match check_wsl_runtime(&wsl_exe, distro, &destination, Some(&digest)).await? {
+        HelperCheck::Ready(path) => Ok(path),
+        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(format!(
+            "エージェントの実行環境を{}に展開しましたが、確認できませんでした。\
+             もう一度実行してください。",
+            wsl_distro_label(distro)
+        ))),
+    }
+}
+
+/// Whether the runtime directory `destination` is there and complete for
+/// `marker` (an archive's digest, or an npm package specification), or — for
+/// `None` — complete under any marker, which is all that can be asked of a
+/// runtime whose only identity is the place it is in (ADR-F49 決定 25).
+async fn check_wsl_runtime(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    destination: &str,
+    marker: Option<&str>,
+) -> Result<HelperCheck> {
+    let output = run_wsl_command(
+        wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            ARCHIVE_CHECK_SCRIPT,
+            "zed-wsl-archive-check",
+            destination,
+            marker.unwrap_or_default(),
+            if marker.is_some() { "exact" } else { "any" },
+        ],
+        "エージェントの実行環境の確認",
+    )
+    .await?;
+    if !output.status.success() {
+        return Err(unavailable(format!(
+            "{}でエージェントの実行環境を確認できませんでした{}。",
+            wsl_distro_label(distro),
+            command_failure_details(output.status.code(), &output.stderr)
+        )));
+    }
+    parse_check_result(
+        &String::from_utf8_lossy(&output.stdout),
+        ARCHIVE_RESULT_PREFIX,
+    )
+    .map_err(|error| {
+        unavailable(format!(
+            "{}でエージェントの実行環境を確認できませんでした ({error:#})。",
+            wsl_distro_label(distro)
+        ))
+    })
+}
+
+/// An error for a runtime script that failed, naming the one-word reason it
+/// reported (`zed-wsl-…: error <reason>`) when it got that far.
+fn runtime_script_failure(
+    distro: Option<&str>,
+    output: &std::process::Output,
+    prefix: &str,
+    what: &str,
+) -> anyhow::Error {
+    let reason = parse_prefixed_line(&String::from_utf8_lossy(&output.stdout), prefix)
+        .and_then(|line| line.strip_prefix("error "))
+        .map(|reason| format!(" ({reason})"))
+        .unwrap_or_default();
+    unavailable(format!(
+        "{}で{what}{reason}{}。",
+        wsl_distro_label(distro),
+        command_failure_details(output.status.code(), &output.stderr)
+    ))
+}
+
+/// ADR-F49 決定 22: makes the directory an npm install is put together in —
+/// the only place the sandboxed npm may write — and the empty npm
+/// configuration files that keep the account's own `.npmrc` (and the registry
+/// token in it) out of the install. `$1` is the staging root relative to
+/// `$HOME`, `$2` a suffix of this install's own.
+const NPM_STAGING_SCRIPT: &str = r#"
+set -u
+umask 077
+dir="$HOME/$1/$2"
+rm -rf "$dir" 2>/dev/null
+mkdir -p "$dir/pkg" "$dir/cache" "$dir/home" || {
+    printf 'zed-wsl-npm: error cannot-create-staging\n'
+    exit 1
+}
+: > "$dir/blank_user_npmrc" || {
+    printf 'zed-wsl-npm: error cannot-create-npmrc\n'
+    exit 1
+}
+: > "$dir/blank_global_npmrc" || {
+    printf 'zed-wsl-npm: error cannot-create-npmrc\n'
+    exit 1
+}
+printf 'zed-wsl-npm: ready %s\n' "$dir"
+"#;
+
+/// ADR-F49 決定 22: moves what the sandboxed npm produced out of the staging
+/// directory into the protected place the agent is then run from, in one step,
+/// and writes the marker last so a half-finished install never counts. `$1` is
+/// the staging directory, `$2` the destination, `$3` a suffix for the
+/// temporary names, `$4` the package specification to record. The staging
+/// directory is removed either way.
+const NPM_FINALIZE_SCRIPT: &str = r#"
+set -u
+umask 077
+staging=$1
+dest=$2
+suffix=$3
+marker=$4
+tmp="$dest.tmp-$suffix"
+fail() {
+    rm -rf "$tmp" 2>/dev/null
+    rm -rf "$staging" 2>/dev/null
+    printf 'zed-wsl-npm: error %s\n' "$1"
+    exit 1
+}
+[ -d "$staging/pkg/node_modules" ] || fail no-node-modules
+parent=${dest%/*}
+[ -n "$parent" ] || parent=/
+mkdir -p "$parent" || fail cannot-create-parent
+rm -rf "$tmp" || fail cannot-clear-temporary
+mkdir "$tmp" || fail cannot-create-temporary
+mv "$staging/pkg/node_modules" "$tmp/node_modules" || fail cannot-move-packages
+for name in package.json package-lock.json; do
+    if [ -e "$staging/pkg/$name" ]; then
+        mv "$staging/pkg/$name" "$tmp/$name" || fail cannot-move-manifest
+    fi
+done
+printf '%s\n' "$marker" > "$tmp/.zed-complete" || fail cannot-write-marker
+old=
+if [ -e "$dest" ]; then
+    old="$dest.old-$suffix"
+    rm -rf "$old" || fail cannot-clear-previous
+    mv "$dest" "$old" || fail cannot-retire-previous
+fi
+if ! mv "$tmp" "$dest"; then
+    if [ -n "$old" ]; then
+        mv "$old" "$dest" 2>/dev/null
+    fi
+    fail cannot-install
+fi
+if [ -n "$old" ]; then
+    rm -rf "$old" 2>/dev/null
+fi
+rm -rf "$staging" 2>/dev/null
+printf 'zed-wsl-npm: ready %s\n' "$dest"
+"#;
+
+/// Reads one file below an installed npm package, following no link at any
+/// step and running nothing of the package's. `$1` is the install directory,
+/// the rest the path components below it. The file's contents follow the
+/// result line.
+const NPM_READ_SCRIPT: &str = r#"
+set -u
+dir=$1
+shift
+fail() {
+    printf 'zed-wsl-npm: error %s\n' "$1"
+    exit 1
+}
+if [ ! -f "$dir/.zed-complete" ]; then
+    printf 'zed-wsl-npm: missing %s\n' "$dir"
+    exit 0
+fi
+path=$dir
+for name in "$@"; do
+    path="$path/$name"
+    if [ -L "$path" ]; then
+        fail "link $path"
+    fi
+    if [ ! -e "$path" ]; then
+        printf 'zed-wsl-npm: missing %s\n' "$path"
+        exit 0
+    fi
+done
+[ -f "$path" ] || fail "not-a-file $path"
+printf 'zed-wsl-npm: file %s\n' "$path"
+cat "$path" || fail "cannot-read $path"
+"#;
+
+/// Confirms an installed npm package's executable is a plain file reached
+/// without following a link at any step, and reports its absolute path. `$1`
+/// is the install directory, the rest the path components below it.
+const NPM_EXECUTABLE_SCRIPT: &str = r#"
+set -u
+dir=$1
+shift
+fail() {
+    printf 'zed-wsl-npm: error %s\n' "$1"
+    exit 1
+}
+path=$dir
+for name in "$@"; do
+    path="$path/$name"
+    if [ -L "$path" ]; then
+        fail "link $path"
+    fi
+    [ -e "$path" ] || fail "missing $path"
+done
+[ -f "$path" ] || fail "not-a-file $path"
+printf 'zed-wsl-npm: executable %s\n' "$path"
+"#;
+
+/// ADR-F49 決定 22: install `package_spec` into the distro's Zed data
+/// directory at `install_relative_to_data_dir`, with the Linux npm that came
+/// with the Node.js at `node_directory`, and return where it ended up.
+///
+/// **npm runs inside the sandbox**, because a package's install scripts run
+/// with it: it may write only a staging directory of its own, reach only
+/// `allowed_hosts` (within `editor_network_allowlist`, the editor-wide ceiling
+/// the WSL helper's proxy nests it in), and is given an npm configuration that
+/// is empty — its `HOME`, cache and both `.npmrc` files are inside the staging
+/// directory, so the account's own registry token is neither used nor
+/// reachable. `node_directory` is shown to it read-only.
+///
+/// What the install produced is then moved into place by the trusted side, in
+/// one step, behind a marker holding `package_spec`; the staging directory is
+/// removed either way. An install already there for the same specification is
+/// reused untouched.
+///
+/// There is no time limit here: the caller bounds it, and dropping the
+/// returned future kills the `wsl.exe` that is running npm.
+pub async fn install_npm_package_in_wsl(
+    distro: Option<&str>,
+    node_directory: &str,
+    package_spec: &str,
+    install_relative_to_data_dir: &str,
+    allowed_hosts: Vec<String>,
+    editor_network_allowlist: Option<Vec<String>>,
+) -> Result<String> {
+    ensure_linux_absolute_path(node_directory, "Node.js")?;
+    ensure_npm_package_spec(package_spec)?;
+    ensure_safe_relative_path(install_relative_to_data_dir, "npm install destination")?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let data_directory = wsl_agent_runtime_data_directory(distro).await?;
+    let destination = format!("{data_directory}/{install_relative_to_data_dir}");
+
+    if let HelperCheck::Ready(path) =
+        check_wsl_runtime(&wsl_exe, distro, &destination, Some(package_spec)).await?
+    {
+        return Ok(path);
+    }
+
+    let suffix = unique_suffix();
+    let staging = create_npm_staging_directory(&wsl_exe, distro, &suffix).await?;
+    let outcome = run_sandboxed_npm_install(
+        node_directory,
+        package_spec,
+        &staging,
+        allowed_hosts,
+        editor_network_allowlist,
+    )
+    .await;
+    if let Err(error) = outcome {
+        remove_wsl_directory(&wsl_exe, distro, &staging).await;
+        return Err(error);
+    }
+
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            NPM_FINALIZE_SCRIPT,
+            "zed-wsl-npm-finalize",
+            staging.as_str(),
+            destination.as_str(),
+            suffix.as_str(),
+            package_spec,
+        ],
+        "npm パッケージの配置",
+    )
+    .await?;
+    if !output.status.success() {
+        remove_wsl_directory(&wsl_exe, distro, &staging).await;
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            NPM_RESULT_PREFIX,
+            "npm パッケージを配置できませんでした",
+        ));
+    }
+
+    match check_wsl_runtime(&wsl_exe, distro, &destination, Some(package_spec)).await? {
+        HelperCheck::Ready(path) => Ok(path),
+        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(format!(
+            "npm パッケージを{}に配置しましたが、確認できませんでした。もう一度実行してください。",
+            wsl_distro_label(distro)
+        ))),
+    }
+}
+
+async fn create_npm_staging_directory(
+    wsl_exe: &Path,
+    distro: Option<&str>,
+    suffix: &str,
+) -> Result<String> {
+    let output = run_wsl_command(
+        wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            NPM_STAGING_SCRIPT,
+            "zed-wsl-npm-staging",
+            WSL_STAGING_HOME_RELATIVE,
+            suffix,
+        ],
+        "npm の作業フォルダーの作成",
+    )
+    .await?;
+    if !output.status.success() {
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            NPM_RESULT_PREFIX,
+            "npm の作業フォルダーを作成できませんでした",
+        ));
+    }
+    let staging = parse_prefixed_line(&String::from_utf8_lossy(&output.stdout), NPM_RESULT_PREFIX)
+        .and_then(|line| line.strip_prefix("ready "))
+        .map(str::to_string)
+        .filter(|path| path.starts_with('/'))
+        .ok_or_else(|| {
+            unavailable(format!(
+                "{}で npm の作業フォルダーを作成できませんでした。",
+                wsl_distro_label(distro)
+            ))
+        })?;
+    Ok(staging)
+}
+
+/// The sandboxed `npm install` itself: everything between the staging
+/// directory being there and what it produced being moved into place.
+async fn run_sandboxed_npm_install(
+    node_directory: &str,
+    package_spec: &str,
+    staging: &str,
+    allowed_hosts: Vec<String>,
+    editor_network_allowlist: Option<Vec<String>>,
+) -> Result<()> {
+    let mut sandbox = crate::Sandbox::new(crate::SandboxPolicy {
+        fs: crate::SandboxFsPolicy::Restricted {
+            writable_paths: vec![capture_wsl_location(staging, "npm の作業フォルダー")?],
+            protected_paths: Vec::new(),
+            readable_paths: vec![capture_wsl_location(node_directory, "Node.js")?],
+        },
+        network: crate::SandboxNetPolicy::Restricted {
+            allowed_domains: allowed_hosts,
+        },
+    })
+    .map_err(anyhow::Error::new)?;
+    if let Some(entries) = editor_network_allowlist {
+        sandbox.set_editor_network_allowlist(entries);
+    }
+    // The command and its environment are the Linux ones written out below,
+    // not this Windows process's.
+    sandbox.set_wsl_linux_environment();
+
+    let package_directory = format!("{staging}/pkg");
+    let command = crate::CommandAndArgs {
+        program: format!("{node_directory}/bin/node"),
+        args: vec![
+            format!("{node_directory}/lib/node_modules/npm/bin/npm-cli.js"),
+            "install".to_string(),
+            package_spec.to_string(),
+            "--save-exact".to_string(),
+            "--no-audit".to_string(),
+            "--no-fund".to_string(),
+            "--prefix".to_string(),
+            package_directory.clone(),
+            "--cache".to_string(),
+            format!("{staging}/cache"),
+            "--userconfig".to_string(),
+            format!("{staging}/blank_user_npmrc"),
+            "--globalconfig".to_string(),
+            format!("{staging}/blank_global_npmrc"),
+        ],
+        env: HashMap::from([
+            ("HOME".to_string(), format!("{staging}/home")),
+            (
+                "PATH".to_string(),
+                format!("{node_directory}/bin:/usr/local/bin:/usr/bin:/bin"),
+            ),
+        ]),
+        cwd: Some(PathBuf::from(package_directory)),
+    };
+    let wrapped = sandbox.wrap(&command).await.map_err(anyhow::Error::new)?;
+
+    // `cwd` is a path inside the distro, applied by the helper's `--chdir`;
+    // the `wsl.exe` on this side keeps this process's own.
+    let output = {
+        use smol::process::windows::CommandExt as _;
+        let mut child = Command::new(&wrapped.program);
+        child
+            .args(&wrapped.args)
+            .envs(&wrapped.env)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .creation_flags(CREATE_NO_WINDOW);
+        child
+            .output()
+            .await
+            .map_err(|error| wsl_start_failure("サンドボックスの中での npm install", &error))?
+    };
+    drop(sandbox);
+    ensure!(
+        output.status.success(),
+        "サンドボックスの中で `npm install {package_spec}` を実行できませんでした{}",
+        npm_failure_details(&output)
+    );
+    Ok(())
+}
+
+/// The tail of what a failed npm printed, for the message the user sees.
+fn npm_failure_details(output: &std::process::Output) -> String {
+    const MAX_DETAIL_CHARACTERS: usize = 800;
+    let mut detail = decode_wsl_text(&output.stderr);
+    if detail.trim().is_empty() {
+        detail = decode_wsl_text(&output.stdout);
+    }
+    let detail = detail.trim();
+    let exit_status = match output.status.code() {
+        Some(code) => format!("終了コード {code}"),
+        None => "シグナルで終了".to_string(),
+    };
+    if detail.is_empty() {
+        return format!(" ({exit_status})");
+    }
+    let tail: String = if detail.chars().count() > MAX_DETAIL_CHARACTERS {
+        let skipped = detail.chars().count() - MAX_DETAIL_CHARACTERS;
+        detail.chars().skip(skipped).collect()
+    } else {
+        detail.to_string()
+    };
+    format!(" ({exit_status}、npm の出力: {tail})")
+}
+
+/// A write grant or a read grant on a path inside the distro, for a command
+/// that runs there. The shape is checked here; the object itself is resolved
+/// and checked inside WSL when the command is wrapped.
+fn capture_wsl_location(path: &str, description: &str) -> Result<crate::HostFilesystemLocation> {
+    ensure_linux_absolute_path(path, description)?;
+    crate::HostFilesystemLocation::capture(Path::new(path))
+        .with_context(|| format!("naming the {description} path `{path}` for the sandbox"))
+}
+
+/// Best effort: a leftover staging directory is also removed by the next
+/// install that uses the same name, and holds nothing but a failed install.
+async fn remove_wsl_directory(wsl_exe: &Path, distro: Option<&str>, directory: &str) {
+    if !directory.starts_with('/') || directory.contains('\0') {
+        return;
+    }
+    match run_wsl_command(
+        wsl_exe,
+        distro,
+        ["--exec", "rm", "-rf", "--", directory],
+        "npm の作業フォルダーの削除",
+    )
+    .await
+    {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => log::warn!(
+            "could not remove the WSL npm staging directory {directory}{}",
+            command_failure_details(output.status.code(), &output.stderr)
+        ),
+        Err(error) => {
+            log::warn!("could not remove the WSL npm staging directory {directory}: {error:#}")
+        }
+    }
+}
+
+/// ADR-F49 決定 22: the `package.json` of `package_name` as
+/// [`install_npm_package_in_wsl`] installed it in `install_directory`, or
+/// `None` when nothing complete is installed there.
+///
+/// Read by the trusted side without following a link at any step and without
+/// running anything of the package's — what it declares is then interpreted on
+/// this side (`node_runtime::package_json_executable` /
+/// `package_json_version`), which is the same rule a local install follows.
+pub async fn read_wsl_npm_package_json(
+    distro: Option<&str>,
+    install_directory: &str,
+    package_name: &str,
+) -> Result<Option<String>> {
+    ensure_linux_absolute_path(install_directory, "npm install")?;
+    ensure_npm_package_name(package_name)?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+
+    let mut args = vec![
+        "--exec".to_string(),
+        "sh".to_string(),
+        "-c".to_string(),
+        NPM_READ_SCRIPT.to_string(),
+        "zed-wsl-npm-read".to_string(),
+        install_directory.to_string(),
+        "node_modules".to_string(),
+    ];
+    args.extend(linux_path_segments(package_name, "npm package")?);
+    args.push("package.json".to_string());
+    let output = run_wsl_command(&wsl_exe, distro, &args, "npm パッケージの確認").await?;
+    if !output.status.success() {
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            NPM_RESULT_PREFIX,
+            "npm パッケージを確認できませんでした",
+        ));
+    }
+    ensure!(
+        output.stdout.len() <= MAX_PACKAGE_JSON_BYTES,
+        "the package.json of {package_name} is larger than {MAX_PACKAGE_JSON_BYTES} bytes"
+    );
+    let stdout = String::from_utf8(output.stdout)
+        .context("the package.json read out of WSL is not UTF-8")?;
+    let (status, contents) = stdout.split_once('\n').unwrap_or((stdout.as_str(), ""));
+    let status = status
+        .strip_prefix(NPM_RESULT_PREFIX)
+        .and_then(|status| status.strip_prefix(' '))
+        .with_context(|| format!("no npm package result in {stdout:?}"))?;
+    if status.starts_with("missing") {
+        return Ok(None);
+    }
+    ensure!(
+        status.starts_with("file "),
+        "unexpected npm package result {status:?}"
+    );
+    Ok(Some(contents.to_string()))
+}
+
+/// ADR-F49 決定 22: the absolute path, inside the distro, of the executable
+/// `executable_relative` of the package `package_name` installed in
+/// `install_directory` — confirmed to be a plain file reached without
+/// following a link at any step.
+///
+/// `executable_relative` is what the package's own `package.json` declares,
+/// read with [`read_wsl_npm_package_json`] and interpreted on this side.
+pub async fn wsl_npm_package_executable(
+    distro: Option<&str>,
+    install_directory: &str,
+    package_name: &str,
+    executable_relative: &str,
+) -> Result<String> {
+    ensure_linux_absolute_path(install_directory, "npm install")?;
+    ensure_npm_package_name(package_name)?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+
+    let mut args = vec![
+        "--exec".to_string(),
+        "sh".to_string(),
+        "-c".to_string(),
+        NPM_EXECUTABLE_SCRIPT.to_string(),
+        "zed-wsl-npm-executable".to_string(),
+        install_directory.to_string(),
+        "node_modules".to_string(),
+    ];
+    args.extend(linux_path_segments(package_name, "npm package")?);
+    args.extend(linux_path_segments(
+        executable_relative,
+        "npm package executable",
+    )?);
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        &args,
+        "npm パッケージの実行ファイルの確認",
+    )
+    .await?;
+    if !output.status.success() {
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            NPM_RESULT_PREFIX,
+            "npm パッケージの実行ファイルを確認できませんでした",
+        ));
+    }
+    parse_prefixed_line(&String::from_utf8_lossy(&output.stdout), NPM_RESULT_PREFIX)
+        .and_then(|line| line.strip_prefix("executable "))
+        .map(str::to_string)
+        .filter(|path| path.starts_with('/'))
+        .ok_or_else(|| {
+            unavailable(format!(
+                "{}で npm パッケージの実行ファイルを確認できませんでした。",
+                wsl_distro_label(distro)
+            ))
+        })
+}
+
+/// ADR-F49 決定 15: makes an agent's configuration folder for one project
+/// inside the distro. `$1` is the folder relative to `$HOME`; each further
+/// argument is `d:<relative directory>` or `f:<file name>` below the folder.
+///
+/// Every step is created owner-only and refused if it is a symbolic link, or
+/// anything but a directory (a plain file, for the `f:` entries): the folder
+/// holds the agent's sign-in and the hooks it runs, so a link left on the way
+/// to it would put both somewhere this did not choose.
+const CONFIG_DIRECTORY_SCRIPT: &str = r#"
+set -u
+umask 077
+fail() {
+    printf 'zed-wsl-config: error %s\n' "$1"
+    exit 1
+}
+ensure_dir() {
+    ensure_parent=$1
+    ensure_relative=$2
+    ensure_ifs=$IFS
+    IFS='/'
+    set -f
+    set -- $ensure_relative
+    set +f
+    IFS=$ensure_ifs
+    for ensure_name in "$@"; do
+        [ -n "$ensure_name" ] || fail empty-segment
+        case "$ensure_name" in
+            .|..) fail relative-segment ;;
+        esac
+        ensure_path="$ensure_parent/$ensure_name"
+        if [ -L "$ensure_path" ]; then
+            fail "link $ensure_path"
+        fi
+        if [ ! -e "$ensure_path" ]; then
+            mkdir -m 700 "$ensure_path" 2>/dev/null
+        fi
+        if [ -L "$ensure_path" ]; then
+            fail "link $ensure_path"
+        fi
+        [ -d "$ensure_path" ] || fail "not-a-directory $ensure_path"
+        ensure_parent=$ensure_path
+    done
+    ENSURED=$ensure_parent
+}
+ensure_file() {
+    file_path="$1/$2"
+    if [ -L "$file_path" ]; then
+        fail "link $file_path"
+    fi
+    if [ ! -e "$file_path" ]; then
+        : > "$file_path" 2>/dev/null
+    fi
+    if [ -L "$file_path" ]; then
+        fail "link $file_path"
+    fi
+    [ -f "$file_path" ] || fail "not-a-file $file_path"
+}
+[ -d "$HOME" ] || fail no-home
+config_relative=$1
+shift
+ensure_dir "$HOME" "$config_relative"
+config=$ENSURED
+for entry in "$@"; do
+    case "$entry" in
+        d:*) ensure_dir "$config" "${entry#d:}" ;;
+        f:*) ensure_file "$config" "${entry#f:}" ;;
+        *) fail "bad-entry $entry" ;;
+    esac
+done
+printf 'zed-wsl-config: ready %s\n' "$config"
+"#;
+
+/// How long a project key is: `project::agent_sandbox::project_key` takes 8
+/// bytes of a SHA-256 and spells them in lowercase hex. Checked here as well,
+/// because this crate turns the key into a path inside the distro and cannot
+/// call the project crate's own check.
+const PROJECT_KEY_LENGTH: usize = 16;
+
+/// ADR-F49 決定 15: make the configuration folder of one agent, for one
+/// project, inside the distro, and return it:
+/// `$HOME/.zed-jp-enhance-claude/projects/<project_key>/<folder_name>`, plus
+/// `directories_below` (each relative to the folder) and the names every
+/// sandbox protects in a root it may write
+/// ([`crate::WORKTREE_PROTECTED_RELATIVE`]: the `.json` ones as files, the
+/// rest as directories), exactly as `project::agent_sandbox`'s Unix side makes
+/// them on a Unix host.
+///
+/// Every step is made owner-only and refused if it is a symbolic link or is
+/// not a directory of its own, so neither the agent's sign-in nor the hooks it
+/// runs can be redirected by something left on the way. An existing folder is
+/// left as it is.
+///
+/// Like [`wrap_invocation`], this runs `wsl.exe` and can take seconds while
+/// WSL starts.
+pub async fn ensure_wsl_agent_config_dir(
+    distro: Option<&str>,
+    project_key: &str,
+    folder_name: &str,
+    directories_below: &[String],
+) -> Result<String> {
+    ensure!(
+        project_key.len() == PROJECT_KEY_LENGTH
+            && project_key
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+        "invalid project key {project_key:?}"
+    );
+    ensure_safe_relative_path(folder_name, "agent folder")?;
+    ensure!(
+        !folder_name.contains('/'),
+        "the agent folder {folder_name:?} is not a single name"
+    );
+    for directory in directories_below {
+        ensure_safe_relative_path(directory, "agent folder entry")?;
+    }
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+
+    let mut args = vec![
+        "--exec".to_string(),
+        "sh".to_string(),
+        "-c".to_string(),
+        CONFIG_DIRECTORY_SCRIPT.to_string(),
+        "zed-wsl-config".to_string(),
+        format!(
+            "{}/{project_key}/{folder_name}",
+            crate::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE
+        ),
+    ];
+    for directory in directories_below {
+        args.push(format!("d:{directory}"));
+    }
+    for name in crate::WORKTREE_PROTECTED_RELATIVE {
+        if name.ends_with(".json") {
+            args.push(format!("f:{name}"));
+        } else {
+            args.push(format!("d:{name}"));
+        }
+    }
+
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        &args,
+        "エージェントの設定フォルダーの作成",
+    )
+    .await?;
+    if !output.status.success() {
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            CONFIG_RESULT_PREFIX,
+            "エージェントの設定フォルダーを作成できませんでした",
+        ));
+    }
+    parse_prefixed_line(
+        &String::from_utf8_lossy(&output.stdout),
+        CONFIG_RESULT_PREFIX,
+    )
+    .and_then(|line| line.strip_prefix("ready "))
+    .map(str::to_string)
+    .filter(|path| path.starts_with('/'))
+    .ok_or_else(|| {
+        unavailable(format!(
+            "{}でエージェントの設定フォルダーを作成できませんでした。",
+            wsl_distro_label(distro)
+        ))
+    })
+}
+
+/// ADR-F49 決定 25: puts one staged file — a registry entry published as a
+/// plain Linux executable rather than an archive — into its own runtime
+/// directory. `$1` is the destination directory, `$2` the staged file, `$3`
+/// its SHA-256, `$4` the name to give it, `$5` `1` to make it executable, `$6`
+/// a suffix for the temporary names.
+const FILE_STAGE_SCRIPT: &str = r#"
+set -u
+umask 077
+dest=$1
+staged=$2
+digest=$3
+name=$4
+executable=$5
+suffix=$6
+tmp="$dest.tmp-$suffix"
+fail() {
+    rm -rf "$tmp" 2>/dev/null
+    rm -f "$staged" 2>/dev/null
+    printf 'zed-wsl-archive: error %s\n' "$1"
+    exit 1
+}
+command -v sha256sum >/dev/null 2>&1 || fail no-sha256sum
+sum=$(sha256sum < "$staged") || fail cannot-hash
+[ "${sum%% *}" = "$digest" ] || fail digest-mismatch
+parent=${dest%/*}
+[ -n "$parent" ] || parent=/
+mkdir -p "$parent" || fail cannot-create-parent
+rm -rf "$tmp" || fail cannot-clear-temporary
+mkdir "$tmp" || fail cannot-create-temporary
+mv "$staged" "$tmp/$name" || fail cannot-move
+if [ "$executable" = 1 ]; then
+    chmod 755 "$tmp/$name" || fail cannot-set-mode
+else
+    chmod 644 "$tmp/$name" || fail cannot-set-mode
+fi
+printf '%s\n' "$digest" > "$tmp/.zed-complete" || fail cannot-write-marker
+old=
+if [ -e "$dest" ]; then
+    old="$dest.old-$suffix"
+    rm -rf "$old" || fail cannot-clear-previous
+    mv "$dest" "$old" || fail cannot-retire-previous
+fi
+if ! mv "$tmp" "$dest"; then
+    if [ -n "$old" ]; then
+        mv "$old" "$dest" 2>/dev/null
+    fi
+    fail cannot-install
+fi
+if [ -n "$old" ]; then
+    rm -rf "$old" 2>/dev/null
+fi
+printf 'zed-wsl-archive: ready %s\n' "$dest"
+"#;
+
+/// ADR-F49 第 2b 段: where a runtime staged at
+/// `destination_relative_to_data_dir` for `marker` is in the distro, while it
+/// is there and complete; `None` when it has to be staged (again).
+///
+/// `marker` is what the staging step recorded: an archive's SHA-256, or the
+/// npm package specification an install was asked for. `None` asks only that
+/// something complete is there, which is what a registry archive published
+/// without a digest can be asked (ADR-F49 決定 25): its directory name is
+/// already taken from its version and URL, exactly as the local installation's
+/// is, so what is there is what that version at that URL unpacked to.
+///
+/// Checking first means a runtime already in the distro costs one `wsl.exe`
+/// round-trip rather than a download.
+pub async fn staged_wsl_runtime(
+    distro: Option<&str>,
+    destination_relative_to_data_dir: &str,
+    marker: Option<&str>,
+) -> Result<Option<String>> {
+    ensure_safe_relative_path(destination_relative_to_data_dir, "runtime destination")?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let data_directory = wsl_agent_runtime_data_directory(distro).await?;
+    let destination = format!("{data_directory}/{destination_relative_to_data_dir}");
+    match check_wsl_runtime(&wsl_exe, distro, &destination, marker).await? {
+        HelperCheck::Ready(path) => Ok(Some(path)),
+        HelperCheck::Missing | HelperCheck::Unverifiable => Ok(None),
+    }
+}
+
+/// ADR-F49 決定 25: put a single Linux file — a registry entry published as a
+/// plain executable rather than an archive — into the distro's Zed data
+/// directory at `destination_relative_to_data_dir`, under `file_name`, and
+/// return its absolute path there.
+///
+/// Checked against `expected_sha256` on Windows before anything is sent and
+/// again inside the distro on what arrived, then moved into place in one step
+/// behind a marker holding the digest, exactly as
+/// [`stage_wsl_runtime_archive`] does for an archive. `executable` gives it
+/// mode 755 — it is the program the agent is started as.
+pub async fn stage_wsl_runtime_file(
+    distro: Option<&str>,
+    destination_relative_to_data_dir: &str,
+    file_name: &str,
+    source_windows_path: &Path,
+    expected_sha256: &str,
+    executable: bool,
+) -> Result<String> {
+    ensure_safe_relative_path(destination_relative_to_data_dir, "runtime destination")?;
+    ensure_agent_binary_name(file_name)?;
+    let digest = normalized_sha256(expected_sha256)?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let data_directory = wsl_agent_runtime_data_directory(distro).await?;
+    let destination = format!("{data_directory}/{destination_relative_to_data_dir}");
+
+    if let HelperCheck::Ready(path) =
+        check_wsl_runtime(&wsl_exe, distro, &destination, Some(&digest)).await?
+    {
+        return Ok(format!("{path}/{file_name}"));
+    }
+
+    let source_digest = file_sha256(source_windows_path, StagedKind::RuntimeArchive).await?;
+    ensure!(
+        source_digest == digest,
+        "`{}` does not have the expected SHA-256 {digest} (it has {source_digest})",
+        source_windows_path.display()
+    );
+
+    let suffix = unique_suffix();
+    let staging_directory = destination
+        .rsplit_once('/')
+        .map(|(parent, _)| parent.to_string())
+        .unwrap_or_else(|| data_directory.clone());
+    let staged = stage_file(
+        &wsl_exe,
+        distro,
+        &staging_directory,
+        "runtime-file",
+        source_windows_path,
+        false,
+        StagedKind::RuntimeArchive,
+    )
+    .await?;
+    if staged.sha256 != digest {
+        discard_staged_files(&wsl_exe, distro, [staged.path.as_str()]).await;
+        bail!(
+            "`{}` changed while it was being copied into WSL",
+            source_windows_path.display()
+        );
+    }
+
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro,
+        [
+            "--exec",
+            "sh",
+            "-c",
+            FILE_STAGE_SCRIPT,
+            "zed-wsl-runtime-file",
+            destination.as_str(),
+            staged.path.as_str(),
+            digest.as_str(),
+            file_name,
+            if executable { "1" } else { "0" },
+            suffix.as_str(),
+        ],
+        "エージェントの実行環境の配置",
+    )
+    .await?;
+    if !output.status.success() {
+        discard_staged_files(&wsl_exe, distro, [staged.path.as_str()]).await;
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            ARCHIVE_RESULT_PREFIX,
+            "エージェントの実行環境を配置できませんでした",
+        ));
+    }
+
+    match check_wsl_runtime(&wsl_exe, distro, &destination, Some(&digest)).await? {
+        HelperCheck::Ready(path) => Ok(format!("{path}/{file_name}")),
+        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(format!(
+            "エージェントの実行環境を{}に配置しましたが、確認できませんでした。\
+             もう一度実行してください。",
+            wsl_distro_label(distro)
+        ))),
+    }
+}
+
+/// ADR-F49 第 2b 段: the absolute path, inside the distro, of `relative` below
+/// the staged runtime directory `runtime_directory` — confirmed to be a plain
+/// file reached without following a link at any step. What a registry entry's
+/// `cmd` (`./bin/agent`) names, after its archive was unpacked.
+pub async fn wsl_runtime_executable(
+    distro: Option<&str>,
+    runtime_directory: &str,
+    relative: &str,
+) -> Result<String> {
+    ensure_linux_absolute_path(runtime_directory, "runtime")?;
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let mut args = vec![
+        "--exec".to_string(),
+        "sh".to_string(),
+        "-c".to_string(),
+        NPM_EXECUTABLE_SCRIPT.to_string(),
+        "zed-wsl-runtime-executable".to_string(),
+        runtime_directory.to_string(),
+    ];
+    args.extend(linux_path_segments(relative, "runtime executable")?);
+    let output =
+        run_wsl_command(&wsl_exe, distro, &args, "エージェントの実行ファイルの確認").await?;
+    if !output.status.success() {
+        return Err(runtime_script_failure(
+            distro,
+            &output,
+            NPM_RESULT_PREFIX,
+            "エージェントの実行ファイルを確認できませんでした",
+        ));
+    }
+    parse_prefixed_line(&String::from_utf8_lossy(&output.stdout), NPM_RESULT_PREFIX)
+        .and_then(|line| line.strip_prefix("executable "))
+        .map(str::to_string)
+        .filter(|path| path.starts_with('/'))
+        .ok_or_else(|| {
+            unavailable(format!(
+                "{}でエージェントの実行ファイルを確認できませんでした。",
+                wsl_distro_label(distro)
+            ))
+        })
+}
+
+// ===========================================================================
+// ADR-F49 決定 18: what a WSL sandbox still has running
+// ===========================================================================
+
+/// ADR-F49 決定 18 (C): what is still running inside the WSL sandbox of the
+/// session `session_id` — the one a command was wrapped for after
+/// [`crate::Sandbox::set_sandbox_session_id`].
+///
+/// The answer comes from **outside** the sandbox: the helper's parent recorded
+/// which PID namespace belongs to which session id in a directory no sandboxed
+/// command can write, and this runs the very same helper binary as a
+/// short-lived utility that reads it. Nothing inside the sandbox can shape the
+/// result.
+///
+/// An empty list means nothing of that session is left — including the case
+/// where the sandbox is gone entirely (the helper exited, so the kernel
+/// stopped everything in its namespace). A failure to *look* is an error.
+pub async fn list_wsl_sandbox_processes(
+    distro: Option<&str>,
+    session_id: &str,
+) -> Result<Vec<crate::SandboxProcess>> {
+    crate::validate_sandbox_session_id(session_id)?;
+    let (output, _) = run_sandbox_session_subcommand(
+        distro,
+        crate::SANDBOX_PROCESSES_FLAG,
+        session_id,
+        Vec::new(),
+        "サンドボックス内のプロセスの確認",
+    )
+    .await?;
+    crate::decode_sandbox_processes(&output)
+}
+
+/// ADR-F49 決定 18 (C): stop exactly the processes of `session_id` that
+/// `processes` names, and report how many were signalled. A process whose
+/// start time no longer matches the one that was listed is left alone, so a
+/// recycled pid is never signalled by mistake.
+pub async fn stop_wsl_sandbox_processes(
+    distro: Option<&str>,
+    session_id: &str,
+    processes: &[crate::SandboxProcessKey],
+) -> Result<usize> {
+    crate::validate_sandbox_session_id(session_id)?;
+    let (output, _) = run_sandbox_session_subcommand(
+        distro,
+        crate::SANDBOX_KILL_FLAG,
+        session_id,
+        processes.iter().map(|process| process.encode()).collect(),
+        "サンドボックス内のプロセスの停止",
+    )
+    .await?;
+    output
+        .lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+        .and_then(|line| line.parse::<usize>().ok())
+        .with_context(|| format!("the sandbox stop reported {output:?} instead of a count"))
+}
+
+/// Runs the helper's own listing / stop subcommand in `distro` and returns its
+/// standard output. The one line it prints when it cannot answer
+/// ([`crate::SANDBOX_PROCESSES_FAILURE_MARKER`]) becomes an error rather than
+/// an empty answer, which is what would otherwise read as "nothing is left
+/// running".
+async fn run_sandbox_session_subcommand(
+    distro: Option<&str>,
+    flag: &str,
+    session_id: &str,
+    arguments: Vec<String>,
+    description: &str,
+) -> Result<(String, std::process::ExitStatus)> {
+    ensure_distro_registered(distro)?;
+    let wsl_exe = installed_wsl_exe()?;
+    let helper = ensure_sandbox_helper(&wsl_exe, distro).await?;
+    let mut args = helper_invocation(&helper);
+    args.extend([flag.to_string(), session_id.to_string()]);
+    args.extend(arguments);
+    let output = run_wsl_command(&wsl_exe, distro, &args, description).await?;
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    if let Some(detail) = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix(crate::SANDBOX_PROCESSES_FAILURE_MARKER))
+    {
+        bail!(
+            "{}がサンドボックス内のプロセスを扱えませんでした:{detail}",
+            wsl_distro_label(distro)
+        );
+    }
+    ensure!(
+        output.status.success(),
+        "{}で{description}を実行できませんでした{}",
+        wsl_distro_label(distro),
+        command_failure_details(output.status.code(), &output.stderr)
+    );
+    Ok((stdout, output.status))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2787,7 +4824,10 @@ mod tests {
                 network: RemoteSandboxNetwork::Blocked,
                 network_ceiling: None,
                 allow_fs_write: false,
-                interactive_session: None,
+                interactive: false,
+                ide_forward: None,
+                linux_environment: false,
+                sandbox_session_id: None,
             },
             None,
             HashMap::<String, String>::new(),
@@ -2815,7 +4855,9 @@ mod tests {
                 slirp_sha256: Some("slirp-digest"),
                 environment: &[("PAGER".to_string(), String::new())],
                 unset_environment: &WSL_INTEROP_VARIABLES,
-                interactive_session: None,
+                interactive: false,
+                ide_forward: None,
+                sandbox_session_id: None,
             },
         );
         let args = helper_command_line(
@@ -3159,6 +5201,49 @@ mod tests {
     }
 
     #[test]
+    fn parse_wsl_unc_path_folds_the_spellings_of_one_location() {
+        for spelling in [
+            r"\\wsl.localhost\Ubuntu\root\p",
+            r"\\wsl$\Ubuntu\root\p",
+            r"\\WSL.LOCALHOST\Ubuntu\root\p",
+            r"\\?\UNC\wsl.localhost\Ubuntu\root\p",
+            r"\\?\UNC\wsl$\Ubuntu\root\p",
+            "//wsl.localhost/Ubuntu/root/p",
+            "\\\\wsl.localhost\\Ubuntu\\root\\p\\",
+            r"\\wsl.localhost\Ubuntu\root\.\p",
+        ] {
+            let path = parse_wsl_unc_path(spelling).unwrap_or_else(|_| panic!("{spelling}"));
+            assert_eq!(path.distro.as_deref(), Some("Ubuntu"), "{spelling}");
+            assert_eq!(path.path, "/root/p", "{spelling}");
+        }
+    }
+
+    #[test]
+    fn parse_wsl_unc_path_rejects_shapes_that_name_something_else() {
+        for refused in [
+            // Not a WSL share.
+            r"\\server\share\project",
+            r"\\?\UNC\server\share\project",
+            r"\\?\C:\project",
+            // No distribution name.
+            r"\\wsl.localhost",
+            r"\\wsl.localhost\\root",
+            // `..` would leave the folder that was shown.
+            r"\\wsl.localhost\Ubuntu\root\..\etc",
+        ] {
+            assert!(parse_wsl_unc_path(refused).is_err(), "{refused}");
+        }
+        // A bare share is the distribution's root. It parses (it names a
+        // distro, which `wsl_distro_for_path` wants) but is not a grant — that
+        // is enforced where grants are built.
+        let root = parse_wsl_unc_path(r"\\wsl.localhost\Ubuntu").expect("names a distro");
+        assert_eq!(root.path, "/");
+        assert!(
+            crate::HostFilesystemLocation::capture(Path::new(r"\\wsl.localhost\Ubuntu")).is_err()
+        );
+    }
+
+    #[test]
     fn parse_native_windows_path() {
         let path = parse_native_drive_path(r"C:\Users\me\project").unwrap();
         assert_eq!(path.distro, None);
@@ -3192,31 +5277,106 @@ mod tests {
     #[test]
     fn canonical_grant_output_returns_the_linux_canonical_path() {
         let resolved =
-            parse_canonical_grant_output("Ubuntu-24.04\n/home/me/real target\nnative-fs\n")
+            parse_canonical_grant_output("Ubuntu-24.04\n/home/me/real target\nnative-fs\n", None)
                 .expect("valid helper output");
         // The bare Linux path, not a `\\wsl.localhost\...` spelling.
         assert_eq!(resolved.canonical, PathBuf::from("/home/me/real target"));
         assert!(!resolved.on_windows_fs);
 
-        let resolved = parse_canonical_grant_output("Ubuntu\n/mnt/c/Users/me/proj\nwindows-fs\n")
-            .expect("valid helper output");
+        let resolved =
+            parse_canonical_grant_output("Ubuntu\n/mnt/c/Users/me/proj\nwindows-fs\n", None)
+                .expect("valid helper output");
         assert_eq!(resolved.canonical, PathBuf::from("/mnt/c/Users/me/proj"));
         assert!(resolved.on_windows_fs);
+    }
+
+    /// ADR-F49 第 2b 段: a grant named through a distribution's share keeps that
+    /// spelling, so the stored canonical still says which distribution it is in.
+    #[test]
+    fn canonical_grant_output_keeps_the_share_a_grant_was_named_through() {
+        let resolved =
+            parse_canonical_grant_output("Ubuntu\n/root/real target\nnative-fs\n", Some("Ubuntu"))
+                .expect("valid helper output");
+        assert_eq!(
+            resolved.canonical,
+            PathBuf::from(r"\\wsl.localhost\Ubuntu\root\real target")
+        );
+        assert!(!resolved.on_windows_fs);
+
+        // `wsl.exe -d` matches the name case-insensitively, so the helper's
+        // spelling of the distribution it ran in is the one that is stored.
+        let resolved = parse_canonical_grant_output("Ubuntu\n/root/p\nnative-fs\n", Some("UBUNTU"))
+            .expect("valid helper output");
+        assert_eq!(
+            resolved.canonical,
+            PathBuf::from(r"\\wsl.localhost\Ubuntu\root\p")
+        );
+
+        // Landing in another distribution than the one asked for means the
+        // grant would be persisted for the wrong filesystem.
+        assert!(
+            parse_canonical_grant_output("Debian\n/root/p\nnative-fs\n", Some("Ubuntu")).is_err()
+        );
+    }
+
+    /// A canonical the share spelling cannot carry back unchanged fails the
+    /// grant instead of being stored as a path naming something else.
+    #[test]
+    fn canonical_grant_output_refuses_a_canonical_with_no_share_spelling() {
+        // `\` is an ordinary character in a Linux file name; spelled into a
+        // share it would become a separator, so the stored path would name
+        // `/root/a/b` — a folder nobody approved.
+        // `ResolvedGrant` is deliberately not `Debug`, so match rather than
+        // `expect_err`.
+        let Err(refused) =
+            parse_canonical_grant_output("Ubuntu\n/root/a\\b\nnative-fs\n", Some("Ubuntu"))
+        else {
+            panic!("a canonical holding a backslash has no share spelling");
+        };
+        assert!(
+            format!("{refused:#}").contains("Windows spelling"),
+            "{refused:#}"
+        );
+
+        // The distribution's own root spells a bare share, which
+        // `require_windows_grant_shape` refuses: the grant would be approved
+        // here and then never usable.
+        let Err(refused) = parse_canonical_grant_output("Ubuntu\n/\nnative-fs\n", Some("Ubuntu"))
+        else {
+            panic!("a grant resolving to the distro root is not a folder in it");
+        };
+        assert!(format!("{refused:#}").contains("whole root"), "{refused:#}");
+
+        // Both are fine for a grant that was not named through a share: it
+        // is stored as the Linux path the helper reported.
+        let resolved = parse_canonical_grant_output("Ubuntu\n/root/a\\b\nnative-fs\n", None)
+            .expect("a Linux-absolute grant keeps its own spelling");
+        assert_eq!(resolved.canonical, PathBuf::from(r"/root/a\b"));
     }
 
     #[test]
     fn canonical_grant_output_rejects_malformed_protocol() {
         // Missing filesystem-class line.
-        assert!(parse_canonical_grant_output("Ubuntu\n/home/me/project\n").is_err());
+        assert!(parse_canonical_grant_output("Ubuntu\n/home/me/project\n", None).is_err());
         // Non-absolute canonical path.
-        assert!(parse_canonical_grant_output("Ubuntu\nrelative\nnative-fs\n").is_err());
+        assert!(parse_canonical_grant_output("Ubuntu\nrelative\nnative-fs\n", None).is_err());
         // Distro name containing a separator.
-        assert!(parse_canonical_grant_output("Ubuntu/bad\n/home/me/project\nnative-fs\n").is_err());
+        assert!(
+            parse_canonical_grant_output("Ubuntu/bad\n/home/me/project\nnative-fs\n", None)
+                .is_err()
+        );
+        // Distro name that would climb out of the share when spelled as a path.
+        assert!(
+            parse_canonical_grant_output("..\n/home/me/project\nnative-fs\n", Some("..")).is_err()
+        );
         // Unknown filesystem class.
-        assert!(parse_canonical_grant_output("Ubuntu\n/home/me/project\nmaybe-fs\n").is_err());
+        assert!(
+            parse_canonical_grant_output("Ubuntu\n/home/me/project\nmaybe-fs\n", None).is_err()
+        );
         // Trailing junk after the filesystem class.
         assert!(
-            parse_canonical_grant_output("Ubuntu\n/home/me/project\nnative-fs\nnoise\n").is_err()
+            parse_canonical_grant_output("Ubuntu\n/home/me/project\nnative-fs\nnoise\n", None)
+                .is_err()
         );
     }
 
@@ -3346,16 +5506,22 @@ mod tests {
         assert!(format!("{error:#}").starts_with(WSL_SANDBOX_UNAVAILABLE_PREFIX));
     }
 
+    /// `map_path_to_wsl` maps Windows drives and nothing else. A path on the
+    /// distro's own filesystem must be taken by `parse_distro_native_path`
+    /// *before* this, because everything here — the caller's existence check
+    /// included — asks Windows about a path only the distro can resolve. If a
+    /// share ever reached it, failing is the safe answer: mapped as a drive
+    /// path it would name something else entirely.
     #[test]
-    fn map_path_to_wsl_keeps_unc_paths_structural() {
-        let mapping = map_path_to_wsl(Path::new(r"\\wsl.localhost\Ubuntu\home\me")).unwrap();
-        assert_eq!(
-            mapping,
-            PathMapping::Wsl(WslPath {
-                distro: Some("Ubuntu".to_string()),
-                path: "/home/me".to_string(),
-            })
-        );
+    fn map_path_to_wsl_refuses_a_path_inside_a_distro() {
+        for refused in [
+            Path::new(r"\\wsl.localhost\Ubuntu\root\p"),
+            Path::new(r"\\wsl$\Ubuntu\root\p"),
+            Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\root\p"),
+            Path::new(r"\\server\share\p"),
+        ] {
+            assert!(map_path_to_wsl(refused).is_err(), "{}", refused.display());
+        }
     }
 
     #[test]
@@ -3495,7 +5661,7 @@ mod tests {
             Some("Ubuntu"),
             &helper,
             "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
-            "/root/.claude-zed/ide/45123.lock",
+            Some("/root/.claude-zed/ide/45123.lock"),
             Some("/root/.claude-zed"),
         );
         assert_eq!(
@@ -3525,6 +5691,85 @@ mod tests {
             crate::encode_ide_lock_preamble(b"{\"pid\":1}"),
             [&9u32.to_le_bytes()[..], b"{\"pid\":1}"].concat()
         );
+        // ADR-F49 decision 24: a client told where its IDE is through
+        // `mcpServers` asks for no lock file, and then none is written and
+        // none is left behind.
+        assert_eq!(
+            ide_bridge_command_line(
+                None,
+                &helper,
+                "/root/.cache/zed-jp-enhance/ide/acp-1/bridge.sock",
+                None,
+                None,
+            ),
+            [
+                "--exec",
+                "/bin/sh",
+                "-c",
+                VERIFIED_EXEC_SCRIPT,
+                "zed-wsl-exec",
+                "/root/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server",
+                "server-digest",
+                "--ide-bridge",
+                "--rendezvous",
+                "/root/.cache/zed-jp-enhance/ide/acp-1/bridge.sock",
+            ]
+        );
+    }
+
+    /// ADR-F49: the sweep lists its candidates **before** it walks `/proc`.
+    /// A bridge's process is there before it makes its directory, so the other
+    /// order would take in a session that started in between — listed, but not
+    /// yet among the running processes — and remove a rendezvous in use. Every
+    /// name is checked again right before it is removed.
+    #[test]
+    fn the_rendezvous_sweep_lists_before_it_walks_proc() {
+        let script = SWEEP_RENDEZVOUS_SCRIPT;
+        let step = |needle: &str| {
+            script
+                .find(needle)
+                .unwrap_or_else(|| panic!("the sweep no longer does {needle:?}"))
+        };
+        let listed = step("candidates=\"$candidates $entry\"");
+        let walked = step("/proc/[0-9]*/cmdline");
+        let removed = step("rm -rf --");
+        assert!(
+            listed < walked && walked < removed,
+            "list the candidates, then walk /proc, then remove: {listed} {walked} {removed}"
+        );
+        // The re-checks between the process walk and the removal.
+        let rechecked = script
+            .get(walked..removed)
+            .expect("the text between the walk and the removal");
+        assert!(rechecked.contains("[ -d \"$entry\" ]"), "{rechecked}");
+        assert!(rechecked.contains("\"$prefix\"*"), "{rechecked}");
+        // And the directory it works in is the one it was given, not one
+        // reached through a symlink planted since.
+        assert!(script.contains("[ \"$(pwd -P)\" = \"$root\" ]"));
+    }
+
+    /// The script reads the rendezvous root as `$1` and the prefix as `$2`, so
+    /// its own `$0` has to sit between them and `-c`.
+    #[test]
+    fn the_rendezvous_sweep_is_given_its_root_and_prefix_in_order() {
+        let arguments = sweep_rendezvous_arguments("/root/.cache/zed-jp-enhance/ide", "acp-");
+        assert_eq!(arguments[..3], ["--exec", "/bin/sh", "-c"]);
+        assert_eq!(arguments[3], SWEEP_RENDEZVOUS_SCRIPT);
+        assert_eq!(
+            arguments[4..],
+            ["zed-ide-sweep", "/root/.cache/zed-jp-enhance/ide", "acp-"]
+        );
+
+        assert_eq!(
+            removed_rendezvous_names(
+                "zed-sweep-removed acp-1111
+something else
+zed-sweep-removed acp-2222
+"
+            ),
+            ["acp-1111", "acp-2222"]
+        );
+        assert!(removed_rendezvous_names("").is_empty());
     }
 
     #[test]
@@ -3678,5 +5923,1073 @@ mod tests {
                 None
             );
         });
+    }
+
+    // =======================================================================
+    // ADR-F49 第 2b 段: the Linux runtime inside WSL
+    // =======================================================================
+
+    /// The distro's data directory is the **Linux** spelling of this fork's,
+    /// which this Windows build cannot read off `APP_DIRECTORY_NAME` (compiled
+    /// for Windows) and therefore spells out. If either ever changes, this
+    /// fails rather than silently staging the runtime somewhere the helper
+    /// neither protects nor may show the agent.
+    #[test]
+    fn the_linux_data_directory_matches_this_fork() {
+        assert_eq!(
+            crate::APP_DIRECTORY_NAME.to_ascii_lowercase(),
+            LINUX_APP_DIRECTORY_NAME
+        );
+        assert_eq!(
+            format!("{LINUX_DEFAULT_DATA_HOME_RELATIVE}/{LINUX_APP_DIRECTORY_NAME}"),
+            ".local/share/zed-jp-enhance",
+            "the helper's `remote_agent_runtime_data_directory` default"
+        );
+        // ADR-F49 決定 22: the staging directory is *beside* the data
+        // directory, never inside it — everything inside is protected and
+        // read-hidden, and npm has to be able to write where it works.
+        assert!(
+            !Path::new(WSL_STAGING_HOME_RELATIVE).starts_with(format!(
+                "{LINUX_DEFAULT_DATA_HOME_RELATIVE}/{LINUX_APP_DIRECTORY_NAME}"
+            )),
+            "the npm staging directory must not be inside the Zed data directory"
+        );
+    }
+
+    /// ADR-F49 決定 14: what is staged for the WSL sandbox lands below the two
+    /// directories the helper's `--readable` check lets a command be shown
+    /// (`external_agents` and `node` in the data directory).
+    #[test]
+    fn staged_runtimes_land_where_a_command_may_be_shown_them() {
+        for relative in [
+            "node/wsl-sandbox/node-v24.11.0-linux-x64",
+            "external_agents/wsl-sandbox/registry/npx/claude-acp",
+            "external_agents/wsl-sandbox/registry/archive/some-agent/v1",
+        ] {
+            ensure_safe_relative_path(relative, "runtime destination")
+                .unwrap_or_else(|error| panic!("{relative} should be usable: {error}"));
+            assert!(
+                relative.starts_with("node/") || relative.starts_with("external_agents/"),
+                "{relative} is outside the runtime directories"
+            );
+        }
+    }
+
+    #[test]
+    fn a_runtime_destination_can_never_leave_the_data_directory() {
+        for refused in [
+            "",
+            "/absolute",
+            "..",
+            "../elsewhere",
+            "node/../../.ssh",
+            "node//double",
+            "node/./here",
+            "node/wsl sandbox",
+            "node/wsl;sandbox",
+            &"n".repeat(201),
+        ] {
+            assert!(
+                ensure_safe_relative_path(refused, "runtime destination").is_err(),
+                "{refused:?} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn a_package_path_is_walked_one_plain_component_at_a_time() {
+        assert_eq!(
+            linux_path_segments("@agentclientprotocol/claude-agent-acp", "npm package")
+                .expect("a scoped package"),
+            vec![
+                "@agentclientprotocol".to_string(),
+                "claude-agent-acp".to_string()
+            ]
+        );
+        assert_eq!(
+            linux_path_segments("./dist/cli.js", "npm package executable").expect("a bin path"),
+            vec!["dist".to_string(), "cli.js".to_string()]
+        );
+        for refused in ["", "/etc/passwd", "../../etc/passwd", "dist/../../x", "."] {
+            assert!(
+                linux_path_segments(refused, "npm package executable").is_err(),
+                "{refused:?} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_registry_package_specification_is_installed() {
+        for accepted in [
+            "@agentclientprotocol/claude-agent-acp@0.76.0",
+            "codex-acp@0.0.0 - 1.11.0",
+            "@google/gemini-cli",
+        ] {
+            ensure_npm_package_spec(accepted)
+                .unwrap_or_else(|error| panic!("{accepted:?} should be accepted: {error}"));
+        }
+        for refused in [
+            "",
+            "--global",
+            "./local-tarball.tgz",
+            "/tmp/evil.tgz",
+            "https://example.com/evil.tgz",
+            "git+ssh://example.com/evil.git",
+            "pkg@1.0.0\nrm -rf /",
+            // npm would take every one of these from somewhere other than the
+            // registry — a directory the sandbox may itself write, among them.
+            "pkg@file:../staging/pkg",
+            "pkg@file:/tmp/evil",
+            "github:owner/repo",
+            "owner/repo#semver:1.0.0",
+            "pkg@npm:other-package",
+            "pkg@git+https://example.com/evil.git",
+            "pkg@https://example.com/evil.tgz",
+            "@scope/pkg@../../evil",
+        ] {
+            assert!(
+                ensure_npm_package_spec(refused).is_err(),
+                "{refused:?} must be refused"
+            );
+        }
+        for accepted in ["codex-acp", "@google/gemini-cli", "a.b_c-d"] {
+            ensure_npm_package_name(accepted)
+                .unwrap_or_else(|error| panic!("{accepted:?} should be accepted: {error}"));
+        }
+        for refused in [
+            "",
+            "..",
+            "Upper",
+            "a/b/c",
+            "@scope/a/b",
+            "@/name",
+            "with space",
+            "../escape",
+        ] {
+            assert!(
+                ensure_npm_package_name(refused).is_err(),
+                "{refused:?} must be refused"
+            );
+        }
+    }
+
+    /// The `zip` a registry entry may be published as is refused with an
+    /// explanation rather than half-unpacked: a stock WSL image has no
+    /// `unzip`, and unpacking it on Windows would lose the execute bits
+    /// (決定 20).
+    #[test]
+    fn a_zip_is_not_a_wsl_runtime_archive() {
+        assert_eq!(WslArchiveKind::Zip.script_mode(), None);
+        assert_eq!(WslArchiveKind::TarGz.script_mode(), Some("targz"));
+        assert_eq!(WslArchiveKind::TarBz2.script_mode(), Some("tarbz2"));
+        assert_eq!(WslArchiveKind::TarXz.script_mode(), Some("tarxz"));
+    }
+
+    /// ADR-F49 決定 14 / 25: what comes out of an archive is only ever a
+    /// plain file, a directory or a symbolic link that stays inside it, and
+    /// nothing keeps a set-user-ID bit. The unpacking runs as the distro's
+    /// account outside every namespace, and the result becomes a read grant
+    /// for a sandboxed agent, so an archive published without a digest must
+    /// not be able to put a device node or a set-user-ID program there.
+    #[test]
+    fn an_unpacked_archive_holds_nothing_but_files_directories_and_inside_links() {
+        assert!(
+            ARCHIVE_EXTRACT_SCRIPT
+                .contains(r#"special=$(find "$tmp" ! -type d ! -type f ! -type l)"#),
+            "the unpacked tree must be scanned for anything but files, directories and links"
+        );
+        assert!(
+            ARCHIVE_EXTRACT_SCRIPT.contains("fail special-entry"),
+            "a device node, socket or fifo must fail the whole staging"
+        );
+        assert!(
+            ARCHIVE_EXTRACT_SCRIPT.contains(r#"find "$tmp" -type f -exec chmod u-s,g-s {} +"#),
+            "the set-user-ID and set-group-ID bits must be cleared"
+        );
+        assert!(
+            ARCHIVE_EXTRACT_SCRIPT.contains("--no-same-owner"),
+            "nothing unpacked may be owned by whoever the archive says"
+        );
+        // Both checks happen before anything is moved into place.
+        let installed = ARCHIVE_EXTRACT_SCRIPT
+            .find(r#"mv "$tmp" "$dest""#)
+            .expect("the tree is moved into place");
+        for check in ["fail special-entry", "fail escaping-link", "chmod u-s,g-s"] {
+            let at = ARCHIVE_EXTRACT_SCRIPT
+                .find(check)
+                .unwrap_or_else(|| panic!("{check} is part of the script"));
+            assert!(at < installed, "{check} must run before the tree is used");
+        }
+    }
+
+    /// ADR-F49 第 2b 段: a Linux command's environment is the one this fork
+    /// wrote for the distro, so `PATH` and `HOME` reach it — the very
+    /// variables `is_forwardable_env_var` drops from a Windows process's
+    /// environment.
+    #[test]
+    fn a_linux_command_keeps_the_path_and_home_written_for_it() {
+        let env = HashMap::from([
+            ("PATH".to_string(), "/opt/node/bin:/usr/bin".to_string()),
+            ("HOME".to_string(), "/root/staging/home".to_string()),
+            ("LANG".to_string(), "ja_JP.UTF-8".to_string()),
+            ("=C:".to_string(), "C:\\".to_string()),
+            (String::new(), "unnamed".to_string()),
+        ]);
+        assert_eq!(
+            linux_environment(&env),
+            vec![
+                ("HOME".to_string(), "/root/staging/home".to_string()),
+                ("LANG".to_string(), "ja_JP.UTF-8".to_string()),
+                ("PATH".to_string(), "/opt/node/bin:/usr/bin".to_string()),
+            ],
+            "sorted, and without the names setenv(3) itself refuses"
+        );
+        // The Windows filter is unchanged for the commands that take the
+        // project's own environment along.
+        let forwarded = forwarded_environment(&env);
+        assert!(
+            !forwarded
+                .iter()
+                .any(|(name, _)| name == "PATH" || name == "HOME"),
+            "a Windows process's PATH and HOME are still dropped"
+        );
+    }
+
+    /// ADR-F49 決定 18: a session id reaches the helper as `--session <id>`,
+    /// before the `--` the command follows.
+    #[test]
+    fn a_wsl_command_can_be_registered_as_a_sandbox_session() {
+        let argv = crate::build_wsl_sandbox_helper_argv(
+            &[],
+            &[],
+            &[],
+            &RemoteSandboxNetwork::Blocked,
+            false,
+            None,
+            &crate::WslHelperOptions {
+                sandbox_session_id: Some("abc-123_DEF"),
+                ..Default::default()
+            },
+        );
+        let session = argv
+            .iter()
+            .position(|argument| argument == crate::SANDBOX_SESSION_FLAG)
+            .expect("the session flag");
+        assert_eq!(
+            argv.get(session + 1).map(String::as_str),
+            Some("abc-123_DEF")
+        );
+        let end = argv
+            .iter()
+            .position(|argument| argument == "--")
+            .expect("the end of the policy");
+        assert!(session < end, "the session is part of the policy");
+
+        let without = crate::build_wsl_sandbox_helper_argv(
+            &[],
+            &[],
+            &[],
+            &RemoteSandboxNetwork::Blocked,
+            false,
+            None,
+            &crate::WslHelperOptions::default(),
+        );
+        assert!(
+            !without
+                .iter()
+                .any(|argument| argument == crate::SANDBOX_SESSION_FLAG),
+            "a command with no id is registered nowhere"
+        );
+    }
+
+    /// ADR-F49 第 2b 段: the paths of a command that runs *inside* the distro
+    /// are Linux-absolute, and every place the policy takes one — a write
+    /// grant, a read grant, a protected path and the cwd — accepts that shape
+    /// on Windows. (Stage 1 already relied on it for the agent's
+    /// configuration folder; the cwd did not accept one until 第 2b 段, which
+    /// is what an npm install inside its staging directory needs.)
+    #[test]
+    fn a_linux_path_is_a_grant_a_windows_client_can_make() {
+        let linux = Path::new("/root/.local/share/zed-jp-enhance/node/wsl-sandbox");
+        let location =
+            crate::HostFilesystemLocation::capture(linux).expect("a Linux path is a grant");
+        assert_eq!(location.windows_requested_path(), linux);
+        assert_eq!(location.windows_canonical_path(), linux);
+
+        let expected = PathMapping::Wsl(WslPath {
+            distro: None,
+            path: "/root/.local/share/zed-jp-enhance/node/wsl-sandbox".to_string(),
+        });
+        assert_eq!(
+            path_to_wsl(linux).expect("a writable or readable path"),
+            expected
+        );
+        assert_eq!(
+            path_to_wsl_allowing_missing(linux).expect("a protected path"),
+            expected
+        );
+        assert_eq!(directory_to_wsl(linux).expect("a cwd"), expected);
+        assert_eq!(
+            select_distro(Some(&expected), [&expected]).expect("no distro"),
+            None
+        );
+
+        // A path that is none of the three grant shapes is still refused
+        // everywhere.
+        for refused in [
+            Path::new("relative/path"),
+            Path::new(r"\\server\share\project"),
+        ] {
+            assert!(crate::HostFilesystemLocation::capture(refused).is_err());
+            assert!(directory_to_wsl(refused).is_err());
+        }
+    }
+
+    /// ADR-F49 第 2b 段: a worktree on the distribution's own ext4 has no
+    /// spelling on Windows other than its share, so every grant shape has to
+    /// take one — and take it without touching the filesystem, since Windows
+    /// cannot follow the distro's symlinks and statting the share needs the
+    /// distro running.
+    #[test]
+    fn a_wsl_share_path_is_a_grant_a_windows_client_can_make() {
+        let share = Path::new(r"\\wsl.localhost\Ubuntu\root\zed-x2-e2e");
+        let location =
+            crate::HostFilesystemLocation::capture(share).expect("a WSL share path is a grant");
+        assert_eq!(location.windows_requested_path(), share);
+        assert_eq!(location.windows_canonical_path(), share);
+
+        let expected = PathMapping::Wsl(WslPath {
+            distro: Some("Ubuntu".to_string()),
+            path: "/root/zed-x2-e2e".to_string(),
+        });
+        assert_eq!(
+            path_to_wsl(share).expect("a writable or readable path"),
+            expected
+        );
+        assert_eq!(
+            path_to_wsl_allowing_missing(share).expect("a protected path"),
+            expected
+        );
+        assert_eq!(directory_to_wsl(share).expect("a cwd"), expected);
+        assert_eq!(
+            select_distro(Some(&expected), [&expected]).expect("one distro"),
+            Some("Ubuntu".to_string())
+        );
+
+        // The older `\\wsl$\` spelling and the verbatim prefix name the same
+        // folder in the same distribution.
+        for alias in [
+            Path::new(r"\\wsl$\Ubuntu\root\zed-x2-e2e"),
+            Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\root\zed-x2-e2e"),
+        ] {
+            assert_eq!(path_to_wsl(alias).expect("an alias of the share"), expected);
+            assert_eq!(
+                crate::HostFilesystemLocation::capture(alias)
+                    .expect("an alias is a grant")
+                    .windows_canonical_path(),
+                share,
+                "{} must be stored in one spelling",
+                alias.display()
+            );
+        }
+    }
+
+    /// One distribution named two ways is one distribution: WSL matches the
+    /// name case-insensitively, and so does `wsl_distro_for_roots`, which picks
+    /// the session's distro from the very same paths.
+    #[test]
+    fn select_distro_reads_two_spellings_of_one_distro_as_one() {
+        let cwd = PathMapping::Wsl(WslPath {
+            distro: Some("Ubuntu".to_string()),
+            path: "/root/p".to_string(),
+        });
+        let grant = PathMapping::Wsl(WslPath {
+            distro: Some("ubuntu".to_string()),
+            path: "/root/p/sub".to_string(),
+        });
+        assert_eq!(
+            select_distro(Some(&cwd), [&grant]).expect("one distro"),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn wsl_distro_for_path_reads_the_share_a_worktree_is_opened_through() {
+        assert_eq!(
+            wsl_distro_for_path(Path::new(r"\\wsl.localhost\Ubuntu\root\p")).as_deref(),
+            Some("Ubuntu")
+        );
+        assert_eq!(
+            wsl_distro_for_path(Path::new(r"\\wsl$\Ubuntu\root\p")).as_deref(),
+            Some("Ubuntu")
+        );
+        assert_eq!(wsl_distro_for_path(Path::new(r"C:\project")), None);
+        assert_eq!(wsl_distro_for_path(Path::new("/root/p")), None);
+    }
+
+    /// The `--exec` argument vectors the runtime scripts are run with put the
+    /// script's own name first, so `$1` is the first value and nothing is read
+    /// as an option.
+    #[test]
+    fn a_runtime_script_is_given_its_own_name_before_its_arguments() {
+        for script in [
+            DATA_DIRECTORY_SCRIPT,
+            ARCHIVE_CHECK_SCRIPT,
+            ARCHIVE_EXTRACT_SCRIPT,
+            NPM_STAGING_SCRIPT,
+            NPM_FINALIZE_SCRIPT,
+            NPM_READ_SCRIPT,
+            NPM_EXECUTABLE_SCRIPT,
+            CONFIG_DIRECTORY_SCRIPT,
+        ] {
+            assert!(
+                !script.contains("$0"),
+                "a runtime script must not depend on its argv[0]"
+            );
+            assert!(
+                script.contains("set -u") || script.starts_with("printf"),
+                "a runtime script refuses unset variables"
+            );
+        }
+    }
+
+    /// ADR-F49 決定 25: the completeness check can be asked for one exact
+    /// marker or for any, which is what a registry archive published without a
+    /// digest — and therefore identified only by where its version and URL put
+    /// it — can be asked.
+    #[test]
+    fn a_staged_runtime_is_found_by_its_marker_or_by_being_there() {
+        assert!(
+            ARCHIVE_CHECK_SCRIPT.contains(r#"if [ "$3" = any ] || [ "$have" = "$2" ]; then"#),
+            "the check script decides between an exact marker and any"
+        );
+        assert!(
+            ARCHIVE_CHECK_SCRIPT.contains(r#"[ -f "$dir/.zed-complete" ]"#),
+            "a half-finished staging never counts, whichever is asked for"
+        );
+    }
+
+    /// Two staging steps of this process never share a temporary name.
+    #[test]
+    fn a_staging_suffix_is_used_once() {
+        let first = unique_suffix();
+        let second = unique_suffix();
+        assert_ne!(first, second);
+        for suffix in [first, second] {
+            assert!(
+                suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() || byte == b'-'),
+                "{suffix} can never be anything but one path component"
+            );
+        }
+    }
+
+    // =======================================================================
+    // ADR-F49 第 2b 段: end-to-end, against this machine's real WSL
+    // =======================================================================
+    //
+    // Ignored by default and gated on `ZED_E2E_WSL_RUNTIME=1`, because they
+    // stage a real Node.js into the default distro, install a real npm
+    // package inside the sandbox and leave processes running while they look
+    // at them. Run them one at a time, in order:
+    //
+    //     set ZED_E2E_WSL_RUNTIME=1
+    //     set ZED_E2E_NODE_TARBALL=<node-v24.11.0-linux-x64.tar.gz>
+    //     set ZED_E2E_NODE_SHA256=<its digest>
+    //     cargo test -p sandbox --target-dir ... e2e_ -- --ignored --nocapture --test-threads=1
+    //
+    // `e2e_zz_clean_up` removes everything they staged.
+
+    /// Everything the end-to-end tests stage, so they can be told apart from
+    /// what a real Zed put in the distro and removed again afterwards.
+    #[cfg(target_os = "windows")]
+    #[allow(
+        clippy::disallowed_methods,
+        clippy::zombie_processes,
+        reason = "an end-to-end driver that deliberately blocks on wsl.exe and \
+                  leaves one command running while it looks at the sandbox"
+    )]
+    mod e2e {
+        pub(super) const NODE_RELATIVE: &str = "node/wsl-sandbox/node-v24.11.0-linux-x64";
+        pub(super) const PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
+        pub(super) const PACKAGE_SPEC: &str = "@agentclientprotocol/claude-agent-acp@0.76.0";
+        pub(super) const INSTALL_RELATIVE: &str =
+            "external_agents/wsl-sandbox/registry/npx/zed-e2e";
+        pub(super) const PROJECT_KEY: &str = "00112233445566ff";
+
+        pub(super) fn enabled() -> bool {
+            std::env::var("ZED_E2E_WSL_RUNTIME").is_ok_and(|value| value == "1")
+        }
+
+        /// The staged Linux Node.js, staging it from `ZED_E2E_NODE_TARBALL`
+        /// first if it is not there yet.
+        pub(super) fn node_directory() -> String {
+            let digest = std::env::var("ZED_E2E_NODE_SHA256").expect("ZED_E2E_NODE_SHA256");
+            if let Some(staged) = smol::block_on(super::staged_wsl_runtime(
+                None,
+                NODE_RELATIVE,
+                Some(&digest),
+            ))
+            .expect("checking for a staged Node.js")
+            {
+                return staged;
+            }
+            let tarball = std::env::var("ZED_E2E_NODE_TARBALL").expect("ZED_E2E_NODE_TARBALL");
+            smol::block_on(super::stage_wsl_runtime_archive(
+                None,
+                NODE_RELATIVE,
+                std::path::Path::new(&tarball),
+                &digest,
+                super::WslArchiveKind::TarGz,
+                true,
+            ))
+            .expect("staging the Linux Node.js")
+        }
+
+        /// Runs `program` in a real WSL sandbox that may write `writable` and
+        /// read `readable`, with `stdin` on its standard input, and returns
+        /// what it printed.
+        pub(super) fn run_in_sandbox(
+            program: &str,
+            args: &[&str],
+            writable: &[&str],
+            readable: &[&str],
+            environment: &[(&str, &str)],
+            session_id: Option<&str>,
+            stdin: Option<&[u8]>,
+            wait: bool,
+        ) -> (std::process::Output, crate::Sandbox) {
+            use std::io::Write as _;
+
+            let mut sandbox = crate::Sandbox::new(crate::SandboxPolicy {
+                fs: crate::SandboxFsPolicy::Restricted {
+                    writable_paths: writable
+                        .iter()
+                        .map(|path| {
+                            crate::HostFilesystemLocation::capture(path).expect("a write grant")
+                        })
+                        .collect(),
+                    protected_paths: Vec::new(),
+                    readable_paths: readable
+                        .iter()
+                        .map(|path| {
+                            crate::HostFilesystemLocation::capture(path).expect("a read grant")
+                        })
+                        .collect(),
+                },
+                network: crate::SandboxNetPolicy::Blocked,
+            })
+            .expect("a sandbox");
+            sandbox.set_wsl_linux_environment();
+            if let Some(session_id) = session_id {
+                sandbox.set_sandbox_session_id(session_id.to_string());
+            }
+            let wrapped = smol::block_on(
+                sandbox.wrap(&crate::CommandAndArgs {
+                    program: program.to_string(),
+                    args: args.iter().map(|argument| argument.to_string()).collect(),
+                    env: environment
+                        .iter()
+                        .map(|(name, value)| (name.to_string(), value.to_string()))
+                        .collect(),
+                    cwd: None,
+                }),
+            )
+            .expect("wrapping the command");
+
+            let mut command = std::process::Command::new(&wrapped.program);
+            command
+                .args(&wrapped.args)
+                .envs(&wrapped.env)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .stdin(if stdin.is_some() {
+                    std::process::Stdio::piped()
+                } else {
+                    std::process::Stdio::null()
+                });
+            let mut child = command.spawn().expect("starting wsl.exe");
+            if let Some(stdin) = stdin {
+                child
+                    .stdin
+                    .as_mut()
+                    .expect("a stdin pipe")
+                    .write_all(stdin)
+                    .expect("writing to the command");
+            }
+            if !wait {
+                // The caller looks at the sandbox while the command runs; it
+                // reads the output itself.
+                return (
+                    std::process::Output {
+                        status: Default::default(),
+                        stdout: Vec::new(),
+                        stderr: Vec::new(),
+                    },
+                    sandbox,
+                );
+            }
+            let output = child.wait_with_output().expect("waiting for the command");
+            (output, sandbox)
+        }
+
+        /// The executable the package declares, as
+        /// `node_runtime::package_json_executable` reads it — spelled out
+        /// here because this crate deliberately has no JSON parser of its own
+        /// (the real caller is the `project` crate, which does).
+        pub(super) fn bin_from_package_json(package_json: &str) -> String {
+            let rest = package_json
+                .split("\"bin\"")
+                .nth(1)
+                .expect("a bin in the package.json");
+            let rest = rest
+                .trim_start()
+                .strip_prefix(':')
+                .expect("a value after bin")
+                .trim_start();
+            let rest = match rest.strip_prefix('{') {
+                // `{"name": "path"}`: the value of the first entry.
+                Some(object) => object.split(':').nth(1).expect("a bin path").trim_start(),
+                None => rest,
+            };
+            rest.strip_prefix('"')
+                .expect("a quoted bin path")
+                .split('"')
+                .next()
+                .expect("a bin path")
+                .to_string()
+        }
+
+        pub(super) fn remove(path: &str) {
+            let wsl_exe = super::wsl_exe_path();
+            smol::block_on(super::run_wsl_command(
+                &wsl_exe,
+                None,
+                ["--exec", "rm", "-rf", "--", path],
+                "e2e clean-up",
+            ))
+            .expect("removing what the end-to-end test staged");
+        }
+    }
+
+    /// (a) The pinned Linux Node.js is staged in the distro and runs *inside*
+    /// the sandbox, reached through the one read grant it is given.
+    #[test]
+    #[ignore]
+    fn e2e_a_the_linux_node_runs_inside_the_sandbox() {
+        if !e2e::enabled() {
+            return;
+        }
+        let node_directory = e2e::node_directory();
+        assert!(node_directory.ends_with("node/wsl-sandbox/node-v24.11.0-linux-x64"));
+
+        // ADR-F49 決定 25: a runtime whose only identity is the place it is in
+        // — a registry archive published without a digest — is found there
+        // under any marker, and a runtime staged under a different digest is
+        // not mistaken for the one asked for.
+        assert_eq!(
+            smol::block_on(staged_wsl_runtime(None, e2e::NODE_RELATIVE, None))
+                .expect("checking for any complete runtime"),
+            Some(node_directory.clone())
+        );
+        assert_eq!(
+            smol::block_on(staged_wsl_runtime(
+                None,
+                e2e::NODE_RELATIVE,
+                Some(&"0".repeat(64))
+            ))
+            .expect("checking for another digest"),
+            None
+        );
+
+        let (output, _sandbox) = e2e::run_in_sandbox(
+            &format!("{node_directory}/bin/node"),
+            &["--version"],
+            &[],
+            &[node_directory.as_str()],
+            &[],
+            None,
+            None,
+            true,
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.trim() == "v24.11.0",
+            "node --version printed {stdout:?} / {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// (b) An npm package installed by the sandboxed npm answers ACP's
+    /// `initialize` when it is started, itself sandboxed, from that Node.js.
+    #[test]
+    #[ignore]
+    fn e2e_b_the_installed_agent_answers_acp() {
+        if !e2e::enabled() {
+            return;
+        }
+        let node_directory = e2e::node_directory();
+        let install_directory = smol::block_on(install_npm_package_in_wsl(
+            None,
+            &node_directory,
+            e2e::PACKAGE_SPEC,
+            e2e::INSTALL_RELATIVE,
+            vec!["registry.npmjs.org".to_string()],
+            None,
+        ))
+        .expect("installing the package inside the sandbox");
+
+        let package_json = smol::block_on(read_wsl_npm_package_json(
+            None,
+            &install_directory,
+            e2e::PACKAGE,
+        ))
+        .expect("reading the package.json")
+        .expect("the package is installed");
+        assert!(package_json.contains("\"name\""));
+        let bin = e2e::bin_from_package_json(&package_json);
+        let executable = smol::block_on(wsl_npm_package_executable(
+            None,
+            &install_directory,
+            e2e::PACKAGE,
+            &bin,
+        ))
+        .expect("the package's executable");
+
+        let request = br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false}}}}
+"#;
+        let (output, _sandbox) = e2e::run_in_sandbox(
+            &format!("{node_directory}/bin/node"),
+            &[executable.as_str()],
+            &[],
+            &[node_directory.as_str(), install_directory.as_str()],
+            &[
+                ("PATH", &format!("{node_directory}/bin:/usr/bin:/bin")),
+                ("HOME", "/tmp"),
+            ],
+            None,
+            Some(request),
+            true,
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("\"id\":1") && stdout.contains("protocolVersion"),
+            "the agent answered {stdout:?} / {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// (c) A command registered as a sandbox session can be looked at and
+    /// stopped from outside it.
+    #[test]
+    #[ignore]
+    fn e2e_c_a_session_can_be_listed_and_stopped() {
+        if !e2e::enabled() {
+            return;
+        }
+        let session_id = "zed-e2e-session";
+        let (_, sandbox) = e2e::run_in_sandbox(
+            "/bin/sh",
+            &["-c", "sleep 300 & sleep 300"],
+            &[],
+            &[],
+            &[],
+            Some(session_id),
+            None,
+            false,
+        );
+
+        let mut processes = Vec::new();
+        for _ in 0..40 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            processes = smol::block_on(list_wsl_sandbox_processes(None, session_id))
+                .expect("listing the session's processes");
+            if processes.len() >= 2 {
+                break;
+            }
+        }
+        assert!(
+            processes.len() >= 2,
+            "the sandbox should hold the shell and its sleeps, not {processes:?}"
+        );
+        assert!(
+            processes
+                .iter()
+                .any(|process| process.command.contains("sleep")),
+            "{processes:?}"
+        );
+
+        let keys: Vec<_> = processes.iter().map(|process| process.key()).collect();
+        let stopped = smol::block_on(stop_wsl_sandbox_processes(None, session_id, &keys))
+            .expect("stopping the session's processes");
+        assert!(stopped >= 1, "nothing was stopped");
+
+        let mut left = Vec::new();
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            left = smol::block_on(list_wsl_sandbox_processes(None, session_id))
+                .expect("listing the session's processes again");
+            if left.is_empty() {
+                break;
+            }
+        }
+        assert!(left.is_empty(), "these were left running: {left:?}");
+        drop(sandbox);
+    }
+
+    /// (d) An agent's configuration folder is made inside the distro, and a
+    /// link left on the way to it fails the whole call.
+    #[test]
+    #[ignore]
+    fn e2e_d_an_agent_config_folder_refuses_a_link() {
+        if !e2e::enabled() {
+            return;
+        }
+        let config = smol::block_on(ensure_wsl_agent_config_dir(
+            None,
+            e2e::PROJECT_KEY,
+            "config",
+            &["home".to_string()],
+        ))
+        .expect("making the agent's folder");
+        assert!(config.ends_with(&format!(
+            ".zed-jp-enhance-claude/projects/{}/config",
+            e2e::PROJECT_KEY
+        )));
+
+        // Making it again changes nothing.
+        let again = smol::block_on(ensure_wsl_agent_config_dir(
+            None,
+            e2e::PROJECT_KEY,
+            "config",
+            &["home".to_string()],
+        ))
+        .expect("making the agent's folder again");
+        assert_eq!(config, again);
+
+        // A level replaced by a link fails the whole call rather than putting
+        // the agent's sign-in somewhere else.
+        let wsl_exe = wsl_exe_path();
+        let linked = format!("{config}/home");
+        smol::block_on(run_wsl_command(
+            &wsl_exe,
+            None,
+            [
+                "--exec",
+                "sh",
+                "-c",
+                "set -eu; rm -rf \"$1\"; ln -s /tmp \"$1\"",
+                "zed-e2e-link",
+                linked.as_str(),
+            ],
+            "e2e link",
+        ))
+        .expect("putting a link in the way");
+        let refused = smol::block_on(ensure_wsl_agent_config_dir(
+            None,
+            e2e::PROJECT_KEY,
+            "config",
+            &["home".to_string()],
+        ));
+        let error = refused.expect_err("a link on the way must fail the call");
+        assert!(
+            format!("{error:#}").contains("link"),
+            "the reason names the link: {error:#}"
+        );
+    }
+
+    /// ADR-F49 第 2b 段, on a real distro: a worktree on the distribution's own
+    /// ext4 — reached from Windows only as `\\wsl.localhost\<distro>\…` — is a
+    /// write grant like any other. The whole path of one is exercised: the
+    /// approval-time resolution inside WSL (following an ext4 symlink Windows
+    /// cannot), and then a command wrapped with that grant, running with the
+    /// worktree as its cwd, which must be able to write there and must not be
+    /// able to read the account's credentials (decision 11) or write outside the
+    /// worktree — even though the worktree lies inside that same home.
+    ///
+    /// It needs WSL and writes under the distro's home, so it runs only when
+    /// asked for:
+    ///
+    /// ```text
+    /// ZED_E2E_WSL_EXT4=1 cargo test -p sandbox --lib -- --ignored --nocapture ext4
+    /// ```
+    #[test]
+    #[ignore]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an end-to-end driver, not the app: it waits on a real wsl.exe on its own thread"
+    )]
+    fn e2e_an_ext4_worktree_is_a_sandbox_root() {
+        if !std::env::var("ZED_E2E_WSL_EXT4").is_ok_and(|value| value == "1") {
+            return;
+        }
+        let wsl_exe = wsl_exe_path();
+        let distro = std::env::var("ZED_E2E_WSL_DISTRO").ok();
+        let distro_name = registered_wsl_distro_name(distro.as_deref())
+            .expect("the distro the end-to-end test runs in is registered");
+        let home = smol::block_on(query_distro_home(&wsl_exe, distro.as_deref()))
+            .expect("the distro's home");
+        let worktree = format!("{home}/zed-x2-e2e");
+        let link = format!("{home}/zed-x2-e2e-link");
+
+        let ext4_run = |what: &str, script: &str, argument: &str| -> std::process::Output {
+            smol::block_on(run_wsl_command(
+                &wsl_exe,
+                distro.as_deref(),
+                ["--exec", "sh", "-c", script, "zed-x2-e2e", argument],
+                what,
+            ))
+            .unwrap_or_else(|error| panic!("{what}: {error:#}"))
+        };
+
+        // A worktree on ext4 with the two things a checkout has — a `.git` and
+        // a source directory — plus a symlink to it (which only WSL can follow)
+        // and a credential the sandbox must not be able to read. `.ssh` is left
+        // exactly as it was found.
+        let setup = ext4_run(
+            "e2e setup",
+            "set -eu; rm -rf \"$1\" \"$1-link\" \"$HOME/zed-x2-outside\"; \
+             mkdir -p \"$1/src\" \"$1/.git/hooks\"; printf ref > \"$1/.git/config\"; \
+             ln -s \"$1\" \"$1-link\"; \
+             if [ -d \"$HOME/.ssh\" ]; then printf made-ssh=no; else mkdir -p \"$HOME/.ssh\"; \
+             printf made-ssh=yes; fi; printf zed-x2-secret > \"$HOME/.ssh/zed-x2-probe\"",
+            worktree.as_str(),
+        );
+        assert!(setup.status.success(), "the end-to-end setup runs");
+        let made_ssh = String::from_utf8_lossy(&setup.stdout).contains("made-ssh=yes");
+
+        let share = |linux_path: &str| {
+            PathBuf::from(crate::util::wsl_share_path_spelling(
+                &distro_name,
+                linux_path,
+            ))
+        };
+        // The approval-time resolution happens inside the distro: the symlink is
+        // followed to the worktree, and what is stored keeps the share the grant
+        // was named through.
+        let resolved = smol::block_on(resolve_canonical_for_grant(share(&link)))
+            .expect("resolving an ext4 grant");
+        assert_eq!(resolved.canonical, share(&worktree));
+        assert!(
+            !resolved.on_windows_fs,
+            "a worktree on the distro's own filesystem is not on a Windows drive"
+        );
+
+        let mut sandbox = crate::Sandbox::new(crate::SandboxPolicy {
+            fs: crate::SandboxFsPolicy::Restricted {
+                writable_paths: vec![
+                    crate::HostFilesystemLocation::reopen(share(&link), &resolved.canonical)
+                        .expect("the resolved grant"),
+                ],
+                // The `.git` of each worktree, exactly as `acp_thread` names it
+                // for a command the agent asks Zed to run.
+                protected_paths: vec![
+                    crate::HostFilesystemLocation::capture(share(&format!("{worktree}/.git")))
+                        .expect("the worktree's .git"),
+                ],
+                readable_paths: Vec::new(),
+            },
+            network: crate::SandboxNetPolicy::Blocked,
+        })
+        .expect("a sandbox over an ext4 worktree");
+        sandbox.set_wsl_linux_environment();
+        let wrapped = smol::block_on(sandbox.wrap(&crate::CommandAndArgs {
+            program: "/bin/sh".to_string(),
+            args: vec![
+                "-c".to_string(),
+                // Written inside the worktree: its root is carved around the
+                // agent-configuration entries that are not there yet (decision
+                // 8), the same on ext4 as anywhere else, so what proves the
+                // grant is a write *in* the worktree, not one beside `.git`.
+                "pwd > src/pwd.txt; touch src/ok; \
+                 touch newentry 2>/dev/null \
+                 && echo ROOT-WRITE-OK > src/root.txt || echo ROOT-WRITE-DENIED > src/root.txt; \
+                 { cat \"$HOME/.ssh/zed-x2-probe\" && printf ' READ-OK'; } > src/ssh.txt 2>&1 \
+                 || echo READ-DENIED > src/ssh.txt; \
+                 touch \"$HOME/zed-x2-outside\" 2>/dev/null \
+                 && echo WRITE-OK > src/outside.txt || echo WRITE-DENIED > src/outside.txt; \
+                 printf pwned >> .git/config 2>/dev/null \
+                 && echo WRITE-OK > src/git.txt || echo WRITE-DENIED > src/git.txt"
+                    .to_string(),
+                "zed-x2-e2e".to_string(),
+            ],
+            env: HashMap::default(),
+            // The cwd is the worktree, named the only way Windows can name it.
+            cwd: Some(share(&worktree)),
+        }))
+        .expect("wrapping a command over an ext4 worktree");
+        let output = std::process::Command::new(&wrapped.program)
+            .args(&wrapped.args)
+            .envs(&wrapped.env)
+            .output()
+            .expect("running the wrapped command");
+        assert!(
+            output.status.success(),
+            "the sandboxed command ran: {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let read_back = ext4_run(
+            "e2e read-back",
+            "set -eu; cd \"$1/src\"; printf 'ok=%s ' \"$(test -e ok && echo yes || echo no)\"; \
+             printf 'pwd=%s ' \"$(cat pwd.txt)\"; printf 'ssh=%s ' \"$(cat ssh.txt)\"; \
+             printf 'outside=%s ' \"$(cat outside.txt)\"; printf 'git=%s ' \"$(cat git.txt)\"; \
+             printf 'root=%s ' \"$(cat root.txt)\"; \
+             printf 'gitconfig=%s' \"$(cat ../.git/config)\"",
+            worktree.as_str(),
+        );
+        let observed = String::from_utf8_lossy(&read_back.stdout).to_string();
+        eprintln!("the ext4 worktree sandbox observed: {observed}");
+
+        // Clean up before asserting, so a failure still leaves the distro as it
+        // was found.
+        ext4_run(
+            "e2e clean-up",
+            "rm -rf \"$1\" \"$1-link\" \"$HOME/zed-x2-outside\"; rm -f \"$HOME/.ssh/zed-x2-probe\"",
+            worktree.as_str(),
+        );
+        if made_ssh {
+            ext4_run(
+                "e2e clean-up",
+                "rmdir \"$HOME/.ssh\" 2>/dev/null || true",
+                "",
+            );
+        }
+
+        assert!(observed.contains("ok=yes"), "{observed}");
+        assert!(observed.contains(&format!("pwd={worktree} ")), "{observed}");
+        // Decision 11: the account's credentials are covered, even though the
+        // worktree lies inside that same home.
+        assert!(observed.contains("ssh=READ-DENIED"), "{observed}");
+        assert!(!observed.contains("zed-x2-secret"), "{observed}");
+        assert!(observed.contains("outside=WRITE-DENIED"), "{observed}");
+        assert!(observed.contains("git=WRITE-DENIED"), "{observed}");
+        // Decision 8, on ext4 as anywhere else: the worktree root is carved
+        // around the agent-configuration entries that are not there yet, so a
+        // new entry cannot be created beside `.git`.
+        assert!(observed.contains("root=ROOT-WRITE-DENIED"), "{observed}");
+        assert!(observed.contains("gitconfig=ref"), "{observed}");
+    }
+
+    /// Removes what the end-to-end tests staged in the distro.
+    #[test]
+    #[ignore]
+    fn e2e_zz_clean_up() {
+        if !e2e::enabled() {
+            return;
+        }
+        let data_directory = smol::block_on(wsl_agent_runtime_data_directory(None))
+            .expect("the distro's data directory");
+        for relative in [e2e::NODE_RELATIVE, e2e::INSTALL_RELATIVE] {
+            e2e::remove(&format!("{data_directory}/{relative}"));
+        }
+        let home =
+            smol::block_on(query_distro_home(&wsl_exe_path(), None)).expect("the distro's home");
+        e2e::remove(&format!(
+            "{home}/.zed-jp-enhance-claude/projects/{}",
+            e2e::PROJECT_KEY
+        ));
+        e2e::remove(&format!("{home}/{}", WSL_STAGING_HOME_RELATIVE));
     }
 }

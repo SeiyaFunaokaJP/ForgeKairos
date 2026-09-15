@@ -61,6 +61,9 @@ git.workspace = true
 git_hosting_providers.workspace = true
 globset.workspace = true
 gpui.workspace = true
+# ADR-F49 第 2b 段: the editor-wide allowlist the WSL sandbox nests an
+# agent install's network inside.
+egress_policy.workspace = true
 http_client = { workspace = true, features = ["github-download"] }
 image.workspace = true
 indexmap.workspace = true

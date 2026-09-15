@@ -4317,6 +4317,7 @@ async fn test_remote_external_agent_server(
                     .get_command(
                         vec![],
                         HashMap::from_iter([("OTHER_VAR".into(), "other-val".into())]),
+                        project::AgentLaunchTarget::Sandbox { wsl_distro: None },
                         &mut cx.to_async(),
                     )
             })
@@ -4391,7 +4392,12 @@ async fn test_remote_external_agent_sandbox_is_placed_on_the_host(
                 store
                     .get_external_agent(&"foo".into())
                     .unwrap()
-                    .get_command(vec![], HashMap::default(), &mut cx.to_async())
+                    .get_command(
+                        vec![],
+                        HashMap::default(),
+                        project::AgentLaunchTarget::Sandbox { wsl_distro: None },
+                        &mut cx.to_async(),
+                    )
             })
         })
     };

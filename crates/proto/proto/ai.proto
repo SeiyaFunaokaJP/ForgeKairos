@@ -71,8 +71,11 @@ message SandboxProcess {
   uint64 start_time = 2;
   string command = 3;
   // How long it has been running, in seconds, worked out on the host: its
-  // start time is in that kernel's ticks since that host's boot.
-  uint64 running_for = 4;
+  // start time is in that kernel's ticks since that host's boot. Absent where
+  // the host could not work it out at all, which the dialog says rather than
+  // showing the process as one that started this very second. A server from
+  // before this was optional always sets it, so it reads as it always did.
+  optional uint64 running_for = 4;
 }
 
 message ListSandboxProcessesResponse {

@@ -19,11 +19,15 @@ use std::os::fd::{AsFd as _, AsRawFd as _, BorrowedFd, OwnedFd};
 /// that was captured, closing the classic time-of-check-to-time-of-use hole
 /// where a verified path is swapped for a symlink before it is actually used.
 /// On **Windows** it is a plain path string, but constrained by construction to
-/// one of the two shapes a sandboxed WSL command can name: a Windows drive path
-/// (`C:\...`, on NTFS) or a Linux-absolute path (`/...`, inside the WSL distro).
-/// `\\wsl.localhost\...`, other UNC paths, and relative paths are rejected — a
-/// sandboxed project is always local (WSL projects are remote and unsandboxed),
-/// so a grant is either the project's own NTFS files or a WSL-native location.
+/// one of the three shapes a sandboxed WSL command can name: a Windows drive
+/// path (`C:\...`, on NTFS), a Linux-absolute path (`/...`, inside the WSL
+/// distro), or a folder in a distribution's own filesystem named through its
+/// share (`\\wsl.localhost\<distro>\...`, ADR-F49 第 2b 段 — the only Windows
+/// spelling an ext4 worktree has, normalized to that one form so two spellings
+/// of it compare equal). Other UNC paths and relative paths are rejected — a
+/// sandboxed project is always local (a WSL *remote* project is unsandboxed
+/// here), so a grant is either the project's own NTFS files or a WSL-native
+/// location.
 /// On other platforms it is a plain canonical path (see the constructors for the
 /// per-platform rationale).
 ///
@@ -60,9 +64,16 @@ impl CanonicalPathBuf {
         // rejecting here fails closed for all of them at once.
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         require_absolute(path)?;
-        #[cfg(target_os = "windows")]
-        require_windows_grant_shape(path)?;
 
+        // Windows captures no canonical identity of its own here — the real
+        // resolution happens WSL-side — so the checked, normalized grant path
+        // *is* the value.
+        #[cfg(target_os = "windows")]
+        {
+            return Ok(Self {
+                path: require_windows_grant_shape(path)?,
+            });
+        }
         #[cfg(target_os = "macos")]
         {
             // `canonicalize_allowing_missing_leaf` resolves through the existing
@@ -86,7 +97,7 @@ impl CanonicalPathBuf {
                 fd: std::sync::Arc::new(fd),
             })
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         {
             Ok(Self {
                 path: path.to_path_buf(),
@@ -116,9 +127,15 @@ impl CanonicalPathBuf {
         // (macOS).
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         require_absolute(&path)?;
-        #[cfg(target_os = "windows")]
-        require_windows_grant_shape(&path)?;
 
+        // As in `resolve`: on Windows the checked, normalized grant path is all
+        // there is to capture.
+        #[cfg(target_os = "windows")]
+        {
+            return Ok(Self {
+                path: require_windows_grant_shape(&path)?,
+            });
+        }
         #[cfg(target_os = "macos")]
         {
             Ok(Self { path })
@@ -166,7 +183,7 @@ impl CanonicalPathBuf {
                 fd: std::sync::Arc::new(fd),
             })
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         {
             Ok(Self { path })
         }
@@ -271,34 +288,63 @@ fn require_absolute(path: &Path) -> io::Result<()> {
     }
 }
 
-/// Windows: enforce that a stored grant path is one of the two shapes a
-/// sandboxed WSL command can name — a Windows drive path (`C:\...` or `\\?\C:\...`,
-/// on NTFS) or a Linux-absolute path (`/...`, inside the WSL distro). Everything
-/// else (notably `\\wsl.localhost\...` and other UNC paths, and relative paths)
-/// is rejected, so an invalid grant shape can't be represented as a
-/// [`CanonicalPathBuf`]. `Path::is_absolute` isn't used: it would reject a
-/// perfectly valid Linux-absolute grant like `/home/me` on Windows.
+/// Windows: enforce that a stored grant path is one of the shapes a sandboxed
+/// WSL command can name, returning it in the one spelling this type stores and
+/// compares:
+///
+/// * a Windows drive path (`C:\...` or `\\?\C:\...`, on NTFS), kept as written;
+/// * a Linux-absolute path (`/...`, inside the distro the command runs in), kept
+///   as written; or
+/// * (ADR-F49 第 2b 段) a folder in a distribution's own filesystem named
+///   through its share, `\\wsl.localhost\<distro>\<rest>` — the only Windows
+///   spelling a worktree on ext4 has. A location there can be written several
+///   ways (`\\wsl$\`, `/` separators, the `\\?\UNC\` prefix
+///   `std::fs::canonicalize` produces), so it is normalized to the single form
+///   `util::path_mapping::ComparablePath` compares by. That matters because the
+///   plain `PartialEq` and `Path::starts_with` this type's callers use to dedupe
+///   grants and to decide whether one lies inside another would otherwise read
+///   two spellings of one folder as two unrelated places.
+///
+/// Everything else is rejected, so an invalid grant shape can't be represented
+/// as a [`CanonicalPathBuf`]: other UNC paths (no WSL sandbox can reach a
+/// network share), relative paths, a bare distribution share
+/// (`\\wsl.localhost\<distro>`, which would grant that distro's whole root), and
+/// a share path containing `..` (it names a location other than the one shown).
+/// `Path::is_absolute` isn't used: it would reject a perfectly valid
+/// Linux-absolute grant like `/home/me` on Windows.
+///
+/// The distribution name keeps the case it was written in — WSL matches it
+/// case-insensitively, and the callers that compare two distro names do the
+/// same — so a grant still displays the name the user knows.
 #[cfg(target_os = "windows")]
-fn require_windows_grant_shape(path: &Path) -> io::Result<()> {
+fn require_windows_grant_shape(path: &Path) -> io::Result<PathBuf> {
     let text = path.to_string_lossy();
     // Linux-absolute (WSL): exactly one leading '/'.
-    let is_wsl = text.starts_with('/') && !text.starts_with("//");
-    // Windows drive (NTFS): `X:...`, optionally behind the `\\?\` verbatim prefix.
-    let drive = text.strip_prefix(r"\\?\").unwrap_or(&text);
-    let drive = drive.as_bytes();
-    let is_windows_drive = drive.len() >= 2 && drive[0].is_ascii_alphabetic() && drive[1] == b':';
-    if is_wsl || is_windows_drive {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "sandbox grant path {} is neither a Windows drive path (`C:\\...`) \
-                 nor a WSL absolute path (`/...`)",
-                path.display()
-            ),
-        ))
+    if text.starts_with('/') && !text.starts_with("//") {
+        return Ok(path.to_path_buf());
     }
+    // Windows drive (NTFS): `X:...`, optionally behind the `\\?\` verbatim prefix.
+    let drive = text.strip_prefix(r"\\?\").unwrap_or(&text).as_bytes();
+    if drive.len() >= 2 && drive[0].is_ascii_alphabetic() && drive[1] == b':' {
+        return Ok(path.to_path_buf());
+    }
+    if let Some(share) = super::parse_wsl_share_path(&text)
+        && share.linux_path != "/"
+    {
+        return Ok(PathBuf::from(super::wsl_share_path_spelling(
+            &share.distro,
+            &share.linux_path,
+        )));
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+            "sandbox grant path {} is none of a Windows drive path (`C:\\...`), \
+             a WSL absolute path (`/...`) and a folder in a WSL distribution \
+             (`\\\\wsl.localhost\\<distro>\\...`)",
+            path.display()
+        ),
+    ))
 }
 
 impl PartialEq for CanonicalPathBuf {
@@ -488,29 +534,81 @@ mod linux_tests {
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests {
     use super::CanonicalPathBuf;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn constructors_enforce_windows_grant_shape() {
-        // Accepted: Windows drive paths (NTFS) and WSL absolute paths.
+        // Accepted, and kept as written: Windows drive paths (NTFS) and WSL
+        // absolute paths.
         for ok in [
             r"C:\Users\me",
             r"\\?\C:\Users\me",
             "/home/me/proj",
             "/mnt/c/Users/me",
         ] {
-            assert!(
-                CanonicalPathBuf::from_canonical(PathBuf::from(ok)).is_ok(),
-                "{ok} should be accepted"
-            );
+            let canonical = CanonicalPathBuf::from_canonical(PathBuf::from(ok))
+                .unwrap_or_else(|_| panic!("{ok} should be accepted"));
+            assert_eq!(canonical.path(), Path::new(ok));
         }
-        // Rejected: `\\wsl.localhost\...`, other UNC, and relative paths.
+        // Rejected: non-WSL UNC and relative paths.
         for bad in [
-            r"\\wsl.localhost\Ubuntu\home\me",
-            r"\\wsl$\Ubuntu\home\me",
             r"\\server\share\dir",
             r"relative\dir",
             "also/relative",
+            r"\\?\UNC\server\share\dir",
+        ] {
+            match CanonicalPathBuf::from_canonical(PathBuf::from(bad)) {
+                Ok(_) => panic!("{bad} should be rejected"),
+                Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput),
+            }
+        }
+    }
+
+    /// ADR-F49 第 2b 段: a worktree on the distribution's own ext4 reaches the
+    /// sandbox as a `\\wsl.localhost\<distro>\…` path, and every spelling of one
+    /// location has to end up as the same stored path — the dedupe and
+    /// containment checks over grants compare these as plain paths.
+    #[test]
+    fn a_wsl_share_grant_is_accepted_in_one_spelling() {
+        let expected = Path::new(r"\\wsl.localhost\Ubuntu\root\p");
+        for spelling in [
+            r"\\wsl.localhost\Ubuntu\root\p",
+            r"\\wsl$\Ubuntu\root\p",
+            r"\\WSL.LOCALHOST\Ubuntu\root\p",
+            r"\\?\UNC\wsl.localhost\Ubuntu\root\p",
+            r"\\?\UNC\wsl$\Ubuntu\root\p",
+            r"//wsl.localhost/Ubuntu/root/p",
+            "\\\\wsl.localhost\\Ubuntu\\root\\p\\",
+            r"\\wsl.localhost\Ubuntu\root\.\p",
+        ] {
+            let canonical = CanonicalPathBuf::from_canonical(PathBuf::from(spelling))
+                .unwrap_or_else(|_| panic!("{spelling} should be accepted"));
+            assert_eq!(canonical.path(), expected, "from {spelling}");
+        }
+        // The distribution name keeps its case, so the user still sees the name
+        // they know; WSL itself matches it case-insensitively.
+        let canonical =
+            CanonicalPathBuf::from_canonical(PathBuf::from(r"\\wsl.localhost\UBUNTU\root\p"))
+                .expect("a differently-cased distro name is still a grant");
+        assert_eq!(
+            canonical.path(),
+            Path::new(r"\\wsl.localhost\UBUNTU\root\p")
+        );
+    }
+
+    #[test]
+    fn a_wsl_share_grant_without_a_folder_in_it_is_rejected() {
+        for bad in [
+            // A whole distribution, not a folder in one.
+            r"\\wsl.localhost\Ubuntu",
+            r"\\wsl.localhost\Ubuntu\",
+            r"\\wsl$\Ubuntu",
+            r"\\wsl.localhost",
+            // No distribution name at all.
+            r"\\wsl.localhost\\root",
+            // `..` names something other than what was shown.
+            r"\\wsl.localhost\Ubuntu\root\..\etc",
+            r"\\wsl.localhost\Ubuntu\..",
         ] {
             match CanonicalPathBuf::from_canonical(PathBuf::from(bad)) {
                 Ok(_) => panic!("{bad} should be rejected"),

@@ -35,7 +35,7 @@ use gpui::{
     Task, Window,
 };
 use http_client::{
-    AsyncBody, EgressPolicyHandle, HttpClient, RequestHost, Response, egress_denied_hosts,
+    AsyncBody, EgressPolicyHandle, HttpClient, Response, egress_denied_hosts,
     hosts_required_to_download,
 };
 use rsa::{BigUint, Pkcs1v15Sign, RsaPublicKey, traits::PublicKeyParts as _};
@@ -43,7 +43,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use util::ResultExt as _;
 
-use crate::agent_registry_ui::{add_consented_hosts, allowlist_write_error, missing_hosts};
+use crate::agent_registry_ui::{
+    add_consented_hosts, allowlist_write_error, await_allowlist_pickup, missing_hosts,
+};
 
 const RELEASES_URL: &str = "https://downloads.claude.ai/claude-code-releases";
 /// The RSA modulus of "Anthropic Claude Code Release Signing
@@ -78,7 +80,6 @@ const MAX_SIGNATURE_BYTES: u64 = 16 * 1024;
 const MAX_PACKET_BYTES: usize = 16 * 1024;
 const MAX_POINTER_BYTES: u64 = 64;
 const MAX_BINARY_BYTES: u64 = 1024 * 1024 * 1024;
-const ALLOWLIST_PICKUP_TIMEOUT: Duration = Duration::from_secs(10);
 const STALE_DOWNLOAD_AGE: Duration = Duration::from_secs(60 * 60);
 /// How long a download may go without receiving anything before it is given up.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -128,8 +129,6 @@ const SAVE_FAILED: &str =
 const EXTRACT_FAILED: &str = "ダウンロードした Claude Code を展開できませんでした。";
 const STAGING_FAILED: &str = "Claude Code を WSL に配置できませんでした。";
 const STAGED_CHECK_FAILED: &str = "WSL に配置済みの Claude Code を確認できませんでした。";
-const ALLOWLIST_NOT_APPLIED: &str =
-    "許可リストに追加したホストがまだ反映されていません。少し待ってからもう一度お試しください。";
 #[cfg(not(target_os = "windows"))]
 const WINDOWS_ONLY: &str = "サンドボックス用の Claude Code は Windows (WSL) でのみ使えます。";
 
@@ -1861,6 +1860,9 @@ impl InstallerUi for WindowUi {
         async move { Ok(answer.await.is_ok_and(|index| index == 0)) }.boxed_local()
     }
 
+    /// The write and the wait are kept apart here, rather than taken from
+    /// [`add_consented_hosts_and_await_pickup`] whole, so that a write that
+    /// fails is still reported in the words the consent uses for it.
     fn add_allowed_hosts(&mut self, hosts: Vec<String>) -> LocalBoxFuture<'static, Result<()>> {
         let executor = self.cx.background_executor().clone();
         let prepared = self.cx.update(|_, cx| {
@@ -1880,23 +1882,7 @@ impl InstallerUi for WindowUi {
             let (Some(policy), Some(mut changes)) = (policy, changes) else {
                 return Ok(());
             };
-            let mut timeout = executor.timer(ALLOWLIST_PICKUP_TIMEOUT).fuse();
-            loop {
-                if hosts
-                    .iter()
-                    .all(|host| RequestHost::parse(host).is_some_and(|host| policy.allows(&host)))
-                {
-                    return Ok(());
-                }
-                futures::select_biased! {
-                    change = changes.next() => {
-                        if change.is_none() {
-                            bail!(ALLOWLIST_NOT_APPLIED);
-                        }
-                    }
-                    _ = timeout => bail!(ALLOWLIST_NOT_APPLIED),
-                }
-            }
+            await_allowlist_pickup(&hosts, &policy, &mut changes, &executor).await
         }
         .boxed_local()
     }
@@ -2036,7 +2022,9 @@ mod tests {
     use super::*;
     use futures::{channel::oneshot, future};
     use gpui::TestAppContext;
-    use http_client::{AllowlistedHttpClient, EgressPolicy, FakeHttpClient, Request, Response};
+    use http_client::{
+        AllowlistedHttpClient, EgressPolicy, FakeHttpClient, Request, RequestHost, Response,
+    };
     use parking_lot::Mutex;
     use sha1::Sha1;
     use std::{cell::Cell, collections::VecDeque, rc::Rc};

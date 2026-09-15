@@ -13,7 +13,8 @@
 //!
 //! **ここで確かめるのは、綴りの上でワークツリーの中にあることだけ。** ワークツリーの中に置かれた
 //! リンク (サンドボックスはワークツリーに書けるので作れる) の行き先は見ないので、ホストの Zed が
-//! ファイルを読み書きする前に、呼び出し側が `ide_server::resolve_inside_roots` で確かめる。
+//! ファイルを読み書きする前に、1 つのハンドルで確かめる `fs::Fs::verify_read` (読み) と
+//! `fs::Fs::write_verified` (書き) を通す。どちらも包んだ接続では `acp_thread` が既に通している。
 //!
 //! URI は、表示側 (`MentionUri::parse`) がどう読むかで分類する。表示側は先頭の空白や
 //! バッククォート、素のパス、`zed:///agent/file?path=…` もファイルへのメンションとして読むので、
@@ -101,10 +102,16 @@ impl AcpPathTranslator {
         &self.paths
     }
 
+    /// 同じ写像を別のところでも使うための持ち手。制限 IDE セッション (ADR-F49 決定 24) は
+    /// これを受け取り、エージェントとの引数・結果の変換 (決定 23) と同じ実体を共有する。
+    pub fn shared_paths(&self) -> Arc<SandboxPaths> {
+        self.paths.clone()
+    }
+
     /// `fs/read_text_file` の要求のパスをホストのパスに直す。ワークツリーの外は
     /// `resource_not_found`、変換できないパス (`..`・相対パス・URI・Windows で使えない名前) は
-    /// `invalid_params`。リンクの行き先は見ないので、読む前に `ide_server::resolve_inside_roots`
-    /// を通す。
+    /// `invalid_params`。リンクの行き先は見ないので、読む前に `fs::Fs::verify_read`
+    /// (`AcpThread::read_text_file` が包んだ接続で通す) で確かめる。
     pub fn read_text_file_to_host(
         &self,
         mut request: acp::ReadTextFileRequest,
@@ -319,8 +326,10 @@ impl AcpPathTranslator {
             match translated {
                 Ok(server) => kept.push(server),
                 Err(reason) => {
-                    // URL はトークンを含みうるので、ログには名前と理由だけを出す。
-                    log::warn!("acp: left out the MCP server {name}: {reason:?}");
+                    // URL はトークンを含みうるので、ログには名前と理由だけを出す。配線側
+                    // (`note_dropped_mcp_servers`) が戻り値から同じことを warn で出すので、
+                    // ここは重ねない。
+                    log::debug!("acp: left out the MCP server {name}: {reason:?}");
                     dropped.push(DroppedMcpServer { name, reason });
                 }
             }
@@ -517,7 +526,7 @@ impl AcpPathTranslator {
         let translated_uri = translated.to_uri().to_string();
         // `to_uri` は名前の中の `%` をエンコードしないので、`%` を含む名前は受け取る側で別の名前
         // (`%2e%2e` なら上の階層) に読まれうる。受け取る側と同じ読み方で読み直し、同じメンション
-        // になるものだけを渡す。`MentionUri` は UNC のパスを読み直せないので、それもここで落ちる。
+        // になるものだけを渡す。
         let reparsed = MentionUri::parse(&translated_uri, target_style).ok()?;
         (reparsed == translated).then_some(translated_uri)
     }
@@ -609,11 +618,19 @@ impl AcpPathTranslator {
         additional_directories: &mut Vec<PathBuf>,
         mcp_servers: &mut Vec<acp::McpServer>,
     ) -> Result<Vec<DroppedMcpServer>> {
+        // ADR-F07: この文はセッションを始められなかった理由としてそのまま UI に出る
+        // (`AcpConnection::new_session` / `load_session` / `resume_session`) ので日本語。
+        // エージェントに返す ACP のエラーの `reason` は英語のまま。
         *cwd = self
             .paths
             .to_client(cwd)
             .map(PathBuf::from)
-            .with_context(|| format!("the sandbox cannot see the folder {}", cwd.display()))?;
+            .with_context(|| {
+                format!(
+                    "フォルダー {} をサンドボックスから見せられません",
+                    cwd.display()
+                )
+            })?;
         *additional_directories = additional_directories
             .iter()
             .filter_map(|folder| self.sent_path_to_client(folder))
@@ -1098,8 +1115,10 @@ mod tests {
             ("file:///mnt/i/proj/%252e%252e/secret", None),
             ("file:///mnt/i/proj/a%2520b.rs", None),
             ("file:///mnt/i/proj/a.rs::$DATA", None),
-            // `MentionUri` は UNC のパスを読み直せない。
-            ("file:///root/p/a.rs", None),
+            (
+                "file:///root/p/a.rs",
+                Some("file://wsl.localhost/Ubuntu/root/p/a.rs"),
+            ),
         ] {
             assert_eq!(
                 link_to_host(&translator, uri).as_deref(),
@@ -1139,7 +1158,10 @@ mod tests {
             to_host(blob("file:///mnt/i/proj/a.png")),
             Some(message(blob("file:///I:/proj/a.png")))
         );
-        assert_eq!(to_host(blob("file:///root/p/a.png")), None);
+        assert_eq!(
+            to_host(blob("file:///root/p/a.png")),
+            Some(message(blob("file://wsl.localhost/Ubuntu/root/p/a.png")))
+        );
         assert_eq!(to_host(link("file:///mnt/c/a.rs")), None);
         assert_eq!(
             to_host(image(Some("file:///mnt/c/a.png"))),
@@ -1356,12 +1378,12 @@ mod tests {
             link(&skill(r"I:\proj\.zed\skills\s\SKILL.md")),
             embedded(&conflict(r"I:\proj\src\main.rs")),
             link("https://docs.rs/x"),
+            link("file:////wsl.localhost/Ubuntu/root/p/a.rs"),
             // ここから下は、ワークツリーの外・パスを運ぶ Zed の URI・読み直せない URI。
             link("file:///C:/Users/me/.ssh/config"),
             link(" file:///C:/Users/me/.ssh/config"),
             link(r"C:\Users\me\.ssh\config"),
             link(&skill(r"C:\Users\me\.zed\skills\s\SKILL.md")),
-            link("file:////wsl.localhost/Ubuntu/root/p/a.rs"),
             link("zed:///agent/thread/1?name=x"),
             // ユーザーが添付したものは、パスだけを落として本文を送る。
             embedded("file:///C:/Users/me/notes.md"),
@@ -1382,6 +1404,7 @@ mod tests {
                 link(&skill("/mnt/i/proj/.zed/skills/s/SKILL.md")),
                 embedded(&conflict("/mnt/i/proj/src/main.rs")),
                 link("https://docs.rs/x"),
+                link("file:///root/p/a.rs"),
                 text("fn main() {}"),
                 text("fn main() {}"),
                 text("fn main() {}"),

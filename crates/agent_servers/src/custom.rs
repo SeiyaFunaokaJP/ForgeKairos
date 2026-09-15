@@ -8,7 +8,7 @@ use gpui::{App, AppContext as _, Entity, Task};
 use language_model::{ApiKey, EnvVar};
 use project::{
     Project,
-    agent_server_store::{AgentId, AllAgentServersSettings},
+    agent_server_store::{AgentId, AgentLaunchTarget, AllAgentServersSettings},
 };
 use settings::{AgentConfigOptionValue, SettingsStore, update_settings_file};
 use std::{rc::Rc, sync::Arc};
@@ -247,6 +247,20 @@ impl AgentServer for CustomAgentServer {
         }
         let store = delegate.store.downgrade();
         let run_outside_sandbox = delegate.run_outside_sandbox;
+        // ADR-F49 第 2b 段: on Windows the sandbox is the WSL distro of the
+        // project's folders, so the command is resolved for it.
+        let launch_target = if run_outside_sandbox {
+            AgentLaunchTarget::Host
+        } else {
+            let roots = project::agent_sandbox::project_key_roots(
+                project.read(cx).worktree_store().read(cx),
+                cx,
+            );
+            match project::agent_sandbox::wsl_distro_for_roots(&roots) {
+                Ok(wsl_distro) => AgentLaunchTarget::Sandbox { wsl_distro },
+                Err(error) => return Task::ready(Err(error)),
+            }
+        };
         cx.spawn(async move |cx| {
             if is_registry_agent && agent_id.as_ref() == GEMINI_ID {
                 if let Some(api_key) = cx.update(api_key_for_gemini_cli).await.ok() {
@@ -264,7 +278,12 @@ impl AgentServer for CustomAgentServer {
                     if let Some(loading_status_tx) = delegate.loading_status {
                         agent.set_loading_status_tx(loading_status_tx);
                     }
-                    anyhow::Ok(agent.get_command(vec![], extra_env, &mut cx.to_async()))
+                    anyhow::Ok(agent.get_command(
+                        vec![],
+                        extra_env,
+                        launch_target,
+                        &mut cx.to_async(),
+                    ))
                 })??
                 .await?;
             let connection = crate::acp::connect(

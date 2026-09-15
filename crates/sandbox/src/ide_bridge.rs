@@ -715,6 +715,70 @@ async fn write_to_bridge<W: AsyncWrite + Unpin>(
 // The bridge process inside WSL (`--ide-bridge`)
 // ===========================================================================
 
+/// Opens the lines the bridge writes on stderr to say how its setup went:
+/// `zed-ide-bridge: ready`, or `zed-ide-bridge: <code>: <detail>` before it
+/// exits. Read by whoever started it (`windows_wsl::start_ide_bridge`), which
+/// runs on Windows while the bridge runs in the distro, so both sides name it
+/// here rather than each spelling it out. Neither side exists on macOS, where
+/// this module is compiled for its frame protocol alone.
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+pub(crate) const BRIDGE_STATUS_MARKER: &str = "zed-ide-bridge";
+
+/// What the bridge reports when another bridge — this Zed's or another's —
+/// already holds the exclusive directory it was given.
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+pub(crate) const SESSION_RUNNING_CODE: &str = "session-running";
+
+/// A line of the bridge's stderr that says how its setup went, or `None` for
+/// any other line (its own logging). Read on the side that started the bridge,
+/// which is Windows.
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum BridgeStatus<'a> {
+    Ready,
+    Failed { code: &'a str },
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn parse_bridge_status(line: &str) -> Option<BridgeStatus<'_>> {
+    let rest = line
+        .trim_end()
+        .strip_prefix(BRIDGE_STATUS_MARKER)?
+        .strip_prefix(": ")?;
+    if rest == "ready" {
+        return Some(BridgeStatus::Ready);
+    }
+    let (code, _detail) = rest.split_once(':')?;
+    let code = code.trim();
+    (!code.is_empty() && !code.contains(char::is_whitespace))
+        .then_some(BridgeStatus::Failed { code })
+}
+
+/// The Japanese reason for a bridge setup failure `code`.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn bridge_failure_message(code: &str) -> String {
+    let reason = match code {
+        "bad-args" => "IDE 連携の中継の起動引数が不正です (内部エラー)。",
+        "signals-failed" => "IDE 連携の中継のシグナル処理を設定できませんでした。",
+        "home-unknown" => {
+            "WSL のホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+        }
+        "rendezvous-failed" => {
+            "IDE 連携の受け渡し用のソケットを作成できませんでした \
+             (WSL の ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+        }
+        "lock-preamble-failed" => "IDE 連携の中継に接続情報を渡せませんでした。",
+        "lock-file-failed" => {
+            "IDE 連携のロックファイルを作成できませんでした (WSL の ~/.zed-jp-enhance-claude の\
+             所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+        }
+        other => {
+            return format!("IDE 連携の中継を起動できませんでした (不明な理由: {other})。");
+        }
+    };
+    reason.to_string()
+}
+
 #[cfg(target_os = "linux")]
 pub(crate) use linux::run_ide_bridge;
 
@@ -732,9 +796,10 @@ mod linux {
     use std::path::{Component, Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, MutexGuard};
+    use std::time::Duration;
 
     /// Opens the bridge's lines on stderr: `ready`, or a setup failure.
-    const BRIDGE_MARKER: &str = "zed-ide-bridge";
+    const BRIDGE_MARKER: &str = super::BRIDGE_STATUS_MARKER;
     const SETUP_FAILED_EXIT_CODE: i32 = 126;
     /// Longest file name accepted for the socket and the lock file: the
     /// socket is bound through `/proc/self/fd/<n>/<name>`, which has to fit
@@ -749,6 +814,11 @@ mod linux {
     /// that connection, never the shared stdin pipe. Counted in bytes, not
     /// frames, so a burst of small frames is no reason to close anything.
     const WRITER_BYTES_PER_CONNECTION: usize = 1024 * 1024;
+    /// How long one connection's writer waits for the sandboxed program to
+    /// take what Zed sent before that connection is given up on. Set on every
+    /// accepted socket, so no program can hold a writer thread — and one of
+    /// [`MAX_IDE_CONNECTIONS`] — by opening a connection and never reading it.
+    const WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 
     /// `--ide-bridge --rendezvous <socket> [--lock-file <path>]
     /// [--exclusive-directory <directory>]`.
@@ -790,7 +860,7 @@ mod linux {
             Some(path) => match claim_exclusive_directory(path, &base) {
                 Ok(Claim::Held(directory)) => Some(directory),
                 Ok(Claim::Taken) => fail_setup(
-                    "session-running",
+                    super::SESSION_RUNNING_CODE,
                     &anyhow::anyhow!("another IDE bridge serves {}", path.display()),
                 ),
                 Err(error) => fail_setup("lock-file-failed", &error),
@@ -1135,6 +1205,22 @@ mod linux {
                     continue;
                 }
             };
+            // A program that opens a connection and then never reads it would
+            // otherwise leave this connection's writer blocked in `write_all`
+            // for good, holding a thread and one of `MAX_IDE_CONNECTIONS` —
+            // and, since Zed's Close is now ordered behind what is queued,
+            // nothing would take it away either. Sixty seconds to write to a
+            // socket on the same machine is a pathological state, not a slow
+            // one; reaching it ends this connection alone
+            // ([`forward_to_connection`]), and the bridge goes on serving the
+            // others.
+            if let Err(error) = stream.set_write_timeout(Some(WRITE_TIMEOUT)) {
+                log::warn!("[ide-bridge] could not bound a connection's writes: {error}");
+                if let Err(error) = stream.shutdown(Shutdown::Both) {
+                    log::debug!("[ide-bridge] ending an unbounded connection: {error}");
+                }
+                continue;
+            }
             let stream = Arc::new(stream);
             // Unbounded as a channel, bounded in bytes by `forward_from_zed`.
             let (writer, payloads) = std::sync::mpsc::channel::<Vec<u8>>();
@@ -1211,8 +1297,10 @@ mod linux {
     }
 
     /// Drain Zed's Data frames for one connection onto its socket. Ends when
-    /// the queue's sender is dropped (the connection was closed) or a write
-    /// fails; either way the connection is closed.
+    /// the queue's sender is dropped (the connection was closed), when a write
+    /// fails, or when one takes longer than [`WRITE_TIMEOUT`] because the
+    /// program stopped reading; in every case the connection is closed and the
+    /// others go on.
     fn forward_to_connection(
         connection_id: u32,
         stream: &UnixStream,
@@ -1226,9 +1314,21 @@ mod linux {
             let written = writer.write_all(&payload);
             queued_bytes.fetch_sub(payload.len(), Ordering::SeqCst);
             if let Err(error) = written {
+                // `WouldBlock` here is the write timeout: the program has not
+                // taken what Zed sent for a minute. Nothing can be resumed
+                // from a half-written frame anyway, so the connection ends.
                 log::debug!("[ide-bridge] connection {connection_id} stopped taking data: {error}");
                 break;
             }
+        }
+        // Everything Zed sent for this connection is on the socket now, so the
+        // half-close is what tells the other end there is no more — and it is
+        // ordered after the bytes, which a `shutdown` from the frame reader
+        // would not be (see the `Close` arm of `forward_from_zed`). A client
+        // that reads until the end of its answer, as an HTTP one does, needs
+        // exactly that.
+        if let Err(error) = stream.shutdown(Shutdown::Write) {
+            log::debug!("[ide-bridge] half-closing connection {connection_id}: {error}");
         }
         close_connection(connection_id, connections, output);
     }
@@ -1342,9 +1442,19 @@ mod linux {
                         }
                     }
                     BridgeFrameKind::Close => {
+                        // Taking it out of the table drops its writer queue's
+                        // sender, so the writer thread writes what is still
+                        // queued and half-closes the socket only then (see
+                        // [`forward_to_connection`]). Closing the socket here
+                        // instead would throw those bytes away — and for a
+                        // client that closes its connection after every answer
+                        // (an MCP server over streamable HTTP, ADR-F49 決定 24)
+                        // that is the very answer it is waiting for. Reading is
+                        // shut down at once all the same, so a peer that never
+                        // reads cannot keep the connection past Zed's Close.
                         let removed = lock_connections(connections).remove(&frame.connection_id);
                         if let Some(connection) = removed
-                            && let Err(error) = connection.stream.shutdown(Shutdown::Both)
+                            && let Err(error) = connection.stream.shutdown(Shutdown::Read)
                         {
                             log::debug!(
                                 "[ide-bridge] ending connection {}: {error}",
@@ -1962,6 +2072,119 @@ mod linux {
                 .expect("clean stop");
         }
 
+        /// ADR-F49 決定 24: an answer Zed sends and then closes — which is
+        /// every answer of an MCP server over streamable HTTP, since it closes
+        /// the connection with it — reaches the program whole, and its end
+        /// arrives as a half-close instead of as bytes thrown away. The Close
+        /// must not overtake what the connection's writer still has queued.
+        #[test]
+        fn the_answer_before_a_close_still_reaches_the_program() {
+            let root = tempfile::tempdir().expect("tempdir");
+            let socket = root.path().join("bridge.sock");
+            let (mut zed_input, mut zed_output, bridge) = start_bridge(&socket);
+            let mut client = UnixStream::connect(&socket).expect("connect");
+            assert_eq!(zed_output.next(), BridgeFrame::open(1));
+
+            // More than the socket takes at once, so the writer is still
+            // draining when the Close arrives, and well inside its budget.
+            let mut answer = Vec::new();
+            for _ in 0..8 {
+                let payload = vec![b'z'; MAX_BRIDGE_FRAME_PAYLOAD];
+                answer.extend_from_slice(&payload);
+                send(&mut zed_input, &BridgeFrame::data(1, payload));
+            }
+            send(&mut zed_input, &BridgeFrame::close(1));
+
+            client
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .expect("set a read timeout");
+            let mut received = Vec::new();
+            client
+                .read_to_end(&mut received)
+                .expect("read the whole answer");
+            assert!(
+                received == answer,
+                "all {} bytes arrive before the end of the connection, not {}",
+                answer.len(),
+                received.len()
+            );
+
+            drop(client);
+            drop(zed_input);
+            bridge
+                .join()
+                .expect("the bridge thread")
+                .expect("clean stop");
+        }
+
+        /// ADR-F49: a program that opens a connection and then never reads it
+        /// must not keep its writer thread — and one of the connection slots —
+        /// for good. [`WRITE_TIMEOUT`] on the socket is the way out; only that
+        /// connection ends, and Zed is told it did.
+        ///
+        /// Driven straight at [`forward_to_connection`] with a short timeout,
+        /// so the test does not wait the real minute out.
+        #[test]
+        fn a_connection_that_is_never_read_lets_its_writer_go() {
+            let (_peer, bridge_end) = UnixStream::pair().expect("a pair");
+            bridge_end
+                .set_write_timeout(Some(Duration::from_millis(200)))
+                .expect("set a write timeout");
+            let (zed_output, frames_to_zed) = UnixStream::pair().expect("an output pair");
+            let output: SharedOutput = Arc::new(Mutex::new(Box::new(frames_to_zed)));
+            let connections: Connections = Default::default();
+            let (writer, payloads) = std::sync::mpsc::channel::<Vec<u8>>();
+            let stream = Arc::new(bridge_end);
+            let queued_bytes = Arc::new(AtomicUsize::new(0));
+            lock_connections(&connections).insert(
+                7,
+                Connection {
+                    stream: stream.clone(),
+                    writer,
+                    queued_bytes: queued_bytes.clone(),
+                },
+            );
+            // `_peer` is never read, and this is far more than the socket
+            // takes, so the writer is still blocked when the timeout fires.
+            for _ in 0..8 {
+                let payload = vec![b'z'; MAX_BRIDGE_FRAME_PAYLOAD];
+                queued_bytes.fetch_add(payload.len(), Ordering::SeqCst);
+                lock_connections(&connections)
+                    .get(&7)
+                    .expect("the connection")
+                    .writer
+                    .send(payload)
+                    .expect("hand it to the writer");
+            }
+
+            let (done, finished) = std::sync::mpsc::channel::<()>();
+            std::thread::spawn({
+                let connections = connections.clone();
+                let output = output.clone();
+                move || {
+                    forward_to_connection(
+                        7,
+                        &stream,
+                        payloads,
+                        &queued_bytes,
+                        &connections,
+                        &output,
+                    );
+                    done.send(()).ok();
+                }
+            });
+            finished
+                .recv_timeout(Duration::from_secs(10))
+                .expect("the writer gives up instead of blocking for good");
+
+            let mut zed = FrameReader::new(zed_output);
+            assert_eq!(zed.next(), BridgeFrame::close(7));
+            assert!(
+                lock_connections(&connections).is_empty(),
+                "and the connection's slot is free again"
+            );
+        }
+
         #[test]
         fn a_stalled_connection_is_closed_without_blocking_the_others() {
             let root = tempfile::tempdir().expect("tempdir");
@@ -2332,6 +2555,52 @@ mod tests {
     use super::*;
     use futures::executor::LocalPool;
     use futures::task::SpawnExt as _;
+
+    /// The setup lines the bridge prints (in the distro) are read back by
+    /// whoever started it (on Windows), and every failure code has a reason of
+    /// its own.
+    #[test]
+    fn the_bridge_reports_readiness_and_setup_failures() {
+        assert_eq!(
+            parse_bridge_status("zed-ide-bridge: ready\n"),
+            Some(BridgeStatus::Ready)
+        );
+        assert_eq!(
+            parse_bridge_status(
+                "zed-ide-bridge: lock-file-failed: creating 45123.lock: File exists"
+            ),
+            Some(BridgeStatus::Failed {
+                code: "lock-file-failed"
+            })
+        );
+        assert_eq!(
+            parse_bridge_status("[ide-bridge] refusing a connection"),
+            None
+        );
+        assert_eq!(parse_bridge_status("zed-ide-bridge: ready soon"), None);
+        for code in [
+            "bad-args",
+            "signals-failed",
+            "home-unknown",
+            "rendezvous-failed",
+            "lock-preamble-failed",
+            "lock-file-failed",
+        ] {
+            let message = bridge_failure_message(code);
+            assert!(
+                !message.contains("不明な理由") && !message.contains(code),
+                "{code}: {message}"
+            );
+        }
+        assert!(bridge_failure_message("new-code").contains("new-code"));
+        // The one the Windows side turns into "the session already runs".
+        assert_eq!(
+            parse_bridge_status("zed-ide-bridge: session-running: another IDE bridge serves /x"),
+            Some(BridgeStatus::Failed {
+                code: SESSION_RUNNING_CODE
+            })
+        );
+    }
 
     #[test]
     fn frames_round_trip() {

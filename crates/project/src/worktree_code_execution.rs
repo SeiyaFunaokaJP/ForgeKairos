@@ -264,8 +264,11 @@ pub struct LeftoverSandboxProcess {
     /// Its command line, as the trusted side outside the sandbox read it.
     /// Chosen by the process itself, so the dialog escapes it again.
     pub command: SharedString,
-    /// How long it had been running when the report was taken.
-    pub running_for: Duration,
+    /// How long it had been running when the report was taken, or `None`
+    /// where the host could not work that out — which the dialog says, rather
+    /// than showing a process that started a moment before the answer ended
+    /// and one whose age is unknown the same way.
+    pub running_for: Option<Duration>,
 }
 
 /// What one agent left running, as the resume dialog lists it.

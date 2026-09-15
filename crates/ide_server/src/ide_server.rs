@@ -22,6 +22,8 @@
 //!   `.mcp.json` 断片を貼れば HTTP からは今までどおり使える
 //! - サンドボックス (WSL) の中で動く CLI には、TCP もロックファイルも使わない別の口を
 //!   出す ([`start_sandbox_session`]、ADR-F49)
+//! - サンドボックスの中で動く外部の ACP エージェントには、同じ口を `getDiagnostics` だけに
+//!   絞って出す ([`start_restricted_sandbox_session`]、ADR-F49 決定 24)
 
 mod diff_view;
 mod path_mapping;
@@ -57,13 +59,14 @@ use workspace::Workspace;
 pub use diff_view::{IdeServerDiff, IdeServerDiffOutcome};
 pub use path_mapping::{
     MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile, has_link_below_root, real_roots,
-    resolve_inside_roots,
 };
 pub use protocol::{LockFileContents, lock_file_directory, lock_file_path};
 pub use sandbox_client::{
-    SandboxIdeSessionHandle, SandboxSessionInfo, sandbox_lock_file_contents, start_sandbox_session,
+    SandboxIdeSessionHandle, SandboxSessionInfo, sandbox_lock_file_contents,
+    start_restricted_sandbox_session, start_sandbox_session,
 };
 pub use status_item::IdeServerStatusItem;
+pub use tools::RESTRICTED_TOOL_NAMES;
 pub(crate) use tools::{SelectionSnapshot, ToolHost};
 pub use util::path_mapping::{IdentityPathMapper, PathMapper, WslPathMapper};
 
@@ -81,6 +84,15 @@ const IDE_NAME: &str = "Zed";
 /// エージェントから見えるツール名は `mcp__<name>__<tool>` になるので、CLI が内蔵する
 /// `ide` とも、ユーザーが設定した MCP サーバーとも被らない名前にしてある。
 pub const MCP_SERVER_NAME: &str = "zed";
+
+/// サンドボックスの中の ACP エージェントに制限セッション (ADR-F49 決定 24) を渡すときの
+/// サーバー名。ホストの [`MCP_SERVER_NAME`] とは違って `ide` にしてある。
+///
+/// Claude Code CLI は `mcp__ide__` で始まるツールのうち `getDiagnostics` と `executeCode`
+/// だけをモデルに見せ、残りの `mcp__ide__*` は CLI が内部から呼ぶものとして隠す
+/// (2.1.271 で確認)。名前を `ide` にしておけば、制限セッションの唯一のツールは
+/// `mcp__ide__getDiagnostics` として、CLI 本来の IDE 連携とまったく同じ名前でモデルに届く。
+pub const RESTRICTED_MCP_SERVER_NAME: &str = "ide";
 
 /// 古いロックファイルの生存確認に使う接続待ち時間。loopback なので短くてよい。
 const STALE_LOCK_PROBE_TIMEOUT: Duration = Duration::from_millis(300);
@@ -242,6 +254,16 @@ impl McpEndpoint {
 /// このプロジェクトの IDE サーバーに繋ぐための MCP エンドポイント。
 pub fn mcp_endpoint(project: &Entity<Project>, cx: &App) -> Option<McpEndpoint> {
     server_for_project(project, cx)?.read(cx).mcp_endpoint()
+}
+
+/// このプロジェクトを開いているワークスペース。
+///
+/// サンドボックスのセッション ([`start_sandbox_session`] /
+/// [`start_restricted_sandbox_session`]) を始める側は、プロジェクトしか持っていないところ
+/// (ACP の接続) から呼ばれる。[`IdeServer`] は `ide_server.enabled` と無関係にワークスペース
+/// ごとに作られるので、その逆引きをそのまま使える。
+pub fn workspace_for_project(project: &Entity<Project>, cx: &App) -> Option<WeakEntity<Workspace>> {
+    Some(server_for_project(project, cx)?.read(cx).workspace.clone())
 }
 
 struct RunningServer {
@@ -717,11 +739,11 @@ pub(crate) async fn run_connection<S, H>(
     let (incoming_tx, mut incoming_rx) = mpsc::channel::<String>(0);
     let (outbox, outgoing) = transport::outbox();
     let (kind_tx, kind_rx) = oneshot::channel();
-    let (session_permits, undelivered_limit, max_message_bytes) = this.read_with(&cx, |this, _| {
+    let (session_permits, undelivered_limit, message_limits) = this.read_with(&cx, |this, _| {
         (
             this.request_permits(),
             this.max_undelivered_responses(),
-            this.max_message_bytes(),
+            this.message_limits(),
         )
     });
     let handshake_deadline = cx.background_executor().timer(transport::HANDSHAKE_TIMEOUT);
@@ -731,7 +753,7 @@ pub(crate) async fn run_connection<S, H>(
         if let Err(error) = transport::serve_connection(
             stream,
             auth_token,
-            max_message_bytes,
+            message_limits,
             incoming_tx,
             outgoing,
             kind_tx,

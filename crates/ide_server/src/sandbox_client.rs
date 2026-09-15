@@ -15,6 +15,9 @@
 //! - サンドボックスの中のプロセスはロックファイルからトークンを読めるので、認証を通った
 //!   相手も信用しない。同時に処理する要求・届け終えていない応答・開いておける差分タブ・
 //!   開いている接続の数と、1 メッセージの大きさに上限を置く
+//!
+//! 外部の ACP エージェント (Claude Code CLI 以外) 用には、同じ口を `getDiagnostics` だけに
+//! 絞った**制限セッション**を出す ([`start_restricted_sandbox_session`]、ADR-F49 決定 24)。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -37,7 +40,7 @@ use util::path_mapping::{self, PathMapper, SandboxPaths};
 
 use crate::protocol::LockFileContents;
 use crate::tools::{self, OpenDiffs, SelectionSnapshot, ToolHost, ToolScope};
-use crate::transport::Outbox;
+use crate::transport::{MessageLimits, Outbox};
 use crate::{IDE_NAME, IdeServerRegistry, OpenTransport};
 
 /// サンドボックスのロックファイルに書く pid。理由は [`sandbox_lock_file_contents`]。
@@ -52,9 +55,19 @@ const MAX_OPEN_DIFFS: usize = 4;
 const _: () =
     assert!(MAX_IN_FLIGHT_REQUESTS > MAX_OPEN_DIFFS && MAX_UNDELIVERED_RESPONSES > MAX_OPEN_DIFFS);
 /// 同時に開いておけるトランスポート。差分の決定を待っているだけの接続は数えない。
-const MAX_CONNECTIONS: usize = 4;
+pub(crate) const MAX_CONNECTIONS: usize = 4;
+/// 制限セッションで同時に開いておけるトランスポート (ADR-F49 決定 24)。制限セッションが話す
+/// のは streamable HTTP で、こちらは 1 要求ごとに 1 接続を使い捨てるので、WebSocket を 1 本
+/// 張り続ける CLI より多めに要る。ブリッジが運べる本数 (`sandbox` 側の上限 64) の内側。
+pub(crate) const MAX_RESTRICTED_CONNECTIONS: usize = 16;
+const _: () = assert!(MAX_RESTRICTED_CONNECTIONS > MAX_CONNECTIONS);
 /// 1 メッセージの上限。旧内容の上限 (4 MiB) ほどの提案を、JSON のエスケープで膨らんでも運べる大きさ。
 const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
+/// 制限セッションが**受け取る** 1 メッセージの上限 (ADR-F49 決定 24)。上の 16 MiB は
+/// `openDiff` が運んでくる新しい本文のための値で、制限セッションが受け取るのは
+/// `getDiagnostics` の引数 (URI 1 本) だけ。同時接続を 16 まで許すぶん、抱えうる受信の
+/// 総量をここで抑える。送る側は据え置き (URI 無しの `getDiagnostics` はファイル 100 件を返す)。
+pub(crate) const MAX_RESTRICTED_INCOMING_MESSAGE_BYTES: usize = 1024 * 1024;
 
 pub struct SandboxSessionInfo {
     /// ロックファイルの `authToken`。CLI はこれを `X-Claude-Code-Ide-Authorization` で出す。
@@ -66,6 +79,52 @@ pub struct SandboxSessionInfo {
 #[must_use = "dropping the handle ends the sandbox IDE session"]
 pub struct SandboxIdeSessionHandle {
     _task: Task<()>,
+}
+
+/// サンドボックスのセッションが誰のためのものか。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SessionKind {
+    /// サンドボックスの中の Claude Code CLI (ADR-F49 決定 3・4)。CLI が呼ぶ 4 本のツールを
+    /// 出し、選択範囲の通知も送り、ユーザーからは「接続中の Claude Code」として見える。
+    ClaudeCodeCli,
+    /// サンドボックスの中の外部 ACP エージェント (ADR-F49 決定 24)。`getDiagnostics` だけを
+    /// 出す。差分タブも通知も無いので、ユーザーの目に触れる口 (ステータスバー・右クリックの
+    /// 送信先) には出さない。
+    Restricted,
+}
+
+impl SessionKind {
+    fn tool_scope(self, paths: Arc<SandboxPaths>) -> ToolScope {
+        match self {
+            SessionKind::ClaudeCodeCli => ToolScope::Sandboxed(paths),
+            SessionKind::Restricted => ToolScope::SandboxedReadOnly(paths),
+        }
+    }
+
+    fn max_connections(self) -> usize {
+        match self {
+            SessionKind::ClaudeCodeCli => MAX_CONNECTIONS,
+            SessionKind::Restricted => MAX_RESTRICTED_CONNECTIONS,
+        }
+    }
+
+    fn message_limits(self) -> MessageLimits {
+        match self {
+            SessionKind::ClaudeCodeCli => MessageLimits::same(MAX_MESSAGE_BYTES),
+            SessionKind::Restricted => MessageLimits {
+                incoming: MAX_RESTRICTED_INCOMING_MESSAGE_BYTES,
+                outgoing: MAX_MESSAGE_BYTES,
+            },
+        }
+    }
+
+    /// ユーザーに見せる口 (ステータスバーの「接続中」・右クリックの送信先) の相手になるか。
+    fn is_visible_to_the_user(self) -> bool {
+        match self {
+            SessionKind::ClaudeCodeCli => true,
+            SessionKind::Restricted => false,
+        }
+    }
 }
 
 /// サンドボックスの中の CLI 用に IDE セッションを始める。
@@ -86,10 +145,57 @@ where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     C: Stream<Item = S> + Send + Unpin + 'static,
 {
+    start_session(
+        workspace,
+        connections,
+        Arc::new(SandboxPaths::new(mapper, worktree_roots)),
+        SessionKind::ClaudeCodeCli,
+        cx,
+    )
+}
+
+/// サンドボックスの中の外部 ACP エージェント用に、`getDiagnostics` だけの制限セッションを
+/// 始める (ADR-F49 決定 24)。
+///
+/// 受け入れの条件 (ローカルで共有していないプロジェクト・`paths` のルートがすべてその
+/// ワークスペースのワークツリー)・認証・メッセージの上限は [`start_sandbox_session`] と
+/// 同じで、違うのは次の 3 点。
+///
+/// - 出すツールは [`crate::tools::RESTRICTED_TOOL_NAMES`] だけで、差分タブは開かない
+/// - ステータスバーの「接続中」表示にも、右クリックの「選択範囲を送る」の宛先にもしない。
+///   ユーザーに見えている Claude Code の導線と混ざらないようにするため
+/// - `connections` は streamable HTTP (1 要求 = 1 接続) なので、同時接続の上限が多い
+///
+/// `paths` を外から受けるのは、エージェントに渡す引数と結果のパスを変換している
+/// `SandboxPaths` (ADR-F49 決定 23) と同じ実体を共有するため。
+pub fn start_restricted_sandbox_session<S, C>(
+    workspace: WeakEntity<Workspace>,
+    connections: C,
+    paths: Arc<SandboxPaths>,
+    cx: &mut App,
+) -> (SandboxIdeSessionHandle, SandboxSessionInfo)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    C: Stream<Item = S> + Send + Unpin + 'static,
+{
+    start_session(workspace, connections, paths, SessionKind::Restricted, cx)
+}
+
+fn start_session<S, C>(
+    workspace: WeakEntity<Workspace>,
+    connections: C,
+    paths: Arc<SandboxPaths>,
+    kind: SessionKind,
+    cx: &mut App,
+) -> (SandboxIdeSessionHandle, SandboxSessionInfo)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    C: Stream<Item = S> + Send + Unpin + 'static,
+{
     let auth_token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
-    let paths = Arc::new(SandboxPaths::new(mapper, worktree_roots));
-    let session = cx.new(|cx| SandboxIdeSession::new(paths, cx));
-    if cx.has_global::<IdeServerRegistry>() {
+    let session = cx.new(|cx| SandboxIdeSession::new(paths, kind, cx));
+    // レジストリに載せるのはユーザーに見せるためなので、制限セッションは載せない。
+    if kind.is_visible_to_the_user() && cx.has_global::<IdeServerRegistry>() {
         let weak_session = session.downgrade();
         cx.update_global::<IdeServerRegistry, ()>(|registry, _| {
             registry
@@ -100,7 +206,17 @@ where
     }
     let task = cx.spawn({
         let auth_token = auth_token.clone();
-        async move |cx| run_session(session, workspace, connections, auth_token, cx).await
+        async move |cx| {
+            run_session(
+                session,
+                workspace,
+                connections,
+                auth_token,
+                kind.max_connections(),
+                cx,
+            )
+            .await
+        }
     });
     (
         SandboxIdeSessionHandle { _task: task },
@@ -144,6 +260,7 @@ async fn run_session<S, C>(
     workspace: WeakEntity<Workspace>,
     connections: C,
     auth_token: Arc<str>,
+    max_connections: usize,
     cx: &mut AsyncApp,
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -160,9 +277,9 @@ async fn run_session<S, C>(
         futures::select_biased! {
             () = active_connections.select_next_some() => {}
             connection = connections.next() => match connection {
-                Some(stream) if open_transports.load(Ordering::SeqCst) >= MAX_CONNECTIONS => {
+                Some(stream) if open_transports.load(Ordering::SeqCst) >= max_connections => {
                     log::debug!(
-                        "ide_server: refused a sandbox connection beyond the limit of {MAX_CONNECTIONS}"
+                        "ide_server: refused a sandbox connection beyond the limit of {max_connections}"
                     );
                     drop(stream);
                 }
@@ -186,6 +303,7 @@ async fn run_session<S, C>(
 
 pub struct SandboxIdeSession {
     entity_id: EntityId,
+    kind: SessionKind,
     paths: Arc<SandboxPaths>,
     workspace: Option<WeakEntity<Workspace>>,
     project_id: Option<EntityId>,
@@ -199,11 +317,12 @@ pub struct SandboxIdeSession {
 }
 
 impl SandboxIdeSession {
-    fn new(paths: Arc<SandboxPaths>, cx: &mut Context<Self>) -> Self {
+    fn new(paths: Arc<SandboxPaths>, kind: SessionKind, cx: &mut Context<Self>) -> Self {
         // ハンドルを落とされたときは `run_session` の後始末が走らないので、ここで畳む。
         cx.on_release(|this, cx| this.shut_down(cx)).detach();
         Self {
             entity_id: cx.entity_id(),
+            kind,
             paths,
             workspace: None,
             project_id: None,
@@ -257,20 +376,24 @@ impl SandboxIdeSession {
 
         self.project_id = Some(project.entity_id());
         self.workspace = Some(workspace.downgrade());
-        self.workspace_subscription = Some(cx.subscribe(
-            &workspace,
-            |this, _, event: &workspace::Event, cx| {
-                if matches!(
-                    event,
-                    workspace::Event::ActiveItemChanged
-                        | workspace::Event::ItemAdded { .. }
-                        | workspace::Event::ItemRemoved { .. }
-                ) {
-                    this.watch_active_editor(cx);
-                }
-            },
-        ));
-        self.watch_active_editor(cx);
+        // 制限セッションは通知を送らないので、アクティブなエディターも追わない
+        // (ADR-F49 決定 24)。
+        if self.kind.is_visible_to_the_user() {
+            self.workspace_subscription = Some(cx.subscribe(
+                &workspace,
+                |this, _, event: &workspace::Event, cx| {
+                    if matches!(
+                        event,
+                        workspace::Event::ActiveItemChanged
+                            | workspace::Event::ItemAdded { .. }
+                            | workspace::Event::ItemRemoved { .. }
+                    ) {
+                        this.watch_active_editor(cx);
+                    }
+                },
+            ));
+            self.watch_active_editor(cx);
+        }
         self.publish_connection_state(cx);
         Ok(())
     }
@@ -287,6 +410,11 @@ impl SandboxIdeSession {
     }
 
     fn publish_connection_state(&self, cx: &mut App) {
+        // 制限セッションはレジストリにも載っていないので、ここで数えると自分だけが
+        // 「Claude Code が接続中」を立ててしまい、誰も降ろせなくなる。
+        if !self.kind.is_visible_to_the_user() {
+            return;
+        }
         let Some(project_id) = self.project_id else {
             return;
         };
@@ -371,7 +499,9 @@ impl SandboxIdeSession {
         end_line: u32,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.connections.is_empty() {
+        // 制限セッションはレジストリに載っていないので、ここには届かないはず。届いても、
+        // ユーザーが選んだ範囲を ACP のエージェントへ横流ししない (ADR-F49 決定 24)。
+        if !self.kind.is_visible_to_the_user() || self.connections.is_empty() {
             return false;
         }
         let Some(client_path) = self.paths.to_client(file_path) else {
@@ -396,7 +526,7 @@ impl ToolHost for SandboxIdeSession {
     }
 
     fn tool_scope(&self) -> ToolScope {
-        ToolScope::Sandboxed(self.paths.clone())
+        self.kind.tool_scope(self.paths.clone())
     }
 
     /// `getLatestSelection` はサンドボックスには出していない。
@@ -427,8 +557,8 @@ impl ToolHost for SandboxIdeSession {
         Some(MAX_UNDELIVERED_RESPONSES)
     }
 
-    fn max_message_bytes(&self) -> usize {
-        MAX_MESSAGE_BYTES
+    fn message_limits(&self) -> MessageLimits {
+        self.kind.message_limits()
     }
 
     fn max_open_diffs(&self) -> Option<usize> {

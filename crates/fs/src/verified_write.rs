@@ -38,6 +38,21 @@ pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     ".docker/config.json",
     ".netrc",
     ".git-credentials",
+    // ADR-F49 decision 8 (2026-09-15): the rest of what a sandboxed command
+    // may not even read. Rewriting one of these aims the user's own next
+    // `npm install`, `cargo publish` or `gcloud` wherever the writer chose.
+    ".npmrc",
+    ".yarnrc.yml",
+    ".pypirc",
+    ".cargo/credentials",
+    ".cargo/credentials.toml",
+    ".config/gcloud",
+    ".terraform.d",
+    ".local/share/keyrings",
+    ".password-store",
+    ".mozilla",
+    ".config/google-chrome",
+    ".config/chromium",
     ".gitconfig",
     ".config/git",
     ".claude.json",

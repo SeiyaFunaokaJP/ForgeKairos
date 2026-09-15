@@ -46,6 +46,9 @@ actions!(
     ]
 );
 
+/// What the menu says when this editor has no language server to show.
+const NO_LANGUAGE_SERVERS: &str = "言語サーバーはありません";
+
 pub struct LspButton {
     server_state: Entity<LanguageServerState>,
     popover_menu_handle: PopoverMenuHandle<ContextMenu>,
@@ -221,7 +224,16 @@ impl LanguageServerHealthStatus {
 }
 
 impl LanguageServerState {
-    fn fill_menu(&self, mut menu: ContextMenu, cx: &mut Context<Self>) -> ContextMenu {
+    fn fill_menu(&self, menu: ContextMenu, cx: &mut Context<Self>) -> ContextMenu {
+        let menu = self.fill_menu_items(menu, cx);
+        if menu.is_empty() {
+            // Otherwise the shared list falls back to its English placeholder.
+            return menu.label(NO_LANGUAGE_SERVERS);
+        }
+        menu
+    }
+
+    fn fill_menu_items(&self, mut menu: ContextMenu, cx: &mut Context<Self>) -> ContextMenu {
         let lsp_logs = cx
             .try_global::<GlobalLogStore>()
             .map(|lsp_logs| lsp_logs.0.clone());

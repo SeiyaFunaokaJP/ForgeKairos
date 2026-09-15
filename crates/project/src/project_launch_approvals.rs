@@ -10,7 +10,10 @@ use std::{
     borrow::Cow,
     fmt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{self, AtomicU64},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -2160,25 +2163,85 @@ enum StoredDecisions {
     Unavailable(SharedString),
 }
 
+/// Tells two waits for the same launch apart when they come from the same
+/// entity. One language server store starts the same server twice - a start
+/// that is superseded while it is still waiting, a restart for a changed
+/// worktree - and both waits ask for the same key with the same `EntityId`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LaunchWaitId(u64);
+
+impl LaunchWaitId {
+    fn next() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Self(NEXT.fetch_add(1, atomic::Ordering::Relaxed))
+    }
+}
+
+/// What holds a launch pending. A launch stays pending, notification and all,
+/// until every holder has let go of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LaunchRequester {
+    entity: EntityId,
+    /// `None` for a caller that asks without waiting for an answer, where
+    /// asking again is the same hold rather than a second one.
+    wait: Option<LaunchWaitId>,
+}
+
+impl LaunchRequester {
+    /// A caller that asks about a launch without waiting for a decision: a
+    /// formatter that is skipped instead, or the IDE side of a remote
+    /// request, which keeps its own record of what it asked for.
+    pub fn asking(entity: EntityId) -> Self {
+        Self { entity, wait: None }
+    }
+
+    /// One wait for a decision. Each wait holds the launch pending in its own
+    /// right, so that the first of two concurrent waits to give up does not
+    /// take the pending launch - and the notification about it - away from
+    /// the other (ADR-F42).
+    pub fn waiting(entity: EntityId) -> Self {
+        Self {
+            entity,
+            wait: Some(LaunchWaitId::next()),
+        }
+    }
+
+    pub fn entity(&self) -> EntityId {
+        self.entity
+    }
+}
+
+impl From<EntityId> for LaunchRequester {
+    fn from(entity: EntityId) -> Self {
+        Self::asking(entity)
+    }
+}
+
 /// Pending launches are withdrawn with this when whatever waited for them
 /// goes away, for example a language server that is stopped first.
 pub struct PendingLaunchGuard {
     key: LaunchApprovalKey,
-    requester: EntityId,
-    withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, EntityId)>,
+    requester: LaunchRequester,
+    withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, LaunchRequester)>,
 }
 
 impl PendingLaunchGuard {
     pub(crate) fn new(
         key: LaunchApprovalKey,
-        requester: EntityId,
-        withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, EntityId)>,
+        requester: LaunchRequester,
+        withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, LaunchRequester)>,
     ) -> Self {
         Self {
             key,
             requester,
             withdrawals,
         }
+    }
+
+    /// The hold this guard stands for, which every look at the same launch
+    /// from the same wait has to use again.
+    pub fn requester(&self) -> LaunchRequester {
+        self.requester
     }
 
     /// Makes the guard stand for `key` from now on, returning the key it
@@ -2251,6 +2314,13 @@ impl LaunchApprover {
         pending_guard: &mut Option<PendingLaunchGuard>,
         cx: &mut AsyncApp,
     ) -> LaunchAnswer {
+        // Every look by this one wait holds the launch pending under the same
+        // identity; a second wait for the same launch from the same store
+        // holds it under its own (ADR-F42).
+        let requester = pending_guard
+            .as_ref()
+            .map(PendingLaunchGuard::requester)
+            .unwrap_or_else(|| LaunchRequester::waiting(requester));
         match self {
             Self::Local(launch_approvals) => launch_approvals.update(cx, |launch_approvals, cx| {
                 let details = launch_approvals.request_launch(details, requester, cx);
@@ -2427,11 +2497,11 @@ pub struct ProjectLaunchApprovals {
     decisions: HashMap<LaunchApprovalKey, LaunchDecisionRecord>,
     stored_decisions: StoredDecisions,
     pending: Vec<LaunchApprovalDetails>,
-    pending_requesters: HashMap<LaunchApprovalKey, HashSet<EntityId>>,
+    pending_requesters: HashMap<LaunchApprovalKey, HashSet<LaunchRequester>>,
     notified_keys: HashSet<LaunchApprovalKey>,
     notified_slots: HashSet<LaunchSlot>,
     decision_waiters: HashMap<LaunchApprovalKey, Vec<oneshot::Sender<LaunchDecision>>>,
-    withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, EntityId)>,
+    withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, LaunchRequester)>,
     _load_decisions: Task<()>,
     _process_withdrawals: Task<()>,
     #[cfg(any(test, feature = "test-support"))]
@@ -2447,7 +2517,7 @@ impl EventEmitter<ProjectLaunchApprovalsEvent> for ProjectLaunchApprovals {}
 impl ProjectLaunchApprovals {
     fn new(cx: &mut Context<Self>) -> Self {
         let (withdrawals, mut withdrawal_requests) =
-            mpsc::unbounded::<(LaunchApprovalKey, EntityId)>();
+            mpsc::unbounded::<(LaunchApprovalKey, LaunchRequester)>();
         let process_withdrawals = cx.spawn(async move |this, cx| {
             while let Some((key, requester)) = withdrawal_requests.next().await {
                 if this
@@ -2549,9 +2619,10 @@ impl ProjectLaunchApprovals {
     pub fn request_launch(
         &mut self,
         mut details: LaunchApprovalDetails,
-        requester: EntityId,
+        requester: impl Into<LaunchRequester>,
         cx: &mut Context<Self>,
     ) -> LaunchApprovalDetails {
+        let requester = requester.into();
         let (state, store_error) = self.state_of(&details.key);
         details.state = state;
         details.store_error = store_error;
@@ -2603,13 +2674,15 @@ impl ProjectLaunchApprovals {
     }
 
     /// `requester` no longer asks for `key`; the launch stays pending while
-    /// anyone else still does.
+    /// anyone else still does - including a second wait for the same launch
+    /// from the same entity, which holds it in its own right.
     pub fn withdraw_pending(
         &mut self,
         key: &LaunchApprovalKey,
-        requester: EntityId,
+        requester: impl Into<LaunchRequester>,
         cx: &mut Context<Self>,
     ) {
+        let requester = requester.into();
         let Some(requesters) = self.pending_requesters.get_mut(key) else {
             return;
         };
@@ -2631,25 +2704,29 @@ impl ProjectLaunchApprovals {
     /// Everything `requester` asked for is withdrawn, e.g. when its project
     /// is closed.
     pub fn withdraw_requester(&mut self, requester: EntityId, cx: &mut Context<Self>) {
-        let keys = self
+        let held = self
             .pending_requesters
             .iter()
-            .filter(|(_, requesters)| requesters.contains(&requester))
-            .map(|(key, _)| key.clone())
+            .flat_map(|(key, requesters)| {
+                requesters
+                    .iter()
+                    .filter(|holder| holder.entity() == requester)
+                    .map(|holder| (key.clone(), *holder))
+            })
             .collect::<Vec<_>>();
-        for key in keys {
-            self.withdraw_pending(&key, requester, cx);
+        for (key, holder) in held {
+            self.withdraw_pending(&key, holder, cx);
         }
     }
 
     pub fn pending_launch_guard(
         &self,
         key: &LaunchApprovalKey,
-        requester: EntityId,
+        requester: impl Into<LaunchRequester>,
     ) -> PendingLaunchGuard {
         PendingLaunchGuard {
             key: key.clone(),
-            requester,
+            requester: requester.into(),
             withdrawals: self.withdrawals.clone(),
         }
     }
@@ -2779,15 +2856,17 @@ impl ProjectLaunchApprovals {
     }
 
     /// Adds `details` as a pending launch and notifies about it the way a
-    /// store asking for it would, whatever the database holds.
+    /// store asking for it would, whatever the database holds. Returns the
+    /// hold it took, so that a test can let go of exactly this one: asking
+    /// twice for the same launch leaves one pending entry held twice.
     #[cfg(any(test, feature = "test-support"))]
     pub fn add_pending_launch_for_tests(
         &mut self,
         mut details: LaunchApprovalDetails,
         cx: &mut Context<Self>,
-    ) {
+    ) -> LaunchRequester {
         details.state = LaunchApprovalState::Pending;
-        let requester = cx.entity_id();
+        let requester = LaunchRequester::waiting(cx.entity_id());
         self.pending.retain(|pending| pending.key != details.key);
         self.pending.push(details.clone());
         self.pending_requesters
@@ -2796,6 +2875,7 @@ impl ProjectLaunchApprovals {
             .insert(requester);
         self.notify_if_new(&details, cx);
         cx.notify();
+        requester
     }
 
     fn ensure_not_replaced(&self, details: &LaunchApprovalDetails) -> Result<()> {
@@ -3798,6 +3878,107 @@ mod tests {
             events.borrow().last(),
             Some(ProjectLaunchApprovalsEvent::PendingLaunchWithdrawn(key)) if key.as_str() == "second"
         ));
+    }
+
+    /// One language server store starts the same server twice - a start that
+    /// is superseded while it still waits, a restart for a changed worktree -
+    /// so the same `EntityId` waits twice for the same key. Each wait is its
+    /// own hold: giving one up must leave the launch pending (and its
+    /// notification up) for the other.
+    #[gpui::test]
+    async fn test_two_waits_by_one_store_each_hold_the_launch_pending(cx: &mut TestAppContext) {
+        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+        let approvals = cx.update(ProjectLaunchApprovals::global);
+        cx.run_until_parked();
+        let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let _subscription = cx.update(|cx| {
+            let events = events.clone();
+            cx.subscribe(&approvals, move |_, event, _| {
+                events.borrow_mut().push(event.clone())
+            })
+        });
+        let store = cx.new(|_| ()).entity_id();
+        let key = LaunchApprovalKey::for_tests("shared");
+        let first_start = LaunchRequester::waiting(store);
+        let second_start = LaunchRequester::waiting(store);
+
+        approvals.update(cx, |approvals, cx| {
+            approvals.request_launch(pending_details("shared", "fmt"), first_start, cx);
+            approvals.request_launch(pending_details("shared", "fmt"), second_start, cx);
+            let mut waits_for_the_second_start = approvals.wait_for_decision(&key);
+
+            approvals.withdraw_pending(&key, first_start, cx);
+            assert_eq!(
+                approvals.pending_launches().len(),
+                1,
+                "the second start still waits for the same launch"
+            );
+            assert!(
+                matches!(waits_for_the_second_start.try_recv(), Ok(None)),
+                "and what waits for a decision is not cancelled underneath it"
+            );
+
+            approvals.withdraw_pending(&key, second_start, cx);
+            assert!(approvals.pending_launches().is_empty());
+        });
+
+        assert!(
+            matches!(
+                events.borrow().as_slice(),
+                [
+                    ProjectLaunchApprovalsEvent::PendingLaunchAppeared(appeared),
+                    ProjectLaunchApprovalsEvent::PendingLaunchWithdrawn(withdrawn),
+                ] if appeared.key == key && *withdrawn == key
+            ),
+            "one notification, taken back only once nothing waits: {:?}",
+            events.borrow()
+        );
+    }
+
+    /// Closing a project takes back everything its store asked for, however
+    /// many waits it holds and whichever launch each one is for.
+    #[gpui::test]
+    async fn test_closing_a_project_lets_go_of_every_wait_it_holds(cx: &mut TestAppContext) {
+        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+        let approvals = cx.update(ProjectLaunchApprovals::global);
+        cx.run_until_parked();
+        let store = cx.new(|_| ()).entity_id();
+        let other_store = cx.new(|_| ()).entity_id();
+
+        approvals.update(cx, |approvals, cx| {
+            approvals.request_launch(
+                pending_details("shared", "fmt"),
+                LaunchRequester::waiting(store),
+                cx,
+            );
+            approvals.request_launch(
+                pending_details("shared", "fmt"),
+                LaunchRequester::waiting(store),
+                cx,
+            );
+            approvals.request_launch(
+                pending_details("other", "lsp"),
+                LaunchRequester::waiting(store),
+                cx,
+            );
+            approvals.request_launch(
+                pending_details("third", "tsc"),
+                LaunchRequester::waiting(other_store),
+                cx,
+            );
+            assert_eq!(approvals.pending_launches().len(), 3);
+
+            approvals.withdraw_requester(store, cx);
+            assert_eq!(
+                approvals
+                    .pending_launches()
+                    .iter()
+                    .map(|pending| pending.key.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["third"],
+                "only what another store still waits for is left"
+            );
+        });
     }
 
     #[test]

@@ -118,7 +118,16 @@ fn show_pending_launch(details: &LaunchApprovalDetails, changed: bool, cx: &mut 
     }
 }
 
+/// One notification stands for every wait on the same launch, so it only goes
+/// away once nothing is waiting any more: a language server that is started
+/// twice waits twice under one key, and the first of the two to give up must
+/// not take the notification the other still needs (ADR-F42).
 fn dismiss_pending_launch(key: &LaunchApprovalKey, cx: &mut App) {
+    if ProjectLaunchApprovals::try_global(cx)
+        .is_some_and(|approvals| approvals.read(cx).pending_launch(key).is_some())
+    {
+        return;
+    }
     let id = notification_id(key);
     let workspaces = multi_workspace_windows(cx)
         .into_iter()
@@ -615,19 +624,34 @@ impl LaunchApprovalDialog {
         });
         self.deciding = true;
         self.error = None;
+        // Detached so that storing the decision runs to its end whatever
+        // becomes of this dialog. The approvals service settles the launch
+        // itself, and `follow` dismisses the dialog on the `LaunchDecided`
+        // that comes with it - before this task is woken - so a dialog that is
+        // already gone here is the ordinary path rather than a failure, and
+        // must not be logged as one.
         cx.spawn(async move |this, cx| {
             let result = task.await;
-            this.update(cx, |this, cx| {
-                this.deciding = false;
-                match result {
-                    Ok(()) => cx.emit(DismissEvent),
-                    Err(error) => {
-                        this.error = Some(format!("決定を保存できませんでした: {error}").into());
-                        cx.notify();
+            let store_error = result.as_ref().err().map(|error| format!("{error:#}"));
+            if this
+                .update(cx, |this, cx| {
+                    this.deciding = false;
+                    match result {
+                        Ok(()) => cx.emit(DismissEvent),
+                        Err(error) => {
+                            this.error =
+                                Some(format!("決定を保存できませんでした: {error}").into());
+                            cx.notify();
+                        }
                     }
-                }
-            })
-            .log_err();
+                })
+                .is_err()
+                && let Some(store_error) = store_error
+            {
+                // Nowhere left to show it, but a decision that was not stored
+                // must not pass unnoticed.
+                log::error!("could not store a launch decision: {store_error}");
+            }
         })
         .detach();
         cx.notify();
@@ -879,12 +903,31 @@ fn render_launch_approval_row(
                 .flex_1()
                 .child(Label::new(launch_title(record.kind, &record.name)))
                 .child(render_detail_row("内容", record.summary.clone(), true, cx))
-                .child(render_detail_row(
-                    "ホスト",
-                    record_host_label(record.host.as_deref()),
-                    false,
-                    cx,
-                ))
+                .child(
+                    div()
+                        .id(SharedString::from(format!(
+                            "launch-approval-host-{}",
+                            record.key
+                        )))
+                        .w_full()
+                        .min_w_0()
+                        .child(render_detail_row(
+                            "ホスト",
+                            record_host_label(record.host.as_deref()),
+                            false,
+                            cx,
+                        ))
+                        .when_some(
+                            record_host_tooltip(record.host.as_deref()),
+                            |this, identity| {
+                                // Escaped like everything else the project
+                                // chose the text of.
+                                this.tooltip(Tooltip::text(
+                                    escape_for_display(&identity).into_owned(),
+                                ))
+                            },
+                        ),
+                )
                 .child(render_detail_row(
                     "フォルダー",
                     record.worktree.clone(),
@@ -919,11 +962,44 @@ fn render_launch_approval_row(
 /// The host a decision was made for. Only its identity is stored with the
 /// decision, and that identity is what tells the same definition on two
 /// remote hosts apart.
+///
+/// What the identity is made of is not for reading, though: the scheme repeats
+/// what the row already says, and the digest of the connection's own arguments
+/// (which the identity carries so that the same name reached through a
+/// different jump host counts as a different host) is a line of hex the user
+/// cannot act on. So the row shows the part they recognize — `me@build`, or
+/// the distro or container name — and [`record_host_tooltip`] keeps the whole
+/// identity a hover away.
 fn record_host_label(identity: Option<&str>) -> String {
     match identity {
         None => "この PC".to_string(),
-        Some(identity) => format!("接続先 ({identity})"),
+        Some(identity) => format!("接続先 ({})", readable_host(identity)),
     }
+}
+
+/// The identity with the parts that are not a host name taken off: the scheme
+/// and the trailing `args-sha256:…`. Anything left empty by that is shown as
+/// it stands rather than trimmed into nothing.
+fn readable_host(identity: &str) -> &str {
+    let without_digest = identity
+        .split_once(" args-sha256:")
+        .map_or(identity, |(host, _)| host);
+    let readable = without_digest
+        .split_once("://")
+        .map_or(without_digest, |(_, host)| host);
+    if readable.is_empty() {
+        without_digest
+    } else {
+        readable
+    }
+}
+
+/// The whole identity, for the hover on a row that shows only the host name.
+/// `None` where nothing was taken off, so that a row never carries a tooltip
+/// repeating what it already says.
+fn record_host_tooltip(identity: Option<&str>) -> Option<SharedString> {
+    let identity = identity?;
+    (readable_host(identity) != identity).then(|| SharedString::from(identity.to_string()))
 }
 
 fn decision_label(
@@ -1242,6 +1318,84 @@ mod tests {
         );
     }
 
+    /// A language server that is started twice waits twice for the same
+    /// approval. The first of the two waits to be given up used to take the
+    /// shared notification with it, leaving the second waiting with nothing
+    /// on screen to decide it.
+    #[gpui::test]
+    async fn test_a_second_wait_for_the_same_launch_keeps_the_notification(
+        cx: &mut TestAppContext,
+    ) {
+        let (window, worktree_abs_path) = open_project_window(cx).await;
+        let launch = formatter_launch("shared", &worktree_abs_path, "node_modules/.bin/prettier");
+        let (first_wait, second_wait) = cx.update(|cx| {
+            ProjectLaunchApprovals::global(cx).update(cx, |approvals, cx| {
+                (
+                    approvals.add_pending_launch_for_tests(launch.clone(), cx),
+                    approvals.add_pending_launch_for_tests(launch.clone(), cx),
+                )
+            })
+        });
+        cx.run_until_parked();
+        assert!(notification_is_shown(window, "shared", cx));
+
+        cx.update(|cx| {
+            ProjectLaunchApprovals::global(cx).update(cx, |approvals, cx| {
+                approvals.withdraw_pending(&launch.key, first_wait, cx);
+            });
+        });
+        cx.run_until_parked();
+        assert!(
+            notification_is_shown(window, "shared", cx),
+            "the wait that is left still needs the notification"
+        );
+
+        cx.update(|cx| {
+            ProjectLaunchApprovals::global(cx).update(cx, |approvals, cx| {
+                approvals.withdraw_pending(&launch.key, second_wait, cx);
+            });
+        });
+        cx.run_until_parked();
+        assert!(
+            !notification_is_shown(window, "shared", cx),
+            "with nothing waiting the notification goes"
+        );
+    }
+
+    /// A language server restarted one after the other, rather than side by
+    /// side: the old start lets go and the new one asks for the same launch
+    /// before anything has looked at the withdrawal.
+    #[gpui::test]
+    async fn test_a_launch_asked_for_again_as_it_is_withdrawn_keeps_its_notification(
+        cx: &mut TestAppContext,
+    ) {
+        let (window, worktree_abs_path) = open_project_window(cx).await;
+        let launch = formatter_launch(
+            "restarted",
+            &worktree_abs_path,
+            "node_modules/.bin/prettier",
+        );
+        let first_start = cx.update(|cx| {
+            ProjectLaunchApprovals::global(cx).update(cx, |approvals, cx| {
+                approvals.add_pending_launch_for_tests(launch.clone(), cx)
+            })
+        });
+        cx.run_until_parked();
+        assert!(notification_is_shown(window, "restarted", cx));
+
+        cx.update(|cx| {
+            ProjectLaunchApprovals::global(cx).update(cx, |approvals, cx| {
+                approvals.withdraw_pending(&launch.key, first_start, cx);
+                approvals.add_pending_launch_for_tests(launch.clone(), cx);
+            });
+        });
+        cx.run_until_parked();
+        assert!(
+            notification_is_shown(window, "restarted", cx),
+            "the restarted server waits for the same decision, so the notification stays"
+        );
+    }
+
     async fn open_project_window(
         cx: &mut TestAppContext,
     ) -> (
@@ -1468,10 +1622,34 @@ mod tests {
     #[test]
     fn names_the_host_and_when_the_decision_was_made() {
         assert_eq!(record_host_label(None), "この PC");
-        assert_eq!(
-            record_host_label(Some("ssh://me@build")),
-            "接続先 (ssh://me@build)"
-        );
+        assert_eq!(record_host_tooltip(None), None);
+        // The scheme repeats the row, and the digest of the connection's own
+        // arguments is not something the user can act on, so the row shows
+        // what they recognize and the hover keeps the whole identity.
+        for (identity, shown) in [
+            ("ssh://me@build", "me@build"),
+            ("ssh://me@build:2222", "me@build:2222"),
+            (
+                "ssh://me@build args-sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                "me@build",
+            ),
+            ("wsl://root@Ubuntu", "root@Ubuntu"),
+            ("docker://9a8b7c6d5e4f", "9a8b7c6d5e4f"),
+            // Nothing this fork writes, and nothing to take off it either.
+            ("build.example", "build.example"),
+            ("://", "://"),
+        ] {
+            assert_eq!(
+                record_host_label(Some(identity)),
+                format!("接続先 ({shown})"),
+                "identity: {identity}"
+            );
+            assert_eq!(
+                record_host_tooltip(Some(identity)),
+                (shown != identity).then(|| SharedString::from(identity.to_string())),
+                "identity: {identity}"
+            );
+        }
 
         let now = OffsetDateTime::from_unix_timestamp(1_760_000_000).expect("a valid instant");
         let today = decision_label(LaunchDecision::Approved, 1_760_000_000, now, UtcOffset::UTC);

@@ -103,19 +103,29 @@ impl MentionUri {
         let path = url.path();
         match url.scheme() {
             "file" => {
-                let trimmed = if path_style.is_windows() {
-                    path.trim_start_matches("/")
+                let unc = path_style
+                    .is_windows()
+                    .then(|| {
+                        unc_path_from_file_uri(input, url.host_str().unwrap_or_default(), path)
+                    })
+                    .flatten();
+                let normalized: Cow<str> = if let Some(unc) = unc {
+                    Cow::Owned(unc)
                 } else {
-                    path
-                };
-                let decoded = decode(trimmed).unwrap_or(Cow::Borrowed(trimmed));
-                let normalized: Cow<str> = if path_style.is_windows() {
-                    match to_native_windows_path(&decoded) {
-                        Some(native) => Cow::Owned(native),
-                        None => decoded,
+                    let trimmed = if path_style.is_windows() {
+                        path.trim_start_matches("/")
+                    } else {
+                        path
+                    };
+                    let decoded = decode(trimmed).unwrap_or(Cow::Borrowed(trimmed));
+                    if path_style.is_windows() {
+                        match to_native_windows_path(&decoded) {
+                            Some(native) => Cow::Owned(native),
+                            None => decoded,
+                        }
+                    } else {
+                        decoded
                     }
-                } else {
-                    decoded
                 };
                 let path = normalized.as_ref();
 
@@ -460,24 +470,18 @@ impl MentionUri {
 
     pub fn to_uri(&self) -> Url {
         match self {
-            MentionUri::File { abs_path } => {
-                let mut url = Url::parse("file:///").unwrap();
-                url.set_path(&abs_path.to_string_lossy());
-                url
-            }
+            MentionUri::File { abs_path } => file_url(&abs_path.to_string_lossy()),
             MentionUri::PastedImage { name } => {
                 let mut url = Url::parse("zed:///agent/pasted-image").unwrap();
                 url.query_pairs_mut().append_pair("name", name);
                 url
             }
             MentionUri::Directory { abs_path } => {
-                let mut url = Url::parse("file:///").unwrap();
                 let mut path = abs_path.to_string_lossy().into_owned();
                 if !path.ends_with('/') && !path.ends_with('\\') {
                     path.push('/');
                 }
-                url.set_path(&path);
-                url
+                file_url(&path)
             }
             MentionUri::Symbol {
                 abs_path,
@@ -485,8 +489,7 @@ impl MentionUri {
                 line_range,
                 ..
             } => {
-                let mut url = Url::parse("file:///").unwrap();
-                url.set_path(&abs_path.to_string_lossy());
+                let mut url = file_url(&abs_path.to_string_lossy());
                 url.query_pairs_mut().append_pair("symbol", name);
                 url.set_fragment(Some(&format!(
                     "L{}:{}",
@@ -501,9 +504,7 @@ impl MentionUri {
                 column,
             } => {
                 let mut url = if let Some(path) = abs_path {
-                    let mut url = Url::parse("file:///").unwrap();
-                    url.set_path(&path.to_string_lossy());
-                    url
+                    file_url(&path.to_string_lossy())
                 } else {
                     let mut url = Url::parse("zed:///").unwrap();
                     url.set_path("/agent/untitled-buffer");
@@ -746,6 +747,106 @@ pub fn decode_path_escapes(input: &str) -> Cow<'_, str> {
     match String::from_utf8(decoded) {
         Ok(decoded) => Cow::Owned(decoded),
         Err(_) => Cow::Borrowed(input),
+    }
+}
+
+/// The native Windows UNC path a `file:` URI names, or `None` when it names no
+/// UNC path at all (an ordinary `file:///C:/…`).
+///
+/// Both spellings RFC 8089 leaves open are read: the server as the URI's
+/// authority (`file://wsl.localhost/Ubuntu/a.rs`, which is what this writes and
+/// what other tools emit) and the server inside the path
+/// (`file:////wsl.localhost/Ubuntu/a.rs`, which is what naively prefixing
+/// `file://` to `\\wsl.localhost\Ubuntu\a.rs` produces). The second matters
+/// because the first form's leading slashes would otherwise be trimmed away and
+/// leave a path that is not absolute at all.
+///
+/// `\\wsl.localhost\<distro>\…` is a worktree on an ADR-F49 sandbox's own
+/// filesystem, so these arrive whenever a Windows project lives in WSL.
+///
+/// The second form has to be read off `input`: the URL parser folds
+/// `file:////server/share` and `file:///server/share` into the same parsed
+/// URL (no host, path `/server/share`), so only the text still says which was
+/// written.
+fn unc_path_from_file_uri(input: &str, host: &str, path: &str) -> Option<String> {
+    let server_in_path = || {
+        let (_, after_scheme) = input.split_once(':')?;
+        // The value comes from the parsed path; only the text is asked
+        // whether the UNC's own two leading slashes were written at all.
+        after_scheme
+            .starts_with("////")
+            .then(|| path.trim_start_matches('/'))
+    };
+    let (server, rest) = if host.is_empty() {
+        let after_slashes = server_in_path()?;
+        after_slashes.split_once('/').unwrap_or((after_slashes, ""))
+    } else {
+        (host, path.trim_start_matches('/'))
+    };
+    if server.is_empty() {
+        return None;
+    }
+    let server = decode(server).unwrap_or(Cow::Borrowed(server));
+    let rest = decode(rest).unwrap_or(Cow::Borrowed(rest));
+    Some(format!("\\\\{server}\\{}", rest.replace('/', "\\")))
+}
+
+/// The server and the rest of a native UNC path (`\\server\share\file`), or
+/// `None` for anything else.
+///
+/// Only the backslash spelling counts: a Unix path may legitimately begin with
+/// `//`, and reading that as a UNC server would send `//srv/x` out as
+/// `file://srv/x`. Windows' device paths (`\\?\C:\…`, `\\.\pipe\…`) are not
+/// UNC servers either.
+fn split_unc_path(path: &str) -> Option<(&str, &str)> {
+    let after_slashes = path.strip_prefix(r"\\")?;
+    let (server, rest) = after_slashes
+        .split_once('\\')
+        .unwrap_or((after_slashes, ""));
+    (!server.is_empty() && server != "?" && server != ".").then_some((server, rest))
+}
+
+/// A `file:` URL naming `path`, with a UNC path's server as the URL's host
+/// (RFC 8089): `\\wsl.localhost\Ubuntu\a.rs` becomes
+/// `file://wsl.localhost/Ubuntu/a.rs`, which [`MentionUri::parse`] reads back
+/// as the same path.
+///
+/// Whatever the server, the round trip through [`MentionUri::parse`] gives the
+/// path that went in.
+fn file_url(path: &str) -> Url {
+    if let Some((server, rest)) = split_unc_path(path) {
+        // Only where the URL's own host gives the very server back. A host is
+        // not a free-form string: a space in it makes the parse fail outright,
+        // anything non-ASCII comes back as its punycode, and an uppercase name
+        // comes back lowercased — none of which is the name that went in.
+        if let Ok(mut url) = Url::parse(&format!("file://{server}/"))
+            && url.host_str() == Some(server)
+        {
+            url.set_path(&rest.replace('\\', "/"));
+            return url;
+        }
+        // For the rest, the separators are escaped rather than written.
+        // `set_path` folds a UNC's two leading ones into a single `/`, and
+        // what comes back then is `server\share\file` — a *relative* path,
+        // and one nothing would notice was wrong. Escaped, `MentionUri::parse`
+        // decodes them and has the very path again.
+        if let Ok(url) = Url::parse(&format!("file:///{}", escaped_path(path))) {
+            return url;
+        }
+    }
+    let mut url = Url::parse("file:///").expect("a literal, valid base URL");
+    url.set_path(path);
+    url
+}
+
+/// `path` with everything but the unreserved characters escaped, so that a
+/// separator in it can never be read as one of the URL's own. A trailing
+/// separator stays a real `/`, which is what tells a directory mention from a
+/// file one.
+fn escaped_path(path: &str) -> String {
+    match path.strip_suffix(['\\', '/']) {
+        Some(without_separator) => format!("{}/", urlencoding::encode(without_separator)),
+        None => urlencoding::encode(path).into_owned(),
     }
 }
 
@@ -1059,6 +1160,209 @@ mod tests {
             }
             other => panic!("Expected File variant, got {other:?}"),
         }
+    }
+
+    /// ADR-F49 second stage: a Windows project whose worktree lives in WSL is
+    /// reached through `\\wsl.localhost\<distro>\…`, so the mention URIs that
+    /// cross the ACP boundary have to carry a UNC path both ways. Both
+    /// spellings RFC 8089 leaves open are read; the authority form is what is
+    /// written.
+    #[test]
+    fn test_unc_file_uris_round_trip_with_the_server_as_the_host() {
+        let expected = MentionUri::File {
+            abs_path: PathBuf::from(r"\\wsl.localhost\Ubuntu\root\a.rs"),
+        };
+        for input in [
+            "file://wsl.localhost/Ubuntu/root/a.rs",
+            "file:////wsl.localhost/Ubuntu/root/a.rs",
+        ] {
+            assert_eq!(
+                MentionUri::parse(input, PathStyle::Windows).unwrap(),
+                expected,
+                "input: {input}"
+            );
+        }
+        let uri = expected.to_uri().to_string();
+        assert_eq!(uri, "file://wsl.localhost/Ubuntu/root/a.rs");
+        assert_eq!(
+            MentionUri::parse(&uri, PathStyle::Windows).unwrap(),
+            expected
+        );
+
+        // Any other UNC server follows the same rule.
+        let server = MentionUri::File {
+            abs_path: PathBuf::from(r"\\server\share\dir\file.rs"),
+        };
+        let server_uri = server.to_uri().to_string();
+        assert_eq!(server_uri, "file://server/share/dir/file.rs");
+        assert_eq!(
+            MentionUri::parse(&server_uri, PathStyle::Windows).unwrap(),
+            server
+        );
+        // And the bare-path spelling of the same thing still arrives there.
+        assert_eq!(
+            MentionUri::parse_hyperlink(r"\\server\share\dir\file.rs", PathStyle::Windows).unwrap(),
+            server
+        );
+    }
+
+    /// The escaping rules do not change because the path is a UNC one: a
+    /// space, a non-ASCII name and a `#` in a file name all survive the round
+    /// trip, and the `?symbol=` / `#L…` forms keep working.
+    #[test]
+    fn test_unc_file_uris_escape_and_carry_symbols_and_lines() {
+        for (path, expected_uri) in [
+            (
+                r"\\wsl.localhost\Ubuntu\root\a b.rs",
+                "file://wsl.localhost/Ubuntu/root/a%20b.rs",
+            ),
+            (
+                r"\\wsl.localhost\Ubuntu\root\日本語.rs",
+                "file://wsl.localhost/Ubuntu/root/%E6%97%A5%E6%9C%AC%E8%AA%9E.rs",
+            ),
+            (
+                r"\\wsl.localhost\Ubuntu\root\a#b.rs",
+                "file://wsl.localhost/Ubuntu/root/a%23b.rs",
+            ),
+        ] {
+            let mention = MentionUri::File {
+                abs_path: PathBuf::from(path),
+            };
+            let uri = mention.to_uri().to_string();
+            assert_eq!(uri, expected_uri);
+            assert_eq!(
+                MentionUri::parse(&uri, PathStyle::Windows).unwrap(),
+                mention,
+                "uri: {uri}"
+            );
+        }
+
+        let symbol = MentionUri::parse(
+            "file://wsl.localhost/Ubuntu/root/a.rs?symbol=MySymbol#L10:20",
+            PathStyle::Windows,
+        )
+        .unwrap();
+        assert_eq!(
+            symbol,
+            MentionUri::Symbol {
+                name: "MySymbol".to_string(),
+                abs_path: PathBuf::from(r"\\wsl.localhost\Ubuntu\root\a.rs"),
+                line_range: 9..=19,
+            }
+        );
+        assert_eq!(
+            symbol.to_uri().to_string(),
+            "file://wsl.localhost/Ubuntu/root/a.rs?symbol=MySymbol#L10:20"
+        );
+
+        let selection = MentionUri::parse(
+            "file://wsl.localhost/Ubuntu/root/a.rs#L5:15",
+            PathStyle::Windows,
+        )
+        .unwrap();
+        assert_eq!(
+            selection,
+            MentionUri::Selection {
+                abs_path: Some(PathBuf::from(r"\\wsl.localhost\Ubuntu\root\a.rs")),
+                line_range: 4..=14,
+                column: None,
+            }
+        );
+        assert_eq!(
+            selection.to_uri().to_string(),
+            "file://wsl.localhost/Ubuntu/root/a.rs#L5:15"
+        );
+
+        let directory = MentionUri::Directory {
+            abs_path: PathBuf::from(r"\\wsl.localhost\Ubuntu\root\dir"),
+        };
+        let uri = directory.to_uri().to_string();
+        assert_eq!(uri, "file://wsl.localhost/Ubuntu/root/dir/");
+        assert_eq!(
+            MentionUri::parse(&uri, PathStyle::Windows).unwrap(),
+            MentionUri::Directory {
+                abs_path: PathBuf::from(r"\\wsl.localhost\Ubuntu\root\dir\"),
+            }
+        );
+    }
+
+    /// A Unix path that begins with two slashes is not a UNC server, and a
+    /// Windows device path is not one either.
+    #[test]
+    fn test_only_a_real_unc_server_becomes_a_uri_host() {
+        assert_eq!(
+            MentionUri::File {
+                abs_path: PathBuf::from("//srv/x")
+            }
+            .to_uri()
+            .to_string(),
+            "file:///srv/x"
+        );
+        assert_eq!(
+            MentionUri::File {
+                abs_path: PathBuf::from(r"\\?\C:\x")
+            }
+            .to_uri()
+            .to_string(),
+            "file:///%3F/C:/x"
+        );
+        // And a `file:` URI with no host is still read as a drive path.
+        assert_eq!(
+            MentionUri::parse("file:///C:/x/y.rs", PathStyle::Windows).unwrap(),
+            MentionUri::File {
+                abs_path: PathBuf::from(r"C:\x\y.rs")
+            }
+        );
+    }
+
+    /// A UNC server the URL's own host cannot give back unchanged — a space
+    /// makes the host parse fail, non-ASCII comes back as punycode, uppercase
+    /// comes back lowercased — must not fall back to writing the path with
+    /// `set_path`: that folds the UNC's two leading separators into one, and
+    /// what comes back is the *relative* `server\share\file`.
+    #[test]
+    fn test_a_unc_server_no_uri_host_can_hold_still_round_trips() {
+        for path in [
+            r"\\my server\share\a.rs",
+            r"\\日本\share\a.rs",
+            r"\\SERVER\share\a.rs",
+            r"\\srv\share\a b#c%d.rs",
+        ] {
+            let mention = MentionUri::File {
+                abs_path: PathBuf::from(path),
+            };
+            let uri = mention.to_uri().to_string();
+            let parsed = MentionUri::parse(&uri, PathStyle::Windows)
+                .unwrap_or_else(|error| panic!("{uri} does not parse: {error}"));
+            assert_eq!(parsed, mention, "uri: {uri}");
+            assert!(
+                parsed
+                    .abs_path()
+                    .is_some_and(|path| path.to_string_lossy().starts_with(r"\\")),
+                "a UNC path must never come back relative: {uri}"
+            );
+        }
+        // Written as escapes rather than as the URL's own separators.
+        assert_eq!(
+            MentionUri::File {
+                abs_path: PathBuf::from(r"\\my server\share\a.rs")
+            }
+            .to_uri()
+            .to_string(),
+            "file:///%5C%5Cmy%20server%5Cshare%5Ca.rs"
+        );
+        // A directory keeps the trailing separator that tells it apart.
+        let directory = MentionUri::Directory {
+            abs_path: PathBuf::from(r"\\my server\share\dir"),
+        };
+        let uri = directory.to_uri().to_string();
+        assert_eq!(uri, "file:///%5C%5Cmy%20server%5Cshare%5Cdir/");
+        assert_eq!(
+            MentionUri::parse(&uri, PathStyle::Windows).unwrap(),
+            MentionUri::Directory {
+                abs_path: PathBuf::from(r"\\my server\share\dir\"),
+            }
+        );
     }
 
     #[test]

@@ -62,6 +62,34 @@ pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     ".docker/config.json",
     ".netrc",
     ".git-credentials",
+    // ADR-F49 decision 8 (2026-09-15): the rest of what decision 11 hides from
+    // reads. Hiding a secret's contents and leaving it writable is not a
+    // half-measure but a different hole — a command that can rewrite
+    // `~/.npmrc` or `~/.cargo/credentials.toml` points the user's own next
+    // `npm install` or `cargo publish` at a registry of its choosing, and one
+    // that can write `~/.config/gcloud` does the same to the cloud CLI the
+    // user runs outside the sandbox.
+    //
+    // It only ever comes up where the worktree *is* or *holds* the home, but
+    // that is a configuration this fork's own saved connections open. On the
+    // backends that hide reads with a read-only cover the cover happened to
+    // stop the write as well; on the Landlock backend (decision 28, a host
+    // that refuses the mounts) nothing did, which is what this closes. Every
+    // backend now takes the same list from here.
+    ".npmrc",
+    ".yarnrc.yml",
+    ".pypirc",
+    ".cargo/credentials",
+    ".cargo/credentials.toml",
+    ".config/gcloud",
+    ".terraform.d",
+    ".local/share/keyrings",
+    ".password-store",
+    // Browser profiles: cookies and saved passwords to read, and an extension
+    // or a preferences file to write into the browser the user runs.
+    ".mozilla",
+    ".config/google-chrome",
+    ".config/chromium",
     // Git's global configuration, which the editor's own git reads outside the
     // sandbox: a filter, `core.hooksPath` or `core.fsmonitor` set there runs
     // on the host (ADR-F49).
@@ -75,7 +103,13 @@ pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     ".gemini",
     ".codex",
     // This fork's own remote install: the server binary the next connection
-    // executes, and the state directory beside it.
+    // executes, and the state directory beside it. Its *configuration*
+    // directory is deliberately not here: this list is also what refuses an
+    // external agent's `fs/write_text_file` outright, and a write to Zed's
+    // own `settings.json` is one the user is asked about instead
+    // (`agent_write_guard`). Against a sandboxed command it is protected all
+    // the same, by the local list below and by the helper, which keeps out of
+    // writes everything it hides from reads.
     ".zed_server",
     ".local/share/zed-jp-enhance",
     // Binaries already on `PATH` for the next interactive shell.
@@ -134,6 +168,24 @@ const WINDOWS_PROTECTED_HOME_RELATIVE: &[&str] = &[
     // `_netrc` is the spelling curl and friends look for on Windows.
     r"_netrc",
     r".git-credentials",
+    // ADR-F49 decision 8 (2026-09-15): the rest of what decision 11 hides from
+    // reads, in the spellings the Windows tools use — rewriting one of these
+    // points the user's own next `npm install` / `cargo publish` / `gcloud`
+    // at whatever the command chose. `AppData` is deliberately not here even
+    // though the hiding covers it whole: protecting it flat would refuse any
+    // worktree below it, and on this platform the hiding is always a
+    // read-only cover inside WSL (the Landlock path decision 28 added is
+    // Linux-only and never plans on a WSL kernel), so nothing can write
+    // through it.
+    r".npmrc",
+    r".yarnrc.yml",
+    r".pypirc",
+    r".cargo\credentials",
+    r".cargo\credentials.toml",
+    r".config\gcloud",
+    r"AppData\Roaming\gcloud",
+    r".terraform.d",
+    r".password-store",
     // Git's global configuration, which the editor's own git reads outside the
     // sandbox (ADR-F49).
     r".gitconfig",
@@ -208,13 +260,31 @@ const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[
     SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
 ];
 
+/// macOS also keeps this fork's data, and the browsers' and the system's
+/// secret stores, outside the XDG-style locations of the shared list. Decision
+/// 8 keeps this in step with [`LOCAL_READ_HIDDEN_EXTRA`]: what is hidden from
+/// reads is not writable either.
 #[cfg(target_os = "macos")]
 const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[
     "Library/Application Support/Zed-JP-Enhance",
     ".config/zed-jp-enhance",
+    ".local/state/zed-jp-enhance",
     ".local/state/Zed-JP-Enhance",
     "Library/LaunchAgents",
     SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+    "Library/Application Support/Google/Chrome",
+    "Library/Application Support/Chromium",
+    "Library/Application Support/Firefox",
+    "Library/Application Support/Microsoft Edge",
+    "Library/Application Support/BraveSoftware",
+    "Library/Application Support/Arc",
+    "Library/Application Support/Vivaldi",
+    "Library/Cookies",
+    "Library/Keychains",
+    "Library/Safari",
+    "Library/Containers/com.apple.Safari",
+    "Library/Mail",
+    "Library/Messages",
 ];
 
 /// Windows keeps its application directories in the main list above (they are
@@ -283,14 +353,14 @@ pub(crate) fn local_builtin_protected_paths(
     app_state_directories: &[PathBuf],
 ) -> Vec<PathBuf> {
     let mut paths = resolve_home_relative(home, LOCAL_PROTECTED_HOME_RELATIVE);
-    paths.extend(resolve_home_relative(
-        home,
-        LOCAL_EXTRA_PROTECTED_HOME_RELATIVE,
-    ));
+    // Unique: the two lists are kept apart by who needs each entry rather than
+    // by what is in them, so one that belongs on both would otherwise be
+    // pinned twice.
+    for path in resolve_home_relative(home, LOCAL_EXTRA_PROTECTED_HOME_RELATIVE) {
+        push_unique(&mut paths, path);
+    }
     for directory in app_state_directories {
-        if !paths.contains(directory) {
-            paths.push(directory.clone());
-        }
+        push_unique(&mut paths, directory.clone());
     }
     paths
 }
@@ -1549,6 +1619,86 @@ mod tests {
             local_builtin_protected_paths(Path::new(&with_separator), &[]),
             paths,
             "a trailing separator on the home directory must not change the paths"
+        );
+    }
+
+    /// ADR-F49 decision 8 (2026-09-15): everything decision 11 hides from a
+    /// sandboxed command's reads is also kept out of its writes.
+    ///
+    /// The two lists used to drift: `~/.npmrc`, `~/.cargo/credentials.toml`,
+    /// `~/.config/gcloud` and the browser profiles were hidden but writable.
+    /// That was invisible on the backends whose hiding is a read-only cover
+    /// (the cover stopped the write too), and open on the Landlock one
+    /// (decision 28), where read rules and write rules are separate — so a
+    /// worktree that is the home let a command point the user's own next
+    /// `npm install` at a registry of its choosing.
+    ///
+    /// Checked by prefix, since an entry below a protected directory is
+    /// protected by it.
+    ///
+    /// Only for the Unix homes, where the two lists really are the same list:
+    /// the Windows home is covered separately below.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn nothing_hidden_from_reads_is_left_writable() {
+        let home = PathBuf::from("/home/u");
+        let mut protected = local_builtin_protected_paths(&home, &[]);
+        // The sandboxed agents' configuration directory: on both the local
+        // backends and the helper it is protected around the one session's own
+        // grant rather than flat, which `builtin_protected_paths` and
+        // `run_helper` each do for themselves.
+        protected.push(home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE));
+        let hidden = read_hidden_home_paths(&home, false)
+            .into_iter()
+            .chain(resolve_home_relative(&home, LOCAL_READ_HIDDEN_EXTRA));
+        for hidden in hidden {
+            assert!(
+                protected.iter().any(|entry| hidden.starts_with(entry)),
+                "{} is hidden from reads but writable",
+                hidden.display()
+            );
+        }
+    }
+
+    /// The same for a Windows home, where the hiding is always a read-only
+    /// cover inside WSL — decision 28's Landlock plan is never made on a WSL
+    /// kernel — so an entry inside a write grant is already unwritable through
+    /// the cover, and the write list only has to name what a Windows tool
+    /// really keeps there.
+    ///
+    /// All of `AppData` is hidden and deliberately not protected flat:
+    /// protecting it would refuse every worktree below it, and the entries in
+    /// it that matter are named one by one.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_windows_home_protects_the_credential_stores_it_really_holds() {
+        let home = PathBuf::from(r"C:\Users\u");
+        let protected = local_builtin_protected_paths(&home, &[]);
+        for relative in [
+            ".ssh",
+            ".npmrc",
+            ".yarnrc.yml",
+            ".pypirc",
+            r".cargo\credentials",
+            r".cargo\credentials.toml",
+            r".config\gcloud",
+            r"AppData\Roaming\gcloud",
+            ".terraform.d",
+            ".password-store",
+            r".config\gh",
+            ".git-credentials",
+        ] {
+            let path = home.join(relative);
+            assert!(
+                protected.iter().any(|entry| path.starts_with(entry)),
+                "{} is hidden from reads but writable",
+                path.display()
+            );
+        }
+        assert!(
+            !protected.contains(&home.join("AppData")),
+            "all of AppData is hidden from reads, but protecting it flat would \
+             refuse every worktree below it"
         );
     }
 

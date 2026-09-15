@@ -24,8 +24,8 @@ use futures::{
     future::{Either, select},
 };
 use gpui::{
-    App, AppContext as _, AsyncApp, Context, Entity, EntityId, EventEmitter, SharedString,
-    Subscription, Task, TaskExt as _, WeakEntity,
+    App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, SharedString, Subscription,
+    Task, TaskExt as _, WeakEntity,
 };
 use language::LanguageRegistry;
 use lsp::LanguageServerName;
@@ -39,8 +39,8 @@ use crate::{
     Event, Project,
     project_launch_approvals::{
         ExecutionHost, LaunchApprovalDetails, LaunchApprovalKey, LaunchApprovalState,
-        LaunchDecision, LaunchDefinitionFile, LaunchHost, LaunchKind, LaunchSlot, LaunchTarget,
-        PendingLaunchGuard, ProjectLaunchApprovals, ProjectLaunchApprovalsEvent,
+        LaunchDecision, LaunchDefinitionFile, LaunchHost, LaunchKind, LaunchRequester, LaunchSlot,
+        LaunchTarget, PendingLaunchGuard, ProjectLaunchApprovals, ProjectLaunchApprovalsEvent,
         UnboundWorktreeContent, canonical_json, escape_for_display,
     },
     worktree_store::WorktreeStore,
@@ -586,9 +586,9 @@ pub struct RemoteLaunchApprovals {
     /// way does not overwrite a newer decision or revocation.
     pushes_received: u64,
     last_push: HashMap<LaunchApprovalKey, u64>,
-    pending_requesters: HashMap<LaunchApprovalKey, HashSet<EntityId>>,
+    pending_requesters: HashMap<LaunchApprovalKey, HashSet<LaunchRequester>>,
     decision_waiters: HashMap<LaunchApprovalKey, Vec<oneshot::Sender<LaunchDecision>>>,
-    withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, EntityId)>,
+    withdrawals: mpsc::UnboundedSender<(LaunchApprovalKey, LaunchRequester)>,
     /// How many withdrawals went out for each key: a pending answer that one
     /// of them may have taken back is asked about again rather than waited on.
     withdrawals_sent: HashMap<LaunchApprovalKey, u64>,
@@ -624,7 +624,7 @@ impl RemoteLaunchApprovals {
         cx: &mut Context<Self>,
     ) -> Self {
         let (withdrawals, mut withdrawal_requests) =
-            mpsc::unbounded::<(LaunchApprovalKey, EntityId)>();
+            mpsc::unbounded::<(LaunchApprovalKey, LaunchRequester)>();
         let process_withdrawals = cx.spawn(async move |this, cx| {
             while let Some((key, requester)) = withdrawal_requests.next().await {
                 if this
@@ -907,30 +907,37 @@ impl RemoteLaunchApprovals {
         receiver
     }
 
-    pub(crate) fn keep_pending(&mut self, key: &LaunchApprovalKey, requester: EntityId) {
+    pub(crate) fn keep_pending(
+        &mut self,
+        key: &LaunchApprovalKey,
+        requester: impl Into<LaunchRequester>,
+    ) {
         self.pending_requesters
             .entry(key.clone())
             .or_default()
-            .insert(requester);
+            .insert(requester.into());
     }
 
     pub(crate) fn pending_launch_guard(
         &mut self,
         key: &LaunchApprovalKey,
-        requester: EntityId,
+        requester: impl Into<LaunchRequester>,
     ) -> PendingLaunchGuard {
+        let requester = requester.into();
         self.keep_pending(key, requester);
         PendingLaunchGuard::new(key.clone(), requester, self.withdrawals.clone())
     }
 
-    /// `requester` no longer waits for `key`. Once nobody does, the IDE is
-    /// told, so that its notification about the launch goes away.
+    /// `requester` no longer waits for `key`. Once nobody does - a second
+    /// wait by the same entity counts as another holder - the IDE is told, so
+    /// that its notification about the launch goes away.
     pub(crate) fn withdraw_pending(
         &mut self,
         key: &LaunchApprovalKey,
-        requester: EntityId,
+        requester: impl Into<LaunchRequester>,
         cx: &mut Context<Self>,
     ) {
+        let requester = requester.into();
         let Some(requesters) = self.pending_requesters.get_mut(key) else {
             return;
         };
@@ -1509,6 +1516,10 @@ impl RemoteLaunchRequests {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{self, AtomicUsize};
+
+    use futures::FutureExt as _;
+
     use super::*;
 
     fn remote_host(identity: &str) -> LaunchHost {
@@ -1795,5 +1806,93 @@ mod tests {
             RemoteAnswer::Deferred(_)
         ));
         assert!(matches!(answer(42, None), RemoteAnswer::Unavailable(_)));
+    }
+
+    /// Counts the withdrawals that reach the IDE, and answers nothing: what
+    /// the request comes back with is beside the point here.
+    struct CountingProtoClient {
+        handler_set: parking_lot::Mutex<rpc::ProtoMessageHandlerSet>,
+        withdrawals: Arc<AtomicUsize>,
+    }
+
+    impl rpc::ProtoClient for CountingProtoClient {
+        fn request(
+            &self,
+            envelope: proto::Envelope,
+            _: &'static str,
+        ) -> futures::future::BoxFuture<'static, Result<proto::Envelope>> {
+            if matches!(
+                envelope.payload,
+                Some(proto::envelope::Payload::WithdrawProjectLaunchApproval(_))
+            ) {
+                self.withdrawals.fetch_add(1, atomic::Ordering::SeqCst);
+            }
+            futures::future::ready(Err(anyhow::anyhow!("this test has no IDE"))).boxed()
+        }
+
+        fn send(&self, _: proto::Envelope, _: &'static str) -> Result<()> {
+            Ok(())
+        }
+
+        fn send_response(&self, _: proto::Envelope, _: &'static str) -> Result<()> {
+            Ok(())
+        }
+
+        fn message_handler_set(&self) -> &parking_lot::Mutex<rpc::ProtoMessageHandlerSet> {
+            &self.handler_set
+        }
+
+        fn is_via_collab(&self) -> bool {
+            false
+        }
+
+        fn has_wsl_interop(&self) -> bool {
+            false
+        }
+    }
+
+    /// The remote server tells the IDE to take its notification away only once
+    /// nothing on this side waits any more: a language server started twice
+    /// waits twice for the same key from the same project entity (ADR-F50).
+    #[gpui::test]
+    async fn test_two_waits_hold_a_remote_launch_before_the_ide_is_told(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let withdrawals = Arc::new(AtomicUsize::new(0));
+        let client = AnyProtoClient::new(Arc::new(CountingProtoClient {
+            handler_set: parking_lot::Mutex::default(),
+            withdrawals: withdrawals.clone(),
+        }));
+        let approvals = cx.new(|cx| RemoteLaunchApprovals::new(client, 7, "build-01", cx));
+        let key = LaunchApprovalKey::for_tests("shared");
+        let store = cx.new(|_| ()).entity_id();
+        let first_start = LaunchRequester::waiting(store);
+        let second_start = LaunchRequester::waiting(store);
+
+        approvals.update(cx, |approvals, _| {
+            approvals.keep_pending(&key, first_start);
+            approvals.keep_pending(&key, second_start);
+        });
+        approvals.update(cx, |approvals, cx| {
+            approvals.withdraw_pending(&key, first_start, cx);
+            assert_eq!(
+                approvals.withdrawals_sent(&key),
+                0,
+                "the second start still waits for the same launch"
+            );
+        });
+        cx.run_until_parked();
+        assert_eq!(withdrawals.load(atomic::Ordering::SeqCst), 0);
+
+        approvals.update(cx, |approvals, cx| {
+            approvals.withdraw_pending(&key, second_start, cx);
+            assert_eq!(approvals.withdrawals_sent(&key), 1);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            withdrawals.load(atomic::Ordering::SeqCst),
+            1,
+            "with nothing waiting the IDE is told once"
+        );
     }
 }

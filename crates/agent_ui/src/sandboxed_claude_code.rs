@@ -516,23 +516,13 @@ exec "$0" "$@""#;
     /// ADR-F50: what a session can write, spelled as worktrees are: its
     /// folders, and — through the distro's share, where the WSL home can be a
     /// worktree too — its configuration root, when `distro` names the distro.
+    /// Shared with the external agents started in the WSL sandbox (第 2b 段).
     pub(super) fn session_write_scope(
         roots: &[PathBuf],
         config_root: &str,
         distro: Option<&str>,
     ) -> Vec<PathBuf> {
-        let mapper = ide_server::WslPathMapper {
-            distro: distro.unwrap_or_default().to_string(),
-        };
-        let mut scope = roots.to_vec();
-        match ide_server::PathMapper::to_host(&mapper, config_root) {
-            Some(host_path) => scope.push(host_path),
-            None => log::warn!(
-                "[claude-sandbox] {config_root} has no Windows path (distro {distro:?}), so a \
-                 worktree holding it is not paused for this session"
-            ),
-        }
-        scope
+        project::agent_sandbox::wsl_session_write_scope(roots, config_root, distro)
     }
 
     /// ADR-F50: registers the session as the writer of `scope` until the
@@ -554,50 +544,6 @@ exec "$0" "$@""#;
                 cx,
             )
         })
-    }
-
-    const BRIDGE_MARKER: &str = "zed-ide-bridge: ";
-
-    /// A line of the bridge's stderr that says how its setup went.
-    #[derive(Debug, PartialEq, Eq)]
-    pub(super) enum BridgeStatus<'a> {
-        Ready,
-        Failed { code: &'a str },
-    }
-
-    pub(super) fn parse_bridge_status(line: &str) -> Option<BridgeStatus<'_>> {
-        let rest = line.trim_end().strip_prefix(BRIDGE_MARKER)?;
-        if rest == "ready" {
-            return Some(BridgeStatus::Ready);
-        }
-        let (code, _detail) = rest.split_once(':')?;
-        let code = code.trim();
-        (!code.is_empty() && !code.contains(char::is_whitespace))
-            .then_some(BridgeStatus::Failed { code })
-    }
-
-    /// The Japanese reason for a bridge setup failure `code`.
-    pub(super) fn bridge_failure_message(code: &str) -> String {
-        let reason = match code {
-            "bad-args" => "IDE 連携の中継の起動引数が不正です (内部エラー)。",
-            "signals-failed" => "IDE 連携の中継のシグナル処理を設定できませんでした。",
-            "home-unknown" => {
-                "WSL のホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
-            }
-            "rendezvous-failed" => {
-                "IDE 連携の受け渡し用のソケットを作成できませんでした \
-                 (WSL の ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
-            }
-            "lock-preamble-failed" => "IDE 連携の中継に接続情報を渡せませんでした。",
-            "lock-file-failed" => {
-                "IDE 連携のロックファイルを作成できませんでした (WSL の ~/.zed-jp-enhance-claude の\
-                 所有者と権限、シンボリックリンクになっていないかを確認してください)。"
-            }
-            other => {
-                return format!("IDE 連携の中継を起動できませんでした (不明な理由: {other})。");
-            }
-        };
-        reason.to_string()
     }
 
     const SWEEP_DIRECTORY_PREFIX: &str = "zed-sweep-dir ";
@@ -755,9 +701,6 @@ mod launch {
 
     use anyhow::{Context as _, Result, anyhow, bail};
     use fs::Fs;
-    use futures::{
-        AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, StreamExt as _,
-    };
     use gpui::{
         App, AsyncWindowContext, BackgroundExecutor, Context, Entity, FutureExt as _, PromptButton,
         PromptLevel, SharedString, Task, WeakEntity, Window,
@@ -774,10 +717,9 @@ mod launch {
     use workspace::{Toast, Workspace, notifications::NotificationId};
 
     use super::session::{
-        BridgeStatus, CLAUDE_HOSTS, IdeLink, PendingIdeSession, RunningSessions, SessionLayout,
-        SessionPlan, SessionSlot, bridge_failure_message, helper_failure_message, hosts_detail,
-        new_session_id, parse_bridge_status, plan_session, project_key, register_session_writer,
-        session_key, session_write_scope, stale_entries,
+        CLAUDE_HOSTS, IdeLink, PendingIdeSession, RunningSessions, SessionLayout, SessionPlan,
+        SessionSlot, helper_failure_message, hosts_detail, new_session_id, plan_session,
+        project_key, register_session_writer, session_key, session_write_scope, stale_entries,
     };
     use crate::agent_registry_ui::{add_consented_hosts, allowlist_write_error, missing_hosts};
 
@@ -791,7 +733,6 @@ mod launch {
 
     /// One `wsl.exe` round trip, which a cold WSL can take this long to answer.
     const WSL_STEP_TIMEOUT: Duration = Duration::from_secs(90);
-    const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(30);
     const BRIDGE_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
     /// Where the CLI's IDE port is picked, inside the session's own network
     /// namespace. Random, so that a lock a crashed session left behind is
@@ -904,7 +845,7 @@ shift 3
                     workspace.dismiss_toast(&progress_id(), cx);
                     match outcome {
                         Ok(()) => {}
-                        Err(error) if error.is::<RunningElsewhere>() => {
+                        Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => {
                             show_already_running(workspace, cx)
                         }
                         Err(error) => {
@@ -920,19 +861,7 @@ shift 3
     /// The distro the session runs in: the one a `\\wsl.localhost\<distro>\`
     /// root names, else the default one.
     fn distro_for_roots(roots: &[PathBuf]) -> Result<Option<String>> {
-        let mut distro: Option<String> = None;
-        for root in roots {
-            let Some(root_distro) = sandbox::wsl_distro_for_path(root) else {
-                continue;
-            };
-            match &distro {
-                Some(existing) if !existing.eq_ignore_ascii_case(&root_distro) => bail!(
-                    "複数の WSL ディストリビューション ({existing}、{root_distro}) にまたがるフォルダーでは起動できません。"
-                ),
-                _ => distro = Some(root_distro),
-            }
-        }
-        Ok(distro)
+        project::agent_sandbox::wsl_distro_for_roots(roots)
     }
 
     async fn start_session(
@@ -1020,8 +949,7 @@ shift 3
                 sandbox::ide_bridge_invocation(
                     distro.as_deref(),
                     &rendezvous,
-                    &lock_file,
-                    &lock_content,
+                    Some((&lock_file, &lock_content)),
                     Some(&config_root),
                 )
                 .await
@@ -1037,8 +965,19 @@ shift 3
             log::warn!("[claude-sandbox] could not remove what earlier sessions left: {error:#}");
         }
 
-        let (bridge, bridge_stdin, bridge_stdout, bridge_log) =
-            start_bridge(&wsl_program, &bridge_args, &preamble, &executor).await?;
+        let sandbox::IdeBridge {
+            child: bridge,
+            stdin: bridge_stdin,
+            stdout: bridge_stdout,
+            log: bridge_log,
+        } = sandbox::start_ide_bridge(
+            &wsl_program,
+            &bridge_args,
+            &preamble,
+            executor.timer(sandbox::IDE_BRIDGE_READY_TIMEOUT),
+        )
+        .await?;
+        let bridge_log = executor.spawn(bridge_log);
         let ide = cx.update(|_, cx| pending.attach(bridge_stdout, bridge_stdin, cx))?;
         // ADR-F50: the CLI writes its folders and its configuration from its
         // first moment to the session's end, so it is their writer before it
@@ -1080,22 +1019,6 @@ shift 3
             cx,
         );
     }
-
-    /// What the bridge reports when another bridge holds the project's
-    /// configuration directory: a session another Zed started.
-    const SESSION_RUNNING_CODE: &str = "session-running";
-
-    /// The project's session runs in another Zed.
-    #[derive(Debug)]
-    struct RunningElsewhere;
-
-    impl std::fmt::Display for RunningElsewhere {
-        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str(ALREADY_RUNNING_MESSAGE)
-        }
-    }
-
-    impl std::error::Error for RunningElsewhere {}
 
     /// The project's slot, or `None` after saying that its session already
     /// runs and showing that session's tab.
@@ -1339,79 +1262,6 @@ shift 3
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
-    /// Starts the bridge, hands it the lock content, and waits until it
-    /// listens. Returns the process, its stdin and stdout for the mux, and
-    /// the task that keeps logging its stderr.
-    async fn start_bridge(
-        program: &Path,
-        arguments: &[String],
-        preamble: &[u8],
-        executor: &BackgroundExecutor,
-    ) -> Result<(
-        util::command::Child,
-        impl AsyncWrite + Unpin + Send + 'static,
-        impl AsyncRead + Unpin + Send + 'static,
-        Task<()>,
-    )> {
-        let mut command = util::command::new_command(program);
-        command
-            .args(arguments)
-            .env("WSLENV", "")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        let mut bridge = command
-            .spawn()
-            .context("IDE 連携の中継 (wsl.exe) を起動できませんでした")?;
-        let (Some(mut stdin), Some(stdout), Some(stderr)) = (
-            bridge.stdin.take(),
-            bridge.stdout.take(),
-            bridge.stderr.take(),
-        ) else {
-            bail!("bug: the IDE bridge's standard I/O is not piped");
-        };
-        stdin
-            .write_all(preamble)
-            .await
-            .context("IDE 連携の中継に接続情報を渡せませんでした")?;
-        stdin
-            .flush()
-            .await
-            .context("IDE 連携の中継に接続情報を渡せませんでした")?;
-
-        let mut lines = futures::io::BufReader::new(stderr).lines();
-        let setup = async {
-            while let Some(line) = lines.next().await {
-                let line = line.context("reading the IDE bridge's messages")?;
-                match parse_bridge_status(&line) {
-                    Some(BridgeStatus::Ready) => return Ok(()),
-                    Some(BridgeStatus::Failed {
-                        code: SESSION_RUNNING_CODE,
-                    }) => return Err(RunningElsewhere.into()),
-                    Some(BridgeStatus::Failed { code }) => bail!(bridge_failure_message(code)),
-                    None => log::info!("[claude-sandbox] bridge: {line}"),
-                }
-            }
-            bail!("IDE 連携の中継が準備を終える前に終了しました。")
-        };
-        setup
-            .with_timeout(BRIDGE_READY_TIMEOUT, executor)
-            .await
-            .map_err(|_| {
-                anyhow!(
-                    "IDE 連携の中継が {} 秒以内に準備を終えませんでした。",
-                    BRIDGE_READY_TIMEOUT.as_secs()
-                )
-            })??;
-        let log = executor.spawn(async move {
-            while let Some(Ok(line)) = lines.next().await {
-                log::info!("[claude-sandbox] bridge: {line}");
-            }
-        });
-        Ok((bridge, stdin, stdout, log))
-    }
-
     async fn wrap_session(
         plan: SessionPlan,
         git_dirs: Vec<PathBuf>,
@@ -1603,10 +1453,9 @@ mod tests {
     use zed_actions::terminal::{LaunchClaudeCode, LaunchClaudeCodeOutsideSandbox};
 
     use super::session::{
-        BridgeStatus, PendingIdeSession, RunningSessions, SessionLayout, StaleEntries,
-        bridge_failure_message, helper_failure_message, hosts_detail, parse_bridge_status,
-        plan_session, project_key, register_session_writer, session_key, session_write_scope,
-        stale_entries,
+        PendingIdeSession, RunningSessions, SessionLayout, StaleEntries, helper_failure_message,
+        hosts_detail, plan_session, project_key, register_session_writer, session_key,
+        session_write_scope, stale_entries,
     };
     use super::{
         CLAUDE_PROGRAM, COLLABORATION_REASON, HostLauncher, LaunchRoute, NO_FOLDER_REASON,
@@ -1965,42 +1814,6 @@ mod tests {
             "the CLI is never looked up on PATH"
         );
         assert!(plan_session(&layout, RENDEZVOUS, CLAUDE_PATH, None, &[], PORT).is_err());
-    }
-
-    #[test]
-    fn the_bridge_reports_readiness_and_setup_failures() {
-        assert_eq!(
-            parse_bridge_status("zed-ide-bridge: ready\n"),
-            Some(BridgeStatus::Ready)
-        );
-        assert_eq!(
-            parse_bridge_status(
-                "zed-ide-bridge: lock-file-failed: creating 45123.lock: File exists"
-            ),
-            Some(BridgeStatus::Failed {
-                code: "lock-file-failed"
-            })
-        );
-        assert_eq!(
-            parse_bridge_status("[ide-bridge] refusing a connection"),
-            None
-        );
-        assert_eq!(parse_bridge_status("zed-ide-bridge: ready soon"), None);
-        for code in [
-            "bad-args",
-            "signals-failed",
-            "home-unknown",
-            "rendezvous-failed",
-            "lock-preamble-failed",
-            "lock-file-failed",
-        ] {
-            let message = bridge_failure_message(code);
-            assert!(
-                !message.contains("不明な理由") && !message.contains(code),
-                "{code}: {message}"
-            );
-        }
-        assert!(bridge_failure_message("new-code").contains("new-code"));
     }
 
     #[test]

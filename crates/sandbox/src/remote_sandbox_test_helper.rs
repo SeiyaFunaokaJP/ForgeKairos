@@ -17,17 +17,23 @@
 //!
 //! ```text
 //! remote_sandbox_test_helper --json-rpc-echo [--ignore-eof] [--ignore-hangup] [--linger]
+//! remote_sandbox_test_helper --ide-probe <port> [--linger]
 //! remote_sandbox_test_helper --stdio-e2e <scratch directory> [--seconds <n>] [--network]
 //! ```
 //!
-//! The first stands in for the agent inside the sandbox. The second starts this
-//! binary as the helper around it, with the argv the client builds, and checks
-//! what the client sees: the answers and nothing else on stdout, EOF reaching the
-//! agent, nothing growing while it runs and nothing left behind, the client's
-//! hangup stopping it, what may be read among the hidden entries and what
-//! refuses the command, and with `--network` (`slirp4netns` beside this binary)
-//! the egress proxy keeping local addresses out of reach. It creates files only
-//! under the scratch directory.
+//! The first stands in for the agent inside the sandbox, and the second for one
+//! that speaks to Zed over the ADR-F49 IDE channel: it connects to the port on
+//! the namespace's own loopback, exchanges a line and reports what it saw. The
+//! third starts this binary as the helper around them, with the argv the client
+//! builds, and checks what the client sees: the answers and nothing else on
+//! stdout, EOF reaching the agent, nothing growing while it runs and nothing
+//! left behind, the client's hangup stopping it, what may be read among the
+//! hidden entries and what refuses the command, the IDE channel of a one-shot
+//! command carrying a connection out to the bridge and back, and with
+//! `--network` (`slirp4netns` beside this binary) the egress proxy keeping
+//! local addresses out of reach. It creates files only under the scratch
+//! directory, and — for the IDE channel, which has to be under this account's
+//! home — one directory of its own in `~/.cache/zed-jp-enhance/ide`.
 
 #![allow(
     clippy::disallowed_methods,
@@ -45,6 +51,7 @@ fn main() {
         if let Some((mode, options)) = args.split_first() {
             match mode.as_str() {
                 "--json-rpc-echo" => json_rpc_echo::run(options),
+                "--ide-probe" => ide_probe::run(options),
                 "--stdio-e2e" => stdio_e2e::run(options),
                 _ => {}
             }
@@ -55,6 +62,7 @@ fn main() {
         "remote_sandbox_test_helper: not invoked as a sandbox helper\n\
          usage: remote_sandbox_test_helper --remote-sandbox-helper <policy> -- <program> <args...>\n\
          \x20      remote_sandbox_test_helper --json-rpc-echo [--ignore-eof] [--ignore-hangup] [--linger]\n\
+         \x20      remote_sandbox_test_helper --ide-probe <port> [--linger]\n\
          \x20      remote_sandbox_test_helper --stdio-e2e <scratch directory> [--seconds <n>] [--network]"
     );
     std::process::exit(2);
@@ -206,6 +214,66 @@ mod json_rpc_echo {
     }
 }
 
+/// ADR-F49 decision 24: stands in for an external ACP agent's use of the IDE
+/// channel, which is not a terminal session's. It connects to
+/// `127.0.0.1:<port>` on the namespace's own loopback, sends one line, reads
+/// one back, and prints what it found on its standard output — the client's
+/// own pipe — as a single line, so the driver reads it the way it reads an
+/// agent's answers.
+#[cfg(target_os = "linux")]
+mod ide_probe {
+    use std::io::{BufRead as _, BufReader, Write as _};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// What the probe sends, and what the driver on the other side of the
+    /// bridge expects to see arrive.
+    pub const REQUEST: &str = "zed-ide-probe hello";
+
+    pub fn run(options: &[String]) -> ! {
+        let Some(port) = options.first().and_then(|value| value.parse::<u16>().ok()) else {
+            eprintln!("ide-probe: usage: --ide-probe <port> [--linger]");
+            std::process::exit(2);
+        };
+        let linger = options.iter().any(|option| option == "--linger");
+        let outcome = match exchange(port) {
+            Ok(answer) => format!("reply={answer}"),
+            Err(error) => format!("error={error}"),
+        };
+        // The proxy variables the helper wrote: with an IDE channel loopback
+        // has to be exempt, or a client that honours them would send this very
+        // connection to the egress proxy, which refuses loopback.
+        let variable = |name: &str| std::env::var(name).unwrap_or_else(|_| "<unset>".to_string());
+        println!(
+            "zed-ide-probe {outcome} no_proxy={} https_proxy={}",
+            variable("NO_PROXY"),
+            variable("HTTPS_PROXY")
+        );
+        if let Err(error) = std::io::stdout().flush() {
+            eprintln!("ide-probe: writing stdout: {error}");
+            std::process::exit(1);
+        }
+        if linger {
+            // Until the client goes away and the helper stops this process.
+            loop {
+                std::thread::sleep(Duration::from_secs(3600));
+            }
+        }
+        std::process::exit(0);
+    }
+
+    fn exchange(port: u16) -> std::io::Result<String> {
+        let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+        stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+        stream.write_all(REQUEST.as_bytes())?;
+        stream.write_all(b"\n")?;
+        stream.flush()?;
+        let mut answer = String::new();
+        BufReader::new(stream).read_line(&mut answer)?;
+        Ok(answer.trim_end().replace(char::is_whitespace, "_"))
+    }
+}
+
 /// Starts this binary as the helper around [`json_rpc_echo`] and checks what the
 /// client sees (see the crate documentation).
 #[cfg(target_os = "linux")]
@@ -214,6 +282,7 @@ mod stdio_e2e {
     use sandbox::RemoteSandboxNetwork;
     use std::io::{Read as _, Write as _};
     use std::os::fd::AsRawFd as _;
+    use std::os::unix::fs::PermissionsExt as _;
     use std::path::{Path, PathBuf};
     use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
     use std::time::{Duration, Instant};
@@ -268,7 +337,9 @@ mod stdio_e2e {
         world.client_hangup(&mut checks, false, true)?;
         world.command_environment(&mut checks)?;
         world.readable(&mut checks)?;
+        world.credentials_in_the_worktree(&mut checks)?;
         world.refused_readable(&mut checks)?;
+        world.ide_forward(&mut checks, network)?;
         if network {
             world.network(&mut checks)?;
         } else {
@@ -308,6 +379,9 @@ mod stdio_e2e {
     struct Policy<'a> {
         writable: Vec<PathBuf>,
         readable: Vec<PathBuf>,
+        /// Directories the command may neither read nor write. The IDE
+        /// rendezvous has to be in one (ADR-F49), or the helper refuses.
+        protected: Vec<PathBuf>,
         network: RemoteSandboxNetwork,
         /// The helper's *own* environment, as the session that starts it has
         /// one.
@@ -315,6 +389,10 @@ mod stdio_e2e {
         /// What the client asks the helper to set in the command's environment
         /// (`--setenv`).
         set_environment: &'a [(&'a str, &'a str)],
+        /// ADR-F49 decision 24: the IDE channel (`--ide-listen` /
+        /// `--ide-rendezvous`), on a one-shot command rather than an
+        /// interactive session.
+        ide_forward: Option<(u16, PathBuf)>,
     }
 
     impl Policy<'static> {
@@ -322,9 +400,11 @@ mod stdio_e2e {
             Self {
                 writable,
                 readable: Vec::new(),
+                protected: Vec::new(),
                 network: RemoteSandboxNetwork::Blocked,
                 environment: &[],
                 set_environment: &[],
+                ide_forward: None,
             }
         }
     }
@@ -364,6 +444,13 @@ mod stdio_e2e {
                 (home.join(".ssh"), "id_test", "key"),
                 (projects.join("own/config"), "settings.json", "own"),
                 (projects.join("other/config"), "token", "other-project"),
+                // ADR-F49 decision 8: credential stores that used to be hidden
+                // from reads and left writable, with a project beside them, so
+                // the home itself can stand in for a worktree.
+                (home.clone(), ".npmrc", "//registry:_authToken=secret"),
+                (home.join(".config/gcloud"), "credentials.db", "token"),
+                (home.join(".cargo"), "credentials.toml", "registry token"),
+                (home.join("project"), "main.rs", "project"),
             ] {
                 std::fs::create_dir_all(&directory)
                     .with_context(|| format!("creating {}", directory.display()))?;
@@ -412,7 +499,7 @@ mod stdio_e2e {
             let chdir = self.work.display().to_string();
             let mut argv = sandbox::build_remote_sandbox_helper_argv(
                 &strings(&policy.writable),
-                &[],
+                &strings(&policy.protected),
                 &strings(&policy.readable),
                 &policy.network,
                 false,
@@ -426,6 +513,16 @@ mod stdio_e2e {
                     "--setenv".to_string(),
                     (*name).to_string(),
                     (*value).to_string(),
+                ]);
+            }
+            // No `--interactive`: ADR-F49 decision 24 gives the channel to a
+            // one-shot command.
+            if let Some((port, rendezvous)) = &policy.ide_forward {
+                argv.extend([
+                    "--ide-listen".to_string(),
+                    port.to_string(),
+                    "--ide-rendezvous".to_string(),
+                    rendezvous.display().to_string(),
                 ]);
             }
             argv.extend(separator);
@@ -622,6 +719,7 @@ mod stdio_e2e {
             let policy = Policy {
                 writable: vec![self.work.clone()],
                 readable: Vec::new(),
+                protected: Vec::new(),
                 network: RemoteSandboxNetwork::Blocked,
                 environment: &[
                     ("SSH_AUTH_SOCK", "/tmp/ssh-agent.sock"),
@@ -630,6 +728,7 @@ mod stdio_e2e {
                     ("PATH", "/session/only:/usr/bin"),
                 ],
                 set_environment: &[("AGENT_SETTING", "from the client")],
+                ide_forward: None,
             };
             let mut session = self.start("environment", &policy, &self.echo(&[]))?;
             let answered = session.call("environment", "{}")?;
@@ -678,9 +777,11 @@ mod stdio_e2e {
             let overriding = Policy {
                 writable: vec![self.work.clone()],
                 readable: Vec::new(),
+                protected: Vec::new(),
                 network: RemoteSandboxNetwork::Blocked,
                 environment: &[],
                 set_environment: &[("HOME", "/agent/home")],
+                ide_forward: None,
             };
             let mut session = self.start("environment-home", &overriding, &self.echo(&[]))?;
             let answered = session.call("environment", "{}")?;
@@ -751,9 +852,11 @@ mod stdio_e2e {
             let policy = Policy {
                 writable: vec![self.work.clone(), own],
                 readable: vec![agent, node],
+                protected: Vec::new(),
                 network: RemoteSandboxNetwork::Blocked,
                 environment: &[],
                 set_environment: &[],
+                ide_forward: None,
             };
             let command = ["/bin/sh".to_string(), "-c".to_string(), script];
             let mut session = self.start("readable", &policy, &command)?;
@@ -856,6 +959,92 @@ mod stdio_e2e {
             Ok(())
         }
 
+        /// ADR-F49 decision 8 (2026-09-15): a worktree that *is* the account's
+        /// home leaves every credential store inside a write grant. Hiding
+        /// them from reads used to be all that happened to them, which the
+        /// covers turned into a write refusal by accident and the Landlock
+        /// hiding did not — so they are protected in their own right now, on
+        /// whichever way this host hides reads.
+        fn credentials_in_the_worktree(&self, checks: &mut Checks) -> Result<()> {
+            let quoted = |path: &Path| format!("'{}'", path.display());
+            // What is on disk afterwards is the check, not what the shell was
+            // told: where the hiding is a cover, a credential file is bound to
+            // `/dev/null`, so the command's own write "succeeds" and reaches
+            // nothing. What must never happen is the store changing.
+            let credentials = [
+                (".npmrc", "//registry:_authToken=secret"),
+                (".cargo/credentials.toml", "registry token"),
+                (".config/gcloud/credentials.db", "token"),
+                (".ssh/id_test", "key"),
+            ];
+            let script = format!(
+                "grep -q secret {npmrc} && echo npmrc-secret-visible; \
+                 echo tampered >> {npmrc} 2>/dev/null; \
+                 echo tampered >> {gcloud} 2>/dev/null; \
+                 touch {gcloud_new} 2>/dev/null; \
+                 echo tampered >> {cargo} 2>/dev/null; \
+                 echo tampered >> {key} 2>/dev/null; \
+                 echo worked >> {project} && echo project-writable; \
+                 true",
+                npmrc = quoted(&self.home.join(".npmrc")),
+                gcloud = quoted(&self.home.join(".config/gcloud/credentials.db")),
+                gcloud_new = quoted(&self.home.join(".config/gcloud/new")),
+                cargo = quoted(&self.home.join(".cargo/credentials.toml")),
+                key = quoted(&self.home.join(".ssh/id_test")),
+                project = quoted(&self.home.join("project/main.rs")),
+            );
+            let policy = Policy::confined(vec![self.home.clone()]);
+            let command = ["/bin/sh".to_string(), "-c".to_string(), script];
+            let mut session = self.start("credentials", &policy, &command)?;
+            session.close_stdin();
+            let output = session.read_to_end(Duration::from_secs(30))?;
+            let status = session.wait(Duration::from_secs(10))?;
+            let stderr = session.stderr();
+            let has = |line: &str| output.iter().any(|output| output == line);
+            // The stores whose contents on disk are no longer what was put
+            // there: the check is that this stays empty.
+            let changed: Vec<&str> = credentials
+                .iter()
+                .filter(|(relative, contents)| {
+                    std::fs::read_to_string(self.home.join(relative))
+                        .ok()
+                        .as_deref()
+                        != Some(*contents)
+                })
+                .map(|(relative, _)| *relative)
+                .collect();
+            let added = self.home.join(".config/gcloud/new").exists();
+            let detail = format!(
+                "status {status:?}, stdout {output:?}, changed {changed:?}, added {added}, \
+                 stderr {}",
+                preview(&stderr)
+            );
+            checks.expect(
+                "a worktree that is the home still writes its own files",
+                status.is_some_and(|status| status.success()) && has("project-writable"),
+                &detail,
+            );
+            checks.expect(
+                "and no credential store in it is changed or added to, whichever way this host \
+                 hides reads",
+                changed.is_empty() && !added,
+                &detail,
+            );
+            if stderr.contains("read-hiding-unavailable") {
+                checks.info(
+                    "this host hides no reads, so the credentials stay readable; keeping them \
+                     unchanged is what decision 8 adds there",
+                );
+            } else {
+                checks.expect(
+                    "and none of them can be read either",
+                    !has("npmrc-secret-visible"),
+                    &detail,
+                );
+            }
+            Ok(())
+        }
+
         fn refused_readable(&self, checks: &mut Checks) -> Result<()> {
             let data = self.data();
             for (what, path) in [
@@ -877,9 +1066,11 @@ mod stdio_e2e {
                 let policy = Policy {
                     writable: vec![self.work.clone()],
                     readable: vec![path],
+                    protected: Vec::new(),
                     network: RemoteSandboxNetwork::Blocked,
                     environment: &[],
                     set_environment: &[],
+                    ide_forward: None,
                 };
                 let command = ["/bin/echo".to_string(), "ran".to_string()];
                 let mut session = self.start("refused", &policy, &command)?;
@@ -908,6 +1099,141 @@ mod stdio_e2e {
             Ok(())
         }
 
+        /// ADR-F49 decision 24: the IDE channel on a **one-shot** command,
+        /// which is what an external ACP agent is. The bridge listens outside
+        /// the sandbox on a socket in a protected directory; the command
+        /// connects to the port on its own loopback, and what it sends comes
+        /// out of the bridge's standard output as a frame and goes back the
+        /// same way. With `--network` the egress proxy runs beside it, so the
+        /// two listeners in the namespace are checked together.
+        fn ide_forward(&self, checks: &mut Checks, network: bool) -> Result<()> {
+            let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+                checks.info("no HOME: the IDE forward checks are skipped");
+                return Ok(());
+            };
+            // Where Zed really puts it, which is also where the bridge insists
+            // it be: under this account's home, in a private directory.
+            let directory = home
+                .join(".cache/zed-jp-enhance/ide")
+                .join(format!("e2e-{}", std::process::id()));
+            std::fs::create_dir_all(&directory)
+                .with_context(|| format!("creating {}", directory.display()))?;
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+                .with_context(|| format!("securing {}", directory.display()))?;
+            let rendezvous = directory.join("bridge.sock");
+            let mut bridge = Bridge::start(&self.helper, &rendezvous, &self.scratch)?;
+
+            let port: u16 = 45123;
+            let policy = Policy {
+                writable: vec![self.work.clone()],
+                readable: Vec::new(),
+                protected: vec![directory.clone()],
+                network: if network {
+                    RemoteSandboxNetwork::AnyHost
+                } else {
+                    RemoteSandboxNetwork::Blocked
+                },
+                environment: &[],
+                set_environment: &[],
+                ide_forward: Some((port, rendezvous.clone())),
+            };
+            let probe = [
+                self.helper.display().to_string(),
+                "--ide-probe".to_string(),
+                port.to_string(),
+                "--linger".to_string(),
+            ];
+            let mut session = self.start("ide-forward", &policy, &probe)?;
+
+            // The command's connection arrives as an Open frame, then what it
+            // wrote as Data.
+            let opened = bridge.next_frame(Duration::from_secs(30))?;
+            let connection = opened.as_ref().map(|frame| frame.connection_id);
+            checks.expect(
+                "a one-shot command with an IDE channel reaches the bridge \
+                 through the namespace's own loopback",
+                opened
+                    .as_ref()
+                    .is_some_and(|frame| matches!(frame.kind, sandbox::BridgeFrameKind::Open)),
+                format!("{opened:?}"),
+            );
+            let sent = bridge.next_data(Duration::from_secs(30))?;
+            checks.expect(
+                "what the command wrote comes out of the bridge unchanged",
+                sent.trim_end() == crate::ide_probe::REQUEST,
+                preview(&sent),
+            );
+            if let Some(connection) = connection {
+                bridge.send_data(
+                    connection,
+                    b"zed-ide-reply
+",
+                )?;
+            }
+            let answered = match session.next_line(Duration::from_secs(30))? {
+                Line::Text(line) => line,
+                other => format!("{other:?}"),
+            };
+            checks.expect(
+                "and Zed's answer reaches the command on that same connection",
+                answered.contains("reply=zed-ide-reply"),
+                preview(&answered),
+            );
+            // ADR-F49 decision 24: without this a client that honours the
+            // proxy variables would send its own loopback connection to the
+            // egress proxy, which refuses loopback.
+            checks.expect(
+                "an IDE channel takes loopback out of the command's proxy variables",
+                answered.contains("no_proxy=127.0.0.1,localhost") || !network,
+                preview(&answered),
+            );
+            if !network {
+                checks.expect(
+                    "with no network grant there is no proxy to go around either",
+                    answered.contains("no_proxy=<unset>"),
+                    preview(&answered),
+                );
+            }
+
+            // The client going away stops it all, one-shot or not.
+            let holder = descendants(session.pid()).first().copied();
+            session.hang_up();
+            let status = session.wait(Duration::from_secs(15))?;
+            checks.expect(
+                "the client's hangup stops a one-shot command that was still \
+                 holding its IDE channel",
+                status.is_some(),
+                format!("status {status:?}"),
+            );
+            if let Some(holder) = holder {
+                let left: Vec<String> = [
+                    format!("/tmp/zed-remote-sandbox-{holder}"),
+                    format!("/tmp/.zed-remote-jail-{holder}"),
+                ]
+                .into_iter()
+                .filter(|path| Path::new(path).exists())
+                .collect();
+                checks.expect(
+                    "and leaves none of the command's scratch directories behind",
+                    left.is_empty(),
+                    left.join(", "),
+                );
+            }
+            checks.info(format!("stderr: {}", preview(&session.stderr())));
+
+            // Zed's own end: closing the bridge's input removes the socket and
+            // the directory it created.
+            let bridge_status = bridge.shut_down(Duration::from_secs(15))?;
+            checks.expect(
+                "closing the bridge's input ends it and removes its socket",
+                bridge_status.is_some_and(|status| status.success()) && !rendezvous.exists(),
+                format!("status {bridge_status:?}, socket {}", rendezvous.exists()),
+            );
+            checks.info(format!("bridge stderr: {}", preview(&bridge.stderr())));
+            std::fs::remove_dir_all(&directory).ok();
+            Ok(())
+        }
+
         /// The egress proxy: local addresses out of reach, and nothing growing
         /// with the connections it relays.
         fn network(&self, checks: &mut Checks) -> Result<()> {
@@ -920,9 +1246,11 @@ mod stdio_e2e {
             let policy = Policy {
                 writable: vec![self.work.clone()],
                 readable: Vec::new(),
+                protected: Vec::new(),
                 network: RemoteSandboxNetwork::AnyHost,
                 environment: &[("ZED_REMOTE_SANDBOX_LOG", "1")],
                 set_environment: &[],
+                ide_forward: None,
             };
             let mut session = self.start("any-host", &policy, &self.echo(&[]))?;
             let mut local: Vec<String> = [
@@ -996,9 +1324,11 @@ mod stdio_e2e {
             let policy = Policy {
                 writable: vec![self.work.clone()],
                 readable: Vec::new(),
+                protected: Vec::new(),
                 network: RemoteSandboxNetwork::Hosts(vec!["example.com".to_string()]),
                 environment: &[],
                 set_environment: &[],
+                ide_forward: None,
             };
             let mut session = self.start("hosts", &policy, &self.echo(&[]))?;
             let mut reached = Vec::new();
@@ -1189,6 +1519,163 @@ mod stdio_e2e {
         Text(String),
         End,
         TimedOut,
+    }
+
+    /// ADR-F49: Zed's end of the IDE channel — the `--ide-bridge` process,
+    /// which listens on the rendezvous socket outside the sandbox and carries
+    /// every connection over its own standard I/O as frames.
+    struct Bridge {
+        child: Child,
+        stdin: Option<ChildStdin>,
+        stdout: ChildStdout,
+        decoder: sandbox::BridgeFrameDecoder,
+        pending: std::collections::VecDeque<sandbox::BridgeFrame>,
+        buffer: Vec<u8>,
+        stderr_path: PathBuf,
+    }
+
+    impl Bridge {
+        fn start(helper: &Path, rendezvous: &Path, scratch: &Path) -> Result<Self> {
+            let stderr_path = scratch.join("ide-bridge.stderr");
+            let stderr = std::fs::File::create(&stderr_path)
+                .with_context(|| format!("creating {}", stderr_path.display()))?;
+            let mut child = Command::new(helper)
+                .arg("--ide-bridge")
+                .arg("--rendezvous")
+                .arg(rendezvous)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::from(stderr))
+                .spawn()
+                .context("starting the IDE bridge")?;
+            let stdin = child.stdin.take().context("the bridge's stdin")?;
+            let stdout = child.stdout.take().context("the bridge's stdout")?;
+            let bridge = Self {
+                child,
+                stdin: Some(stdin),
+                stdout,
+                decoder: sandbox::BridgeFrameDecoder::new(),
+                pending: std::collections::VecDeque::new(),
+                buffer: vec![0; 64 * 1024],
+                stderr_path,
+            };
+            // It says so on its stderr once it listens; nothing may connect
+            // before that.
+            let deadline = Instant::now() + Duration::from_secs(30);
+            loop {
+                let said = bridge.stderr();
+                if said.contains("zed-ide-bridge: ready") {
+                    return Ok(bridge);
+                }
+                if Instant::now() >= deadline {
+                    bail!("the IDE bridge did not start: {}", preview(&said));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+
+        fn next_frame(&mut self, timeout: Duration) -> Result<Option<sandbox::BridgeFrame>> {
+            let deadline = Instant::now() + timeout;
+            loop {
+                if let Some(frame) = self.pending.pop_front() {
+                    return Ok(Some(frame));
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Ok(None);
+                }
+                let mut poll_fd = libc::pollfd {
+                    fd: self.stdout.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                let milliseconds = i32::try_from(remaining.as_millis()).unwrap_or(i32::MAX);
+                // SAFETY: one valid `pollfd` for the duration of the call.
+                let ready = unsafe { libc::poll(&mut poll_fd, 1, milliseconds) };
+                if ready < 0 {
+                    let error = std::io::Error::last_os_error();
+                    if error.kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    return Err(error).context("waiting for the IDE bridge");
+                }
+                if ready == 0 {
+                    return Ok(None);
+                }
+                let read = self
+                    .stdout
+                    .read(&mut self.buffer)
+                    .context("reading from the IDE bridge")?;
+                if read == 0 {
+                    self.decoder.finish()?;
+                    return Ok(None);
+                }
+                let bytes = self
+                    .buffer
+                    .get(..read)
+                    .context("read past the buffer")?
+                    .to_vec();
+                self.pending.extend(self.decoder.push(&bytes)?);
+            }
+        }
+
+        /// The payload of the next Data frame, as text.
+        fn next_data(&mut self, timeout: Duration) -> Result<String> {
+            let deadline = Instant::now() + timeout;
+            loop {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                match self.next_frame(remaining)? {
+                    Some(frame) if matches!(frame.kind, sandbox::BridgeFrameKind::Data) => {
+                        return Ok(String::from_utf8_lossy(&frame.payload).into_owned());
+                    }
+                    Some(_) => continue,
+                    None => bail!("no data came out of the IDE bridge"),
+                }
+            }
+        }
+
+        fn send_data(&mut self, connection_id: u32, payload: &[u8]) -> Result<()> {
+            let stdin = self
+                .stdin
+                .as_mut()
+                .context("the bridge's stdin is closed")?;
+            let mut encoded = Vec::new();
+            sandbox::encode_frame(
+                &sandbox::BridgeFrame::data(connection_id, payload.to_vec()),
+                &mut encoded,
+            );
+            stdin.write_all(&encoded)?;
+            stdin.flush()?;
+            Ok(())
+        }
+
+        fn shut_down(&mut self, timeout: Duration) -> Result<Option<ExitStatus>> {
+            self.stdin = None;
+            let deadline = Instant::now() + timeout;
+            loop {
+                if let Some(status) = self.child.try_wait()? {
+                    return Ok(Some(status));
+                }
+                if Instant::now() >= deadline {
+                    return Ok(None);
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+
+        fn stderr(&self) -> String {
+            std::fs::read_to_string(&self.stderr_path).unwrap_or_default()
+        }
+    }
+
+    impl Drop for Bridge {
+        fn drop(&mut self) {
+            self.stdin = None;
+            if matches!(self.child.try_wait(), Ok(None)) {
+                self.child.kill().ok();
+                self.child.wait().ok();
+            }
+        }
     }
 
     /// Lines of the helper's stdout, read with a deadline and closable at any

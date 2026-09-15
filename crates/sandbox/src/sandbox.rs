@@ -81,9 +81,14 @@ pub use util::{
 };
 #[cfg(target_os = "windows")]
 pub use windows_wsl::{
-    ResolvedGrant, ide_bridge_invocation, ide_rendezvous_path, is_forwardable_env_var,
-    registered_wsl_distro_name, resolve_canonical_for_grant, stage_agent_binary,
-    staged_agent_binary, wsl_distro_for_path,
+    IDE_BRIDGE_READY_TIMEOUT, IdeBridge, IdeBridgeSessionRunning, ResolvedGrant, WslArchiveKind,
+    ensure_wsl_agent_config_dir, ide_bridge_invocation, ide_rendezvous_path,
+    install_npm_package_in_wsl, is_forwardable_env_var, list_wsl_sandbox_processes,
+    read_wsl_npm_package_json, registered_wsl_distro_name, resolve_canonical_for_grant,
+    stage_agent_binary, stage_wsl_runtime_archive, stage_wsl_runtime_file, staged_agent_binary,
+    staged_wsl_runtime, start_ide_bridge, stop_wsl_sandbox_processes, sweep_ide_rendezvous,
+    wsl_agent_runtime_data_directory, wsl_distro_for_path, wsl_machine_architecture,
+    wsl_npm_package_executable, wsl_runtime_executable,
 };
 
 #[cfg(target_os = "windows")]
@@ -452,7 +457,25 @@ fn writable_path_overlaps_protected_path(
         .starts_with(protected_path.macos_canonical_path())
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+/// Windows: on the *canonical* paths, never the raw requests. Both sides are
+/// normalized by `CanonicalPathBuf` (ADR-F49 第 2b 段), so the one folder an
+/// ext4 worktree is — writable as `\\wsl$\Ubuntu\p` and protected as
+/// `\\wsl.localhost\Ubuntu\p\.git`, say — compares as one folder here.
+/// Comparing the raw requests instead let those two spellings read as
+/// unrelated places and the overlap went unreported: not an escape (the helper
+/// inside WSL resolves and enforces both), but the early, explanatory refusal
+/// of a bad request was lost.
+#[cfg(target_os = "windows")]
+fn writable_path_overlaps_protected_path(
+    writable_path: &HostFilesystemLocation,
+    protected_path: &HostFilesystemLocation,
+) -> bool {
+    writable_path
+        .windows_canonical_path()
+        .starts_with(protected_path.windows_canonical_path())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn writable_path_overlaps_protected_path(
     writable_path: &HostFilesystemLocation,
     protected_path: &HostFilesystemLocation,
@@ -880,8 +903,10 @@ fn carve_directory(
 
 /// Where a writable grant lies on the host when it is a directory — a worktree
 /// root, which the built-in worktree entries are resolved against. On Windows a
-/// grant inside WSL (a `/…` path) is left to the helper there, which adds those
-/// entries for every root it may write itself, missing ones included.
+/// grant on a distro's own filesystem is left to the helper there, which adds
+/// those entries for every root it may write itself, missing ones included: a
+/// `/…` path, and (ADR-F49 第 2b 段) a `\\wsl.localhost\<distro>\…` share, which
+/// the Windows side must not resolve against the *Windows* home either.
 fn writable_directory_path(location: &HostFilesystemLocation) -> Option<PathBuf> {
     #[cfg(target_os = "linux")]
     let path = location.linux_canonical_path();
@@ -892,8 +917,11 @@ fn writable_directory_path(location: &HostFilesystemLocation) -> Option<PathBuf>
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     let path = location.untrusted_raw_path();
     #[cfg(target_os = "windows")]
-    if path.to_string_lossy().starts_with('/') {
-        return None;
+    {
+        let text = path.to_string_lossy();
+        if text.starts_with('/') || util::parse_wsl_share_path(&text).is_some() {
+            return None;
+        }
     }
     path.is_dir().then(|| path.to_path_buf())
 }
@@ -1424,6 +1452,15 @@ pub struct Sandbox {
     /// See [`Sandbox::set_interactive_session`].
     #[cfg(target_os = "windows")]
     interactive_session: Option<InteractiveSession>,
+    /// See [`Sandbox::set_ide_forward`].
+    #[cfg(target_os = "windows")]
+    ide_forward: Option<IdeForward>,
+    /// See [`Sandbox::set_wsl_linux_environment`].
+    #[cfg(target_os = "windows")]
+    wsl_linux_environment: bool,
+    /// See [`Sandbox::set_sandbox_session_id`].
+    #[cfg(target_os = "windows")]
+    sandbox_session_id: Option<String>,
 }
 
 impl Sandbox {
@@ -1490,6 +1527,12 @@ impl Sandbox {
             editor_network_allowlist: None,
             #[cfg(target_os = "windows")]
             interactive_session: None,
+            #[cfg(target_os = "windows")]
+            ide_forward: None,
+            #[cfg(target_os = "windows")]
+            wsl_linux_environment: false,
+            #[cfg(target_os = "windows")]
+            sandbox_session_id: None,
         })
     }
     /// Check whether the platform sandbox can be created on this host without
@@ -1540,6 +1583,55 @@ impl Sandbox {
     #[cfg(target_os = "windows")]
     pub fn set_interactive_session(&mut self, session: InteractiveSession) {
         self.interactive_session = Some(session);
+    }
+
+    /// Windows only, ADR-F49 決定 24: give this command an IDE channel
+    /// ([`IdeForward`]) without making it an interactive session — an external
+    /// ACP agent, whose standard I/O carries the ACP protocol rather than a
+    /// terminal, reaches Zed's restricted IDE server over it.
+    ///
+    /// Start the bridge that listens on `forward.rendezvous_path`
+    /// ([`start_ide_bridge`]) before wrapping the command: the helper refuses a
+    /// rendezvous directory that is not there yet. The channel lives as long as
+    /// the command — the helper's parent tears it down when the command's
+    /// standard I/O closes, one-shot or not.
+    ///
+    /// An interactive session set through [`Self::set_interactive_session`]
+    /// carries its own; this one wins if both are set.
+    #[cfg(target_os = "windows")]
+    pub fn set_ide_forward(&mut self, forward: IdeForward) {
+        self.ide_forward = Some(forward);
+    }
+
+    /// Windows only, ADR-F49 第 2b 段: the command wrapped by this sandbox is
+    /// a Linux command inside WSL whose environment this fork wrote for Linux
+    /// — an agent's own settings, a `PATH` of directories in the distro, a
+    /// `HOME` inside the write grant — rather than one picked up from this
+    /// Windows process.
+    ///
+    /// Without this the environment is filtered as a Windows process
+    /// environment (`PATH`, `HOME` and the rest of the Windows-valued
+    /// variables are dropped, see `is_forwardable_env_var`), which is right
+    /// for a terminal command taking the project's environment along and wrong
+    /// for a command written for the distro.
+    #[cfg(target_os = "windows")]
+    pub fn set_wsl_linux_environment(&mut self) {
+        self.wsl_linux_environment = true;
+    }
+
+    /// Windows only, ADR-F49 決定 18: register the sandbox this wraps a
+    /// command in under `id`, so that what the command leaves running can be
+    /// listed ([`windows_wsl::list_wsl_sandbox_processes`]) and stopped
+    /// ([`windows_wsl::stop_wsl_sandbox_processes`]) from outside it.
+    ///
+    /// The helper's parent — outside every namespace it builds — writes the
+    /// registration, in a directory the command cannot write. A sandbox with
+    /// no id is registered nowhere and cannot be followed. The id is the
+    /// client's own (see [`validate_sandbox_session_id`]), never one a command
+    /// could choose.
+    #[cfg(target_os = "windows")]
+    pub fn set_sandbox_session_id(&mut self, id: String) {
+        self.sandbox_session_id = Some(id);
     }
 
     /// Transform `command` into the invocation that runs it inside this sandbox.
@@ -1882,7 +1974,13 @@ impl Sandbox {
             ),
             network,
             allow_fs_write: self.fs.allow_fs_write,
-            interactive_session: self.interactive_session.clone(),
+            interactive: self.interactive_session.is_some(),
+            ide_forward: merge_ide_forward(
+                self.ide_forward.as_ref(),
+                self.interactive_session.as_ref(),
+            ),
+            linux_environment: self.wsl_linux_environment,
+            sandbox_session_id: self.sandbox_session_id.clone(),
         };
         let writable_paths = self
             .fs
@@ -2062,8 +2160,33 @@ pub(crate) struct WslHelperOptions<'a> {
     pub(crate) environment: &'a [(String, String)],
     /// Then removed from it.
     pub(crate) unset_environment: &'a [&'a str],
-    /// ADR-F49: run as an interactive session, with its IDE channel.
-    pub(crate) interactive_session: Option<&'a InteractiveSession>,
+    /// ADR-F49: run as an interactive session ([`InteractiveSession`]) rather
+    /// than as a one-shot command.
+    pub(crate) interactive: bool,
+    /// ADR-F49: the IDE channel — an interactive session's (decision 3) or a
+    /// one-shot external ACP agent's (decision 24). A command has at most one,
+    /// so the caller merges the two sources before getting here.
+    pub(crate) ide_forward: Option<&'a IdeForward>,
+    /// ADR-F49 決定 18: the name this sandbox is registered under, so that
+    /// what the command leaves running can be listed and stopped from outside
+    /// it ([`SANDBOX_SESSION_FLAG`]).
+    pub(crate) sandbox_session_id: Option<&'a str>,
+}
+
+/// ADR-F49: a command has one IDE channel, whichever of the two ways asked for
+/// it — [`Sandbox::set_ide_forward`] (decision 24, an external ACP agent) or
+/// the [`InteractiveSession`]'s own (decision 3, the agent CLI on a terminal).
+/// The explicit one wins.
+#[cfg(target_os = "windows")]
+fn merge_ide_forward(
+    explicit: Option<&IdeForward>,
+    interactive_session: Option<&InteractiveSession>,
+) -> Option<IdeForward> {
+    explicit.cloned().or_else(|| {
+        interactive_session
+            .as_ref()
+            .and_then(|session| session.ide_forward.clone())
+    })
 }
 
 /// ADR-F46: the argv for the same helper when the local Windows backend runs it
@@ -2104,16 +2227,21 @@ pub(crate) fn build_wsl_sandbox_helper_argv(
     for name in options.unset_environment {
         argv.extend(["--unsetenv".to_string(), name.to_string()]);
     }
-    if let Some(session) = options.interactive_session {
+    if options.interactive {
         argv.push("--interactive".to_string());
-        if let Some(forward) = &session.ide_forward {
-            argv.extend([
-                "--ide-listen".to_string(),
-                forward.inner_port.to_string(),
-                "--ide-rendezvous".to_string(),
-                forward.rendezvous_path.clone(),
-            ]);
-        }
+    }
+    // ADR-F49 decision 24: independent of `--interactive`, which a one-shot
+    // ACP agent with an IDE channel is not.
+    if let Some(forward) = options.ide_forward {
+        argv.extend([
+            "--ide-listen".to_string(),
+            forward.inner_port.to_string(),
+            "--ide-rendezvous".to_string(),
+            forward.rendezvous_path.clone(),
+        ]);
+    }
+    if let Some(session_id) = options.sandbox_session_id {
+        argv.extend([SANDBOX_SESSION_FLAG.to_string(), session_id.to_string()]);
     }
     argv.push("--".to_string());
     argv
@@ -2702,6 +2830,39 @@ fn resolve_restricted_network(allowed_domains: &[String]) -> Result<NetSetup, Sa
 mod windows_tests {
     use super::*;
 
+    /// ADR-F49 第 2b 段: an ext4 worktree reaches the sandbox as a
+    /// `\\wsl.localhost\<distro>\…` path, which has several spellings. The
+    /// overlap check has to read them as the one folder they are, or a write
+    /// grant that lands on a protected path is only refused later, by the
+    /// helper inside WSL, with no explanation of which paths collided.
+    #[test]
+    fn a_write_grant_overlapping_a_protected_path_is_seen_through_either_spelling() {
+        let capture = |path: &str| HostFilesystemLocation::capture(path).expect("a grant shape");
+        let protected = capture(r"\\wsl.localhost\Ubuntu\p\.git");
+        for writable in [
+            r"\\wsl$\Ubuntu\p\.git",
+            r"\\wsl$\Ubuntu\p\.git\hooks",
+            r"\\?\UNC\wsl.localhost\Ubuntu\p\.git",
+            "//wsl.localhost/Ubuntu/p/.git",
+        ] {
+            assert!(
+                writable_path_overlaps_protected_path(&capture(writable), &protected),
+                "{writable} is inside the protected path"
+            );
+        }
+        // A sibling, and the same name in another distribution, are not.
+        for unrelated in [
+            r"\\wsl.localhost\Ubuntu\p\src",
+            r"\\wsl.localhost\Debian\p\.git",
+            r"C:\p\.git",
+        ] {
+            assert!(
+                !writable_path_overlaps_protected_path(&capture(unrelated), &protected),
+                "{unrelated} is not inside the protected path"
+            );
+        }
+    }
+
     /// Every grant reaches the WSL helper as a proxy policy; host lists stay
     /// host lists instead of widening to all hosts.
     #[test]
@@ -2803,11 +2964,12 @@ mod windows_tests {
         );
     }
 
-    /// An interactive session is marked as one, and its IDE channel reaches
-    /// the helper just before the command.
+    /// An interactive session is marked as one, and an IDE channel reaches the
+    /// helper just before the command — with or without `--interactive`
+    /// (ADR-F49 decision 24).
     #[test]
-    fn wsl_helper_argv_carries_the_interactive_session() {
-        let argv = |session: &InteractiveSession| {
+    fn wsl_helper_argv_carries_the_interactive_session_and_the_ide_channel() {
+        let argv = |interactive: bool, ide_forward: Option<&IdeForward>| {
             build_wsl_sandbox_helper_argv(
                 &[],
                 &[],
@@ -2816,13 +2978,14 @@ mod windows_tests {
                 false,
                 None,
                 &WslHelperOptions {
-                    interactive_session: Some(session),
+                    interactive,
+                    ide_forward,
                     ..WslHelperOptions::default()
                 },
             )
         };
         assert_eq!(
-            argv(&InteractiveSession::default()),
+            argv(true, None),
             [
                 "--remote-sandbox-helper",
                 "--net",
@@ -2832,14 +2995,12 @@ mod windows_tests {
                 "--",
             ]
         );
-        let with_ide = InteractiveSession {
-            ide_forward: Some(IdeForward {
-                inner_port: 45123,
-                rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock".to_string(),
-            }),
+        let forward = IdeForward {
+            inner_port: 45123,
+            rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock".to_string(),
         };
         assert_eq!(
-            argv(&with_ide),
+            argv(true, Some(&forward)),
             [
                 "--remote-sandbox-helper",
                 "--net",
@@ -2852,6 +3013,64 @@ mod windows_tests {
                 "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
                 "--",
             ]
+        );
+        // ADR-F49 decision 24: what `Sandbox::set_ide_forward` produces — an
+        // external ACP agent is a one-shot command with an IDE channel.
+        assert_eq!(
+            argv(false, Some(&forward)),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "blocked",
+                "--wsl",
+                "--ide-listen",
+                "45123",
+                "--ide-rendezvous",
+                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                "--",
+            ]
+        );
+    }
+
+    /// ADR-F49 decision 24: a `Sandbox` reaches the helper with one IDE
+    /// channel, whichever way it was asked for, and `set_ide_forward` does not
+    /// make the command an interactive session.
+    #[test]
+    fn the_two_ways_of_asking_for_an_ide_channel_meet_in_one() {
+        let forward = |port| IdeForward {
+            inner_port: port,
+            rendezvous_path: format!("/root/.cache/zed-jp-enhance/ide/s{port}/bridge.sock"),
+        };
+        assert_eq!(merge_ide_forward(None, None), None);
+        assert_eq!(
+            merge_ide_forward(None, Some(&InteractiveSession::default())),
+            None
+        );
+        assert_eq!(merge_ide_forward(Some(&forward(1)), None), Some(forward(1)));
+        let session = InteractiveSession {
+            ide_forward: Some(forward(2)),
+        };
+        assert_eq!(merge_ide_forward(None, Some(&session)), Some(forward(2)));
+        assert_eq!(
+            merge_ide_forward(Some(&forward(1)), Some(&session)),
+            Some(forward(1)),
+            "the one asked for explicitly wins"
+        );
+
+        let mut sandbox = Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Restricted {
+                writable_paths: Vec::new(),
+                protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
+            },
+            network: SandboxNetPolicy::Blocked,
+        })
+        .expect("a blocked sandbox");
+        sandbox.set_ide_forward(forward(45123));
+        assert_eq!(sandbox.ide_forward, Some(forward(45123)));
+        assert!(
+            sandbox.interactive_session.is_none(),
+            "an ACP agent's channel does not make it a terminal session"
         );
     }
 

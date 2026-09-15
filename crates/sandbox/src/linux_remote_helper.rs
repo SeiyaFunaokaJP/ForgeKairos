@@ -66,10 +66,14 @@
 //!
 //! # IDE forward (ADR-F49)
 //!
-//! For an interactive session the holder also listens on a fixed port of the
+//! When the client asks for one — for an interactive session (decision 3), or
+//! for a one-shot command that speaks to Zed over it, such as an external ACP
+//! agent (decision 24) — the holder also listens on a fixed port of the
 //! namespace's loopback, and the parent splices each connection to the IDE
 //! bridge's Unix socket (see `crate::ide_bridge`), which must lie in a
-//! directory the command cannot write to.
+//! directory the command cannot write to. Nothing about the forward depends on
+//! the session being interactive: it is set up before the command starts and
+//! torn down with the parent, one-shot or not.
 
 use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use std::ffi::{CString, OsStr, OsString};
@@ -93,7 +97,7 @@ use crate::protected_paths::{
     remote_agent_runtime_data_directory, resolve_readable_path, worktree_entries,
     zsh_startup_files_from_environment,
 };
-use crate::sandbox_processes::{SANDBOX_KILL_FLAG, SANDBOX_PROCESSES_FLAG};
+use crate::sandbox_processes::{SANDBOX_KILL_FLAG, SANDBOX_PROCESSES_FLAG, parse_stat};
 use crate::util::CanonicalPathBuf;
 use crate::{
     IDE_BRIDGE_FLAG, REMOTE_SANDBOX_HELPER_FLAG, SANDBOX_SESSION_FLAG, WSL_HELPER_MODE_FLAG,
@@ -330,7 +334,8 @@ struct Stage1Invocation {
     /// standard streams are the terminal's and are handed to it as they are.
     /// The signal policy and the clean-up are the same for every command.
     interactive: bool,
-    /// ADR-F49: the IDE channel of an interactive session.
+    /// ADR-F49: the IDE channel, when the client asked for one. Independent of
+    /// `interactive`: a one-shot command can have it too (decision 24).
     ide_forward: Option<IdeForwardRequest>,
     /// ADR-F49 decision 18: the opaque id the client gave this sandbox, under
     /// which the parent registers the command's PID namespace so that what
@@ -341,7 +346,9 @@ struct Stage1Invocation {
     args: Vec<OsString>,
 }
 
-/// `--ide-listen` and `--ide-rendezvous` (ADR-F49).
+/// `--ide-listen` and `--ide-rendezvous` (ADR-F49). The two go together, and
+/// go with any command — an interactive session's (decision 3) or a one-shot
+/// agent's (decision 24).
 #[derive(Debug, PartialEq)]
 struct IdeForwardRequest {
     /// The port the holder listens on inside the network namespace.
@@ -472,14 +479,12 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
         .map(|entries| crate::EditorAllowlistCeiling::parse(&entries).map(Arc::new))
         .transpose()?;
     let program = program.context("missing program after `--`")?;
+    // ADR-F49 decision 24: not tied to `--interactive`. A one-shot ACP agent
+    // is given the same channel, and everything the forward is made of — the
+    // namespace's loopback listener, the relay, the rendezvous socket — is
+    // built and torn down the same way for it.
     let ide_forward = match (ide_listen, ide_rendezvous) {
-        (Some(port), Some(rendezvous)) => {
-            ensure!(
-                interactive,
-                "an IDE forward is only for an --interactive session"
-            );
-            Some(IdeForwardRequest { port, rendezvous })
-        }
+        (Some(port), Some(rendezvous)) => Some(IdeForwardRequest { port, rendezvous }),
         (None, None) => None,
         _ => bail!("--ide-listen and --ide-rendezvous go together"),
     };
@@ -664,6 +669,7 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
             read_hidden.push(directory);
         }
     }
+    protect_read_hidden_entries(&mut invocation.protected_paths, &read_hidden);
     // Decided here, where the command can still be refused: what the command is
     // shown must not overlap what the hiding covers. Leaving the cover off
     // instead — which is what dropping the target would do — would hand it a
@@ -1497,8 +1503,21 @@ fn command_environment(
         ] {
             set(&mut environment, OsStr::new(name), url.clone());
         }
+        // ADR-F49 decision 24: with an IDE forward the command has a second
+        // address to reach inside the namespace — the IDE listener on its own
+        // loopback — and an HTTP client that honours these variables would
+        // otherwise send `http://127.0.0.1:<port>/mcp` to the egress proxy,
+        // which refuses loopback. Exempting loopback costs nothing: the only
+        // things listening in this namespace are that listener and the proxy
+        // itself. Without a forward the list stays empty, so that nothing the
+        // command resolves to a loopback address escapes the proxy.
+        let no_proxy = if invocation.ide_forward.is_some() {
+            OsString::from("127.0.0.1,localhost")
+        } else {
+            OsString::new()
+        };
         for name in ["NO_PROXY", "no_proxy"] {
-            set(&mut environment, OsStr::new(name), OsString::new());
+            set(&mut environment, OsStr::new(name), no_proxy.clone());
         }
     }
     environment
@@ -3036,22 +3055,14 @@ fn living_children() -> Vec<libc::pid_t> {
         .filter_map(|entry| {
             let pid: libc::pid_t = entry.file_name().to_str()?.parse().ok()?;
             let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
-            let (state, parent) = parse_process_state_and_parent(&stat)?;
-            (u32::try_from(parent).ok() == Some(own_pid) && !matches!(state, 'Z' | 'X'))
+            // One `/proc/<pid>/stat` parser for the whole crate
+            // (ADR-F49 decision 18): the fields after the command name are
+            // counted in one place.
+            let stat = parse_stat(&stat)?;
+            (u32::try_from(stat.parent).ok() == Some(own_pid) && !matches!(stat.state, 'Z' | 'X'))
                 .then_some(pid)
         })
         .collect()
-}
-
-/// The state and the parent pid from a `/proc/<pid>/stat` line.
-fn parse_process_state_and_parent(stat: &str) -> Option<(char, libc::pid_t)> {
-    // The command name comes in parentheses and may itself hold spaces and
-    // parentheses, so the fields are read after the last `)`.
-    let after_command = stat.get(stat.rfind(')')? + 1..)?;
-    let mut fields = after_command.split_whitespace();
-    let state = fields.next()?.chars().next()?;
-    let parent = fields.next()?.parse().ok()?;
-    Some((state, parent))
 }
 
 fn read_one_byte(fd: RawFd) -> std::io::Result<u8> {
@@ -4971,6 +4982,29 @@ fn path_identity(path: &Path) -> Option<(u64, u64)> {
         .map(|metadata| (metadata.dev(), metadata.ino()))
 }
 
+/// ADR-F49 decision 8 (2026-09-15): everything hidden from reads is kept out of
+/// writes too.
+///
+/// Where the hiding is a cover, the read-only bind stopped the write as well
+/// and this changes nothing. Where it is Landlock (decision 28, a host that
+/// refuses the mounts), read rules and write rules are separate, so a worktree
+/// that *is* the home let a command rewrite `~/.npmrc` or this fork's own
+/// `settings.json` — unreadable to it, and still read by the user's own tools
+/// outside the sandbox. Most of the list is in the built-in protected set
+/// already; this adds the rest, including the directories `XDG_*` moved
+/// (decision 27), which only the environment knows about.
+///
+/// An entry that holds a writable root is carved rather than bound (see
+/// [`holds_writable_root`]), so the one grant inside one of these — a session's
+/// own agent configuration directory — is not taken away by it.
+fn protect_read_hidden_entries(protected: &mut Vec<PathBuf>, read_hidden: &[PathBuf]) {
+    for hidden in read_hidden {
+        if !protected.contains(hidden) {
+            protected.push(hidden.clone());
+        }
+    }
+}
+
 /// ADR-F49 decisions 8 and 15: the agent configurations a host agent acts on
 /// (`.claude/`, `.mcp.json`, …), in each root the command may write that is a
 /// worktree.
@@ -6434,6 +6468,50 @@ mod tests {
         }
     }
 
+    /// ADR-F49 decision 24: the proxy variables point at the in-namespace
+    /// relay, and `NO_PROXY` exempts loopback only where there is an IDE
+    /// channel on it — otherwise it stays empty, so nothing a command resolves
+    /// to a loopback address goes around the proxy.
+    #[test]
+    fn the_ide_channel_takes_loopback_out_of_the_proxy() {
+        let tmpdir = PathBuf::from("/tmp/zed-remote-sandbox-1");
+        let value = |environment: &[(OsString, OsString)], name: &str| {
+            environment
+                .iter()
+                .find(|(existing, _)| existing == OsStr::new(name))
+                .map(|(_, value)| value.clone())
+        };
+
+        let without = command_environment(&invocation_writing(&[]), &tmpdir, Some(8080));
+        assert_eq!(
+            value(&without, "HTTP_PROXY"),
+            Some(OsString::from("http://127.0.0.1:8080"))
+        );
+        for name in ["NO_PROXY", "no_proxy"] {
+            assert_eq!(value(&without, name), Some(OsString::new()), "{name}");
+        }
+
+        let mut invocation = invocation_writing(&[]);
+        invocation.ide_forward = Some(IdeForwardRequest {
+            port: 45123,
+            rendezvous: PathBuf::from("/root/.cache/zed-jp-enhance/ide/s/bridge.sock"),
+        });
+        let with = command_environment(&invocation, &tmpdir, Some(8080));
+        for name in ["NO_PROXY", "no_proxy"] {
+            assert_eq!(
+                value(&with, name),
+                Some(OsString::from("127.0.0.1,localhost")),
+                "{name}"
+            );
+        }
+        // Without a relay there is no proxy to go around, so neither variable
+        // is set at all.
+        let blocked = command_environment(&invocation, &tmpdir, None);
+        for name in ["NO_PROXY", "no_proxy", "HTTP_PROXY"] {
+            assert_eq!(value(&blocked, name), None, "{name}");
+        }
+    }
+
     /// The WSL backend's argv selects WSL mode, carries the environment, and
     /// still decodes the shared policy flags exactly like the SSH builder's.
     #[test]
@@ -6455,7 +6533,7 @@ mod tests {
                 slirp_sha256: Some("abc123"),
                 environment: &environment,
                 unset_environment: &["WSL_INTEROP", "WSLENV"],
-                interactive_session: None,
+                ..crate::WslHelperOptions::default()
             },
         );
         argv.push("/bin/sh".to_string());
@@ -7249,6 +7327,112 @@ mod tests {
         );
     }
 
+    /// ADR-F49 decision 8 (2026-09-15), on a real kernel: the credential stores
+    /// that decision 11 only hid from reads are carved out of the write grants
+    /// as well, so a worktree that *is* the account's home cannot rewrite them.
+    ///
+    /// This is the Landlock half of the rule. Where the host takes the covers
+    /// instead, the read-only bind already refused the write; where it takes
+    /// the Landlock read denial (decision 28) nothing did, which is what the
+    /// protected set now closes — built the way `run_helper` builds it, from
+    /// the built-in list plus everything the hiding names.
+    #[test]
+    fn the_credential_stores_a_worktree_holds_are_carved_out_of_its_write_grant() {
+        let abi = landlock_abi();
+        if abi < 1 {
+            return;
+        }
+        let private_tmp = tempfile::tempdir().expect("tempdir");
+        let (_home, home) = canonical_tempdir();
+        for (relative, contents) in [
+            (".npmrc", "//registry:_authToken=secret"),
+            (".cargo/credentials.toml", "registry token"),
+            (".config/gcloud/credentials.db", "token"),
+            (".config/nvim/init.lua", "ordinary"),
+            ("project/main.rs", "project"),
+        ] {
+            let path = home.join(relative);
+            std::fs::create_dir_all(path.parent().expect("a parent")).expect("the directory");
+            std::fs::write(&path, contents).expect("the file");
+        }
+
+        // Exactly what `run_helper` pins: the built-ins under the home, and
+        // then everything the read hiding names.
+        let mut paths = merge_remote_builtin_protected_paths(Vec::new(), &home);
+        protect_read_hidden_entries(&mut paths, &read_hidden_home_paths(&home, false));
+        let protected = classify_protected_paths(&paths).expect("classifying them");
+        let writable =
+            pin_writable_paths(&[home.clone()], false).expect("pinning the worktree = the home");
+        let plan = plan_filesystem(&writable, &protected, false, false, &|_| true)
+            .expect("planning the grants");
+        let tmp_path = private_tmp.path().to_path_buf();
+
+        let results = std::thread::spawn(move || -> Result<Vec<(&'static str, bool)>> {
+            apply_landlock(
+                abi,
+                &plan.grants,
+                None,
+                std::slice::from_ref(&tmp_path),
+                false,
+            )?;
+            let append =
+                |path: PathBuf| std::fs::OpenOptions::new().append(true).open(path).is_ok();
+            let create = |path: PathBuf| {
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(path)
+                    .is_ok()
+            };
+            Ok(vec![
+                (".npmrc", append(home.join(".npmrc"))),
+                (
+                    ".cargo/credentials.toml",
+                    append(home.join(".cargo/credentials.toml")),
+                ),
+                (
+                    ".config/gcloud/credentials.db",
+                    append(home.join(".config/gcloud/credentials.db")),
+                ),
+                (
+                    ".config/gcloud/new",
+                    create(home.join(".config/gcloud/new")),
+                ),
+                (
+                    ".config/nvim/init.lua",
+                    append(home.join(".config/nvim/init.lua")),
+                ),
+                ("project/main.rs", append(home.join("project/main.rs"))),
+                ("project/new.rs", create(home.join("project/new.rs"))),
+            ])
+        })
+        .join()
+        .expect("the enforcing thread panicked")
+        .expect("applying landlock");
+        let allowed: std::collections::HashMap<&str, bool> = results.into_iter().collect();
+
+        for credential in [
+            ".npmrc",
+            ".cargo/credentials.toml",
+            ".config/gcloud/credentials.db",
+            ".config/gcloud/new",
+        ] {
+            assert!(
+                !allowed[credential],
+                "{credential} is hidden from reads, so it must not be writable either"
+            );
+        }
+        assert!(
+            allowed[".config/nvim/init.lua"] && allowed["project/main.rs"],
+            "the worktree's own files stay writable"
+        );
+        assert!(
+            allowed["project/new.rs"],
+            "and its existing subdirectories still take new files"
+        );
+    }
+
     /// ADR-F49 decision 11 where the host refuses the covers: the read denial
     /// hides exactly what they would have — a credential store, the same store
     /// reached through a symlink, and the other sessions' configuration inside
@@ -7968,37 +8152,44 @@ mod tests {
         );
     }
 
-    /// The Windows side's IDE flags decode into the forward the helper serves,
-    /// and every malformed combination is refused.
+    /// The Windows side's IDE flags decode into the forward the helper serves —
+    /// for an interactive session and, since ADR-F49 decision 24, for a
+    /// one-shot command as well — and every malformed combination is refused.
     #[test]
     fn ide_forward_flags_round_trip_and_are_checked() {
-        let session = crate::InteractiveSession {
-            ide_forward: Some(crate::IdeForward {
-                inner_port: 45123,
-                rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s/bridge.sock".to_string(),
-            }),
+        let forward = crate::IdeForward {
+            inner_port: 45123,
+            rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s/bridge.sock".to_string(),
         };
-        let mut argv = crate::build_wsl_sandbox_helper_argv(
-            &[],
-            &[],
-            &[],
-            &RemoteSandboxNetwork::Blocked,
-            false,
-            None,
-            &crate::WslHelperOptions {
-                interactive_session: Some(&session),
-                ..crate::WslHelperOptions::default()
-            },
-        );
-        argv.push("/bin/true".to_string());
-        let decoded = decode_for_test(&argv[1..]);
-        assert_eq!(
-            decoded.ide_forward,
-            Some(IdeForwardRequest {
-                port: 45123,
-                rendezvous: PathBuf::from("/root/.cache/zed-jp-enhance/ide/s/bridge.sock"),
-            })
-        );
+        let decode = |interactive: bool| {
+            let mut argv = crate::build_wsl_sandbox_helper_argv(
+                &[],
+                &[],
+                &[],
+                &RemoteSandboxNetwork::Blocked,
+                false,
+                None,
+                &crate::WslHelperOptions {
+                    interactive,
+                    ide_forward: Some(&forward),
+                    ..crate::WslHelperOptions::default()
+                },
+            );
+            argv.push("/bin/true".to_string());
+            decode_for_test(&argv[1..])
+        };
+        let expected = Some(IdeForwardRequest {
+            port: 45123,
+            rendezvous: PathBuf::from("/root/.cache/zed-jp-enhance/ide/s/bridge.sock"),
+        });
+        let interactive = decode(true);
+        assert_eq!(interactive.ide_forward, expected);
+        assert!(interactive.interactive);
+        // ADR-F49 decision 24: an external ACP agent's channel, on a command
+        // that is not an interactive session.
+        let one_shot = decode(false);
+        assert_eq!(one_shot.ide_forward, expected);
+        assert!(!one_shot.interactive);
 
         let parse = |args: &[&str]| parse_stage1_args(args.iter().map(OsString::from));
         assert!(
@@ -8008,16 +8199,12 @@ mod tests {
                 .is_none()
         );
         for invalid in [
+            // Half a forward, with or without an interactive session.
+            &["--ide-listen", "1", "--", "true"][..],
+            &["--ide-rendezvous", "/r/s", "--", "true"],
+            &["--interactive", "--ide-listen", "1", "--", "true"],
+            &["--interactive", "--ide-rendezvous", "/r/s", "--", "true"],
             &[
-                "--ide-listen",
-                "1",
-                "--ide-rendezvous",
-                "/r/s",
-                "--",
-                "true",
-            ][..],
-            &[
-                "--interactive",
                 "--ide-listen",
                 "0",
                 "--ide-rendezvous",
@@ -8026,7 +8213,6 @@ mod tests {
                 "true",
             ],
             &[
-                "--interactive",
                 "--ide-listen",
                 "65536",
                 "--ide-rendezvous",
@@ -8034,10 +8220,7 @@ mod tests {
                 "--",
                 "true",
             ],
-            &["--interactive", "--ide-listen", "1", "--", "true"],
-            &["--interactive", "--ide-rendezvous", "/r/s", "--", "true"],
             &[
-                "--interactive",
                 "--ide-listen",
                 "1",
                 "--ide-rendezvous",
@@ -8058,20 +8241,6 @@ mod tests {
                 (proxy_port, ide_port)
             );
         }
-    }
-
-    #[test]
-    fn process_state_and_parent_are_read_after_the_command_name() {
-        assert_eq!(
-            parse_process_state_and_parent("42 (sleep) S 7 42 42 0 -1"),
-            Some(('S', 7))
-        );
-        assert_eq!(
-            parse_process_state_and_parent("43 (a) b (c)) Z 1 0"),
-            Some(('Z', 1))
-        );
-        assert_eq!(parse_process_state_and_parent("44 (x"), None);
-        assert_eq!(parse_process_state_and_parent(""), None);
     }
 
     #[test]

@@ -79,15 +79,33 @@ enum ProtectedLocations {
     Remote,
 }
 
+/// Entries of [`UNIX_PROTECTED_HOME_RELATIVE`] that a repository keeps at its
+/// own root as a matter of course: `.npmrc` configures npm for one project,
+/// and `.yarnrc.yml` is where Yarn 2+ *has* to be configured. ADR-F49
+/// decision 8 added them to the home list, and the remote check below reads
+/// every folder on the way as one that could be the home — so leaving them in
+/// would refuse an agent the ordinary project file along with the account's.
+///
+/// Nothing is left open by taking them out here. The account's own copies are
+/// refused where the home is actually known: on this machine by the local
+/// branch, on a remote host by that host's own verified write
+/// (`fs::verified_write::refusal_for`, which resolves the same list against
+/// the real home), and against a sandboxed command by the sandbox.
+const ALSO_A_PROJECTS_OWN_FILE: &[&str] = &[".npmrc", ".yarnrc.yml"];
+
 /// What a remote host's home protects, looked for below every folder on the
-/// way. The entries a project has too (`.claude` and the like) are left out:
-/// in a project they need the user's go-ahead, and here the two can't be told
+/// way. The entries a project has too (`.claude` and the like, and
+/// [`ALSO_A_PROJECTS_OWN_FILE`]) are left out: in a project they are the
+/// user's own file or need their go-ahead, and here the two can't be told
 /// apart.
 fn remote_protected_home_relative() -> Vec<&'static str> {
     UNIX_PROTECTED_HOME_RELATIVE
         .iter()
         .copied()
-        .filter(|entry| !WORKTREE_PROTECTED_RELATIVE.contains(entry))
+        .filter(|entry| {
+            !WORKTREE_PROTECTED_RELATIVE.contains(entry)
+                && !ALSO_A_PROJECTS_OWN_FILE.contains(entry)
+        })
         .collect()
 }
 
@@ -780,6 +798,47 @@ mod tests {
         }
     }
 
+    /// ADR-F49 decision 8 (2026-09-15) put the package managers' credential
+    /// files on the home list, and a repository keeps files of those names at
+    /// its own root: `.npmrc` for npm, `.yarnrc.yml` because Yarn 2+ has
+    /// nowhere else to be configured. Reading every folder on the way as a
+    /// possible home would refuse an agent the project file along with the
+    /// account's, so these are left out of the remote check — the account's
+    /// own copies are refused where the home is known (here on this machine,
+    /// and on a remote host by that host's own verified write).
+    #[test]
+    fn a_projects_own_package_manager_files_are_not_the_accounts() {
+        for relative in [".npmrc", ".yarnrc.yml", "frontend/.npmrc"] {
+            for protected in both() {
+                assert_eq!(
+                    classify(path!("/home/user/project"), relative, &protected),
+                    AgentWriteVerdict::Allow,
+                    "{relative}"
+                );
+            }
+        }
+        for relative in [".npmrc", ".yarnrc.yml"] {
+            assert_eq!(
+                classify(path!("/home/user"), relative, &local()),
+                AgentWriteVerdict::Refuse(Refusal::ProtectedPath),
+                "{relative}"
+            );
+        }
+        // The rest of what decision 8 added names nothing a project keeps, so
+        // it stays refused wherever the home might be.
+        for (root, relative) in [
+            ("/home/user", ".cargo/credentials.toml"),
+            ("/srv/work", ".config/gcloud/credentials.db"),
+            ("/home/user", ".password-store/npm.gpg"),
+        ] {
+            assert_eq!(
+                classify(root, relative, &ProtectedLocations::Remote),
+                AgentWriteVerdict::Refuse(Refusal::ProtectedPath),
+                "{root}/{relative}"
+            );
+        }
+    }
+
     /// `fs::verified_write` keeps its own copy of the sandbox's Unix home list
     /// so that `fs` doesn't depend on the sandbox. Its Unix list must match
     /// the one the remote check here derives from the sandbox's, and with the
@@ -797,6 +856,10 @@ mod tests {
                 fs::verified_write::UNIX_PROTECTED_HOME_RELATIVE
                     .iter()
                     .copied()
+                    // Not a difference between the two lists: the remote check
+                    // leaves out what a project has at its own root, because
+                    // it cannot tell a home from a project directory.
+                    .filter(|entry| !ALSO_A_PROJECTS_OWN_FILE.contains(entry))
             ),
             sorted(remote_protected_home_relative())
         );

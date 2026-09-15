@@ -23,6 +23,7 @@ use project::{FakeFs, Fs as _, Project};
 use serde_json::{Value, json};
 use smol::net::{TcpListener, TcpStream};
 use text::Unclipped;
+use util::path_mapping::SandboxPaths;
 use util::{path, uri};
 use workspace::{MultiWorkspace, Workspace};
 
@@ -30,7 +31,7 @@ use crate::protocol::{self, LockFileContents};
 use crate::status_item::Shown;
 use crate::{
     IdeServer, IdeServerDiff, IdeServerStatusItem, IdentityPathMapper, McpEndpoint, PathMapper,
-    SandboxIdeSessionHandle, ToolHost as _, WslPathMapper, tools, transport,
+    SandboxIdeSessionHandle, ToolHost as _, WslPathMapper, sandbox_client, tools, transport,
 };
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ fn spawn_test_server(
         let result = transport::serve_connection(
             stream,
             auth_token,
-            transport::HOST_MAX_MESSAGE_BYTES,
+            transport::MessageLimits::same(transport::HOST_MAX_MESSAGE_BYTES),
             incoming_tx,
             outgoing,
             kind_tx,
@@ -1038,6 +1039,16 @@ struct SandboxFixture {
     auth_token: String,
 }
 
+/// フィクスチャーが始めるセッション。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FixtureSession {
+    /// サンドボックスの中の CLI 用 ([`crate::start_sandbox_session`])。
+    ClaudeCodeCli,
+    /// サンドボックスの中の ACP エージェント用の制限セッション
+    /// ([`crate::start_restricted_sandbox_session`]、ADR-F49 決定 24)。
+    Restricted,
+}
+
 /// `ide_server.enabled` は既定の false のまま、サンドボックスのセッションだけを始める。
 async fn start_sandbox_fixture(cx: &mut TestAppContext) -> SandboxFixture {
     start_sandbox_fixture_with_roots(vec![PathBuf::from(path!("/test"))], cx).await
@@ -1045,6 +1056,23 @@ async fn start_sandbox_fixture(cx: &mut TestAppContext) -> SandboxFixture {
 
 async fn start_sandbox_fixture_with_roots(
     roots: Vec<PathBuf>,
+    cx: &mut TestAppContext,
+) -> SandboxFixture {
+    start_fixture(roots, FixtureSession::ClaudeCodeCli, cx).await
+}
+
+async fn start_restricted_sandbox_fixture(cx: &mut TestAppContext) -> SandboxFixture {
+    start_fixture(
+        vec![PathBuf::from(path!("/test"))],
+        FixtureSession::Restricted,
+        cx,
+    )
+    .await
+}
+
+async fn start_fixture(
+    roots: Vec<PathBuf>,
+    session_kind: FixtureSession,
     cx: &mut TestAppContext,
 ) -> SandboxFixture {
     init_test(cx);
@@ -1074,14 +1102,20 @@ async fn start_sandbox_fixture_with_roots(
 
     let (connections, incoming_connections) = unbounded::<MemoryStream>();
     let weak_workspace = workspace.downgrade();
-    let (session, info) = cx.update(|cx| {
-        crate::start_sandbox_session(
+    let (session, info) = cx.update(|cx| match session_kind {
+        FixtureSession::ClaudeCodeCli => crate::start_sandbox_session(
             weak_workspace,
             incoming_connections,
             sandbox_mapper(),
             roots,
             cx,
-        )
+        ),
+        FixtureSession::Restricted => crate::start_restricted_sandbox_session(
+            weak_workspace,
+            incoming_connections,
+            Arc::new(SandboxPaths::new(sandbox_mapper(), roots)),
+            cx,
+        ),
     });
     cx.run_until_parked();
     SandboxFixture {
@@ -1333,21 +1367,15 @@ async fn sandbox_session_checks_the_token_and_offers_only_the_cli_tools(cx: &mut
     assert_eq!(response["result"]["serverInfo"]["name"], json!("Zed"));
 
     let response = client.request("tools/list", json!({})).await;
-    let mut names = response["result"]["tools"]
-        .as_array()
-        .expect("tools is an array")
-        .iter()
-        .filter_map(|tool| tool["name"].as_str().map(str::to_string))
-        .collect::<Vec<_>>();
-    names.sort();
     assert_eq!(
-        names,
+        tool_names(&response),
         vec![
             "closeAllDiffTabs",
             "close_tab",
             "getDiagnostics",
             "openDiff"
-        ]
+        ],
+        "{response}"
     );
 
     for tool in [
@@ -1690,28 +1718,23 @@ async fn the_status_item_shows_a_sandbox_connection_with_the_server_off(cx: &mut
     assert_eq!(shown(cx), None, "the item goes away with the session");
 }
 
-/// HTTP の応答はトランスポートが書き終えるまで接続を落とさない。
-#[gpui::test]
-async fn sandbox_session_answers_streamable_http_with_the_restricted_tools(
-    cx: &mut TestAppContext,
-) {
-    let fixture = start_sandbox_fixture(cx).await;
+/// ブリッジに接続を 1 本渡し、streamable HTTP の MCP 要求を 1 件送って応答をすべて読む。
+async fn post_mcp(fixture: &SandboxFixture, token: &str, request: &Value) -> String {
     let (server_end, mut client_end) = memory_stream_pair();
     fixture
         .connections
         .unbounded_send(server_end)
         .expect("the session accepts connections");
 
-    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }).to_string();
+    let body = request.to_string();
     client_end
         .write_all(
             format!(
                 "POST /mcp HTTP/1.1\r\n\
                  Host: 127.0.0.1\r\n\
-                 Authorization: Bearer {}\r\n\
+                 Authorization: Bearer {token}\r\n\
                  Content-Type: application/json\r\n\
                  Content-Length: {}\r\n\r\n{body}",
-                fixture.auth_token,
                 body.len()
             )
             .as_bytes(),
@@ -1723,20 +1746,311 @@ async fn sandbox_session_answers_streamable_http_with_the_restricted_tools(
         .read_to_string(&mut response)
         .await
         .expect("reading the response");
+    response
+}
+
+fn http_body(response: &str) -> Value {
+    let (_, body) = response
+        .split_once("\r\n\r\n")
+        .expect("the response has a body");
+    serde_json::from_str(body).expect("the body is JSON")
+}
+
+/// `tools/list` の応答に並んでいるツールの名前 (並べ替え済み)。
+fn tool_names(tools_list_result: &Value) -> Vec<String> {
+    let mut names = tools_list_result["result"]["tools"]
+        .as_array()
+        .map(|tools| {
+            tools
+                .iter()
+                .filter_map(|tool| tool["name"].as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+/// HTTP の応答はトランスポートが書き終えるまで接続を落とさない。
+#[gpui::test]
+async fn sandbox_session_answers_streamable_http_with_the_restricted_tools(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let response = post_mcp(
+        &fixture,
+        &fixture.auth_token,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    )
+    .await;
 
     assert!(
         response.starts_with("HTTP/1.1 200 OK"),
         "expected a 200, got {response:?}"
     );
-    let (_, body) = response
-        .split_once("\r\n\r\n")
-        .expect("the response has a body");
-    let body: Value = serde_json::from_str(body).expect("the body is JSON");
+    let body = http_body(&response);
     assert_eq!(
         body["result"]["tools"].as_array().map(Vec::len),
         Some(4),
         "{body}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// 制限セッション (ADR-F49 決定 24)
+// ---------------------------------------------------------------------------
+
+/// 制限セッションが出すのは `getDiagnostics` 1 本だけ。差分タブを開く 3 本は、CLI 用の
+/// セッションでは出しているものも含めてすべて JSON-RPC のエラーで断る。
+#[gpui::test]
+async fn a_restricted_session_offers_only_get_diagnostics(cx: &mut TestAppContext) {
+    let fixture = start_restricted_sandbox_fixture(cx).await;
+
+    match open_websocket(&fixture, "wrong-token").await {
+        Ok(_) => panic!("a connection with the wrong token must be refused"),
+        Err(WebSocketError::Http(response)) => assert_eq!(response.status(), 401),
+        Err(error) => panic!("expected a 401, got {error}"),
+    }
+
+    let mut client = connect(&fixture, cx).await;
+    let response = client
+        .request(
+            "initialize",
+            json!({
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": "acp-agent", "version": "0.1.0" }
+            }),
+        )
+        .await;
+    assert_eq!(response["result"]["serverInfo"]["name"], json!("Zed"));
+
+    let response = client.request("tools/list", json!({})).await;
+    assert_eq!(tool_names(&response), vec!["getDiagnostics"], "{response}");
+
+    for tool in [
+        "openDiff",
+        "close_tab",
+        "closeAllDiffTabs",
+        "openFile",
+        "saveDocument",
+        "checkDocumentDirty",
+        "getWorkspaceFolders",
+        "getOpenEditors",
+        "getCurrentSelection",
+        "getLatestSelection",
+        "executeCode",
+        "noSuchTool",
+    ] {
+        let response = client
+            .call_tool(
+                tool,
+                open_diff_arguments(&format!("{CLIENT_ROOT}/main.rs"), "proposal"),
+            )
+            .await;
+        assert_eq!(
+            response["error"]["code"],
+            json!(protocol::INVALID_PARAMS),
+            "{tool}: {response}"
+        );
+        assert!(response.get("result").is_none(), "{tool}: {response}");
+    }
+    cx.run_until_parked();
+    assert!(
+        open_diff_tabs(&fixture.workspace, cx).is_empty(),
+        "a restricted session opens no diff tab"
+    );
+    assert!(!has_editor_tab(&fixture.workspace, "main.rs", cx));
+
+    // 選択範囲の通知も送らない。撃たれていれば `ping` の応答より先に届いている。
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let id = client.send("ping", json!({})).await;
+    let message = client.next_message().await;
+    assert_eq!(
+        message["id"],
+        json!(id),
+        "a restricted session sends no notifications: {message}"
+    );
+    assert!(client.unclaimed.is_empty(), "{:?}", client.unclaimed);
+}
+
+/// 制限セッションはユーザーに見せる口 (ステータスバーの「接続中」・右クリックの送信先) の
+/// 相手にしない。ACP のエージェントには Claude Code の起動導線が無い。
+#[gpui::test]
+async fn a_restricted_session_stays_out_of_the_user_facing_surfaces(cx: &mut TestAppContext) {
+    let fixture = start_restricted_sandbox_fixture(cx).await;
+    let status_item = fixture.workspace.update(cx, |workspace, cx| {
+        cx.new(|cx| IdeServerStatusItem::new(workspace, cx))
+    });
+    let _client = connect(&fixture, cx).await;
+    cx.run_until_parked();
+
+    assert!(
+        !is_claude_code_connected(&fixture.project, cx),
+        "a restricted session is not a connected Claude Code"
+    );
+    assert_eq!(
+        status_item.read_with(cx, |item, cx| item.shown(cx)),
+        None,
+        "the status item stays quiet for a restricted session"
+    );
+    assert!(
+        cx.update(|cx| {
+            crate::sandbox_client::sessions_for_workspace(fixture.workspace.entity_id(), cx)
+        })
+        .is_empty(),
+        "a restricted session is not a target for the right-click send"
+    );
+}
+
+/// 診断は CLI 用のセッションと同じ扱い: 開いているバッファーだけ、ワークツリーの中だけ。
+#[gpui::test]
+async fn a_restricted_session_returns_diagnostics_only_from_the_worktree(cx: &mut TestAppContext) {
+    let fixture = start_restricted_sandbox_fixture(cx).await;
+    set_diagnostic(
+        &fixture.project,
+        path!("/test/main.rs"),
+        "unknown macro",
+        cx,
+    );
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    // ワークツリーの外のファイルも開いていて診断があるが、制限セッションには見せない。
+    open_path(&fixture, path!("/outside/secret.rs"), cx).await;
+    set_diagnostic(
+        &fixture.project,
+        path!("/outside/secret.rs"),
+        "hunter2 leaked",
+        cx,
+    );
+    cx.run_until_parked();
+
+    let mut client = connect(&fixture, cx).await;
+    let main_uri = format!("file://{CLIENT_ROOT}/main.rs");
+    let response = client
+        .call_tool("getDiagnostics", json!({ "uri": main_uri }))
+        .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    let files = first_text_as_json(&response);
+    assert_eq!(files[0]["uri"], json!(main_uri), "{files}");
+    assert_eq!(
+        files[0]["diagnostics"][0]["message"],
+        json!("unknown macro"),
+        "{files}"
+    );
+
+    let response = client.call_tool("getDiagnostics", json!({})).await;
+    let uris = first_text_as_json(&response)
+        .as_array()
+        .expect("the diagnostics are an array")
+        .iter()
+        .filter_map(|file| file["uri"].as_str().map(str::to_string))
+        .collect::<Vec<_>>();
+    assert_eq!(uris, vec![main_uri]);
+    assert!(!response.to_string().contains("hunter2"), "{response}");
+
+    for uri in [
+        format!("file://{CLIENT_OUTSIDE}/secret.rs"),
+        format!("file://{CLIENT_ROOT}/../outside/secret.rs"),
+    ] {
+        let response = client
+            .call_tool("getDiagnostics", json!({ "uri": uri }))
+            .await;
+        assert_eq!(
+            response["result"]["isError"],
+            json!(true),
+            "{uri}: {response}"
+        );
+        assert!(!response.to_string().contains("hunter2"), "{response}");
+    }
+}
+
+/// ACP のエージェントが実際に使う口は streamable HTTP。トークンの検査は WebSocket と同じ。
+#[gpui::test]
+async fn a_restricted_session_answers_streamable_http_with_one_tool(cx: &mut TestAppContext) {
+    let fixture = start_restricted_sandbox_fixture(cx).await;
+    let list = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+
+    let response = post_mcp(&fixture, "wrong-token", &list).await;
+    assert!(
+        response.starts_with("HTTP/1.1 401"),
+        "expected a 401, got {response:?}"
+    );
+
+    let response = post_mcp(&fixture, &fixture.auth_token, &list).await;
+    assert!(
+        response.starts_with("HTTP/1.1 200 OK"),
+        "expected a 200, got {response:?}"
+    );
+    let body = http_body(&response);
+    assert_eq!(tool_names(&body), vec!["getDiagnostics"], "{body}");
+}
+
+/// `tools/list` の要求に、無視される詰め物を載せて本文を `body_bytes` ちょうどにする
+/// (詰め物が入らないほど小さい指定なら、詰め物なしの長さ)。
+fn padded_tools_list(body_bytes: usize) -> Value {
+    let mut request = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": { "pad": "" }
+    });
+    let overhead = request.to_string().len();
+    request["params"]["pad"] = json!("a".repeat(body_bytes.saturating_sub(overhead)));
+    request
+}
+
+/// 制限セッションは同時接続を 16 まで許すぶん、受け取る 1 本文を 1 MiB に抑える。送る側と
+/// CLI 用のセッションの上限は据え置き (`openDiff` の本文が通らなくなる)。
+#[gpui::test]
+async fn a_restricted_session_refuses_an_oversized_post_body(cx: &mut TestAppContext) {
+    let oversized = padded_tools_list(sandbox_client::MAX_RESTRICTED_INCOMING_MESSAGE_BYTES + 1);
+
+    let fixture = start_restricted_sandbox_fixture(cx).await;
+    let response = post_mcp(&fixture, &fixture.auth_token, &oversized).await;
+    assert!(
+        response.is_empty(),
+        "the restricted session drops the connection instead of reading the body"
+    );
+    let response = post_mcp(&fixture, &fixture.auth_token, &padded_tools_list(1024)).await;
+    assert!(
+        response.starts_with("HTTP/1.1 200 OK"),
+        "a body within the limit still goes through"
+    );
+    assert_eq!(tool_names(&http_body(&response)), vec!["getDiagnostics"]);
+
+    let fixture = start_sandbox_fixture(cx).await;
+    let response = post_mcp(&fixture, &fixture.auth_token, &oversized).await;
+    assert!(
+        response.starts_with("HTTP/1.1 200 OK"),
+        "the CLI session keeps its own limit"
+    );
+    assert_eq!(
+        http_body(&response)["result"]["tools"]
+            .as_array()
+            .map(Vec::len),
+        Some(4)
+    );
+}
+
+/// 制限セッションは 1 要求ごとに接続を使い捨てる streamable HTTP を話すので、WebSocket を
+/// 1 本張り続ける CLI (`sandbox_session_limits_its_connections`) より上限が多い。
+#[gpui::test]
+async fn a_restricted_session_takes_more_connections_than_the_cli_session(cx: &mut TestAppContext) {
+    let fixture = start_restricted_sandbox_fixture(cx).await;
+    let limit = sandbox_client::MAX_RESTRICTED_CONNECTIONS;
+    let mut sockets = Vec::new();
+    for index in 0..limit {
+        match open_websocket(&fixture, &fixture.auth_token).await {
+            Ok(socket) => sockets.push(socket),
+            Err(error) => panic!("connection {index} is within the limit of {limit}: {error}"),
+        }
+        cx.run_until_parked();
+    }
+    assert!(
+        open_websocket(&fixture, &fixture.auth_token).await.is_err(),
+        "the restricted session refuses a connection beyond its limit"
+    );
+    assert_eq!(sockets.len(), limit);
 }
 
 async fn send_open_diff(client: &mut SandboxClient, path: &str, tab_name: &str) -> u64 {
@@ -1905,7 +2219,7 @@ async fn sandbox_diff_tabs_do_not_take_keyboard_focus(cx: &mut TestAppContext) {
 async fn sandbox_session_limits_its_connections(cx: &mut TestAppContext) {
     let fixture = start_sandbox_fixture(cx).await;
     let mut clients = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..sandbox_client::MAX_CONNECTIONS {
         clients.push(connect(&fixture, cx).await);
     }
 
@@ -1922,9 +2236,9 @@ async fn sandbox_session_limits_its_connections(cx: &mut TestAppContext) {
             .await
             .expect("reading the refused connection"),
         0,
-        "the fifth connection is closed at once"
+        "the connection beyond the limit is closed at once"
     );
-    assert_eq!(clients.len(), 4);
+    assert_eq!(clients.len(), sandbox_client::MAX_CONNECTIONS);
 }
 
 #[gpui::test]
@@ -2059,50 +2373,6 @@ async fn sandbox_session_does_not_follow_links_inside_the_worktree(cx: &mut Test
     .await;
     cx.run_until_parked();
     assert_eq!(open_diff_tabs(&fixture.workspace, cx).len(), 1);
-}
-
-/// 外部エージェントの ACP の fs の要求の前に使うリンクの確認。ワークツリーの中にとどまる
-/// リンクは通し、外へ出るリンクとたどれないリンクは断る。
-#[gpui::test]
-async fn resolves_paths_only_through_links_that_stay_inside(cx: &mut TestAppContext) {
-    let fs = FakeFs::new(cx.executor());
-    fs.insert_tree(
-        path!("/test"),
-        json!({ "main.rs": "", "sub": { "inner.rs": "" } }),
-    )
-    .await;
-    fs.insert_tree(path!("/outside"), json!({ "secret.rs": "" }))
-        .await;
-    fs.insert_symlink(path!("/test/alias"), PathBuf::from(path!("/test/sub")))
-        .await;
-    fs.insert_symlink(path!("/test/escape"), PathBuf::from(path!("/outside")))
-        .await;
-    fs.insert_symlink(
-        path!("/test/dangling.rs"),
-        PathBuf::from(path!("/nowhere/missing.rs")),
-    )
-    .await;
-    let fs: Arc<dyn project::Fs> = fs;
-    let paths = util::path_mapping::SandboxPaths::new(
-        sandbox_mapper(),
-        vec![PathBuf::from(path!("/test"))],
-    );
-    let executor = cx.executor();
-    for (path, stays_inside) in [
-        (path!("/test/main.rs"), true),
-        (path!("/test/sub/inner.rs"), true),
-        (path!("/test/alias/inner.rs"), true),
-        (path!("/test/alias"), true),
-        (path!("/test/new/file.rs"), true),
-        (path!("/test/escape/secret.rs"), false),
-        (path!("/test/escape"), false),
-        (path!("/test/dangling.rs"), false),
-        (path!("/outside/secret.rs"), false),
-        (path!("/test/../outside/secret.rs"), false),
-    ] {
-        let resolved = crate::resolve_inside_roots(&paths, Path::new(path), &fs, &executor).await;
-        assert_eq!(resolved.is_ok(), stays_inside, "{path}: {resolved:?}");
-    }
 }
 
 /// ワークツリーの中にあっても外を指すリンクのファイルは、選択の本文もパスも送らない。

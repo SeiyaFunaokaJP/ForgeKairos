@@ -25,6 +25,190 @@ use util::archive::extract_zip;
 
 const NODE_CA_CERTS_ENV_VAR: &str = "NODE_EXTRA_CA_CERTS";
 
+/// The Node.js this fork installs and runs agents with. The version is pinned,
+/// which is what makes the digests in [`PINNED_NODE_ARCHIVES`] possible.
+pub const NODE_VERSION: &str = "v24.11.0";
+
+/// ADR-F49 決定 21: the SHA-256 of each [`NODE_VERSION`] archive, as
+/// `nodejs.org/dist/<version>/SHASUMS256.txt` publishes them, by
+/// `(os, arch, extension)` in the naming nodejs.org uses.
+///
+/// The download is checked against these before anything is unpacked, so a
+/// tampered or truncated archive never becomes the interpreter Zed runs agents
+/// with. They are written out rather than fetched because a digest fetched
+/// over the same connection proves nothing the connection does not already.
+/// A platform missing from the table is downloaded unverified, with a warning
+/// (this fork ships for the three platforms above plus the Linux runtime it
+/// stages into WSL, so in practice only an unusual host lands there).
+const PINNED_NODE_ARCHIVES: &[(&str, &str, &str, &str)] = &[
+    (
+        "linux",
+        "x64",
+        "tar.gz",
+        "b3c071cdf47aab867c3b2aa287257df12ec5d7c962bf922b32fd33226c4295fd",
+    ),
+    (
+        "linux",
+        "arm64",
+        "tar.gz",
+        "4786d00c4d259d3ff0b2328307f764ef3ced65f2d6e9502d433e68d66238509d",
+    ),
+    (
+        "win",
+        "x64",
+        "zip",
+        "1054540bce22b54ec7e50ebc078ec5d090700a77657607a58f6a64df21f49fdd",
+    ),
+    (
+        "win",
+        "arm64",
+        "zip",
+        "12d3b1aa9696b7411e115a4fa2aef57f95560b5ee16bb62cd69843e535ec72be",
+    ),
+    (
+        "darwin",
+        "arm64",
+        "tar.gz",
+        "0be2ab2816a4fa02d1acff014a434f29f56d8d956f5af6a98b70ced6c5f4d201",
+    ),
+    (
+        "darwin",
+        "x64",
+        "tar.gz",
+        "3884671e87f46f773832d98a0a6cabcc5ec4f637084f0f3515b69e66ea27f2f1",
+    ),
+];
+
+/// ADR-F49 決定 21: one [`NODE_VERSION`] archive and the digest it has to have.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PinnedNodeArchive {
+    /// `node-<version>-<os>-<arch>.<extension>`, which is also the name of the
+    /// single directory a `tar.gz` unpacks into.
+    pub file_name: String,
+    pub url: String,
+    /// Lowercase hex.
+    pub sha256: &'static str,
+    /// Whether the archive is a `zip` rather than a `tar.gz`.
+    pub is_zip: bool,
+}
+
+impl PinnedNodeArchive {
+    /// The archive's single top-level directory, which is also the name of the
+    /// installation directory Zed keeps it in.
+    pub fn directory_name(&self) -> &str {
+        let extension = if self.is_zip { ".zip" } else { ".tar.gz" };
+        self.file_name
+            .strip_suffix(extension)
+            .unwrap_or(&self.file_name)
+    }
+}
+
+/// ADR-F49 決定 21: the pinned archive for `os` / `arch` in nodejs.org's own
+/// naming (`linux`/`win`/`darwin` and `x64`/`arm64`), or `None` for a platform
+/// this fork has no digest for.
+///
+/// Public so the Windows client can obtain the **Linux** build for the WSL
+/// distro it runs agents in (決定 20), which is not the platform it is itself.
+pub fn pinned_node_archive(os: &str, arch: &str) -> Option<PinnedNodeArchive> {
+    let (_, _, extension, sha256) = PINNED_NODE_ARCHIVES
+        .iter()
+        .find(|(entry_os, entry_arch, _, _)| *entry_os == os && *entry_arch == arch)?;
+    let file_name = format!("node-{NODE_VERSION}-{os}-{arch}.{extension}");
+    Some(PinnedNodeArchive {
+        url: format!("https://nodejs.org/dist/{NODE_VERSION}/{file_name}"),
+        file_name,
+        sha256,
+        is_zip: *extension == "zip",
+    })
+}
+
+/// Downloads `url` into `destination`, never holding it in memory, and — when
+/// `expected_sha256` is given — refusing it unless the bytes hash to exactly
+/// that (ADR-F49 決定 21). A mismatch removes the file and says what the user
+/// can do about it; nothing is unpacked from an archive that failed. Returns
+/// the digest of what was written, which a caller with no digest of its own
+/// (a registry archive published without one, 決定 25) uses to check the copy
+/// it then makes into a WSL distro.
+///
+/// Public because the Windows client stages the same kind of archive — the
+/// Linux Node.js and a registry entry's Linux build — into the distro it runs
+/// agents in (ADR-F49 第 2b 段).
+pub async fn download_verified_file(
+    http: &dyn HttpClient,
+    url: &str,
+    expected_sha256: Option<&str>,
+    destination: &Path,
+) -> Result<String> {
+    use futures::AsyncWriteExt as _;
+    use sha2::{Digest as _, Sha256};
+
+    let mut response = http
+        .get(url, Default::default(), true)
+        .await
+        .with_context(|| format!("downloading {url}"))?;
+    anyhow::ensure!(
+        response.status().is_success(),
+        "{url} を取得できませんでした (HTTP {})。",
+        response.status()
+    );
+
+    // Streamed through a hasher into the file, so neither the archive nor its
+    // digest is ever held whole in memory.
+    let write = async {
+        let mut file = fs::File::create(destination)
+            .await
+            .with_context(|| format!("creating {}", destination.display()))?;
+        let mut hasher = Sha256::new();
+        let mut buffer = vec![0u8; 256 * 1024];
+        let body = response.body_mut();
+        loop {
+            let read = body
+                .read(&mut buffer)
+                .await
+                .with_context(|| format!("downloading {url}"))?;
+            if read == 0 {
+                break;
+            }
+            let chunk = buffer.get(..read).context("bug: read past the buffer")?;
+            hasher.update(chunk);
+            file.write_all(chunk)
+                .await
+                .with_context(|| format!("writing {}", destination.display()))?;
+        }
+        file.flush()
+            .await
+            .with_context(|| format!("writing {}", destination.display()))?;
+        anyhow::Ok(
+            hasher
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>(),
+        )
+    }
+    .await;
+
+    let digest = match write {
+        Ok(digest) => digest,
+        Err(error) => {
+            fs::remove_file(destination).await.ok();
+            return Err(error);
+        }
+    };
+    if let Some(expected) = expected_sha256
+        && !digest.eq_ignore_ascii_case(expected)
+    {
+        fs::remove_file(destination).await.ok();
+        bail!(
+            "{url} から取得したファイルの SHA-256 が想定と一致しません \
+             (想定 {expected}、実際 {digest})。改ざんされている可能性があるため、\
+             取得したファイルを削除しました。ネットワーク経路 (プロキシ・社内の TLS 傍受) を\
+             確認してから、もう一度お試しください。"
+        );
+    }
+    Ok(digest)
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct NodeBinaryOptions {
     pub allow_path_lookup: bool,
@@ -664,7 +848,7 @@ struct ManagedNodeRuntime {
 }
 
 impl ManagedNodeRuntime {
-    const VERSION: &str = "v24.11.0";
+    const VERSION: &str = NODE_VERSION;
 
     #[cfg(not(windows))]
     const NODE_PATH: &str = "bin/node";
@@ -758,23 +942,48 @@ impl ManagedNodeRuntime {
                 }
             );
 
-            let url = format!("https://nodejs.org/dist/{version}/{file_name}");
+            // ADR-F49 決定 21: downloaded to a file and checked against the
+            // digest this build pins before a single entry is unpacked — what
+            // comes out of this archive is the interpreter Zed runs agents
+            // with. A platform with no pinned digest is downloaded as before,
+            // saying so.
+            let pinned = pinned_node_archive(os, arch);
+            let url = match &pinned {
+                Some(pinned) => pinned.url.clone(),
+                None => format!("https://nodejs.org/dist/{version}/{file_name}"),
+            };
+            if pinned.is_none() {
+                log::warn!(
+                    "no pinned SHA-256 for Node.js {version} on {os}-{arch}; \
+                     downloading {url} without verifying it"
+                );
+            }
+            let archive_path = node_containing_dir.join(format!("{file_name}.download"));
             log::info!("Downloading Node.js binary from {url}");
-            let mut response = http
-                .get(&url, Default::default(), true)
-                .await
-                .context("error downloading Node binary tarball")?;
+            download_verified_file(
+                http.as_ref(),
+                &url,
+                pinned.as_ref().map(|pinned| pinned.sha256),
+                &archive_path,
+            )
+            .await?;
             log::info!("Download of Node.js complete, extracting...");
 
-            let body = response.body_mut();
-            match archive_type {
+            let archive_file = fs::File::open(&archive_path)
+                .await
+                .with_context(|| format!("opening {}", archive_path.display()))?;
+            let extracted = match archive_type {
                 ArchiveType::TarGz => {
-                    let decompressed_bytes = GzipDecoder::new(BufReader::new(response.body_mut()));
+                    let decompressed_bytes = GzipDecoder::new(BufReader::new(archive_file));
                     let archive = Archive::new(decompressed_bytes);
-                    archive.unpack(&node_containing_dir).await?;
+                    archive.unpack(&node_containing_dir).await
                 }
-                ArchiveType::Zip => extract_zip(&node_containing_dir, body).await?,
-            }
+                ArchiveType::Zip => extract_zip(&node_containing_dir, archive_file)
+                    .await
+                    .map_err(|error| io::Error::other(format!("{error:#}"))),
+            };
+            fs::remove_file(&archive_path).await.log_err();
+            extracted.context("extracting the Node.js archive")?;
             log::info!("Extracted Node.js to {}", node_containing_dir.display())
         }
 
@@ -1076,15 +1285,24 @@ pub async fn read_package_installed_version(
         }
     };
 
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).await?;
+    Ok(Some(package_json_version(&contents)?))
+}
+
+/// The `version` an npm package's `package.json` declares.
+///
+/// ADR-F49 第 2b 段: split out of [`read_package_installed_version`] so a
+/// Windows client can apply the same rule to a `package.json` it read out of a
+/// WSL distro, where there is no local file for it to open.
+pub fn package_json_version(package_json: &str) -> Result<Version> {
     #[derive(Deserialize)]
     struct PackageJson {
         version: Version,
     }
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).await?;
-    let package_json: PackageJson = serde_json::from_str(&contents)?;
-    Ok(Some(package_json.version))
+    let parsed: PackageJson = serde_json::from_str(package_json)?;
+    Ok(parsed.version)
 }
 
 pub async fn read_package_executable(
@@ -1093,6 +1311,27 @@ pub async fn read_package_executable(
 ) -> Result<PathBuf> {
     let package_directory = node_module_directory.join(name);
 
+    let package_json_path = package_directory.join("package.json");
+    let mut file = fs::File::open(&package_json_path)
+        .await
+        .with_context(|| format!("opening {}", package_json_path.display()))?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).await?;
+    let relative_path = package_json_executable(&contents, name)
+        .with_context(|| format!("reading {}", package_json_path.display()))?;
+
+    Ok(package_directory.join(relative_path))
+}
+
+/// The executable an npm package's `package.json` declares, relative to the
+/// package's own directory: its single `bin`, the one named after the package,
+/// or the only one it declares.
+///
+/// ADR-F49 第 2b 段: split out of [`read_package_executable`] so a Windows
+/// client can apply the same rule to a `package.json` it read out of a WSL
+/// distro — where it must run nothing of the package's to find out — and so
+/// the rule itself is unit tested.
+pub fn package_json_executable(package_json: &str, name: &str) -> Result<String> {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Bin {
@@ -1105,17 +1344,10 @@ pub async fn read_package_executable(
         bin: Option<Bin>,
     }
 
-    let package_json_path = package_directory.join("package.json");
-    let mut file = fs::File::open(&package_json_path)
-        .await
-        .with_context(|| format!("opening {}", package_json_path.display()))?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).await?;
-    let package_json: PackageJson = serde_json::from_str(&contents)
-        .with_context(|| format!("parsing {}", package_json_path.display()))?;
+    let parsed: PackageJson = serde_json::from_str(package_json).context("parsing package.json")?;
 
-    let relative_path = match package_json.bin {
-        Some(Bin::Path(path)) => path,
+    match parsed.bin {
+        Some(Bin::Path(path)) => Ok(path),
         Some(Bin::Named(bins)) => {
             let unscoped_name = name.rsplit('/').next().unwrap_or(name);
             let path = if bins.len() == 1 {
@@ -1123,15 +1355,14 @@ pub async fn read_package_executable(
             } else {
                 bins.get(unscoped_name)
             };
-            path.with_context(|| {
-                format!("npm package {name} declares no executable named {unscoped_name}")
-            })?
-            .clone()
+            Ok(path
+                .with_context(|| {
+                    format!("npm package {name} declares no executable named {unscoped_name}")
+                })?
+                .clone())
         }
         None => bail!("npm package {name} declares no executable"),
-    };
-
-    Ok(package_directory.join(relative_path))
+    }
 }
 
 #[derive(Clone)]
@@ -1852,5 +2083,113 @@ mod tests {
             ]
         );
         Ok(())
+    }
+
+    /// ADR-F49 決定 21: every platform this fork ships for, plus the Linux
+    /// build it stages into WSL, has a pinned archive whose name and URL are
+    /// the ones nodejs.org publishes for the pinned version.
+    #[test]
+    fn every_shipped_platform_has_a_pinned_node_archive() {
+        for (os, arch, extension) in [
+            ("linux", "x64", "tar.gz"),
+            ("linux", "arm64", "tar.gz"),
+            ("win", "x64", "zip"),
+            ("win", "arm64", "zip"),
+            ("darwin", "x64", "tar.gz"),
+            ("darwin", "arm64", "tar.gz"),
+        ] {
+            let archive = super::pinned_node_archive(os, arch)
+                .unwrap_or_else(|| panic!("no pinned archive for {os}-{arch}"));
+            assert_eq!(
+                archive.file_name,
+                format!("node-{}-{os}-{arch}.{extension}", super::NODE_VERSION)
+            );
+            assert_eq!(
+                archive.url,
+                format!(
+                    "https://nodejs.org/dist/{}/{}",
+                    super::NODE_VERSION,
+                    archive.file_name
+                )
+            );
+            assert_eq!(archive.is_zip, extension == "zip");
+            assert_eq!(
+                archive.directory_name(),
+                format!("node-{}-{os}-{arch}", super::NODE_VERSION)
+            );
+            assert_eq!(archive.sha256.len(), 64);
+            assert!(
+                archive
+                    .sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()),
+                "{os}-{arch} has a malformed digest"
+            );
+        }
+        assert!(super::pinned_node_archive("linux", "riscv64").is_none());
+        assert!(super::pinned_node_archive("plan9", "x64").is_none());
+    }
+
+    /// The archive Zed installs for this very platform is one of the pinned
+    /// ones, so the check is never silently skipped on a platform we ship.
+    #[test]
+    fn this_platform_has_a_pinned_node_archive() {
+        let os = match std::env::consts::OS {
+            "macos" => "darwin",
+            "windows" => "win",
+            other => other,
+        };
+        let arch = match std::env::consts::ARCH {
+            "x86_64" => "x64",
+            "aarch64" => "arm64",
+            other => other,
+        };
+        assert!(
+            super::pinned_node_archive(os, arch).is_some(),
+            "no pinned Node.js archive for {os}-{arch}"
+        );
+    }
+
+    /// ADR-F49 第 2b 段: the rule the Windows client applies to a
+    /// `package.json` it read out of a WSL distro is the one
+    /// `read_package_executable` applies locally.
+    #[test]
+    fn a_package_json_names_its_executable() {
+        assert_eq!(
+            super::package_json_executable(r#"{"bin": "./dist/cli.js"}"#, "some-package")
+                .expect("a single bin path"),
+            "./dist/cli.js"
+        );
+        assert_eq!(
+            super::package_json_executable(
+                r#"{"bin": {"claude-agent-acp": "bin/acp.js"}}"#,
+                "@agentclientprotocol/claude-agent-acp"
+            )
+            .expect("the only named bin"),
+            "bin/acp.js"
+        );
+        assert_eq!(
+            super::package_json_executable(
+                r#"{"bin": {"other": "bin/other.js", "pkg": "bin/pkg.js"}}"#,
+                "@scope/pkg"
+            )
+            .expect("the bin named after the unscoped package"),
+            "bin/pkg.js"
+        );
+        assert!(
+            super::package_json_executable(r#"{"bin": {"a": "bin/a.js", "b": "bin/b.js"}}"#, "pkg")
+                .is_err(),
+            "a package with several bins and none of its own name has no executable"
+        );
+        assert!(
+            super::package_json_executable(r#"{"version": "1.0.0"}"#, "pkg").is_err(),
+            "a package with no bin has no executable"
+        );
+        assert_eq!(
+            super::package_json_version(r#"{"version": "0.76.1"}"#)
+                .expect("a version")
+                .to_string(),
+            "0.76.1"
+        );
     }
 }

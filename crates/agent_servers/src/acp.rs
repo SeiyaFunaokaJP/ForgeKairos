@@ -21,7 +21,8 @@ use project::agent_sandbox::{
     AgentSandboxCommand, AgentSandboxHosts, AgentSandboxState, SandboxedAgentProfile,
 };
 use project::agent_server_store::{
-    AgentServerCommand, AgentServerStore, AllAgentServersSettings, CustomAgentServerSettings,
+    AgentLaunchTarget, AgentServerCommand, AgentServerStore, AllAgentServersSettings,
+    CustomAgentServerSettings,
 };
 use project::{AgentId, Project};
 use remote::remote_client::Interactive;
@@ -42,12 +43,16 @@ use util::process::Child;
 use util::rel_path::RelPath;
 
 use anyhow::{Context as _, Result};
-use gpui::{App, AppContext as _, AsyncApp, Entity, SharedString, Subscription, Task, WeakEntity};
+use gpui::{
+    App, AppContext as _, AsyncApp, Entity, FutureExt as _, SharedString, Subscription, Task,
+    WeakEntity,
+};
 
 use acp_thread::{AcpThread, AuthRequired, LoadError, TerminalProviderEvent};
 use terminal::TerminalBuilder;
 use terminal::terminal_settings::{AlternateScroll, CursorShape};
 
+use crate::acp_paths::AcpPathTranslator;
 use crate::{CURSOR_ID, GEMINI_ID};
 
 pub const GEMINI_TERMINAL_AUTH_METHOD_ID: &str = "spawn-gemini-cli";
@@ -293,6 +298,10 @@ struct ClientContext {
     sessions: Rc<RefCell<HashMap<acp::SessionId, AcpSession>>>,
     session_list: Rc<RefCell<Option<Rc<AcpSessionList>>>>,
     request_elicitations: Entity<ElicitationStore>,
+    /// ADR-F49 decision 23: how the agent's paths are read on this side.
+    /// `Some` only for an agent in a WSL sandbox; every other connection hands
+    /// what it receives through untouched.
+    paths: Option<Arc<AcpPathTranslator>>,
 }
 
 fn dispatch_queue_closed_error() -> acp::Error {
@@ -423,12 +432,20 @@ pub struct AcpConnection {
     /// This machine's sandbox the agent itself runs in. It owns the command's
     /// network proxy, so it lives as long as the connection.
     _agent_sandbox: Option<sandbox::Sandbox>,
+    /// ADR-F49 decision 24: the restricted IDE server this agent reaches over
+    /// its sandbox's IDE channel, and everything that channel is made of.
+    /// `Some` only for an agent in a WSL sandbox whose channel came up; the
+    /// session's `mcpServers` name it, so it lives as long as the connection.
+    ide_link: Option<SandboxIdeLink>,
     /// The same for a sign-in, which runs on a terminal of its own: kept by
     /// the sign-in's task id, so that starting the sign-in again replaces it
     /// and the terminal's end releases it
     /// ([`AcpConnection::release_terminal_auth_sandbox`]) rather than piling
     /// proxies up for as long as the connection lives.
     login_sandboxes: Rc<RefCell<HashMap<String, sandbox::Sandbox>>>,
+    /// ADR-F49 decision 23: the translator every ACP boundary of this
+    /// connection goes through, `Some` only for an agent in a WSL sandbox.
+    paths: Option<Arc<AcpPathTranslator>>,
     session_list: Option<Rc<AcpSessionList>>,
     debug_log: AcpDebugLog,
     _settings_subscription: Subscription,
@@ -436,6 +453,35 @@ pub struct AcpConnection {
     _dispatch_task: Task<()>,
     _wait_task: Task<Result<()>>,
     _stderr_task: Task<Result<()>>,
+}
+
+/// ADR-F49 decision 24: the restricted IDE server an agent in a WSL sandbox
+/// is given, and everything that has to stay alive for it.
+///
+/// Dropping it ends the channel from the outside in: the bridge's standard
+/// input closes, so the bridge removes its socket in the distro and exits, the
+/// mux stops, and the session closes whatever connections were still open. The
+/// helper inside the sandbox tears its half down when the agent's own standard
+/// I/O closes, one-shot or not.
+struct SandboxIdeLink {
+    /// `http://127.0.0.1:<inner_port>/mcp` — the port on the *sandbox's* own
+    /// loopback that the helper splices to the bridge.
+    url: String,
+    /// The `Authorization` header value the restricted session expects.
+    authorization: String,
+    _session: ide_server::SandboxIdeSessionHandle,
+    /// Hands the bridge's connections to the IDE session.
+    _forward: Task<()>,
+    /// Holds the bridge's standard input. **Declared before `_bridge`**:
+    /// fields are dropped in declaration order, so that input closes — which
+    /// is what makes the bridge remove its socket in the distro and exit on
+    /// its own — before the `wsl.exe` is killed.
+    _mux: sandbox::BridgeMuxHandle,
+    /// The `wsl.exe` running the bridge in the distro; killed when dropped,
+    /// which by then is only a backstop.
+    _bridge: util::command::Child,
+    /// Keeps the bridge's stderr in the log (and drained).
+    _log: Task<()>,
 }
 
 #[derive(Clone, Default)]
@@ -551,16 +597,23 @@ pub struct AcpSession {
 pub struct AcpSessionList {
     connection: ConnectionTo<Agent>,
     supports_delete: bool,
+    /// ADR-F49 decision 23: see [`AcpConnection::paths`].
+    paths: Option<Arc<AcpPathTranslator>>,
     updates_tx: async_channel::Sender<acp_thread::SessionListUpdate>,
     updates_rx: async_channel::Receiver<acp_thread::SessionListUpdate>,
 }
 
 impl AcpSessionList {
-    fn new(connection: ConnectionTo<Agent>, supports_delete: bool) -> Self {
+    fn new(
+        connection: ConnectionTo<Agent>,
+        supports_delete: bool,
+        paths: Option<Arc<AcpPathTranslator>>,
+    ) -> Self {
         let (tx, rx) = async_channel::unbounded();
         Self {
             connection,
             supports_delete,
+            paths,
             updates_tx: tx,
             updates_rx: rx,
         }
@@ -586,15 +639,40 @@ impl AgentSessionList for AcpSessionList {
         cx: &mut App,
     ) -> Task<Result<AgentSessionListResponse>> {
         let conn = self.connection.clone();
+        let paths = self.paths.clone();
         cx.foreground_executor().spawn(async move {
             let acp_request = acp::ListSessionsRequest::new()
                 .cwd(request.cwd)
                 .cursor(request.cursor);
+            // ADR-F49 decision 23: a folder the sandbox cannot be shown is not
+            // asked about at all — leaving it out would ask for every session
+            // the agent has anywhere.
+            let acp_request = match &paths {
+                Some(paths) => match paths.list_sessions_to_client(acp_request) {
+                    Some(request) => request,
+                    None => {
+                        log::warn!(
+                            "acp: not listing the agent's sessions: the folder asked about is \
+                             outside what its sandbox can see"
+                        );
+                        return Ok(AgentSessionListResponse {
+                            sessions: Vec::new(),
+                            next_cursor: None,
+                            meta: None,
+                        });
+                    }
+                },
+                None => acp_request,
+            };
             let response = conn
                 .send_request(acp_request)
                 .block_task()
                 .await
                 .map_err(map_acp_error)?;
+            let response = match &paths {
+                Some(paths) => paths.list_sessions_response_to_host(response),
+                None => response,
+            };
             Ok(AgentSessionListResponse {
                 sessions: response
                     .sessions
@@ -865,9 +943,34 @@ impl AcpConnection {
             command.sandbox.as_ref(),
         )
         .map_err(anyhow::Error::new)?;
-        let (child, sandbox_session, agent_sandbox, pending_processes) = match launch {
+        // ADR-F49 decision 23: an agent in a WSL distro speaks that distro's
+        // paths, so every ACP boundary of this connection is translated.
+        // No other connection has a translator, and those go on behaving byte
+        // for byte as they did.
+        let paths = match &launch {
+            AgentLaunch::WslSandbox { distro } => {
+                let worktree_roots = project.read_with(cx, |project, cx| {
+                    acp_thread::sandbox_worktree_writable_paths(project, cx)
+                });
+                Some(Arc::new(
+                    AcpPathTranslator::for_wsl(worktree_roots, distro.as_deref()).map_err(
+                        |error| {
+                            sandbox_unavailable(format!(
+                                "このプロジェクトのフォルダーを WSL のサンドボックスから\
+                                 見せられません: {error:#}"
+                            ))
+                        },
+                    )?,
+                ))
+            }
+            AgentLaunch::Host | AgentLaunch::LocalSandbox | AgentLaunch::RemoteHelper { .. } => {
+                None
+            }
+        };
+        let (child, sandbox_session, agent_sandbox, ide_link, pending_processes) = match launch {
             AgentLaunch::Host => (
                 host_agent_command(&project, &command, root_dir.as_ref(), cx),
+                None,
                 None,
                 None,
                 PendingSandboxProcessAccess::NotSandboxed,
@@ -885,7 +988,32 @@ impl AcpConnection {
                     child,
                     Some(Rc::new(session)),
                     Some(sandbox),
+                    None,
                     PendingSandboxProcessAccess::Local,
+                )
+            }
+            AgentLaunch::WslSandbox { distro } => {
+                let WslAgentLaunch {
+                    child,
+                    session,
+                    sandbox,
+                    session_id,
+                    ide_link,
+                } = wsl_sandboxed_agent_command(
+                    &project,
+                    &command,
+                    distro.clone(),
+                    root_dir.clone(),
+                    paths.as_ref(),
+                    cx,
+                )
+                .await?;
+                (
+                    child,
+                    Some(Rc::new(session)),
+                    Some(sandbox),
+                    ide_link,
+                    PendingSandboxProcessAccess::Wsl { session_id, distro },
                 )
             }
             AgentLaunch::RemoteHelper { remote_binary } => {
@@ -899,6 +1027,7 @@ impl AcpConnection {
                 (
                     child,
                     Some(Rc::new(session)),
+                    None,
                     None,
                     PendingSandboxProcessAccess::Remote { session_id },
                 )
@@ -1047,6 +1176,7 @@ impl AcpConnection {
             sessions: sessions.clone(),
             session_list: client_session_list.clone(),
             request_elicitations: request_elicitations.clone(),
+            paths: paths.clone(),
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -1126,6 +1256,7 @@ impl AcpConnection {
             let list = Rc::new(AcpSessionList::new(
                 connection.clone(),
                 agent_supports_delete,
+                paths.clone(),
             ));
             *client_session_list.borrow_mut() = Some(list.clone());
             Some(list)
@@ -1189,12 +1320,31 @@ impl AcpConnection {
             sandbox_session,
             sandbox_processes,
             _agent_sandbox: agent_sandbox,
+            ide_link,
             login_sandboxes: Rc::default(),
+            paths,
         })
     }
 
     pub fn prompt_capabilities(&self) -> &acp::PromptCapabilities {
         &self.agent_capabilities.prompt_capabilities
+    }
+
+    /// ADR-F49: the IDE server this connection's sessions are given. Zed's own
+    /// only outside a sandbox (decision 17); inside one, the restricted
+    /// session on the sandbox's own loopback when its channel came up
+    /// (decision 24), and nothing when it did not.
+    fn ide_mcp(&self) -> IdeMcp {
+        if self.sandbox_session.is_none() {
+            return IdeMcp::Host;
+        }
+        match &self.ide_link {
+            Some(link) => IdeMcp::Restricted {
+                url: link.url.clone(),
+                authorization: link.authorization.clone(),
+            },
+            None => IdeMcp::None,
+        }
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -1206,6 +1356,7 @@ impl AcpConnection {
         agent_server_store: WeakEntity<AgentServerStore>,
         io_task: Task<()>,
         dispatch_task: Task<()>,
+        paths: Option<Arc<AcpPathTranslator>>,
         cx: &mut App,
     ) -> Self {
         let agent_id = AgentId::new("test");
@@ -1228,7 +1379,9 @@ impl AcpConnection {
             sandbox_session: None,
             sandbox_processes: None,
             _agent_sandbox: None,
+            ide_link: None,
             login_sandboxes: Rc::default(),
+            paths,
             session_list: None,
             debug_log: AcpDebugLog::default(),
             _settings_subscription: settings_subscription,
@@ -1635,11 +1788,14 @@ impl Drop for AcpConnection {
 #[derive(Debug, PartialEq)]
 enum AgentLaunch {
     /// As a process of this machine's (or of the remote host's, through its
-    /// transport), the way every agent ran before: on Windows until 第 2b 段,
-    /// and once the user confirmed a start outside the sandbox.
+    /// transport), the way every agent ran before 第 2a 段, and once the user
+    /// confirmed a start outside the sandbox.
     Host,
     /// In this machine's sandbox: Bubblewrap on Linux, Seatbelt on macOS.
     LocalSandbox,
+    /// ADR-F49 第 2b 段: in the WSL distro's sandbox, for a Windows project.
+    /// `None` is the default distro, whose name this machine does not know.
+    WslSandbox { distro: Option<String> },
     /// In the remote host's sandbox helper.
     RemoteHelper { remote_binary: Arc<RelPath> },
 }
@@ -1648,6 +1804,11 @@ const REMOTE_WITHOUT_SANDBOX_REASON: &str = "このリモートホストでは�
      起動できません (Linux 以外のホストか、サンドボックスのヘルパーを置けないホストです)。";
 const OLD_REMOTE_SERVER_REASON: &str = "接続先の Zed のサーバーが古いため、エージェントを\
      サンドボックスで起動できません。接続し直してサーバーを更新してください。";
+/// ADR-F49 第 2b 段: a Windows start that did not come out of `get_command`
+/// as a Linux command for a WSL distro. Never silently a start on the host:
+/// the agent would then run with the user's own rights (ADR-F49 decision 19).
+const WSL_WITHOUT_RUNTIME_REASON: &str = "この起動方法では WSL のサンドボックスを使えません \
+     (Windows ではエージェントを WSL の中の Linux 版で動かします)。";
 
 /// Where the agent starts. A start the sandbox cannot take is refused with
 /// the reason (ADR-F49 decision 19): the user may then start it outside the
@@ -1662,12 +1823,28 @@ fn choose_agent_launch(
     if run_outside_sandbox {
         return Ok(AgentLaunch::Host);
     }
+    if is_local && windows_client {
+        // ADR-F49 第 2b 段: the sandbox is a WSL distro, so the command has to
+        // be the Linux one `get_command` resolved for that distro.
+        return match sandbox {
+            Some(AgentSandboxCommand {
+                state: AgentSandboxState::Unavailable { reason },
+                ..
+            }) => Err(LoadError::SandboxUnavailable(reason.clone().into())),
+            Some(AgentSandboxCommand {
+                state: AgentSandboxState::Unresolved { .. },
+                wsl: Some(runtime),
+                ..
+            }) => Ok(AgentLaunch::WslSandbox {
+                distro: runtime.distro.clone(),
+            }),
+            _ => Err(LoadError::SandboxUnavailable(
+                WSL_WITHOUT_RUNTIME_REASON.into(),
+            )),
+        };
+    }
     if is_local {
-        return Ok(if windows_client {
-            AgentLaunch::Host
-        } else {
-            AgentLaunch::LocalSandbox
-        });
+        return Ok(AgentLaunch::LocalSandbox);
     }
     let Some(remote_binary) = remote_helper_binary else {
         return Err(LoadError::SandboxUnavailable(
@@ -1713,6 +1890,13 @@ enum SandboxProcessRoute {
         session_id: String,
         project: WeakEntity<Project>,
     },
+    /// ADR-F49 第 2b 段: the WSL distro's helper, asked through `wsl.exe`.
+    /// The registration lives in the distro, in a directory the sandbox
+    /// cannot write, exactly as on an SSH host.
+    Wsl {
+        session_id: String,
+        distro: Option<String>,
+    },
 }
 
 /// How long the host has to answer before the sandbox counts as one this side
@@ -1720,12 +1904,24 @@ enum SandboxProcessRoute {
 /// Short, because the answer is awaited before every prompt reaches the agent.
 const SANDBOX_PROCESS_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// The same for the WSL distro, which is asked by starting `wsl.exe`: a cold
+/// distro takes far longer to answer than a host that is already connected,
+/// and answering late is much better than falling back to keeping the agent a
+/// writer for the whole connection.
+const WSL_SANDBOX_PROCESS_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
 /// The half of [`SandboxProcessAccess`] that is known before the agent's own
 /// process exists.
 enum PendingSandboxProcessAccess {
     NotSandboxed,
     Local,
-    Remote { session_id: String },
+    Remote {
+        session_id: String,
+    },
+    Wsl {
+        session_id: String,
+        distro: Option<String>,
+    },
 }
 
 impl PendingSandboxProcessAccess {
@@ -1748,6 +1944,7 @@ impl PendingSandboxProcessAccess {
                 session_id,
                 project: project.downgrade(),
             },
+            Self::Wsl { session_id, distro } => SandboxProcessRoute::Wsl { session_id, distro },
         };
         SandboxProcessAccess {
             agent,
@@ -1770,9 +1967,9 @@ impl acp_thread::SandboxProcessSource for SandboxProcessAccess {
         match &self.route {
             SandboxProcessRoute::NotSandboxed => acp_thread::SandboxProcessTracking::NotSandboxed,
             SandboxProcessRoute::Untrackable => acp_thread::SandboxProcessTracking::Untrackable,
-            SandboxProcessRoute::LocalPidNamespace { .. } | SandboxProcessRoute::Remote { .. } => {
-                acp_thread::SandboxProcessTracking::Trackable
-            }
+            SandboxProcessRoute::LocalPidNamespace { .. }
+            | SandboxProcessRoute::Remote { .. }
+            | SandboxProcessRoute::Wsl { .. } => acp_thread::SandboxProcessTracking::Trackable,
         }
     }
 
@@ -1816,10 +2013,26 @@ impl acp_thread::SandboxProcessSource for SandboxProcessAccess {
                         .map(|process| sandbox::SandboxProcess {
                             pid: process.pid,
                             start_time: process.start_time,
-                            running_for: std::time::Duration::from_secs(process.running_for),
+                            running_for: process.running_for.map(std::time::Duration::from_secs),
                             command: process.command,
                         })
                         .collect())
+                })
+            }
+            SandboxProcessRoute::Wsl { session_id, distro } => {
+                let session_id = session_id.clone();
+                let distro = distro.clone();
+                let timeout = cx
+                    .background_executor()
+                    .timer(WSL_SANDBOX_PROCESS_REQUEST_TIMEOUT);
+                cx.background_spawn(async move {
+                    let listing = list_wsl_sandbox_processes(distro, session_id);
+                    futures::select_biased! {
+                        processes = listing.fuse() => processes,
+                        _ = timeout.fuse() => Err(anyhow!(
+                            "WSL がエージェントのサンドボックスの中で動いているものを答えませんでした"
+                        )),
+                    }
                 })
             }
         }
@@ -1860,8 +2073,52 @@ impl acp_thread::SandboxProcessSource for SandboxProcessAccess {
                 };
                 cx.background_spawn(async move { Ok(response.await?.stopped as usize) })
             }
+            SandboxProcessRoute::Wsl { session_id, distro } => {
+                let session_id = session_id.clone();
+                let distro = distro.clone();
+                cx.background_spawn(async move {
+                    stop_wsl_sandbox_processes(distro, session_id, processes).await
+                })
+            }
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+async fn list_wsl_sandbox_processes(
+    distro: Option<String>,
+    session_id: String,
+) -> Result<Vec<sandbox::SandboxProcess>> {
+    sandbox::list_wsl_sandbox_processes(distro.as_deref(), &session_id).await
+}
+
+#[cfg(target_os = "windows")]
+async fn stop_wsl_sandbox_processes(
+    distro: Option<String>,
+    session_id: String,
+    processes: Vec<sandbox::SandboxProcessKey>,
+) -> Result<usize> {
+    sandbox::stop_wsl_sandbox_processes(distro.as_deref(), &session_id, &processes).await
+}
+
+/// Off Windows nothing ever names a WSL sandbox ([`choose_agent_launch`] only
+/// picks one for a Windows client); these keep the call sites
+/// platform-independent.
+#[cfg(not(target_os = "windows"))]
+async fn list_wsl_sandbox_processes(
+    _distro: Option<String>,
+    _session_id: String,
+) -> Result<Vec<sandbox::SandboxProcess>> {
+    Err(anyhow!("this machine has no WSL sandbox to look into"))
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn stop_wsl_sandbox_processes(
+    _distro: Option<String>,
+    _session_id: String,
+    _processes: Vec<sandbox::SandboxProcessKey>,
+) -> Result<usize> {
+    Err(anyhow!("this machine has no WSL sandbox to look into"))
 }
 
 /// Sends `request` to the remote server that holds the agent's sandbox.
@@ -1924,6 +2181,17 @@ struct AgentSandboxSession {
 enum AgentSandboxRoute {
     Local {
         policy: sandbox::SandboxPolicy,
+    },
+    /// ADR-F49 第 2b 段: the WSL distro's sandbox. The distro is kept for the
+    /// messages that name it; `wrap` finds it again from the policy's paths.
+    /// The editor-wide allowlist travels with the route because the WSL
+    /// helper's proxy runs inside the distro, where the live policy object
+    /// cannot follow, so every sandbox built for this connection — the agent's
+    /// and each sign-in's — has to be handed the same entries.
+    Wsl {
+        policy: sandbox::SandboxPolicy,
+        distro: Option<String>,
+        editor_allowlist: Option<Vec<String>>,
     },
     Remote {
         remote_binary: Arc<RelPath>,
@@ -2218,6 +2486,460 @@ async fn local_sandboxed_agent_command(
     ))
 }
 
+/// ADR-F49 第 2b 段: how long WSL has to build the sandbox before the start is
+/// given up on. The same figure the sandboxed Claude Code CLI waits, and for
+/// the same reason: a cold distro has to boot, and the helper may have to be
+/// installed into it first.
+const WSL_WRAP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// ADR-F49 第 2b 段: what an agent in a WSL distro's sandbox is started with,
+/// worked out without touching the distro so it can be checked on its own.
+// Only the Windows launch builds one; the tests check it everywhere.
+#[cfg(any(target_os = "windows", test))]
+struct WslAgentPlan {
+    /// Its own environment, its profile's, and `NO_BROWSER`.
+    env: HashMap<String, String>,
+    /// What the helper is allowed to write, in the spellings it resolves:
+    /// Windows paths for the worktrees, the distro's own path for the folder.
+    sandbox_write_paths: Vec<PathBuf>,
+    /// ADR-F50: the same places as this machine's worktrees spell them, so the
+    /// configuration folder goes in by its Windows spelling.
+    write_scope: Vec<PathBuf>,
+    hosts: AgentSandboxHosts,
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn plan_wsl_agent(
+    profile: &SandboxedAgentProfile,
+    mut env: HashMap<String, String>,
+    worktree_roots: Vec<PathBuf>,
+    config_dir: &str,
+    distro_name: Option<&str>,
+) -> WslAgentPlan {
+    env.extend(profile.posix_environment(config_dir));
+    // ADR-F49 decision 25: in WSL every agent is asked for the sign-in that
+    // ends with a code, never one that waits on a browser and a loopback port
+    // — the browser is on Windows and the port is in the distro's own network
+    // namespace.
+    env.insert("NO_BROWSER".to_string(), "1".to_string());
+    let hosts = match profile.hosts() {
+        Some(hosts) => {
+            AgentSandboxHosts::Listed(hosts.iter().map(|host| host.to_string()).collect())
+        }
+        None => AgentSandboxHosts::EditorAllowlist,
+    };
+    let mut sandbox_write_paths = worktree_roots.clone();
+    sandbox_write_paths.push(PathBuf::from(config_dir));
+    let write_scope =
+        project::agent_sandbox::wsl_session_write_scope(&worktree_roots, config_dir, distro_name);
+    WslAgentPlan {
+        env,
+        sandbox_write_paths,
+        write_scope,
+        hosts,
+    }
+}
+
+/// ADR-F49 第 2b 段: everything [`wsl_sandboxed_agent_command`] built for one
+/// agent.
+struct WslAgentLaunch {
+    child: std::process::Command,
+    session: AgentSandboxSession,
+    /// Owns the command's network proxy, so it lives as long as the command.
+    sandbox: sandbox::Sandbox,
+    /// Decision 18 (C): what the helper registers the sandbox under.
+    session_id: String,
+    /// Decision 24: the restricted IDE server, when its channel came up.
+    ide_link: Option<SandboxIdeLink>,
+}
+
+/// ADR-F49 決定 24: where the agent's IDE port is picked, inside its own
+/// network namespace. Random, so that a session's port is not one a crashed
+/// one's leftovers still name.
+#[cfg(target_os = "windows")]
+const INNER_IDE_PORTS: std::ops::Range<u16> = 20000..60000;
+
+/// ADR-F49 決定 24: what an ACP agent's IDE session is named inside the
+/// distro, told apart from the sandboxed CLI's (`claude-`) by its prefix so
+/// that either launcher only ever sweeps its own leftovers.
+#[cfg(target_os = "windows")]
+const ACP_IDE_SESSION_PREFIX: &str = "acp-";
+
+/// ADR-F49 第 2b 段: the agent in the WSL distro's sandbox. Its command is the
+/// Linux one `get_command` resolved inside the distro; what it may write is
+/// the project's worktrees (Windows paths, which the helper maps) and its own
+/// configuration folder (a Linux path in the distro), and what it may reach is
+/// its profile's hosts under the IDE-wide allowlist.
+#[cfg(target_os = "windows")]
+async fn wsl_sandboxed_agent_command(
+    project: &Entity<Project>,
+    command: &AgentServerCommand,
+    distro: Option<String>,
+    root_dir: Option<PathBuf>,
+    paths: Option<&Arc<AcpPathTranslator>>,
+    cx: &mut AsyncApp,
+) -> Result<WslAgentLaunch> {
+    let sandbox_command = command
+        .sandbox
+        .as_ref()
+        .ok_or_else(|| sandbox_unavailable(WSL_WITHOUT_RUNTIME_REASON))?;
+    let AgentSandboxState::Unresolved { profile } = &sandbox_command.state else {
+        return Err(sandbox_unavailable(WSL_WITHOUT_RUNTIME_REASON));
+    };
+    let profile = profile.clone();
+    let (fs, key_roots, worktree_roots, git_dirs) = project.read_with(cx, |project, cx| {
+        (
+            project.fs().clone(),
+            project::agent_sandbox::project_key_roots(project.worktree_store().read(cx), cx),
+            acp_thread::sandbox_worktree_writable_paths(project, cx),
+            acp_thread::sandbox_git_dirs(project, cx),
+        )
+    });
+    if key_roots.is_empty() {
+        return Err(sandbox_unavailable(
+            "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。",
+        ));
+    }
+    // ADR-F49 decision 15: the same key as the sandboxed Claude Code CLI, so
+    // that the two share a sign-in on this machine.
+    let canonical_roots = project::agent_sandbox::canonical_project_key_roots(&fs, key_roots).await;
+    let project_key = project::agent_sandbox::project_key(&canonical_roots);
+    let config_dir = cx
+        .background_spawn({
+            let distro = distro.clone();
+            let folder_name = profile.config_folder_name();
+            let directories_below = profile.directories_below_relative();
+            async move {
+                sandbox::ensure_wsl_agent_config_dir(
+                    distro.as_deref(),
+                    &project_key,
+                    &folder_name,
+                    &directories_below,
+                )
+                .await
+            }
+        })
+        .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
+        .await
+        .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
+        .map_err(|error| {
+            sandbox_unavailable(format!(
+                "エージェントの設定フォルダーを用意できませんでした: {error:#}"
+            ))
+        })?;
+    let distro_name = sandbox::registered_wsl_distro_name(distro.as_deref());
+    let WslAgentPlan {
+        env,
+        sandbox_write_paths,
+        write_scope,
+        hosts,
+    } = plan_wsl_agent(
+        &profile,
+        sandbox_command.env.clone(),
+        worktree_roots,
+        &config_dir,
+        distro_name.as_deref(),
+    );
+    ensure_hosts_allowed(&hosts, cx)?;
+    let policy = local_agent_sandbox_policy(
+        &sandbox_write_paths,
+        &git_dirs,
+        &sandbox_command.readable_paths,
+        &hosts,
+    )
+    .map_err(|error| sandbox_unavailable(format!("{error:#}")))?;
+
+    let editor_allowlist = cx.update(|cx| editor_allowlist_entries(cx));
+    let session_id = new_sandbox_session_id();
+    // ADR-F49 決定 24: the IDE channel, before the sandbox is wrapped (the
+    // helper refuses a rendezvous directory that is not there yet) and before
+    // the agent starts, so that its first `session/new` already names a server
+    // that answers. Only the diagnostics tool is on the other end; when it
+    // cannot be brought up the agent starts without it.
+    let ide = match paths {
+        Some(paths) => {
+            start_restricted_ide_channel(project, distro.as_deref(), &config_dir, paths, cx).await
+        }
+        None => None,
+    };
+    let ide_forward = ide.as_ref().map(|(_, forward)| forward.clone());
+    let agent = sandbox::CommandAndArgs {
+        program: command.path.to_string_lossy().into_owned(),
+        args: command.args.clone(),
+        env: env.clone().into_iter().collect(),
+        cwd: root_dir.clone(),
+    };
+    let (wrapped, sandbox) = cx
+        .background_spawn({
+            let policy = policy.clone();
+            let editor_allowlist = editor_allowlist.clone();
+            let session_id = session_id.clone();
+            async move {
+                let mut sandbox = sandbox::Sandbox::new(policy)?;
+                prepare_wsl_sandbox(&mut sandbox, editor_allowlist, false, Some(session_id));
+                if let Some(forward) = ide_forward {
+                    sandbox.set_ide_forward(forward);
+                }
+                let wrapped = sandbox.wrap(&agent).await?;
+                anyhow::Ok((wrapped, sandbox))
+            }
+        })
+        .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
+        .await
+        .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
+        .map_err(|error| sandbox_unavailable(format!("{error:#}")))?;
+    let ide_link = ide.map(|(link, _)| link);
+
+    let mut child = util::command::new_std_command(&wrapped.program);
+    child.args(&wrapped.args);
+    // `wsl.exe` is a Windows program of the user's own session and needs this
+    // process's environment to start at all (without `SystemRoot` its COM
+    // activation fails with `Wsl/0x80110474`), so — as the ADR-F46 terminal
+    // and the 第 1 段 bridge do — it is left as it is and confined by the
+    // empty `WSLENV` that `wrap` puts in `wrapped.env`: nothing of this
+    // process's environment crosses into the distro, and the only environment
+    // the agent gets is what the helper was given through `--setenv`.
+    child.envs(&wrapped.env);
+    if let Some(cwd) = &wrapped.cwd {
+        child.current_dir(cwd);
+    }
+    Ok(WslAgentLaunch {
+        child,
+        session: AgentSandboxSession {
+            write_scope,
+            env,
+            cwd: root_dir,
+            route: AgentSandboxRoute::Wsl {
+                policy,
+                distro,
+                editor_allowlist,
+            },
+        },
+        sandbox,
+        session_id,
+        ide_link,
+    })
+}
+
+/// ADR-F49 決定 24: bring up the IDE channel of an agent about to run in the
+/// WSL sandbox — a restricted IDE session (`getDiagnostics` alone), the bridge
+/// that carries its connections out of the distro, and the port the sandbox's
+/// own loopback offers them on.
+///
+/// `None` when any of it fails: the agent then starts without the diagnostics
+/// tool rather than not at all. That is not the sandbox failing open — nothing
+/// is loosened, the agent is simply given one tool fewer — but it is worth
+/// knowing, so every way out of here says why.
+#[cfg(target_os = "windows")]
+async fn start_restricted_ide_channel(
+    project: &Entity<Project>,
+    distro: Option<&str>,
+    config_dir: &str,
+    paths: &Arc<AcpPathTranslator>,
+    cx: &mut AsyncApp,
+) -> Option<(SandboxIdeLink, sandbox::IdeForward)> {
+    match restricted_ide_channel(project, distro, config_dir, paths, cx).await {
+        Ok(Some(link)) => Some(link),
+        Ok(None) => {
+            log::info!(
+                "acp: no workspace holds this project, so its sandboxed agent gets no IDE server"
+            );
+            None
+        }
+        Err(error) => {
+            log::warn!("acp: the sandboxed agent gets no IDE server: {error:#}");
+            None
+        }
+    }
+}
+
+/// The order here is fixed (ADR-F49 決定 24): the rendezvous path is named
+/// first, the session started so that its token exists, the bridge started and
+/// waited for — the helper refuses a rendezvous directory that is not there —
+/// and only then is the sandbox told about the forward.
+#[cfg(target_os = "windows")]
+async fn restricted_ide_channel(
+    project: &Entity<Project>,
+    distro: Option<&str>,
+    config_dir: &str,
+    paths: &Arc<AcpPathTranslator>,
+    cx: &mut AsyncApp,
+) -> Result<Option<(SandboxIdeLink, sandbox::IdeForward)>> {
+    // No workspace holds this project (a headless or already closed one), and
+    // there is nothing for the session to read diagnostics out of.
+    let Some(workspace) = cx.update(|cx| ide_server::workspace_for_project(project, cx)) else {
+        return Ok(None);
+    };
+    let session_id = format!("{ACP_IDE_SESSION_PREFIX}{}", uuid::Uuid::new_v4().simple());
+    let rendezvous = cx
+        .background_spawn({
+            let distro = distro.map(str::to_string);
+            let session_id = session_id.clone();
+            async move { sandbox::ide_rendezvous_path(distro.as_deref(), &session_id).await }
+        })
+        .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
+        .await
+        .map_err(|_| anyhow!(wsl_timed_out()))??;
+    // What earlier sessions of this launcher left behind, before this one adds
+    // to it. Failing to sweep is no reason not to start.
+    match cx
+        .background_spawn({
+            let distro = distro.map(str::to_string);
+            async move {
+                sandbox::sweep_ide_rendezvous(distro.as_deref(), ACP_IDE_SESSION_PREFIX).await
+            }
+        })
+        .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
+        .await
+    {
+        Ok(Ok(removed)) if !removed.is_empty() => {
+            log::info!("acp: removed what earlier IDE sessions left: {removed:?}")
+        }
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => log::warn!("acp: could not sweep earlier IDE sessions: {error:#}"),
+        Err(_) => log::warn!("acp: sweeping earlier IDE sessions timed out"),
+    }
+    let (connections_sender, connections) = mpsc::unbounded();
+    let (session, info) = cx.update(|cx| {
+        ide_server::start_restricted_sandbox_session(
+            workspace,
+            connections,
+            paths.shared_paths(),
+            cx,
+        )
+    });
+    let (program, arguments, preamble) = cx
+        .background_spawn({
+            let distro = distro.map(str::to_string);
+            let rendezvous = rendezvous.clone();
+            // Held by the bridge while it runs, so that one agent
+            // configuration never has two IDE channels at once.
+            let config_dir = config_dir.to_string();
+            async move {
+                // No lock file: an ACP agent is told where its IDE is through
+                // its session's `mcpServers`, not through the CLI's lock.
+                sandbox::ide_bridge_invocation(
+                    distro.as_deref(),
+                    &rendezvous,
+                    None,
+                    Some(&config_dir),
+                )
+                .await
+            }
+        })
+        .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
+        .await
+        .map_err(|_| anyhow!(wsl_timed_out()))??;
+    let executor = cx.background_executor().clone();
+    let sandbox::IdeBridge {
+        child,
+        stdin,
+        stdout,
+        log,
+    } = sandbox::start_ide_bridge(
+        &program,
+        &arguments,
+        &preamble,
+        executor.timer(sandbox::IDE_BRIDGE_READY_TIMEOUT),
+    )
+    .await?;
+    let (mut bridge_connections, mux) = sandbox::spawn_bridge_mux(stdout, stdin, {
+        let executor = executor.clone();
+        move |future| executor.spawn(future).detach()
+    });
+    let forward = executor.spawn(async move {
+        while let Some(connection) = bridge_connections.next().await {
+            if connections_sender.unbounded_send(connection).is_err() {
+                break;
+            }
+        }
+    });
+    let inner_port = new_inner_ide_port();
+    Ok(Some((
+        SandboxIdeLink {
+            url: format!("http://127.0.0.1:{inner_port}/mcp"),
+            authorization: format!("Bearer {}", info.auth_token),
+            _session: session,
+            _forward: forward,
+            _mux: mux,
+            _bridge: child,
+            _log: executor.spawn(log),
+        },
+        sandbox::IdeForward {
+            inner_port,
+            rendezvous_path: rendezvous,
+        },
+    )))
+}
+
+/// A port in [`INNER_IDE_PORTS`]. The namespace is the sandbox's own, so any
+/// port will do; it is random only so that a session does not keep landing on
+/// the one a crashed session's leftovers name.
+#[cfg(target_os = "windows")]
+fn new_inner_ide_port() -> u16 {
+    let bytes = *uuid::Uuid::new_v4().as_bytes();
+    let span = INNER_IDE_PORTS.end - INNER_IDE_PORTS.start;
+    INNER_IDE_PORTS.start + u16::from_le_bytes([bytes[0], bytes[1]]) % span
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn wsl_sandboxed_agent_command(
+    _project: &Entity<Project>,
+    _command: &AgentServerCommand,
+    _distro: Option<String>,
+    _root_dir: Option<PathBuf>,
+    _paths: Option<&Arc<AcpPathTranslator>>,
+    _cx: &mut AsyncApp,
+) -> Result<WslAgentLaunch> {
+    Err(sandbox_unavailable(WSL_WITHOUT_RUNTIME_REASON))
+}
+
+fn wsl_timed_out() -> String {
+    format!(
+        "WSL が {} 秒以内に応答しませんでした。しばらく待ってから再試行し、改善しない場合は \
+         `wsl --shutdown` で WSL を再起動してください。",
+        WSL_WRAP_TIMEOUT.as_secs()
+    )
+}
+
+/// The Windows-only settings every sandbox of a WSL connection is given: the
+/// editor-wide allowlist its in-distro proxy nests the agent's hosts inside,
+/// whether it is the interactive session a sign-in runs on, and the id the
+/// helper registers it under (ADR-F49 decision 18).
+#[cfg(target_os = "windows")]
+fn prepare_wsl_sandbox(
+    sandbox: &mut sandbox::Sandbox,
+    editor_allowlist: Option<Vec<String>>,
+    interactive: bool,
+    session_id: Option<String>,
+) {
+    if let Some(entries) = editor_allowlist {
+        sandbox.set_editor_network_allowlist(entries);
+    }
+    if interactive {
+        sandbox.set_interactive_session(sandbox::InteractiveSession {
+            // ADR-F49 decision 24: the IDE channel of a sandboxed ACP agent is
+            // not a terminal's; a sign-in needs none.
+            ide_forward: None,
+        });
+    }
+    if let Some(session_id) = session_id {
+        sandbox.set_sandbox_session_id(session_id);
+    }
+    // ADR-F49 第 2b 段: the command was resolved inside the distro, so its
+    // environment is already Linux's and goes through as it is.
+    sandbox.set_wsl_linux_environment();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn prepare_wsl_sandbox(
+    _sandbox: &mut sandbox::Sandbox,
+    _editor_allowlist: Option<Vec<String>>,
+    _interactive: bool,
+    _session_id: Option<String>,
+) {
+}
+
 /// How an agent is started by a remote host's sandbox helper.
 struct RemoteAgentPlan {
     program: String,
@@ -2466,6 +3188,52 @@ async fn wrap_login_in_sandbox(
             login.env = wrapped.env.into_iter().collect();
             login.cwd = wrapped.cwd;
         }
+        // ADR-F49 decisions 16 and 25: the sign-in runs where the agent does —
+        // the same policy, the same configuration folder, the same hosts — on
+        // a terminal of its own, so the code the agent prints can be pasted
+        // into it. `NO_BROWSER` is already in the agent's environment.
+        AgentSandboxRoute::Wsl {
+            policy,
+            distro: _,
+            editor_allowlist,
+        } => {
+            let policy = policy.clone();
+            let editor_allowlist = editor_allowlist.clone();
+            let command = sandbox::CommandAndArgs {
+                program,
+                args,
+                env: env.into_iter().collect(),
+                cwd: session.cwd.clone(),
+            };
+            let (wrapped, sandbox) = cx
+                .background_spawn(async move {
+                    let mut sandbox = sandbox::Sandbox::new(policy)?;
+                    prepare_wsl_sandbox(&mut sandbox, editor_allowlist, true, None);
+                    let wrapped = sandbox.wrap(&command).await?;
+                    anyhow::Ok((wrapped, sandbox))
+                })
+                .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
+                .await
+                .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
+                .map_err(|error| {
+                    sandbox_unavailable(format!(
+                        "サインインをサンドボックスで起動できませんでした: {error:#}"
+                    ))
+                })?;
+            login_sandboxes
+                .borrow_mut()
+                .insert(login.id.0.clone(), sandbox);
+            login.command = Some(wrapped.program);
+            login.args = wrapped.args;
+            // Only `WSLENV`, which `wrap` sets empty so that nothing of this
+            // process's environment is forwarded into the distro around the
+            // helper; everything the sign-in gets went in through `--setenv`.
+            login.env = wrapped.env.into_iter().collect();
+            // `wsl.exe` starts in the distro and the helper changes directory
+            // itself; a Windows working directory here would only make the
+            // terminal refuse to start.
+            login.cwd = None;
+        }
         AgentSandboxRoute::Remote {
             remote_binary,
             wrap,
@@ -2590,7 +3358,29 @@ impl AgentConnection for AcpConnection {
             Err(error) => return Task::ready(Err(error)),
         };
         let name = self.id.0.clone();
-        let mcp_servers = mcp_servers_for_project(&project, self.sandbox_session.is_none(), cx);
+        let ProjectMcpServers {
+            servers,
+            restricted_ide,
+        } = mcp_servers_for_project(&project, self.ide_mcp(), cx);
+        let request = directories.into_new_session_request(servers);
+        // ADR-F49 decision 23: the folders and the MCP servers are named the
+        // way the agent's sandbox sees them; one that cannot be named there is
+        // left out, and a working directory that cannot is an error, since
+        // there would be no session to start.
+        let mut request = match self.paths.as_ref() {
+            Some(paths) => match paths.new_session_to_client(request) {
+                Ok((request, dropped)) => {
+                    note_dropped_mcp_servers(&self.id, dropped);
+                    request
+                }
+                Err(error) => return Task::ready(Err(error)),
+            },
+            None => request,
+        };
+        // ADR-F49 decision 24: after the translation, whose loopback rule
+        // would drop it — this one really is reachable, on the sandbox's own
+        // loopback rather than this machine's.
+        request.mcp_servers.extend(restricted_ide);
         // ADR-F49 decision 18 / ADR-F50: see `open_or_create_session` — the
         // agent writes while the session is being created as well.
         let session_writer = acp_thread::register_agent_process_writer(self.as_ref(), &project, cx);
@@ -2599,7 +3389,7 @@ impl AgentConnection for AcpConnection {
             let _session_writer = session_writer;
             let response = self
                 .connection
-                .send_request(directories.into_new_session_request(mcp_servers))
+                .send_request(request)
                 .block_task()
             .await
             .map_err(map_acp_error)?;
@@ -2725,7 +3515,12 @@ impl AgentConnection for AcpConnection {
             ))));
         }
 
-        let mcp_servers = mcp_servers_for_project(&project, self.sandbox_session.is_none(), cx);
+        let ProjectMcpServers {
+            servers,
+            restricted_ide,
+        } = mcp_servers_for_project(&project, self.ide_mcp(), cx);
+        let paths = self.paths.clone();
+        let agent_id = self.id.clone();
         self.open_or_create_session(
             session_id,
             project,
@@ -2733,10 +3528,21 @@ impl AgentConnection for AcpConnection {
             title,
             move |connection, session_id, directories| {
                 Box::pin(async move {
+                    let request =
+                        directories.into_load_session_request(session_id.clone(), servers);
+                    // ADR-F49 decision 23: as for `new_session`.
+                    let mut request = match paths.as_ref() {
+                        Some(paths) => {
+                            let (request, dropped) = paths.load_session_to_client(request)?;
+                            note_dropped_mcp_servers(&agent_id, dropped);
+                            request
+                        }
+                        None => request,
+                    };
+                    // ADR-F49 decision 24: as for `new_session`.
+                    request.mcp_servers.extend(restricted_ide);
                     let response = connection
-                        .send_request(
-                            directories.into_load_session_request(session_id.clone(), mcp_servers),
-                        )
+                        .send_request(request)
                         .block_task()
                         .await
                         .map_err(map_acp_error)?;
@@ -2769,7 +3575,12 @@ impl AgentConnection for AcpConnection {
             ))));
         }
 
-        let mcp_servers = mcp_servers_for_project(&project, self.sandbox_session.is_none(), cx);
+        let ProjectMcpServers {
+            servers,
+            restricted_ide,
+        } = mcp_servers_for_project(&project, self.ide_mcp(), cx);
+        let paths = self.paths.clone();
+        let agent_id = self.id.clone();
         self.open_or_create_session(
             session_id,
             project,
@@ -2777,11 +3588,21 @@ impl AgentConnection for AcpConnection {
             title,
             move |connection, session_id, directories| {
                 Box::pin(async move {
+                    let request =
+                        directories.into_resume_session_request(session_id.clone(), servers);
+                    // ADR-F49 decision 23: as for `new_session`.
+                    let mut request = match paths.as_ref() {
+                        Some(paths) => {
+                            let (request, dropped) = paths.resume_session_to_client(request)?;
+                            note_dropped_mcp_servers(&agent_id, dropped);
+                            request
+                        }
+                        None => request,
+                    };
+                    // ADR-F49 decision 24: as for `new_session`.
+                    request.mcp_servers.extend(restricted_ide);
                     let response = connection
-                        .send_request(
-                            directories
-                                .into_resume_session_request(session_id.clone(), mcp_servers),
-                        )
+                        .send_request(request)
                         .block_task()
                         .await
                         .map_err(map_acp_error)?;
@@ -2880,6 +3701,16 @@ impl AgentConnection for AcpConnection {
             .find(|method| method.id() == method_id)?;
 
         let in_sandbox = self.sandbox_session.is_some();
+        // ADR-F49 第 2b 段: the sign-in's command has to be resolved for the
+        // same distro the connection's agent runs in, or it would be the host's
+        // program and would not start inside the sandbox.
+        let wsl_distro = self
+            .sandbox_session
+            .as_ref()
+            .and_then(|session| match &session.route {
+                AgentSandboxRoute::Wsl { distro, .. } => distro.clone(),
+                AgentSandboxRoute::Local { .. } | AgentSandboxRoute::Remote { .. } => None,
+            });
         let login = match method {
             acp::AuthMethod::Terminal(terminal) if cx.has_flag::<AcpBetaFeatureFlag>() => {
                 let agent_id = self.id.clone();
@@ -2891,9 +3722,15 @@ impl AgentConnection for AcpConnection {
                             let agent = store
                                 .get_external_agent(&agent_id)
                                 .context("Agent server not found")?;
+                            let target = if in_sandbox {
+                                AgentLaunchTarget::Sandbox { wsl_distro }
+                            } else {
+                                AgentLaunchTarget::Host
+                            };
                             anyhow::Ok(agent.get_command(
                                 terminal.args.clone(),
                                 HashMap::from_iter(terminal.env.clone()),
+                                target,
                                 &mut cx.to_async(),
                             ))
                         })?
@@ -2960,9 +3797,15 @@ impl AgentConnection for AcpConnection {
 
     fn prompt(
         &self,
-        params: acp::PromptRequest,
+        mut params: acp::PromptRequest,
         cx: &mut App,
     ) -> Task<Result<acp::PromptResponse>> {
+        // ADR-F49 decision 23: what the user attached is named the way the
+        // agent's sandbox sees it; a link to a file outside the worktrees is
+        // left out, and an attached file's own text is kept without its path.
+        if let Some(paths) = self.paths.as_ref() {
+            params.prompt = paths.prompt_to_client(std::mem::take(&mut params.prompt));
+        }
         let conn = self.connection.clone();
         let sessions = self.sessions.clone();
         let session_id = params.session_id.clone();
@@ -3077,6 +3920,20 @@ impl AgentConnection for AcpConnection {
 
     fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
         self
+    }
+}
+
+/// ADR-F49 decision 17 / decision 23: the MCP servers a sandboxed agent's
+/// session was not given, each with why. Zed's own IDE server is among them
+/// where the user configured no other loopback one — the sandbox's network
+/// namespace does not reach this machine's loopback.
+fn note_dropped_mcp_servers(agent: &AgentId, dropped: Vec<crate::acp_paths::DroppedMcpServer>) {
+    for server in dropped {
+        log::warn!(
+            "acp: the MCP server {} was not given to {agent} in its sandbox: {:?}",
+            server.name,
+            server.reason
+        );
     }
 }
 
@@ -3582,6 +4439,7 @@ pub mod test_support {
             sessions: sessions.clone(),
             session_list: client_session_list.clone(),
             request_elicitations: request_elicitations.clone(),
+            paths: None,
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -3604,6 +4462,7 @@ pub mod test_support {
                 agent_server_store,
                 client_io_task,
                 dispatch_task,
+                None,
                 cx,
             )
         });
@@ -3729,6 +4588,7 @@ mod tests {
                 .map(|(name, value)| (name.to_string(), value.to_string()))
                 .collect(),
             readable_paths: readable.iter().map(PathBuf::from).collect(),
+            wsl: None,
             state: AgentSandboxState::Resolved {
                 config_dir: PathBuf::from(CONFIG_DIR),
                 hosts,
@@ -3754,10 +4614,56 @@ mod tests {
             Some(AgentLaunch::LocalSandbox),
             "on Linux and macOS"
         );
+        let wsl = |distro: Option<&str>| AgentSandboxCommand {
+            wsl: Some(project::agent_sandbox::WslAgentRuntime {
+                distro: distro.map(ToString::to_string),
+            }),
+            ..AgentSandboxCommand::new(
+                SandboxedAgentProfile::Claude,
+                HashMap::default(),
+                Vec::new(),
+            )
+        };
         assert_eq!(
-            choose_agent_launch(false, true, true, None, None).ok(),
-            Some(AgentLaunch::Host),
-            "on Windows, until 第 2b 段"
+            choose_agent_launch(false, true, true, None, Some(&wsl(Some("Ubuntu")))).ok(),
+            Some(AgentLaunch::WslSandbox {
+                distro: Some("Ubuntu".to_string())
+            }),
+            "on Windows the agent runs in the distro its folders are in (第 2b 段)"
+        );
+        assert_eq!(
+            choose_agent_launch(false, true, true, None, Some(&wsl(None))).ok(),
+            Some(AgentLaunch::WslSandbox { distro: None }),
+            "and in the default distro for a project on a Windows drive"
+        );
+        for without_runtime in [None, Some(&unplaced)] {
+            assert!(
+                matches!(
+                    choose_agent_launch(false, true, true, None, without_runtime),
+                    Err(LoadError::SandboxUnavailable(reason))
+                        if reason.as_ref() == WSL_WITHOUT_RUNTIME_REASON
+                ),
+                "never quietly on the host: a Windows start with no Linux command is refused"
+            );
+        }
+        let no_wsl_runtime = AgentSandboxCommand {
+            wsl: None,
+            state: AgentSandboxState::Unavailable {
+                reason: "node が見つかりません".to_string(),
+            },
+            ..AgentSandboxCommand::new(
+                SandboxedAgentProfile::Claude,
+                HashMap::default(),
+                Vec::new(),
+            )
+        };
+        assert!(
+            matches!(
+                choose_agent_launch(false, true, true, None, Some(&no_wsl_runtime)),
+                Err(LoadError::SandboxUnavailable(reason))
+                    if reason.as_ref() == "node が見つかりません"
+            ),
+            "the reason the distro could not be made ready reaches the card"
         );
         assert_eq!(
             choose_agent_launch(false, false, true, Some(remote_helper()), Some(&placed)).ok(),
@@ -3787,6 +4693,7 @@ mod tests {
             state: AgentSandboxState::Unavailable {
                 reason: "a link on the way".to_string(),
             },
+            wsl: None,
         };
         assert!(
             matches!(
@@ -4104,33 +5011,103 @@ mod tests {
         });
     }
 
-    /// ADR-F49 decision 17: Zed's own IDE server is not handed to an agent in
-    /// a sandbox — its loopback endpoint is not reachable from there and its
-    /// token grants far more than the agent is allowed.
-    #[test]
-    fn an_agent_in_a_sandbox_is_given_no_ide_mcp_server() {
-        let endpoint = || {
-            Some(ide_server::McpEndpoint {
-                url: "http://127.0.0.1:39254/mcp".to_string(),
-                authorization: "Bearer secret".to_string(),
-            })
-        };
+    /// ADR-F49 decisions 17 and 24: Zed's own IDE server is never handed to an
+    /// agent in a sandbox — its loopback endpoint is not reachable from there
+    /// and its token grants far more than the agent is allowed. An agent in a
+    /// WSL sandbox gets the restricted session instead, named the way its own
+    /// namespace sees it and with a token of its own; an agent in the 第 2a 段
+    /// sandboxes (Linux, macOS, an SSH host) still gets none.
+    #[gpui::test]
+    async fn an_agent_in_a_sandbox_is_given_only_the_restricted_ide_server(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_feature_flags_test(cx);
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({}))
+            .await;
+        let project =
+            project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+
+        let none = cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::None, cx));
+        assert_eq!(none.restricted_ide, None);
+        assert!(none.servers.is_empty());
+
+        let restricted = cx.update(|cx| {
+            mcp_servers_for_project(
+                &project,
+                IdeMcp::Restricted {
+                    url: "http://127.0.0.1:45123/mcp".to_string(),
+                    authorization: "Bearer restricted".to_string(),
+                },
+                cx,
+            )
+        });
         assert!(
-            matches!(
-                ide_server_for_agent(true, endpoint, false),
-                Some(acp::McpServer::Http(_))
-            ),
-            "outside a sandbox the agent reaches Zed's IDE server"
+            restricted.servers.is_empty(),
+            "the host's IDE server is not among them: {:?}",
+            restricted.servers
         );
+        let Some(acp::McpServer::Http(server)) = restricted.restricted_ide else {
+            panic!("the restricted IDE server is an HTTP entry");
+        };
+        assert_eq!(server.name, ide_server::RESTRICTED_MCP_SERVER_NAME);
+        assert_eq!(server.url, "http://127.0.0.1:45123/mcp");
+        assert_eq!(server.headers.len(), 1);
+        assert_eq!(server.headers[0].name, "Authorization");
+        assert_eq!(server.headers[0].value, "Bearer restricted");
+    }
+
+    /// ADR-F49 decision 24: as for the host's IDE server (ADR-F42), a server
+    /// the user configured under the same name wins and the built-in one is
+    /// left out.
+    #[test]
+    fn a_configured_server_of_the_same_name_keeps_the_restricted_one_out() {
+        let entry = |taken| {
+            restricted_ide_entry(
+                "http://127.0.0.1:45123/mcp".to_string(),
+                "Bearer restricted".to_string(),
+                taken,
+            )
+        };
+        assert!(entry(false).is_some());
+        assert_eq!(entry(true), None);
+    }
+
+    /// ADR-F49 decision 24: the restricted server's URL is the sandbox's own
+    /// loopback, so it joins the list *after* the translation — which goes on
+    /// dropping the user's loopback servers, whose URLs really are this
+    /// machine's and out of the sandbox's reach.
+    #[test]
+    fn the_restricted_ide_server_is_added_after_the_translation() {
+        let translator =
+            AcpPathTranslator::for_wsl(vec![PathBuf::from(r"C:\project")], Some("Ubuntu"))
+                .expect("a translator for a Windows project");
+        let restricted = restricted_ide_entry(
+            "http://127.0.0.1:45123/mcp".to_string(),
+            "Bearer restricted".to_string(),
+            false,
+        )
+        .expect("an entry");
+        let (mut kept, dropped) = translator.mcp_servers_to_client(vec![
+            acp::McpServer::Http(acp::McpServerHttp::new("mine", "http://127.0.0.1:9000/mcp")),
+            acp::McpServer::Http(acp::McpServerHttp::new("remote", "https://mcp.example.com")),
+        ]);
+        kept.push(restricted.clone());
         assert_eq!(
-            ide_server_for_agent(false, endpoint, false),
-            None,
-            "in a sandbox it does not"
+            dropped
+                .iter()
+                .map(|server| server.name.as_str())
+                .collect::<Vec<_>>(),
+            ["mine"],
+            "the user's own loopback server is still dropped"
         );
-        assert_eq!(
-            ide_server_for_agent(false, || panic!("the endpoint is not asked for"), false),
-            None
-        );
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[1], restricted);
+        // Put through the translation it would be dropped like any other
+        // loopback URL, which is why it is pushed afterwards.
+        let (alone, dropped_alone) = translator.mcp_servers_to_client(vec![restricted]);
+        assert!(alone.is_empty());
+        assert_eq!(dropped_alone.len(), 1);
     }
 
     /// The project's own sessions still get the servers the user configured:
@@ -4148,8 +5125,8 @@ mod tests {
 
         let (outside, inside) = cx.update(|cx| {
             (
-                mcp_servers_for_project(&project, true, cx),
-                mcp_servers_for_project(&project, false, cx),
+                mcp_servers_for_project(&project, IdeMcp::Host, cx),
+                mcp_servers_for_project(&project, IdeMcp::None, cx),
             )
         });
         assert_eq!(outside, inside, "no IDE server is running in this test");
@@ -4868,7 +5845,7 @@ mod tests {
             cx,
         )
         .await;
-        let session_list = AcpSessionList::new(connection, false);
+        let session_list = AcpSessionList::new(connection, false, None);
 
         let response = cx
             .update(|cx| session_list.list_sessions(AgentSessionListRequest::default(), cx))
@@ -5185,6 +6162,7 @@ mod tests {
                 WeakEntity::new_invalid(),
                 client_io_task,
                 Task::ready(()),
+                None,
                 cx,
             )
         });
@@ -5198,7 +6176,7 @@ mod tests {
     ) {
         let deleted_sessions = Arc::new(std::sync::Mutex::new(Vec::new()));
         let connection = connect_session_delete_test_agent(deleted_sessions.clone(), cx).await;
-        let session_list = AcpSessionList::new(connection, true);
+        let session_list = AcpSessionList::new(connection, true, None);
         let session_id = acp::SessionId::new("session-to-delete");
 
         cx.update(|cx| session_list.delete_session(&session_id, cx))
@@ -5217,7 +6195,7 @@ mod tests {
     async fn session_list_delete_does_not_send_when_unsupported(cx: &mut gpui::TestAppContext) {
         let deleted_sessions = Arc::new(std::sync::Mutex::new(Vec::new()));
         let connection = connect_session_delete_test_agent(deleted_sessions.clone(), cx).await;
-        let session_list = AcpSessionList::new(connection, false);
+        let session_list = AcpSessionList::new(connection, false, None);
         let session_id = acp::SessionId::new("session-to-delete");
 
         let error = cx
@@ -5463,6 +6441,7 @@ mod tests {
             sessions: sessions.clone(),
             session_list: client_session_list.clone(),
             request_elicitations: request_elicitations.clone(),
+            paths: None,
         };
         // `TestAppContext::spawn` hands out an `AsyncApp` by value, whereas the
         // production path uses `Context::spawn` which hands out `&mut AsyncApp`.
@@ -5490,6 +6469,7 @@ mod tests {
                 agent_server_store,
                 client_io_task,
                 dispatch_task,
+                None,
                 cx,
             )
         });
@@ -6372,6 +7352,1308 @@ mod tests {
             .expect("the command should still run in the sandbox");
         assert!(sandbox_wrap.allow_fs_write);
     }
+
+    /// ADR-F49 第 2b 段: what an agent in the WSL sandbox is started with.
+    #[test]
+    fn a_wsl_agent_writes_its_worktrees_and_its_folder_and_never_opens_a_browser() {
+        let config_dir = "/root/.zed-jp-enhance-claude/projects/0123456789abcdef/config";
+        let plan = plan_wsl_agent(
+            &SandboxedAgentProfile::Claude,
+            HashMap::from_iter([("PATH".to_string(), "/usr/bin".to_string())]),
+            vec![PathBuf::from(r"I:\proj"), PathBuf::from(r"C:\other")],
+            config_dir,
+            Some("Ubuntu"),
+        );
+
+        assert_eq!(
+            plan.env.get("NO_BROWSER").map(String::as_str),
+            Some("1"),
+            "ADR-F49 decision 25: in WSL no sign-in may wait on a browser"
+        );
+        assert_eq!(
+            plan.env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+            Some(config_dir),
+            "the profile's environment is the distro's paths, not this machine's"
+        );
+        assert_eq!(
+            plan.env.get("HOME").map(String::as_str),
+            Some(format!("{config_dir}/home").as_str())
+        );
+        assert_eq!(plan.env.get("PATH").map(String::as_str), Some("/usr/bin"));
+        assert_eq!(
+            plan.hosts,
+            AgentSandboxHosts::Listed(vec![
+                "api.anthropic.com".to_string(),
+                "platform.claude.com".to_string()
+            ])
+        );
+        assert_eq!(
+            plan.sandbox_write_paths,
+            [
+                PathBuf::from(r"I:\proj"),
+                PathBuf::from(r"C:\other"),
+                PathBuf::from(config_dir),
+            ],
+            "the helper resolves the worktrees as Windows paths and the folder as its own"
+        );
+        assert_eq!(
+            plan.write_scope,
+            [
+                PathBuf::from(r"I:\proj"),
+                PathBuf::from(r"C:\other"),
+                PathBuf::from(
+                    r"\\wsl.localhost\Ubuntu\root\.zed-jp-enhance-claude\projects\0123456789abcdef\config"
+                ),
+            ],
+            "ADR-F50: the write scope is spelled the way worktrees are"
+        );
+
+        let without_a_name = plan_wsl_agent(
+            &SandboxedAgentProfile::Other {
+                id: "my-agent".to_string(),
+            },
+            HashMap::default(),
+            vec![PathBuf::from(r"I:\proj")],
+            config_dir,
+            None,
+        );
+        assert_eq!(
+            without_a_name.write_scope,
+            [PathBuf::from(r"I:\proj")],
+            "the default distro has no Windows spelling for its own filesystem"
+        );
+        assert_eq!(
+            without_a_name.hosts,
+            AgentSandboxHosts::EditorAllowlist,
+            "an agent with no profile is capped by the IDE-wide allowlist alone"
+        );
+    }
+
+    /// ADR-F49 decision 18: what a WSL agent leaves running is asked of the
+    /// distro's helper, which is outside the sandbox.
+    #[gpui::test]
+    async fn a_wsl_agents_leftovers_are_followed_through_the_distro(cx: &mut gpui::TestAppContext) {
+        let project = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        let access = PendingSandboxProcessAccess::Wsl {
+            session_id: "s0me5ession1d".to_string(),
+            distro: Some("Ubuntu".to_string()),
+        }
+        .resolve(
+            AgentId::new("claude-acp"),
+            Some(vec![PathBuf::from(r"I:\proj")]),
+            0,
+            &project,
+        );
+        assert!(matches!(
+            acp_thread::SandboxProcessSource::tracking(&access),
+            acp_thread::SandboxProcessTracking::Trackable
+        ));
+        assert!(matches!(
+            &access.route,
+            SandboxProcessRoute::Wsl { session_id, distro }
+                if session_id == "s0me5ession1d" && distro.as_deref() == Some("Ubuntu")
+        ));
+    }
+
+    /// ADR-F49 decision 23: both ends of a connection in this process — Zed's
+    /// real handler set on one side, and on the other a handle the test speaks
+    /// ACP through the way the agent in the sandbox would.
+    struct BoundaryHarness {
+        connection: Rc<AcpConnection>,
+        agent: ConnectionTo<Client>,
+        new_sessions: Arc<Mutex<Vec<acp::NewSessionRequest>>>,
+        prompts: Arc<Mutex<Vec<acp::PromptRequest>>>,
+        session_lists: Arc<Mutex<Vec<acp::ListSessionsRequest>>>,
+        _agent_io: Task<()>,
+    }
+
+    async fn connect_boundary_harness(
+        project: &Entity<Project>,
+        paths: Option<Arc<AcpPathTranslator>>,
+        cx: &mut gpui::TestAppContext,
+    ) -> BoundaryHarness {
+        let (client_transport, agent_transport) = agent_client_protocol::Channel::duplex();
+        let new_sessions: Arc<Mutex<Vec<acp::NewSessionRequest>>> = Arc::default();
+        let prompts: Arc<Mutex<Vec<acp::PromptRequest>>> = Arc::default();
+        let session_lists: Arc<Mutex<Vec<acp::ListSessionsRequest>>> = Arc::default();
+        let (agent_tx, agent_rx) = futures::channel::oneshot::channel();
+        let agent_future = Agent
+            .builder()
+            .name("fake-sandboxed-agent")
+            .on_receive_request(
+                async move |request: acp::InitializeRequest, responder, _cx| {
+                    responder.respond(acp::InitializeResponse::new(request.protocol_version))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                {
+                    let new_sessions = new_sessions.clone();
+                    async move |request: acp::NewSessionRequest, responder, _cx| {
+                        new_sessions
+                            .lock()
+                            .expect("the new-session lock is not poisoned")
+                            .push(request);
+                        responder
+                            .respond(acp::NewSessionResponse::new(acp::SessionId::new("session")))
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                {
+                    let prompts = prompts.clone();
+                    async move |request: acp::PromptRequest, responder, _cx| {
+                        prompts
+                            .lock()
+                            .expect("the prompt lock is not poisoned")
+                            .push(request);
+                        responder.respond(acp::PromptResponse::new(acp::StopReason::EndTurn))
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                {
+                    let session_lists = session_lists.clone();
+                    async move |request: acp::ListSessionsRequest, responder, _cx| {
+                        session_lists
+                            .lock()
+                            .expect("the session-list lock is not poisoned")
+                            .push(request);
+                        // One session in the folder the sandbox was shown and
+                        // one the sandbox has elsewhere.
+                        responder.respond(acp::ListSessionsResponse::new(vec![
+                            acp::SessionInfo::new(acp::SessionId::new("inside"), "/mnt/c/project")
+                                .additional_directories(vec![
+                                    PathBuf::from("/mnt/c/project/src"),
+                                    PathBuf::from("/mnt/c/outside"),
+                                ]),
+                            acp::SessionInfo::new(acp::SessionId::new("elsewhere"), "/mnt/c/other"),
+                        ]))
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .connect_with(agent_transport, async move |connection| {
+                agent_tx.send(connection).ok();
+                futures::future::pending::<Result<(), acp::Error>>().await
+            });
+        let agent_io = cx.background_spawn(async move {
+            agent_future.await.ok();
+        });
+
+        let sessions: Rc<RefCell<HashMap<acp::SessionId, AcpSession>>> =
+            Rc::new(RefCell::new(HashMap::default()));
+        let client_session_list: Rc<RefCell<Option<Rc<AcpSessionList>>>> =
+            Rc::new(RefCell::new(None));
+        let (dispatch_tx, dispatch_rx) = mpsc::unbounded::<ForegroundWork>();
+        let (connection_tx, connection_rx) = futures::channel::oneshot::channel();
+        let client_future =
+            connect_client_future("zed-test", client_transport, dispatch_tx, connection_tx);
+        let client_io = cx.background_spawn(async move {
+            client_future.await.ok();
+        });
+        let client_conn: ConnectionTo<Agent> = connection_rx
+            .await
+            .expect("failed to receive the ACP connection handle");
+        let response = client_conn
+            .send_request(acp::InitializeRequest::new(ProtocolVersion::V1))
+            .block_task()
+            .await
+            .expect("failed to initialize the ACP connection");
+        let request_elicitations = cx.new(|_| ElicitationStore::default());
+        let dispatch_context = ClientContext {
+            sessions: sessions.clone(),
+            session_list: client_session_list,
+            request_elicitations: request_elicitations.clone(),
+            paths: paths.clone(),
+        };
+        let dispatch_task = cx.spawn({
+            let mut dispatch_rx = dispatch_rx;
+            move |cx| async move {
+                let mut cx = cx;
+                while let Some(work) = dispatch_rx.next().await {
+                    work.run(&mut cx, &dispatch_context);
+                }
+            }
+        });
+        let agent_server_store =
+            project.read_with(cx, |project, _| project.agent_server_store().downgrade());
+        let connection = cx.update(|cx| {
+            AcpConnection::new_for_test(
+                client_conn,
+                sessions,
+                response.agent_capabilities,
+                request_elicitations,
+                agent_server_store,
+                client_io,
+                dispatch_task,
+                paths,
+                cx,
+            )
+        });
+        let agent = agent_rx
+            .await
+            .expect("failed to receive the agent's connection handle");
+        BoundaryHarness {
+            connection: Rc::new(connection),
+            agent,
+            new_sessions,
+            prompts,
+            session_lists,
+            _agent_io: agent_io,
+        }
+    }
+
+    fn wsl_translator(root: &str) -> Arc<AcpPathTranslator> {
+        Arc::new(
+            AcpPathTranslator::for_wsl(vec![PathBuf::from(root)], Some("Ubuntu"))
+                .expect("a translator for a Windows project"),
+        )
+    }
+
+    async fn boundary_project(cx: &mut gpui::TestAppContext) -> Entity<Project> {
+        let project = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.create_dir(std::path::Path::new(util::path!("/outside")))
+            .await
+            .expect("a folder outside the project");
+        fs.write(std::path::Path::new(util::path!("/outside/secret")), b"x")
+            .await
+            .expect("a file outside the project");
+        project
+    }
+
+    async fn boundary_thread(
+        harness: &BoundaryHarness,
+        project: &Entity<Project>,
+        cx: &mut gpui::TestAppContext,
+    ) -> Entity<AcpThread> {
+        cx.update(|cx| {
+            harness.connection.clone().new_session(
+                project.clone(),
+                PathList::new(&[std::path::Path::new(util::path!("/project"))]),
+                cx,
+            )
+        })
+        .await
+        .expect("the agent starts a session")
+    }
+
+    /// ADR-F49 decision 23: the agent names files the way its sandbox sees
+    /// them, and Zed answers about the files this machine has in their place.
+    /// What the sandbox cannot see is not read for it.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn the_files_a_wsl_agent_asks_for_are_this_machines(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness =
+            connect_boundary_harness(&project, Some(wsl_translator(r"C:\project")), cx).await;
+        let thread = boundary_thread(&harness, &project, cx).await;
+        let session_id = thread.read_with(cx, |thread, _| thread.session_id().clone());
+
+        let read = harness
+            .agent
+            .send_request(acp::ReadTextFileRequest::new(
+                session_id.clone(),
+                "/mnt/c/project/src/main.rs",
+            ))
+            .block_task()
+            .await
+            .expect("the agent's own view of the file is read");
+        assert_eq!(read.content, "fn main() {}\n");
+
+        harness
+            .agent
+            .send_request(acp::WriteTextFileRequest::new(
+                session_id.clone(),
+                "/mnt/c/project/src/written.rs",
+                "fn written() {}\n",
+            ))
+            .block_task()
+            .await
+            .expect("and written back the same way");
+        let written = project
+            .read_with(cx, |project, _| project.fs().clone())
+            .load(std::path::Path::new(util::path!("/project/src/written.rs")))
+            .await
+            .expect("the file landed on this machine's path");
+        assert_eq!(
+            written.replace("\r\n", "\n"),
+            "fn written() {}\n",
+            "a file the agent creates takes this platform's line endings"
+        );
+
+        let outside = harness
+            .agent
+            .send_request(acp::ReadTextFileRequest::new(
+                session_id.clone(),
+                "/mnt/c/outside/secret",
+            ))
+            .block_task()
+            .await
+            .expect_err("a file outside the worktrees is not read for the agent");
+        assert_eq!(outside.code, acp::ErrorCode::ResourceNotFound);
+
+        let unmappable = harness
+            .agent
+            .send_request(acp::ReadTextFileRequest::new(session_id, "src/main.rs"))
+            .block_task()
+            .await
+            .expect_err("a path that is not the sandbox's own is refused");
+        assert_eq!(unmappable.code, acp::ErrorCode::InvalidParams);
+    }
+
+    /// ADR-F49 decision 23: the working directory of a command the agent asks
+    /// Zed to run is the sandbox's, and one outside the worktrees starts
+    /// nothing.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn a_wsl_agents_terminal_starts_only_inside_the_worktrees(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness =
+            connect_boundary_harness(&project, Some(wsl_translator(r"C:\project")), cx).await;
+        let thread = boundary_thread(&harness, &project, cx).await;
+        let session_id = thread.read_with(cx, |thread, _| thread.session_id().clone());
+
+        let refused = harness
+            .agent
+            .send_request(acp::CreateTerminalRequest::new(session_id, "true").cwd("/mnt/c/outside"))
+            .block_task()
+            .await
+            .expect_err("a directory outside the worktrees is refused before anything starts");
+        assert_eq!(refused.code, acp::ErrorCode::InvalidParams);
+    }
+
+    /// ADR-F49 decision 23: what an update shows — here a tool call's
+    /// locations — is put into this machine's paths before it reaches the
+    /// thread.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn what_a_wsl_agent_reports_is_shown_as_this_machines_paths(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let project = boundary_project(cx).await;
+        let harness =
+            connect_boundary_harness(&project, Some(wsl_translator(r"C:\project")), cx).await;
+        let thread = boundary_thread(&harness, &project, cx).await;
+        let session_id = thread.read_with(cx, |thread, _| thread.session_id().clone());
+
+        harness
+            .agent
+            .send_notification(acp::SessionNotification::new(
+                session_id,
+                acp::SessionUpdate::ToolCall(
+                    acp::ToolCall::new(acp::ToolCallId::new("call-1"), "Read main.rs").locations(
+                        vec![
+                            acp::ToolCallLocation::new("/mnt/c/project/src/main.rs"),
+                            acp::ToolCallLocation::new("/mnt/c/outside/secret"),
+                        ],
+                    ),
+                ),
+            ))
+            .expect("the notification is sent");
+        cx.run_until_parked();
+
+        let locations = thread.read_with(cx, |thread, _| {
+            thread
+                .entries()
+                .iter()
+                .find_map(|entry| match entry {
+                    acp_thread::AgentThreadEntry::ToolCall(call) => Some(call.locations.clone()),
+                    _ => None,
+                })
+                .expect("the tool call reached the thread")
+        });
+        assert_eq!(
+            locations
+                .iter()
+                .map(|location| location.path.clone())
+                .collect::<Vec<_>>(),
+            [PathBuf::from(util::path!("/project/src/main.rs"))],
+            "the location inside the worktree is this machine's; the one outside is left out"
+        );
+    }
+
+    /// ADR-F49 decision 23: what Zed sends is named the way the sandbox sees
+    /// it — the session's folder, and the files the user attached.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn what_zed_sends_a_wsl_agent_is_named_the_sandboxs_way(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness =
+            connect_boundary_harness(&project, Some(wsl_translator(r"C:\project")), cx).await;
+        let thread = boundary_thread(&harness, &project, cx).await;
+
+        let new_session = harness
+            .new_sessions
+            .lock()
+            .expect("the new-session lock is not poisoned")
+            .first()
+            .cloned()
+            .expect("the agent was asked to start a session");
+        assert_eq!(new_session.cwd, PathBuf::from("/mnt/c/project"));
+
+        thread
+            .update(cx, |thread, cx| {
+                thread.send(
+                    vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
+                        "main.rs",
+                        format!("file://{}", util::path!("/project/src/main.rs")),
+                    ))],
+                    cx,
+                )
+            })
+            .await
+            .expect("the prompt reaches the agent");
+        let prompt = harness
+            .prompts
+            .lock()
+            .expect("the prompt lock is not poisoned")
+            .first()
+            .cloned()
+            .expect("the agent was prompted");
+        let uris = prompt
+            .prompt
+            .iter()
+            .filter_map(|block| match block {
+                acp::ContentBlock::ResourceLink(link) => Some(link.uri.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(uris, ["file:///mnt/c/project/src/main.rs"]);
+    }
+
+    /// ADR-F49 decision 23: the card the user answers names the files this
+    /// machine has, and one the sandbox names outside the worktrees is left
+    /// out of the card rather than the question being refused.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn a_wsl_agent_asks_permission_about_this_machines_paths(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness =
+            connect_boundary_harness(&project, Some(wsl_translator(r"C:\project")), cx).await;
+        let thread = boundary_thread(&harness, &project, cx).await;
+        let session_id = thread.read_with(cx, |thread, _| thread.session_id().clone());
+
+        let request = harness
+            .agent
+            .send_request(acp::RequestPermissionRequest::new(
+                session_id,
+                acp::ToolCallUpdate::new(
+                    acp::ToolCallId::new("call-1"),
+                    acp::ToolCallUpdateFields::new()
+                        .title("Edit main.rs")
+                        .locations(vec![
+                            acp::ToolCallLocation::new("/mnt/c/project/src/main.rs"),
+                            acp::ToolCallLocation::new("/mnt/c/outside/secret"),
+                        ]),
+                ),
+                vec![acp::PermissionOption::new(
+                    acp::PermissionOptionId::new("allow"),
+                    "Allow",
+                    acp::PermissionOptionKind::AllowOnce,
+                )],
+            ));
+        // The agent waits for the answer, so the request is held while the
+        // test looks at the card and answers it.
+        let answered = cx.spawn(|_| async move { request.block_task().await });
+        cx.run_until_parked();
+
+        let (tool_call_id, locations) = thread.read_with(cx, |thread, _| {
+            thread
+                .entries()
+                .iter()
+                .find_map(|entry| match entry {
+                    acp_thread::AgentThreadEntry::ToolCall(call) => matches!(
+                        call.status,
+                        acp_thread::ToolCallStatus::WaitingForConfirmation { .. }
+                    )
+                    .then(|| (call.id.clone(), call.locations.clone())),
+                    _ => None,
+                })
+                .expect("the card is waiting for an answer")
+        });
+        assert_eq!(
+            locations
+                .iter()
+                .map(|location| location.path.clone())
+                .collect::<Vec<_>>(),
+            [PathBuf::from(util::path!("/project/src/main.rs"))],
+            "the location inside the worktree is this machine's; the one outside is left out"
+        );
+
+        answer_confirmation(
+            &thread,
+            tool_call_id,
+            "allow",
+            acp::PermissionOptionKind::AllowOnce,
+            cx,
+        );
+        let response = answered.await.expect("the agent hears the answer");
+        let acp::RequestPermissionOutcome::Selected(selected) = response.outcome else {
+            panic!("the user picked an option");
+        };
+        assert_eq!(selected.option_id.0.to_string(), "allow");
+    }
+
+    /// ADR-F49 decision 23: the folder the agent's sessions are asked about is
+    /// named the sandbox's way, and the folders that come back are this
+    /// machine's — a session the sandbox has outside the worktrees is left out.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn the_sessions_a_wsl_agent_lists_are_this_machines_folders(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let project = boundary_project(cx).await;
+        let paths = wsl_translator(r"C:\project");
+        let harness = connect_boundary_harness(&project, Some(paths.clone()), cx).await;
+        let sessions =
+            AcpSessionList::new(harness.connection.connection.clone(), false, Some(paths));
+
+        let listed = cx
+            .update(|cx| {
+                sessions.list_sessions(
+                    AgentSessionListRequest {
+                        cwd: Some(PathBuf::from(util::path!("/project"))),
+                        cursor: None,
+                        meta: None,
+                    },
+                    cx,
+                )
+            })
+            .await
+            .expect("the agent answers with its sessions");
+
+        let asked = harness
+            .session_lists
+            .lock()
+            .expect("the session-list lock is not poisoned")
+            .first()
+            .cloned()
+            .expect("the agent was asked for its sessions");
+        assert_eq!(
+            asked.cwd,
+            Some(PathBuf::from("/mnt/c/project")),
+            "the folder asked about is the sandbox's own"
+        );
+        assert_eq!(
+            listed.sessions.len(),
+            1,
+            "the session in a folder the sandbox has elsewhere is left out"
+        );
+        let session = &listed.sessions[0];
+        assert_eq!(session.session_id, acp::SessionId::new("inside"));
+        assert_eq!(
+            session.work_dirs,
+            Some(PathList::new(&[
+                PathBuf::from(util::path!("/project")),
+                PathBuf::from(util::path!("/project/src")),
+            ])),
+            "the folders are this machine's, and the one outside the worktrees is left out"
+        );
+    }
+
+    /// A connection with no translator — every one but an agent in a WSL
+    /// sandbox — hands the same messages through untouched.
+    #[gpui::test]
+    async fn a_connection_without_a_translator_passes_paths_through(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let thread = boundary_thread(&harness, &project, cx).await;
+        let session_id = thread.read_with(cx, |thread, _| thread.session_id().clone());
+
+        let new_session = harness
+            .new_sessions
+            .lock()
+            .expect("the new-session lock is not poisoned")
+            .first()
+            .cloned()
+            .expect("the agent was asked to start a session");
+        assert_eq!(
+            new_session.cwd,
+            PathBuf::from(util::path!("/project")),
+            "the folder is this machine's, as it always was"
+        );
+
+        let read = harness
+            .agent
+            .send_request(acp::ReadTextFileRequest::new(
+                session_id,
+                util::path!("/project/src/main.rs"),
+            ))
+            .block_task()
+            .await
+            .expect("this machine's path is read as it always was");
+        assert_eq!(read.content, "fn main() {}\n");
+    }
+
+    /// ADR-F49 decision 17: Zed's own IDE server is on this machine's
+    /// loopback, which the sandbox's network namespace does not reach, so it
+    /// is among the MCP servers a WSL agent is not given.
+    #[test]
+    fn the_ide_server_is_not_given_to_an_agent_in_the_wsl_sandbox() {
+        let translator =
+            AcpPathTranslator::for_wsl(vec![PathBuf::from(r"C:\project")], Some("Ubuntu"))
+                .expect("a translator for a Windows project");
+        let (kept, dropped) = translator.mcp_servers_to_client(vec![
+            acp::McpServer::Http(acp::McpServerHttp::new(
+                ide_server::MCP_SERVER_NAME,
+                "http://127.0.0.1:45123/mcp",
+            )),
+            acp::McpServer::Http(acp::McpServerHttp::new("remote", "https://mcp.example.com")),
+        ]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            dropped
+                .iter()
+                .map(|server| server.name.as_str())
+                .collect::<Vec<_>>(),
+            [ide_server::MCP_SERVER_NAME]
+        );
+        assert!(matches!(
+            dropped[0].reason,
+            crate::acp_paths::McpServerDropReason::UnreachableUrl
+        ));
+    }
+
+    /// A stand-in for an ACP agent, run inside the WSL sandbox by the E2E
+    /// below. It answers `initialize` and `session/new`, and on the first turn
+    /// exercises the boundary from the agent's side: it writes down what it
+    /// was told the session's folder is and where it really started, reads a
+    /// file back through Zed, asks for one outside the worktrees, reports a
+    /// tool call whose location is a sandbox path, and leaves a process
+    /// running. The turn is answered only once every one of those has come
+    /// back, so the test can read the files as soon as its prompt returns.
+    ///
+    /// `/usr/bin/printf` rather than the shell's builtin: a builtin writes
+    /// through the shell's own buffered stdout, which a pipe would not flush
+    /// until the shell exits, and the protocol needs each line as it is
+    /// written. The request id is taken whole (`"..."` or a number), because
+    /// Zed's are strings.
+    #[cfg(target_os = "windows")]
+    const WSL_E2E_AGENT: &str = r#"
+set -u
+P=/usr/bin/printf
+cwd=""
+turn=""
+while IFS= read -r line; do
+    $P 'agent saw: %s\n' "$line" >&2
+    id=$($P '%s' "$line" | sed -n 's/^.*"id":\([^,}]*\).*$/\1/p')
+    case "$line" in
+        *'"method":"initialize"'*)
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1}}\n' "$id"
+            ;;
+        *'"method":"session/new"'*)
+            cwd=$($P '%s' "$line" | sed -n 's/^.*"cwd":"\([^"]*\)".*$/\1/p')
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"e2e"}}\n' "$id"
+            ;;
+        *'"method":"session/prompt"'*)
+            turn=$id
+            $P '{"jsonrpc":"2.0","id":9001,"method":"fs/write_text_file","params":{"sessionId":"e2e","path":"%s/observed.txt","content":"cwd=%s pwd=%s"}}\n' "$cwd" "$cwd" "$(pwd)"
+            $P '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"e2e","update":{"sessionUpdate":"tool_call","toolCallId":"c1","title":"look","status":"completed","locations":[{"path":"%s/seed.txt"},{"path":"/etc/hostname"}]}}}\n' "$cwd"
+            $P '{"jsonrpc":"2.0","id":9002,"method":"fs/read_text_file","params":{"sessionId":"e2e","path":"%s/seed.txt"}}\n' "$cwd"
+            sleep 300 &
+            ;;
+        *'"id":9002'*)
+            content=$($P '%s' "$line" | sed -n 's/^.*"content":"\([^"]*\)".*$/\1/p')
+            $P '{"jsonrpc":"2.0","id":9003,"method":"fs/write_text_file","params":{"sessionId":"e2e","path":"%s/read-back.txt","content":"%s"}}\n' "$cwd" "$content"
+            ;;
+        *'"id":9003'*)
+            $P '{"jsonrpc":"2.0","id":9004,"method":"fs/read_text_file","params":{"sessionId":"e2e","path":"/etc/hostname"}}\n'
+            ;;
+        *'"id":9004'*)
+            answer=$($P '%s' "$line" | sed 's/"/@/g')
+            $P '{"jsonrpc":"2.0","id":9005,"method":"fs/write_text_file","params":{"sessionId":"e2e","path":"%s/outside.txt","content":"%s"}}\n' "$cwd" "$answer"
+            ;;
+        *'"id":9005'*)
+            $P '{"jsonrpc":"2.0","id":9006,"method":"fs/read_text_file","params":{"sessionId":"e2e","path":"%s/escape.txt"}}\n' "$cwd"
+            ;;
+        *'"id":9006'*)
+            answer=$($P '%s' "$line" | sed 's/"/@/g')
+            $P '{"jsonrpc":"2.0","id":9007,"method":"fs/write_text_file","params":{"sessionId":"e2e","path":"%s/link.txt","content":"%s"}}\n' "$cwd" "$answer"
+            ;;
+        *'"id":9007'*)
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$turn"
+            ;;
+    esac
+done
+"#;
+
+    /// ADR-F49 決定 24: a stand-in agent that only exercises the restricted
+    /// IDE server. It writes down the `session/new` it was given — the
+    /// `mcpServers` in it name the server, its URL on the sandbox's own
+    /// loopback and its token — then speaks MCP to that URL from inside the
+    /// sandbox with `curl`, once with the token it was given and once with a
+    /// wrong one, and writes both answers into the worktree.
+    ///
+    /// The exchange happens while `session/new` is being answered, so
+    /// everything is on disk by the time the session exists.
+    #[cfg(target_os = "windows")]
+    const WSL_IDE_E2E_AGENT: &str = r#"
+set -u
+P=/usr/bin/printf
+C=/usr/bin/curl
+cwd=""
+while IFS= read -r line; do
+    $P 'agent saw: %s\n' "$line" >&2
+    id=$($P '%s' "$line" | sed -n 's/^.*"id":\([^,}]*\).*$/\1/p')
+    case "$line" in
+        *'"method":"initialize"'*)
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1}}\n' "$id"
+            ;;
+        *'"method":"session/new"'*)
+            cwd=$($P '%s' "$line" | sed -n 's/^.*"cwd":"\([^"]*\)".*$/\1/p')
+            $P '%s' "$line" > "$cwd/ide-e2e/mcp.txt"
+            url=$($P '%s' "$line" | sed -n 's|^.*"url":"\(http://127\.0\.0\.1[^"]*\)".*$|\1|p')
+            tok=$($P '%s' "$line" | sed -n 's/^.*"value":"\(Bearer [^"]*\)".*$/\1/p')
+            $P '%s' "$url" > "$cwd/ide-e2e/ide-url.txt"
+            $C -sS -m 30 -H "Authorization: $tok" -H 'Content-Type: application/json' \
+               -H 'Accept: application/json, text/event-stream' \
+               -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+               "$url" > "$cwd/ide-e2e/tools.txt" 2>&1 || $P ' curl-failed=%s' "$?" >> "$cwd/ide-e2e/tools.txt"
+            $C -sS -m 30 -H 'Authorization: Bearer wrong-token' \
+               -H 'Content-Type: application/json' \
+               -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+               -o /dev/null -w '%{http_code}' "$url" > "$cwd/ide-e2e/unauthorized.txt" 2>&1
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"ide-e2e"}}\n' "$id"
+            ;;
+        *'"method":"session/prompt"'*)
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
+            ;;
+    esac
+done
+"#;
+
+    /// ADR-F49 決定 24, end to end on a real distro: an agent started in the
+    /// WSL sandbox is given the restricted IDE server in its `mcpServers`, and
+    /// really reaches it from inside the sandbox — over the IDE channel of a
+    /// **one-shot** command, through the bridge, to the session in this
+    /// process — where it is offered `getDiagnostics` and nothing else, and
+    /// where a wrong token is refused.
+    ///
+    /// Run it with
+    ///
+    /// ```text
+    /// ZED_WSL_AGENT_E2E=1 cargo test -p agent_servers --lib -- --ignored --nocapture wsl
+    /// ```
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an end-to-end driver, not the app: it waits on real processes on its own thread"
+    )]
+    #[ignore = "needs a real WSL distro; set ZED_WSL_AGENT_E2E=1 and run with --ignored"]
+    async fn a_wsl_agent_really_reaches_the_restricted_ide_server(cx: &mut gpui::TestAppContext) {
+        if std::env::var("ZED_WSL_AGENT_E2E").is_err() {
+            eprintln!("skipped: set ZED_WSL_AGENT_E2E=1 to run this against the real WSL distro");
+            return;
+        }
+        let project_dir = wsl_e2e_project_directory();
+        // ADR-F49 decision 11: the sandbox may not make new entries at the top
+        // of a worktree, so the agent writes what it saw into a folder that is
+        // already there.
+        let reports = project_dir.join("ide-e2e");
+        std::fs::create_dir_all(&reports).expect("the project folder");
+        for leftover in ["mcp.txt", "tools.txt", "unauthorized.txt", "ide-url.txt"] {
+            std::fs::remove_file(reports.join(leftover)).ok();
+        }
+        crate::e2e_tests::init_test(cx).await;
+        // The restricted session belongs to a workspace, which is how it finds
+        // the buffers it reads diagnostics out of; `ide_server::init` is what
+        // gives every workspace its server.
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+            ide_server::init(cx);
+        });
+        let project = Project::example([project_dir.as_path()], &mut cx.to_async()).await;
+        let _window = cx.add_window({
+            let project = project.clone();
+            move |window, cx| workspace::MultiWorkspace::test_new(project, window, cx)
+        });
+        cx.run_until_parked();
+        let agent_server_store =
+            project.read_with(cx, |project, _| project.agent_server_store().downgrade());
+
+        let command = AgentServerCommand {
+            path: PathBuf::from("/bin/sh"),
+            args: vec![
+                "-c".to_string(),
+                WSL_IDE_E2E_AGENT.to_string(),
+                "zed-wsl-ide-e2e-agent".to_string(),
+            ],
+            env: None,
+            sandbox: Some(AgentSandboxCommand {
+                env: HashMap::from_iter([(
+                    "PATH".to_string(),
+                    "/usr/local/bin:/usr/bin:/bin".to_string(),
+                )]),
+                readable_paths: Vec::new(),
+                state: AgentSandboxState::Unresolved {
+                    profile: SandboxedAgentProfile::Other {
+                        id: "wsl-ide-e2e".to_string(),
+                    },
+                },
+                wsl: Some(project::agent_sandbox::WslAgentRuntime { distro: None }),
+            }),
+        };
+
+        let connection = AcpConnection::stdio(
+            AgentId::new("wsl-ide-e2e"),
+            project.clone(),
+            command,
+            agent_server_store,
+            None,
+            HashMap::default(),
+            false,
+            &mut cx.to_async(),
+        )
+        .await
+        .expect("the agent starts in the WSL sandbox");
+        let link = connection
+            .ide_link
+            .as_ref()
+            .expect("the IDE channel came up");
+        eprintln!("the restricted IDE server is at {}", link.url);
+        assert!(link.url.starts_with("http://127.0.0.1:"));
+        assert!(link.authorization.starts_with("Bearer "));
+        let connection = Rc::new(connection);
+
+        let thread = cx
+            .update(|cx| {
+                connection.clone().new_session(
+                    project.clone(),
+                    PathList::new(&[project_dir.as_path()]),
+                    cx,
+                )
+            })
+            .await
+            .expect("a session in the sandbox");
+        cx.run_until_parked();
+
+        let given = read_e2e_file(&reports.join("mcp.txt"));
+        eprintln!("the agent was given: {given}");
+        assert!(
+            given.contains(r#""name":"ide""#),
+            "the restricted IDE server is among the agent's MCP servers: {given}"
+        );
+        assert!(
+            given.contains("http://127.0.0.1:"),
+            "named on the sandbox's own loopback: {given}"
+        );
+        assert!(
+            !given.contains(r#""name":"zed""#),
+            "ADR-F49 decision 17: and Zed's own IDE server is not: {given}"
+        );
+
+        let tools = read_e2e_file(&reports.join("tools.txt"));
+        eprintln!("tools/list answered: {tools}");
+        assert!(
+            tools.contains("getDiagnostics"),
+            "the agent reached the restricted session from inside the sandbox: {tools}"
+        );
+        for refused in ["openDiff", "close_tab", "closeAllDiffTabs", "executeCode"] {
+            assert!(
+                !tools.contains(refused),
+                "{refused} is not offered to a sandboxed agent: {tools}"
+            );
+        }
+
+        let unauthorized = read_e2e_file(&reports.join("unauthorized.txt"));
+        assert_eq!(
+            unauthorized.trim(),
+            "401",
+            "another token does not open the restricted session"
+        );
+
+        drop(thread);
+        drop(connection);
+    }
+
+    /// The folder the E2E opens as its project. It has to be on a Windows
+    /// drive, outside the account's home (which the sandbox hides), and
+    /// outside any checkout.
+    #[cfg(target_os = "windows")]
+    fn wsl_e2e_project_directory() -> PathBuf {
+        std::env::var("ZED_WSL_AGENT_E2E_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(r"I:\zed-3e-e2e-w"))
+    }
+
+    /// ADR-F49 第 2b 段, end to end on a real distro: the agent's process is
+    /// started by the WSL sandbox helper, speaks ACP over its pipes, sees the
+    /// project as `/mnt/<drive>/…`, and what it asks Zed for lands on this
+    /// machine's paths. What it leaves running is listed and stopped from
+    /// outside the sandbox, and a sign-in is wrapped the same way.
+    ///
+    /// Not part of the normal run: it needs a working WSL distro, installs
+    /// this build's helper into it, and takes about a minute. Run it with
+    ///
+    /// ```text
+    /// ZED_WSL_AGENT_E2E=1 cargo test -p agent_servers --lib -- --ignored --nocapture wsl
+    /// ```
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an end-to-end driver, not the app: it waits on real processes on its own thread"
+    )]
+    #[ignore = "needs a real WSL distro; set ZED_WSL_AGENT_E2E=1 and run with --ignored"]
+    async fn an_agent_really_runs_in_the_wsl_sandbox(cx: &mut gpui::TestAppContext) {
+        if std::env::var("ZED_WSL_AGENT_E2E").is_err() {
+            eprintln!("skipped: set ZED_WSL_AGENT_E2E=1 to run this against the real WSL distro");
+            return;
+        }
+        let project_dir = wsl_e2e_project_directory();
+        std::fs::create_dir_all(&project_dir).expect("the project folder");
+        std::fs::write(project_dir.join("seed.txt"), "seeded-by-zed").expect("the seed file");
+        for leftover in ["observed.txt", "read-back.txt", "outside.txt", "link.txt"] {
+            std::fs::remove_file(project_dir.join(leftover)).ok();
+        }
+        // ADR-F49 decision 11: a link the sandbox itself could make inside the
+        // worktree, pointing out of it. Made from inside the distro, so it is
+        // an LX symlink — a reparse point Windows cannot follow — which is
+        // what `Fs::verify_read` has to refuse on the agent's behalf.
+        let drive = project_dir
+            .to_string_lossy()
+            .chars()
+            .next()
+            .expect("a drive letter")
+            .to_ascii_lowercase();
+        let client_project_dir = format!(
+            "/mnt/{drive}/{}",
+            project_dir
+                .to_string_lossy()
+                .trim_start_matches(|character: char| character != '\\')
+                .trim_start_matches('\\')
+                .replace('\\', "/")
+        );
+        let linked = util::command::new_std_command("wsl.exe")
+            .args([
+                "--exec",
+                "/bin/sh",
+                "-c",
+                &format!("ln -sfn /etc/hostname '{client_project_dir}/escape.txt'"),
+            ])
+            .status()
+            .expect("wsl.exe makes the link");
+        assert!(linked.success(), "the link was made in the distro");
+
+        crate::e2e_tests::init_test(cx).await;
+        let project = Project::example([project_dir.as_path()], &mut cx.to_async()).await;
+        let agent_server_store =
+            project.read_with(cx, |project, _| project.agent_server_store().downgrade());
+
+        let command = AgentServerCommand {
+            path: PathBuf::from("/bin/sh"),
+            args: vec![
+                "-c".to_string(),
+                WSL_E2E_AGENT.to_string(),
+                "zed-wsl-e2e-agent".to_string(),
+            ],
+            env: None,
+            sandbox: Some(AgentSandboxCommand {
+                env: HashMap::from_iter([(
+                    "PATH".to_string(),
+                    "/usr/local/bin:/usr/bin:/bin".to_string(),
+                )]),
+                readable_paths: Vec::new(),
+                state: AgentSandboxState::Unresolved {
+                    profile: SandboxedAgentProfile::Other {
+                        id: "wsl-e2e".to_string(),
+                    },
+                },
+                wsl: Some(project::agent_sandbox::WslAgentRuntime { distro: None }),
+            }),
+        };
+
+        let connection = AcpConnection::stdio(
+            AgentId::new("wsl-e2e"),
+            project.clone(),
+            command,
+            agent_server_store,
+            None,
+            HashMap::default(),
+            false,
+            &mut cx.to_async(),
+        )
+        .await
+        .expect("the agent starts in the WSL sandbox");
+        let connection = Rc::new(connection);
+
+        let session = connection
+            .sandbox_session
+            .clone()
+            .expect("the agent runs in a sandbox");
+        eprintln!("write scope: {:?}", session.write_scope);
+        assert!(
+            session.env.get("NO_BROWSER").map(String::as_str) == Some("1"),
+            "ADR-F49 decision 25"
+        );
+
+        let thread = cx
+            .update(|cx| {
+                connection.clone().new_session(
+                    project.clone(),
+                    PathList::new(&[project_dir.as_path()]),
+                    cx,
+                )
+            })
+            .await
+            .expect("a session in the sandbox");
+
+        // The stand-in does its work during the turn and answers only once
+        // every one of its requests has come back, so everything it asked for
+        // has happened by the time this returns.
+        thread
+            .update(cx, |thread, cx| thread.send_raw("go", cx))
+            .await
+            .expect("the turn completes");
+        cx.run_until_parked();
+
+        let observed = read_e2e_file(&project_dir.join("observed.txt"));
+        eprintln!("the agent observed: {observed}");
+        assert!(
+            observed.contains(&format!("cwd=/mnt/{drive}/")),
+            "the session's folder reached the agent as its own path: {observed}"
+        );
+        assert!(
+            observed.contains(&format!("pwd=/mnt/{drive}/")),
+            "and the command really started there: {observed}"
+        );
+
+        let read_back = read_e2e_file(&project_dir.join("read-back.txt"));
+        assert_eq!(
+            read_back.trim(),
+            "seeded-by-zed",
+            "what the agent read through Zed is this machine's file"
+        );
+
+        let outside = read_e2e_file(&project_dir.join("outside.txt"));
+        eprintln!("asking for a file outside the worktrees answered: {outside}");
+        assert!(
+            outside.contains("error"),
+            "a path outside the worktrees is refused, not read: {outside}"
+        );
+
+        let through_a_link = read_e2e_file(&project_dir.join("link.txt"));
+        eprintln!("reading through a link out of the worktree answered: {through_a_link}");
+        assert!(
+            through_a_link.contains("error"),
+            "ADR-F49 decision 11: Zed does not read through a link the sandbox              put in the worktree: {through_a_link}"
+        );
+
+        cx.run_until_parked();
+        let locations = thread.read_with(cx, |thread, _| {
+            thread
+                .entries()
+                .iter()
+                .find_map(|entry| match entry {
+                    acp_thread::AgentThreadEntry::ToolCall(call) => Some(call.locations.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        });
+        assert_eq!(
+            locations
+                .iter()
+                .map(|location| location.path.clone())
+                .collect::<Vec<_>>(),
+            [project_dir.join("seed.txt")],
+            "what the agent reported is shown as this machine's path"
+        );
+
+        drop(thread);
+        drop(connection);
+    }
+
+    /// ADR-F49 decision 18 and decision 16 on a real distro: the helper
+    /// registers the sandbox under the id the launch generated, so what the
+    /// command leaves running can be listed and stopped from Windows; and a
+    /// sign-in wrapped for the same session really runs inside it.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an end-to-end driver, not the app: it waits on real processes on its own thread"
+    )]
+    #[ignore = "needs a real WSL distro; set ZED_WSL_AGENT_E2E=1 and run with --ignored"]
+    async fn what_a_wsl_agent_leaves_running_is_listed_and_stopped(cx: &mut gpui::TestAppContext) {
+        if std::env::var("ZED_WSL_AGENT_E2E").is_err() {
+            eprintln!("skipped: set ZED_WSL_AGENT_E2E=1 to run this against the real WSL distro");
+            return;
+        }
+        let project_dir = wsl_e2e_project_directory();
+        std::fs::create_dir_all(&project_dir).expect("the project folder");
+        crate::e2e_tests::init_test(cx).await;
+        let project = Project::example([project_dir.as_path()], &mut cx.to_async()).await;
+
+        let command = AgentServerCommand {
+            path: PathBuf::from("/bin/sh"),
+            args: vec![
+                "-c".to_string(),
+                "sleep 300 & while IFS= read -r line; do :; done".to_string(),
+                "zed-wsl-e2e-leftovers".to_string(),
+            ],
+            env: None,
+            sandbox: Some(AgentSandboxCommand {
+                env: HashMap::from_iter([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
+                readable_paths: Vec::new(),
+                state: AgentSandboxState::Unresolved {
+                    profile: SandboxedAgentProfile::Other {
+                        id: "wsl-e2e".to_string(),
+                    },
+                },
+                wsl: Some(project::agent_sandbox::WslAgentRuntime { distro: None }),
+            }),
+        };
+        let WslAgentLaunch {
+            child,
+            session,
+            sandbox,
+            session_id,
+            ide_link: _,
+        } = wsl_sandboxed_agent_command(
+            &project,
+            &command,
+            None,
+            Some(project_dir.clone()),
+            None,
+            &mut cx.to_async(),
+        )
+        .await
+        .expect("the agent's command is wrapped for the distro");
+        let mut child = util::process::Child::spawn(
+            child,
+            std::process::Stdio::piped(),
+            std::process::Stdio::piped(),
+            std::process::Stdio::piped(),
+        )
+        .expect("the wrapped command starts");
+        // What `wsl.exe` says when it cannot start at all is UTF-16 on its
+        // standard output, so both streams are shown when this fails.
+        fn show(
+            stream: impl futures::AsyncRead + Unpin + Send + 'static,
+        ) -> impl Future<Output = ()> {
+            async move {
+                use futures::AsyncReadExt as _;
+                let mut stream = stream;
+                let mut bytes = Vec::new();
+                stream.read_to_end(&mut bytes).await.ok();
+                if !bytes.is_empty() {
+                    eprintln!("the sandbox said: {:?}", String::from_utf8_lossy(&bytes));
+                }
+            }
+        }
+        let diagnostics = (
+            child
+                .stderr
+                .take()
+                .map(|stream| cx.background_executor.spawn(show(stream))),
+            child
+                .stdout
+                .take()
+                .map(|stream| cx.background_executor.spawn(show(stream))),
+        );
+
+        let mut processes = Vec::new();
+        for _ in 0..40 {
+            processes = sandbox::list_wsl_sandbox_processes(None, &session_id)
+                .await
+                .expect("the distro answers what runs in the sandbox");
+            if processes
+                .iter()
+                .any(|process| process.command.contains("sleep"))
+            {
+                break;
+            }
+            cx.background_executor
+                .timer(std::time::Duration::from_millis(500))
+                .await;
+        }
+        eprintln!("in the sandbox: {processes:?}");
+        let sleeping = processes
+            .iter()
+            .find(|process| process.command.contains("sleep"))
+            .expect("what the command left running is listed from outside the sandbox");
+
+        let stopped = sandbox::stop_wsl_sandbox_processes(None, &session_id, &[sleeping.key()])
+            .await
+            .expect("the distro stops it");
+        assert_eq!(stopped, 1);
+        let mut still_there = true;
+        for _ in 0..20 {
+            cx.background_executor
+                .timer(std::time::Duration::from_millis(500))
+                .await;
+            let now = sandbox::list_wsl_sandbox_processes(None, &session_id)
+                .await
+                .expect("the distro answers again");
+            if !now.iter().any(|process| process.key() == sleeping.key()) {
+                still_there = false;
+                break;
+            }
+        }
+        assert!(!still_there, "the process the user stopped is gone");
+
+        // ADR-F49 decision 16: the sign-in runs in the same sandbox, on a
+        // terminal of its own. Build it the way `terminal_auth_task` does and
+        // start the result for real.
+        let login = acp_thread::build_terminal_auth_task(
+            "wsl-e2e-login".to_string(),
+            "sign in".to_string(),
+            "/usr/bin/printf".to_string(),
+            vec!["zed-login-ran\n".to_string()],
+            HashMap::default(),
+        );
+        let login_sandboxes: Rc<RefCell<HashMap<String, sandbox::Sandbox>>> = Rc::default();
+        let login = wrap_login_in_sandbox(login, &session, &login_sandboxes, &mut cx.to_async())
+            .await
+            .expect("the sign-in is wrapped for the same sandbox");
+        let program = login.command.clone().expect("the sign-in has a command");
+        assert!(
+            program.to_lowercase().ends_with("wsl.exe"),
+            "the sign-in starts through the distro: {program}"
+        );
+        assert_eq!(
+            login.env.get("WSLENV").map(String::as_str),
+            Some(""),
+            "nothing of this process's environment is forwarded into the distro"
+        );
+        assert!(login.cwd.is_none());
+        let output = cx
+            .background_executor
+            .spawn({
+                let args = login.args.clone();
+                async move {
+                    let mut command = util::command::new_std_command(&program);
+                    command.args(&args).env("WSLENV", "");
+                    command.output()
+                }
+            })
+            .await
+            .expect("the sign-in really starts");
+        let printed = String::from_utf8_lossy(&output.stdout).into_owned();
+        eprintln!(
+            "sign-in stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            printed.contains("zed-login-ran"),
+            "the sign-in ran inside the sandbox: {printed}"
+        );
+
+        child.kill().ok();
+        drop(diagnostics);
+        drop(sandbox);
+        drop(login_sandboxes);
+    }
+
+    #[cfg(target_os = "windows")]
+    fn read_e2e_file(path: &Path) -> String {
+        std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+    }
 }
 
 /// 内蔵 IDE サーバー (ADR-F26) を MCP サーバー一覧に載せる形にする。
@@ -6398,50 +8680,102 @@ fn ide_server_entry(
     ))
 }
 
-/// ADR-F49 decision 17: Zed's own IDE server is left out of an agent's
-/// session when the agent runs in a sandbox — its endpoint is on this
-/// machine's loopback, which the sandbox's network namespace does not reach,
-/// and its token grants far more than such an agent is allowed.
-fn ide_server_for_agent(
-    include_ide_server: bool,
-    endpoint: impl FnOnce() -> Option<ide_server::McpEndpoint>,
-    user_configured: bool,
-) -> Option<acp::McpServer> {
-    if !include_ide_server {
-        return None;
-    }
-    ide_server_entry(endpoint(), user_configured)
+/// ADR-F49: which IDE server, if any, an agent's session is given.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum IdeMcp {
+    /// None at all: an agent in a sandbox with no IDE channel of its own.
+    None,
+    /// Zed's own (ADR-F26), on this machine's loopback and with the whole set
+    /// of tools. Only for an agent that runs outside a sandbox.
+    Host,
+    /// ADR-F49 decision 24: the restricted session
+    /// ([`ide_server::start_restricted_sandbox_session`]), reached through the
+    /// sandbox's own IDE channel and offering `getDiagnostics` alone. The URL
+    /// is the sandbox's loopback, not this machine's.
+    Restricted { url: String, authorization: String },
 }
 
-/// The MCP servers an agent's session is given. `include_ide_server` is
-/// false for an agent in a sandbox (ADR-F49 decision 17): Zed's own IDE
-/// server listens on this machine's loopback, which the sandbox's network
-/// namespace does not reach, and its token grants far more than such an agent
-/// is allowed. The servers the user configured still go to it, and it starts
-/// them inside its sandbox.
+/// ADR-F49 decision 24: the restricted IDE server as the agent's session sees
+/// it, or `None` when the user configured a server of the same name — theirs
+/// wins, as it does over the host's (ADR-F42).
+fn restricted_ide_entry(
+    url: String,
+    authorization: String,
+    is_name_taken: bool,
+) -> Option<acp::McpServer> {
+    if is_name_taken {
+        log::warn!(
+            "agent_servers: not injecting the sandbox's restricted IDE server because a \
+             configured MCP server is already named {}",
+            ide_server::RESTRICTED_MCP_SERVER_NAME
+        );
+        return None;
+    }
+    Some(acp::McpServer::Http(
+        acp::McpServerHttp::new(ide_server::RESTRICTED_MCP_SERVER_NAME, url)
+            .headers(vec![acp::HttpHeader::new("Authorization", authorization)]),
+    ))
+}
+
+/// The MCP servers an agent's session is given, told apart by whether they are
+/// named the way this machine sees them or the way its sandbox does.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ProjectMcpServers {
+    /// Named as this machine names them; a connection with a translator
+    /// (ADR-F49 decision 23) puts these through it.
+    servers: Vec<acp::McpServer>,
+    /// ADR-F49 decision 24: the restricted IDE server, whose URL is already
+    /// the sandbox's own loopback. Appended **after** the translation, which
+    /// drops loopback URLs — as it must, since a host loopback URL really is
+    /// out of the sandbox's reach.
+    restricted_ide: Option<acp::McpServer>,
+}
+
+/// The MCP servers an agent's session is given. `ide_mcp` says which IDE
+/// server it gets: Zed's own only outside a sandbox (ADR-F49 decision 17),
+/// because that one listens on this machine's loopback, which the sandbox's
+/// network namespace does not reach, and its token grants far more than such
+/// an agent is allowed; inside a WSL sandbox, the restricted session reached
+/// over the sandbox's IDE channel (decision 24). The servers the user
+/// configured go to it either way, and it starts them inside its sandbox.
 fn mcp_servers_for_project(
     project: &Entity<Project>,
-    include_ide_server: bool,
+    ide_mcp: IdeMcp,
     cx: &App,
-) -> Vec<acp::McpServer> {
+) -> ProjectMcpServers {
     let context_server_store = project.read(cx).context_server_store().read(cx);
     let is_local = project.read(cx).is_local();
     let configured_server_ids = context_server_store.configured_server_ids();
-    let ide_server = ide_server_for_agent(
-        include_ide_server,
-        // Asked for only where it may be given, so that a sandboxed agent's
-        // session does not start the server for nothing.
-        || ide_server::mcp_endpoint(project, cx),
-        // A project-defined server that waits for approval is not
-        // forwarded, so it must not keep the built-in one out either
-        // (ADR-F42).
+    // A project-defined server that waits for approval is not forwarded, so it
+    // must not keep a built-in one out either (ADR-F42).
+    let is_name_taken = |name: &str| {
         configured_server_ids.iter().any(|id| {
-            id.0.as_ref() == ide_server::MCP_SERVER_NAME
+            id.0.as_ref() == name
                 && context_server_store.status_for_server(id)
                     != Some(project::context_server_store::ContextServerStatus::ApprovalRequired)
-        }),
-    );
-    ide_server
+        })
+    };
+    let (ide_server, restricted_ide) = match ide_mcp {
+        IdeMcp::None => (None, None),
+        // ADR-F49 decision 17: asked for only where it may be given, so that
+        // a sandboxed agent's session does not start the server for nothing.
+        IdeMcp::Host => (
+            ide_server_entry(
+                ide_server::mcp_endpoint(project, cx),
+                is_name_taken(ide_server::MCP_SERVER_NAME),
+            ),
+            None,
+        ),
+        IdeMcp::Restricted { url, authorization } => (
+            None,
+            restricted_ide_entry(
+                url,
+                authorization,
+                is_name_taken(ide_server::RESTRICTED_MCP_SERVER_NAME),
+            ),
+        ),
+    };
+    let servers = ide_server
         .into_iter()
         .chain(configured_server_ids.iter().filter_map(|id| {
             let configuration = context_server_store.configuration_for_server(id)?;
@@ -6482,7 +8816,11 @@ fn mcp_servers_for_project(
                 _ => None,
             }
         }))
-        .collect()
+        .collect();
+    ProjectMcpServers {
+        servers,
+        restricted_ide,
+    }
 }
 
 fn config_state(
@@ -6628,6 +8966,13 @@ fn handle_request_permission(
     cx: &mut AsyncApp,
     ctx: &ClientContext,
 ) {
+    // ADR-F49 decision 23: the card shows the tool call's locations and diffs,
+    // so they have to be this side's paths; what cannot be shown is left out
+    // rather than refused — the user still has to answer the question.
+    let args = match &ctx.paths {
+        Some(paths) => paths.request_permission_to_host(args),
+        None => args,
+    };
     let thread = match session_thread(ctx, &args.session_id) {
         Ok(t) => t,
         Err(e) => return respond_err(responder, e),
@@ -6798,6 +9143,17 @@ fn handle_write_text_file(
     cx: &mut AsyncApp,
     ctx: &ClientContext,
 ) {
+    // ADR-F49 decision 23: the agent named the file the way its sandbox sees
+    // it. Only the spelling is settled here; that the path does not leave the
+    // worktrees through a link is settled by `Fs::verify_read`'s counterpart
+    // on the write itself.
+    let args = match &ctx.paths {
+        Some(paths) => match paths.write_text_file_to_host(args) {
+            Ok(args) => args,
+            Err(error) => return respond_err(responder, error),
+        },
+        None => args,
+    };
     let thread = match session_thread(ctx, &args.session_id) {
         Ok(t) => t,
         Err(e) => return respond_err(responder, e),
@@ -6833,6 +9189,16 @@ fn handle_read_text_file(
     cx: &mut AsyncApp,
     ctx: &ClientContext,
 ) {
+    // ADR-F49 decision 23: as for a write — the spelling only. The link check
+    // before the file is opened is `AcpThread::read_text_file`'s, which every
+    // wrapped connection goes through (ADR-F49 decision 11).
+    let args = match &ctx.paths {
+        Some(paths) => match paths.read_text_file_to_host(args) {
+            Ok(args) => args,
+            Err(error) => return respond_err(responder, error),
+        },
+        None => args,
+    };
     let thread = match session_thread(ctx, &args.session_id) {
         Ok(t) => t,
         Err(e) => return respond_err(responder, e),
@@ -6861,6 +9227,31 @@ fn handle_session_notification(
     cx: &mut AsyncApp,
     ctx: &ClientContext,
 ) {
+    // ADR-F49 decision 23: everything this update shows — message chunks,
+    // tool-call locations, diffs, the display-only terminal's directory — is
+    // put into this side's paths. An update whose whole content could not be
+    // shown, and a kind Zed does not know, is dropped: it could carry a path
+    // nothing translated.
+    let mut notification = notification;
+    if let Some(paths) = &ctx.paths {
+        // `SessionUpdate` has no cheap placeholder, so the update is taken out
+        // of the notification, translated, and put back — the rest of the
+        // notification (its `_meta`) is kept as it came.
+        let update = std::mem::replace(
+            &mut notification.update,
+            acp::SessionUpdate::Plan(acp::Plan::new(Vec::new())),
+        );
+        match paths.session_update_to_host(update) {
+            Some(update) => notification.update = update,
+            None => {
+                log::debug!(
+                    "acp: dropped an update of session {} from the agent",
+                    notification.session_id
+                );
+                return;
+            }
+        }
+    }
     // Extract everything we need from the session while briefly borrowing.
     let (thread, session_modes, config_opts_data) = {
         let sessions = ctx.sessions.borrow();
@@ -7018,6 +9409,16 @@ fn handle_create_terminal(
     cx: &mut AsyncApp,
     ctx: &ClientContext,
 ) {
+    // ADR-F49 decision 23: only the working directory is this side's; the
+    // command itself runs in the sandbox, so its program, arguments and
+    // environment stay as the agent wrote them.
+    let args = match &ctx.paths {
+        Some(paths) => match paths.create_terminal_to_host(args) {
+            Ok(args) => args,
+            Err(error) => return respond_err(responder, error),
+        },
+        None => args,
+    };
     let thread = match session_thread(ctx, &args.session_id) {
         Ok(t) => t,
         Err(e) => return respond_err(responder, e),

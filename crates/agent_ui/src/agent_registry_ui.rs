@@ -1,23 +1,26 @@
 use std::ops::Range;
+use std::time::Duration;
 
 use client::zed_urls;
 use collections::HashMap;
 use editor::{Editor, EditorElement, EditorStyle};
 use fs::Fs;
+use futures::{FutureExt as _, StreamExt as _, channel::mpsc::UnboundedReceiver};
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Entity, EventEmitter, Focusable, KeyContext,
-    ParentElement, Render, RenderOnce, SharedString, Styled, Task, TextStyle,
+    AnyElement, App, BackgroundExecutor, ClickEvent, Context, Entity, EventEmitter, Focusable,
+    KeyContext, ParentElement, Render, RenderOnce, SharedString, Styled, Task, TextStyle,
     UniformListScrollHandle, WeakEntity, Window, point, uniform_list,
 };
-use http_client::{RequestHost, hosts_required_to_download};
+use http_client::{EgressPolicyHandle, RequestHost, hosts_required_to_download};
 use project::agent_registry_store::current_platform_key;
 use project::agent_server_store::{AllAgentServersSettings, CustomAgentServerSettings};
 use project::{AgentId, AgentRegistryStore, RegistryAgent};
 use settings::{Settings, SettingsStore, update_settings_file};
 use theme_settings::ThemeSettings;
 use ui::{
-    Banner, ButtonStyle, ScrollableHandle, ToggleButtonGroup, ToggleButtonGroupSize,
-    ToggleButtonGroupStyle, ToggleButtonSimple, Tooltip, WithScrollbar, prelude::*,
+    Banner, ButtonStyle, CommonAnimationExt, ScrollableHandle, ToggleButtonGroup,
+    ToggleButtonGroupSize, ToggleButtonGroupStyle, ToggleButtonSimple, Tooltip, WithScrollbar,
+    prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{
@@ -159,6 +162,96 @@ pub(crate) fn add_consented_hosts(hosts: Vec<String>, cx: &App) -> Task<anyhow::
     })
 }
 
+/// How long a consent waits for the allowlist watcher to take in what it just
+/// wrote before it gives up on it.
+pub(crate) const ALLOWLIST_PICKUP_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub(crate) const ALLOWLIST_NOT_APPLIED: &str = "許可リストには追加しましたが、まだ反映されていません。しばらく待ってからもう一度お試しください。";
+
+/// Shown while the consent's hosts are on their way from the file into the
+/// running policy.
+pub(crate) const ALLOWLIST_PICKUP_PENDING: &str = "許可リストへの反映を待っています…";
+
+/// Why a consent could not be carried through. The two are worth telling
+/// apart: nothing was added in the first case, and everything was added in
+/// the second, so saying "could not be added" for a slow watcher sends the
+/// user looking for a problem that is not there.
+pub(crate) enum ConsentFailure {
+    /// `network_allowlist.json` could not be written.
+    Write(anyhow::Error),
+    /// The hosts are in the file, but the running egress policy has not taken
+    /// them in within [`ALLOWLIST_PICKUP_TIMEOUT`].
+    NotPickedUp,
+}
+
+impl ConsentFailure {
+    pub(crate) fn message(&self) -> SharedString {
+        match self {
+            Self::Write(error) => allowlist_write_error(error),
+            Self::NotPickedUp => ALLOWLIST_NOT_APPLIED.into(),
+        }
+    }
+}
+
+/// [`add_consented_hosts`], and then waits until the running egress policy
+/// actually allows `hosts`.
+///
+/// The allowlist file is watched, so the policy the rest of the IDE reads -
+/// and, on Windows, the ceiling the WSL sandbox snapshots for its own proxy
+/// when it runs `npm install` (ADR-F49 決定 13) - only catches up a moment
+/// after the write lands. Whatever a consent leads to is refused with 511
+/// until it has, so every consent waits here rather than racing the watcher.
+pub(crate) fn add_consented_hosts_and_await_pickup(
+    hosts: Vec<String>,
+    cx: &App,
+) -> Task<Result<(), ConsentFailure>> {
+    let policy = cx
+        .try_global::<egress_policy::EgressAllowlistGlobal>()
+        .map(|global| global.0.clone());
+    // Subscribed before the write so that the watcher's update cannot slip in
+    // between the write finishing and the wait starting.
+    let changes = policy.as_ref().map(EgressPolicyHandle::subscribe);
+    let write = add_consented_hosts(hosts.clone(), cx);
+    let executor = cx.background_executor().clone();
+    cx.background_spawn(async move {
+        write.await.map_err(ConsentFailure::Write)?;
+        let (Some(policy), Some(mut changes)) = (policy, changes) else {
+            // No policy in this process: nothing gates what follows either.
+            return Ok(());
+        };
+        await_allowlist_pickup(&hosts, &policy, &mut changes, &executor)
+            .await
+            .map_err(|_| ConsentFailure::NotPickedUp)
+    })
+}
+
+/// Resolves once `policy` allows every host in `hosts`, or fails with
+/// [`ALLOWLIST_NOT_APPLIED`] after [`ALLOWLIST_PICKUP_TIMEOUT`].
+pub(crate) async fn await_allowlist_pickup(
+    hosts: &[String],
+    policy: &EgressPolicyHandle,
+    changes: &mut UnboundedReceiver<()>,
+    executor: &BackgroundExecutor,
+) -> anyhow::Result<()> {
+    let mut timeout = executor.timer(ALLOWLIST_PICKUP_TIMEOUT).fuse();
+    loop {
+        if hosts
+            .iter()
+            .all(|host| RequestHost::parse(host).is_some_and(|host| policy.allows(&host)))
+        {
+            return Ok(());
+        }
+        futures::select_biased! {
+            change = changes.next() => {
+                if change.is_none() {
+                    anyhow::bail!(ALLOWLIST_NOT_APPLIED);
+                }
+            }
+            _ = timeout => anyhow::bail!(ALLOWLIST_NOT_APPLIED),
+        }
+    }
+}
+
 pub(crate) fn allowlist_write_error(error: &anyhow::Error) -> SharedString {
     format!("許可リストへの追加に失敗しました: {error:#}").into()
 }
@@ -222,6 +315,11 @@ pub(crate) struct PendingInstallConsent {
     /// Set when the last attempt to add `hosts` to `network_allowlist.json`
     /// failed, so the banner can report it instead of silently retrying.
     pub(crate) error: Option<SharedString>,
+    /// The consent was confirmed and its hosts are being written and waited
+    /// for. Both buttons are dead while it is set: a second confirm would
+    /// start a second install, and a cancel would leave the hosts added with
+    /// nothing installed.
+    pub(crate) waiting: bool,
 }
 
 impl PendingInstallConsent {
@@ -230,6 +328,7 @@ impl PendingInstallConsent {
             hosts: requirement.hosts,
             is_npx: requirement.is_npx,
             error: None,
+            waiting: false,
         }
     }
 }
@@ -271,6 +370,7 @@ pub(crate) struct InstallConsentBanner {
     hosts: Vec<SharedString>,
     is_npx: bool,
     error: Option<SharedString>,
+    waiting: bool,
     action: InstallConsentAction,
     on_confirm: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
     on_cancel: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
@@ -289,6 +389,7 @@ impl InstallConsentBanner {
             hosts: consent.hosts.clone(),
             is_npx: consent.is_npx,
             error: consent.error.clone(),
+            waiting: consent.waiting,
             action,
             on_confirm: Box::new(on_confirm),
             on_cancel: Box::new(on_cancel),
@@ -307,6 +408,7 @@ impl RenderOnce for InstallConsentBanner {
             .join("、");
         let confirm_label = self.action.confirm_label(self.is_npx && all_allowed);
         let id = self.id;
+        let waiting = self.waiting;
         let on_confirm = self.on_confirm;
         let on_cancel = self.on_cancel;
 
@@ -352,6 +454,23 @@ impl RenderOnce for InstallConsentBanner {
                     .when_some(self.error, |this, error| {
                         this.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
                     })
+                    .when(waiting, |this| {
+                        this.child(
+                            h_flex()
+                                .gap_1p5()
+                                .child(
+                                    Icon::new(IconName::LoadCircle)
+                                        .size(IconSize::XSmall)
+                                        .color(Color::Muted)
+                                        .with_rotate_animation(2),
+                                )
+                                .child(
+                                    Label::new(ALLOWLIST_PICKUP_PENDING)
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                    })
                     .child(
                         h_flex()
                             .gap_2()
@@ -362,6 +481,7 @@ impl RenderOnce for InstallConsentBanner {
                                 )
                                 .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                                 .label_size(LabelSize::Small)
+                                .disabled(waiting)
                                 .on_click(on_confirm),
                             )
                             .child(
@@ -371,6 +491,7 @@ impl RenderOnce for InstallConsentBanner {
                                 )
                                 .style(ButtonStyle::Outlined)
                                 .label_size(LabelSize::Small)
+                                .disabled(waiting)
                                 .on_click(on_cancel),
                             ),
                     ),
@@ -896,6 +1017,15 @@ impl AgentRegistryPage {
                 this.confirm_install(&agent_id_for_confirm, window, cx);
             }),
             cx.listener(move |this, _, _, cx| {
+                // Cancelling once the hosts are on their way would leave them
+                // added with nothing installed, so it only stands until then.
+                if this
+                    .pending_install_consent
+                    .get(&agent_id_for_cancel)
+                    .is_some_and(|consent| consent.waiting)
+                {
+                    return;
+                }
                 this.pending_install_consent.remove(&agent_id_for_cancel);
                 cx.notify();
             }),
@@ -932,10 +1062,21 @@ impl AgentRegistryPage {
     /// Adds whatever hosts the pending consent still needs, then proceeds
     /// with the install. A failed allowlist write leaves the banner up with
     /// an error instead of installing anyway.
+    ///
+    /// The install only starts once the running egress policy has the hosts:
+    /// it reads the allowlist for itself (the npx install's proxy, and on
+    /// Windows the ceiling the WSL sandbox snapshots), so starting it on the
+    /// write alone loses the race with the allowlist's watcher and the
+    /// install is refused with 511.
     fn confirm_install(&mut self, agent_id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(consent) = self.pending_install_consent.get(agent_id) else {
+        let Some(consent) = self.pending_install_consent.get_mut(agent_id) else {
             return;
         };
+        // A confirm that is already running owns this consent until it is
+        // done; a second one would add the hosts twice and install twice.
+        if consent.waiting {
+            return;
+        }
         let hosts: Vec<String> = consent.hosts.iter().map(SharedString::to_string).collect();
 
         if hosts.is_empty() {
@@ -943,15 +1084,17 @@ impl AgentRegistryPage {
             install_registry_agent(agent_id, window, cx);
             return;
         }
+        consent.waiting = true;
+        consent.error = None;
 
         let agent_id = agent_id.to_string();
-        let write_hosts = add_consented_hosts(hosts, cx);
+        let write_hosts = add_consented_hosts_and_await_pickup(hosts, cx);
         cx.spawn_in(window, async move |this, cx| {
             let result = write_hosts.await;
             this.update_in(cx, |this, window, cx| {
-                // The banner may have been cancelled (or the card re-rendered
-                // away) while the write was in flight; only act on it if the
-                // consent this task was for is still the one pending.
+                // The card may have been re-rendered away while the write was
+                // in flight; only act on it if the consent this task was for
+                // is still the one pending.
                 if !this.pending_install_consent.contains_key(&agent_id) {
                     return;
                 }
@@ -960,9 +1103,10 @@ impl AgentRegistryPage {
                         this.pending_install_consent.remove(&agent_id);
                         install_registry_agent(&agent_id, window, cx);
                     }
-                    Err(error) => {
+                    Err(failure) => {
                         if let Some(consent) = this.pending_install_consent.get_mut(&agent_id) {
-                            consent.error = Some(allowlist_write_error(&error));
+                            consent.waiting = false;
+                            consent.error = Some(failure.message());
                         }
                     }
                 }
@@ -1181,7 +1325,11 @@ impl Item for AgentRegistryPage {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use super::*;
+    use http_client::EgressPolicy;
     use project::AgentId;
     use project::agent_registry_store::{
         RegistryAgentMetadata, RegistryBinaryAgent, RegistryNpxAgent, RegistryTargetConfig,
@@ -1372,5 +1520,227 @@ mod tests {
             .await
             .expect_err("so is everything");
         assert!(format!("{refused:#}").contains('*'), "{refused:#}");
+    }
+
+    fn denying_policy() -> EgressPolicyHandle {
+        EgressPolicyHandle::new(EgressPolicy::deny_all())
+    }
+
+    fn policy_allowing(hosts: &[&str]) -> EgressPolicy {
+        let (policy, errors) = EgressPolicy::from_host_strings(hosts);
+        assert!(errors.is_empty(), "{errors:?}");
+        policy
+    }
+
+    /// The write to `network_allowlist.json` is taken in by a watcher, so
+    /// whatever a consent leads to would be refused with 511 if it started on
+    /// the write alone.
+    #[gpui::test]
+    async fn a_consent_waits_until_the_running_policy_has_the_host(cx: &mut gpui::TestAppContext) {
+        let policy = denying_policy();
+        let mut changes = policy.subscribe();
+        let executor = cx.executor();
+        let finished = Arc::new(AtomicBool::new(false));
+        let wait = cx.background_executor.spawn({
+            let policy = policy.clone();
+            let executor = executor.clone();
+            let finished = finished.clone();
+            async move {
+                let result = await_allowlist_pickup(
+                    &["registry.npmjs.org".to_string()],
+                    &policy,
+                    &mut changes,
+                    &executor,
+                )
+                .await;
+                finished.store(true, Ordering::SeqCst);
+                result
+            }
+        });
+
+        cx.run_until_parked();
+        assert!(
+            !finished.load(Ordering::SeqCst),
+            "nothing may proceed while the policy still denies the host"
+        );
+
+        // A reload that brings something else in leaves the wait where it was.
+        policy.set(policy_allowing(&["example.com"]));
+        cx.run_until_parked();
+        assert!(!finished.load(Ordering::SeqCst));
+
+        policy.set(policy_allowing(&["example.com", "registry.npmjs.org"]));
+        wait.await
+            .expect("the wait ends once the policy allows the host");
+    }
+
+    #[gpui::test]
+    async fn a_consent_gives_up_when_the_policy_never_takes_the_host(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let policy = denying_policy();
+        let mut changes = policy.subscribe();
+        let executor = cx.executor();
+        let wait = cx.background_executor.spawn({
+            let policy = policy.clone();
+            let executor = executor.clone();
+            async move {
+                await_allowlist_pickup(
+                    &["registry.npmjs.org".to_string()],
+                    &policy,
+                    &mut changes,
+                    &executor,
+                )
+                .await
+            }
+        });
+
+        cx.executor()
+            .advance_clock(ALLOWLIST_PICKUP_TIMEOUT + Duration::from_secs(1));
+        let error = wait
+            .await
+            .expect_err("a policy that never takes the host is not waited on forever");
+        assert!(
+            format!("{error:#}").contains(ALLOWLIST_NOT_APPLIED),
+            "{error:#}"
+        );
+    }
+
+    /// The whole point of the wait: the install is what reads the running
+    /// policy (the npx install's proxy, and on Windows the ceiling the WSL
+    /// sandbox snapshots), so it must not start on the write alone.
+    #[gpui::test]
+    async fn confirm_install_starts_nothing_until_the_policy_has_the_hosts(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (page, policy, mut cx) = registry_page_with_a_pending_consent(cx).await;
+        let cx = &mut cx;
+
+        page.update_in(cx, |page, window, cx| {
+            page.confirm_install(NPX_AGENT_ID, window, cx)
+        });
+        cx.run_until_parked();
+        let waiting = page.read_with(cx, |page, _| {
+            page.pending_install_consent
+                .get(NPX_AGENT_ID)
+                .map(|consent| (consent.waiting, consent.error.clone()))
+        });
+        assert_eq!(
+            waiting,
+            Some((true, None)),
+            "the consent is still on screen, locked, while the policy denies the hosts"
+        );
+
+        // Neither button does anything while the consent is being carried out:
+        // a second confirm would install twice, and a cancel would leave the
+        // hosts added with nothing installed.
+        page.update_in(cx, |page, window, cx| {
+            page.confirm_install(NPX_AGENT_ID, window, cx)
+        });
+        cx.run_until_parked();
+        assert!(
+            page.read_with(cx, |page, _| page
+                .pending_install_consent
+                .contains_key(NPX_AGENT_ID)),
+            "a second confirm is ignored rather than starting another install"
+        );
+
+        policy.set(policy_allowing(&["nodejs.org", "registry.npmjs.org"]));
+        cx.run_until_parked();
+        assert!(
+            page.read_with(cx, |page, _| page.pending_install_consent.is_empty()),
+            "once the policy has the hosts the install goes ahead"
+        );
+    }
+
+    /// A watcher that never takes the write in says so - the hosts *were*
+    /// added, and saying they could not be sends the user looking for a
+    /// problem that is not there.
+    #[gpui::test]
+    async fn confirm_install_says_the_hosts_were_added_when_nothing_picks_them_up(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (page, _policy, mut cx) = registry_page_with_a_pending_consent(cx).await;
+        let cx = &mut cx;
+
+        page.update_in(cx, |page, window, cx| {
+            page.confirm_install(NPX_AGENT_ID, window, cx)
+        });
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(ALLOWLIST_PICKUP_TIMEOUT + Duration::from_secs(1));
+        cx.run_until_parked();
+
+        let consent = page.read_with(cx, |page, _| {
+            page.pending_install_consent
+                .get(NPX_AGENT_ID)
+                .map(|consent| (consent.waiting, consent.error.clone()))
+        });
+        assert_eq!(
+            consent,
+            Some((false, Some(ALLOWLIST_NOT_APPLIED.into()))),
+            "the banner is usable again and says the hosts are in the file"
+        );
+    }
+
+    const NPX_AGENT_ID: &str = "claude-acp";
+
+    /// A registry page showing the consent banner for an npx agent, with an
+    /// egress policy that allows nothing yet.
+    async fn registry_page_with_a_pending_consent(
+        cx: &mut gpui::TestAppContext,
+    ) -> (
+        Entity<AgentRegistryPage>,
+        EgressPolicyHandle,
+        gpui::VisualTestContext,
+    ) {
+        crate::test_support::init_test(cx);
+        let fs = fs::FakeFs::new(cx.executor());
+        let policy = EgressPolicyHandle::new(EgressPolicy::deny_all());
+        cx.update(|cx| {
+            <dyn Fs>::set_global(fs.clone(), cx);
+            cx.set_global(egress_policy::EgressAllowlistGlobal(policy.clone()));
+            AgentRegistryStore::init_test_global(
+                cx,
+                vec![RegistryAgent::Npx(RegistryNpxAgent {
+                    metadata: metadata(NPX_AGENT_ID),
+                    package: SharedString::from("@agentclientprotocol/claude-agent-acp"),
+                    args: Vec::new(),
+                    env: HashMap::default(),
+                })],
+            );
+        });
+        // The consent writes into this file, which has no directory yet in a
+        // fake file system.
+        let allowlist = paths::network_allowlist_file().clone();
+        if let Some(directory) = allowlist.parent() {
+            fs.create_dir(directory)
+                .await
+                .expect("the fake file system should take the allowlist's directory");
+        }
+
+        let project = project::Project::test(fs, [], cx).await;
+        let window =
+            cx.add_window(|window, cx| workspace::MultiWorkspace::test_new(project, window, cx));
+        let workspace = window
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the window should be open");
+        let mut visual_cx = gpui::VisualTestContext::from_window(window.into(), cx);
+        let cx = &mut visual_cx;
+        let page = workspace.update_in(cx, |workspace, window, cx| {
+            AgentRegistryPage::new(workspace, window, cx)
+        });
+        cx.run_until_parked();
+
+        page.update_in(cx, |page, window, cx| {
+            page.begin_install(NPX_AGENT_ID, window, cx)
+        });
+        assert!(
+            page.read_with(cx, |page, _| page
+                .pending_install_consent
+                .contains_key(NPX_AGENT_ID)),
+            "an npx agent always asks first"
+        );
+        (page, policy, visual_cx)
     }
 }

@@ -28,7 +28,8 @@
 use std::{cell::RefCell, collections::HashSet, path::PathBuf, rc::Rc, time::Duration};
 
 use anyhow::Result;
-use gpui::{App, AppContext as _, Context, Entity, SharedString, Task, TaskExt as _};
+use futures::FutureExt as _;
+use gpui::{App, AppContext as _, Context, Entity, SharedString, Task};
 use project::{
     AgentWriteScope, LeftoverSandboxProcess, LeftoverSandboxProcessReports,
     LeftoverSandboxProcessesHandle, Project, SandboxedWriterGuard,
@@ -65,6 +66,15 @@ const STARTING_LOOKS: usize = 60;
 /// And how many an answer's own baseline may spend, which is far fewer: the
 /// prompt waits for it.
 const TURN_STARTING_LOOKS: usize = 2;
+
+/// How long a stop the user asked for is waited on before the wait is given
+/// up. The request goes to the host that built the sandbox, and one that has
+/// stopped answering would otherwise leave the task — and the dialog's button
+/// with it — pending for as long as the connection lasts.
+///
+/// Giving up ends only the wait: the next look is taken straight away and the
+/// watch goes on, so a stop that lands late still clears the list.
+const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// ADR-F49 decision 18 (C): the sandbox an agent runs in, as the trusted side
 /// outside it can read and act on it. Kept separate from the connection so
@@ -339,7 +349,7 @@ impl SandboxProcessMonitor {
         }
     }
 
-    fn publish(&mut self, processes: &[SandboxProcess], cx: &mut App) {
+    fn publish(&mut self, processes: &[SandboxProcess], cx: &mut Context<Self>) {
         if self.report.is_none() {
             let Some(host) = self
                 .project
@@ -355,12 +365,35 @@ impl SandboxProcessMonitor {
             // agent's connection — and with it the agent's process — alive.
             let source = Rc::downgrade(&self.source);
             let followed = self.followed.clone();
+            let monitor = cx.weak_entity();
             let stop = Rc::new(move |cx: &mut App| {
                 let Some(source) = source.upgrade() else {
                     return;
                 };
                 let processes = followed.borrow().clone();
-                source.stop(processes, cx).detach_and_log_err(cx);
+                let stopping = source.stop(processes, cx);
+                let monitor = monitor.clone();
+                cx.spawn(async move |cx| {
+                    let timeout = cx.background_executor().timer(STOP_TIMEOUT);
+                    futures::select_biased! {
+                        stopped = stopping.fuse() => match stopped {
+                            Ok(stopped) => log::info!(
+                                "stopped {stopped} processes an agent left in its sandbox"
+                            ),
+                            Err(error) => log::warn!(
+                                "could not stop what an agent left in its sandbox: {error:#}"
+                            ),
+                        },
+                        _ = timeout.fuse() => log::warn!(
+                            "the host did not answer a request to stop what an agent left in \
+                             its sandbox within {STOP_TIMEOUT:?}; the watch goes on"
+                        ),
+                    }
+                    // Either way the list is what says whether it worked, so
+                    // it is taken again now rather than at the next interval.
+                    monitor.update(cx, |this, cx| this.look_now(cx)).ok();
+                })
+                .detach();
             }) as Rc<dyn Fn(&mut App)>;
             self.report = Some(LeftoverSandboxProcessReports::publish(
                 &host,
