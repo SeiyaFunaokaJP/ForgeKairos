@@ -134,6 +134,10 @@ pub struct BrowserView {
     surface: SurfaceState,
     warned_missing_window_handle: bool,
     current_url: String,
+    /// ホームページを「ユーザーがブラウザーに向くまで」待たせているタブの
+    /// 行き先 ([`Self::defer_home_page`])。空文字は `browser.home_url` が空の
+    /// ときで、待機が解ければブックマークのペインを開く (新しいタブと同じ)。
+    pending_home_url: Option<String>,
     page_title: SharedString,
     status_message: Option<SharedString>,
     can_go_back: bool,
@@ -196,6 +200,7 @@ impl BrowserView {
             surface: SurfaceState::Idle,
             warned_missing_window_handle: false,
             current_url: String::new(),
+            pending_home_url: None,
             page_title: SharedString::default(),
             status_message: None,
             can_go_back: false,
@@ -283,6 +288,11 @@ impl BrowserView {
         cx.notify();
     }
 
+    #[cfg(test)]
+    pub(crate) fn bookmarks_pane_is_open(&self) -> bool {
+        self.bookmarks_pane_open
+    }
+
     /// ホストが決めた最初の URL。サーフェスはまだ無いので [`Self::navigate_to`] は
     /// 使えない (WebView2 が無いときは外部ブラウザーに落ちる仕様のため)。
     /// [`Self::ensure_surface`] がコントローラーを作るときにこの URL へ飛ばす。
@@ -290,11 +300,45 @@ impl BrowserView {
         if url.trim().is_empty() {
             return;
         }
+        self.pending_home_url = None;
         self.current_url = url;
         self.loading = true;
         self.sync_address_editor(window, cx);
         cx.emit(BrowserViewEvent::LocationChanged);
         cx.notify();
+    }
+
+    /// ホームページを持ったまま、まだ開かない空のタブにする。
+    ///
+    /// ブラウザーパネルが自分のために持っておくタブは、ユーザーが「ブラウザーを
+    /// 出せ」と言わなくても画面に出る: 右ドックはエージェントパネルとブラウザー
+    /// パネルの 2 枚並べが既定なので (ADR-F30)、エージェントを開くだけで相方の
+    /// ブラウザーも表示される。そこで既定のホーム (Microsoft 365 Copilot) へ
+    /// 出ていくのは「AI とブラウザーは既定で起動時に開かない」(ADR-F48) の趣旨に
+    /// 反するので、行き先は持っておくだけにして、[`Self::load_deferred_home_page`]
+    /// = ユーザーがブラウザーを名指しで出したときに初めて読み込む。
+    pub(crate) fn defer_home_page(&mut self, cx: &mut Context<Self>) {
+        // 空の `browser.home_url` も待機させる: 「新しいタブ」はそのとき
+        // ブックマークのペインを開くので、待機を解いたときに同じものを出す
+        // (先に開いてしまうと、頼まれていないのにブックマークが出る)。
+        self.pending_home_url = Some(Self::settings(cx).home_url.trim().to_string());
+    }
+
+    /// 待たせておいたホームページを開く。ユーザーがこのビューの載っている
+    /// ブラウザーパネルを名指しで出したときに、パネルから呼ばれる。
+    pub(crate) fn load_deferred_home_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(url) = self.pending_home_url.take() else {
+            return;
+        };
+        if url.is_empty() {
+            self.open_bookmarks_pane(cx);
+        } else if self.webview.is_some() {
+            self.navigate_to(&url, cx);
+        } else {
+            // サーフェスがまだ無いうちに `navigate_to` を呼ぶと OS の既定の
+            // ブラウザーへ落ちてしまうので、生成時に飛ばす方へ渡す。
+            self.set_initial_url(url, window, cx);
+        }
     }
 
     // -- WebView2 のライフサイクル ------------------------------------------
@@ -403,7 +447,9 @@ impl BrowserView {
                 self.applied_dark_mode = None;
                 self.applied_background_color = None;
                 self.sync_appearance(cx);
-                if self.current_url.is_empty() {
+                // 待たせてあるホームがあるタブは空のまま置く。ここで開いてしまうと
+                // サーフェスが出来た瞬間に、頼まれていない行き先へ出ていく。
+                if self.current_url.is_empty() && self.pending_home_url.is_none() {
                     let home = Self::settings(cx).home_url.clone();
                     self.navigate_to(&home, cx);
                 }
@@ -493,6 +539,9 @@ impl BrowserView {
         if url.trim().is_empty() {
             return;
         }
+        // ユーザーが行き先を選んだ = 待たせてあるホームは用済み (ブックマークを
+        // 押した直後にホームが追い掛けてこないように)。
+        self.pending_home_url = None;
         self.current_url = url.to_string();
         self.loading = true;
         self.status_message = None;

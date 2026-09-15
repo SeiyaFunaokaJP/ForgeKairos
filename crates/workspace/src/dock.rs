@@ -193,6 +193,13 @@ pub trait Panel: Focusable + EventEmitter<PanelEvent> + Render + Sized {
     }
     fn set_zoomed(&mut self, _zoomed: bool, _window: &mut Window, _cx: &mut Context<Self>) {}
     fn set_active(&mut self, _active: bool, _window: &mut Window, _cx: &mut Context<Self>) {}
+    /// The user asked for this panel by name: its status bar button, its toggle
+    /// action, a drop onto a dock. `set_active` cannot answer that question,
+    /// because a dock also shows the other half of a stacked pair (ADR-F30) when
+    /// the user only asked for the panel it is paired with. Panels that hold work
+    /// back until someone actually turns to them - the browser does not load its
+    /// home page before that (ADR-F48) - are told here.
+    fn revealed_by_user(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {}
     fn pane(&self) -> Option<Entity<Pane>> {
         None
     }
@@ -231,6 +238,8 @@ pub trait PanelHandle: Send + Sync {
     fn starts_open(&self, window: &Window, cx: &App) -> bool;
     fn set_zoomed(&self, zoomed: bool, window: &mut Window, cx: &mut App);
     fn set_active(&self, active: bool, window: &mut Window, cx: &mut App);
+    /// See `Panel::revealed_by_user`.
+    fn revealed_by_user(&self, window: &mut Window, cx: &mut App);
     fn remote_id(&self) -> Option<proto::PanelId>;
     fn pane(&self, cx: &App) -> Option<Entity<Pane>>;
     fn panes(&self, cx: &App) -> Vec<Entity<Pane>>;
@@ -312,6 +321,10 @@ where
 
     fn set_active(&self, active: bool, window: &mut Window, cx: &mut App) {
         self.update(cx, |this, cx| this.set_active(active, window, cx))
+    }
+
+    fn revealed_by_user(&self, window: &mut Window, cx: &mut App) {
+        self.update(cx, |this, cx| this.revealed_by_user(window, cx))
     }
 
     fn pane(&self, cx: &App) -> Option<Entity<Pane>> {
@@ -797,13 +810,18 @@ impl Dock {
             // Keep the stored index normalized so it can never become visible
             // again once it has been filtered out.
             self.secondary_panel_index = index;
-            return;
+        } else {
+            let mut target = self.arrangement();
+            target.secondary = index;
+            // Any new pairing supersedes the one the hidden panel belonged to.
+            target.hidden = None;
+            self.arrange(target, window, cx);
         }
-        let mut target = self.arrangement();
-        target.secondary = index;
-        // Any new pairing supersedes the one the hidden panel belonged to.
-        target.hidden = None;
-        self.arrange(target, window, cx);
+        // Stacking a panel is the panel's own button's context menu entry, so
+        // it is that panel being asked for; unstacking (`None`) is not.
+        if let Some(index) = index {
+            self.reveal_panel_to_user(index, window, cx);
+        }
     }
 
     /// The panel that [`Dock::hide_stacked_panel`] took out of a stacked pair,
@@ -868,6 +886,7 @@ impl Dock {
         }
         target.hidden = None;
         self.arrange(target, window, cx);
+        self.reveal_panel_to_user(index, window, cx);
         true
     }
 
@@ -897,6 +916,7 @@ impl Dock {
             }
         }
         self.arrange(target, window, cx);
+        self.reveal_panel_to_user(index, window, cx);
         true
     }
 
@@ -1014,6 +1034,7 @@ impl Dock {
             }
             self.arrange(target, window, cx);
         }
+        self.reveal_panels_that_start_open(window, cx);
         self.record_starts_open_answers(window, cx);
         found
     }
@@ -1179,6 +1200,7 @@ impl Dock {
         }
         let target = self.startup_arrangement(window, cx);
         self.arrange(target, window, cx);
+        self.reveal_panels_that_start_open(window, cx);
         self.record_starts_open_answers(window, cx);
         let (saved_top, _) = self.saved_slots(cx);
         if self
@@ -1210,6 +1232,25 @@ impl Dock {
             saved.visible = false;
         }
         self.apply_startup_arrangement(window, cx);
+    }
+
+    /// Tells the panels the open dock shows and that asked to start open that
+    /// the user asked for them (see `Panel::revealed_by_user`). No click
+    /// reaches the dock for those, but `browser.starts_open` and its kin are
+    /// the user saying "open this every time" in their settings, which is as
+    /// much of a request as pressing the button (ADR-F48). Panels that are
+    /// only on screen because they share the dock with one of them are not
+    /// told. Calling this again is harmless: a panel hears it once and the
+    /// startup passes run many times over.
+    fn reveal_panels_that_start_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_open {
+            return;
+        }
+        for index in self.stacked_panel_indices().into_iter().flatten() {
+            if self.panel_starts_open(index, window, cx) {
+                self.reveal_panel_to_user(index, window, cx);
+            }
+        }
     }
 
     fn record_starts_open_answers(&mut self, window: &Window, cx: &App) {
@@ -1286,6 +1327,7 @@ impl Dock {
             target.promote(index);
         }
         self.arrange(target, window, cx);
+        self.reveal_panel_to_user(index, window, cx);
     }
 
     pub fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -1701,15 +1743,39 @@ impl Dock {
 
     pub fn activate_panel(&mut self, panel_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.arranged_by_user = true;
-        if Some(panel_ix) == self.active_panel_index {
+        if Some(panel_ix) != self.active_panel_index {
+            // Activating the stacked panel promotes it rather than hiding it: both
+            // panels stay on screen, they just swap slots. In a closed dock this
+            // only picks the panel the dock will open on.
+            let mut target = self.arrangement();
+            target.promote(panel_ix);
+            self.arrange(target, window, cx);
+        }
+        self.reveal_panel_to_user(panel_ix, window, cx);
+    }
+
+    /// Tells the panel at `index` that the user asked for it (see
+    /// `Panel::revealed_by_user`). Callers that only open the dock, or that show
+    /// a panel because it shares the dock with the one being asked for, must not
+    /// call this. The panel still has to hold one of the two slots: a dock that
+    /// is only picking which panel it would open on has revealed nothing.
+    pub(crate) fn reveal_panel_to_user(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.active_panel_index != Some(index) && self.secondary_panel_index() != Some(index) {
             return;
         }
-        // Activating the stacked panel promotes it rather than hiding it: both
-        // panels stay on screen, they just swap slots. In a closed dock this
-        // only picks the panel the dock will open on.
-        let mut target = self.arrangement();
-        target.promote(panel_ix);
-        self.arrange(target, window, cx);
+        let Some(panel) = self
+            .panel_entries
+            .get(index)
+            .map(|entry| entry.panel.clone())
+        else {
+            return;
+        };
+        panel.revealed_by_user(window, cx);
     }
 
     pub fn visible_panel(&self) -> Option<&Arc<dyn PanelHandle>> {
@@ -2669,6 +2735,8 @@ pub mod test {
         pub activation_priority: u32,
         /// Every value `set_active` received, in order.
         pub set_active_calls: Vec<bool>,
+        /// How often the dock said the user asked for this panel by name.
+        pub reveal_calls: usize,
     }
     actions!(test_only, [ToggleTestPanel]);
 
@@ -2687,6 +2755,7 @@ pub mod test {
                 starts_open: false,
                 activation_priority,
                 set_active_calls: Vec::new(),
+                reveal_calls: 0,
             }
         }
 
@@ -2820,6 +2889,10 @@ pub mod test {
             self.set_active_calls.push(active);
         }
 
+        fn revealed_by_user(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+            self.reveal_calls += 1;
+        }
+
         fn activation_priority(&self) -> u32 {
             self.activation_priority
         }
@@ -2944,6 +3017,10 @@ pub mod test {
                 ) {
                     self.panel.active = active;
                     self.panel.set_active_calls.push(active);
+                }
+
+                fn revealed_by_user(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+                    self.panel.reveal_calls += 1;
                 }
 
                 fn activation_priority(&self) -> u32 {

@@ -693,6 +693,7 @@ mod tests {
                 agent_settings::DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW,
             attach_active_file: false,
             system_prompt_repo_map_bytes: 0,
+            idle_disconnect_minutes: agent_settings::DEFAULT_IDLE_DISCONNECT_MINUTES,
             enable_feedback: false,
             expand_edit_card: true,
             expand_terminal_card: true,

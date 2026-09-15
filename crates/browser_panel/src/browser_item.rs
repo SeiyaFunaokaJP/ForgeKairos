@@ -152,6 +152,16 @@ pub struct BrowserItem {
     _subscriptions: Vec<Subscription>,
 }
 
+/// 新しいタブが最初に出すもの。
+enum InitialPage {
+    /// ユーザーが開いたタブ。`None` なら `browser.home_url`、それも空なら
+    /// ブックマークを開いた空のタブ。
+    Open(Option<String>),
+    /// パネルが自分のために持っておくタブ。`browser.home_url` は持つだけで
+    /// 開かない (ADR-F48。[`BrowserView::defer_home_page`])。
+    DeferredHome,
+}
+
 impl BrowserItem {
     /// アクティブなペインに新しいブラウザータブを開く。`url` が `None` なら
     /// `browser.home_url` を開き、それも空ならブックマークを開いた空のタブになる。
@@ -186,14 +196,42 @@ impl BrowserItem {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::with_initial_page(workspace, fs, host, InitialPage::Open(url), window, cx)
+    }
+
+    /// ブラウザーパネルが自分のために持っておくタブ。ホームページは読み込まず、
+    /// ユーザーがブラウザーを名指しで出すまで空のまま待つ
+    /// ([`BrowserView::defer_home_page`])。
+    pub(crate) fn with_deferred_home_page(
+        workspace: WeakEntity<Workspace>,
+        fs: Arc<dyn Fs>,
+        host: BrowserHost,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::with_initial_page(workspace, fs, host, InitialPage::DeferredHome, window, cx)
+    }
+
+    fn with_initial_page(
+        workspace: WeakEntity<Workspace>,
+        fs: Arc<dyn Fs>,
+        host: BrowserHost,
+        page: InitialPage,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let view = cx.new(|cx| BrowserView::new(workspace.clone(), fs, host, window, cx));
 
-        let initial_url = url.unwrap_or_else(|| BrowserSettings::get_global(cx).home_url.clone());
-        view.update(cx, |view, cx| {
-            if initial_url.trim().is_empty() {
-                view.open_bookmarks_pane(cx);
-            } else {
-                view.set_initial_url(initial_url, window, cx);
+        view.update(cx, |view, cx| match page {
+            InitialPage::DeferredHome => view.defer_home_page(cx),
+            InitialPage::Open(url) => {
+                let initial_url =
+                    url.unwrap_or_else(|| BrowserSettings::get_global(cx).home_url.clone());
+                if initial_url.trim().is_empty() {
+                    view.open_bookmarks_pane(cx);
+                } else {
+                    view.set_initial_url(initial_url, window, cx);
+                }
             }
         });
 
@@ -675,8 +713,20 @@ impl SerializableItem for BrowserItem {
         };
         // ホストは `Item::added_to_workspace` が既定の「エディター領域のタブ」に
         // 直し、パネルに載ったならパネルが `AddItem` の直後に上書きする。
-        Task::ready(Ok(cx.new(|cx| {
-            BrowserItem::new(workspace, fs, BrowserHost::EditorTab, url, window, cx)
+        Task::ready(Ok(cx.new(|cx| match url {
+            Some(url) => {
+                BrowserItem::new(workspace, fs, BrowserHost::EditorTab, Some(url), window, cx)
+            }
+            // 空のまま保存されたタブ (パネルが自分のために持っていた 1 枚) を
+            // 復元しているので、ここでホームを開くと再起動のたびに、頼まれて
+            // いない行き先へ出ていくことになる (ADR-F48)。
+            None => BrowserItem::with_deferred_home_page(
+                workspace,
+                fs,
+                BrowserHost::EditorTab,
+                window,
+                cx,
+            ),
         })))
     }
 }

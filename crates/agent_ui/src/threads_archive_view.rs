@@ -820,13 +820,18 @@ impl ThreadsArchiveView {
         };
         let fs = <dyn Fs>::global(cx);
 
-        let task = agent_connection_store.update(cx, |store, cx| {
-            store
+        let (task, lease) = agent_connection_store.update(cx, |store, cx| {
+            let task = store
                 .request_connection(agent.clone(), agent.server(fs, ThreadStore::global(cx)), cx)
                 .read(cx)
-                .wait_for_connection()
+                .wait_for_connection();
+            // ADR-F49 (new decision): no view speaks for this connection, so
+            // the lease is what keeps the idle disconnect from ending it while
+            // the agent is being told about the deletion.
+            (task, store.lease_connection(&agent))
         });
         cx.spawn(async move |_this, cx| {
+            let _lease = lease;
             crate::thread_worktree_archive::cleanup_thread_archived_worktrees(thread_id, cx).await;
 
             let state = task.await?;

@@ -5688,6 +5688,8 @@ impl BackgroundScanner {
             ignore_stack.repo_root = Some(job.abs_path.clone());
         }
 
+        let mut reported_unfollowable_link = false;
+
         for child_abs_path in child_paths {
             let child_abs_path: Arc<Path> = child_abs_path.into();
             let child_name = child_abs_path.file_name().unwrap();
@@ -5746,7 +5748,19 @@ impl BackgroundScanner {
                 Ok(Some(metadata)) => metadata,
                 Ok(None) => continue,
                 Err(err) => {
-                    log::error!("error processing {:?}: {err:#}", child_abs_path.display());
+                    if is_link_only_wsl_can_follow(&child_abs_path, &err) {
+                        if !reported_unfollowable_link {
+                            reported_unfollowable_link = true;
+                            log::warn!(
+                                "skipping entries of {} that cannot be opened from Windows: a \
+                                 link made inside WSL can only be followed by the distribution \
+                                 itself, so the worktree leaves such entries out",
+                                job.abs_path.display()
+                            );
+                        }
+                    } else {
+                        log::error!("error processing {:?}: {err:#}", child_abs_path.display());
+                    }
                     continue;
                 }
             };
@@ -6100,7 +6114,16 @@ impl BackgroundScanner {
                     );
                 }
                 Err(err) => {
-                    log::error!("error reading file {abs_path:?} on event: {err:#}");
+                    if is_link_only_wsl_can_follow(&abs_path, err) {
+                        log::warn!(
+                            "leaving {} out of the worktree: it cannot be opened from Windows, \
+                             because a link made inside WSL can only be followed by the \
+                             distribution itself",
+                            abs_path.display()
+                        );
+                    } else {
+                        log::error!("error reading file {abs_path:?} on event: {err:#}");
+                    }
                     state.unwatch_path(
                         self.watcher.as_ref(),
                         path,
@@ -6798,6 +6821,29 @@ fn build_diff(
 
 fn is_beyond_scan_depth(file_scan_depth: Option<u32>, path: &RelPath) -> bool {
     file_scan_depth.is_some_and(|depth| path.components().count() >= depth as usize)
+}
+
+/// Whether an entry could not be read because it is a link only WSL itself can follow.
+///
+/// Windows cannot resolve a symlink a distribution made on its own filesystem: the link is
+/// listed and `symlink_metadata` reads it, but everything that follows it — including the open
+/// that gives the entry its file id, which `Fs::metadata` needs — answers
+/// `ERROR_PATH_NOT_FOUND`. Without this, a worktree on ext4 logs an error for every such link
+/// on every scan, although there is nothing for the user to fix.
+#[cfg(target_os = "windows")]
+fn is_link_only_wsl_can_follow(path: &Path, error: &anyhow::Error) -> bool {
+    const ERROR_PATH_NOT_FOUND: i32 = 3;
+    util::path_mapping::is_wsl_share_path(path)
+        && error.chain().any(|error| {
+            error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.raw_os_error() == Some(ERROR_PATH_NOT_FOUND))
+        })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_link_only_wsl_can_follow(_path: &Path, _error: &anyhow::Error) -> bool {
+    false
 }
 
 fn swap_to_front(child_paths: &mut Vec<PathBuf>, file: &str) {
@@ -7730,6 +7776,38 @@ mod tests {
         stream_utf8_into_rope(&mut reader, Vec::new(), false, Path::new("test"))
             .unwrap()
             .map(|(rope, line_ending)| (rope.to_string(), line_ending))
+    }
+
+    /// Only an entry of a WSL share that cannot be opened at all is a link WSL made; an entry
+    /// that failed for another reason, or one on a drive, is still a real error.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn tells_links_only_wsl_can_follow_from_real_scan_errors() {
+        const ERROR_PATH_NOT_FOUND: i32 = 3;
+        const ERROR_ACCESS_DENIED: i32 = 5;
+        let unopenable =
+            || anyhow::Error::new(std::io::Error::from_raw_os_error(ERROR_PATH_NOT_FOUND));
+        let share = Path::new(r"\\wsl.localhost\Ubuntu\root\project\node_modules\.bin\tsc");
+        let verbatim_share = Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\root\project\link");
+        let drive = Path::new(r"I:\zed-jp-llm\crates\worktree\link");
+
+        assert!(is_link_only_wsl_can_follow(share, &unopenable()));
+        assert!(is_link_only_wsl_can_follow(verbatim_share, &unopenable()));
+        // The error is wrapped by the time it leaves `RealFs`, so the whole chain is read.
+        assert!(is_link_only_wsl_can_follow(
+            share,
+            &unopenable().context("reading the entry")
+        ));
+
+        assert!(!is_link_only_wsl_can_follow(drive, &unopenable()));
+        assert!(!is_link_only_wsl_can_follow(
+            share,
+            &anyhow::Error::new(std::io::Error::from_raw_os_error(ERROR_ACCESS_DENIED))
+        ));
+        assert!(!is_link_only_wsl_can_follow(
+            share,
+            &anyhow::anyhow!("something else went wrong")
+        ));
     }
 
     #[test]

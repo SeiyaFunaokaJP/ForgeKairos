@@ -313,9 +313,11 @@ fn require_absolute(path: &Path) -> io::Result<()> {
 /// `Path::is_absolute` isn't used: it would reject a perfectly valid
 /// Linux-absolute grant like `/home/me` on Windows.
 ///
-/// The distribution name keeps the case it was written in — WSL matches it
-/// case-insensitively, and the callers that compare two distro names do the
-/// same — so a grant still displays the name the user knows.
+/// The distribution name is part of that normalization: WSL matches it
+/// case-insensitively, so two casings of one name are one place and are folded
+/// into one spelling. The name the user wrote is kept verbatim beside the
+/// canonical, as [`super::HostFilesystemLocation`]'s untrusted raw path, and
+/// that is the one the approval UI and the sandbox tooltip show.
 #[cfg(target_os = "windows")]
 fn require_windows_grant_shape(path: &Path) -> io::Result<PathBuf> {
     let text = path.to_string_lossy();
@@ -570,7 +572,7 @@ mod windows_tests {
     /// containment checks over grants compare these as plain paths.
     #[test]
     fn a_wsl_share_grant_is_accepted_in_one_spelling() {
-        let expected = Path::new(r"\\wsl.localhost\Ubuntu\root\p");
+        let expected = Path::new(r"\\wsl.localhost\ubuntu\root\p");
         for spelling in [
             r"\\wsl.localhost\Ubuntu\root\p",
             r"\\wsl$\Ubuntu\root\p",
@@ -585,15 +587,22 @@ mod windows_tests {
                 .unwrap_or_else(|_| panic!("{spelling} should be accepted"));
             assert_eq!(canonical.path(), expected, "from {spelling}");
         }
-        // The distribution name keeps its case, so the user still sees the name
-        // they know; WSL itself matches it case-insensitively.
-        let canonical =
-            CanonicalPathBuf::from_canonical(PathBuf::from(r"\\wsl.localhost\UBUNTU\root\p"))
+        // WSL matches the distribution name case-insensitively, so a differently
+        // cased name is the same folder and has to normalize to the same stored
+        // path — otherwise the same grant, named twice, is two entries.
+        for spelling in [
+            r"\\wsl.localhost\UBUNTU\root\p",
+            r"\\wsl.localhost\ubuntu\root\p",
+            r"\\wsl$\uBuNtU\root\p",
+        ] {
+            let canonical = CanonicalPathBuf::from_canonical(PathBuf::from(spelling))
                 .expect("a differently-cased distro name is still a grant");
-        assert_eq!(
-            canonical.path(),
-            Path::new(r"\\wsl.localhost\UBUNTU\root\p")
-        );
+            assert_eq!(
+                canonical.path(),
+                Path::new(r"\\wsl.localhost\ubuntu\root\p"),
+                "from {spelling}"
+            );
+        }
     }
 
     #[test]

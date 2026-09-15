@@ -82,7 +82,7 @@ pub use util::{
 #[cfg(target_os = "windows")]
 pub use windows_wsl::{
     IDE_BRIDGE_READY_TIMEOUT, IdeBridge, IdeBridgeSessionRunning, ResolvedGrant, WslArchiveKind,
-    ensure_wsl_agent_config_dir, ide_bridge_invocation, ide_rendezvous_path,
+    WslSessionDistro, ensure_wsl_agent_config_dir, ide_bridge_invocation, ide_rendezvous_path,
     install_npm_package_in_wsl, is_forwardable_env_var, list_wsl_sandbox_processes,
     read_wsl_npm_package_json, registered_wsl_distro_name, resolve_canonical_for_grant,
     stage_agent_binary, stage_wsl_runtime_archive, stage_wsl_runtime_file, staged_agent_binary,
@@ -1330,6 +1330,26 @@ pub struct IdeForward {
     pub rendezvous_path: String,
 }
 
+/// ADR-F49: where an [`IdeForward`]'s port is picked. The sandbox's network
+/// namespace is its own and holds nothing but this channel and the egress
+/// proxy, so any port in the range serves.
+#[cfg(target_os = "windows")]
+pub const INNER_IDE_PORTS: std::ops::Range<u16> = 20000..60000;
+
+/// A port in [`INNER_IDE_PORTS`], for an [`IdeForward`]. Random, so that a
+/// session does not keep landing on the port that a crashed session's
+/// leftovers — its lock file, a rendezvous the sweep has not reached yet —
+/// still name.
+///
+/// The one rule both launchers follow: the sandboxed Claude Code CLI (第 1 段,
+/// ADR-F49 決定 3) and an external ACP agent (決定 24).
+#[cfg(target_os = "windows")]
+pub fn new_inner_ide_port() -> u16 {
+    use rand::Rng as _;
+
+    rand::rng().random_range(INNER_IDE_PORTS)
+}
+
 /// Errors returned by the sandbox abstraction.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SandboxError {
@@ -2090,10 +2110,10 @@ pub const REMOTE_SANDBOX_HELPER_FLAG: &str = "--remote-sandbox-helper";
 pub const SANDBOX_SESSION_FLAG: &str = "--session";
 
 /// Outbound-network intent for a remote sandboxed command, as the client
-/// requests it. On an SSH host the remote proxy enforces exactly this: the
-/// editor-wide allowlist is not shipped there (a documented boundary). The
-/// local WSL backend does ship it, as a separate ceiling around this intent
-/// (see `build_wsl_sandbox_helper_argv`).
+/// requests it. The editor-wide allowlist travels beside it as a separate
+/// ceiling around this intent, on an SSH host (see
+/// [`build_remote_sandbox_helper_argv`]) as in the local WSL backend (see
+/// `build_wsl_sandbox_helper_argv`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RemoteSandboxNetwork {
     /// No outbound access at all: the holder's network namespace is left empty
@@ -2102,9 +2122,9 @@ pub enum RemoteSandboxNetwork {
     /// Any host, still only through the enforcing proxy (so the `--outbound-addr`
     /// isolation and the `AF_UNIX` seccomp guard still apply), and only at a
     /// public address: loopback, private, link-local and shared address space —
-    /// the host's own services and its LAN — stay out of reach. Only an
-    /// editor-wide allowlist, which just the local WSL backend sends, decides
-    /// about those instead.
+    /// the host's own services and its LAN — stay out of reach. An editor-wide
+    /// allowlist, where the client publishes one, decides about those instead —
+    /// and caps this grant to the hosts it names (ADR-F17).
     AnyHost,
     /// Only these host patterns (exact host or leading-`*.` wildcard). A name
     /// that resolves into local address space is refused as well.
@@ -2120,6 +2140,9 @@ pub enum RemoteSandboxNetwork {
 /// each lies inside an agent installation or Zed's Node.js in the remote
 /// account's Zed data directory (see [`SandboxFsPolicy::Restricted`]).
 ///
+/// ADR-F17: `network_ceiling` is the editor-wide allowlist the helper's proxy
+/// nests `network` inside — see [`helper_network_ceiling`].
+///
 /// Pure and platform-independent (the client is often Windows), so it is unit
 /// tested on every platform. Its decode half lives in the Linux-only
 /// `linux_remote_helper` module and is round-trip tested there.
@@ -2128,6 +2151,7 @@ pub fn build_remote_sandbox_helper_argv(
     protected_paths: &[String],
     readable_paths: &[String],
     network: &RemoteSandboxNetwork,
+    network_ceiling: Option<&[String]>,
     allow_fs_write: bool,
     chdir: Option<&str>,
 ) -> Vec<String> {
@@ -2139,8 +2163,37 @@ pub fn build_remote_sandbox_helper_argv(
         allow_fs_write,
         chdir,
     );
+    if let Some(entries) = helper_network_ceiling(network, network_ceiling) {
+        push_network_ceiling_argv(&mut argv, entries);
+    }
     argv.push("--".to_string());
     argv
+}
+
+/// ADR-F17: the editor-wide allowlist the remote helper's proxy nests a
+/// command's own network inside — the remote form of the ceiling the
+/// in-process proxy consults on this machine, and the same one the local WSL
+/// backend sends.
+///
+/// `entries` is `Some` exactly when the editor publishes an allowlist, so an
+/// embedder or a test that has none leaves the command's own allowlist as the
+/// whole policy, as it does locally; `Some(&[])` is an allowlist that permits
+/// nothing but loopback, which is not the same thing and must not be dropped.
+/// A blocked command gets no proxy at all and so needs no ceiling.
+fn helper_network_ceiling<'a>(
+    network: &RemoteSandboxNetwork,
+    entries: Option<&'a [String]>,
+) -> Option<&'a [String]> {
+    entries.filter(|_| !matches!(network, RemoteSandboxNetwork::Blocked))
+}
+
+/// `--network-ceiling` marks the ceiling as present even with no entries, so
+/// that a published-but-empty allowlist cannot be read as none.
+fn push_network_ceiling_argv(argv: &mut Vec<String>, entries: &[String]) {
+    argv.push("--network-ceiling".to_string());
+    for entry in entries {
+        argv.extend(["--ceiling-host".to_string(), entry.clone()]);
+    }
 }
 
 /// ADR-F46: what the local Windows backend hands the WSL helper on top of the
@@ -2213,10 +2266,7 @@ pub(crate) fn build_wsl_sandbox_helper_argv(
     );
     argv.push(WSL_HELPER_MODE_FLAG.to_string());
     if let Some(entries) = options.network_ceiling {
-        argv.push("--network-ceiling".to_string());
-        for entry in entries {
-            argv.extend(["--ceiling-host".to_string(), entry.clone()]);
-        }
+        push_network_ceiling_argv(&mut argv, entries);
     }
     if let Some(digest) = options.slirp_sha256 {
         argv.extend(["--slirp-sha256".to_string(), digest.to_string()]);
@@ -2450,6 +2500,7 @@ mod remote_sandbox_helper_argv_tests {
             &["/home/u/proj/.git".to_string()],
             &[],
             &RemoteSandboxNetwork::Blocked,
+            None,
             false,
             Some("/home/u/proj"),
         );
@@ -2477,6 +2528,7 @@ mod remote_sandbox_helper_argv_tests {
             &[],
             &[],
             &RemoteSandboxNetwork::Hosts(vec!["example.com".into(), "*.rust-lang.org".into()]),
+            None,
             false,
             None,
         );
@@ -2502,6 +2554,7 @@ mod remote_sandbox_helper_argv_tests {
             &[],
             &[],
             &RemoteSandboxNetwork::AnyHost,
+            None,
             true,
             None,
         );
@@ -2516,6 +2569,80 @@ mod remote_sandbox_helper_argv_tests {
                 "/w",
                 "--",
             ]
+        );
+    }
+
+    /// ADR-F17: the editor-wide allowlist reaches a remote host's helper as
+    /// the ceiling around the command's own hosts, exactly as it reaches the
+    /// WSL helper. A caller with no allowlist to send (an embedder, a test)
+    /// leaves the argv as it was, and a blocked command — which gets no proxy
+    /// — needs no ceiling.
+    #[test]
+    fn the_editor_allowlist_travels_as_the_ceiling() {
+        let argv = |network: &RemoteSandboxNetwork, ceiling: Option<&[String]>| {
+            build_remote_sandbox_helper_argv(&[], &[], &[], network, ceiling, false, None)
+        };
+        let entries = ["api.github.com".to_string(), "*.corp.example".to_string()];
+        let hosts = RemoteSandboxNetwork::Hosts(vec!["example.com".to_string()]);
+
+        assert_eq!(
+            argv(&hosts, Some(&entries)),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "hosts",
+                "--allow-host",
+                "example.com",
+                "--network-ceiling",
+                "--ceiling-host",
+                "api.github.com",
+                "--ceiling-host",
+                "*.corp.example",
+                "--",
+            ],
+            "a host the editor does not allow still reaches the helper, and the ceiling \
+             beside it is what refuses the connection"
+        );
+        assert_eq!(
+            argv(&RemoteSandboxNetwork::AnyHost, Some(&entries)),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "any",
+                "--network-ceiling",
+                "--ceiling-host",
+                "api.github.com",
+                "--ceiling-host",
+                "*.corp.example",
+                "--",
+            ],
+            "an any-host grant is capped by the editor's allowlist rather than uncapped"
+        );
+        assert_eq!(
+            argv(&RemoteSandboxNetwork::AnyHost, Some(&[])),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "any",
+                "--network-ceiling",
+                "--",
+            ],
+            "an allowlist that permits nothing is a ceiling, not the absence of one"
+        );
+        assert_eq!(
+            argv(&hosts, None),
+            [
+                "--remote-sandbox-helper",
+                "--net",
+                "hosts",
+                "--allow-host",
+                "example.com",
+                "--",
+            ]
+        );
+        assert_eq!(
+            argv(&RemoteSandboxNetwork::Blocked, Some(&entries)),
+            ["--remote-sandbox-helper", "--net", "blocked", "--"]
         );
     }
 }
@@ -2701,21 +2828,18 @@ fn wsl_network(network: &NetSetup) -> RemoteSandboxNetwork {
 }
 
 /// The editor-wide allowlist the WSL helper's proxy nests `network` inside —
-/// the WSL form of the ceiling the in-process proxy consults elsewhere, and
-/// present exactly when one is published, as there. A caller that never
-/// supplied the entries gets an empty allowlist (loopback only) rather than
-/// none, so a published ceiling cannot be skipped by omission. A blocked
-/// command gets no proxy at all and so needs none.
+/// the WSL form of [`helper_network_ceiling`], keyed on whether this process
+/// published a ceiling rather than on whether the caller supplied entries. A
+/// caller that never supplied them gets an empty allowlist (loopback only)
+/// rather than none, so a published ceiling cannot be skipped by omission.
 #[cfg(target_os = "windows")]
 fn wsl_network_ceiling(
     network: &RemoteSandboxNetwork,
     ceiling_published: bool,
     entries: Option<&[String]>,
 ) -> Option<Vec<String>> {
-    if !ceiling_published || matches!(network, RemoteSandboxNetwork::Blocked) {
-        return None;
-    }
-    Some(entries.map(<[String]>::to_vec).unwrap_or_default())
+    let published = ceiling_published.then(|| entries.unwrap_or_default());
+    helper_network_ceiling(network, published).map(<[String]>::to_vec)
 }
 
 /// The command's environment as `(name, value)` pairs in name order, for the
@@ -3071,6 +3195,36 @@ mod windows_tests {
         assert!(
             sandbox.interactive_session.is_none(),
             "an ACP agent's channel does not make it a terminal session"
+        );
+    }
+
+    /// ADR-F49: both launchers pick the port of their IDE channel here, so
+    /// that the range and the way it is drawn are one rule rather than two
+    /// that can drift apart.
+    #[test]
+    fn the_inner_ide_port_is_drawn_evenly_from_one_range() {
+        assert_eq!(INNER_IDE_PORTS, 20000..60000);
+        const DRAWS: usize = 20_000;
+        let middle = INNER_IDE_PORTS.start + (INNER_IDE_PORTS.end - INNER_IDE_PORTS.start) / 2;
+        let mut upper_half = 0;
+        for _ in 0..DRAWS {
+            let port = new_inner_ide_port();
+            assert!(
+                INNER_IDE_PORTS.contains(&port),
+                "{port} is outside {INNER_IDE_PORTS:?}"
+            );
+            if port >= middle {
+                upper_half += 1;
+            }
+        }
+        // Evenly: folding a wider number into the range with a remainder — as
+        // one of the two callers this replaces did — would leave the upper
+        // half of the range 39% likely instead of 50%, tens of standard
+        // deviations away from this window.
+        let share = upper_half as f64 / DRAWS as f64;
+        assert!(
+            (0.45..=0.55).contains(&share),
+            "half the ports should be in the upper half of the range, not {share}"
         );
     }
 

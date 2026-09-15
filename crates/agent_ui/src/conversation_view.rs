@@ -89,6 +89,7 @@ use crate::entry_view_state::{EntryViewEvent, ViewEvent};
 use crate::message_editor::{InputAttempt, MessageEditor, MessageEditorEvent};
 use crate::profile_selector::{ProfileProvider, ProfileSelector};
 
+use crate::thread_item::ThreadItem;
 use crate::thread_metadata_store::{ThreadId, ThreadMetadataStore};
 use crate::ui::{AgentNotification, AgentNotificationEvent};
 use crate::{
@@ -116,10 +117,6 @@ const OUTSIDE_SANDBOX_EXPLANATION: &str = "サンドボックスの外で起動�
 const AGENT_HOSTS_MESSAGE: &str = "エージェントの通信に許可リストへの追加が必要です";
 const ADD_AGENT_HOSTS_LABEL: &str = "許可リストに追加して起動";
 const DECLINE_AGENT_HOSTS_LABEL: &str = "追加せず中止";
-/// How long a start waits, at most, for the allowlist's watcher to take in
-/// the hosts just added.
-const ALLOWLIST_RELOAD_POLLS: usize = 30;
-const ALLOWLIST_RELOAD_INTERVAL: Duration = Duration::from_millis(100);
 
 /// ADR-F49: the consent's detail, as for the sandboxed Claude Code CLI: the
 /// hosts go into the IDE-wide allowlist, where the built-in agent's commands
@@ -666,6 +663,10 @@ pub struct ConversationView {
     /// Shared with the child [`ThreadView`] when one is constructed.
     pub(crate) code_span_resolver: AgentCodeSpanResolver,
     request_elicitation_form_states: HashMap<ElicitationEntryId, ElicitationFormState>,
+    /// Guards [`Self::ask_to_allow_agent_hosts`]'s write-and-wait against a
+    /// second click while the first is still in flight (F1's
+    /// `confirm_install`/`consent.waiting` shape).
+    agent_hosts_consent_pending: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -970,6 +971,7 @@ impl ConversationView {
             draft_prompt_persist_task: None,
             code_span_resolver,
             request_elicitation_form_states: HashMap::default(),
+            agent_hosts_consent_pending: false,
             _subscriptions: subscriptions,
             focus_handle: cx.focus_handle(),
         }
@@ -1140,7 +1142,12 @@ impl ConversationView {
         }
         let session_work_dirs = work_dirs.unwrap_or_else(|| project.read(cx).default_path_list(cx));
 
+        let view = cx.weak_entity();
         let connection_entry = connection_store.update(cx, |store, cx| {
+            // ADR-F49 (new decision): the store keeps this connection for as
+            // long as this view uses it, and drops it once nothing has for a
+            // while.
+            store.hold_connection(view, &connection_key, outside_sandbox, cx);
             outside_sandbox
                 .and_then(|id| store.outside_sandbox_connection(id))
                 .unwrap_or_else(|| store.request_connection(connection_key, agent.clone(), cx))
@@ -1617,6 +1624,78 @@ impl ConversationView {
             }
             self.reset(window, cx);
         }
+    }
+
+    /// ADR-F49 (new decision): whether this view is using its agent's
+    /// connection.
+    ///
+    /// Being alive is not enough. A thread whose tab was closed is parked in
+    /// the panel with its connection still in hand — which is exactly what the
+    /// idle disconnect is for — so what counts is that the thread is open
+    /// somewhere (any window, any pane, the panel's own tabs included), or
+    /// that this view is still connecting or signing in.
+    pub(crate) fn is_using_connection(&self, cx: &App) -> bool {
+        if ThreadItem::is_open_in_a_tab(self.thread_id, cx) {
+            return true;
+        }
+        if self.auth_task.is_some() {
+            return true;
+        }
+        match &self.server_state {
+            ServerState::Loading { .. } => true,
+            ServerState::Connected(connected) => !connected.auth_state.is_ok(),
+            ServerState::LoadError { .. } => false,
+        }
+    }
+
+    /// ADR-F49 (new decision): lets go of a connection nothing has used, so
+    /// that the store dropping it really ends the agent. Answers whether it
+    /// could.
+    ///
+    /// Letting go means leaving the panel's parking slot: the thread is read
+    /// back from the agent when it is opened again, the way the panel's own
+    /// pruning ([`AgentPanel::cleanup_retained_threads`]) already relies on.
+    /// A thread that cannot be read back, or one whose agent is still
+    /// answering, is kept instead — losing a conversation is never worth an
+    /// idle process.
+    pub(crate) fn release_idle_connection(&mut self, cx: &mut Context<Self>) -> bool {
+        let view = cx.entity_id();
+        if !self.can_release_idle_connection(view, cx) {
+            return false;
+        }
+        let thread_id = self.thread_id;
+        let Some(panel) = self.parking_panel(cx) else {
+            return false;
+        };
+        panel.update(cx, |panel, cx| {
+            panel.release_parked_thread(thread_id, view, cx)
+        })
+    }
+
+    /// Whether [`Self::release_idle_connection`] would let go, asked without
+    /// letting go: a connection is only dropped once every view on it can, so
+    /// that a view is never parked out of the panel for a connection that then
+    /// stays anyway. `view` is this view's own entity id, which the store that
+    /// asks already has.
+    pub(crate) fn can_release_idle_connection(&self, view: gpui::EntityId, cx: &App) -> bool {
+        if self.is_using_connection(cx) {
+            return false;
+        }
+        let Some(thread_view) = self.root_thread_view() else {
+            // A draft that never started a session: there is nothing to read
+            // back, and its unsent prompt would go with the view.
+            return false;
+        };
+        let thread = thread_view.read(cx).thread.read(cx);
+        if thread.status() != ThreadStatus::Idle || !thread.connection().supports_load_session() {
+            return false;
+        }
+        self.parking_panel(cx)
+            .is_some_and(|panel| panel.read(cx).is_parking_thread(self.thread_id, view))
+    }
+
+    fn parking_panel(&self, cx: &App) -> Option<Entity<AgentPanel>> {
+        self.workspace.upgrade()?.read(cx).panel::<AgentPanel>(cx)
     }
 
     pub fn agent_key(&self) -> &Agent {
@@ -2901,6 +2980,11 @@ impl ConversationView {
                 .into(),
                 Some(
                     Button::new("allow-agent-sandbox-hosts", ADD_AGENT_HOSTS_LABEL)
+                        // A confirm already in flight owns this consent
+                        // (`ask_to_allow_agent_hosts`'s `agent_hosts_consent_pending`
+                        // guard); disabling the button here avoids opening a
+                        // second prompt for the same hosts from a stray click.
+                        .disabled(self.agent_hosts_consent_pending)
                         .on_click(cx.listener({
                             let hosts = hosts.clone();
                             move |this, _, window, cx| {
@@ -3519,12 +3603,24 @@ impl ConversationView {
     /// ADR-F49 decision 13: the consent the sandboxed Claude Code CLI asks
     /// for, then the hosts go into the IDE-wide allowlist and the agent starts
     /// again once the allowlist has them.
+    ///
+    /// The wait for the allowlist's watcher to take in the write is the
+    /// shared one (`agent_registry_ui::add_consented_hosts_and_await_pickup`,
+    /// F1's `agent_registry_ui::confirm_install` shape) rather than a poll of
+    /// our own: it reacts to the policy's own change instead of guessing how
+    /// long the watcher takes, and it reports a pickup that never lands
+    /// instead of retrying the connection anyway. `agent_hosts_consent_pending`
+    /// guards a confirm already in flight the same way `confirm_install`'s
+    /// `consent.waiting` does — a second one would write and wait twice.
     fn ask_to_allow_agent_hosts(
         &mut self,
         hosts: Vec<SharedString>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.agent_hosts_consent_pending {
+            return;
+        }
         let missing = crate::agent_registry_ui::missing_hosts(&hosts, cx);
         let detail = agent_hosts_detail(&self.agent.agent_id(), &hosts, &missing);
         let answer = window.prompt(
@@ -3537,39 +3633,43 @@ impl ConversationView {
             ],
             cx,
         );
+        self.agent_hosts_consent_pending = true;
+        cx.notify();
         cx.spawn_in(window, async move |this, cx| {
             if !answer.await.is_ok_and(|index| index == 0) {
-                return;
-            }
-            let added = missing.iter().map(ToString::to_string).collect::<Vec<_>>();
-            let written =
-                match cx.update(|_, cx| crate::agent_registry_ui::add_consented_hosts(added, cx)) {
-                    Ok(task) => task.await,
-                    Err(error) => Err(error),
-                };
-            if let Err(error) = written {
-                this.update_in(cx, |this, window, cx| {
-                    let message = crate::agent_registry_ui::allowlist_write_error(&error);
-                    this.handle_load_error(LoadError::Other(message), window, cx);
+                this.update(cx, |this, cx| {
+                    this.agent_hosts_consent_pending = false;
+                    cx.notify();
                 })
                 .log_err();
                 return;
             }
-            // The allowlist's watcher takes the file in a little later, and
-            // the agent is refused until it has.
-            for _ in 0..ALLOWLIST_RELOAD_POLLS {
-                let still_missing = cx
-                    .update(|_, cx| crate::agent_registry_ui::missing_hosts(&hosts, cx))
-                    .unwrap_or_default();
-                if still_missing.is_empty() {
-                    break;
+            let added = missing.iter().map(ToString::to_string).collect::<Vec<_>>();
+            let write_and_wait = match cx.update(|_, cx| {
+                crate::agent_registry_ui::add_consented_hosts_and_await_pickup(added, cx)
+            }) {
+                Ok(write_and_wait) => write_and_wait,
+                Err(error) => {
+                    log::warn!("agent_ui: the consented hosts were not written: {error:#}");
+                    this.update(cx, |this, cx| {
+                        this.agent_hosts_consent_pending = false;
+                        cx.notify();
+                    })
+                    .log_err();
+                    return;
                 }
-                cx.background_executor()
-                    .timer(ALLOWLIST_RELOAD_INTERVAL)
-                    .await;
-            }
-            this.update_in(cx, |this, window, cx| this.reset(window, cx))
-                .log_err();
+            };
+            let result = write_and_wait.await;
+            this.update_in(cx, |this, window, cx| {
+                this.agent_hosts_consent_pending = false;
+                match result {
+                    Ok(()) => this.reset(window, cx),
+                    Err(failure) => {
+                        this.handle_load_error(LoadError::Other(failure.message()), window, cx);
+                    }
+                }
+            })
+            .log_err();
         })
         .detach();
     }
@@ -4103,6 +4203,7 @@ pub(crate) mod tests {
     use feature_flags::{AcpBetaFeatureFlag, FeatureFlag as _, FeatureFlagAppExt as _};
     use fs::FakeFs;
     use gpui::{ClipboardItem, EventEmitter, TestAppContext, VisualTestContext, point, size};
+    use http_client::{EgressPolicy, EgressPolicyHandle, RequestHost};
     use parking_lot::Mutex;
     use project::Project;
     use serde_json::json;
@@ -4111,6 +4212,7 @@ pub(crate) mod tests {
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use workspace::{Item, MultiWorkspace};
 
     use crate::agent_panel;
@@ -6512,6 +6614,212 @@ pub(crate) mod tests {
         assert!(detail.contains("IDE 全体の許可リスト"), "{detail}");
         assert!(detail.contains("api.openai.com (登録済み)"), "{detail}");
         assert!(detail.contains("chatgpt.com (未登録)"), "{detail}");
+    }
+
+    /// Agent server whose `connect()` is refused with `SandboxHostsNotAllowed`
+    /// until `host` is actually in the running egress policy — stands in for
+    /// the sandboxed Claude Code CLI's own host check without depending on a
+    /// real WSL sandbox.
+    struct HostsGatedAgentServer {
+        connection: StubAgentConnection,
+        policy: EgressPolicyHandle,
+        host: &'static str,
+        connects: Arc<AtomicUsize>,
+    }
+
+    impl AgentServer for HostsGatedAgentServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            "HostsGated".into()
+        }
+
+        fn connect(
+            &self,
+            _delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            _cx: &mut App,
+        ) -> Task<gpui::Result<Rc<dyn AgentConnection>>> {
+            let allowed =
+                RequestHost::parse(self.host).is_some_and(|host| self.policy.allows(&host));
+            if allowed {
+                self.connects.fetch_add(1, Ordering::SeqCst);
+                Task::ready(Ok(Rc::new(self.connection.clone())))
+            } else {
+                Task::ready(Err(anyhow!(LoadError::SandboxHostsNotAllowed(vec![
+                    self.host.into()
+                ]))))
+            }
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    /// A conversation refused because `registry.npmjs.org` is not in the
+    /// running egress policy yet, with that policy (deny-all, published as the
+    /// IDE's) and a count of the agent's successful starts.
+    async fn hosts_gated_conversation_view(
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<ConversationView>,
+        &mut VisualTestContext,
+        EgressPolicyHandle,
+        Arc<AtomicUsize>,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let policy = EgressPolicyHandle::new(EgressPolicy::deny_all());
+        cx.update(|cx| {
+            <dyn Fs>::set_global(fs.clone(), cx);
+            cx.set_global(egress_policy::EgressAllowlistGlobal(policy.clone()));
+        });
+        // The consent writes into this file, which has no directory yet in a
+        // fake file system.
+        let allowlist = paths::network_allowlist_file().clone();
+        if let Some(directory) = allowlist.parent() {
+            fs.create_dir(directory)
+                .await
+                .expect("the fake file system should take the allowlist's directory");
+        }
+
+        let connects = Arc::new(AtomicUsize::new(0));
+        let server = HostsGatedAgentServer {
+            connection: StubAgentConnection::new(),
+            policy: policy.clone(),
+            host: "registry.npmjs.org",
+            connects: connects.clone(),
+        };
+        let (conversation_view, cx) = setup_conversation_view(server, cx).await;
+        cx.run_until_parked();
+        (conversation_view, cx, policy, connects)
+    }
+
+    /// ADR-F49 decision 13 (F1): the consent waits for the running egress
+    /// policy to actually take in the hosts it just wrote
+    /// (`agent_registry_ui`'s shared `await_allowlist_pickup`) before starting
+    /// the agent again, rather than the former fixed 3-second guess
+    /// (`ALLOWLIST_RELOAD_POLLS` / `ALLOWLIST_RELOAD_INTERVAL`) at how long the
+    /// allowlist's file watcher takes.
+    #[gpui::test]
+    async fn agent_hosts_consent_connects_only_once_the_policy_actually_allows_the_hosts(
+        cx: &mut TestAppContext,
+    ) {
+        let (conversation_view, cx, policy, connects) = hosts_gated_conversation_view(cx).await;
+        let refused = |cx: &mut VisualTestContext| {
+            conversation_view.read_with(cx, |view, _| {
+                matches!(
+                    &view.server_state,
+                    ServerState::LoadError {
+                        error: LoadError::SandboxHostsNotAllowed(hosts)
+                    } if hosts.iter().any(|host| host.as_ref() == "registry.npmjs.org")
+                )
+            })
+        };
+        assert!(refused(cx), "the host is not in the allowlist yet");
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.ask_to_allow_agent_hosts(vec!["registry.npmjs.org".into()], window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer(ADD_AGENT_HOSTS_LABEL);
+        cx.run_until_parked();
+        assert_eq!(
+            connects.load(Ordering::SeqCst),
+            0,
+            "the policy has not actually taken the write in yet"
+        );
+
+        // The watcher's update lands some time after the write - later than
+        // the former fixed 3-second poll, but inside the shared wait's
+        // 10-second one, so a wait tied to the real signal must still be
+        // running here (and one on the old fixed poll would not be).
+        cx.executor().advance_clock(Duration::from_secs(5));
+        cx.run_until_parked();
+        assert_eq!(
+            connects.load(Ordering::SeqCst),
+            0,
+            "still waiting: the policy itself has not changed yet"
+        );
+
+        let (allowed, errors) = EgressPolicy::from_host_strings(&["registry.npmjs.org"]);
+        assert!(errors.is_empty(), "{errors:?}");
+        policy.set(allowed);
+        cx.run_until_parked();
+
+        assert_eq!(
+            connects.load(Ordering::SeqCst),
+            1,
+            "the wait must wake on the policy's own change and connect"
+        );
+        conversation_view.read_with(cx, |view, _| {
+            assert!(
+                matches!(view.server_state, ServerState::Connected(_)),
+                "expected the connection to succeed once the policy allows the host"
+            );
+        });
+    }
+
+    /// The guard that keeps a second click from writing and waiting twice must
+    /// be given back on every way out, or the card's button stays disabled for
+    /// good and the consent can never be asked for again.
+    #[gpui::test]
+    async fn agent_hosts_consent_is_askable_again_after_a_decline_or_a_watcher_that_never_picks_up(
+        cx: &mut TestAppContext,
+    ) {
+        let (conversation_view, cx, _policy, connects) = hosts_gated_conversation_view(cx).await;
+        let pending = |cx: &mut VisualTestContext| {
+            conversation_view.read_with(cx, |view, _| view.agent_hosts_consent_pending)
+        };
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.ask_to_allow_agent_hosts(vec!["registry.npmjs.org".into()], window, cx)
+        });
+        cx.run_until_parked();
+        assert!(pending(cx), "the button is disabled while the prompt is up");
+        cx.simulate_prompt_answer(DECLINE_AGENT_HOSTS_LABEL);
+        cx.run_until_parked();
+        assert!(
+            !pending(cx),
+            "a declined consent must leave the button clickable"
+        );
+        assert_eq!(connects.load(Ordering::SeqCst), 0, "nothing was allowed");
+
+        // Asking again works, and this time the policy never takes the write
+        // in: the shared wait gives up after its timeout and says so, rather
+        // than starting the agent anyway or waiting for good.
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.ask_to_allow_agent_hosts(vec!["registry.npmjs.org".into()], window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer(ADD_AGENT_HOSTS_LABEL);
+        cx.run_until_parked();
+        assert!(pending(cx), "the write is still on its way to the policy");
+        cx.executor().advance_clock(
+            crate::agent_registry_ui::ALLOWLIST_PICKUP_TIMEOUT + Duration::from_secs(1),
+        );
+        cx.run_until_parked();
+        assert!(
+            !pending(cx),
+            "a wait that timed out must leave the button clickable"
+        );
+        assert_eq!(
+            connects.load(Ordering::SeqCst),
+            0,
+            "the agent must not start while the policy still refuses its host"
+        );
+        conversation_view.read_with(cx, |view, _| match &view.server_state {
+            ServerState::LoadError {
+                error: LoadError::Other(message),
+            } => assert_eq!(
+                message.as_ref(),
+                crate::agent_registry_ui::ALLOWLIST_NOT_APPLIED
+            ),
+            _ => panic!("expected the card to say the hosts were added but not applied"),
+        });
     }
 
     fn build_test_thread(

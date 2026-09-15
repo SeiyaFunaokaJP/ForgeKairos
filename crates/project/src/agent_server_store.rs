@@ -2544,6 +2544,75 @@ mod tests {
         );
     }
 
+    /// ADR-F49 第 2b 段: the `sandbox` crate deliberately keeps no timer of
+    /// its own, so a `wsl.exe` that never answers — what an unhealthy WSL
+    /// service does — is bounded here. The step is cut off with an
+    /// explanation, and the future is dropped, which is what kills the
+    /// `wsl.exe` it left running.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn a_step_inside_wsl_that_never_answers_is_cut_off(cx: &mut TestAppContext) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct KilledOnDrop(Arc<AtomicBool>);
+
+        impl Drop for KilledOnDrop {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let dropped = Arc::new(AtomicBool::new(false));
+        let wedged = {
+            let dropped = dropped.clone();
+            async move {
+                let _killed = KilledOnDrop(dropped);
+                futures::future::pending::<anyhow::Result<()>>().await
+            }
+        };
+
+        let error = wsl_runtime::bounded(
+            &cx.executor(),
+            wsl_runtime::STEP_TIMEOUT,
+            "WSL の Node.js の確認",
+            wedged,
+        )
+        .await
+        .expect_err("a wedged wsl.exe must be cut off");
+
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("WSL の Node.js の確認")
+                && message.contains(&wsl_runtime::STEP_TIMEOUT.as_secs().to_string())
+                && message.contains("wsl --shutdown"),
+            "{message}"
+        );
+        assert!(
+            dropped.load(Ordering::SeqCst),
+            "the step must be dropped, which is what kills the wsl.exe"
+        );
+    }
+
+    /// ADR-F49 決定 21: a runtime on its way into a distro is downloaded
+    /// outside `node/`, which this host's own `ManagedNodeRuntime` removes
+    /// whole when it reinstalls Node.js for itself — that would take a
+    /// download in progress with it.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_runtime_is_downloaded_outside_what_a_node_reinstall_empties() {
+        let downloads = wsl_runtime::downloads_directory();
+        assert!(
+            downloads.starts_with(paths::external_agents_dir()),
+            "{} is not below the external agents directory",
+            downloads.display()
+        );
+        assert!(
+            !downloads.starts_with(paths::data_dir().join("node")),
+            "{} is inside the directory a Node.js reinstall empties",
+            downloads.display()
+        );
+    }
+
     fn make_npx_agent(id: &str, version: &str) -> RegistryAgent {
         let id = SharedString::from(id.to_string());
         RegistryAgent::Npx(RegistryNpxAgent {
@@ -3392,7 +3461,7 @@ mod wsl_runtime {
     /// `ManagedNodeRuntime` empties that whole directory when it reinstalls
     /// Node.js for itself, which would take a download in progress with it.
     /// Each file is removed as soon as it has been staged.
-    fn downloads_directory() -> PathBuf {
+    pub(super) fn downloads_directory() -> PathBuf {
         paths::external_agents_dir().join("downloads")
     }
 

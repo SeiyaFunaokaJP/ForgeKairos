@@ -9281,6 +9281,32 @@ fn ai_page(cx: &App) -> SettingsPage {
                 })),
                 files: USER,
             }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "使わなくなったエージェントを止めるまでの分数",
+                description: "外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.idle_disconnect_minutes"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .idle_disconnect_minutes
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .idle_disconnect_minutes = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("5"),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
         ]);
 
         items.into_boxed_slice()

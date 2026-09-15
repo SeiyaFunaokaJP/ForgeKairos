@@ -1329,6 +1329,10 @@
     // right after the list of project root directories. 0 disables it; values
     // above 32768 are clamped to 32768.
     "system_prompt_repo_map_bytes": 0,
+    // How many minutes an external agent's connection is kept once no thread
+    // of that agent is open any more; the agent and its sandbox are stopped
+    // after that. 0 keeps every connection until the window closes.
+    "idle_disconnect_minutes": 5,
     // When enabled, show voting thumbs for feedback on agent edits.
     "enable_feedback": true,
     "default_profile": "write",

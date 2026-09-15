@@ -32,7 +32,9 @@ use anyhow::{Context as _, Result};
 use collections::HashMap;
 use http_client::{Host, Url};
 use serde_json::Value;
-use util::path_mapping::{PathMapper, SandboxPathError, SandboxPaths, WslPathMapper};
+use util::path_mapping::{
+    PathMapper, SandboxPathError, SandboxPaths, WslPathMapper, WslWorktreeRootsError,
+};
 use util::paths::PathStyle;
 
 /// セッション 1 本ぶんの、ACP のメッセージのパスの変換。
@@ -90,7 +92,10 @@ impl AcpPathTranslator {
     /// `sandbox_distro` (`None` は既定のディストリビューション) のサンドボックスで動くエージェントに
     /// 見せる。複数のディストリビューションにまたがるプロジェクトなどは断る
     /// ([`WslPathMapper::for_worktree_roots`])。
-    pub fn for_wsl(worktree_roots: Vec<PathBuf>, sandbox_distro: Option<&str>) -> Result<Self> {
+    pub fn for_wsl(
+        worktree_roots: Vec<PathBuf>,
+        sandbox_distro: Option<&str>,
+    ) -> Result<Self, WslWorktreeRootsError> {
         let mapper = WslPathMapper::for_worktree_roots(&worktree_roots, sandbox_distro)?;
         Ok(Self::new(Arc::new(SandboxPaths::new(
             Arc::new(mapper),

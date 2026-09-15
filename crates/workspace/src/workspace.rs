@@ -5634,6 +5634,11 @@ impl Workspace {
                     if let Some(panel) = panel.as_ref() {
                         if should_focus(&**panel, window, cx) {
                             dock.set_open(true, window, cx);
+                            if is_stacked {
+                                // `activate_panel` says so for the other branch;
+                                // a stacked panel is reached without it.
+                                dock.reveal_panel_to_user(panel_index, window, cx);
+                            }
                             panel.activation_focus_handle(cx).focus(window, cx);
                         } else {
                             focus_center = true;
@@ -18013,6 +18018,83 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_only_the_panel_the_user_asked_for_counts_as_revealed(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (agent, browser) = workspace.update_in(cx, |workspace, window, cx| {
+            let agent = cx.new(|cx| TestAgentPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent.clone(), window, cx);
+            let browser = cx.new(|cx| TestBrowserPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser.clone(), window, cx);
+            (agent, browser)
+        });
+
+        // Asking for the agent panel opens the dock on the default pair, so the
+        // browser is shown too - but nobody asked for it (ADR-F48).
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.focus_panel::<TestAgentPanel>(window, cx);
+        });
+        agent.read_with(cx, |agent, _| {
+            assert!(agent.panel.active);
+            assert_eq!(agent.panel.reveal_calls, 1);
+        });
+        browser.read_with(cx, |browser, _| {
+            assert!(browser.panel.active, "the stacked half is on screen");
+            assert_eq!(
+                browser.panel.reveal_calls, 0,
+                "being on screen is not the same as having been asked for"
+            );
+        });
+
+        // The browser's own button, while the pair is shown: hide, then restore.
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+        dock.update_in(cx, |dock, window, cx| {
+            assert!(dock.hide_stacked_panel(1, window, cx));
+            assert!(dock.restack_hidden_panel(1, window, cx));
+        });
+        browser.read_with(cx, |browser, _| {
+            assert_eq!(browser.panel.reveal_calls, 1);
+        });
+
+        // And its toggle action.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.focus_panel::<TestBrowserPanel>(window, cx);
+        });
+        browser.read_with(cx, |browser, _| {
+            assert_eq!(browser.panel.reveal_calls, 2);
+        });
+        agent.read_with(cx, |agent, _| {
+            assert_eq!(
+                agent.panel.reveal_calls, 1,
+                "the panel that stayed on screen beside it was not asked for again"
+            );
+        });
+
+        // And the entry its button's context menu carries, "下に並べて表示".
+        dock.update_in(cx, |dock, window, cx| {
+            dock.set_secondary_panel(None, window, cx);
+            assert_eq!(dock.secondary_panel_index(), None);
+            dock.set_secondary_panel(Some(1), window, cx);
+            assert_eq!(dock.secondary_panel_index(), Some(1));
+        });
+        browser.read_with(cx, |browser, _| {
+            assert_eq!(browser.panel.reveal_calls, 3);
+        });
+        agent.read_with(cx, |agent, _| {
+            assert_eq!(
+                agent.panel.reveal_calls, 1,
+                "stacking the browser beside it is not asking for it"
+            );
+        });
+    }
+
+    #[gpui::test]
     async fn test_default_dock_layout_migrates_a_project_saved_before_it(
         cx: &mut gpui::TestAppContext,
     ) {
@@ -18728,6 +18810,33 @@ mod tests {
                                 !checked.contains(&true),
                                 "{run}: {panel:?} ends off screen but was shown: {calls:?}"
                             );
+                        }
+                        // Asking to start open is the user asking for that
+                        // panel, so the browser opens its home page (ADR-F48);
+                        // the half that is only on screen to pair with it, and
+                        // any panel the saved state brought back, was not asked
+                        // for. A panel the restore may have taken off screen
+                        // again was asked for while it was there, so its count
+                        // says nothing.
+                        if !restore_may_hide(*panel) {
+                            let asks_to_start_open =
+                                case.panels.iter().any(|(candidate, starts_open)| {
+                                    candidate == panel && *starts_open
+                                }) || case.late_starts_open == Some(*panel);
+                            let reveals = workspace.read_with(window_cx, |_, cx| {
+                                added_panel.test_panel(cx).reveal_calls
+                            });
+                            if case.visible.contains(panel) && asks_to_start_open {
+                                assert!(
+                                    reveals > 0,
+                                    "{run}: {panel:?} starts open on screen but was never asked for"
+                                );
+                            } else {
+                                assert_eq!(
+                                    reveals, 0,
+                                    "{run}: {panel:?} was taken for a panel the user asked for"
+                                );
+                            }
                         }
                     }
                     if case.saved.is_some() && !case.empty_window {

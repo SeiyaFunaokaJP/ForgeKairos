@@ -4987,6 +4987,41 @@ impl AgentPanel {
         self.cleanup_retained_threads(cx);
     }
 
+    /// ADR-F49 (new decision): lets go of a thread the panel is only parking.
+    ///
+    /// [`AgentConnectionStore`] comes through here before it drops a
+    /// connection nothing has used: if the view let go of here was the last
+    /// hand on that connection, dropping it reaches the agent's own process
+    /// and stops it. A thread that is open in a tab, or sitting in the draft
+    /// slot, is not something the panel is merely parking, so it is kept and
+    /// the answer is `false` — the connection then stays as it was.
+    pub(crate) fn release_parked_thread(
+        &mut self,
+        thread_id: ThreadId,
+        conversation_view: gpui::EntityId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self.is_parking_thread(thread_id, conversation_view) {
+            return false;
+        }
+        self.retained_threads.remove(&thread_id);
+        cx.notify();
+        true
+    }
+
+    /// Whether this exact view is one the panel is only parking, which is the
+    /// same question [`Self::release_parked_thread`] answers before letting
+    /// go, asked without letting go.
+    pub(crate) fn is_parking_thread(
+        &self,
+        thread_id: ThreadId,
+        conversation_view: gpui::EntityId,
+    ) -> bool {
+        self.retained_threads
+            .get(&thread_id)
+            .is_some_and(|view| view.entity_id() == conversation_view)
+    }
+
     fn cleanup_retained_threads(&mut self, cx: &App) {
         let mut potential_removals = self
             .retained_threads
@@ -15822,6 +15857,160 @@ mod tests {
         assert!(
             second.items[1].active,
             "a pane remembers which of its tabs was in front"
+        );
+    }
+
+    fn stub_agent() -> Agent {
+        Agent::Custom { id: "Test".into() }
+    }
+
+    fn stub_connection_entry(
+        panel: &Entity<AgentPanel>,
+        cx: &VisualTestContext,
+    ) -> Option<Entity<crate::agent_connection_store::AgentConnectionEntry>> {
+        panel.read_with(cx, |panel, cx| {
+            panel
+                .connection_store()
+                .read(cx)
+                .entry(&stub_agent())
+                .cloned()
+        })
+    }
+
+    fn stub_connection(
+        panel: &Entity<AgentPanel>,
+        cx: &VisualTestContext,
+    ) -> Rc<dyn AgentConnection> {
+        let entry = stub_connection_entry(panel, cx).expect("the stub agent should be connected");
+        entry.read_with(cx, |entry, _cx| match entry {
+            crate::agent_connection_store::AgentConnectionEntry::Connected(state) => {
+                state.connection.clone()
+            }
+            _ => panic!("the stub agent should be connected"),
+        })
+    }
+
+    /// Opens a stub agent's thread in a panel the workspace knows about (so
+    /// that closing a tab can hand the thread back), on a stub whose sessions
+    /// can be read again — which is what lets a parked thread be let go of.
+    async fn setup_panel_with_a_stub_thread(
+        cx: &mut TestAppContext,
+    ) -> (Entity<AgentPanel>, ThreadId, VisualTestContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        open_thread_with_connection(
+            &panel,
+            StubAgentConnection::new().with_supports_load_session(true),
+            &mut cx,
+        );
+        let thread_id = active_thread_id(&panel, &cx);
+        (panel, thread_id, cx)
+    }
+
+    /// Closes one of the panel's thread tabs, the way its close button does:
+    /// the view is handed back to the panel's parking slot rather than
+    /// dropped.
+    fn close_the_tab_of(
+        panel: &Entity<AgentPanel>,
+        thread_id: ThreadId,
+        cx: &mut VisualTestContext,
+    ) {
+        let pane = panel.read_with(cx, |panel, _cx| panel.active_pane().clone());
+        let item_id = pane.read_with(cx, |pane, cx| {
+            pane.items_of_type::<crate::ThreadItem>()
+                .find(|item| item.read(cx).thread_id() == thread_id)
+                .expect("the thread should be in one of the panel's tabs")
+                .entity_id()
+        });
+        pane.update_in(cx, |pane, window, cx| {
+            pane.remove_item(item_id, false, false, window, cx);
+        });
+        cx.run_until_parked();
+    }
+
+    /// Moves the panel on to Zed's own agent, so that nothing of the stub
+    /// agent is in front any more.
+    fn move_on_to_the_native_agent(panel: &Entity<AgentPanel>, cx: &mut VisualTestContext) {
+        panel.update_in(cx, |panel, window, cx| {
+            panel.test_set_selected_agent(Agent::NativeAgent);
+            panel.activate_draft(true, AgentThreadSource::AgentPanel, window, cx);
+        });
+        cx.run_until_parked();
+    }
+
+    /// ADR-F49 (new decision): closing a thread only parks it, so the agent in
+    /// its sandbox went on running until the window closed. Once the grace has
+    /// passed with no thread of that agent open, the connection goes — and the
+    /// parked view that was holding it goes with it, or the agent would never
+    /// hear about it.
+    #[gpui::test]
+    async fn test_a_connection_nothing_uses_is_dropped_after_the_grace(cx: &mut TestAppContext) {
+        let (panel, thread_id, mut cx) = setup_panel_with_a_stub_thread(cx).await;
+        let cx = &mut cx;
+        assert!(
+            stub_connection_entry(&panel, cx).is_some(),
+            "opening a thread connects to its agent"
+        );
+
+        move_on_to_the_native_agent(&panel, cx);
+        assert!(
+            stub_connection_entry(&panel, cx).is_some(),
+            "the stub agent's thread is still open in its own tab"
+        );
+
+        close_the_tab_of(&panel, thread_id, cx);
+        panel.read_with(cx, |panel, _cx| {
+            assert!(
+                panel.test_retains_thread(thread_id),
+                "a closed thread is parked in the panel, not dropped"
+            );
+        });
+
+        cx.executor().advance_clock(Duration::from_secs(4 * 60));
+        cx.run_until_parked();
+        assert!(
+            stub_connection_entry(&panel, cx).is_some(),
+            "the connection is kept for the whole grace, so opening the thread              again within it costs nothing"
+        );
+        assert!(panel.read_with(cx, |panel, _cx| panel.test_retains_thread(thread_id)));
+
+        cx.executor().advance_clock(Duration::from_secs(2 * 60));
+        cx.run_until_parked();
+        assert!(
+            stub_connection_entry(&panel, cx).is_none(),
+            "after the grace the unused connection is dropped"
+        );
+        assert!(
+            !panel.read_with(cx, |panel, _cx| panel.test_retains_thread(thread_id)),
+            "the parked view has to let go too, or the agent would keep running"
+        );
+    }
+
+    /// ADR-F49 (new decision): opening the thread again within the grace takes
+    /// the connection back rather than starting the agent — and signing in —
+    /// anew.
+    #[gpui::test]
+    async fn test_reopening_a_thread_within_the_grace_keeps_its_connection(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, thread_id, mut cx) = setup_panel_with_a_stub_thread(cx).await;
+        let cx = &mut cx;
+        let connection = stub_connection(&panel, cx);
+
+        move_on_to_the_native_agent(&panel, cx);
+        close_the_tab_of(&panel, thread_id, cx);
+        cx.executor().advance_clock(Duration::from_secs(4 * 60));
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.activate_retained_thread(thread_id, true, window, cx);
+        });
+        cx.run_until_parked();
+
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            Rc::ptr_eq(&connection, &stub_connection(&panel, cx)),
+            "a thread that was opened again keeps the connection it had"
         );
     }
 

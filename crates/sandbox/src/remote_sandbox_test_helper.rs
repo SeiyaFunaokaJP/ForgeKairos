@@ -502,6 +502,9 @@ mod stdio_e2e {
                 &strings(&policy.protected),
                 &strings(&policy.readable),
                 &policy.network,
+                // No editor-wide ceiling: these tests are about what the
+                // helper itself enforces around a command's own allowlist.
+                None,
                 false,
                 Some(&chdir),
             );
@@ -1241,8 +1244,11 @@ mod stdio_e2e {
                 checks.info("no slirp4netns beside this binary: the network checks are skipped");
                 return Ok(());
             }
-            // An SSH host's case: any host, and no editor-wide allowlist. With
-            // the helper's diagnostics on, slirp4netns's own reports included.
+            // Any host with no editor-wide allowlist — an embedder's case
+            // since ADR-F17 started sending the ceiling to a remote host too,
+            // and still what keeps a command off local addresses when no
+            // ceiling decides about them. With the helper's diagnostics on,
+            // slirp4netns's own reports included.
             let policy = Policy {
                 writable: vec![self.work.clone()],
                 readable: Vec::new(),

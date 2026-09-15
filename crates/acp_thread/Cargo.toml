@@ -25,6 +25,10 @@ anyhow.workspace = true
 buffer_diff.workspace = true
 chrono.workspace = true
 collections.workspace = true
+# The editor-wide network allowlist, which a sandbox helper's proxy is handed
+# to nest a command's network inside — the WSL one's and a remote host's
+# alike (ADR-F17 / ADR-F46 / ADR-F18).
+egress_policy.workspace = true
 feature_flags.workspace = true
 fs.workspace = true
 multi_buffer.workspace = true
@@ -57,11 +61,6 @@ util.workspace = true
 uuid.workspace = true
 watch.workspace = true
 urlencoding.workspace = true
-
-[target.'cfg(target_os = "windows")'.dependencies]
-# The editor-wide network allowlist, which the WSL sandbox helper's proxy is
-# handed to nest a command's network inside (ADR-F17 / ADR-F46).
-egress_policy.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true

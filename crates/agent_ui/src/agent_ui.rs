@@ -73,7 +73,9 @@ use std::path::{Path, PathBuf};
 use workspace::{OpenOptions, Workspace};
 
 use crate::agent_configuration::ManageProfilesModal;
-pub use crate::agent_connection_store::{ActiveAcpConnection, AgentConnectionStore};
+pub use crate::agent_connection_store::{
+    ActiveAcpConnection, AgentConnectionStore, ConnectionLease,
+};
 pub use crate::agent_panel::{
     AgentPanel, AgentPanelEvent, AgentPanelTerminalInfo, MaxIdleRetainedThreads, TerminalId,
     ThreadTitleRegenerationResult,
@@ -1026,6 +1028,7 @@ mod tests {
                 agent_settings::DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW,
             attach_active_file: false,
             system_prompt_repo_map_bytes: 0,
+            idle_disconnect_minutes: agent_settings::DEFAULT_IDLE_DISCONNECT_MINUTES,
             enable_feedback: false,
             expand_edit_card: true,
             expand_terminal_card: true,

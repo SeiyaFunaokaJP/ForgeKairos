@@ -67,61 +67,131 @@ impl WslPathMapper {
     /// しか同じ場所に見えない。複数のディストリビューションにまたがるプロジェクトや、WSL から
     /// 届かないフォルダー (ネットワーク共有) を含むプロジェクトは、どのサンドボックスからも全体を
     /// 見られないので断る。
-    pub fn for_worktree_roots(roots: &[PathBuf], sandbox_distro: Option<&str>) -> Result<Self> {
-        if let Some(sandbox_distro) = sandbox_distro {
-            anyhow::ensure!(
-                is_valid_distro_name(sandbox_distro),
-                "{sandbox_distro:?} is not a WSL distribution name"
-            );
+    pub fn for_worktree_roots(
+        roots: &[PathBuf],
+        sandbox_distro: Option<&str>,
+    ) -> Result<Self, WslWorktreeRootsError> {
+        if let Some(sandbox_distro) = sandbox_distro
+            && !is_valid_distro_name(sandbox_distro)
+        {
+            return Err(WslWorktreeRootsError::InvalidDistroName(
+                sandbox_distro.to_string(),
+            ));
         }
         let mut project_distro: Option<&str> = None;
         for root in roots {
             let parsed = root
                 .to_str()
                 .and_then(WindowsPath::parse)
-                .with_context(|| format!("{} is not an absolute Windows path", root.display()))?;
+                .ok_or_else(|| WslWorktreeRootsError::NotAWindowsPath(root.clone()))?;
             match parsed.root {
                 WindowsRoot::Drive(_) => {}
                 WindowsRoot::Unc { server, share } if is_wsl_server(server) => {
                     // サンドボックスからは `/mnt/c/…` に見え、戻すと `C:\…` という別の綴りになる。
-                    anyhow::ensure!(
-                        !is_drive_mount(&parsed.components),
-                        "{} is a Windows drive seen through WSL; open it by its drive letter",
-                        root.display()
-                    );
+                    if is_drive_mount(&parsed.components) {
+                        return Err(WslWorktreeRootsError::DriveSeenThroughWsl(root.clone()));
+                    }
                     if let Some(distro) = project_distro
                         && !distro.eq_ignore_ascii_case(share)
                     {
-                        anyhow::bail!(
-                            "the project has folders in two WSL distributions ({distro} and \
-                             {share}), and a sandbox runs in only one"
-                        );
+                        return Err(WslWorktreeRootsError::MultipleDistros {
+                            first: distro.to_string(),
+                            second: share.to_string(),
+                        });
                     }
                     project_distro = Some(share);
                 }
-                WindowsRoot::Unc { .. } => anyhow::bail!(
-                    "{} is on a network share, which a WSL sandbox cannot reach",
-                    root.display()
-                ),
+                WindowsRoot::Unc { .. } => {
+                    return Err(WslWorktreeRootsError::NetworkShare(root.clone()));
+                }
             }
         }
         let distro = match (project_distro, sandbox_distro) {
             (Some(project), Some(sandbox)) if !project.eq_ignore_ascii_case(sandbox) => {
-                anyhow::bail!(
-                    "the project is in the WSL distribution {project}, but the sandbox runs in \
-                     {sandbox}"
-                )
+                return Err(WslWorktreeRootsError::DistroMismatch {
+                    project: project.to_string(),
+                    sandbox: sandbox.to_string(),
+                });
             }
-            (Some(project), None) => anyhow::bail!(
-                "the project is in the WSL distribution {project}, and the name of the default \
-                 distribution the sandbox runs in is not known"
-            ),
+            (Some(project), None) => {
+                return Err(WslWorktreeRootsError::DefaultDistroUnknown {
+                    project: project.to_string(),
+                });
+            }
             (_, Some(sandbox)) => sandbox.to_string(),
             (None, None) => String::new(),
         };
         Ok(Self { distro })
     }
 }
+
+/// Why [`WslPathMapper::for_worktree_roots`] refused. `Display` is the English
+/// wording for logs (ADR-F07); a UI-facing sentence is built from the variant
+/// by the caller, since util has no UI strings of its own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WslWorktreeRootsError {
+    /// The name given as the sandbox's own distribution is not a valid one.
+    InvalidDistroName(String),
+    /// A worktree root is not an absolute Windows path at all.
+    NotAWindowsPath(PathBuf),
+    /// A worktree root is a Windows drive seen through a WSL distribution's
+    /// `\\wsl.localhost\<distro>\mnt\<drive>\…` share, which round-trips to a
+    /// different spelling (`<drive>:\…`) than it started from.
+    DriveSeenThroughWsl(PathBuf),
+    /// A worktree root is on a network share, which a WSL sandbox cannot
+    /// reach at all.
+    NetworkShare(PathBuf),
+    /// The worktree has roots in two different WSL distributions; a sandbox
+    /// runs in only one.
+    MultipleDistros { first: String, second: String },
+    /// The worktree's distribution and the sandbox's distribution differ.
+    DistroMismatch { project: String, sandbox: String },
+    /// The worktree is inside a WSL distribution, but the sandbox runs in the
+    /// default distribution, whose name is not known.
+    DefaultDistroUnknown { project: String },
+}
+
+impl fmt::Display for WslWorktreeRootsError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidDistroName(name) => {
+                write!(formatter, "{name:?} is not a WSL distribution name")
+            }
+            Self::NotAWindowsPath(path) => write!(
+                formatter,
+                "{} is not an absolute Windows path",
+                path.display()
+            ),
+            Self::DriveSeenThroughWsl(path) => write!(
+                formatter,
+                "{} is a Windows drive seen through WSL; open it by its drive letter",
+                path.display()
+            ),
+            Self::NetworkShare(path) => write!(
+                formatter,
+                "{} is on a network share, which a WSL sandbox cannot reach",
+                path.display()
+            ),
+            Self::MultipleDistros { first, second } => write!(
+                formatter,
+                "the project has folders in two WSL distributions ({first} and {second}), and a \
+                 sandbox runs in only one"
+            ),
+            Self::DistroMismatch { project, sandbox } => write!(
+                formatter,
+                "the project is in the WSL distribution {project}, but the sandbox runs in \
+                 {sandbox}"
+            ),
+            Self::DefaultDistroUnknown { project } => write!(
+                formatter,
+                "the project is in the WSL distribution {project}, and the name of the default \
+                 distribution the sandbox runs in is not known"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WslWorktreeRootsError {}
 
 impl PathMapper for WslPathMapper {
     fn to_host(&self, client_path: &str) -> Option<PathBuf> {
@@ -290,6 +360,30 @@ fn is_valid_distro_name(distro: &str) -> bool {
 
 fn is_wsl_server(server: &str) -> bool {
     server.eq_ignore_ascii_case("wsl.localhost") || server.eq_ignore_ascii_case("wsl$")
+}
+
+/// Windows のパスが、ディストリビューション自身のファイルシステムを見せる WSL の共有
+/// (`\\wsl.localhost\<distro>\…`、古い `\\wsl$\…`、`canonicalize` が返す
+/// `\\?\UNC\wsl.localhost\…`) の中を指すか。
+///
+/// 綴りだけで決める (ファイルシステムにも `wsl.exe` にも触らない)。ファイル監視の登録の
+/// たびに呼ばれるため。ドライブを WSL 越しに見た `\\wsl.localhost\<distro>\mnt\c\…` も
+/// 9p の上にあることに変わりはないので `true`。
+pub fn is_wsl_share_path(path: &Path) -> bool {
+    let Some(text) = path.to_str() else {
+        return false;
+    };
+    let Some(rest) = text
+        .strip_prefix(r"\\?\UNC\")
+        .or_else(|| text.strip_prefix(r"\\"))
+        .or_else(|| text.strip_prefix("//"))
+    else {
+        return false;
+    };
+    matches!(
+        unc_root(rest),
+        Some((WindowsRoot::Unc { server, .. }, _)) if is_wsl_server(server)
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1186,22 +1280,64 @@ mod tests {
             .ok(),
             Some(wsl())
         );
-        for (roots, distro) in [
+        // 断る理由はそれぞれ別の変種で返る (呼び出し側はこれを見て日本語の文を選ぶので、
+        // どの状況がどの変種になるかまで決めておく)。
+        for (roots, distro, reason) in [
             // 既定のディストリビューションの名前は分からないので、同じか確かめられない。
-            (&[r"\\wsl.localhost\Ubuntu\root\p"][..], None),
-            (&[r"\\wsl.localhost\Ubuntu\root\p"][..], Some("Debian")),
+            (
+                &[r"\\wsl.localhost\Ubuntu\root\p"][..],
+                None,
+                WslWorktreeRootsError::DefaultDistroUnknown {
+                    project: "Ubuntu".to_string(),
+                },
+            ),
+            (
+                &[r"\\wsl.localhost\Ubuntu\root\p"][..],
+                Some("Debian"),
+                WslWorktreeRootsError::DistroMismatch {
+                    project: "Ubuntu".to_string(),
+                    sandbox: "Debian".to_string(),
+                },
+            ),
             (
                 &[r"\\wsl.localhost\Ubuntu\a", r"\\wsl$\Debian\b"][..],
                 Some("Ubuntu"),
+                WslWorktreeRootsError::MultipleDistros {
+                    first: "Ubuntu".to_string(),
+                    second: "Debian".to_string(),
+                },
             ),
-            (&[r"I:\proj", r"\\server\share\p"][..], Some("Ubuntu")),
-            (&[r"\\wsl.localhost\Ubuntu\mnt\c\proj"][..], Some("Ubuntu")),
-            (&[r"\\.\C:\proj"][..], Some("Ubuntu")),
-            (&["relative"][..], Some("Ubuntu")),
-            (&[r"I:\proj"][..], Some("a/b")),
+            (
+                &[r"I:\proj", r"\\server\share\p"][..],
+                Some("Ubuntu"),
+                WslWorktreeRootsError::NetworkShare(PathBuf::from(r"\\server\share\p")),
+            ),
+            (
+                &[r"\\wsl.localhost\Ubuntu\mnt\c\proj"][..],
+                Some("Ubuntu"),
+                WslWorktreeRootsError::DriveSeenThroughWsl(PathBuf::from(
+                    r"\\wsl.localhost\Ubuntu\mnt\c\proj",
+                )),
+            ),
+            (
+                &[r"\\.\C:\proj"][..],
+                Some("Ubuntu"),
+                WslWorktreeRootsError::NotAWindowsPath(PathBuf::from(r"\\.\C:\proj")),
+            ),
+            (
+                &["relative"][..],
+                Some("Ubuntu"),
+                WslWorktreeRootsError::NotAWindowsPath(PathBuf::from("relative")),
+            ),
+            (
+                &[r"I:\proj"][..],
+                Some("a/b"),
+                WslWorktreeRootsError::InvalidDistroName("a/b".to_string()),
+            ),
         ] {
-            assert!(
-                mapper(roots, distro).is_err(),
+            assert_eq!(
+                mapper(roots, distro),
+                Err(reason),
                 "{roots:?} in {distro:?} must be refused"
             );
         }
@@ -1585,5 +1721,35 @@ mod tests {
             paths.host_file_uri_to_client_uri("file://server/proj/a.rs"),
             Err(SandboxPathError::Unmappable)
         );
+    }
+
+    #[test]
+    fn recognizes_wsl_share_paths() {
+        for path in [
+            r"\\wsl.localhost\Ubuntu",
+            r"\\wsl.localhost\Ubuntu\home\user\project",
+            r"\\WSL.LOCALHOST\Ubuntu\home",
+            r"\\wsl$\Ubuntu-24.04\tmp\a.rs",
+            r"\\?\UNC\wsl.localhost\Ubuntu\home\user",
+            "//wsl.localhost/Ubuntu/home",
+            // WSL 越しに見えるドライブも 9p の上。
+            r"\\wsl.localhost\Ubuntu\mnt\c\work",
+        ] {
+            assert!(is_wsl_share_path(Path::new(path)), "{path}");
+        }
+
+        for path in [
+            r"I:\zed-jp-llm\crates",
+            r"\\?\I:\zed-jp-llm",
+            r"\\server\share\project",
+            // 共有の名前 (ディストリビューション) が無いものは場所ではない。
+            r"\\wsl.localhost",
+            // デバイスの名前空間はネットワークの共有ではない。
+            r"\\.\wsl.localhost\Ubuntu",
+            "/home/user/project",
+            "",
+        ] {
+            assert!(!is_wsl_share_path(Path::new(path)), "{path}");
+        }
     }
 }

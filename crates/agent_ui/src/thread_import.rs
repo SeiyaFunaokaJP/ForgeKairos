@@ -699,6 +699,11 @@ fn fetch_sessions_for_agent(
     cx: &mut App,
 ) -> Task<AgentSessionFetchResult> {
     let mut wait_for_connection_tasks = Vec::new();
+    // ADR-F49 (new decision): listing an agent's sessions is not a thread, so
+    // no view speaks for these connections. The leases keep them until the
+    // listing is over, rather than letting the idle disconnect end an agent
+    // this is still reading from and leaving its process behind.
+    let mut leases = Vec::new();
 
     for store in stores {
         let remote_connection = store
@@ -708,7 +713,10 @@ fn fetch_sessions_for_agent(
             .remote_connection_options(cx);
         let agent = Agent::from(agent_id.clone());
         let server = agent.server(<dyn Fs>::global(cx), ThreadStore::global(cx));
-        let entry = store.update(cx, |store, cx| store.request_connection(agent, server, cx));
+        let entry = store.update(cx, |store, cx| {
+            leases.push(store.lease_connection(&agent));
+            store.request_connection(agent, server, cx)
+        });
 
         wait_for_connection_tasks.push(entry.read(cx).wait_for_connection().map({
             let agent_id = agent_id.clone();
@@ -718,6 +726,7 @@ fn fetch_sessions_for_agent(
     }
 
     cx.spawn(async move |cx| {
+        let _leases = leases;
         let mut stats = AgentSessionFetchStats::default();
         let results = futures::future::join_all(wait_for_connection_tasks).await;
 

@@ -305,8 +305,10 @@ fn unregister_sandbox_session() {
 /// A decoded stage-1 invocation.
 struct Stage1Invocation {
     network: RemoteSandboxNetwork,
-    /// The editor-wide network allowlist `network` is nested inside, which only
-    /// the local WSL backend sends (an SSH host gets none).
+    /// The editor-wide network allowlist `network` is nested inside (ADR-F17),
+    /// which the client sends whether the helper runs in the local WSL distro
+    /// or on a remote host. `None` when the client published no allowlist at
+    /// all, which leaves `network` as the whole policy.
     network_ceiling: Option<Arc<crate::EditorAllowlistCeiling>>,
     allow_fs_write: bool,
     writable_paths: Vec<PathBuf>,
@@ -3383,7 +3385,7 @@ fn any_host_policy(
 }
 
 /// Stand up the host-loopback egress proxy enforcing the per-command allowlist,
-/// nested inside the editor-wide one when the WSL backend sent it.
+/// nested inside the editor-wide one when the client sent it.
 fn start_egress_proxy(
     network: &RemoteSandboxNetwork,
     network_ceiling: Option<&Arc<crate::EditorAllowlistCeiling>>,
@@ -3412,9 +3414,8 @@ fn start_egress_proxy(
         upstream: None,
         events: events_tx,
         policy,
-        // An SSH host gets no editor-wide allowlist, so there the per-command
-        // allowlist is the whole policy (documented boundary in the ADR
-        // self-audit).
+        // Without one — a client that publishes no allowlist at all — the
+        // per-command allowlist is the whole policy.
         outer_policy: network_ceiling.map(|ceiling| {
             let ceiling: Arc<dyn DestinationPolicy> = ceiling.clone();
             ceiling
@@ -6314,6 +6315,7 @@ mod tests {
             &["/home/u/proj/.git".to_string()],
             &["/home/u/.local/share/zed-jp-enhance/node".to_string()],
             &RemoteSandboxNetwork::Hosts(vec!["example.com".into()]),
+            None,
             false,
             Some("/home/u/proj/sub"),
         );
@@ -6333,7 +6335,7 @@ mod tests {
         assert!(!decoded.wsl, "the SSH builder must not select WSL mode");
         assert!(
             decoded.network_ceiling.is_none(),
-            "an SSH host gets no editor-wide allowlist"
+            "no allowlist was sent, so the command's own is the whole policy"
         );
         assert!(decoded.set_environment.is_empty());
         assert_eq!(
@@ -6373,6 +6375,7 @@ mod tests {
             &[],
             &[],
             &RemoteSandboxNetwork::Blocked,
+            None,
             false,
             None,
         );
@@ -6391,6 +6394,7 @@ mod tests {
             &[],
             &[],
             &RemoteSandboxNetwork::Blocked,
+            None,
             false,
             None,
         );
@@ -7772,6 +7776,7 @@ mod tests {
             &[],
             &[],
             &RemoteSandboxNetwork::Blocked,
+            None,
             false,
             None,
         );

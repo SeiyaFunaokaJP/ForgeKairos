@@ -40,6 +40,10 @@ pub const DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW: u64 = 80_000;
 /// rather than honored (TODO F13 ③).
 pub const AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR: u64 = 8_000;
 
+/// Default for [`AgentSettings::idle_disconnect_minutes`], mirroring
+/// `agent.idle_disconnect_minutes` in `assets/settings/default.json`.
+pub const DEFAULT_IDLE_DISCONNECT_MINUTES: u64 = 5;
+
 /// Ceiling for [`AgentSettings::system_prompt_repo_map_bytes`], matching the
 /// `repo_map` tool's own default budget: anything larger belongs in a tool call
 /// the model can scope, not in every request's system prompt.
@@ -237,6 +241,10 @@ pub struct AgentSettings {
     /// already clamped to `0..=`[`MAX_SYSTEM_PROMPT_REPO_MAP_BYTES`]. `0`
     /// disables it.
     pub system_prompt_repo_map_bytes: usize,
+    /// How long an external agent's connection is kept once no thread of that
+    /// agent is open any more, in minutes. `0` keeps it for as long as the
+    /// window.
+    pub idle_disconnect_minutes: u64,
     pub enable_feedback: bool,
     pub expand_edit_card: bool,
     pub expand_terminal_card: bool,
@@ -254,6 +262,17 @@ pub struct AgentSettings {
 impl AgentSettings {
     pub fn enabled(&self, cx: &App) -> bool {
         self.enabled && !DisableAiSettings::get_global(cx).disable_ai
+    }
+
+    /// ADR-F49 (new decision): how long a connection to an external agent is kept
+    /// once nothing uses it. `None` when the user turned the disconnect off.
+    pub fn idle_disconnect(&self) -> Option<std::time::Duration> {
+        // Saturating: the minutes come straight from the user's settings file,
+        // and a number large enough to overflow the seconds is still one a
+        // user can write.
+        (self.idle_disconnect_minutes > 0).then(|| {
+            std::time::Duration::from_secs(self.idle_disconnect_minutes.saturating_mul(60))
+        })
     }
 
     pub fn temperature_for_model(model: &Arc<dyn LanguageModel>, cx: &App) -> Option<f32> {
@@ -814,6 +833,9 @@ impl Settings for AgentSettings {
                 .system_prompt_repo_map_bytes
                 .unwrap_or(0)
                 .min(MAX_SYSTEM_PROMPT_REPO_MAP_BYTES),
+            idle_disconnect_minutes: agent
+                .idle_disconnect_minutes
+                .unwrap_or(DEFAULT_IDLE_DISCONNECT_MINUTES),
             enable_feedback: agent.enable_feedback.unwrap(),
             expand_edit_card: agent.expand_edit_card.unwrap(),
             expand_terminal_card: agent.expand_terminal_card.unwrap(),
@@ -1120,6 +1142,36 @@ mod tests {
                 .terminal_init_command
                 .is_none()
         );
+    }
+
+    /// ADR-F49 (new decision): the minutes are the user's own number, so the
+    /// grace has to survive one no one meant literally.
+    #[gpui::test]
+    fn test_a_huge_idle_disconnect_is_not_an_overflow(cx: &mut gpui::App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        project::DisableAiSettings::register(cx);
+        AgentSettings::register(cx);
+
+        SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_user_settings(
+                    r#"{ "agent": { "idle_disconnect_minutes": 18446744073709551615 } }"#,
+                    cx,
+                )
+                .unwrap();
+        });
+        assert_eq!(
+            AgentSettings::get_global(cx).idle_disconnect(),
+            Some(std::time::Duration::from_secs(u64::MAX)),
+        );
+
+        SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_user_settings(r#"{ "agent": { "idle_disconnect_minutes": 0 } }"#, cx)
+                .unwrap();
+        });
+        assert_eq!(AgentSettings::get_global(cx).idle_disconnect(), None);
     }
 
     #[test]

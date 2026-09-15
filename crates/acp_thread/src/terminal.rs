@@ -74,7 +74,9 @@ pub enum SandboxNetworkAccess {
     Restricted(Allowlist),
     /// Impose no host restriction of the sandbox's own. Traffic is still
     /// capped by the editor-wide egress allowlist where one is published —
-    /// see [`sandbox::SandboxNetPolicy::Unrestricted`], which this becomes.
+    /// see [`sandbox::SandboxNetPolicy::Unrestricted`], which this becomes on
+    /// this machine, and [`sandbox::RemoteSandboxNetwork::AnyHost`], which it
+    /// becomes on a remote host, where the allowlist travels beside it.
     All,
 }
 
@@ -397,6 +399,13 @@ pub(crate) fn wsl_sandbox_timeout_message() -> String {
 /// command leaves running in it can be listed from outside it later. Only an
 /// agent's own process is given one; a one-off command is followed by its
 /// turn, which outlives it.
+///
+/// ADR-F17: `network_ceiling` is the editor-wide allowlist (see
+/// [`editor_network_allowlist`]) that the helper's proxy nests `wrap.network`
+/// inside, so that what the user granted one command can only narrow what the
+/// editor as a whole may reach, never widen it. It is the client's allowlist
+/// as it stands now, not the copy the remote holds, so an edit made in the IDE
+/// applies to the next command without waiting for the remote to be told.
 #[allow(
     clippy::too_many_arguments,
     reason = "one argument per part of what the helper is told about the command"
@@ -404,6 +413,7 @@ pub(crate) fn wsl_sandbox_timeout_message() -> String {
 pub fn build_remote_sandbox_command(
     remote_binary: &RelPath,
     wrap: &SandboxWrap,
+    network_ceiling: Option<&[String]>,
     cwd: Option<&Path>,
     environment: &HashMap<String, String>,
     readable_paths: &[String],
@@ -454,6 +464,7 @@ pub fn build_remote_sandbox_command(
         &protected,
         readable_paths,
         &network,
+        network_ceiling,
         wrap.allow_fs_write,
         chdir.as_deref(),
     );
@@ -1039,11 +1050,17 @@ fn sandbox_failure_message_for_code(host: SandboxHost, code: &str) -> String {
     format!("{}{reason}", host.prefix())
 }
 
-/// The editor-wide network allowlist's entries as they stand now, for the WSL
-/// sandbox to nest a command's network inside (see
-/// `sandbox::Sandbox::set_editor_network_allowlist`). `None` in a process that
-/// has no editor-wide allowlist.
-#[cfg(target_os = "windows")]
+/// The editor-wide network allowlist's entries as they stand now, for a
+/// sandbox helper that cannot consult the live policy object itself to nest a
+/// command's network inside: the WSL one, whose proxy runs inside the distro
+/// (see `sandbox::Sandbox::set_editor_network_allowlist`), and a remote host's,
+/// whose proxy runs on the far side of the connection (see
+/// [`build_remote_sandbox_command`]). `None` in a process that has no
+/// editor-wide allowlist.
+///
+/// Read when the command is built, so editing the allowlist re-aims the
+/// ceiling of the next command rather than of one already running — the same
+/// bound the WSL backend has.
 pub(crate) fn editor_network_allowlist(cx: &App) -> Option<Vec<String>> {
     let global = cx.try_global::<egress_policy::EgressAllowlistGlobal>()?;
     Some(
@@ -2103,6 +2120,128 @@ mod sandboxed_spawn_tests {
         }
     }
 
+    /// The values `flag` is given in a decoded helper argv.
+    fn helper_argv_values(argv: &[String], flag: &str) -> Vec<String> {
+        argv.windows(2)
+            .filter_map(|window| match window {
+                [name, value] if name == flag => Some(value.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether a command started with `argv` can reach `host`, as the helper's
+    /// proxy decides it: the command's own allowlist is the base decision and
+    /// the editor-wide ceiling beside it is the outer one, and a host needs
+    /// both (`linux_remote_helper::start_egress_proxy`). The ceiling is an
+    /// `EgressPolicy` there rather than an `Allowlist`, over the same exact and
+    /// leading-`*.` patterns.
+    fn remote_command_reaches(argv: &[String], host: &str) -> bool {
+        let listed = |flag: &str| {
+            Allowlist::from_patterns(
+                helper_argv_values(argv, flag)
+                    .iter()
+                    .filter_map(|value| http_proxy::HostPattern::parse(value).ok()),
+            )
+        };
+        let granted = match helper_argv_values(argv, "--net")
+            .first()
+            .map(String::as_str)
+        {
+            Some("any") => Allowlist::any(),
+            Some("hosts") => listed("--allow-host"),
+            _ => Allowlist::empty(),
+        };
+        let ceiling = argv
+            .iter()
+            .any(|argument| argument == "--network-ceiling")
+            .then(|| listed("--ceiling-host"));
+        granted.allows(host) && ceiling.is_none_or(|ceiling| ceiling.allows(host))
+    }
+
+    /// ADR-F17: what a remote host's helper runs is capped by the editor-wide
+    /// allowlist, exactly as what this machine's (or WSL's) sandbox runs is.
+    /// The hosts the user's sandbox settings grant reach the helper as the
+    /// command's own allowlist; the editor's allowlist travels beside them as
+    /// the ceiling its proxy nests that allowlist inside. A granted host the
+    /// editor does not allow is therefore unreachable, and the ceiling can
+    /// only narrow what the command was granted, never widen it.
+    #[test]
+    fn a_remote_command_reaches_only_the_part_of_its_hosts_the_editor_allows() {
+        let editor_allowlist = ["api.github.com".to_string()];
+        let granted = |hosts: &[&str]| {
+            SandboxNetworkAccess::Restricted(Allowlist::from_patterns(
+                hosts
+                    .iter()
+                    .map(|host| http_proxy::HostPattern::parse(host).expect("a valid pattern")),
+            ))
+        };
+        let policy_of = |network: SandboxNetworkAccess, ceiling: Option<&[String]>| {
+            let wrap = SandboxWrap {
+                writable_paths: vec![PathBuf::from("/home/user/project")],
+                network,
+                ..Default::default()
+            };
+            let helper = RelPath::from_unix_str(".zed_server/zed-remote-server-stable-1.17.2")
+                .expect("a valid relative path");
+            let (_, args) = build_remote_sandbox_command(
+                helper,
+                &wrap,
+                ceiling,
+                None,
+                &HashMap::default(),
+                &[],
+                false,
+                None,
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "curl https://example.com".to_string()],
+            );
+            let [_, payload] = args.as_slice() else {
+                panic!("the argv travels as one hex-encoded argument: {args:?}");
+            };
+            sandbox::decode_remote_sandbox_helper_argv(payload).expect("the packed argv decodes")
+        };
+
+        let outside = policy_of(granted(&["example.com"]), Some(&editor_allowlist));
+        assert!(
+            !remote_command_reaches(&outside, "example.com"),
+            "a host the sandbox settings grant but the editor does not allow must not be \
+             reachable from a remote sandbox: {outside:?}"
+        );
+        assert!(
+            !remote_command_reaches(&outside, "api.github.com"),
+            "the ceiling only narrows what the command was granted: {outside:?}"
+        );
+
+        let allowed = policy_of(
+            granted(&["example.com", "api.github.com"]),
+            Some(&editor_allowlist),
+        );
+        assert!(remote_command_reaches(&allowed, "api.github.com"));
+        assert!(!remote_command_reaches(&allowed, "example.com"));
+
+        // `allow_all_hosts` is the degenerate case of the same rule, not a way
+        // out of it: the command's half permits everything and the editor's
+        // allowlist is left deciding alone.
+        let any_host = policy_of(SandboxNetworkAccess::All, Some(&editor_allowlist));
+        assert!(remote_command_reaches(&any_host, "api.github.com"));
+        assert!(
+            !remote_command_reaches(&any_host, "example.com"),
+            "an any-host grant must not reach past the editor's allowlist: {any_host:?}"
+        );
+
+        // A process with no editor-wide allowlist (an embedder, a test) leaves
+        // the command's own allowlist as the whole policy, as it does locally.
+        let uncapped = policy_of(granted(&["example.com"]), None);
+        assert!(
+            !uncapped
+                .iter()
+                .any(|argument| argument == "--network-ceiling"),
+            "{uncapped:?}"
+        );
+        assert!(remote_command_reaches(&uncapped, "example.com"));
+    }
+
     #[test]
     fn remote_helper_is_started_directly_with_the_environment_inside() {
         let environment = HashMap::from_iter([
@@ -2122,6 +2261,7 @@ mod sandboxed_spawn_tests {
         let (program, args) = build_remote_sandbox_command(
             helper,
             &wrap,
+            None,
             Some(Path::new("/home/user/project")),
             &environment,
             &[],

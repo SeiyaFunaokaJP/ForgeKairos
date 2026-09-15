@@ -9532,12 +9532,17 @@ impl ThreadView {
         let requested_path = granted.requested.clone();
         // Grants are stored in the request's own namespace (a Windows path stays
         // `C:\...`, a WSL path stays `/...`), so a genuine symlink/junction
-        // redirect is just a plain inequality between the request and its
-        // resolved canonical.
-        let is_redirected = granted
-            .resolved
-            .as_deref()
-            .is_some_and(|resolved| resolved != requested_path.as_path());
+        // redirect is a difference between the request and its resolved
+        // canonical that is not merely one of spelling — a grant on a WSL
+        // distribution's own filesystem is stored in one normalized share
+        // spelling (ADR-F49 decision 33), which `same_location` sees through.
+        // A bare `/…` grant resolved into the session's distribution is a real
+        // difference, and showing it is the point: it says which distribution
+        // the folder is in.
+        let is_redirected = granted.resolved.as_deref().is_some_and(|resolved| {
+            resolved != requested_path.as_path()
+                && !util::path_mapping::same_location(resolved, &requested_path)
+        });
 
         let granted_display = granted_path.display().to_string();
         let requested_display = requested_path.display().to_string();

@@ -683,21 +683,57 @@ async fn run_terminal_tool(
         }
         #[cfg(target_os = "windows")]
         {
+            // ADR-F49 decision 33: a bare Linux-absolute grant (`/home/me/x`)
+            // names no distribution, so it only means anything relative to the
+            // one this session runs in — read from the very paths
+            // `sandbox::wrap_invocation` will pick the command's distro from, so
+            // the folder the user approves is the folder the command can write.
+            let session_distro = cx.update(|cx| {
+                let project = project.read(cx);
+                project::agent_sandbox::wsl_distro_for_roots(&session_distro_paths(
+                    sandbox_worktree_writable_paths(project, cx),
+                    working_dir.as_deref(),
+                    sandbox_git_dirs(project, cx),
+                    &floor.write_paths,
+                ))
+            });
+            let session_distro = match session_distro {
+                Ok(distro) => Some(sandbox::WslSessionDistro::from(distro)),
+                Err(error) => {
+                    // Folders spread over several distributions: there is no one
+                    // session distro, and `wrap_invocation` refuses such a
+                    // command anyway. Resolving in the default distro would
+                    // persist a canonical attributed to a distribution this
+                    // session does not run in — the very confusion decision 33
+                    // removes, and one that would outlive the command — so
+                    // nothing is resolved and the refusal comes later, with the
+                    // same reason.
+                    log::warn!("no single WSL distro for this project's folders: {error}");
+                    None
+                }
+            };
             let mut resolved_paths = Vec::with_capacity(write_paths.len());
-            for requested in write_paths {
-                match sandbox::resolve_canonical_for_grant(requested.clone()).await {
-                    Ok(resolved) => {
-                        resolved_paths.push(settings::GrantedWritePath::resolved_on_fs(
-                            requested,
-                            resolved.canonical,
-                            resolved.on_windows_fs,
-                        ));
-                    }
-                    Err(error) => {
-                        log::warn!(
-                            "could not resolve sandbox write path {} in WSL: {error:#}",
-                            requested.display()
-                        );
+            if let Some(session_distro) = session_distro {
+                for requested in write_paths {
+                    match sandbox::resolve_canonical_for_grant(
+                        requested.clone(),
+                        session_distro.clone(),
+                    )
+                    .await
+                    {
+                        Ok(resolved) => {
+                            resolved_paths.push(settings::GrantedWritePath::resolved_on_fs(
+                                requested,
+                                resolved.canonical,
+                                resolved.on_windows_fs,
+                            ));
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "could not resolve sandbox write path {} in WSL: {error:#}",
+                                requested.display()
+                            );
+                        }
                     }
                 }
             }
@@ -1004,6 +1040,39 @@ fn resolve_write_paths(
             .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
     });
     join_write_paths(raw_paths, base.as_deref(), windows_paths)
+}
+
+/// ADR-F49 decision 33: every path a sandboxed command carries into WSL, which
+/// is what its distribution is picked from (`sandbox::wrap_invocation` hands
+/// exactly these to its `select_distro`). Split out so it can be unit-tested
+/// without a `Project`/`App`.
+///
+/// Load-bearing for a bare Linux-absolute grant (`/home/me/x`): it names no
+/// distribution and is resolved — and shown to the user — in the one this
+/// session runs in, so *this* set must be the same one the command's distro is
+/// picked from later. Leaving any of it out lets the two disagree, and then the
+/// folder the user approved is in one distribution while the folder the command
+/// can write is in another. The worktree roots alone are not that set: a grant
+/// already standing for the thread pins the whole command to its distribution
+/// even when the project's own folders are on a Windows drive and name none,
+/// and so does a `.git` directory outside the worktrees.
+#[cfg(target_os = "windows")]
+fn session_distro_paths(
+    worktree_roots: Vec<PathBuf>,
+    working_dir: Option<&Path>,
+    git_dirs: Vec<PathBuf>,
+    standing_grants: &[settings::GrantedWritePath],
+) -> Vec<PathBuf> {
+    let mut paths = worktree_roots;
+    paths.extend(working_dir.map(Path::to_path_buf));
+    paths.extend(git_dirs);
+    for granted in standing_grants {
+        // Both halves, because `select_distro` reads both: a grant is enforced
+        // through its canonical, and refused through its requested path.
+        paths.push(granted.requested.clone());
+        paths.push(granted.canonical_or_requested().to_path_buf());
+    }
+    paths
 }
 
 /// Pure path-joining step of [`resolve_write_paths`], split out so it can be
@@ -3378,6 +3447,77 @@ mod tests {
             false,
         );
         assert_eq!(joined, vec![PathBuf::from("/mnt/c/example/write-root")]);
+    }
+
+    /// ADR-F49 decision 33: the distribution a bare `/…` grant is resolved (and
+    /// shown) in has to be the one the command will run in, and that one is
+    /// picked from *every* path the sandbox carries — not the worktree roots
+    /// alone. A grant already standing for the thread pins the command to its
+    /// distribution even when the project's own folders are on a Windows drive,
+    /// so it has to pin the resolution too; otherwise the user approves a folder
+    /// in the default distribution and the command writes in another one.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_session_distro_paths_cover_every_path_the_sandbox_carries() {
+        let standing = vec![
+            settings::GrantedWritePath::resolved(
+                PathBuf::from(r"\\wsl.localhost\Debian\home\me\cache"),
+                PathBuf::from(r"\\wsl.localhost\debian\home\me\cache"),
+            ),
+            settings::GrantedWritePath::from_requested(PathBuf::from("/legacy/bare")),
+        ];
+        let paths = session_distro_paths(
+            vec![PathBuf::from(r"C:\project")],
+            Some(Path::new(r"C:\project\src")),
+            vec![PathBuf::from(r"C:\project\.git")],
+            &standing,
+        );
+        let distro =
+            project::agent_sandbox::wsl_distro_for_roots(&paths).expect("one distribution");
+        assert!(
+            distro
+                .as_deref()
+                .is_some_and(|distro| distro.eq_ignore_ascii_case("Debian")),
+            "a standing grant in a distribution decides the session's distribution, got {distro:?}"
+        );
+        // The regression this guards: read from the worktree roots and the cwd
+        // alone, the same session looks like the default distro's — and a bare
+        // `/…` grant would then be resolved and shown there while the command
+        // ran in Debian.
+        assert_eq!(
+            project::agent_sandbox::wsl_distro_for_roots(&[
+                PathBuf::from(r"C:\project"),
+                PathBuf::from(r"C:\project\src"),
+            ])
+            .expect("no distribution"),
+            None
+        );
+
+        // Nothing naming a distribution still means the default distro, whose
+        // name Zed never learns — the behaviour of every ordinary project.
+        let paths = session_distro_paths(
+            vec![PathBuf::from(r"C:\project")],
+            Some(Path::new(r"C:\project\src")),
+            vec![PathBuf::from(r"C:\project\.git")],
+            &[settings::GrantedWritePath::from_requested(PathBuf::from(
+                "/legacy/bare",
+            ))],
+        );
+        assert_eq!(
+            project::agent_sandbox::wsl_distro_for_roots(&paths).expect("no distribution"),
+            None
+        );
+
+        // Two distributions is a command `sandbox::wrap_invocation` refuses; the
+        // error is what makes the caller fall back to the default distro rather
+        // than pinning one of them.
+        let paths = session_distro_paths(
+            vec![PathBuf::from(r"\\wsl.localhost\Ubuntu\root\project")],
+            None,
+            Vec::new(),
+            &standing,
+        );
+        assert!(project::agent_sandbox::wsl_distro_for_roots(&paths).is_err());
     }
 
     #[test]

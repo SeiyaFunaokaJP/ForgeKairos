@@ -100,6 +100,9 @@ tempfile.workspace = true
 [target.'cfg(target_os = "windows")'.dependencies]
 # Decompresses the bundled Linux helper while copying it into WSL (ADR-F46).
 async-compression.workspace = true
+# Picks the port a sandbox's IDE channel is offered on inside its own network
+# namespace (ADR-F49 `new_inner_ide_port`).
+rand.workspace = true
 # Names the helper's per-build directory inside WSL and verifies the copy.
 sha2.workspace = true
 smol.workspace = true

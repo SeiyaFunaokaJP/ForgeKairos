@@ -202,16 +202,24 @@ fn path_covered_by_recursive_registration(
 ///
 /// Returns `true` for filesystem types where inotify/FSEvents/ReadDirectoryChanges
 /// silently fail to deliver events: 9P (WSL drvfs), NFS, CIFS/SMB, FUSE (sshfs), etc.
+/// On Windows that is the `\\wsl.localhost\<distro>\…` share; other volumes whose driver
+/// has no `ReadDirectoryChangesW` are caught later, when the native watch itself fails.
 ///
 /// Can be overridden with the `ZED_FILE_WATCHER_MODE` environment variable:
 /// - `native` — always use native OS watcher
 /// - `poll` — always use polling
 /// - `auto` (default) — auto-detect based on filesystem type
 pub fn requires_poll_watcher(path: &Path) -> bool {
-    match std::env::var("ZED_FILE_WATCHER_MODE")
-        .as_deref()
-        .unwrap_or("auto")
-    {
+    requires_poll_watcher_with_mode(
+        path,
+        std::env::var("ZED_FILE_WATCHER_MODE")
+            .as_deref()
+            .unwrap_or("auto"),
+    )
+}
+
+fn requires_poll_watcher_with_mode(path: &Path, mode: &str) -> bool {
+    match mode {
         "native" => return false,
         "poll" => return true,
         _ => {}
@@ -222,7 +230,17 @@ pub fn requires_poll_watcher(path: &Path) -> bool {
         return detect_requires_poll_watcher_linux(path);
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        // `ReadDirectoryChangesW` fails with `ERROR_INVALID_FUNCTION` on the 9P share that
+        // serves a WSL distribution's own filesystem, so a worktree opened through
+        // `\\wsl.localhost\<distro>\…` would never see a change made from inside WSL
+        // (ADR-F49 decision 33). Decided on the spelling alone: this runs for every
+        // registration, and touching the share to ask would cost a round trip through 9P.
+        return util::path_mapping::is_wsl_share_path(path);
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         let _ = path;
         false
@@ -1216,6 +1234,13 @@ impl GlobalWatcher {
                     hit_watch_limit: true,
                 }
             }
+            Err(error) if is_unsupported_native_watch_error(&error) => {
+                self.budget.release_native();
+                NewWatch {
+                    mode: self.watch_poll_instead_of_native(path, &error),
+                    hit_watch_limit: false,
+                }
+            }
             Err(error) => {
                 self.budget.release_native();
                 NewWatch {
@@ -1224,6 +1249,27 @@ impl GlobalWatcher {
                 }
             }
         }
+    }
+
+    /// Polls a path whose volume has no working native watch. Polling is recursive, which is
+    /// what the native watch would have been on the platforms that report this (Windows), so
+    /// the registration still covers descendants.
+    fn watch_poll_instead_of_native(
+        &self,
+        path: &SanitizedPath,
+        error: &anyhow::Error,
+    ) -> anyhow::Result<WatcherMode> {
+        log::info!(
+            "Native file watching is not supported for {} ({error}); using poll watcher ({}ms interval)",
+            path.as_path().display(),
+            poll_interval().as_millis(),
+        );
+        telemetry::event!(
+            "fs_watcher_poll",
+            path = path.as_path().display().to_string()
+        );
+        self.watch(path.as_path(), WatcherMode::Poll)?;
+        Ok(WatcherMode::Poll)
     }
 
     fn watch_fallback(&self, path: &SanitizedPath) -> anyhow::Result<WatcherMode> {
@@ -1708,6 +1754,12 @@ impl GlobalWatcher {
         let mut poll_watcher = self.poll_watcher.lock();
         if poll_watcher.is_none() {
             let config = notify::Config::default().with_poll_interval(*POLL_INTERVAL);
+            // On Windows the poller serves the 9P share of a WSL distribution, where every link
+            // the distribution made is one Windows cannot follow: following links would make each
+            // pass report an error for each of them. The link itself is still compared, and
+            // neither native backend follows links either.
+            #[cfg(target_os = "windows")]
+            let config = config.with_follow_symlinks(false);
             let watcher = notify::PollWatcher::new(
                 |event| global_watcher().enqueue(WatcherMode::Poll, event),
                 config,
@@ -1759,6 +1811,30 @@ fn is_max_files_watch_error(error: &anyhow::Error) -> bool {
     error
         .downcast_ref::<notify::Error>()
         .is_some_and(|error| matches!(&error.kind, notify::ErrorKind::MaxFilesWatch))
+}
+
+/// Whether the volume behind the path has no working native watch, so the path has to be
+/// polled instead of being reported as a failure.
+///
+/// `ReadDirectoryChangesW` answers `ERROR_INVALID_FUNCTION` when the driver serving a
+/// directory doesn't implement change notifications. The 9P share of a WSL distribution does
+/// that, and so can other network redirectors, which is why this is a rule about the error
+/// rather than about the one path spelling `requires_poll_watcher` already knows.
+#[cfg(target_os = "windows")]
+fn is_unsupported_native_watch_error(error: &anyhow::Error) -> bool {
+    const ERROR_INVALID_FUNCTION: i32 = 1;
+    error.downcast_ref::<notify::Error>().is_some_and(|error| {
+        matches!(&error.kind, notify::ErrorKind::Io(error)
+            if error.raw_os_error() == Some(ERROR_INVALID_FUNCTION))
+    })
+}
+
+/// No other platform answers a watch request with "this volume cannot do that": inotify and
+/// FSEvents either work or fail for a reason polling wouldn't fix, and os error 1 means
+/// `EPERM` there.
+#[cfg(not(target_os = "windows"))]
+fn is_unsupported_native_watch_error(_error: &anyhow::Error) -> bool {
+    false
 }
 
 static POLL_INTERVAL: LazyLock<Duration> = LazyLock::new(|| {
@@ -1829,6 +1905,9 @@ mod tests {
         watch_calls: Vec<PathBuf>,
         unwatch_calls: Vec<PathBuf>,
         fail_with_watch_limit: bool,
+        /// Makes `watch` fail with this raw OS error, the way a volume whose driver has no
+        /// change notifications does.
+        fail_with_io_os_error: Option<i32>,
         max_watches: Option<usize>,
     }
 
@@ -1839,6 +1918,9 @@ mod tests {
             let path = path.to_path_buf();
             let mut backend = self.0.lock();
             backend.watch_calls.push(path.clone());
+            if let Some(code) = backend.fail_with_io_os_error {
+                return Err(notify::Error::io(std::io::Error::from_raw_os_error(code)));
+            }
             let at_limit = backend.max_watches.is_some_and(|max_watches| {
                 backend.watched_paths.len() >= max_watches && !backend.watched_paths.contains(&path)
             });
@@ -2123,6 +2205,201 @@ mod tests {
                 .all(|registration| registration.mode == WatcherMode::Fallback)
         );
         assert_eq!(native_backend.lock().watch_calls, directories);
+    }
+
+    /// `\\wsl.localhost\…` is decided on the spelling, before any watch is attempted, and the
+    /// `ZED_FILE_WATCHER_MODE` override still wins in both directions.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_share_paths_are_polled_unless_the_mode_overrides_it() {
+        let shares = [
+            Path::new(r"\\wsl.localhost\Ubuntu\home\user\project"),
+            Path::new(r"\\wsl$\Ubuntu\home\user\project"),
+            Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\home\user\project"),
+        ];
+        let drive = Path::new(r"I:\zed-jp-llm\crates");
+
+        for path in shares {
+            assert!(requires_poll_watcher_with_mode(path, "auto"), "{path:?}");
+            assert!(requires_poll_watcher_with_mode(path, "poll"), "{path:?}");
+            assert!(!requires_poll_watcher_with_mode(path, "native"), "{path:?}");
+        }
+
+        assert!(!requires_poll_watcher_with_mode(drive, "auto"));
+        assert!(requires_poll_watcher_with_mode(drive, "poll"));
+        assert!(!requires_poll_watcher_with_mode(drive, "native"));
+    }
+
+    /// A volume that isn't a WSL share but still has no `ReadDirectoryChangesW` is caught by
+    /// the failure of the native watch itself.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_native_watch_the_volume_cannot_serve_falls_back_to_polling() {
+        const ERROR_INVALID_FUNCTION: i32 = 1;
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(temp_dir.path(), ["share".to_owned()]);
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend {
+            fail_with_io_os_error: Some(ERROR_INVALID_FUNCTION),
+            ..Default::default()
+        }));
+        let poll_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let watcher =
+            test_watcher_with_backends(Some(native_backend.clone()), Some(poll_backend.clone()));
+
+        let registrations = watch_all(&watcher, &directories, |_| {});
+
+        assert_eq!(
+            registrations.first().map(|registration| registration.mode),
+            Some(WatcherMode::Poll)
+        );
+        assert_eq!(native_watched_paths(&native_backend), HashSet::new());
+        assert_eq!(
+            native_watched_paths(&poll_backend),
+            directories.iter().cloned().collect::<HashSet<_>>()
+        );
+    }
+
+    /// Only "this volume cannot do that" is answered with polling: an error polling wouldn't
+    /// fix still reaches the caller.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn another_native_watch_error_is_reported_rather_than_polled() {
+        const ERROR_ACCESS_DENIED: i32 = 5;
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(temp_dir.path(), ["denied".to_owned()]);
+        let directory = directories.first().expect("one directory").clone();
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend {
+            fail_with_io_os_error: Some(ERROR_ACCESS_DENIED),
+            ..Default::default()
+        }));
+        let poll_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let watcher = test_watcher_with_backends(Some(native_backend), Some(poll_backend.clone()));
+
+        let result = watcher.add(
+            directory.as_path().into(),
+            WatcherMode::Native,
+            false,
+            |_| {},
+        );
+
+        assert!(result.is_err());
+        assert!(poll_backend.lock().watch_calls.is_empty());
+    }
+
+    /// The 9P share of a WSL distribution, end to end: a directory created inside WSL is
+    /// watched through `\\wsl.localhost\…`, a file is created inside WSL, and the event has to
+    /// reach the watcher — which it does only by polling, because `ReadDirectoryChangesW`
+    /// answers `ERROR_INVALID_FUNCTION` for that share.
+    ///
+    /// It needs this machine's WSL and writes in the distribution's `/tmp`, so it runs only
+    /// when asked for:
+    ///
+    /// ```text
+    /// ZED_E2E_WSL_WATCH=1 cargo test -p fs --lib -- --ignored --nocapture e2e_wsl
+    /// ```
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[ignore]
+    fn e2e_wsl_share_changes_reach_the_watcher() {
+        if !std::env::var("ZED_E2E_WSL_WATCH").is_ok_and(|value| value == "1") {
+            return;
+        }
+        let distro = std::env::var("ZED_E2E_WSL_DISTRO").unwrap_or_else(|_| "Ubuntu".to_owned());
+        let run = |script: String| {
+            let output = smol::block_on(
+                smol::process::Command::new("wsl.exe")
+                    .args(["-d", distro.as_str(), "--exec", "sh", "-c", script.as_str()])
+                    .output(),
+            )
+            .expect("running wsl.exe");
+            assert!(
+                output.status.success(),
+                "{script}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run("rm -rf /tmp/zed-4a-watch; mkdir -p /tmp/zed-4a-watch; \
+             echo hi > /tmp/zed-4a-watch/target.txt; \
+             ln -s target.txt /tmp/zed-4a-watch/link.txt"
+            .to_owned());
+
+        let share = PathBuf::from(format!(r"\\wsl.localhost\{distro}\tmp\zed-4a-watch"));
+        assert!(
+            requires_poll_watcher(&share),
+            "a distribution's own filesystem is polled"
+        );
+
+        // What `worktree`'s scan tells a link WSL made apart by: the link itself can be read,
+        // but anything that follows it answers `ERROR_PATH_NOT_FOUND` — including the open
+        // behind `Fs::metadata`, which is why such an entry is skipped rather than reported.
+        const ERROR_PATH_NOT_FOUND: i32 = 3;
+        let link = share.join("link.txt");
+        assert!(
+            fs::symlink_metadata(&link)
+                .expect("the link itself is readable")
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::File::open(&link)
+                .err()
+                .and_then(|error| error.raw_os_error()),
+            Some(ERROR_PATH_NOT_FOUND),
+            "Windows cannot follow a link the distribution made"
+        );
+        assert_eq!(
+            fs::metadata(&link)
+                .err()
+                .and_then(|error| error.raw_os_error()),
+            Some(ERROR_PATH_NOT_FOUND)
+        );
+        let file_id_error =
+            smol::block_on(crate::file_id(&link)).expect_err("the file id needs the target");
+        assert_eq!(
+            file_id_error
+                .downcast_ref::<std::io::Error>()
+                .and_then(std::io::Error::raw_os_error),
+            Some(ERROR_PATH_NOT_FOUND),
+            "this is the error `worktree` recognizes such a link by"
+        );
+
+        let (tx, _rx) = async_channel::unbounded();
+        let pending_path_events: Arc<Mutex<Vec<PathEvent>>> = Default::default();
+        let registration = register_existing_path(
+            share.as_path().into(),
+            case_insensitive_path(&share),
+            tx,
+            pending_path_events.clone(),
+        )
+        .expect("watching the share");
+
+        run("touch /tmp/zed-4a-watch/from-wsl.txt".to_owned());
+
+        // Long enough for several poll passes over 9P, which is slower than a local volume.
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let reported = loop {
+            let events = pending_path_events.lock().clone();
+            if events
+                .iter()
+                .any(|event| event.path.ends_with("from-wsl.txt"))
+            {
+                break events;
+            }
+            if Instant::now() >= deadline {
+                break events;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        };
+
+        global_watcher().remove(registration.id);
+        run("rm -rf /tmp/zed-4a-watch".to_owned());
+
+        assert!(
+            reported
+                .iter()
+                .any(|event| event.path.ends_with("from-wsl.txt")),
+            "the file created inside WSL was reported: {reported:?}"
+        );
     }
 
     #[test]

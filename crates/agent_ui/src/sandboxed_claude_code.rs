@@ -707,7 +707,6 @@ mod launch {
     };
     use project::SandboxedWriterGuard;
     use project::agent_sandbox::canonical_project_key_roots;
-    use rand::Rng as _;
     use task::{RevealStrategy, RevealTarget, SpawnInTerminal, TaskId};
     use terminal::Terminal;
     use terminal_view::TerminalView;
@@ -734,10 +733,6 @@ mod launch {
     /// One `wsl.exe` round trip, which a cold WSL can take this long to answer.
     const WSL_STEP_TIMEOUT: Duration = Duration::from_secs(90);
     const BRIDGE_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
-    /// Where the CLI's IDE port is picked, inside the session's own network
-    /// namespace. Random, so that a lock a crashed session left behind is
-    /// unlikely to be in the way before the sweep removes it.
-    const INNER_PORTS: std::ops::Range<u16> = 20000..60000;
 
     /// Lists, for [`stale_entries`], the entries of the rendezvous directory
     /// (`$1`) and the lock directory (`$2`) and the command lines that name an
@@ -907,7 +902,7 @@ shift 3
 
         let executor = cx.background_executor().clone();
         let session_id = new_session_id();
-        let inner_port = rand::rng().random_range(INNER_PORTS);
+        let inner_port = sandbox::new_inner_ide_port();
         let rendezvous = in_wsl(&executor, {
             let distro = distro.clone();
             let session_id = session_id.clone();

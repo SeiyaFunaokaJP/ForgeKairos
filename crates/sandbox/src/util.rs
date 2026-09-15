@@ -103,8 +103,19 @@ pub(crate) fn parse_wsl_share_path(path: &str) -> Option<WslSharePath> {
 /// How a location inside `distro` is written on Windows, in the one spelling
 /// [`parse_wsl_share_path`] normalizes to, so that two spellings of the same
 /// location compare equal as plain paths.
+///
+/// The distribution name is lower-cased, as the share name of a UNC path is in
+/// `util::path_mapping::ComparablePath` (ASCII only, matching `select_distro`'s
+/// `eq_ignore_ascii_case`, so two names differing outside ASCII stay two names
+/// here and are refused there rather than silently merged). WSL matches the
+/// name case-insensitively, so `\\wsl.localhost\ubuntu\p` and
+/// `\\wsl.localhost\Ubuntu\p` are one folder; keeping the two spellings apart
+/// made them two entries in every list of grants, because the plain
+/// `PartialEq` and `Path::starts_with` the callers dedupe with cannot see that
+/// they name the same place.
 #[cfg(target_os = "windows")]
 pub(crate) fn wsl_share_path_spelling(distro: &str, linux_path: &str) -> String {
+    let distro = distro.to_ascii_lowercase();
     let relative = linux_path.trim_start_matches('/').replace('/', "\\");
     if relative.is_empty() {
         format!(r"\\wsl.localhost\{distro}")

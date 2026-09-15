@@ -54,6 +54,7 @@ use terminal::terminal_settings::{AlternateScroll, CursorShape};
 
 use crate::acp_paths::AcpPathTranslator;
 use crate::{CURSOR_ID, GEMINI_ID};
+use util::path_mapping::WslWorktreeRootsError;
 
 pub const GEMINI_TERMINAL_AUTH_METHOD_ID: &str = "spawn-gemini-cli";
 const PARAMETERIZED_MODEL_PICKER_META_KEY: &str = "parameterizedModelPicker";
@@ -955,9 +956,15 @@ impl AcpConnection {
                 Some(Arc::new(
                     AcpPathTranslator::for_wsl(worktree_roots, distro.as_deref()).map_err(
                         |error| {
+                            // ADR-F07: `error`'s own `Display` stays English
+                            // for the log; the reason shown to the user is
+                            // built from the enum instead of interpolating
+                            // that English text into a Japanese sentence.
+                            log::warn!("acp: WSL sandbox unavailable: {error}");
                             sandbox_unavailable(format!(
                                 "このプロジェクトのフォルダーを WSL のサンドボックスから\
-                                 見せられません: {error:#}"
+                                 見せられません: {}",
+                                wsl_worktree_roots_reason_ja(&error)
                             ))
                         },
                     )?,
@@ -2193,10 +2200,17 @@ enum AgentSandboxRoute {
         distro: Option<String>,
         editor_allowlist: Option<Vec<String>>,
     },
+    /// ADR-F18: a remote host's sandbox helper. The editor-wide allowlist
+    /// travels with the route for the same reason it does with [`Self::Wsl`]:
+    /// the helper's proxy runs on the far side of the connection, where the
+    /// live policy object cannot follow, so every sandbox built for this
+    /// connection — the agent's and each sign-in's — has to be handed the same
+    /// entries (ADR-F17).
     Remote {
         remote_binary: Arc<RelPath>,
         wrap: acp_thread::SandboxWrap,
         readable_paths: Vec<String>,
+        network_ceiling: Option<Vec<String>>,
     },
 }
 
@@ -2253,6 +2267,42 @@ fn host_agent_command(
 
 fn sandbox_unavailable(reason: impl Into<SharedString>) -> anyhow::Error {
     anyhow::Error::new(LoadError::SandboxUnavailable(reason.into()))
+}
+
+/// ADR-F07: the reason [`util::path_mapping::WslPathMapper::for_worktree_roots`]
+/// refused, worded in Japanese for the "サンドボックスで起動できません" card
+/// (`conversation_view.rs::render_load_error`). Built from the enum rather
+/// than from its (English, log-only) `Display`, so no English text ends up
+/// inside the Japanese sentence.
+fn wsl_worktree_roots_reason_ja(error: &WslWorktreeRootsError) -> String {
+    match error {
+        WslWorktreeRootsError::InvalidDistroName(name) => {
+            format!("`{name}` は WSL ディストリビューション名として使えません。")
+        }
+        WslWorktreeRootsError::NotAWindowsPath(path) => {
+            format!("{} は Windows の絶対パスではありません。", path.display())
+        }
+        WslWorktreeRootsError::DriveSeenThroughWsl(path) => format!(
+            "{} は WSL 経由で見えている Windows のドライブです。ドライブ文字で開いてください。",
+            path.display()
+        ),
+        WslWorktreeRootsError::NetworkShare(path) => format!(
+            "{} はネットワーク共有上にあり、WSL のサンドボックスからは届きません。",
+            path.display()
+        ),
+        WslWorktreeRootsError::MultipleDistros { first, second } => format!(
+            "プロジェクトのフォルダーが 2 つの WSL ディストリビューション (`{first}`、`{second}`) に\
+             またがっており、サンドボックスは 1 つのディストリビューションでしか動きません。"
+        ),
+        WslWorktreeRootsError::DistroMismatch { project, sandbox } => format!(
+            "プロジェクトは WSL ディストリビューション `{project}` にありますが、\
+             サンドボックスは `{sandbox}` で動いています。"
+        ),
+        WslWorktreeRootsError::DefaultDistroUnknown { project } => format!(
+            "プロジェクトは WSL ディストリビューション `{project}` にありますが、\
+             サンドボックスが動く既定のディストリビューションの名前が分かりません。"
+        ),
+    }
 }
 
 /// ADR-F49 decision 13: the agent's hosts the IDE-wide allowlist does not
@@ -2553,12 +2603,6 @@ struct WslAgentLaunch {
     ide_link: Option<SandboxIdeLink>,
 }
 
-/// ADR-F49 決定 24: where the agent's IDE port is picked, inside its own
-/// network namespace. Random, so that a session's port is not one a crashed
-/// one's leftovers still name.
-#[cfg(target_os = "windows")]
-const INNER_IDE_PORTS: std::ops::Range<u16> = 20000..60000;
-
 /// ADR-F49 決定 24: what an ACP agent's IDE session is named inside the
 /// distro, told apart from the sandboxed CLI's (`claude-`) by its prefix so
 /// that either launcher only ever sweeps its own leftovers.
@@ -2657,9 +2701,7 @@ async fn wsl_sandboxed_agent_command(
     // that answers. Only the diagnostics tool is on the other end; when it
     // cannot be brought up the agent starts without it.
     let ide = match paths {
-        Some(paths) => {
-            start_restricted_ide_channel(project, distro.as_deref(), &config_dir, paths, cx).await
-        }
+        Some(paths) => start_restricted_ide_channel(project, distro.as_deref(), paths, cx).await,
         None => None,
     };
     let ide_forward = ide.as_ref().map(|(_, forward)| forward.clone());
@@ -2726,6 +2768,11 @@ async fn wsl_sandboxed_agent_command(
 /// that carries its connections out of the distro, and the port the sandbox's
 /// own loopback offers them on.
 ///
+/// Everything it is made of is this connection's own, so a second connection
+/// of the same project and the same agent — two windows holding one folder, or
+/// a restart while a thread still holds the connection it replaces — brings up
+/// a channel of its own rather than being turned away.
+///
 /// `None` when any of it fails: the agent then starts without the diagnostics
 /// tool rather than not at all. That is not the sandbox failing open — nothing
 /// is loosened, the agent is simply given one tool fewer — but it is worth
@@ -2734,11 +2781,10 @@ async fn wsl_sandboxed_agent_command(
 async fn start_restricted_ide_channel(
     project: &Entity<Project>,
     distro: Option<&str>,
-    config_dir: &str,
     paths: &Arc<AcpPathTranslator>,
     cx: &mut AsyncApp,
 ) -> Option<(SandboxIdeLink, sandbox::IdeForward)> {
-    match restricted_ide_channel(project, distro, config_dir, paths, cx).await {
+    match restricted_ide_channel(project, distro, paths, cx).await {
         Ok(Some(link)) => Some(link),
         Ok(None) => {
             log::info!(
@@ -2761,7 +2807,6 @@ async fn start_restricted_ide_channel(
 async fn restricted_ide_channel(
     project: &Entity<Project>,
     distro: Option<&str>,
-    config_dir: &str,
     paths: &Arc<AcpPathTranslator>,
     cx: &mut AsyncApp,
 ) -> Result<Option<(SandboxIdeLink, sandbox::IdeForward)>> {
@@ -2812,19 +2857,18 @@ async fn restricted_ide_channel(
         .background_spawn({
             let distro = distro.map(str::to_string);
             let rendezvous = rendezvous.clone();
-            // Held by the bridge while it runs, so that one agent
-            // configuration never has two IDE channels at once.
-            let config_dir = config_dir.to_string();
             async move {
                 // No lock file: an ACP agent is told where its IDE is through
-                // its session's `mcpServers`, not through the CLI's lock.
-                sandbox::ide_bridge_invocation(
-                    distro.as_deref(),
-                    &rendezvous,
-                    None,
-                    Some(&config_dir),
-                )
-                .await
+                // its session's `mcpServers`, not through the CLI's lock. And
+                // nothing held exclusively either: the 第 1 段 CLI's bridge
+                // claims the configuration folder — one project's and one
+                // agent's (決定 15) — because its lock file lives there and
+                // only one CLI session may serve it, while this channel
+                // shares nothing between connections. Claiming it here turned
+                // the second connection of one project and agent away with
+                // `session-running`, and that agent then ran with no
+                // diagnostics tool at all.
+                sandbox::ide_bridge_invocation(distro.as_deref(), &rendezvous, None, None).await
             }
         })
         .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
@@ -2854,7 +2898,7 @@ async fn restricted_ide_channel(
             }
         }
     });
-    let inner_port = new_inner_ide_port();
+    let inner_port = sandbox::new_inner_ide_port();
     Ok(Some((
         SandboxIdeLink {
             url: format!("http://127.0.0.1:{inner_port}/mcp"),
@@ -2870,16 +2914,6 @@ async fn restricted_ide_channel(
             rendezvous_path: rendezvous,
         },
     )))
-}
-
-/// A port in [`INNER_IDE_PORTS`]. The namespace is the sandbox's own, so any
-/// port will do; it is random only so that a session does not keep landing on
-/// the one a crashed session's leftovers name.
-#[cfg(target_os = "windows")]
-fn new_inner_ide_port() -> u16 {
-    let bytes = *uuid::Uuid::new_v4().as_bytes();
-    let span = INNER_IDE_PORTS.end - INNER_IDE_PORTS.start;
-    INNER_IDE_PORTS.start + u16::from_le_bytes([bytes[0], bytes[1]]) % span
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2950,9 +2984,14 @@ struct RemoteAgentPlan {
 }
 
 /// ADR-F49 decision 13: the network an agent gets in a remote host's sandbox
-/// helper. The IDE-wide allowlist is not shipped to an SSH host, so the part
-/// of the agent's hosts that the allowlist permits is taken here, and an agent
-/// with no hosts of its own gets the allowlist itself.
+/// helper — the part of the agent's own hosts that the IDE-wide allowlist
+/// permits, and for an agent with no hosts of its own, the allowlist itself.
+///
+/// The allowlist travels to that helper as the ceiling its proxy nests this
+/// inside as well (ADR-F17), and that is what judges each connection. This
+/// narrowing stays in front of it because the two are not interchangeable:
+/// it is what resolves `AgentSandboxHosts::EditorAllowlist` into hosts, and
+/// what the agent itself is told its reach is.
 ///
 /// No allowlist at all is not "everything": the ceiling that would judge the
 /// agent's traffic is missing, so the agent reaches nothing (`editor_allows`
@@ -3003,6 +3042,7 @@ fn plan_remote_agent(
     worktree_roots: Vec<PathBuf>,
     git_dirs: Vec<PathBuf>,
     network: acp_thread::SandboxNetworkAccess,
+    network_ceiling: Option<&[String]>,
     cwd: Option<&Path>,
     session_id: Option<&str>,
     program: String,
@@ -3029,6 +3069,7 @@ fn plan_remote_agent(
     let (program, args) = acp_thread::build_remote_sandbox_command(
         remote_binary,
         &wrap,
+        network_ceiling,
         cwd,
         &sandbox_command.env,
         &readable_paths,
@@ -3069,7 +3110,7 @@ fn remote_sandboxed_agent_command(
         return Err(sandbox_unavailable(OLD_REMOTE_SERVER_REASON));
     };
     ensure_hosts_allowed(hosts, cx)?;
-    let (worktree_roots, git_dirs, network, remote_client) =
+    let (worktree_roots, git_dirs, network, network_ceiling, remote_client) =
         project.read_with(cx, |project, cx| {
             let allowlist = cx.try_global::<egress_policy::EgressAllowlistGlobal>();
             let editor_allowlist = editor_allowlist_entries(cx);
@@ -3083,6 +3124,7 @@ fn remote_sandboxed_agent_command(
                 acp_thread::sandbox_worktree_writable_paths(project, cx),
                 acp_thread::sandbox_git_dirs(project, cx),
                 network,
+                editor_allowlist,
                 project.remote_client(),
             )
         });
@@ -3093,6 +3135,7 @@ fn remote_sandboxed_agent_command(
         worktree_roots,
         git_dirs,
         network,
+        network_ceiling.as_deref(),
         root_dir.as_deref(),
         Some(session_id.as_str()),
         command.path.to_string_lossy().into_owned(),
@@ -3124,6 +3167,7 @@ fn remote_sandboxed_agent_command(
                 remote_binary,
                 wrap: plan.wrap,
                 readable_paths: plan.readable_paths,
+                network_ceiling,
             },
         },
         session_id,
@@ -3238,10 +3282,12 @@ async fn wrap_login_in_sandbox(
             remote_binary,
             wrap,
             readable_paths,
+            network_ceiling,
         } => {
             let (program, args) = acp_thread::build_remote_sandbox_command(
                 remote_binary,
                 wrap,
+                network_ceiling.as_deref(),
                 session.cwd.as_deref(),
                 &env,
                 readable_paths,
@@ -4602,6 +4648,90 @@ mod tests {
             .into_arc()
     }
 
+    /// ADR-F07: every reason `WslPathMapper::for_worktree_roots` can refuse
+    /// gets its own whole-Japanese sentence, not the enum's (English,
+    /// log-only) `Display` embedded in one.
+    #[test]
+    fn wsl_worktree_roots_reasons_are_worded_in_japanese() {
+        let invalid_distro = WslWorktreeRootsError::InvalidDistroName("a/b".to_string());
+        assert_eq!(
+            wsl_worktree_roots_reason_ja(&invalid_distro),
+            "`a/b` は WSL ディストリビューション名として使えません。"
+        );
+
+        let not_windows_path = WslWorktreeRootsError::NotAWindowsPath(PathBuf::from("relative"));
+        assert_eq!(
+            wsl_worktree_roots_reason_ja(&not_windows_path),
+            "relative は Windows の絶対パスではありません。"
+        );
+
+        let drive_through_wsl = WslWorktreeRootsError::DriveSeenThroughWsl(PathBuf::from(
+            r"\\wsl.localhost\Ubuntu\mnt\c\proj",
+        ));
+        assert_eq!(
+            wsl_worktree_roots_reason_ja(&drive_through_wsl),
+            r"\\wsl.localhost\Ubuntu\mnt\c\proj は WSL 経由で見えている Windows のドライブです。ドライブ文字で開いてください。"
+        );
+
+        let network_share =
+            WslWorktreeRootsError::NetworkShare(PathBuf::from(r"\\server\share\proj"));
+        assert_eq!(
+            wsl_worktree_roots_reason_ja(&network_share),
+            r"\\server\share\proj はネットワーク共有上にあり、WSL のサンドボックスからは届きません。"
+        );
+
+        let multiple_distros = WslWorktreeRootsError::MultipleDistros {
+            first: "Ubuntu".to_string(),
+            second: "Debian".to_string(),
+        };
+        assert_eq!(
+            wsl_worktree_roots_reason_ja(&multiple_distros),
+            "プロジェクトのフォルダーが 2 つの WSL ディストリビューション (`Ubuntu`、`Debian`) に\
+             またがっており、サンドボックスは 1 つのディストリビューションでしか動きません。"
+        );
+
+        let distro_mismatch = WslWorktreeRootsError::DistroMismatch {
+            project: "Ubuntu".to_string(),
+            sandbox: "Debian".to_string(),
+        };
+        assert_eq!(
+            wsl_worktree_roots_reason_ja(&distro_mismatch),
+            "プロジェクトは WSL ディストリビューション `Ubuntu` にありますが、\
+             サンドボックスは `Debian` で動いています。"
+        );
+
+        let default_distro_unknown = WslWorktreeRootsError::DefaultDistroUnknown {
+            project: "Ubuntu".to_string(),
+        };
+        assert_eq!(
+            wsl_worktree_roots_reason_ja(&default_distro_unknown),
+            "プロジェクトは WSL ディストリビューション `Ubuntu` にありますが、\
+             サンドボックスが動く既定のディストリビューションの名前が分かりません。"
+        );
+
+        // None of them leak the enum's English `Display` (its own log-only
+        // wording) into the UI-facing sentence, verbatim or in pieces.
+        for error in [
+            invalid_distro,
+            not_windows_path,
+            drive_through_wsl,
+            network_share,
+            multiple_distros,
+            distro_mismatch,
+            default_distro_unknown,
+        ] {
+            let reason = wsl_worktree_roots_reason_ja(&error);
+            assert_ne!(reason, error.to_string());
+            for english in [" is ", " the ", " a ", " and ", " in ", " not "] {
+                assert!(!reason.contains(english), "{english:?} left in {reason:?}");
+            }
+            assert!(
+                reason.ends_with('。'),
+                "the reason is a whole sentence in the card: {reason:?}"
+            );
+        }
+    }
+
     /// ADR-F49 第 2a 段: where an agent starts, and when it does not.
     #[test]
     fn an_agent_starts_in_the_sandbox_its_project_has() {
@@ -4709,9 +4839,12 @@ mod tests {
         );
     }
 
-    /// ADR-F49 decision 13: an SSH host is given no ceiling, so the client
-    /// passes the part of the agent's hosts the IDE-wide allowlist permits,
-    /// and for an agent with no hosts of its own the allowlist itself.
+    /// ADR-F49 decision 13: the client passes the part of the agent's hosts
+    /// the IDE-wide allowlist permits, and for an agent with no hosts of its
+    /// own the allowlist itself. The allowlist now also travels to the host as
+    /// the ceiling around this (ADR-F17), which is what judges each
+    /// connection; this narrowing is what resolves `EditorAllowlist` into
+    /// hosts and what the agent is told its reach is.
     #[test]
     fn a_remote_agent_reaches_the_part_of_its_hosts_the_ide_allows() {
         let listed = AgentSandboxHosts::Listed(vec![
@@ -4778,6 +4911,7 @@ mod tests {
             vec![PathBuf::from("/home/u/project")],
             vec![PathBuf::from("/home/u/project/.git")],
             network,
+            Some(&["api.anthropic.com".to_string()]),
             Some(Path::new("/home/u/project")),
             Some("s0me5ession1d"),
             node.to_string(),
@@ -4828,6 +4962,7 @@ mod tests {
             &["/home/u/project/.git".to_string()],
             &[readable.to_string()],
             &sandbox::RemoteSandboxNetwork::Hosts(vec!["api.anthropic.com".to_string()]),
+            Some(&["api.anthropic.com".to_string()]),
             false,
             Some("/home/u/project"),
         );
@@ -8269,6 +8404,180 @@ done
 
         drop(thread);
         drop(connection);
+    }
+
+    /// ADR-F49 決定 24: a stand-in agent that writes down the `session/new` it
+    /// was given, into the file `ZED_IDE_E2E_REPORT` names inside the
+    /// worktree, so that two of them running at once do not write over each
+    /// other.
+    #[cfg(target_os = "windows")]
+    const WSL_TWO_CONNECTIONS_E2E_AGENT: &str = r#"
+set -u
+P=/usr/bin/printf
+while IFS= read -r line; do
+    $P 'agent saw: %s\n' "$line" >&2
+    id=$($P '%s' "$line" | sed -n 's/^.*"id":\([^,}]*\).*$/\1/p')
+    case "$line" in
+        *'"method":"initialize"'*)
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1}}\n' "$id"
+            ;;
+        *'"method":"session/new"'*)
+            cwd=$($P '%s' "$line" | sed -n 's/^.*"cwd":"\([^"]*\)".*$/\1/p')
+            $P '%s' "$line" > "$cwd/ide-e2e/$ZED_IDE_E2E_REPORT"
+            $P '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"ide-e2e"}}\n' "$id"
+            ;;
+    esac
+done
+"#;
+
+    /// ADR-F49 決定 24, end to end on a real distro: the **second** connection
+    /// of one project and one agent is given an IDE server of its own.
+    ///
+    /// Both connections resolve to the same agent configuration folder (the
+    /// project key and the profile are the same), which is what used to turn
+    /// the second bridge away with `session-running` and leave that agent with
+    /// no diagnostics tool at all — logged, and invisible to the user. Two
+    /// windows holding one folder, and a restart while a thread still holds
+    /// the connection it replaces, both reach here.
+    ///
+    /// Run it with
+    ///
+    /// ```text
+    /// ZED_WSL_AGENT_E2E=1 cargo test -p agent_servers --lib -- --ignored --nocapture wsl
+    /// ```
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an end-to-end driver, not the app: it waits on real processes on its own thread"
+    )]
+    #[ignore = "needs a real WSL distro; set ZED_WSL_AGENT_E2E=1 and run with --ignored"]
+    async fn a_second_wsl_connection_of_one_agent_gets_its_own_restricted_ide_server(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        if std::env::var("ZED_WSL_AGENT_E2E").is_err() {
+            eprintln!("skipped: set ZED_WSL_AGENT_E2E=1 to run this against the real WSL distro");
+            return;
+        }
+        let project_dir = wsl_e2e_project_directory();
+        let reports = project_dir.join("ide-e2e");
+        std::fs::create_dir_all(&reports).expect("the project folder");
+        const REPORT_NAMES: [&str; 2] = ["two-first.txt", "two-second.txt"];
+        for leftover in REPORT_NAMES {
+            std::fs::remove_file(reports.join(leftover)).ok();
+        }
+        crate::e2e_tests::init_test(cx).await;
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+            ide_server::init(cx);
+        });
+        let project = Project::example([project_dir.as_path()], &mut cx.to_async()).await;
+        let _window = cx.add_window({
+            let project = project.clone();
+            move |window, cx| workspace::MultiWorkspace::test_new(project, window, cx)
+        });
+        cx.run_until_parked();
+        let agent_server_store =
+            project.read_with(cx, |project, _| project.agent_server_store().downgrade());
+
+        let command = |report: &str| AgentServerCommand {
+            path: PathBuf::from("/bin/sh"),
+            args: vec![
+                "-c".to_string(),
+                WSL_TWO_CONNECTIONS_E2E_AGENT.to_string(),
+                "zed-wsl-ide-e2e-agent".to_string(),
+            ],
+            env: None,
+            sandbox: Some(AgentSandboxCommand {
+                env: HashMap::from_iter([
+                    (
+                        "PATH".to_string(),
+                        "/usr/local/bin:/usr/bin:/bin".to_string(),
+                    ),
+                    ("ZED_IDE_E2E_REPORT".to_string(), report.to_string()),
+                ]),
+                readable_paths: Vec::new(),
+                // The same profile for both, so that they share one
+                // configuration folder — the resource the second connection
+                // used to be turned away over.
+                state: AgentSandboxState::Unresolved {
+                    profile: SandboxedAgentProfile::Other {
+                        id: "wsl-ide-two".to_string(),
+                    },
+                },
+                wsl: Some(project::agent_sandbox::WslAgentRuntime { distro: None }),
+            }),
+        };
+
+        let mut connections = Vec::new();
+        for report in REPORT_NAMES {
+            connections.push(Rc::new(
+                AcpConnection::stdio(
+                    AgentId::new("wsl-ide-two"),
+                    project.clone(),
+                    command(report),
+                    agent_server_store.clone(),
+                    None,
+                    HashMap::default(),
+                    false,
+                    &mut cx.to_async(),
+                )
+                .await
+                .expect("the agent starts in the WSL sandbox"),
+            ));
+        }
+
+        let links: Vec<_> = connections
+            .iter()
+            .map(|connection| {
+                let link = connection
+                    .ide_link
+                    .as_ref()
+                    .expect("both connections bring up an IDE channel of their own");
+                eprintln!("a restricted IDE server is at {}", link.url);
+                (link.url.clone(), link.authorization.clone())
+            })
+            .collect();
+        assert_ne!(
+            links[0].0, links[1].0,
+            "each connection's agent reaches its own port"
+        );
+        assert_ne!(
+            links[0].1, links[1].1,
+            "and answers for its own session alone"
+        );
+
+        let mut threads = Vec::new();
+        for connection in &connections {
+            threads.push(
+                cx.update(|cx| {
+                    connection.clone().new_session(
+                        project.clone(),
+                        PathList::new(&[project_dir.as_path()]),
+                        cx,
+                    )
+                })
+                .await
+                .expect("a session in the sandbox"),
+            );
+        }
+        cx.run_until_parked();
+
+        for (report, (url, _)) in REPORT_NAMES.iter().zip(&links) {
+            let given = read_e2e_file(&reports.join(report));
+            eprintln!("{report} was given: {given}");
+            assert!(
+                given.contains(r#""name":"ide""#),
+                "{report}: the restricted IDE server is among the agent's MCP servers: {given}"
+            );
+            assert!(
+                given.contains(url.as_str()),
+                "{report}: and it is this connection's own {url}: {given}"
+            );
+        }
+
+        drop(threads);
+        drop(connections);
     }
 
     /// The folder the E2E opens as its project. It has to be on a Windows

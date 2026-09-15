@@ -290,6 +290,61 @@ impl PartialEq for HostFilesystemLocation {
 
 impl Eq for HostFilesystemLocation {}
 
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests {
+    use super::{HostFilesystemLocation, normalize_host_filesystem_locations};
+    use std::path::{Path, PathBuf};
+
+    /// A grant on a distribution's own filesystem. Windows captures no identity
+    /// of its own here — the real resolution happens inside WSL — so this
+    /// touches no filesystem.
+    fn share(path: &str) -> HostFilesystemLocation {
+        HostFilesystemLocation::reopen(path, path).expect("a WSL share path is a grant")
+    }
+
+    /// ADR-F49 第 2b 段: WSL matches a distribution name case-insensitively, so
+    /// `\\wsl.localhost\ubuntu\…` and `\\wsl.localhost\Ubuntu\…` are one place.
+    /// They used to survive as two entries — the same folder listed twice, and a
+    /// grant under a worktree root spelled the other way not recognized as
+    /// already covered by it.
+    #[test]
+    fn a_differently_cased_distro_name_is_the_same_location() {
+        assert_eq!(
+            share(r"\\wsl.localhost\Ubuntu\root\p"),
+            share(r"\\wsl$\ubuntu\root\p")
+        );
+
+        let normalized = normalize_host_filesystem_locations(
+            [
+                share(r"\\wsl.localhost\Ubuntu\root\proj"),
+                share(r"\\wsl.localhost\ubuntu\root\proj\src"),
+                share(r"\\wsl.localhost\UBUNTU\root\proj"),
+                // Another distribution is another place, however it is spelled.
+                share(r"\\wsl.localhost\Debian\root\proj"),
+            ]
+            .into_iter(),
+        );
+        assert_eq!(
+            normalized
+                .iter()
+                .map(|location| location.canonical_or_raw_path().to_path_buf())
+                .collect::<Vec<_>>(),
+            vec![
+                PathBuf::from(r"\\wsl.localhost\ubuntu\root\proj"),
+                PathBuf::from(r"\\wsl.localhost\debian\root\proj"),
+            ]
+        );
+        // What the user wrote is still what the approval UI and the sandbox
+        // tooltip show.
+        assert_eq!(
+            normalized[0].untrusted_path_display().to_string(),
+            Path::new(r"\\wsl.localhost\Ubuntu\root\proj")
+                .display()
+                .to_string()
+        );
+    }
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod host_filesystem_location_tests {
     use super::{HostFilesystemLocation, normalize_host_filesystem_locations};

@@ -153,6 +153,9 @@ remote = { workspace = true, features = ["test-support"] }
 remote_connection = { workspace = true, features = ["test-support"] }
 remote_server = { workspace = true, features = ["test-support"] }
 
+# ADR-F49 decision 18 (C): names the processes of an agent's sandbox, for the
+# tests of the idle disconnect.
+sandbox.workspace = true
 search = { workspace = true, features = ["test-support"] }
 semver.workspace = true
 sha1.workspace = true

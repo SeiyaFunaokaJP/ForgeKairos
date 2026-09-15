@@ -1985,6 +1985,79 @@ async fn a_restricted_session_answers_streamable_http_with_one_tool(cx: &mut Tes
     assert_eq!(tool_names(&body), vec!["getDiagnostics"], "{body}");
 }
 
+/// 同じワークスペースに制限セッションをもう 1 本足す。`fixture` と共有するのはワークスペース
+/// (= 診断の出どころ) だけで、接続の口もトークンも別。
+fn another_restricted_session(fixture: &SandboxFixture, cx: &mut TestAppContext) -> SandboxFixture {
+    let (connections, incoming_connections) = unbounded::<MemoryStream>();
+    let (session, info) = cx.update(|cx| {
+        crate::start_restricted_sandbox_session(
+            fixture.workspace.downgrade(),
+            incoming_connections,
+            Arc::new(SandboxPaths::new(
+                sandbox_mapper(),
+                vec![PathBuf::from(path!("/test"))],
+            )),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    SandboxFixture {
+        fs: fixture.fs.clone(),
+        project: fixture.project.clone(),
+        window: fixture.window,
+        workspace: fixture.workspace.clone(),
+        connections,
+        session: Some(session),
+        auth_token: info.auth_token,
+    }
+}
+
+/// ADR-F49 決定 24: 1 つのワークスペースに制限セッションが 2 本ぶら下がる。同じプロジェクト・
+/// 同じエージェントの 2 本目の接続 (`acp.rs` の `restricted_ide_channel` は接続ごとに 1 本
+/// 始める。同じフォルダーを開いた 2 つ目のウィンドウ、古い接続をスレッドが握ったままの再起動)
+/// がここに来る。
+///
+/// 2 本は同じワークスペースの診断を見るが、互いの口には入れない: トークンは接続ごとに別で、
+/// 片方のトークンでもう片方は 401、片方を畳んでももう片方は生きている。
+#[gpui::test]
+async fn two_restricted_sessions_on_one_workspace_stay_apart(cx: &mut TestAppContext) {
+    let first = start_restricted_sandbox_fixture(cx).await;
+    let second = another_restricted_session(&first, cx);
+    assert_ne!(
+        first.auth_token, second.auth_token,
+        "each session answers for itself alone"
+    );
+
+    let list = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+    for (session, name, other) in [(&first, "first", &second), (&second, "second", &first)] {
+        let response = post_mcp(session, &session.auth_token, &list).await;
+        assert!(
+            response.starts_with("HTTP/1.1 200 OK"),
+            "{name}: expected a 200, got {response:?}"
+        );
+        assert_eq!(
+            tool_names(&http_body(&response)),
+            vec!["getDiagnostics"],
+            "{name}: and only the one read-only tool"
+        );
+
+        let response = post_mcp(session, &other.auth_token, &list).await;
+        assert!(
+            response.starts_with("HTTP/1.1 401"),
+            "{name}: the other session's token is refused, got {response:?}"
+        );
+    }
+
+    // 接続が閉じたときに終わるのは自分の分だけ (`AcpConnection` の `ide_link`)。
+    drop(first);
+    cx.run_until_parked();
+    let response = post_mcp(&second, &second.auth_token, &list).await;
+    assert!(
+        response.starts_with("HTTP/1.1 200 OK"),
+        "the session that is left over still answers, got {response:?}"
+    );
+}
+
 /// `tools/list` の要求に、無視される詰め物を載せて本文を `body_bytes` ちょうどにする
 /// (詰め物が入らないほど小さい指定なら、詰め物なしの長さ)。
 fn padded_tools_list(body_bytes: usize) -> Value {

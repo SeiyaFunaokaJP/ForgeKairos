@@ -4773,7 +4773,8 @@ impl AcpThread {
         // setup fails with `ENOTTY`. Run the command non-interactively and
         // without a PTY in that case.
         let headless = HeadlessTerminal::is_enabled(cx);
-        #[cfg(target_os = "windows")]
+        // ADR-F17: the ceiling for whichever sandbox helper runs the command —
+        // WSL's on this machine, or a remote host's.
         let editor_network_allowlist = editor_network_allowlist(cx);
 
         let terminal_id = acp::TerminalId::new(Uuid::new_v4().to_string());
@@ -4837,6 +4838,7 @@ impl AcpThread {
                     let (task_command, task_args) = build_remote_sandbox_command(
                         &remote_binary,
                         &wrap,
+                        editor_network_allowlist.as_deref(),
                         cwd.as_deref(),
                         &environment,
                         &[],

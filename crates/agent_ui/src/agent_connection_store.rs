@@ -1,17 +1,33 @@
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use acp_thread::{AgentConnection, LoadError};
 use agent_servers::AcpConnection;
 use agent_servers::{AgentServer, AgentServerDelegate};
+use agent_settings::AgentSettings;
 use anyhow::Result;
 use collections::HashMap;
 use futures::{FutureExt, future::Shared};
-use gpui::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
+use gpui::{
+    App, AppContext, Context, Entity, EntityId, EventEmitter, SharedString, Subscription, Task,
+    WeakEntity,
+};
 
 use project::{AgentServerStore, AgentServersUpdated, Project};
+use settings::{Settings as _, SettingsStore};
 use watch::Receiver;
 
 use crate::Agent;
+use crate::conversation_view::ConversationView;
+
+/// ADR-F49 (new decision): how often the store asks whether its connections
+/// are still used. A connection goes at most this long after its grace ran
+/// out.
+///
+/// Closing a thread's tab is not an event this can subscribe to — the thread
+/// lives on in the panel's parking slots with its connection in hand — so the
+/// question is asked from here rather than answered from there.
+const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 pub enum AgentConnectionEntry {
     Connecting {
@@ -74,7 +90,14 @@ pub struct ActiveAcpConnection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct OutsideSandboxConnectionId(u64);
 
-#[derive(Clone)]
+/// ADR-F49 (new decision): keeps an agent's connection while something that is
+/// not a view is using it. See [`AgentConnectionStore::lease_connection`].
+///
+/// Nothing reads what is inside: the store counts the hands on it, and holding
+/// one of these is the whole of what a caller has to do.
+pub struct ConnectionLease(#[allow(dead_code)] Rc<()>);
+
+#[derive(Clone, PartialEq, Eq, Hash)]
 enum ConnectionSlot {
     Shared(Agent),
     OutsideSandbox {
@@ -90,6 +113,15 @@ impl ConnectionSlot {
             ConnectionSlot::OutsideSandbox { agent, .. } => agent,
         }
     }
+
+    /// ADR-F49 (new decision): whether this connection is one the idle
+    /// disconnect is for. Zed's own agent runs in this process — dropping it
+    /// stops nothing and only makes the panel connect again — so only the
+    /// external agents, which bring a sandbox and processes of their own, are
+    /// let go of.
+    fn can_be_dropped_when_idle(&self) -> bool {
+        !matches!(self.agent(), Agent::NativeAgent)
+    }
 }
 
 pub struct AgentConnectionStore {
@@ -104,20 +136,44 @@ pub struct AgentConnectionStore {
     /// the connection entry with it, so without this the agent registry page
     /// has nothing to render a "update available" badge from (F2-5 follow-up).
     new_versions: HashMap<Agent, SharedString>,
+    /// ADR-F49 (new decision): the views that asked for a connection, by their
+    /// entity id. Whether one is *using* the connection is asked of the view
+    /// itself when the idle check runs: a thread whose tab was closed keeps
+    /// its view (and its connection) in the panel's parking slots, so being
+    /// alive is not the same as being in use.
+    holders: HashMap<EntityId, (ConnectionSlot, WeakEntity<ConversationView>)>,
+    /// ADR-F49 (new decision): the hands on a connection that are not views
+    /// (see [`Self::lease_connection`]). One is in use while a lease of it is
+    /// alive somewhere, which is what `Rc::strong_count` past this one says.
+    leases: HashMap<ConnectionSlot, Rc<()>>,
+    /// Since when nothing has used each connection, on this session's clock.
+    unused_since: HashMap<ConnectionSlot, Instant>,
+    idle_watch: Task<()>,
+    idle_watch_running: bool,
     _subscriptions: Vec<Subscription>,
 }
 
 impl AgentConnectionStore {
     pub fn new(project: Entity<Project>, cx: &mut Context<Self>) -> Self {
         let agent_server_store = project.read(cx).agent_server_store().clone();
-        let subscription = cx.subscribe(&agent_server_store, Self::handle_agent_servers_updated);
+        let subscriptions = vec![
+            cx.subscribe(&agent_server_store, Self::handle_agent_servers_updated),
+            // Turning `agent.idle_disconnect_minutes` back on has to start the
+            // watch again: it stops itself while the setting says never.
+            cx.observe_global::<SettingsStore>(Self::watch_idle_connections),
+        ];
         Self {
             project,
             entries: HashMap::default(),
             outside_sandbox: HashMap::default(),
             next_outside_sandbox_id: 0,
             new_versions: HashMap::default(),
-            _subscriptions: vec![subscription],
+            holders: HashMap::default(),
+            leases: HashMap::default(),
+            unused_since: HashMap::default(),
+            idle_watch: Task::ready(()),
+            idle_watch_running: false,
+            _subscriptions: subscriptions,
         }
     }
 
@@ -192,7 +248,14 @@ impl AgentConnectionStore {
         cx: &mut Context<Self>,
     ) -> Entity<AgentConnectionEntry> {
         if let Some(entry) = self.entries.get(&key) {
-            return entry.clone();
+            let entry = entry.clone();
+            // ADR-F49 (new decision): whoever asked is about to use it, so the
+            // grace starts over. Not every caller is a view the idle check can
+            // ask later (a thread import listing sessions, an archived thread
+            // being deleted on the agent), and this is what keeps the
+            // connection under those.
+            self.unused_since.remove(&ConnectionSlot::Shared(key));
+            return entry;
         }
         self.insert_connection(ConnectionSlot::Shared(key), server, false, cx)
     }
@@ -277,6 +340,8 @@ impl AgentConnectionStore {
         });
 
         self.insert_slot_entry(&slot, entry.clone());
+        self.unused_since.remove(&slot);
+        self.watch_idle_connections(cx);
         cx.notify();
 
         cx.spawn({
@@ -384,6 +449,206 @@ impl AgentConnectionStore {
         entry
     }
 
+    /// ADR-F49 (new decision): `view` needs this agent's connection, and the
+    /// connection is kept for as long as the view uses it. Called again every
+    /// time the view changes which connection it is on (a start outside the
+    /// sandbox moves it to one of its own), which replaces the earlier claim.
+    pub fn hold_connection(
+        &mut self,
+        view: WeakEntity<ConversationView>,
+        key: &Agent,
+        outside_sandbox: Option<OutsideSandboxConnectionId>,
+        cx: &mut Context<Self>,
+    ) {
+        let slot = match outside_sandbox {
+            Some(id) => ConnectionSlot::OutsideSandbox {
+                id,
+                agent: key.clone(),
+            },
+            None => ConnectionSlot::Shared(key.clone()),
+        };
+        self.unused_since.remove(&slot);
+        self.holders.retain(|_, (_, view)| view.upgrade().is_some());
+        self.holders.insert(view.entity_id(), (slot, view));
+        self.watch_idle_connections(cx);
+    }
+
+    /// ADR-F49 (new decision): a hand on this agent's connection that is not a
+    /// [`ConversationView`] — a thread import listing the agent's sessions, an
+    /// archived thread being deleted on the agent. The idle check cannot ask
+    /// such a caller whether it is done, and dropping the connection under one
+    /// would leave the agent's process running with nothing in the store
+    /// pointing at it, so the next request would start a second one. Holding
+    /// the lease keeps the connection; dropping it gives it back.
+    #[must_use = "the connection is only kept while the lease is alive"]
+    pub fn lease_connection(&mut self, key: &Agent) -> ConnectionLease {
+        let slot = ConnectionSlot::Shared(key.clone());
+        self.unused_since.remove(&slot);
+        ConnectionLease(self.leases.entry(slot).or_default().clone())
+    }
+
+    /// Keeps the idle check running while there is a connection it could drop.
+    fn watch_idle_connections(&mut self, cx: &mut Context<Self>) {
+        if self.idle_watch_running
+            || AgentSettings::get_global(cx).idle_disconnect().is_none()
+            || self.idle_candidates().is_empty()
+        {
+            return;
+        }
+        self.idle_watch_running = true;
+        self.idle_watch = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(IDLE_CHECK_INTERVAL).await;
+                let Ok(keep_watching) = this.update(cx, |this, cx| this.sweep_idle_connections(cx))
+                else {
+                    return;
+                };
+                if !keep_watching {
+                    return;
+                }
+            }
+        });
+    }
+
+    /// Drops every connection whose grace has run out, and says whether the
+    /// watch has anything left to look at.
+    fn sweep_idle_connections(&mut self, cx: &mut Context<Self>) -> bool {
+        self.holders.retain(|_, (_, view)| view.upgrade().is_some());
+
+        let Some(grace) = AgentSettings::get_global(cx).idle_disconnect() else {
+            self.unused_since.clear();
+            self.idle_watch_running = false;
+            return false;
+        };
+
+        self.leases.retain(|_, lease| Rc::strong_count(lease) > 1);
+
+        let now = cx.background_executor().now();
+        let candidates = self.idle_candidates();
+        for slot in candidates {
+            if self.slot_is_in_use(&slot, cx) {
+                self.unused_since.remove(&slot);
+                continue;
+            }
+            let unused_since = *self.unused_since.entry(slot.clone()).or_insert(now);
+            if now.saturating_duration_since(unused_since) < grace {
+                continue;
+            }
+            self.drop_idle_connection(&slot, grace, cx);
+        }
+
+        let left = self
+            .idle_candidates()
+            .into_iter()
+            .collect::<collections::HashSet<_>>();
+        self.unused_since.retain(|slot, _| left.contains(slot));
+        self.idle_watch_running = !left.is_empty();
+        self.idle_watch_running
+    }
+
+    /// The connections the idle disconnect applies to: every external agent
+    /// this store has a connection for.
+    fn idle_candidates(&self) -> Vec<ConnectionSlot> {
+        self.entries
+            .keys()
+            .map(|key| ConnectionSlot::Shared(key.clone()))
+            .chain(self.outside_sandbox.iter().map(|(id, (agent, _))| {
+                ConnectionSlot::OutsideSandbox {
+                    id: *id,
+                    agent: agent.clone(),
+                }
+            }))
+            .filter(ConnectionSlot::can_be_dropped_when_idle)
+            .collect()
+    }
+
+    fn slot_is_in_use(&self, slot: &ConnectionSlot, cx: &App) -> bool {
+        // A connection that has not finished starting is one somebody asked
+        // for and is waiting on, whether or not that somebody is a view this
+        // could ask: dropping it here would leave the agent coming up with
+        // nothing in the store pointing at it.
+        if self
+            .slot_entry(slot)
+            .is_none_or(|entry| !matches!(entry.read(cx), AgentConnectionEntry::Connected(_)))
+        {
+            return true;
+        }
+        if self
+            .leases
+            .get(slot)
+            .is_some_and(|lease| Rc::strong_count(lease) > 1)
+        {
+            return true;
+        }
+        self.holders.values().any(|(held, view)| {
+            held == slot
+                && view
+                    .upgrade()
+                    .is_some_and(|view| view.read(cx).is_using_connection(cx))
+        })
+    }
+
+    /// Ends a connection nothing has used for `grace`, unless something still
+    /// speaks for it.
+    fn drop_idle_connection(
+        &mut self,
+        slot: &ConnectionSlot,
+        grace: Duration,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(entry) = self.slot_entry(slot) else {
+            return;
+        };
+
+        // ADR-F49 decision 18 (C): what an answer left running in the sandbox
+        // keeps the agent a writer until it ends, and this connection is what
+        // follows it and what the dialog's stop button reaches. Dropping it
+        // would take the pause and the list away while the processes run on,
+        // so an agent with something behind it is left alone and looked at
+        // again at the next check, going as soon as the last of them ends.
+        if let AgentConnectionEntry::Connected(state) = entry.read(cx)
+            && let Some(monitor) = state.connection.sandbox_process_monitor()
+            && monitor.read(cx).follows_something()
+        {
+            log::info!(
+                "keeping the unused connection to {}: its sandbox still has something running",
+                slot.agent().id()
+            );
+            return;
+        }
+
+        // A view that is not using the connection is still holding it, and the
+        // agent only stops once every hand has let go. Every hand is asked
+        // before any of them lets go: one that cannot means the connection
+        // stays, and the others would then have been parked out of the panel
+        // for nothing.
+        let holders = self
+            .holders
+            .values()
+            .filter(|(held, _)| held == slot)
+            .filter_map(|(_, view)| view.upgrade())
+            .collect::<Vec<_>>();
+        if !holders.iter().all(|view| {
+            view.read(cx)
+                .can_release_idle_connection(view.entity_id(), cx)
+        }) {
+            return;
+        }
+        for view in holders {
+            if !view.update(cx, |view, cx| view.release_idle_connection(cx)) {
+                return;
+            }
+        }
+
+        log::info!(
+            "dropping the connection to {}: no thread has used it for {grace:?}",
+            slot.agent().id()
+        );
+        self.remove_slot_entry(slot);
+        self.unused_since.remove(slot);
+        cx.notify();
+    }
+
     fn handle_agent_servers_updated(
         &mut self,
         store: Entity<AgentServerStore>,
@@ -399,6 +664,8 @@ impl AgentConnectionStore {
         };
         self.entries.retain(|key, _| still_there(key));
         self.outside_sandbox.retain(|_, (key, _)| still_there(key));
+        self.unused_since
+            .retain(|slot, _| still_there(slot.agent()));
         cx.notify();
     }
 
@@ -434,5 +701,328 @@ impl AgentConnectionStore {
             },
         });
         (new_version_rx, loading_status_rx, connect_task)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::conversation_view::tests::init_test;
+    use acp_thread::{
+        AcpThread, SandboxProcessMonitor, SandboxProcessSource, SandboxProcessTracking,
+    };
+    use agent_client_protocol::schema::v1 as acp;
+    use fs::FakeFs;
+    use gpui::TestAppContext;
+    use project::AgentId;
+    use std::any::Any;
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+    use util::path;
+    use workspace::PathList;
+
+    /// ADR-F49 decision 18 (C): a sandbox whose processes a test writes down.
+    struct TestSandbox {
+        running: RefCell<Vec<sandbox::SandboxProcess>>,
+    }
+
+    impl TestSandbox {
+        fn new(pids: &[u32]) -> Rc<Self> {
+            let sandbox = Rc::new(Self {
+                running: RefCell::default(),
+            });
+            for pid in pids {
+                sandbox.start(*pid);
+            }
+            sandbox
+        }
+
+        fn start(&self, pid: u32) {
+            self.running.borrow_mut().push(sandbox::SandboxProcess {
+                pid,
+                start_time: u64::from(pid) * 10,
+                running_for: Some(Duration::from_secs(3)),
+                command: format!("process-{pid}"),
+            });
+        }
+
+        fn end(&self, pid: u32) {
+            self.running
+                .borrow_mut()
+                .retain(|process| process.pid != pid);
+        }
+    }
+
+    impl SandboxProcessSource for TestSandbox {
+        fn tracking(&self) -> SandboxProcessTracking {
+            SandboxProcessTracking::Trackable
+        }
+
+        fn list(&self, _cx: &App) -> Task<Result<Vec<sandbox::SandboxProcess>>> {
+            Task::ready(Ok(self.running.borrow().clone()))
+        }
+
+        fn stop(
+            &self,
+            _processes: Vec<sandbox::SandboxProcessKey>,
+            _cx: &App,
+        ) -> Task<Result<usize>> {
+            Task::ready(Ok(0))
+        }
+
+        fn write_scope(&self) -> Option<Vec<PathBuf>> {
+            Some(vec![PathBuf::from(path!("/test"))])
+        }
+
+        fn agent(&self) -> SharedString {
+            "sandboxed-stub".into()
+        }
+    }
+
+    /// An agent whose sandbox is followed, so that the idle disconnect has to
+    /// reckon with what its answers left running.
+    struct SandboxedStub {
+        sandbox_processes: Option<Entity<SandboxProcessMonitor>>,
+    }
+
+    impl AgentConnection for SandboxedStub {
+        fn agent_id(&self) -> AgentId {
+            AgentId::new("sandboxed-stub")
+        }
+
+        fn telemetry_id(&self) -> SharedString {
+            "sandboxed-stub".into()
+        }
+
+        fn sandbox_process_monitor(&self) -> Option<Entity<SandboxProcessMonitor>> {
+            self.sandbox_processes.clone()
+        }
+
+        fn new_session(
+            self: Rc<Self>,
+            _project: Entity<Project>,
+            _work_dirs: PathList,
+            _cx: &mut App,
+        ) -> Task<Result<Entity<AcpThread>>> {
+            Task::ready(Err(anyhow::anyhow!("this test needs no thread")))
+        }
+
+        fn auth_methods(&self) -> &[acp::AuthMethod] {
+            &[]
+        }
+
+        fn authenticate(&self, _method: acp::AuthMethodId, _cx: &mut App) -> Task<Result<()>> {
+            Task::ready(Ok(()))
+        }
+
+        fn prompt(
+            &self,
+            _params: acp::PromptRequest,
+            _cx: &mut App,
+        ) -> Task<Result<acp::PromptResponse>> {
+            Task::ready(Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)))
+        }
+
+        fn cancel(&self, _session_id: &acp::SessionId, _cx: &mut App) {}
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    thread_local! {
+        /// The sandbox the next connection is given. `AgentServer` has to be
+        /// `Send`, and a sandbox a test writes down is not, so it is left here
+        /// rather than in the server.
+        static TEST_SANDBOX: RefCell<Option<Rc<TestSandbox>>> = const { RefCell::new(None) };
+    }
+
+    struct SandboxedStubServer;
+
+    impl AgentServer for SandboxedStubServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            AgentId::new("sandboxed-stub")
+        }
+
+        fn connect(
+            &self,
+            _delegate: AgentServerDelegate,
+            project: Entity<Project>,
+            cx: &mut App,
+        ) -> Task<Result<Rc<dyn AgentConnection>>> {
+            let sandbox = TEST_SANDBOX
+                .with(|sandbox| sandbox.borrow().clone())
+                .expect("the test says what runs in the sandbox");
+            let sandbox_processes = SandboxProcessMonitor::new(sandbox, &project, cx);
+            Task::ready(Ok(Rc::new(SandboxedStub { sandbox_processes })))
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    /// An agent whose start never finishes, for the wait the idle check has to
+    /// leave alone.
+    struct NeverConnectsServer;
+
+    impl AgentServer for NeverConnectsServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            AgentId::new("sandboxed-stub")
+        }
+
+        fn connect(
+            &self,
+            _delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            cx: &mut App,
+        ) -> Task<Result<Rc<dyn AgentConnection>>> {
+            cx.spawn(async move |_cx| futures::future::pending().await)
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    fn connect_to_a_sandboxed_stub(
+        store: &Entity<AgentConnectionStore>,
+        sandbox: Rc<TestSandbox>,
+        cx: &mut TestAppContext,
+    ) {
+        TEST_SANDBOX.with(|slot| *slot.borrow_mut() = Some(sandbox));
+        store.update(cx, |store, cx| {
+            store.request_connection(sandboxed_stub(), Rc::new(SandboxedStubServer), cx);
+        });
+        cx.run_until_parked();
+    }
+
+    async fn setup(cx: &mut TestAppContext) -> (Entity<AgentConnectionStore>, Entity<Project>) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/test"), serde_json::json!({ "file.txt": "" }))
+            .await;
+        let project = Project::test(fs, [path!("/test").as_ref()], cx).await;
+        let store = cx.update(|cx| cx.new(|cx| AgentConnectionStore::new(project.clone(), cx)));
+        (store, project)
+    }
+
+    fn sandboxed_stub() -> Agent {
+        Agent::Custom {
+            id: AgentId::new("sandboxed-stub"),
+        }
+    }
+
+    fn is_connected(store: &Entity<AgentConnectionStore>, cx: &mut TestAppContext) -> bool {
+        store.read_with(cx, |store, _cx| store.entry(&sandboxed_stub()).is_some())
+    }
+
+    /// ADR-F49 decision 18 (C): a connection nothing uses any more, but whose
+    /// sandbox still holds something an answer left running, is what the pause
+    /// and the dialog's stop button hang from — so the idle disconnect waits
+    /// for that to end rather than taking them away with it.
+    #[gpui::test]
+    async fn test_leftover_sandbox_processes_hold_an_unused_connection(cx: &mut TestAppContext) {
+        let (store, _project) = setup(cx).await;
+        // Process 1 is the agent's own, which the sandbox's baseline is taken
+        // from; nothing about it is a leftover.
+        let sandbox = TestSandbox::new(&[1]);
+        connect_to_a_sandboxed_stub(&store, sandbox.clone(), cx);
+        assert!(is_connected(&store, cx));
+
+        // An answer leaves a development server of its own behind.
+        sandbox.start(2);
+        cx.executor().advance_clock(Duration::from_secs(30));
+        cx.run_until_parked();
+
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            is_connected(&store, cx),
+            "a connection whose sandbox still has something running is kept, \
+             unused or not"
+        );
+
+        // Once that ends, the next look lets the connection go.
+        sandbox.end(2);
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            !is_connected(&store, cx),
+            "with nothing left running, the unused connection goes"
+        );
+    }
+
+    /// A connection nothing has a view for — a thread import reading an
+    /// agent's sessions, an archived thread being deleted on it — is held by
+    /// its lease. Dropping it under one would leave the agent's process
+    /// running with nothing in the store pointing at it, so the next request
+    /// would start a second one.
+    #[gpui::test]
+    async fn test_a_lease_holds_a_connection_no_view_speaks_for(cx: &mut TestAppContext) {
+        let (store, _project) = setup(cx).await;
+        connect_to_a_sandboxed_stub(&store, TestSandbox::new(&[1]), cx);
+        let lease = store.update(cx, |store, _cx| store.lease_connection(&sandboxed_stub()));
+
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            is_connected(&store, cx),
+            "a leased connection is in use, whether or not a view says so"
+        );
+
+        drop(lease);
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            !is_connected(&store, cx),
+            "with the lease given back, the connection goes like any other"
+        );
+    }
+
+    /// An agent that is still starting — a first run that is installing itself
+    /// can take minutes — is one somebody asked for and is waiting on.
+    #[gpui::test]
+    async fn test_a_connection_that_is_still_starting_is_not_dropped(cx: &mut TestAppContext) {
+        let (store, _project) = setup(cx).await;
+        store.update(cx, |store, cx| {
+            store.request_connection(sandboxed_stub(), Rc::new(NeverConnectsServer), cx);
+        });
+        cx.run_until_parked();
+
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            is_connected(&store, cx),
+            "an agent that has not finished starting is not an idle one"
+        );
+    }
+
+    /// `agent.idle_disconnect_minutes: 0` keeps every connection for as long
+    /// as the window, the way this fork behaved before.
+    #[gpui::test]
+    async fn test_the_idle_disconnect_can_be_turned_off(cx: &mut TestAppContext) {
+        let (store, _project) = setup(cx).await;
+        cx.update(|cx| {
+            let mut settings = AgentSettings::get_global(cx).clone();
+            settings.idle_disconnect_minutes = 0;
+            AgentSettings::override_global(settings, cx);
+        });
+        connect_to_a_sandboxed_stub(&store, TestSandbox::new(&[1]), cx);
+
+        cx.executor().advance_clock(Duration::from_secs(60 * 60));
+        cx.run_until_parked();
+        assert!(
+            is_connected(&store, cx),
+            "a user who turned the disconnect off keeps every connection"
+        );
     }
 }

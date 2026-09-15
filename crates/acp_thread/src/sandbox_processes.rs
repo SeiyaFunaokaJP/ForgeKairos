@@ -450,6 +450,14 @@ impl SandboxProcessMonitor {
         self.session_writer.is_some()
     }
 
+    /// Whether anything still ties the agent to its sandbox: an answer left
+    /// something running, or the sandbox cannot be looked into at all. Either
+    /// way this connection is what the pause and the dialog's stop button hang
+    /// from, so nothing may drop it for having gone unused.
+    pub fn follows_something(&self) -> bool {
+        self.session_writer.is_some() || !self.followed.borrow().is_empty()
+    }
+
     /// What an answer left running and has not ended, for a test.
     #[cfg(any(test, feature = "test-support"))]
     pub fn leftovers(&self) -> Vec<SandboxProcessKey> {

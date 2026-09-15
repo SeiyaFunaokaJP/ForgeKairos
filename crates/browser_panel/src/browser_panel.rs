@@ -300,6 +300,12 @@ pub struct BrowserPanel {
     /// 書いてしまうので止める ([`BrowserPanel::load_inner`])。
     restoring: bool,
     active: bool,
+    /// ユーザーがこのパネルを名指しで出したか (ADR-F48)。右ドックの既定は
+    /// 「エージェント + ブラウザーの 2 枚並べ」(ADR-F30) なので、エージェント
+    /// パネルを開くだけでもブラウザーは画面に出る。その表示と、ユーザーが
+    /// ブラウザーを求めた表示とを分けるのがこの旗で、ホームページの読み込みは
+    /// 立つまで待つ。ワークスペースごとの一時的な状態なので保存しない。
+    revealed_by_user: bool,
 }
 
 pub fn init(cx: &mut App) {
@@ -414,7 +420,7 @@ impl BrowserPanel {
         };
         if !restored {
             panel.update_in(&mut cx, |panel, window, cx| {
-                panel.open_tab(None, NewTabPlacement::ForegroundWithoutFocus, window, cx);
+                panel.open_initial_tab(NewTabPlacement::ForegroundWithoutFocus, window, cx);
             })?;
         }
         Ok(panel)
@@ -434,6 +440,7 @@ impl BrowserPanel {
             pending_serialization: Task::ready(None),
             restoring: false,
             active: false,
+            revealed_by_user: false,
         }
     }
 
@@ -454,6 +461,37 @@ impl BrowserPanel {
     ) {
         let pane = self.active_pane.clone();
         self.open_tab_in_pane(&pane, url, placement, window, cx);
+    }
+
+    /// パネルが自分のために持っておく 1 枚 (復元するものが無いとき、そして
+    /// 最後のタブを閉じたあとに開き直したとき)。ユーザーがブラウザーを名指しで
+    /// 出していなければホームページは読み込まず、空のタブで待つ (ADR-F48)。
+    fn open_initial_tab(
+        &mut self,
+        placement: NewTabPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.revealed_by_user {
+            self.open_tab(None, placement, window, cx);
+            return;
+        }
+        let pane = self.active_pane.clone();
+        let item = cx.new(|cx| {
+            BrowserItem::with_deferred_home_page(
+                self.workspace.clone(),
+                self.fs.clone(),
+                BrowserHost::Panel,
+                window,
+                cx,
+            )
+        });
+        let focus = placement == NewTabPlacement::Foreground
+            || (placement == NewTabPlacement::ForegroundWithoutFocus
+                && self.contains_focus(window, cx));
+        pane.update(cx, |pane, cx| {
+            pane.add_item_inner(Box::new(item), focus, focus, true, None, window, cx);
+        });
     }
 
     pub(crate) fn open_tab_in_pane(
@@ -1279,10 +1317,27 @@ impl Panel for BrowserPanel {
             return;
         }
         // 最後のタブを閉じてパネルを畳んだあと、また開いたとき。空のペインには
-        // タブバーすら出ないので、ホームのページを 1 枚用意する。
+        // タブバーすら出ないので、タブを 1 枚用意する。
         cx.defer_in(window, |this, window, cx| {
-            this.open_tab(None, NewTabPlacement::Foreground, window, cx)
+            this.open_initial_tab(NewTabPlacement::Foreground, window, cx)
         });
+    }
+
+    fn revealed_by_user(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.revealed_by_user = true;
+        // 画面に出ているタブ (ペインごとに 1 枚) だけを起こす。裏のタブは表に
+        // 出たところで WebView2 が作られるので、そこまで待たせる理由が無い。
+        for pane in self.center.panes().into_iter().cloned().collect::<Vec<_>>() {
+            let Some(view) = pane
+                .read(cx)
+                .active_item()
+                .and_then(|item| item.downcast::<BrowserItem>())
+                .map(|item| item.read(cx).view().clone())
+            else {
+                continue;
+            };
+            view.update(cx, |view, cx| view.load_deferred_home_page(window, cx));
+        }
     }
 
     fn activation_priority(&self) -> u32 {
@@ -2853,6 +2908,248 @@ mod tests {
                 .expect("reading a browser tab's row")
                 .is_none(),
             "the last restore to finish runs the cleanup"
+        );
+    }
+
+    /// パネルの最初のタブ (`load_inner` が復元するものが無いときに開く 1 枚)。
+    fn open_initial_tab(panel: &Entity<BrowserPanel>, cx: &mut VisualTestContext) {
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_initial_tab(NewTabPlacement::ForegroundWithoutFocus, window, cx);
+        });
+        cx.run_until_parked();
+    }
+
+    fn active_url(panel: &Entity<BrowserPanel>, cx: &mut VisualTestContext) -> String {
+        panel.read_with(cx, |panel, cx| {
+            panel
+                .active_view(cx)
+                .expect("the panel keeps one tab open")
+                .read(cx)
+                .current_url()
+                .to_string()
+        })
+    }
+
+    #[gpui::test]
+    async fn a_panel_shown_without_being_asked_for_does_not_open_its_home_page(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        open_initial_tab(&panel, cx);
+
+        // ADR-F30 の 2 枚並べでは、相方 (エージェントパネル) を開くだけでこの
+        // パネルも画面に出る。ドックが相方のために組を出すときに来るのは
+        // `set_active(true)` だけで、`Panel::revealed_by_user` は来ない
+        // (ドック側は `workspace` の `test_only_the_panel_the_user_asked_for_counts_as_revealed`)。
+        panel.update_in(cx, |panel, window, cx| {
+            panel.set_active(true, window, cx);
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, _| assert!(panel.active, "the panel is shown"));
+        assert_eq!(
+            active_url(&panel, cx),
+            "",
+            "a browser nobody asked for stays on an empty tab"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_panel_the_user_asks_for_opens_its_home_page(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace = window_handle
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the window should hold a workspace");
+        open_initial_tab(&panel, cx);
+
+        // ステータスバーのボタン / `browser: toggle focus` の経路。
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.focus_panel::<BrowserPanel>(window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            active_url(&panel, cx),
+            DEFAULT_HOME_URL,
+            "asking for the browser is what opens its home page"
+        );
+
+        // 一度求められたパネルが自分で用意するタブも、以後はホームを開く
+        // (利用者はもうブラウザーを使っている)。
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_initial_tab(NewTabPlacement::Foreground, window, cx);
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&panel.active_pane, cx),
+                vec![DEFAULT_HOME_URL.to_string(); 2]
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn a_tab_the_user_opens_goes_to_the_home_page_right_away(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        open_initial_tab(&panel, cx);
+
+        // 「新しいタブ」(パネルの + ボタン / `browser: new panel tab`)。
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_tab(None, NewTabPlacement::Foreground, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&panel.active_pane, cx),
+                vec![String::new(), DEFAULT_HOME_URL.to_string()],
+                "the tab the user opened goes home; the one the panel kept stays empty"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn a_tab_restored_without_a_url_does_not_open_the_home_page(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (_, workspace_id) = workspace_with_database_id(&window_handle, cx);
+
+        // 空のまま保存されたタブ = `browser_items` に行が無いタブ。
+        let serialized = SerializedBrowserPanel {
+            root: SerializedBrowserPaneGroup::Pane(SerializedBrowserPane {
+                active: true,
+                items: vec![SerializedPanelItem {
+                    kind: "Browser".into(),
+                    item_id: 4_242,
+                    active: true,
+                    preview: false,
+                }],
+                urls: Vec::new(),
+                active_item: None,
+            }),
+        };
+        let mut async_cx = async_window(cx);
+        assert!(restore(&panel, serialized, Some(workspace_id), &mut async_cx).await);
+        cx.run_until_parked();
+
+        assert_eq!(
+            active_url(&panel, cx),
+            "",
+            "restoring an empty tab must not send it to the home page"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_panel_that_starts_open_opens_its_home_page(cx: &mut TestAppContext) {
+        init_test(cx);
+        // `browser.starts_open` は「毎回の起動でブラウザーを出せ」という設定 =
+        // ユーザーの明示なので、起動時に出たブラウザーはホームを開く (ADR-F48)。
+        cx.update(|cx| {
+            cx.update_global(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.browser.get_or_insert_default().starts_open = Some(true);
+                });
+            });
+        });
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let panel = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    cx.new(|cx| BrowserPanel::new(workspace, window, cx))
+                })
+            })
+            .expect("failed to build the browser panel");
+        // 起動時の順序: パネルは自分の 1 枚を開いてからドックへ載る
+        // (`BrowserPanel::load_inner` → `Workspace::add_panel`)。
+        window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                panel.update(cx, |panel, cx| {
+                    panel.open_initial_tab(NewTabPlacement::ForegroundWithoutFocus, window, cx);
+                });
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    workspace.add_panel(panel.clone(), window, cx);
+                });
+            })
+            .expect("failed to add the browser panel to the workspace");
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        cx.run_until_parked();
+
+        window_handle
+            .read_with(cx, |multi_workspace, cx| {
+                assert!(
+                    multi_workspace
+                        .workspace()
+                        .read(cx)
+                        .right_dock()
+                        .read(cx)
+                        .is_open(),
+                    "the dock opens for a panel that asks to start open"
+                );
+            })
+            .expect("the window should hold a workspace");
+        assert_eq!(
+            active_url(&panel, cx),
+            DEFAULT_HOME_URL,
+            "a browser told to start open every time was asked for"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_waiting_tab_opens_the_bookmarks_when_there_is_no_home_page(cx: &mut TestAppContext) {
+        init_test(cx);
+        // `browser.home_url` が空のときの「新しいタブ」はブックマークのペイン。
+        // 待機中のタブもそれを持ち越す (白いまま二度と使えないタブにしない)。
+        cx.update(|cx| {
+            cx.update_global(|store: &mut SettingsStore, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.browser.get_or_insert_default().home_url = Some(String::new());
+                });
+            });
+        });
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace = window_handle
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the window should hold a workspace");
+        open_initial_tab(&panel, cx);
+
+        let bookmarks_pane_is_open = |cx: &mut VisualTestContext| {
+            panel.read_with(cx, |panel, cx| {
+                panel
+                    .active_view(cx)
+                    .expect("the panel keeps one tab open")
+                    .read(cx)
+                    .bookmarks_pane_is_open()
+            })
+        };
+        assert!(
+            !bookmarks_pane_is_open(cx),
+            "a browser nobody asked for opens nothing at all"
+        );
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.focus_panel::<BrowserPanel>(window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(active_url(&panel, cx), "");
+        assert!(
+            bookmarks_pane_is_open(cx),
+            "with no home page to open, being asked for opens the bookmarks"
         );
     }
 }

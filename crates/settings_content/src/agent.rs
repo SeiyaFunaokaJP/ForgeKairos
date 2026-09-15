@@ -331,6 +331,13 @@ pub struct AgentSettingsContent {
     ///
     /// Default: 0
     pub system_prompt_repo_map_bytes: Option<usize>,
+    /// How many minutes an external agent's connection is kept once no thread
+    /// of that agent is open any more. The agent (and the sandbox it runs in)
+    /// is stopped after that, and opening one of its threads again connects
+    /// anew. `0` keeps every connection until the window closes.
+    ///
+    /// Default: 5
+    pub idle_disconnect_minutes: Option<u64>,
     /// Whether to show thumb buttons for feedback in the agent panel.
     ///
     /// Default: true
