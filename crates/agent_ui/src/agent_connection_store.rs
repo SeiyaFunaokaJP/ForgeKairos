@@ -584,7 +584,7 @@ impl AgentConnectionStore {
             held == slot
                 && view
                     .upgrade()
-                    .is_some_and(|view| view.read(cx).is_using_connection(view.entity_id(), cx))
+                    .is_some_and(|view| view.read(cx).is_using_connection(cx))
         })
     }
 

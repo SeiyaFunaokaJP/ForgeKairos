@@ -4,14 +4,14 @@ use gpui::{
     App, FontStyle, FontWeight, StrikethroughStyle, TextAlign, TextStyleRefinement, UnderlineStyle,
 };
 use pulldown_cmark::Alignment;
-use ui::prelude::*;
+use ui::{ScrollAxes, Scrollbars, WithScrollbar, prelude::*};
 
 use crate::html::html_parser::{
     HtmlHighlightStyle, HtmlImage, HtmlParagraph, HtmlParagraphChunk, ParsedHtmlBlock,
     ParsedHtmlDetails, ParsedHtmlElement, ParsedHtmlList, ParsedHtmlListItemType, ParsedHtmlTable,
-    ParsedHtmlTableRow, ParsedHtmlText,
+    ParsedHtmlTableRow, ParsedHtmlText, html_paragraph_text,
 };
-use crate::{MarkdownElement, MarkdownElementBuilder};
+use crate::{MarkdownElement, MarkdownElementBuilder, TableColumnMinWidths};
 
 /// Shown in place of a missing `<summary>`, matching what a browser puts there.
 const DEFAULT_DETAILS_SUMMARY: &str = "詳細";
@@ -48,11 +48,12 @@ impl MarkdownElement {
         block: &ParsedHtmlBlock,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
+        window: &mut Window,
         cx: &mut App,
     ) -> bool {
         let mut source_allocator = HtmlSourceAllocator::new(block.source_range.clone());
 
-        let spanning_index = block.details_span.and_then(|_| {
+        let spanning_index = block.details_span.as_ref().and_then(|_| {
             block
                 .children
                 .iter()
@@ -69,6 +70,7 @@ impl MarkdownElement {
                         &mut source_allocator,
                         builder,
                         markdown_end,
+                        window,
                         cx,
                     );
                 }
@@ -77,6 +79,7 @@ impl MarkdownElement {
                     &mut source_allocator,
                     builder,
                     markdown_end,
+                    window,
                     cx,
                 ),
             }
@@ -91,10 +94,11 @@ impl MarkdownElement {
         source_allocator: &mut HtmlSourceAllocator,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
+        window: &mut Window,
         cx: &mut App,
     ) {
         for element in elements {
-            self.render_html_element(element, source_allocator, builder, markdown_end, cx);
+            self.render_html_element(element, source_allocator, builder, markdown_end, window, cx);
         }
     }
 
@@ -104,6 +108,7 @@ impl MarkdownElement {
         source_allocator: &mut HtmlSourceAllocator,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
+        window: &mut Window,
         cx: &mut App,
     ) {
         let Some(source_range) = element.source_range() else {
@@ -145,7 +150,7 @@ impl MarkdownElement {
                 self.pop_markdown_heading(builder);
             }
             ParsedHtmlElement::List(list) => {
-                self.render_html_list(list, source_allocator, builder, markdown_end, cx);
+                self.render_html_list(list, source_allocator, builder, markdown_end, window, cx);
             }
             ParsedHtmlElement::BlockQuote(block_quote) => {
                 self.push_markdown_block_quote(
@@ -159,12 +164,13 @@ impl MarkdownElement {
                     source_allocator,
                     builder,
                     markdown_end,
+                    window,
                     cx,
                 );
                 self.pop_markdown_block_quote(builder);
             }
             ParsedHtmlElement::Table(table) => {
-                self.render_html_table(table, source_allocator, builder, markdown_end, cx);
+                self.render_html_table(table, source_allocator, builder, markdown_end, window, cx);
             }
             ParsedHtmlElement::Image(image) => {
                 self.render_html_image(image, builder, cx);
@@ -176,6 +182,7 @@ impl MarkdownElement {
                     source_allocator,
                     builder,
                     markdown_end,
+                    window,
                     cx,
                 );
             }
@@ -205,9 +212,10 @@ impl MarkdownElement {
         source_allocator: &mut HtmlSourceAllocator,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
+        window: &mut Window,
         cx: &mut App,
     ) -> bool {
-        let key = (details.source_range.start, details.index);
+        let key = details.key;
         let open_by_default = details.open;
         let is_open = self.markdown.read(cx).is_details_open(key, open_by_default);
 
@@ -227,7 +235,7 @@ impl MarkdownElement {
         let markdown = self.markdown.clone();
         let summary_id = ElementId::NamedChild(
             Arc::new(ElementId::from(("markdown-details", markdown.entity_id()))),
-            format!("{}-{}", key.0, key.1).into(),
+            key.element_id_suffix().into(),
         );
 
         builder.push_div(
@@ -279,6 +287,7 @@ impl MarkdownElement {
                 source_allocator,
                 builder,
                 markdown_end,
+                window,
                 cx,
             );
             builder.pop_div();
@@ -295,6 +304,7 @@ impl MarkdownElement {
         source_allocator: &mut HtmlSourceAllocator,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
+        window: &mut Window,
         cx: &mut App,
     ) {
         builder.push_div(div().pl_2p5(), &list.source_range, markdown_end);
@@ -322,6 +332,7 @@ impl MarkdownElement {
                 source_allocator,
                 builder,
                 markdown_end,
+                window,
                 cx,
             );
             self.pop_markdown_list_item(builder);
@@ -336,6 +347,7 @@ impl MarkdownElement {
         source_allocator: &mut HtmlSourceAllocator,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
+        window: &mut Window,
         cx: &mut App,
     ) {
         if let Some(caption) = &table.caption {
@@ -361,23 +373,53 @@ impl MarkdownElement {
         let total_rows = table.header.len() + table.body.len();
         let mut grid_occupied = vec![vec![false; max_column_count]; total_rows];
 
+        let column_min_widths = self.style.table_overflow_x_scroll.then(|| {
+            html_table_column_min_widths(
+                table,
+                max_column_count,
+                self.style
+                    .base_text_style
+                    .font_size
+                    .to_pixels(window.rem_size()),
+                window.rem_size(),
+            )
+        });
+
         builder.push_div(div().flex(), &table.source_range, markdown_end);
         builder.push_div(
             div()
                 .id(("html-table", table.source_range.start))
+                .debug_selector(|| "markdown_html_table".into())
                 .min_w_0()
                 .grid()
-                .when(self.style.table_columns_min_size, |this| {
-                    this.w_full().grid_cols_min_content(max_column_count as u16)
-                })
-                .when(!self.style.table_columns_min_size, |this| {
-                    this.grid_cols_max_content(max_column_count as u16)
+                .map(|this| {
+                    if self.style.table_columns_min_size {
+                        this.w_full().grid_cols_min_content(max_column_count as u16)
+                    } else if let Some(column_min_widths) = column_min_widths {
+                        this.grid_cols_min_widths(column_min_widths)
+                    } else {
+                        this.grid_cols_max_content(max_column_count as u16)
+                    }
                 })
                 .mb_2()
                 .border(px(1.5))
                 .border_color(cx.theme().colors().border)
                 .rounded_sm()
-                .overflow_hidden(),
+                // Only the preview scrolls its tables; everywhere else the table
+                // still has to clip its own corners.
+                .when_else(
+                    self.style.table_overflow_x_scroll,
+                    |this| {
+                        this.restrict_scroll_to_axis().custom_scrollbars(
+                            Scrollbars::new(ScrollAxes::Horizontal)
+                                .id(("markdown-html-table-scrollbar", table.source_range.start))
+                                .notify_content(),
+                            window,
+                            cx,
+                        )
+                    },
+                    |this| this.overflow_hidden(),
+                ),
             &table.source_range,
             markdown_end,
         );
@@ -709,6 +751,29 @@ fn html_list_item_prefix(order: usize, ordered: bool, depth: usize) -> String {
     }
 }
 
+/// Floors for an HTML table's columns, the same ones a markdown table gets, so
+/// a table that outgrows the pane scrolls instead of wrapping to one character
+/// per line. Cells that span several columns are left out: their text says
+/// nothing about how wide any single column has to be.
+fn html_table_column_min_widths(
+    table: &ParsedHtmlTable,
+    column_count: usize,
+    font_size: Pixels,
+    rem_size: Pixels,
+) -> Vec<Pixels> {
+    let mut widths = TableColumnMinWidths::new(column_count, font_size);
+    for row in table.header.iter().chain(table.body.iter()) {
+        let mut column_index = 0;
+        for cell in &row.columns {
+            if cell.col_span == 1 {
+                widths.observe_cell(column_index, &html_paragraph_text(&cell.children));
+            }
+            column_index += cell.col_span;
+        }
+    }
+    widths.finish(rem_size)
+}
+
 fn html_table_columns_count(rows: &[ParsedHtmlTableRow]) -> usize {
     let mut actual_column_count = 0;
     for row in rows {
@@ -729,6 +794,7 @@ mod tests {
     use gpui::{Entity, TestAppContext, size};
     use ui::prelude::*;
 
+    use crate::html::html_parser::html_details_key;
     use crate::{
         CodeBlockRenderer, CopyButtonVisibility, Markdown, MarkdownElement, MarkdownOptions,
         MarkdownStyle,
@@ -852,7 +918,7 @@ mod tests {
     /// first, and returns everything the preview laid out as one string.
     fn render_html_preview(
         source: &str,
-        toggled_details: Option<(usize, usize)>,
+        toggled_details: Option<(&str, u32)>,
         cx: &mut TestAppContext,
     ) -> String {
         // The disclosure's summary row handles clicks, and an element with
@@ -892,9 +958,9 @@ mod tests {
         });
         cx.run_until_parked();
 
-        if let Some(key) = toggled_details {
+        if let Some((summary, ordinal)) = toggled_details {
             markdown.update(cx, |markdown, cx| {
-                markdown.toggle_details(key, false);
+                markdown.toggle_details(html_details_key(summary, ordinal), false);
                 cx.notify();
             });
         }
@@ -931,7 +997,7 @@ mod tests {
         assert!(collapsed.contains('題'), "got: {collapsed:?}");
         assert!(!collapsed.contains("本文"), "got: {collapsed:?}");
 
-        let expanded = render_html_preview(source, Some((0, 0)), cx);
+        let expanded = render_html_preview(source, Some(("題", 0)), cx);
         assert!(expanded.contains('題'), "got: {expanded:?}");
         assert!(expanded.contains("本文"), "got: {expanded:?}");
     }
@@ -963,7 +1029,7 @@ mod tests {
         assert!(collapsed.contains("後ろ"), "got: {collapsed:?}");
         assert!(!collapsed.contains("details"), "got: {collapsed:?}");
 
-        let expanded = render_html_preview(source, Some((0, 0)), cx);
+        let expanded = render_html_preview(source, Some(("題", 0)), cx);
         assert!(expanded.contains("本文"), "got: {expanded:?}");
         assert!(expanded.contains("太字"), "got: {expanded:?}");
         assert!(expanded.contains("後ろ"), "got: {expanded:?}");
@@ -999,6 +1065,209 @@ mod tests {
     }
 
     #[gpui::test]
+    fn test_details_stay_open_when_the_text_before_them_changes(cx: &mut TestAppContext) {
+        let body = "<details>\n<summary>\u{984c}</summary>\n\n\u{672c}\u{6587}\n\n</details>";
+        let moved = format!("\u{524d}\u{66f8}\u{304d}\n\n{body}");
+
+        let expanded = render_html_preview(body, Some(("\u{984c}", 0)), cx);
+        assert!(expanded.contains("\u{672c}\u{6587}"), "got: {expanded:?}");
+
+        // The same key has to reach the same disclosure once a line is inserted
+        // in front of it, which a source-offset key could not do.
+        let expanded_after_edit = render_html_preview(&moved, Some(("\u{984c}", 0)), cx);
+        assert!(
+            expanded_after_edit.contains("\u{672c}\u{6587}"),
+            "got: {expanded_after_edit:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_details_that_share_a_summary_toggle_apart(cx: &mut TestAppContext) {
+        let source = "<details>
+<summary>\u{984c}</summary>
+
+\u{672c}\u{6587}A
+
+</details>
+
+<details>
+<summary>\u{984c}</summary>
+
+\u{672c}\u{6587}B
+
+</details>";
+
+        let second = render_html_preview(source, Some(("\u{984c}", 1)), cx);
+        assert!(!second.contains("\u{672c}\u{6587}A"), "got: {second:?}");
+        assert!(second.contains("\u{672c}\u{6587}B"), "got: {second:?}");
+
+        let first = render_html_preview(source, Some(("\u{984c}", 0)), cx);
+        assert!(first.contains("\u{672c}\u{6587}A"), "got: {first:?}");
+        assert!(!first.contains("\u{672c}\u{6587}B"), "got: {first:?}");
+    }
+
+    #[gpui::test]
+    fn test_details_inside_a_list_item_hides_its_body(cx: &mut TestAppContext) {
+        let source = "- item\n\n  <details>\n  <summary>\u{984c}</summary>\n\n  \u{672c}\u{6587}\n\n  </details>\n\n\u{5f8c}\u{308d}";
+
+        let collapsed = render_html_preview(source, None, cx);
+        assert!(collapsed.contains('\u{984c}'), "got: {collapsed:?}");
+        assert!(
+            !collapsed.contains("\u{672c}\u{6587}"),
+            "got: {collapsed:?}"
+        );
+        assert!(collapsed.contains("item"), "got: {collapsed:?}");
+        assert!(collapsed.contains("\u{5f8c}\u{308d}"), "got: {collapsed:?}");
+
+        let expanded = render_html_preview(source, Some(("\u{984c}", 0)), cx);
+        assert!(expanded.contains("\u{672c}\u{6587}"), "got: {expanded:?}");
+        assert!(expanded.contains("\u{5f8c}\u{308d}"), "got: {expanded:?}");
+    }
+
+    #[gpui::test]
+    fn test_collapsed_details_in_a_list_keeps_the_formatting_around_it(cx: &mut TestAppContext) {
+        // The disclosure's body is hidden by event index while the inline
+        // formatting tags around it are rewritten in place, so a document that
+        // has both is what catches the two passes disagreeing.
+        let source = "a <b>\u{592a}\u{5b57}</b>\n\n- item\n\n  <details>\n  <summary>\u{984c}</summary>\n\n  \u{672c}\u{6587} <u>\u{4e0b}\u{7dda}</u>\n\n  </details>\n\n\u{5f8c}\u{308d} <i>\u{659c}\u{4f53}</i>";
+
+        let collapsed = render_html_preview(source, None, cx);
+        assert_eq!(
+            collapsed,
+            "a \u{592a}\u{5b57}\nitem\n\u{984c}\n\u{5f8c}\u{308d} \u{659c}\u{4f53}"
+        );
+
+        let expanded = render_html_preview(source, Some(("\u{984c}", 0)), cx);
+        assert_eq!(
+            expanded,
+            "a \u{592a}\u{5b57}\nitem\n\u{984c}\n\u{672c}\u{6587} \u{4e0b}\u{7dda}\n\u{5f8c}\u{308d} \u{659c}\u{4f53}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_details_inside_a_block_quote_hides_its_body(cx: &mut TestAppContext) {
+        let source = "> <details>\n> <summary>\u{984c}</summary>\n>\n> \u{672c}\u{6587}\n>\n> </details>\n\n\u{5f8c}\u{308d}";
+
+        let collapsed = render_html_preview(source, None, cx);
+        assert!(collapsed.contains('\u{984c}'), "got: {collapsed:?}");
+        assert!(
+            !collapsed.contains("\u{672c}\u{6587}"),
+            "got: {collapsed:?}"
+        );
+        assert!(collapsed.contains("\u{5f8c}\u{308d}"), "got: {collapsed:?}");
+
+        let expanded = render_html_preview(source, Some(("\u{984c}", 0)), cx);
+        assert!(expanded.contains("\u{672c}\u{6587}"), "got: {expanded:?}");
+        assert!(expanded.contains("\u{5f8c}\u{308d}"), "got: {expanded:?}");
+    }
+
+    #[gpui::test]
+    fn test_summary_renders_its_markdown(cx: &mut TestAppContext) {
+        let rendered = render_html_preview(
+            "<details><summary>**\u{592a}\u{5b57}** と `code`</summary>\u{672c}\u{6587}</details>",
+            None,
+            cx,
+        );
+        assert!(
+            rendered.contains("\u{592a}\u{5b57} と code"),
+            "got: {rendered:?}"
+        );
+        assert!(!rendered.contains('*'), "got: {rendered:?}");
+        assert!(!rendered.contains('`'), "got: {rendered:?}");
+    }
+
+    #[gpui::test]
+    fn test_summary_keeps_its_html_styling_inside_a_code_span(cx: &mut TestAppContext) {
+        // The code span's backticks disappear while the `<b>` highlight was
+        // measured against the text that still had them, so the moved highlight
+        // has to land on a character boundary or laying the summary out panics.
+        let rendered = render_html_preview(
+            "<details><summary>`<b>\u{3042}</b>`</summary>\u{672c}\u{6587}</details>",
+            None,
+            cx,
+        );
+        assert!(rendered.contains('\u{3042}'), "got: {rendered:?}");
+    }
+
+    #[gpui::test]
+    fn test_inline_formatting_tags_of_a_plain_paragraph_are_not_shown(cx: &mut TestAppContext) {
+        let rendered = render_html_preview("a <b>bold</b> <u>under</u> <kbd>K</kbd>", None, cx);
+        assert_eq!(rendered, "a bold under K");
+    }
+
+    #[gpui::test]
+    fn test_sub_and_sup_of_a_plain_paragraph_use_unicode(cx: &mut TestAppContext) {
+        let rendered = render_html_preview("H<sub>2</sub>O x<sup>2</sup>", None, cx);
+        assert_eq!(rendered, "H\u{2082}O x\u{b2}");
+    }
+
+    #[gpui::test]
+    fn test_html_table_scrolls_instead_of_wrapping_its_cells(cx: &mut TestAppContext) {
+        ensure_theme_initialized(cx);
+
+        struct TableView {
+            markdown: Entity<Markdown>,
+            style: MarkdownStyle,
+        }
+
+        impl Render for TableView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(MarkdownElement::new(
+                    self.markdown.clone(),
+                    self.style.clone(),
+                ))
+            }
+        }
+
+        const TABLE: &str = "<table><thead><tr><th>\u{9805}\u{76ee}</th><th>\u{8aac}\u{660e}</th></tr></thead>\
+<tbody><tr><td>\u{6700}\u{521d}\u{306e}\u{9805}\u{76ee}</td>\
+<td>\u{3053}\u{306e}\u{5217}\u{306f}\u{9577}\u{3044}\u{6587}\u{7ae0}\u{3092}\u{6301}\u{3061}\u{307e}\u{3059}</td></tr>\
+<tr><td>\u{6b21}\u{306e}\u{9805}\u{76ee}</td><td>\u{3082}\u{3046}\u{4e00}\u{3064}\u{306e}\u{9577}\u{3044}\u{8aac}\u{660e}\u{6587}</td></tr></tbody></table>";
+
+        let table_bounds = |table_overflow_x_scroll: bool, cx: &mut TestAppContext| {
+            let mut style = MarkdownStyle::default();
+            style.table_overflow_x_scroll = table_overflow_x_scroll;
+            let window = cx.open_window(size(px(200.), px(600.)), |_, cx| {
+                let markdown = cx.new(|cx| {
+                    Markdown::new_with_options(
+                        TABLE.into(),
+                        None,
+                        None,
+                        MarkdownOptions {
+                            parse_html: true,
+                            ..Default::default()
+                        },
+                        cx,
+                    )
+                });
+                TableView { markdown, style }
+            });
+            cx.run_until_parked();
+            gpui::VisualTestContext::from_window(window.into(), cx)
+                .debug_bounds("markdown_html_table")
+                .expect("the html table should have been rendered")
+        };
+
+        let wrapped = table_bounds(false, cx);
+        let scrolling = table_bounds(true, cx);
+
+        // Either way the table stays inside the pane, so a wide table cannot blow
+        // out the layout around it.
+        assert_eq!(wrapped.size.width, px(200.));
+        assert_eq!(scrolling.size.width, px(200.));
+
+        // With the floors in place each column keeps its own width and the rest
+        // goes to the horizontal scrollbar, instead of wrapping cell text a few
+        // characters at a time.
+        assert!(
+            scrolling.size.height < wrapped.size.height,
+            "the floors should keep the rows compact; wrapped {:?}, scrolling {:?}",
+            wrapped.size.height,
+            scrolling.size.height
+        );
+    }
+
+    #[gpui::test]
     fn test_adjacent_details_keep_their_own_summaries(cx: &mut TestAppContext) {
         // No blank line between `</details>` and the next `<details>`, so one
         // HTML block both closes a disclosure and opens the next one.
@@ -1023,7 +1292,7 @@ mod tests {
         assert!(!collapsed.contains("本文"), "got: {collapsed:?}");
         assert!(collapsed.contains("後ろ"), "got: {collapsed:?}");
 
-        let first_expanded = render_html_preview(source, Some((0, 0)), cx);
+        let first_expanded = render_html_preview(source, Some(("A", 0)), cx);
         assert!(first_expanded.contains("本文A"), "got: {first_expanded:?}");
         assert!(!first_expanded.contains("本文B"), "got: {first_expanded:?}");
         assert!(first_expanded.contains('B'), "got: {first_expanded:?}");

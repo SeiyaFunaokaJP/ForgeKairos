@@ -361,6 +361,8 @@ actions!(
         OpenThreadInSplit,
         /// タブで開いているスレッドをエージェントパネルに戻します。
         MoveThreadToPanel,
+        /// 使われていないので止めたエージェントに、何も送らずに接続し直します。
+        ReconnectParkedAgent,
     ]
 );
 

@@ -1,11 +1,17 @@
-use std::{cell::RefCell, collections::HashMap, mem, ops::Range};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    hash::{Hash, Hasher},
+    mem,
+    ops::Range,
+};
 
 use gpui::{DefiniteLength, FontWeight, SharedString, TextAlign, px, relative};
 use html5ever::{
     Attribute, LocalName, ParseOpts, local_name, parse_document, tendril::TendrilSink,
 };
 use markup5ever_rcdom::{Handle, Node, NodeData, RcDom};
-use pulldown_cmark::{Alignment, HeadingLevel};
+use pulldown_cmark::{Alignment, HeadingLevel, Options};
 use stacksafe::stacksafe;
 
 use crate::html::html_minifier::{Minifier, MinifierOptions};
@@ -30,13 +36,42 @@ pub(crate) struct ParsedHtmlBlock {
     pub details_span: Option<HtmlDetailsSpan>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
 pub(crate) struct HtmlDetailsSpan {
-    /// Start of the root block holding the `</details>`. Everything before it
-    /// belongs to the disclosure body, and root blocks nest cleanly, so a
-    /// collapsed disclosure can be hidden by skipping up to this offset.
-    pub close_root_block_start: usize,
+    /// The events that make up the disclosure body, so a collapsed disclosure
+    /// can be hidden by skipping them. Event indices rather than source offsets,
+    /// because the body may live inside a list item or a block quote, where the
+    /// closing block shares its root block with everything around it. The range
+    /// always ends on a balanced boundary, so skipping it leaves the renderer's
+    /// div stack intact.
+    pub hidden_events: Range<usize>,
+}
+
+/// Identifies a disclosure across reparses. Source offsets move as soon as
+/// anything before the block is edited, so the key is the summary's own text
+/// plus how many earlier disclosures in the document share that summary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) struct HtmlDetailsKey {
+    summary_hash: u64,
+    ordinal: u32,
+}
+
+pub(crate) fn html_details_key(summary: &str, ordinal: u32) -> HtmlDetailsKey {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    summary.hash(&mut hasher);
+    HtmlDetailsKey {
+        summary_hash: hasher.finish(),
+        ordinal,
+    }
+}
+
+impl HtmlDetailsKey {
+    /// A spelling of the key for the summary row's element id, which has to stay
+    /// distinct between disclosures without leaning on source offsets either.
+    pub(crate) fn element_id_suffix(&self) -> String {
+        format!("{}-{}", self.summary_hash, self.ordinal)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -56,10 +91,10 @@ pub(crate) enum ParsedHtmlElement {
 #[cfg_attr(test, derive(PartialEq))]
 pub(crate) struct ParsedHtmlDetails {
     pub source_range: Range<usize>,
-    /// Position of this disclosure among the ones in its block, in document
-    /// order. Together with the block's source offset it keys the open/closed
-    /// state, which has to survive the reparse that follows every edit.
-    pub index: usize,
+    /// Keys the open/closed state, which has to survive the reparse that follows
+    /// every edit. Assigned per block by the parser and renumbered across the
+    /// whole document by [`assign_details_ordinals`].
+    pub key: HtmlDetailsKey,
     pub open: bool,
     pub summary: HtmlParagraph,
     pub children: Vec<ParsedHtmlElement>,
@@ -258,8 +293,7 @@ pub(crate) fn parse_html_block(
         &ParseHtmlNodeContext::default(),
     );
 
-    let mut details_index = 0;
-    assign_details_indices(&mut children, &mut details_index);
+    assign_details_keys(&mut children, &mut HashMap::new());
 
     let (unclosed_details, unmatched_details_closes) = count_details_tags(source);
 
@@ -325,26 +359,54 @@ fn tag_name_ends_here(after_name: &str) -> bool {
     }
 }
 
+/// Numbers the disclosures of every block in document order, so two disclosures
+/// that share a summary still get keys of their own. Called once the whole
+/// document is parsed, since a block cannot know what came before it.
+pub(crate) fn assign_details_ordinals(blocks: &mut BTreeMap<usize, ParsedHtmlBlock>) {
+    let mut ordinals = HashMap::new();
+    for block in blocks.values_mut() {
+        assign_details_keys(&mut block.children, &mut ordinals);
+    }
+}
+
 #[stacksafe]
-fn assign_details_indices(elements: &mut [ParsedHtmlElement], next_index: &mut usize) {
+fn assign_details_keys(elements: &mut [ParsedHtmlElement], ordinals: &mut HashMap<u64, u32>) {
     for element in elements {
         match element {
             ParsedHtmlElement::Details(details) => {
-                details.index = *next_index;
-                *next_index += 1;
-                assign_details_indices(&mut details.children, next_index);
+                let summary = html_paragraph_text(&details.summary);
+                let key = html_details_key(&summary, 0);
+                let ordinal = ordinals.entry(key.summary_hash).or_insert(0);
+                details.key = html_details_key(&summary, *ordinal);
+                *ordinal += 1;
+                assign_details_keys(&mut details.children, ordinals);
             }
             ParsedHtmlElement::BlockQuote(block_quote) => {
-                assign_details_indices(&mut block_quote.children, next_index);
+                assign_details_keys(&mut block_quote.children, ordinals);
             }
             ParsedHtmlElement::List(list) => {
                 for item in &mut list.items {
-                    assign_details_indices(&mut item.content, next_index);
+                    assign_details_keys(&mut item.content, ordinals);
                 }
             }
             _ => {}
         }
     }
+}
+
+pub(crate) fn html_paragraph_text(paragraph: &HtmlParagraph) -> String {
+    let mut text = String::new();
+    for chunk in paragraph {
+        match chunk {
+            HtmlParagraphChunk::Text(chunk) => text.push_str(chunk.contents.as_ref()),
+            HtmlParagraphChunk::Image(image) => {
+                if let Some(alt_text) = &image.alt_text {
+                    text.push_str(alt_text.as_ref());
+                }
+            }
+        }
+    }
+    text
 }
 
 fn cleanup_html(source: &str) -> Vec<u8> {
@@ -605,16 +667,289 @@ fn extract_html_details(
         }
     }
 
+    for chunk in &mut summary {
+        if let HtmlParagraphChunk::Text(text) = chunk {
+            apply_markdown_inlines(text);
+        }
+    }
+
     let mut children = Vec::new();
     consume_nodes(source_range.clone(), &body_nodes, &mut children, context);
 
     ParsedHtmlDetails {
         source_range,
-        index: 0,
+        key: HtmlDetailsKey::default(),
         open: attr_value_named(attrs, "open").is_some(),
         summary,
         children,
     }
+}
+
+/// The inline markdown a `<summary>` is allowed to contain. The surrounding HTML
+/// block is opaque to the markdown parser, so `**bold**` and `[a](b)` reach the
+/// summary as literal text and have to be parsed here, the way GitHub does.
+const SUMMARY_MARKDOWN_OPTIONS: Options = Options::ENABLE_STRIKETHROUGH;
+
+fn apply_markdown_inlines(text: &mut ParsedHtmlText) {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+
+    let source = text.contents.clone();
+    if !source.contains(['*', '_', '`', '[', '~']) {
+        return;
+    }
+
+    let mut contents = String::with_capacity(source.len());
+    let mut highlights = Vec::new();
+    let mut links = Vec::new();
+    let mut open_styles: Vec<(HtmlHighlightStyle, usize)> = Vec::new();
+    let mut open_links: Vec<(SharedString, usize)> = Vec::new();
+    // Where each piece of the source ended up in `contents`, so the highlights
+    // the HTML tags already produced can be moved onto the stripped text.
+    let mut moved: Vec<(Range<usize>, Range<usize>)> = Vec::new();
+    let mut paragraphs = 0;
+
+    let push = |contents: &mut String,
+                moved: &mut Vec<(Range<usize>, Range<usize>)>,
+                source_range: Range<usize>,
+                piece: &str| {
+        let start = contents.len();
+        contents.push_str(piece);
+        moved.push((source_range, start..contents.len()));
+    };
+
+    for (event, range) in Parser::new_ext(&source, SUMMARY_MARKDOWN_OPTIONS).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Paragraph) => {
+                paragraphs += 1;
+                if paragraphs > 1 {
+                    return;
+                }
+            }
+            Event::End(TagEnd::Paragraph) => {}
+            Event::Text(parsed) => push(&mut contents, &mut moved, range, &parsed),
+            Event::Code(parsed) => {
+                let start = contents.len();
+                push(&mut contents, &mut moved, range, &parsed);
+                highlights.push((
+                    start..contents.len(),
+                    HtmlHighlightStyle {
+                        code: true,
+                        ..Default::default()
+                    },
+                ));
+            }
+            Event::SoftBreak => push(&mut contents, &mut moved, range, " "),
+            Event::HardBreak => push(&mut contents, &mut moved, range, "\n"),
+            Event::Start(Tag::Emphasis) => open_styles.push((
+                HtmlHighlightStyle {
+                    italic: true,
+                    ..Default::default()
+                },
+                contents.len(),
+            )),
+            Event::Start(Tag::Strong) => open_styles.push((
+                HtmlHighlightStyle {
+                    weight: FontWeight::BOLD,
+                    ..Default::default()
+                },
+                contents.len(),
+            )),
+            Event::Start(Tag::Strikethrough) => open_styles.push((
+                HtmlHighlightStyle {
+                    strikethrough: true,
+                    ..Default::default()
+                },
+                contents.len(),
+            )),
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                open_styles.push((
+                    HtmlHighlightStyle {
+                        link: true,
+                        ..Default::default()
+                    },
+                    contents.len(),
+                ));
+                open_links.push((dest_url.into_string().into(), contents.len()));
+            }
+            Event::End(TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough) => {
+                let Some((style, start)) = open_styles.pop() else {
+                    return;
+                };
+                highlights.push((start..contents.len(), style));
+            }
+            Event::End(TagEnd::Link) => {
+                let Some((style, start)) = open_styles.pop() else {
+                    return;
+                };
+                highlights.push((start..contents.len(), style));
+                let Some((url, start)) = open_links.pop() else {
+                    return;
+                };
+                links.push((start..contents.len(), url));
+            }
+            // Anything else means the summary is not plain inline markdown, so
+            // it is left exactly as the HTML parser produced it.
+            _ => return,
+        }
+    }
+
+    if !open_styles.is_empty() || !open_links.is_empty() || contents == source.as_ref() {
+        return;
+    }
+
+    let offsets = moved_offsets(source.len(), &moved);
+    // A piece can be shorter than the source it came from (a code span loses its
+    // backticks), so an offset inside it maps to a byte of the rewritten text
+    // that may sit inside a character. The renderer slices the text at these
+    // offsets, which panics unless they are pulled back to a boundary.
+    let move_offset = |offset: usize| {
+        let mut moved = offsets.get(offset).copied().unwrap_or(contents.len());
+        while moved > 0 && !contents.is_char_boundary(moved) {
+            moved -= 1;
+        }
+        moved
+    };
+    let move_range = |range: &Range<usize>| move_offset(range.start)..move_offset(range.end);
+    highlights.extend(
+        text.highlights
+            .iter()
+            .map(|(range, style)| (move_range(range), style.clone())),
+    );
+    highlights.retain(|(range, _)| range.start < range.end);
+    highlights.sort_by_key(|(range, _)| (range.start, range.end));
+    links.extend(
+        text.links
+            .iter()
+            .map(|(range, url)| (move_range(range), url.clone())),
+    );
+    links.retain(|(range, _)| range.start < range.end);
+
+    text.contents = contents.into();
+    text.highlights = highlights;
+    text.links = links;
+}
+
+/// Maps every offset of the original text onto the rewritten text, so ranges
+/// that were measured against the original still cover the same characters.
+fn moved_offsets(source_len: usize, moved: &[(Range<usize>, Range<usize>)]) -> Vec<usize> {
+    let mut offsets = vec![0; source_len + 1];
+    let mut source_end = 0;
+    let mut moved_end = 0;
+
+    for (source_range, moved_range) in moved {
+        for offset in source_end..source_range.start {
+            if let Some(slot) = offsets.get_mut(offset) {
+                *slot = moved_end;
+            }
+        }
+        for offset in source_range.start..source_range.end {
+            let within = offset.saturating_sub(source_range.start);
+            if let Some(slot) = offsets.get_mut(offset) {
+                *slot = moved_range.start + within.min(moved_range.len());
+            }
+        }
+        source_end = source_range.end;
+        moved_end = moved_range.end;
+    }
+
+    for offset in source_end..=source_len {
+        if let Some(slot) = offsets.get_mut(offset) {
+            *slot = moved_end;
+        }
+    }
+
+    offsets
+}
+
+/// The subscript and superscript characters Unicode actually has. GPUI lays a
+/// whole line out at one font size, so a smaller run is not expressible; these
+/// are the only way `<sub>` and `<sup>` can come out smaller and off the
+/// baseline, and anything outside them is left at full size.
+fn unicode_script_text(text: &str, superscript: bool) -> Option<String> {
+    if text.is_empty() {
+        return None;
+    }
+
+    text.chars()
+        .map(|character| {
+            if superscript {
+                match character {
+                    '0' => Some('⁰'),
+                    '1' => Some('¹'),
+                    '2' => Some('²'),
+                    '3' => Some('³'),
+                    '4' => Some('⁴'),
+                    '5' => Some('⁵'),
+                    '6' => Some('⁶'),
+                    '7' => Some('⁷'),
+                    '8' => Some('⁸'),
+                    '9' => Some('⁹'),
+                    '+' => Some('⁺'),
+                    '-' => Some('⁻'),
+                    '=' => Some('⁼'),
+                    '(' => Some('⁽'),
+                    ')' => Some('⁾'),
+                    'n' => Some('ⁿ'),
+                    'i' => Some('ⁱ'),
+                    _ => None,
+                }
+            } else {
+                match character {
+                    '0' => Some('₀'),
+                    '1' => Some('₁'),
+                    '2' => Some('₂'),
+                    '3' => Some('₃'),
+                    '4' => Some('₄'),
+                    '5' => Some('₅'),
+                    '6' => Some('₆'),
+                    '7' => Some('₇'),
+                    '8' => Some('₈'),
+                    '9' => Some('₉'),
+                    '+' => Some('₊'),
+                    '-' => Some('₋'),
+                    '=' => Some('₌'),
+                    '(' => Some('₍'),
+                    ')' => Some('₎'),
+                    'a' => Some('ₐ'),
+                    'e' => Some('ₑ'),
+                    'o' => Some('ₒ'),
+                    'x' => Some('ₓ'),
+                    'h' => Some('ₕ'),
+                    'k' => Some('ₖ'),
+                    'l' => Some('ₗ'),
+                    'm' => Some('ₘ'),
+                    'n' => Some('ₙ'),
+                    'p' => Some('ₚ'),
+                    's' => Some('ₛ'),
+                    't' => Some('ₜ'),
+                    _ => None,
+                }
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn unicode_script_for_tag(text: &str, tag: &str) -> Option<String> {
+    match tag {
+        "sup" => unicode_script_text(text, true),
+        "sub" => unicode_script_text(text, false),
+        _ => None,
+    }
+}
+
+/// The text of an element that holds nothing but text. Swapping the characters
+/// of a `<sub>` or `<sup>` throws away whatever the children carried, and the
+/// footnote spelling `<sup><a href="#fn-1">1</a></sup>` would lose its link, so
+/// an element with children of its own keeps the rendering it already had.
+fn text_only_contents(node: &Node) -> Option<String> {
+    let mut text = String::new();
+    for child in node.children.borrow().iter() {
+        let NodeData::Text { contents } = &child.data else {
+            return None;
+        };
+        text.push_str(&contents.borrow().to_string());
+    }
+    Some(text)
 }
 
 #[stacksafe]
@@ -683,6 +1018,15 @@ fn parse_paragraph(
                     ..Default::default()
                 });
                 consume_paragraph(source_range, node, paragraph, highlights, links);
+            } else if matches!(name.local.as_ref(), "sub" | "sup") {
+                let substituted = text_only_contents(node)
+                    .and_then(|contents| unicode_script_for_tag(&contents, name.local.as_ref()));
+                match substituted {
+                    Some(contents) => {
+                        append_paragraph_text(source_range, paragraph, &contents, highlights, links)
+                    }
+                    None => consume_paragraph(source_range, node, paragraph, highlights, links),
+                }
             } else if name.local == local_name!("br") {
                 append_paragraph_text(
                     source_range,
@@ -1447,7 +1791,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_nested_details_with_distinct_indices() {
+    fn parses_nested_details_with_distinct_keys() {
         let parsed = parse(
             "<details><summary>外</summary><details><summary>内</summary>中身</details></details>",
         );
@@ -1455,13 +1799,14 @@ mod tests {
         let ParsedHtmlElement::Details(outer) = &parsed.children[0] else {
             panic!("expected outer details");
         };
-        assert_eq!(outer.index, 0);
+        assert_eq!(outer.key, html_details_key("外", 0));
         assert_eq!(paragraph_chunks_text(&outer.summary), "外");
 
         let ParsedHtmlElement::Details(inner) = &outer.children[0] else {
             panic!("expected inner details");
         };
-        assert_eq!(inner.index, 1);
+        assert_eq!(inner.key, html_details_key("内", 0));
+        assert_ne!(inner.key, outer.key);
         assert_eq!(paragraph_chunks_text(&inner.summary), "内");
         assert_eq!(paragraph_text(&inner.children[0]), "中身");
     }
@@ -1597,7 +1942,141 @@ mod tests {
     #[test]
     fn parses_sub_and_sup_text() {
         let parsed = parse("<p>H<sub>2</sub>O x<sup>2</sup></p>");
-        assert_eq!(paragraph_text(&parsed.children[0]), "H2O x2");
+        assert_eq!(paragraph_text(&parsed.children[0]), "H\u{2082}O x\u{b2}");
+    }
+
+    #[test]
+    fn keeps_sub_and_sup_text_unicode_has_no_character_for() {
+        let parsed = parse("<p>a<sub>zz</sub></p>");
+        assert_eq!(paragraph_text(&parsed.children[0]), "azz");
+    }
+
+    #[test]
+    fn keeps_a_footnote_reference_inside_a_sup() {
+        let parsed = parse("<p>a<sup><a href=\"#fn-1\">1</a></sup></p>");
+        let ParsedHtmlElement::Paragraph(paragraph) = &parsed.children[0] else {
+            panic!("expected paragraph, got {:?}", parsed.children[0]);
+        };
+        let HtmlParagraphChunk::Text(text) = &paragraph.contents[0] else {
+            panic!("expected a text chunk");
+        };
+
+        assert_eq!(text.contents.as_ref(), "a1");
+        assert_eq!(
+            text.links,
+            vec![(1..2, SharedString::from("#fn-1"))],
+            "swapping in the Unicode superscript would drop the destination"
+        );
+    }
+
+    #[test]
+    fn parses_markdown_inside_a_summary() {
+        let parsed = parse(
+            "<details><summary>**\u{592a}\u{5b57}** と `code` と [\u{30ea}\u{30f3}\u{30af}](https://example.com)</summary>\u{672c}\u{6587}</details>",
+        );
+        let ParsedHtmlElement::Details(details) = &parsed.children[0] else {
+            panic!("expected details");
+        };
+
+        let HtmlParagraphChunk::Text(summary) = &details.summary[0] else {
+            panic!("expected a text chunk");
+        };
+        assert_eq!(
+            summary.contents.as_ref(),
+            "\u{592a}\u{5b57} と code と \u{30ea}\u{30f3}\u{30af}"
+        );
+
+        let style_at = |offset: usize| {
+            summary
+                .highlights
+                .iter()
+                .find(|(range, _)| range.contains(&offset))
+                .map(|(_, style)| style.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(style_at(0).weight, FontWeight::BOLD);
+        let code_offset = summary
+            .contents
+            .find("code")
+            .expect("the code span survives");
+        assert!(style_at(code_offset).code);
+        let link_offset = summary
+            .contents
+            .find('\u{30ea}')
+            .expect("the link text survives");
+        assert!(style_at(link_offset).link);
+        assert_eq!(
+            summary.links,
+            vec![(
+                link_offset..summary.contents.len(),
+                SharedString::from("https://example.com")
+            )]
+        );
+    }
+
+    #[test]
+    fn keeps_a_summary_that_is_not_inline_markdown() {
+        let parsed = parse("<details><summary>2 * 3 * 4</summary>\u{672c}\u{6587}</details>");
+        let ParsedHtmlElement::Details(details) = &parsed.children[0] else {
+            panic!("expected details");
+        };
+        assert_eq!(paragraph_chunks_text(&details.summary), "2 * 3 * 4");
+    }
+
+    #[test]
+    fn keeps_the_html_styling_of_a_summary_that_also_has_markdown() {
+        let parsed = parse("<details><summary><b>a</b> **b**</summary>\u{672c}\u{6587}</details>");
+        let ParsedHtmlElement::Details(details) = &parsed.children[0] else {
+            panic!("expected details");
+        };
+        let HtmlParagraphChunk::Text(summary) = &details.summary[0] else {
+            panic!("expected a text chunk");
+        };
+
+        assert_eq!(summary.contents.as_ref(), "a b");
+        let bold_ranges = summary
+            .highlights
+            .iter()
+            .filter(|(_, style)| style.weight == FontWeight::BOLD)
+            .map(|(range, _)| range.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            bold_ranges,
+            vec![0..1, 2..3],
+            "both the tag and the markdown should be bold: {:?}",
+            summary.highlights
+        );
+    }
+
+    #[test]
+    fn numbers_repeated_summaries_apart() {
+        let first = parse("<details><summary>\u{984c}</summary>a</details>");
+        let second = parse("<details><summary>\u{984c}</summary>b</details>");
+        let mut blocks = BTreeMap::new();
+        blocks.insert(0, first);
+        blocks.insert(100, second);
+
+        assign_details_ordinals(&mut blocks);
+
+        let key_of = |start: &usize| match &blocks[start].children[0] {
+            ParsedHtmlElement::Details(details) => details.key,
+            element => panic!("expected details, got {element:?}"),
+        };
+        assert_eq!(key_of(&0), html_details_key("\u{984c}", 0));
+        assert_eq!(key_of(&100), html_details_key("\u{984c}", 1));
+        assert_ne!(key_of(&0), key_of(&100));
+    }
+
+    #[test]
+    fn keys_a_disclosure_by_its_summary_rather_than_its_position() {
+        let mut moved = BTreeMap::new();
+        moved.insert(40, parse("<details><summary>\u{984c}</summary>a</details>"));
+        assign_details_ordinals(&mut moved);
+
+        let ParsedHtmlElement::Details(details) = &moved[&40].children[0] else {
+            panic!("expected details");
+        };
+        assert_eq!(details.key, html_details_key("\u{984c}", 0));
     }
 
     #[test]

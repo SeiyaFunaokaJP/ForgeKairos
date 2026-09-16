@@ -5597,26 +5597,51 @@ async fn test_draft_title_updates_from_editor_text(cx: &mut TestAppContext) {
         })
     };
 
-    // Phase 1: ConversationView is still loaded in `retained_threads`;
-    // the title comes from its live message editor.
+    // Phase 1: the draft's `ConversationView` is still loaded and off
+    // screen, so the title has to come from its live message editor. Since
+    // ADR-F36 Phase B the panel parks it in one of its own tabs rather than
+    // in `retained_threads`, so ask where the panel keeps it, not which of
+    // the two slots it landed in.
     assert_eq!(
         draft_title(&sidebar, cx).as_ref(),
         "Fix the login bug",
         "parked draft title should match its editor text while loaded"
     );
-    panel.read_with(cx, |panel, _cx| {
+    panel.read_with(cx, |panel, cx| {
         assert!(
-            panel.retained_threads().contains_key(&draft_id),
-            "draft should be in retained_threads while loaded"
+            panel.test_thread_is_in_background(draft_id),
+            "the draft should still be loaded by the panel, and parked \
+             rather than on screen"
+        );
+        assert_eq!(
+            panel.editor_text_if_in_memory(draft_id, cx),
+            Some(Some("Fix the login bug".to_string())),
+            "the title above should have come from the live message editor"
         );
     });
 
-    // Phase 2: drop the draft's ConversationView from memory, mirroring
-    // the state the sidebar sees immediately after a process restart
-    // — the metadata row and the kvp draft prompt are on disk, but no
+    // Phase 2: drop the draft's ConversationView from memory — out of the
+    // panel tab it is parked in as well as out of `retained_threads` —
+    // mirroring the state the sidebar sees immediately after a process
+    // restart: the metadata row and the kvp draft prompt are on disk, but no
     // ConversationView has been rehydrated yet.
-    let unloaded = panel.update(cx, |panel, _cx| panel.test_unload_retained_thread(draft_id));
+    let unloaded = panel.update_in(cx, |panel, window, cx| {
+        panel.test_unload_retained_thread(draft_id, window, cx)
+    });
     assert!(unloaded, "draft should have been present before unload");
+    panel.read_with(cx, |panel, cx| {
+        assert!(
+            !panel.test_retains_thread(draft_id),
+            "the draft's view should be gone from both the panel's tabs and \
+             its retained slot"
+        );
+        assert_eq!(
+            panel.editor_text_if_in_memory(draft_id, cx),
+            None,
+            "with no view left, the title can only come from the kvp draft \
+             prompt store"
+        );
+    });
     sidebar.update(cx, |sidebar, cx| sidebar.update_entries(cx));
     cx.run_until_parked();
 

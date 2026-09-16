@@ -20,6 +20,20 @@ use crate::agent_panel;
 
 thread_local! {
     static STUB_AGENT_CONNECTION: RefCell<Option<StubAgentConnection>> = const { RefCell::new(None) };
+    /// ADR-F49 (new decision): armed by a test that needs one start to fail
+    /// the way a real one can — the agent is gone, it exits at once — so that
+    /// the card the view lands on, and the way back from it, are the real
+    /// ones. See [`fail_next_stub_connect`].
+    static STUB_CONNECT_FAILURE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Makes the next [`StubAgentServer::connect`] fail with `reason`, and only
+/// that one: the start after it succeeds as usual, which is what lets a test
+/// walk a failure and the way back from it in one go.
+pub fn fail_next_stub_connect(reason: impl Into<String>) {
+    STUB_CONNECT_FAILURE.with(|cell| {
+        *cell.borrow_mut() = Some(reason.into());
+    });
 }
 
 /// Registers a `StubAgentConnection` that will be used by `Agent::Stub`.
@@ -92,6 +106,9 @@ where
         _project: Entity<Project>,
         _cx: &mut gpui::App,
     ) -> Task<gpui::Result<Rc<dyn AgentConnection>>> {
+        if let Some(reason) = STUB_CONNECT_FAILURE.with(|cell| cell.borrow_mut().take()) {
+            return Task::ready(Err(anyhow::anyhow!(reason)));
+        }
         Task::ready(Ok(Rc::new(self.connection.clone())))
     }
 
@@ -277,9 +294,25 @@ pub fn send_message(panel: &Entity<AgentPanel>, cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
+/// The editor the panel's active draft is written in, wherever the view keeps
+/// it — a draft whose agent the idle disconnect stopped holds it outside the
+/// thread (ADR-F49, `ServerState::Parked`).
+pub fn active_draft_editor(
+    panel: &Entity<AgentPanel>,
+    cx: &VisualTestContext,
+) -> Entity<crate::message_editor::MessageEditor> {
+    panel.read_with(cx, |panel, cx| {
+        panel
+            .active_conversation_view()
+            .expect("the panel is showing a thread")
+            .read(cx)
+            .draft_message_editor(cx)
+            .expect("that thread has a draft editor")
+    })
+}
+
 pub fn type_draft_prompt(panel: &Entity<AgentPanel>, text: &str, cx: &mut VisualTestContext) {
-    let thread_view = panel.read_with(cx, |panel, cx| panel.active_thread_view(cx).unwrap());
-    let message_editor = thread_view.read_with(cx, |view, _cx| view.message_editor.clone());
+    let message_editor = active_draft_editor(panel, cx);
     message_editor.update_in(cx, |editor, window, cx| {
         editor.set_text(text, window, cx);
     });

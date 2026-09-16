@@ -1470,8 +1470,16 @@ impl LocalWorktree {
             let abs_path = snapshot.abs_path.as_path().to_path_buf();
             let background = cx.background_executor().clone();
             async move {
-                let defer_watch =
-                    force_defer_watch || (scanning_enabled && fs::requires_poll_watcher(&abs_path));
+                // The worktree's own root is a watch root, and the decision is taken before
+                // `fs.watch` would resolve it (when the watch is deferred, that call comes
+                // only after the first scan), so it is resolved here. Resolving it opens the
+                // root, which is not something to do for a fake filesystem: its root is a
+                // spelling that may or may not name something on the real disk, and what the
+                // real disk answers has no bearing on the test.
+                let defer_watch = force_defer_watch
+                    || (scanning_enabled
+                        && !fs.is_fake()
+                        && fs::requires_poll_watcher_for_root(&abs_path));
 
                 let (events, watcher) = if scanning_enabled && !defer_watch {
                     fs.watch(&abs_path, FS_WATCH_LATENCY).await

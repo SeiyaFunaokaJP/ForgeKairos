@@ -1,4 +1,5 @@
-//! Centers an edge label's `<text>` on the background box drawn for it.
+//! Centers an edge label's `<text>` on the background box drawn for it, and
+//! centers the box itself on the edge it annotates.
 //!
 //! With `htmlLabels: false` (see `render::to_merman_config`) merman emits edge
 //! labels as native SVG text:
@@ -14,21 +15,39 @@
 //! </g>
 //! ```
 //!
-//! The `<g class="label">` offset and the background rect are derived from a
-//! bounding box that assumes the text starts at `x = 0`, but the text is
-//! emitted with `text-anchor="middle"` and its rows anchored at `x = 0`. A
-//! renderer therefore draws the text centered on the *left edge* of the
-//! background box, i.e. half the label's width too far left. On a
-//! left-to-right flowchart that lands the label on top of the node the edge
-//! comes from, and since `<g class="edgeLabels">` precedes `<g class="nodes">`
-//! in document order, the node paints over the label and the text disappears.
-//! Class diagram edge labels are written by the same merman helper and are off
-//! by the same amount.
+//! The `<g class="label">` offset is derived from a bounding box that assumes
+//! the label's own content starts at `x = 0`, so it shifts everything inside
+//! by minus half the label's width to center that assumed box on the edge
+//! (`translate(200,33)` above is a point on the edge). The background rect
+//! goes along with that assumption (`x = -2`, i.e. starting near zero), so it
+//! ends up correctly centered on the edge. But the text is emitted with
+//! `text-anchor="middle"` and its rows anchored at `x = 0`, which was only
+//! correct *before* the `-w/2` wrapper offset was introduced; a renderer
+//! therefore draws the text centered on the *left edge* of the background
+//! box, i.e. half the label's width too far left. On a left-to-right
+//! flowchart that lands the label on top of the node the edge comes from, and
+//! since `<g class="edgeLabels">` precedes `<g class="nodes">` in document
+//! order, the node paints over the label and the text disappears. Class
+//! diagram edge labels are written by the same merman helper and are off by
+//! the same amount. This pass fixes that by shifting such a `<text>` back
+//! onto the center of its own sibling background box.
 //!
-//! This pass shifts such a `<text>` back onto the center of its own background
-//! box. Labels merman already centers (e.g. ER relationship labels, whose
-//! background is emitted centered on the anchor) have a background center of
-//! zero and are left untouched.
+//! ER relationship labels go through a different merman code path that
+//! already draws the background rect centered on its own local origin
+//! (`x = -width/2`), with the text's `x = 0` anchor matching it correctly.
+//! But that rect is *still* wrapped in a `<g class="label">` that applies the
+//! same `-w/2` assumption meant for the `x = 0`-based boxes above, so the
+//! whole label — box and text together, already mutually aligned — ends up
+//! shifted a further half-width away from the edge it annotates. This pass
+//! detects that double shift (a background rect centered on zero, inside a
+//! wrapper whose own offset is exactly `-width/2`) and nudges the rect (and,
+//! following it, the text) back by `+width/2` to cancel it out.
+//!
+//! Both fixes are idempotent: a rect or text this pass has already shifted
+//! carries its own `transform`, which is checked before shifting it again,
+//! and the ER fix additionally checks the *wrapper's* offset before acting,
+//! so a hypothetical future merman that no longer double-shifts (wrapper
+//! offset no longer `-width/2`) is left alone rather than over-corrected.
 
 use anyhow::Result;
 use quick_xml::events::{BytesStart, Event};
@@ -41,6 +60,10 @@ struct CenterEdgeLabels<I> {
     /// Horizontal center of the background rect that was just emitted, in the
     /// coordinate system its sibling `<text>` is placed in.
     background_center_x: Option<f64>,
+    /// The `translate(dx, ...)` of the current edge label's `<g class="label">`
+    /// wrapper (the direct child of `<g class="edgeLabel">`), used to tell an
+    /// ER-style double-shifted background rect apart from one that is not.
+    label_group_dx: Option<f64>,
 }
 
 /// The distance below which recentering is a no-op and the element is left
@@ -64,18 +87,26 @@ fn has_class(e: &BytesStart<'_>, class: &str) -> Result<bool> {
         .any(|token| token == class))
 }
 
-fn background_center_x(e: &BytesStart<'_>) -> Result<Option<f64>> {
-    if !has_class(e, "background")? {
-        return Ok(None);
-    }
-    let Some(width) = attr_f64(e, "width")? else {
-        return Ok(None);
+/// The `dx` of `e`'s own `transform="translate(dx[, dy])"`, or `0.0` if it has
+/// none, or a transform other than `translate` (this pass never writes any
+/// other kind, and merman does not use any other kind for these wrappers).
+fn transform_translate_dx(e: &BytesStart<'_>) -> Result<f64> {
+    let Some(attr) = e.try_get_attribute("transform")? else {
+        return Ok(0.0);
     };
-    let x = attr_f64(e, "x")?.unwrap_or(0.0);
-    if !width.is_finite() || width <= 0.0 || !x.is_finite() {
-        return Ok(None);
-    }
-    Ok(Some(x + width / 2.0))
+    let value = attr.unescape_value()?;
+    let Some((_, rest)) = value.split_once("translate(") else {
+        return Ok(0.0);
+    };
+    let Some((args, _)) = rest.split_once(')') else {
+        return Ok(0.0);
+    };
+    Ok(args
+        .split([',', ' '])
+        .map(str::trim)
+        .find(|part| !part.is_empty())
+        .and_then(|part| part.parse::<f64>().ok())
+        .unwrap_or(0.0))
 }
 
 fn with_translate_x<'a>(e: &BytesStart<'_>, shift: f64) -> Result<BytesStart<'a>> {
@@ -100,7 +131,8 @@ impl<I> CenterEdgeLabels<I> {
         // here, and an `x` means the anchor is not at the origin, which is
         // what the shift below is measured from. Both appear on the
         // `<text>` of a foreignObject fallback label, which merman already
-        // positions correctly.
+        // positions correctly. A `transform` is also how an earlier pass
+        // over this same SVG marks a `<text>` it already shifted.
         if e.try_get_attribute("transform")?.is_some() || e.try_get_attribute("x")?.is_some() {
             return Ok(None);
         }
@@ -115,17 +147,103 @@ impl<I> CenterEdgeLabels<I> {
         Ok(Some(center_x))
     }
 
+    /// Inspects `e` for the `background` class merman gives an edge label's
+    /// rect. Returns `Ok(None)` when `e` is not one (its sibling `<text>`
+    /// then gets no shift). Otherwise returns the local x-center the
+    /// sibling `<text>` should align to, together with a replacement element
+    /// for `e` itself when the rect needs to move (`None` to keep it as-is).
+    fn recenter_background_rect<'a>(
+        &self,
+        e: &BytesStart<'a>,
+    ) -> Result<Option<(Option<BytesStart<'a>>, f64)>> {
+        if !has_class(e, "background")? {
+            return Ok(None);
+        }
+        let Some(width) = attr_f64(e, "width")? else {
+            return Ok(None);
+        };
+        let x = attr_f64(e, "x")?.unwrap_or(0.0);
+        if !width.is_finite() || width <= 0.0 || !x.is_finite() {
+            return Ok(None);
+        }
+        let local_center = x + width / 2.0;
+
+        if e.try_get_attribute("transform")?.is_some() {
+            // Either an earlier pass over this same SVG already nudged this
+            // rect, or merman placed it with a transform of its own. Report
+            // where it ended up rather than pushing a second `transform`
+            // attribute, which would be malformed and would drop whichever of
+            // the two a renderer discards.
+            return Ok(Some((None, local_center + transform_translate_dx(e)?)));
+        }
+
+        // The ER double-shift bug (see the module doc): a background rect
+        // already centered on its own local zero, wrapped in a `<g
+        // class="label">` whose own offset is exactly minus half this rect's
+        // width. Both conditions matter: a rect centered on zero inside a
+        // wrapper that *isn't* also offset by `-width/2` is not
+        // double-shifted (e.g. a hypothetical merman that stops applying the
+        // redundant wrapper offset), so it must be left alone.
+        //
+        // The wrapper offset is *not* what tells the diagram kinds apart:
+        // flowchart and class diagram wrappers are offset by exactly
+        // `-width/2` too. What singles out the ER path is the rect's own
+        // `x ~= -width/2`; the second condition only keeps a future merman
+        // that fixes the wrapper from being over-corrected here.
+        let label_group_dx = self.label_group_dx.unwrap_or(0.0);
+        let is_double_shifted =
+            local_center.abs() < MIN_SHIFT && (label_group_dx + width / 2.0).abs() < MIN_SHIFT;
+        if is_double_shifted {
+            let shift = width / 2.0;
+            Ok(Some((
+                Some(with_translate_x(e, shift)?),
+                local_center + shift,
+            )))
+        } else {
+            Ok(Some((None, local_center)))
+        }
+    }
+
     fn process_event<'a>(&mut self, event: Event<'a>) -> Result<Event<'a>> {
         if self.edge_label_depth == 0 {
             if let Event::Start(e) = &event {
                 if has_class(e, "edgeLabel")? {
                     self.edge_label_depth = 1;
+                    self.label_group_dx = None;
                 }
             }
             return Ok(event);
         }
 
+        // The direct child of `<g class="edgeLabel">` is the `<g
+        // class="label">` wrapper whose offset `recenter_background_rect`
+        // needs; remember it before that rect (several levels further down)
+        // is reached.
+        if self.edge_label_depth == 1 {
+            if let Event::Start(e) = &event {
+                if has_class(e, "label")? {
+                    self.label_group_dx = Some(transform_translate_dx(e)?);
+                }
+            }
+        }
+
+        let mut next_background_center_x = None;
         let event = match &event {
+            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"rect" => {
+                match self.recenter_background_rect(e)? {
+                    Some((replacement, center)) => {
+                        next_background_center_x = Some(center);
+                        match replacement {
+                            Some(new_elem) => match event {
+                                Event::Start(_) => Event::Start(new_elem),
+                                _ => Event::Empty(new_elem),
+                            },
+                            None => event,
+                        }
+                    }
+                    None => event,
+                }
+            }
             Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"text" => {
                 match self.text_shift(e)? {
                     Some(shift) => {
@@ -142,12 +260,12 @@ impl<I> CenterEdgeLabels<I> {
         };
 
         match &event {
-            Event::Start(e) => {
+            Event::Start(_) => {
                 self.edge_label_depth += 1;
-                self.background_center_x = background_center_x_of(e)?;
+                self.background_center_x = next_background_center_x;
             }
-            Event::Empty(e) => {
-                self.background_center_x = background_center_x_of(e)?;
+            Event::Empty(_) => {
+                self.background_center_x = next_background_center_x;
             }
             Event::End(_) => {
                 self.background_center_x = None;
@@ -157,17 +275,6 @@ impl<I> CenterEdgeLabels<I> {
         }
 
         Ok(event)
-    }
-}
-
-/// The background center to remember for the next `<text>`, which is cleared
-/// by anything other than a background rect so that only a rect immediately
-/// preceding the text can move it.
-fn background_center_x_of(e: &BytesStart<'_>) -> Result<Option<f64>> {
-    if e.name().as_ref() == b"rect" {
-        background_center_x(e)
-    } else {
-        Ok(None)
     }
 }
 
@@ -190,6 +297,7 @@ pub(super) fn process<'a>(
         inner: events,
         edge_label_depth: 0,
         background_center_x: None,
+        label_group_dx: None,
     }
 }
 
@@ -198,6 +306,7 @@ mod tests {
     use super::*;
     use crate::MermaidTheme;
     use quick_xml::Reader;
+    use quick_xml::Writer;
 
     /// Merman truncates the `font-family` attribute it writes into `<text>`
     /// elements at ~258 bytes, which corrupts the SVG for the long default
@@ -208,6 +317,29 @@ mod tests {
             font_family: "Zed Plex Sans, sans-serif".to_string(),
             ..MermaidTheme::default()
         }
+    }
+
+    /// Runs only this module's pass over `svg` (as opposed to the full
+    /// [`crate::render_to_svg`] pipeline), for fixtures that target this
+    /// pass's logic directly rather than a diagram source string.
+    fn apply(svg: &str) -> String {
+        let mut reader = Reader::from_str(svg);
+        reader.config_mut().check_end_names = false;
+        let mut events = Vec::new();
+        loop {
+            match reader.read_event() {
+                Ok(Event::Eof) => break,
+                Ok(event) => events.push(Ok(event)),
+                Err(err) => events.push(Err(err.into())),
+            }
+        }
+        let mut writer = Writer::new(Vec::new());
+        for event in process(events.into_iter()) {
+            writer
+                .write_event(event.expect("test fixture is well-formed XML"))
+                .expect("writing back a test fixture cannot fail");
+        }
+        String::from_utf8(writer.into_inner()).expect("test fixture is valid UTF-8")
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -237,6 +369,9 @@ mod tests {
         /// Absolute x the label's rows are anchored at.
         text_anchor_x: Option<f64>,
         text: String,
+        /// Absolute x of the `<g class="edgeLabel">` itself: the point on the
+        /// edge this label annotates.
+        anchor_x: Option<f64>,
     }
 
     fn translate_of(e: &BytesStart<'_>) -> (f64, f64) {
@@ -345,7 +480,10 @@ mod tests {
             }
             if edge_label_depth.is_none() && has_class(e, "edgeLabel").unwrap_or(false) {
                 edge_label_depth = Some(depth);
-                labels.push(EdgeLabel::default());
+                labels.push(EdgeLabel {
+                    anchor_x: Some(x),
+                    ..EdgeLabel::default()
+                });
             }
 
             if node_depth.is_some() && !is_background {
@@ -396,6 +534,10 @@ mod tests {
             "erDiagram, Japanese",
             "erDiagram\n    顧客 ||--o{ 注文 : \"発注する\"",
         ),
+        (
+            "erDiagram, English",
+            "erDiagram\n    CUSTOMER ||--o{ ORDER : places",
+        ),
     ];
 
     /// An edge label's text must sit on the background box drawn for it, and
@@ -443,22 +585,114 @@ mod tests {
         }
     }
 
-    /// Labels merman already centers must come through untouched: ER
-    /// relationship labels emit their background centered on the text anchor,
-    /// and state diagram labels arrive as foreignObject fallbacks whose text
-    /// carries an absolute `x`.
+    /// A label's background box must also be centered on the point of the
+    /// edge it annotates (the `<g class="edgeLabel">` anchor), not merely on
+    /// its own text. ER relationship labels emit a background rect already
+    /// centered on its own local origin, but the `<g class="label">` wrapper
+    /// around it re-centers *that* box again, so without this pass the whole
+    /// label (box and text moving together) lands half its width away from
+    /// the edge, even though the text sits correctly on the box.
+    #[test]
+    fn edge_label_backgrounds_are_centered_on_their_anchor() {
+        for (name, source) in DIAGRAMS {
+            let svg = crate::render_to_svg(source, &theme())
+                .unwrap_or_else(|err| panic!("{name} failed to render: {err:#}"));
+            let (_, labels) = collect(&svg);
+            assert!(
+                labels.iter().any(|label| label.background.is_some()),
+                "{name} rendered no edge label backgrounds, so this case tests nothing"
+            );
+
+            for label in &labels {
+                let (Some(background), Some(anchor_x)) = (label.background, label.anchor_x) else {
+                    continue;
+                };
+                assert!(
+                    (background.center_x() - anchor_x).abs() < 3.0,
+                    "{name}: label {:?} background centers at {} but the edge it \
+                     annotates passes through x = {anchor_x}",
+                    label.text,
+                    background.center_x(),
+                );
+            }
+        }
+    }
+
+    /// Labels merman already centers must come through untouched: state
+    /// diagram labels arrive as foreignObject fallbacks whose text carries an
+    /// absolute `x`, unrelated to the `<g class="label">`/background-rect
+    /// structure this pass otherwise looks at.
     #[test]
     fn already_centered_labels_are_left_alone() {
-        for source in [
-            "erDiagram\n    顧客 ||--o{ 注文 : \"発注する\"",
-            "stateDiagram-v2\n    [*] --> 待機中\n    待機中 --> 実行中: 開始要求を受理",
-        ] {
+        let source = "stateDiagram-v2\n    [*] --> 待機中\n    待機中 --> 実行中: 開始要求を受理";
+        let svg = crate::render_to_svg(source, &theme())
+            .unwrap_or_else(|err| panic!("{source} failed to render: {err:#}"));
+        assert!(
+            !svg.contains(r#"<text transform="translate("#),
+            "an already-centered label was shifted: {svg}"
+        );
+    }
+
+    /// Re-running this pass over its own output (simulating a Zed
+    /// postprocess that ran twice, or a second look at an already-fixed SVG)
+    /// must not move anything further: a `<text>` or background `<rect>` this
+    /// pass already shifted carries its own `transform`, which is what a
+    /// later pass checks before shifting it again.
+    #[test]
+    fn is_idempotent_on_its_own_output() {
+        for (name, source) in DIAGRAMS {
             let svg = crate::render_to_svg(source, &theme())
-                .unwrap_or_else(|err| panic!("{source} failed to render: {err:#}"));
-            assert!(
-                !svg.contains(r#"<text transform="translate("#),
-                "an already-centered label was shifted: {svg}"
+                .unwrap_or_else(|err| panic!("{name} failed to render: {err:#}"));
+            let twice = apply(&svg);
+            assert_eq!(
+                svg, twice,
+                "{name}: a second pass over already-processed output moved something"
             );
         }
+    }
+
+    /// A background rect centered on zero is only the ER double-shift bug
+    /// (see the module doc) when its `<g class="label">` wrapper is *also*
+    /// offset by minus half its width. A wrapper offset of zero looks like a
+    /// hypothetical future merman that stopped applying that redundant
+    /// offset itself; such a label must be left exactly as found, not
+    /// shifted a further half-width by this pass mistaking it for the bug.
+    #[test]
+    fn leaves_an_already_correctly_centered_er_style_label_alone() {
+        let svg = concat!(
+            r#"<svg><g class="edgeLabels">"#,
+            r#"<g class="edgeLabel" transform="translate(58, 140.5)">"#,
+            r#"<g class="label" transform="translate(0, -8.5)">"#,
+            r#"<g><rect class="background" x="-28.0478515625" y="-1" width="56.095703125" height="17"/>"#,
+            r#"<text y="-10.1" text-anchor="middle"><tspan x="0">発注する</tspan></text></g>"#,
+            r#"</g></g></g></svg>"#,
+        );
+        assert_eq!(
+            apply(svg),
+            svg,
+            "a label whose wrapper no longer double-shifts must not be moved"
+        );
+    }
+
+    /// A background rect that already carries a `transform` of its own is left
+    /// where merman put it. Shifting it would mean pushing a second
+    /// `transform` attribute onto the same element, which is malformed XML,
+    /// and a renderer that keeps only one of the two would drop either
+    /// merman's placement or this pass's correction.
+    #[test]
+    fn a_background_rect_with_its_own_transform_is_left_alone() {
+        let svg = concat!(
+            r#"<svg><g class="edgeLabels">"#,
+            r#"<g class="edgeLabel" transform="translate(58, 140.5)">"#,
+            r#"<g class="label" transform="translate(-28.0478515625, -8.5)">"#,
+            r#"<g><rect class="background" transform="translate(0,2)" x="-28.0478515625" y="-1" width="56.095703125" height="17"/>"#,
+            r#"<text y="-10.1" text-anchor="middle"><tspan x="0">発注する</tspan></text></g>"#,
+            r#"</g></g></g></svg>"#,
+        );
+        let out = apply(svg);
+        assert_eq!(
+            out, svg,
+            "a rect merman already transformed must keep exactly one transform"
+        );
     }
 }

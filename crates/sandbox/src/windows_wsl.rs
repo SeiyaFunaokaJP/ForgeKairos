@@ -668,8 +668,8 @@ pub async fn resolve_canonical_for_grant(
     .await?
     .into_iter()
     .next()
-    .context("bug: missing resolved writable path")?
-    .context("bug: required writable path resolved as missing")?;
+    .context("書込を許可するパスの解決結果が見つかりません (内部エラー)")?
+    .context("書込を許可するパスが解決できないまま渡されました (内部エラー)")?;
     let helper = ensure_sandbox_helper(&wsl_exe, distro.as_deref()).await?;
     let mut args = helper_invocation(&helper);
     args.extend([crate::WSL_SANDBOX_RESOLVE_FLAG.to_string(), translated]);
@@ -681,8 +681,9 @@ pub async fn resolve_canonical_for_grant(
             command_failure_details(output.status.code(), &output.stderr)
         ));
     }
-    let stdout = String::from_utf8(output.stdout)
-        .context("WSL sandbox helper returned a non-UTF-8 canonical path")?;
+    let stdout = String::from_utf8(output.stdout).context(
+        "WSL のサンドボックスヘルパーが UTF-8 でない正規化パスを返しました (内部エラー)",
+    )?;
     parse_canonical_grant_output(&stdout, distro.as_deref())
 }
 
@@ -1035,8 +1036,8 @@ fn split_resolved_paths(
         Some(
             resolved
                 .next()
-                .context("bug: missing resolved terminal cwd")?
-                .context("bug: required terminal cwd resolved as missing")?,
+                .context("ターミナルの作業フォルダーの解決結果が見つかりません (内部エラー)")?
+                .context("ターミナルの作業フォルダーが解決できないまま渡されました (内部エラー)")?,
         )
     } else {
         None
@@ -1047,8 +1048,8 @@ fn split_resolved_paths(
         writable_paths.push(
             resolved
                 .next()
-                .context("bug: missing resolved writable path")?
-                .context("bug: required writable path resolved as missing")?,
+                .context("書込を許可するパスの解決結果が見つかりません (内部エラー)")?
+                .context("書込を許可するパスが解決できないまま渡されました (内部エラー)")?,
         );
     }
 
@@ -1057,8 +1058,8 @@ fn split_resolved_paths(
         readable_paths.push(
             resolved
                 .next()
-                .context("bug: missing resolved readable path")?
-                .context("bug: required readable path resolved as missing")?,
+                .context("読み取りを許可するパスの解決結果が見つかりません (内部エラー)")?
+                .context("読み取りを許可するパスが解決できないまま渡されました (内部エラー)")?,
         );
     }
 
@@ -4779,12 +4780,12 @@ pub async fn ensure_wsl_agent_config_dir(
             && project_key
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
-        "invalid project key {project_key:?}"
+        "プロジェクトの識別子が不正です (内部エラー): {project_key:?}"
     );
     ensure_safe_relative_path(folder_name, "agent folder")?;
     ensure!(
         !folder_name.contains('/'),
-        "the agent folder {folder_name:?} is not a single name"
+        "エージェントのフォルダー名が単一の名前ではありません (内部エラー): {folder_name:?}"
     );
     for directory in directories_below {
         ensure_safe_relative_path(directory, "agent folder entry")?;
@@ -5892,7 +5893,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("required readable path resolved as missing"),
+                .contains("読み取りを許可するパスが解決できないまま渡されました"),
             "unexpected error: {error:#}"
         );
     }
@@ -5903,7 +5904,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("required writable path resolved as missing"),
+                .contains("書込を許可するパスが解決できないまま渡されました"),
             "unexpected error: {error:#}"
         );
     }

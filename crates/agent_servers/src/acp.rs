@@ -2594,7 +2594,27 @@ fn local_agent_sandbox_policy(
         AgentSandboxHosts::Listed(hosts) => sandbox::SandboxNetPolicy::Restricted {
             allowed_domains: hosts.clone(),
         },
-        AgentSandboxHosts::EditorAllowlist => sandbox::SandboxNetPolicy::Unrestricted,
+        // An agent with no hosts of its own is capped by the IDE-wide
+        // allowlist alone: "unrestricted" here is its own half of the ADR-F17
+        // decision saying nothing, leaving the ceiling to decide by itself.
+        AgentSandboxHosts::EditorAllowlist if sandbox::network_ceiling_published() => {
+            sandbox::SandboxNetPolicy::Unrestricted
+        }
+        // Without a ceiling there is no other half, and the same words would
+        // hand the agent the raw network instead — the one reading of them
+        // nobody asked for. A process that publishes none (an embedder, the
+        // eval CLI, a test; never the IDE, which publishes before anything can
+        // start an agent) gets the empty allowlist an editor that permits
+        // nothing would have given it.
+        AgentSandboxHosts::EditorAllowlist => {
+            log::warn!(
+                "no editor-wide network allowlist is published in this process; \
+                 the agent's sandbox is given no hosts at all rather than every host"
+            );
+            sandbox::SandboxNetPolicy::Restricted {
+                allowed_domains: Vec::new(),
+            }
+        }
     };
     Ok(sandbox::SandboxPolicy {
         fs: sandbox::SandboxFsPolicy::Restricted {
@@ -3208,13 +3228,23 @@ struct RemoteAgentPlan {
 /// No allowlist at all is not "everything": the ceiling that would judge the
 /// agent's traffic is missing, so the agent reaches nothing.
 ///
-/// The narrowing is pattern against pattern, so a wildcard on either side
-/// survives it as the part of itself the other permits (see
-/// [`http_proxy::HostPattern::intersect`]). Judging the agent's entry as if it
-/// were a hostname — what the ceiling's proxy does per connection, with a real
-/// host in hand — kept `*.example.com` only where the allowlist covered all of
-/// it (and then only because `*.` matches as an ordinary label), and dropped
-/// it whole where the allowlist permits a part of it.
+/// An entry of the agent's own list is kept whole or not at all — the same
+/// question [`hosts_missing_from_editor_allowlist`] refuses the launch over,
+/// asked again here so that what the agent is told its reach is can never
+/// disagree with what the launch was allowed for. A wildcard the allowlist
+/// covers entirely passes through as itself; one the allowlist permits only a
+/// part of is not quietly shrunk to that part, because narrowing an agent's
+/// declared reach behind its back leaves it failing at a host it was
+/// configured for with no way to see why. The user is asked to list the
+/// wildcard instead, and the launch does not get this far until they have.
+///
+/// The two agree on everything a host pattern can express. Where they part is
+/// an entry that is none — a loopback name, an IP literal — which the gate
+/// answers for out of the allowlist itself and [`host_patterns`] drops here:
+/// the launch is permitted and the host is left out of the grant. That is the
+/// narrow side of the disagreement, and it is older than the two being asked
+/// the same question; reaching such a host from a sandbox is ADR-F17's
+/// `permit_local_addresses` to decide, not this.
 fn remote_agent_network(
     hosts: &AgentSandboxHosts,
     editor_allowlist: Option<&[String]>,
@@ -3225,22 +3255,8 @@ fn remote_agent_network(
     let listed = host_patterns(editor_allowlist.iter().cloned());
     let patterns = match hosts {
         AgentSandboxHosts::Listed(hosts) => {
-            // One agent pattern can meet several of the allowlist's (its own
-            // `*.example.com` under both `*.example.com` and
-            // `*.a.example.com`), so the results are reduced to the ones that
-            // are not already inside another — the same minimal cover the
-            // grants themselves are kept as, and what the agent is told its
-            // reach is.
-            let mut patterns: Vec<http_proxy::HostPattern> = Vec::new();
-            for host in host_patterns(hosts.iter().cloned()) {
-                for shared in listed.iter().filter_map(|listed| host.intersect(listed)) {
-                    if patterns.iter().any(|kept| kept.covers(&shared)) {
-                        continue;
-                    }
-                    patterns.retain(|kept| !shared.covers(kept));
-                    patterns.push(shared);
-                }
-            }
+            let mut patterns = host_patterns(hosts.iter().cloned());
+            patterns.retain(|host| listed.iter().any(|listed| listed.covers(host)));
             patterns
         }
         AgentSandboxHosts::EditorAllowlist => listed,
@@ -5200,25 +5216,25 @@ mod tests {
         );
     }
 
-    /// ADR-F49 decision 13 + ADR-F17: the narrowing keeps the part of a
-    /// wildcard the IDE-wide allowlist permits. What this replaced asked "is
-    /// this entry allowed" of a string that names no single host, which
-    /// answered for a wildcard the allowlist covers whole only by matching
-    /// `*.` as a label, and dropped one it permits a part of.
-    #[test]
-    fn a_remote_agents_wildcard_hosts_survive_the_narrowing() {
-        let hosts_of = |hosts: &[&str], allowlist: &[&str]| {
-            let hosts = AgentSandboxHosts::Listed(
-                hosts
-                    .iter()
-                    .map(|host| host.to_string())
-                    .collect::<Vec<_>>(),
-            );
+    /// ADR-F49 decision 13 + ADR-F17: an agent's own entry reaches the host's
+    /// helper whole or not at all, and on exactly the question the launch was
+    /// gated on — a wildcard the IDE-wide allowlist covers entirely travels as
+    /// itself, and one the allowlist permits only a part of is what
+    /// `ensure_hosts_allowed` refuses the launch over rather than something
+    /// shrunk to that part behind the agent's back. The two answers are
+    /// asserted together because they must not drift apart: whatever is asked
+    /// of the user is what the agent is then given.
+    #[gpui::test]
+    fn a_remote_agents_hosts_reach_the_helper_whole_or_not_at_all(cx: &mut gpui::TestAppContext) {
+        let listed = |entries: &[&str]| {
+            AgentSandboxHosts::Listed(entries.iter().map(|host| host.to_string()).collect())
+        };
+        let granted = |hosts: &[&str], allowlist: &[&str]| {
             let allowlist = allowlist
                 .iter()
                 .map(|entry| entry.to_string())
                 .collect::<Vec<_>>();
-            match remote_agent_network(&hosts, Some(&allowlist)) {
+            match remote_agent_network(&listed(hosts), Some(&allowlist)) {
                 acp_thread::SandboxNetworkAccess::Restricted(allowlist) => allowlist
                     .patterns()
                     .iter()
@@ -5228,32 +5244,66 @@ mod tests {
                 other => panic!("expected a list of hosts, got {other:?}"),
             }
         };
+        let asked_of_the_user = |hosts: &[&str], allowlist: &[&str], cx: &mut App| {
+            let (policy, errors) = http_client::EgressPolicy::from_host_strings(allowlist);
+            assert!(errors.is_empty(), "{errors:?}");
+            cx.set_global(egress_policy::EgressAllowlistGlobal(
+                http_client::EgressPolicyHandle::new(policy),
+            ));
+            hosts_missing_from_editor_allowlist(&listed(hosts), cx)
+        };
 
-        assert_eq!(
-            hosts_of(&["*.example.com"], &["*.example.com"]),
-            ["*.example.com"],
-            "a wildcard the allowlist lists exactly stays whole"
-        );
-        assert_eq!(
-            hosts_of(&["*.example.com"], &["*.a.example.com", "b.example.com"]),
-            ["*.a.example.com", "b.example.com"],
-            "and otherwise becomes the part of itself the allowlist permits"
-        );
-        assert_eq!(
-            hosts_of(&["*.example.com"], &["*.example.com", "*.a.example.com"]),
-            ["*.example.com"],
-            "without repeating a host two allowlist entries both permit"
-        );
-        assert_eq!(
-            hosts_of(&["*.example.com"], &["example.com"]),
-            Vec::<String>::new(),
-            "a subdomain wildcard does not reach its own parent"
-        );
-        assert_eq!(
-            hosts_of(&["api.example.com"], &["*.example.com"]),
-            ["api.example.com"],
-            "an exact host under a listed wildcard is still just that host"
-        );
+        cx.update(|cx| {
+            assert_eq!(
+                granted(&["*.example.com"], &["*.example.com"]),
+                ["*.example.com"],
+                "a wildcard the allowlist covers whole travels as itself"
+            );
+            assert!(
+                asked_of_the_user(&["*.example.com"], &["*.example.com"], cx).is_empty(),
+                "and nothing more is asked of the user"
+            );
+
+            assert_eq!(
+                granted(&["*.example.com"], &["*.a.example.com", "b.example.com"]),
+                Vec::<String>::new(),
+                "a wildcard only partly covered is not quietly shrunk to that part"
+            );
+            assert_eq!(
+                asked_of_the_user(
+                    &["*.example.com"],
+                    &["*.a.example.com", "b.example.com"],
+                    cx
+                ),
+                ["*.example.com"],
+                "the user is asked for the wildcard itself, and the launch stops until then"
+            );
+
+            assert_eq!(
+                granted(&["*.example.com"], &["example.com"]),
+                Vec::<String>::new(),
+                "a subdomain wildcard does not reach its own parent"
+            );
+            assert_eq!(
+                asked_of_the_user(&["*.example.com"], &["example.com"], cx),
+                ["*.example.com"]
+            );
+
+            assert_eq!(
+                granted(&["api.example.com"], &["*.example.com"]),
+                ["api.example.com"],
+                "an exact host under a listed wildcard is still just that host"
+            );
+            assert!(asked_of_the_user(&["api.example.com"], &["*.example.com"], cx).is_empty());
+
+            // The allowlist can shrink between the check and the launch it
+            // gated, so each entry is judged again here rather than trusted.
+            assert_eq!(
+                granted(&["api.example.com", "x.other.com"], &["*.example.com"]),
+                ["api.example.com"],
+                "an entry the allowlist does not cover is left behind"
+            );
+        });
     }
 
     /// ADR-F49 第 2a 段: a remote agent is started by the host's helper, with
@@ -5385,18 +5435,100 @@ mod tests {
             }
         );
 
-        let without_hosts = local_agent_sandbox_policy(
-            &[worktree.path().to_path_buf()],
-            &[],
-            &[],
-            &AgentSandboxHosts::EditorAllowlist,
-        )
-        .expect("a policy");
+        let without_hosts = with_ceiling(true, || {
+            local_agent_sandbox_policy(
+                &[worktree.path().to_path_buf()],
+                &[],
+                &[],
+                &AgentSandboxHosts::EditorAllowlist,
+            )
+            .expect("a policy")
+        });
         assert_eq!(
             without_hosts.network,
             sandbox::SandboxNetPolicy::Unrestricted,
             "an agent with no hosts of its own is capped by the IDE-wide allowlist alone"
         );
+    }
+
+    /// Stand-in for the editor-wide egress ceiling. What it decides is the
+    /// proxy's business (and is tested there); all these tests need is for one
+    /// to exist, or not to.
+    struct TestCeiling;
+
+    impl http_proxy::DestinationPolicy for TestCeiling {
+        fn evaluate(&self, _host: &str, _port: u16) -> http_proxy::PolicyDecision {
+            http_proxy::PolicyDecision::Allow {
+                permit_local_addresses: true,
+            }
+        }
+    }
+
+    /// The ceiling lives in a process-wide slot, so the tests that depend on
+    /// whether one is published have to take turns. A poisoned lock just means
+    /// an earlier test panicked; the slot is overwritten on entry either way.
+    static CEILING_SLOT: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+    fn with_ceiling<R>(published: bool, body: impl FnOnce() -> R) -> R {
+        let _guard = CEILING_SLOT
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        sandbox::set_network_ceiling(published.then(|| {
+            let ceiling: Arc<dyn http_proxy::DestinationPolicy> = Arc::new(TestCeiling);
+            ceiling
+        }));
+        let result = body();
+        sandbox::set_network_ceiling(None);
+        result
+    }
+
+    /// ADR-F17 + ADR-F49 decision 13: "the IDE-wide allowlist is my allowlist"
+    /// is a statement about the ceiling, so in a process with no ceiling it
+    /// cannot be honoured by handing the agent the network unrestricted — that
+    /// is the one reading of it that gives the agent *more* than the editor
+    /// itself has. The agent is confined to an empty allowlist instead, which
+    /// is what an editor that permits nothing would have capped it at. The IDE
+    /// publishes its ceiling before an agent can be started, so this is the
+    /// embedder's and the eval CLI's case, not the user's.
+    #[test]
+    fn an_agent_capped_by_the_ide_allowlist_gets_no_hosts_when_there_is_no_ceiling() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let network_of = || {
+            local_agent_sandbox_policy(
+                &[worktree.path().to_path_buf()],
+                &[],
+                &[],
+                &AgentSandboxHosts::EditorAllowlist,
+            )
+            .expect("a policy")
+            .network
+        };
+
+        assert_eq!(
+            with_ceiling(false, network_of),
+            sandbox::SandboxNetPolicy::Restricted {
+                allowed_domains: Vec::new()
+            },
+        );
+        assert_eq!(
+            with_ceiling(true, network_of),
+            sandbox::SandboxNetPolicy::Unrestricted,
+            "under a ceiling this is unchanged: the ceiling is left deciding alone"
+        );
+
+        // An agent with hosts of its own says what it wants reached, which is
+        // a grant the ceiling narrows rather than a statement about it.
+        let listed = || {
+            local_agent_sandbox_policy(
+                &[worktree.path().to_path_buf()],
+                &[],
+                &[],
+                &AgentSandboxHosts::Listed(vec!["chatgpt.com".to_string()]),
+            )
+            .expect("a policy")
+            .network
+        };
+        assert_eq!(with_ceiling(false, listed), with_ceiling(true, listed));
     }
 
     #[test]

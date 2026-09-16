@@ -372,10 +372,21 @@ impl ThreadSandboxGrants {
                 }
             }
         }
+        // ADR-F49 決定 40 の残: a thread's one-off grants are folded to the
+        // same spelling settings grants are, so a path approved for the
+        // thread under an old spelling (`\\wsl$\…`, a differently-cased
+        // distro name, or `/`-separated) still covers the same folder as one
+        // recorded after decision 34. Folding can make two distinct rows
+        // collide, so they are re-inserted through the subtree dedup rather
+        // than cloned straight across.
+        let mut write_paths = Vec::new();
+        for granted in &db.write_paths {
+            insert_granted_subtree(&mut write_paths, fold_persisted_write_path(granted.clone()));
+        }
         Self {
             network_any_host: db.network_any_host,
             network_hosts,
-            write_paths: db.write_paths.clone(),
+            write_paths,
         }
     }
 
@@ -463,6 +474,25 @@ fn parse_persistent_hosts(raw: &[String]) -> Vec<HostPattern> {
             }
         })
         .collect()
+}
+
+/// ADR-F49 決定 40: fold a persisted thread grant's requested/resolved paths
+/// to the same WSL spelling [`agent_settings`]'s `compile_sandbox_permissions`
+/// folds settings grants to, mirroring `agent_settings::fold_wsl_grant`
+/// (private to that crate, so duplicated here rather than exposed just for
+/// this one caller).
+fn fold_persisted_write_path(granted: GrantedWritePath) -> GrantedWritePath {
+    GrantedWritePath {
+        requested: fold_wsl_grant_spelling(granted.requested),
+        resolved: granted.resolved.map(fold_wsl_grant_spelling),
+        on_windows_fs: granted.on_windows_fs,
+    }
+}
+
+fn fold_wsl_grant_spelling(path: PathBuf) -> PathBuf {
+    path.to_str()
+        .and_then(util::path_mapping::canonical_wsl_grant_spelling)
+        .map_or(path, PathBuf::from)
 }
 
 /// Insert `granted` into a write-grant set, keeping it minimal by comparing each
@@ -792,6 +822,74 @@ mod tests {
             restored.network_hosts,
             vec![HostPattern::parse("github.com").unwrap()]
         );
+    }
+
+    /// ADR-F49 決定 40 の残: a thread's persisted one-off grants fold to the
+    /// same spelling settings grants do, so a grant recorded before decision
+    /// 34 (old `\\wsl$\` root, an upper-cased distro name, or a forward-slash
+    /// UNC path) still covers the same folder as one recorded after. Two rows
+    /// that name the same folder in two spellings become one.
+    #[test]
+    fn from_db_folds_old_wsl_grant_spellings() {
+        let db = crate::db::DbSandboxGrants {
+            write_paths: vec![
+                GrantedWritePath::from_requested(PathBuf::from(r"\\wsl$\Ubuntu\home\one")),
+                GrantedWritePath::from_requested(PathBuf::from(r"\\wsl.localhost\UBUNTU\home\two")),
+                GrantedWritePath::from_requested(PathBuf::from(
+                    "//wsl.localhost/Ubuntu/home/three",
+                )),
+                GrantedWritePath::from_requested(PathBuf::from(r"\\wsl$\UBUNTU\home\one")),
+            ],
+            ..Default::default()
+        };
+        let restored = ThreadSandboxGrants::from_db(&db);
+        assert_eq!(
+            restored.write_paths,
+            vec![
+                GrantedWritePath::from_requested(PathBuf::from(r"\\wsl.localhost\ubuntu\home\one")),
+                GrantedWritePath::from_requested(PathBuf::from(r"\\wsl.localhost\ubuntu\home\two")),
+                GrantedWritePath::from_requested(PathBuf::from(
+                    r"\\wsl.localhost\ubuntu\home\three"
+                )),
+            ]
+        );
+    }
+
+    /// ADR-F49 決定 40 の残: when folding makes one row the ancestor of
+    /// another, the re-insertion applies the same rule the settings side does
+    /// (`agent_settings::insert_granted_subtree`): the ancestor wins whichever
+    /// order the rows are in, and the descendant's `on_windows_fs` goes with
+    /// it — a warning, never a permission, and the same loss decision 40
+    /// already records for the settings migration.
+    ///
+    /// Windows only: `Path::starts_with` can only see inside a `\\server\share`
+    /// spelling under the host's own rules, so the two rows stay separate
+    /// elsewhere (wider by one redundant row, never by a folder).
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn from_db_folds_grants_that_become_nested() {
+        let ancestor = GrantedWritePath::from_requested(PathBuf::from(r"\\wsl$\Ubuntu\home"));
+        let descendant = GrantedWritePath {
+            requested: PathBuf::from(r"\\wsl.localhost\ubuntu\home\sub"),
+            resolved: None,
+            on_windows_fs: true,
+        };
+        let folded_ancestor =
+            GrantedWritePath::from_requested(PathBuf::from(r"\\wsl.localhost\ubuntu\home"));
+
+        for write_paths in [
+            vec![ancestor.clone(), descendant.clone()],
+            vec![descendant, ancestor],
+        ] {
+            let db = crate::db::DbSandboxGrants {
+                write_paths,
+                ..Default::default()
+            };
+            assert_eq!(
+                ThreadSandboxGrants::from_db(&db).write_paths,
+                vec![folded_ancestor.clone()]
+            );
+        }
     }
 
     fn covers(grants: &ThreadSandboxGrants, request: &SandboxRequest) -> bool {

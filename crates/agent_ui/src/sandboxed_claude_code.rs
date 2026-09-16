@@ -327,9 +327,10 @@ exec "$0" "$@""#;
         ) -> Result<Self> {
             ensure!(
                 is_project_key(project_key),
-                "invalid project key {project_key:?}"
+                "プロジェクトの識別子が不正です (内部エラー): {project_key:?}"
             );
-            let unexpected = || format!("unexpected IDE rendezvous path {rendezvous:?}");
+            let unexpected =
+                || format!("IDE の待ち合わせパスの形が想定と違います (内部エラー): {rendezvous:?}");
             let rendezvous_directory = rendezvous
                 .strip_suffix(&format!("/{session_id}/{RENDEZVOUS_SOCKET_NAME}"))
                 .with_context(unexpected)?;
@@ -401,9 +402,12 @@ exec "$0" "$@""#;
     ) -> Result<SessionPlan> {
         ensure!(
             claude_path.starts_with('/') && !claude_path.contains(['\n', '\0']),
-            "the Claude Code for the sandbox is not at an absolute path: {claude_path:?}"
+            "サンドボックスで使う Claude Code の場所が絶対パスではありません (内部エラー): \
+             {claude_path:?}"
         );
-        let first_root = roots.first().context("no folder to run Claude Code in")?;
+        let first_root = roots
+            .first()
+            .context("Claude Code を実行するフォルダーがありません。")?;
         let mut args = vec![
             "-c".to_string(),
             LAUNCH_SCRIPT.to_string(),
@@ -870,7 +874,7 @@ shift 3
         cx: &mut AsyncWindowContext,
     ) -> Result<()> {
         if roots.is_empty() {
-            bail!("no folder to run Claude Code in");
+            bail!("Claude Code を実行するフォルダーがありません。");
         }
         let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
         // The key's folders are the project's, not the session's writable
@@ -895,7 +899,21 @@ shift 3
         let HostsConsent::Granted { network_ceiling } = consent_to_claude_hosts(cx).await? else {
             return Ok(());
         };
-        let claude_path = claude_path(workspace.clone(), distro.clone(), cx).await?;
+        // `claude_path`'s errors are mostly `managed_claude_binary::refuse`'s,
+        // whose English detail sits behind the error's alternate `Display` on
+        // purpose. The caller of `start_session` prints its failure with
+        // `{error:#}`, which would walk that chain and splice the English
+        // detail into the Japanese toast, so collapse to the single Japanese
+        // headline here first (ADR-F49 決定 43 と同じ方針: 訳せない詳細は本文に
+        // 混ぜない)。`refuse` logs its own detail, but the installer's other
+        // failures (a Japanese sentence over an English I/O error) do not, and
+        // this is the last place that detail exists.
+        let claude_path = claude_path(workspace.clone(), distro.clone(), cx)
+            .await
+            .map_err(|error| {
+                log::warn!("[claude-sandbox] Claude Code を用意できませんでした: {error:#}");
+                anyhow!("{error}")
+            })?;
         workspace.update(cx, |workspace, cx| {
             show_progress(workspace, PREPARING_SANDBOX_MESSAGE, cx)
         })?;
@@ -1342,7 +1360,7 @@ shift 3
             .await?;
         terminal
             .upgrade()
-            .context("the session's terminal closed as soon as it opened")
+            .context("セッションのターミナルが開いた直後に閉じられました。")
     }
 
     /// What a running session holds on to.

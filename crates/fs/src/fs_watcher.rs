@@ -250,9 +250,13 @@ fn requires_poll_watcher_with_mode(path: &Path, mode: &str) -> bool {
 
 /// Whether `path` is on the 9P share that serves a WSL distribution's own filesystem.
 ///
-/// Both spellings count: `\\wsl.localhost\<distro>\…` itself, and a drive letter that is
-/// assigned to such a share (`net use Z: \\wsl.localhost\Ubuntu`, or `subst`). The letter
-/// says nothing on its own, so the assignment behind it is resolved once per drive.
+/// Three spellings count: `\\wsl.localhost\<distro>\…` itself; a drive letter that is assigned
+/// to such a share (`net use Z: \\wsl.localhost\Ubuntu`, or a `subst` — possibly one that
+/// leads there through further letters); and a path below a watch root that turned out to be a
+/// junction or a directory symbolic link onto the share. A letter says nothing on its own, so
+/// the assignment behind it is resolved once per letter. A reparse point says nothing either,
+/// and following one costs an open, so roots are resolved by `note_watch_root` and the paths
+/// below them answer from what their root resolved to.
 pub fn path_is_on_wsl_share(path: &Path) -> bool {
     if util::path_mapping::is_wsl_share_path(path) {
         return true;
@@ -260,7 +264,7 @@ pub fn path_is_on_wsl_share(path: &Path) -> bool {
 
     #[cfg(target_os = "windows")]
     {
-        drive_of_path_is_wsl_share(path)
+        drive_of_path_is_wsl_share(path) || path_is_below_a_wsl_share_root(path)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -269,24 +273,230 @@ pub fn path_is_on_wsl_share(path: &Path) -> bool {
     }
 }
 
-/// What each drive letter resolved to, so that the assignment is asked for once instead of
-/// once per watch registration (a worktree registers thousands). A drive re-assigned while
-/// Zed is running therefore keeps its old answer until the next start.
+/// Resolve the root of a watch, so that the paths below it are decided by where the root
+/// actually leads instead of by how it is spelled.
+///
+/// A root reached through a junction or a directory symbolic link (`C:\wsl` pointing at
+/// `\\wsl.localhost\Ubuntu\home`) is on the 9P share although nothing in its spelling says so,
+/// and only opening it answers that. That open is why this is a step of its own: a single
+/// worktree asks `requires_poll_watcher` thousands of times, but it has one root.
+pub fn note_watch_root(path: &Path) {
+    #[cfg(target_os = "windows")]
+    {
+        remember_watch_root(path);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = path;
+    }
+}
+
+/// `requires_poll_watcher` for a path that is the root of a watch, which is also where that
+/// root is resolved (see `note_watch_root`).
+pub fn requires_poll_watcher_for_root(root: &Path) -> bool {
+    note_watch_root(root);
+    requires_poll_watcher(root)
+}
+
+/// Where a drive letter, or a path's own spelling, leads — as far as watching what is below it
+/// is concerned.
 #[cfg(target_os = "windows")]
-static WSL_SHARE_DRIVES: LazyLock<Mutex<HashMap<char, bool>>> =
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Destination {
+    /// The 9P share that serves a WSL distribution's own filesystem.
+    WslShare,
+    /// Some other server's share (`net use X: \\fileserver\share`, or a `subst` onto one).
+    OtherShare,
+    /// A volume of this machine's, or an assignment that leads nowhere this can follow.
+    LocalVolume,
+}
+
+/// Where each drive letter led, so that the assignment is asked for once instead of once per
+/// watch registration (a worktree registers thousands). A drive re-assigned while Zed is
+/// running therefore keeps its old answer until the next start.
+#[cfg(target_os = "windows")]
+static DRIVE_DESTINATIONS: LazyLock<Mutex<HashMap<char, Destination>>> =
     LazyLock::new(|| Mutex::new(HashMap::default()));
+
+/// Where each watch root led once the reparse points on the way were followed, as `(the root
+/// folded for comparison, whether it is on the share)`. Only `note_watch_root` adds to it, so
+/// it holds one entry per watched root — a worktree, a watched configuration directory — and
+/// not one per registration. Like `DRIVE_DESTINATIONS` it is never invalidated: a root that is
+/// re-pointed while Zed is running keeps its answer until the next start.
+#[cfg(target_os = "windows")]
+static WSL_SHARE_ROOTS: LazyLock<Mutex<Vec<(String, bool)>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Roots are few, so this is only a ceiling against a caller that would announce one for every
+/// path it watches. Past it a root is still answered, just from its spelling and its drive
+/// letter alone.
+#[cfg(target_os = "windows")]
+const MAX_REMEMBERED_WATCH_ROOTS: usize = 256;
+
+#[cfg(target_os = "windows")]
+fn remember_watch_root(root: &Path) {
+    let key = watch_root_key(root);
+    {
+        let roots = WSL_SHARE_ROOTS.lock();
+        if roots.iter().any(|(known, _)| *known == key) {
+            return;
+        }
+        if roots.len() >= MAX_REMEMBERED_WATCH_ROOTS {
+            log::warn!(
+                "more than {MAX_REMEMBERED_WATCH_ROOTS} watch roots, so {} is decided on its spelling alone",
+                root.display()
+            );
+            return;
+        }
+    }
+
+    let is_share = root_leads_to_wsl_share(
+        root,
+        |path: &Path| fs::canonicalize(path),
+        cached_drive_destination,
+    );
+    let mut roots = WSL_SHARE_ROOTS.lock();
+    if roots.len() < MAX_REMEMBERED_WATCH_ROOTS && !roots.iter().any(|(known, _)| *known == key) {
+        roots.push((key, is_share));
+    }
+}
+
+/// Whether a path that is the root of a watch leads to the share. `canonicalize` follows the
+/// junctions and the directory symbolic links on the way to it, and `drive_destination`
+/// answers for a drive letter; both are arguments so that the decision can be tested without a
+/// real reparse point and without a real assignment.
+#[cfg(target_os = "windows")]
+fn root_leads_to_wsl_share(
+    root: &Path,
+    canonicalize: impl Fn(&Path) -> std::io::Result<std::path::PathBuf>,
+    drive_destination: impl Fn(char) -> Destination,
+) -> bool {
+    match spelled_destination(root, &drive_destination) {
+        Some(Destination::WslShare) => return true,
+        // A root that is already on some other server's share is not reached through a
+        // junction or a directory symbolic link of this machine's — a reparse point out there
+        // is resolved by that server — and opening it is a round trip to it, which a mapping
+        // whose server is gone answers only after its own timeout. So it is answered here.
+        Some(Destination::OtherShare) => return false,
+        Some(Destination::LocalVolume) | None => {}
+    }
+    match canonicalize(root) {
+        // `GetFinalPathNameByHandleW`, which is what `canonicalize` is here, answers where the
+        // open actually landed: `\\?\UNC\wsl.localhost\…` for a link onto the share, and the
+        // underlying volume's own spelling for a `subst`. So the answer is read as a path
+        // again, drive letter and all.
+        Ok(canonical) => {
+            spelled_destination(&canonical, &drive_destination) == Some(Destination::WslShare)
+        }
+        Err(error) => {
+            // A root that does not exist yet, or that this process cannot open, has nothing to
+            // follow; its own spelling is the whole answer, and it was read above.
+            log::debug!(
+                "could not follow {} to decide whether it is on a WSL share: {error}",
+                root.display()
+            );
+            false
+        }
+    }
+}
+
+/// Where a path's own spelling says it is, with the assignment behind its drive letter read
+/// for it, or `None` when the spelling names neither a share nor a drive letter — a relative
+/// path, or one under a device name.
+#[cfg(target_os = "windows")]
+fn spelled_destination(
+    path: &Path,
+    drive_destination: &impl Fn(char) -> Destination,
+) -> Option<Destination> {
+    if util::path_mapping::is_wsl_share_path(path) {
+        return Some(Destination::WslShare);
+    }
+    if let Some(drive) = drive_letter_of(path) {
+        return Some(drive_destination(drive));
+    }
+    path_names_a_share(path).then_some(Destination::OtherShare)
+}
+
+/// Whether the path is spelled as a server's share rather than as a drive letter or a device:
+/// `\\<server>\<share>…`, or the `\\?\UNC\…` spelling `canonicalize` answers with.
+#[cfg(target_os = "windows")]
+fn path_names_a_share(path: &Path) -> bool {
+    let Some(text) = path.to_str() else {
+        return false;
+    };
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return !rest.is_empty();
+    }
+    // `\\?\C:\…` is a drive, and `\\.\…` names a device, although both begin with two
+    // separators.
+    if text.starts_with(r"\\?\") || text.starts_with(r"\\.\") {
+        return false;
+    }
+    text.strip_prefix(r"\\")
+        .or_else(|| text.strip_prefix("//"))
+        .is_some_and(|rest| !rest.is_empty())
+}
+
+/// Whether `path` is below a root that `note_watch_root` resolved to the share. The nearest
+/// root decides, so a root below another root can answer differently from the one above it.
+#[cfg(target_os = "windows")]
+fn path_is_below_a_wsl_share_root(path: &Path) -> bool {
+    let roots = WSL_SHARE_ROOTS.lock();
+    // This is asked of every path that is registered, and folding one costs three allocations,
+    // so the roots are looked at first: with none of them on the share the answer is false
+    // whichever root is nearest.
+    if !roots.iter().any(|(_, is_share)| *is_share) {
+        return false;
+    }
+    answer_of_nearest_root(&watch_root_key(path), &roots).unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn answer_of_nearest_root(key: &str, roots: &[(String, bool)]) -> Option<bool> {
+    roots
+        .iter()
+        .filter(|(root, _)| {
+            // A prefix only counts at a component boundary: `C:\wslfoo` is not below `C:\wsl`.
+            key.strip_prefix(root.as_str())
+                .is_some_and(|below| below.is_empty() || below.starts_with('\\'))
+        })
+        .max_by_key(|(root, _)| root.len())
+        .map(|(_, is_share)| *is_share)
+}
+
+/// A path as roots and the paths below them are compared: without the `\\?\` prefix, with one
+/// spelling of the separator, without a trailing one, and folded to lower case because Windows
+/// does not tell `C:\Wsl` and `c:\wsl` apart.
+#[cfg(target_os = "windows")]
+fn watch_root_key(path: &Path) -> String {
+    let text = SanitizedPath::new(path)
+        .as_path()
+        .to_string_lossy()
+        .replace('/', r"\")
+        .to_lowercase();
+    let trimmed = text.trim_end_matches('\\');
+    if trimmed.is_empty() {
+        text
+    } else {
+        trimmed.to_owned()
+    }
+}
 
 #[cfg(target_os = "windows")]
 fn drive_of_path_is_wsl_share(path: &Path) -> bool {
-    let Some(drive) = drive_letter_of(path) else {
-        return false;
-    };
-    if let Some(known) = WSL_SHARE_DRIVES.lock().get(&drive) {
+    drive_letter_of(path)
+        .is_some_and(|drive| cached_drive_destination(drive) == Destination::WslShare)
+}
+
+#[cfg(target_os = "windows")]
+fn cached_drive_destination(drive: char) -> Destination {
+    if let Some(known) = DRIVE_DESTINATIONS.lock().get(&drive) {
         return *known;
     }
-    let is_share = drive_leads_to_wsl_share(drive, resolve_drive_assignment);
-    WSL_SHARE_DRIVES.lock().insert(drive, is_share);
-    is_share
+    let destination = drive_destination(drive, resolve_drive_assignment);
+    DRIVE_DESTINATIONS.lock().insert(drive, destination);
+    destination
 }
 
 /// The drive letter a path starts with (`Z:\…`, `Z:/…`, `\\?\Z:\…`). A UNC path or a
@@ -307,35 +517,94 @@ fn drive_letter_of(path: &Path) -> Option<char> {
     }
 }
 
-/// Whether what `drive` is assigned to is a WSL share. `resolve` answers with the assignment
-/// as Windows spells it, which is what makes this testable without a real mapped drive.
+/// How many assignments are followed before giving up. `subst Z: Y:\foo` on a letter that is
+/// itself assigned is legal and can be nested, but a chain this long is a mistake, and one
+/// that leads back to a letter it already passed has to end somewhere.
 #[cfg(target_os = "windows")]
-fn drive_leads_to_wsl_share(drive: char, resolve: impl Fn(char) -> Option<String>) -> bool {
-    resolve(drive)
-        .as_deref()
-        .and_then(unc_spelling_of_assignment)
-        .is_some_and(|unc| util::path_mapping::is_wsl_share_path(Path::new(&unc)))
+const MAX_DRIVE_INDIRECTION: usize = 8;
+
+/// Where what `drive` is assigned to leads. `resolve` answers with the assignment as Windows
+/// spells it, which is what makes this testable without a real mapped drive.
+#[cfg(target_os = "windows")]
+fn drive_destination(drive: char, resolve: impl Fn(char) -> Option<String>) -> Destination {
+    match unc_spelling_of_drive(drive, resolve) {
+        Some(unc) if util::path_mapping::is_wsl_share_path(Path::new(&unc)) => {
+            Destination::WslShare
+        }
+        Some(_) => Destination::OtherShare,
+        None => Destination::LocalVolume,
+    }
 }
 
-/// An assignment as `\\<server>\<share>…`, or `None` when it does not name one.
+/// The share a drive letter leads to as `\\<server>\<share>…`, or `None` when it leads to
+/// something else.
 ///
-/// `WNetGetConnectionW` already answers in that spelling, but `QueryDosDeviceW` answers with
-/// the device the letter points at: `\??\UNC\wsl.localhost\Ubuntu\home` for a `subst`, and
-/// `\Device\<redirector>\;Z:0000000000012345\wsl.localhost\Ubuntu` for a network assignment,
-/// where the device name and the `;<letter>:<id>` bookkeeping component come first. A letter
-/// on a local volume answers `\Device\HarddiskVolume3`, which names no share.
+/// An assignment that names another letter (`subst Z: Y:\foo` answers `\??\Y:\foo`, and
+/// `subst Z: Y:\` answers `\??\Y:`) is followed, carrying what is below the letter along, so
+/// that a letter assigned to a share through another letter still leads to that share — and so
+/// that the part below the letter can be what names the share.
 #[cfg(target_os = "windows")]
-fn unc_spelling_of_assignment(assignment: &str) -> Option<String> {
+fn unc_spelling_of_drive(drive: char, resolve: impl Fn(char) -> Option<String>) -> Option<String> {
+    let mut drive = drive.to_ascii_uppercase();
+    let mut followed: Vec<char> = Vec::new();
+    let mut below_the_letter = String::new();
+    for _ in 0..MAX_DRIVE_INDIRECTION {
+        if followed.contains(&drive) {
+            log::warn!("drive {drive}: is assigned in a loop, so where it leads is unknown");
+            return None;
+        }
+        followed.push(drive);
+        let assignment = resolve(drive)?;
+        match assignment_target(&assignment)? {
+            AssignmentTarget::Share(unc) => return Some(format!("{unc}{below_the_letter}")),
+            AssignmentTarget::Drive { letter, below } => {
+                below_the_letter.insert_str(0, &below);
+                drive = letter;
+            }
+        }
+    }
+    log::warn!(
+        "drive {drive}: is assigned through more than {MAX_DRIVE_INDIRECTION} letters, so where it leads is unknown"
+    );
+    None
+}
+
+/// What a drive letter is assigned to, as far as leading to a share is concerned.
+#[cfg(target_os = "windows")]
+enum AssignmentTarget {
+    /// `\\<server>\<share>…`.
+    Share(String),
+    /// Another drive letter, and what is below it (`\foo`, or nothing at all).
+    Drive { letter: char, below: String },
+}
+
+/// What an assignment points at, or `None` when it points at neither a share nor another drive
+/// letter — a letter on a local volume answers `\Device\HarddiskVolume3`.
+///
+/// `WNetGetConnectionW` already answers `\\<server>\<share>`, but `QueryDosDeviceW` answers
+/// with the device the letter points at: `\??\UNC\wsl.localhost\Ubuntu\home` for a `subst` on
+/// a share, `\??\Y:\foo` for a `subst` on another letter, and
+/// `\Device\<redirector>\;Z:0000000000012345\wsl.localhost\Ubuntu` for a network assignment,
+/// where the device name and the `;<letter>:<id>` bookkeeping component come first.
+#[cfg(target_os = "windows")]
+fn assignment_target(assignment: &str) -> Option<AssignmentTarget> {
     for prefix in [r"\??\UNC\", r"\\?\UNC\"] {
         if let Some(rest) = assignment.strip_prefix(prefix) {
-            return Some(format!(r"\\{rest}"));
+            return Some(AssignmentTarget::Share(format!(r"\\{rest}")));
         }
+    }
+    let without_prefix = assignment
+        .strip_prefix(r"\??\")
+        .or_else(|| assignment.strip_prefix(r"\\?\"))
+        .unwrap_or(assignment);
+    if let Some(target) = drive_assignment_target(without_prefix) {
+        return Some(target);
     }
     if assignment.starts_with(r"\\?\") || assignment.starts_with(r"\??\") {
         return None;
     }
     if assignment.starts_with(r"\\") {
-        return Some(assignment.to_owned());
+        return Some(AssignmentTarget::Share(assignment.to_owned()));
     }
     let device = assignment.strip_prefix(r"\Device\")?;
     let components: Vec<&str> = device
@@ -346,7 +615,27 @@ fn unc_spelling_of_assignment(assignment: &str) -> Option<String> {
     let [server, share, ..] = components.as_slice() else {
         return None;
     };
-    (!server.is_empty() && !share.is_empty()).then(|| format!(r"\\{}", components.join("\\")))
+    (!server.is_empty() && !share.is_empty())
+        .then(|| AssignmentTarget::Share(format!(r"\\{}", components.join("\\"))))
+}
+
+#[cfg(target_os = "windows")]
+fn drive_assignment_target(assignment: &str) -> Option<AssignmentTarget> {
+    let mut characters = assignment.chars();
+    let letter = characters.next()?;
+    if !letter.is_ascii_alphabetic() || characters.next() != Some(':') {
+        return None;
+    }
+    let below = characters.as_str();
+    // `Y:foo` is relative to that letter's own current directory, which is not a place this
+    // can follow.
+    if !(below.is_empty() || below.starts_with('\\') || below.starts_with('/')) {
+        return None;
+    }
+    Some(AssignmentTarget::Drive {
+        letter: letter.to_ascii_uppercase(),
+        below: below.replace('/', r"\"),
+    })
 }
 
 /// How `drive` is assigned, asked of Windows itself: `WNetGetConnectionW` for the assignments
@@ -2403,13 +2692,20 @@ mod tests {
         assert!(!requires_poll_watcher_with_mode(drive, "native"));
     }
 
+    #[cfg(target_os = "windows")]
+    fn drive_leads_to_wsl_share(drive: char, resolve: impl Fn(char) -> Option<String>) -> bool {
+        drive_destination(drive, resolve) == Destination::WslShare
+    }
+
     /// A drive letter assigned to a WSL share is the same 9P share, so it has to be polled
     /// too — and, in `worktree`, watched apart from the scan. Nothing in the spelling says
     /// so, so the assignment behind the letter decides.
     #[cfg(target_os = "windows")]
     #[test]
     fn a_drive_letter_assigned_to_a_wsl_share_leads_to_one() {
-        let assigned = |target: &'static str| move |_drive: char| Some(target.to_owned());
+        // `Z:` alone is assigned, so an assignment that names another letter leads nowhere.
+        let assigned =
+            |target: &'static str| move |drive: char| (drive == 'Z').then(|| target.to_owned());
 
         for target in [
             r"\\wsl.localhost\Ubuntu",
@@ -2455,6 +2751,470 @@ mod tests {
                 .expect("Windows answers what an existing drive letter is assigned to");
             assert!(assignment.starts_with('\\'), "{assignment:?}");
         }
+    }
+
+    /// `subst Z: Y:\foo` points a letter at a place below another letter, and `Y:` can be
+    /// assigned in turn. The chain is followed to whatever it ends on, carrying the part below
+    /// each letter along, and a chain that loops or that runs too deep has to stop.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_chain_of_drive_assignments_is_followed_to_where_it_ends() {
+        fn chain(assignments: &'static [(char, &'static str)]) -> impl Fn(char) -> Option<String> {
+            move |drive: char| {
+                assignments
+                    .iter()
+                    .find(|(letter, _)| *letter == drive)
+                    .map(|(_, assignment)| (*assignment).to_owned())
+            }
+        }
+
+        // `subst Z: Y:\foo` の Y: が WSL の共有 (`net use` でも、`subst` でも)。
+        let through_one_letter: &[(char, &str)] =
+            &[('Z', r"\??\Y:\foo"), ('Y', r"\\wsl.localhost\Ubuntu")];
+        assert!(drive_leads_to_wsl_share('Z', chain(through_one_letter)));
+        assert_eq!(
+            unc_spelling_of_drive('Z', chain(through_one_letter)),
+            Some(r"\\wsl.localhost\Ubuntu\foo".to_owned())
+        );
+
+        // `subst Z: Y:\` は `\??\Y:` と答える (文字の下には何も無い)。
+        let onto_the_root_of_the_letter: &[(char, &str)] =
+            &[('Z', r"\??\Y:"), ('Y', r"\??\UNC\wsl.localhost\Ubuntu")];
+        assert_eq!(
+            unc_spelling_of_drive('Z', chain(onto_the_root_of_the_letter)),
+            Some(r"\\wsl.localhost\Ubuntu".to_owned())
+        );
+
+        let through_two_letters: &[(char, &str)] = &[
+            ('Z', r"\??\Y:\foo"),
+            ('Y', r"\??\X:\bar"),
+            ('X', r"\??\UNC\wsl.localhost\Ubuntu\home"),
+        ];
+        assert_eq!(
+            unc_spelling_of_drive('Z', chain(through_two_letters)),
+            Some(r"\\wsl.localhost\Ubuntu\home\bar\foo".to_owned())
+        );
+
+        // 文字の下の部分が共有の名前を作ることもある: `\\wsl.localhost` だけでは共有ではない。
+        let named_by_what_is_below: &[(char, &str)] =
+            &[('Z', r"\??\Y:\Ubuntu"), ('Y', r"\\wsl.localhost")];
+        assert!(drive_leads_to_wsl_share('Z', chain(named_by_what_is_below)));
+        assert!(!drive_leads_to_wsl_share(
+            'Y',
+            chain(named_by_what_is_below)
+        ));
+
+        for ending_elsewhere in [
+            &[('Z', r"\??\Y:\foo"), ('Y', r"\Device\HarddiskVolume3")] as &[(char, &str)],
+            &[('Z', r"\??\Y:\foo"), ('Y', r"\\fileserver\share")],
+            // 割り当ての無い文字で終わる。
+            &[('Z', r"\??\Y:\foo")],
+            // `Y:foo` は Y: 自身のカレントディレクトリからの相対で、追える場所ではない。
+            &[('Z', r"\??\Y:foo"), ('Y', r"\\wsl.localhost\Ubuntu")],
+            // 自分自身に戻る / 2 つの文字で回る。
+            &[('Z', r"\??\Z:\a")],
+            &[('Z', r"\??\Y:\a"), ('Y', r"\??\Z:\b")],
+        ] {
+            assert!(
+                !drive_leads_to_wsl_share('Z', chain(ending_elsewhere)),
+                "{ending_elsewhere:?}"
+            );
+        }
+
+        // 深さの上限ちょうど (B: から数えて 8 つ) までは届き、その 1 段先 (A:) は届かない。
+        let nine_letters: &[(char, &str)] = &[
+            ('A', r"\??\B:\1"),
+            ('B', r"\??\C:\2"),
+            ('C', r"\??\D:\3"),
+            ('D', r"\??\E:\4"),
+            ('E', r"\??\F:\5"),
+            ('F', r"\??\G:\6"),
+            ('G', r"\??\H:\7"),
+            ('H', r"\??\I:\8"),
+            ('I', r"\\wsl.localhost\Ubuntu"),
+        ];
+        assert!(drive_leads_to_wsl_share('B', chain(nine_letters)));
+        assert!(!drive_leads_to_wsl_share('A', chain(nine_letters)));
+    }
+
+    /// A worktree opened through a junction or a directory symbolic link onto the share
+    /// (`C:\wsl`) is on the share, which only opening the root answers — and a root whose own
+    /// spelling already answers is not opened at all.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_root_reached_through_a_reparse_point_is_decided_by_where_it_lands() {
+        fn lands_on(answer: &'static str) -> impl Fn(&Path) -> std::io::Result<PathBuf> {
+            move |_path: &Path| Ok(PathBuf::from(answer))
+        }
+
+        fn cannot_be_opened(_path: &Path) -> std::io::Result<PathBuf> {
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+        }
+
+        let no_drive_is_a_share = |_drive: char| Destination::LocalVolume;
+        let root = Path::new(r"C:\wsl");
+
+        for answer in [
+            r"\\?\UNC\wsl.localhost\Ubuntu\home\user",
+            r"\\?\UNC\wsl$\Ubuntu\home",
+            r"\\wsl.localhost\Ubuntu\home",
+        ] {
+            assert!(
+                root_leads_to_wsl_share(root, lands_on(answer), no_drive_is_a_share),
+                "{answer:?}"
+            );
+        }
+
+        for answer in [r"\\?\C:\wsl", r"\\?\UNC\fileserver\share\wsl"] {
+            assert!(
+                !root_leads_to_wsl_share(root, lands_on(answer), no_drive_is_a_share),
+                "{answer:?}"
+            );
+        }
+
+        // `canonicalize` が `subst` を解いてドライブ文字で答えたら、その文字の割り当てが決める。
+        let only_z_is_a_share = |drive: char| {
+            if drive == 'Z' {
+                Destination::WslShare
+            } else {
+                Destination::LocalVolume
+            }
+        };
+        assert!(root_leads_to_wsl_share(
+            root,
+            lands_on(r"\\?\Z:\foo"),
+            only_z_is_a_share
+        ));
+
+        // 開けない根は綴りだけが答え (まだ存在しない根でも止まらない)。
+        assert!(!root_leads_to_wsl_share(
+            root,
+            cannot_be_opened,
+            no_drive_is_a_share
+        ));
+        assert!(root_leads_to_wsl_share(
+            Path::new(r"\\wsl.localhost\Ubuntu\home"),
+            cannot_be_opened,
+            no_drive_is_a_share
+        ));
+
+        // 綴りだけで決まる根は開かない: 共有の上では 9P の往復になる。
+        let opens = std::cell::Cell::new(0);
+        let counting = |path: &Path| {
+            opens.set(opens.get() + 1);
+            Ok(PathBuf::from(path))
+        };
+        assert!(root_leads_to_wsl_share(
+            Path::new(r"\\wsl.localhost\Ubuntu\home"),
+            &counting,
+            no_drive_is_a_share
+        ));
+        assert_eq!(opens.get(), 0);
+
+        // 他のサーバーの共有も同じ: そこに至る根は、この機械のジャンクションやディレクトリ
+        // シンボリックリンクでは無いので、開かずに偽と答える (切れた割り当てを開くと、その
+        // サーバーの時間切れまで返らない)。
+        for spelling in [
+            r"\\fileserver\share\project",
+            r"\\?\UNC\fileserver\share\project",
+            "//fileserver/share/project",
+        ] {
+            assert!(
+                !root_leads_to_wsl_share(Path::new(spelling), &counting, no_drive_is_a_share),
+                "{spelling:?}"
+            );
+        }
+        let drive_is_another_server = |_drive: char| Destination::OtherShare;
+        assert!(!root_leads_to_wsl_share(
+            Path::new(r"N:\project"),
+            &counting,
+            drive_is_another_server
+        ));
+        assert_eq!(opens.get(), 0);
+
+        // ローカルのボリュームの上の根だけが開かれる。
+        assert!(!root_leads_to_wsl_share(
+            root,
+            &counting,
+            no_drive_is_a_share
+        ));
+        assert_eq!(opens.get(), 1);
+    }
+
+    /// `\\?\C:\…` と `\\.\…` も 2 つの区切りで始まるが、共有ではない。
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn only_a_server_and_a_share_name_a_share() {
+        for share in [
+            r"\\fileserver\share",
+            r"\\wsl.localhost\Ubuntu\home",
+            r"\\?\UNC\fileserver\share",
+            "//fileserver/share",
+        ] {
+            assert!(path_names_a_share(Path::new(share)), "{share:?}");
+        }
+        for elsewhere in [
+            r"C:\project",
+            r"\\?\C:\project",
+            r"\\.\PhysicalDrive0",
+            r"\\?\UNC\",
+            r"\\",
+            "project",
+        ] {
+            assert!(!path_names_a_share(Path::new(elsewhere)), "{elsewhere:?}");
+        }
+    }
+
+    /// Only roots are resolved, so a path answers from the nearest root above it — at a
+    /// component boundary, and without telling the spellings of the same place apart.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_path_answers_from_the_nearest_root_above_it() {
+        let roots = [
+            (watch_root_key(Path::new(r"C:\wsl")), true),
+            (watch_root_key(Path::new(r"C:\wsl\windows-side")), false),
+            (watch_root_key(Path::new(r"I:\zed-jp-llm")), false),
+        ];
+        let answer =
+            |path: &str| answer_of_nearest_root(&watch_root_key(Path::new(path)), &roots[..]);
+
+        assert_eq!(answer(r"C:\wsl"), Some(true));
+        assert_eq!(answer(r"C:\wsl\"), Some(true));
+        assert_eq!(answer(r"C:\wsl\home\user\project"), Some(true));
+        assert_eq!(answer(r"C:\WSL\Home"), Some(true));
+        assert_eq!(answer("C:/wsl/home"), Some(true));
+        assert_eq!(answer(r"\\?\C:\wsl\home"), Some(true));
+        // より近い根が勝つ。
+        assert_eq!(answer(r"C:\wsl\windows-side\src"), Some(false));
+        // 前置一致は成分の境目でだけ。
+        assert_eq!(answer(r"C:\wslfoo"), None);
+        assert_eq!(answer(r"C:\"), None);
+        assert_eq!(answer(r"D:\elsewhere"), None);
+        assert_eq!(answer_of_nearest_root("c:\\wsl", &[]), None);
+
+        // 判定の入口がその答えを読んでいること。共有に解決した根の代わりに、この試験だけの
+        // 綴りを 1 つ置く (本物の綴りは管理者権限が要るディレクトリシンボリックリンク)。
+        let root = Path::new(r"C:\zed-fs-watcher-test-root-that-leads-to-a-wsl-share");
+        WSL_SHARE_ROOTS.lock().push((watch_root_key(root), true));
+        assert!(path_is_on_wsl_share(root));
+        assert!(path_is_on_wsl_share(&root.join("home").join("user")));
+        assert!(!path_is_on_wsl_share(Path::new(
+            r"C:\zed-fs-watcher-test-root-that-leads-to-a-wsl-share-elsewhere"
+        )));
+    }
+
+    /// The production wiring: `note_watch_root` records a real root under the very key the
+    /// paths below it are looked up with, once — announcing the same place again, however it
+    /// is spelled, does not record it a second time.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_root_is_recorded_once_under_the_key_its_paths_are_looked_up_with() {
+        let temporary = tempfile::tempdir().expect("a temporary directory");
+        let root = temporary.path();
+        let key = watch_root_key(root);
+
+        let recorded = || {
+            WSL_SHARE_ROOTS
+                .lock()
+                .iter()
+                .filter(|(known, _)| *known == key)
+                .map(|(_, is_share)| *is_share)
+                .collect::<Vec<bool>>()
+        };
+        assert_eq!(recorded(), Vec::<bool>::new());
+
+        note_watch_root(root);
+        // 一時ディレクトリはこの機械のボリュームの上なので、答えは「共有ではない」。
+        assert_eq!(recorded(), vec![false]);
+
+        let spelled = root.to_string_lossy().into_owned();
+        note_watch_root(root);
+        note_watch_root(Path::new(&spelled.to_uppercase()));
+        note_watch_root(Path::new(&format!("{spelled}\\")));
+        note_watch_root(Path::new(&spelled.replace('\\', "/")));
+        assert_eq!(recorded(), vec![false]);
+    }
+
+    /// A `subst` assignment made for the duration of a test, removed however the test ends.
+    #[cfg(target_os = "windows")]
+    struct SubstDrive {
+        letter: char,
+    }
+
+    #[cfg(target_os = "windows")]
+    impl SubstDrive {
+        fn create(target: &Path) -> Option<Self> {
+            let letter = unused_drive_letter()?;
+            let created = smol::block_on(
+                smol::process::Command::new("subst")
+                    .arg(format!("{letter}:"))
+                    .arg(target)
+                    .status(),
+            )
+            .expect("running subst");
+            created.success().then_some(Self { letter })
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    impl Drop for SubstDrive {
+        fn drop(&mut self) {
+            // 消し損ねるとドライブ文字が次の再起動まで残るので、失敗は黙って捨てない。
+            // panic 中にも走るので、ここでは panic しない。
+            match smol::block_on(
+                smol::process::Command::new("subst")
+                    .arg(format!("{}:", self.letter))
+                    .arg("/D")
+                    .status(),
+            ) {
+                Ok(status) if status.success() => {}
+                Ok(status) => eprintln!("subst {}: /D exited with {status}", self.letter),
+                Err(error) => eprintln!("subst {}: /D could not run: {error}", self.letter),
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn unused_drive_letter() -> Option<char> {
+        use windows::Win32::Storage::FileSystem::GetLogicalDrives;
+
+        let in_use = unsafe { GetLogicalDrives() };
+        // 後ろから: 前の方の文字は取り外し可能な機器に割り当てられやすい。
+        ('D'..='Z')
+            .rev()
+            .find(|letter| in_use & (1 << (*letter as u32 - 'A' as u32)) == 0)
+    }
+
+    /// The spellings the chain is read from are the ones Windows really answers with: a
+    /// `subst` on another `subst`, and a junction that `canonicalize` sees through. The
+    /// assignments and the link this makes are removed again.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_spells_a_real_chain_the_way_it_is_read() {
+        let temporary = tempfile::tempdir().expect("a temporary directory");
+        let below = temporary.path().join("below");
+        std::fs::create_dir(&below).expect("a directory below the temporary one");
+
+        let Some(first) = SubstDrive::create(temporary.path()) else {
+            eprintln!("no unused drive letter, so the chain could not be made");
+            return;
+        };
+        let Some(second) = SubstDrive::create(Path::new(&format!(r"{}:\below", first.letter)))
+        else {
+            eprintln!("no second unused drive letter, so the chain could not be made");
+            return;
+        };
+
+        let assignment = resolve_drive_assignment(second.letter)
+            .expect("Windows answers what a subst drive is assigned to");
+        assert_eq!(assignment, format!(r"\??\{}:\below", first.letter));
+
+        // 連鎖の先はこの機械のローカルボリュームなので、共有ではない。
+        assert!(!drive_leads_to_wsl_share(
+            second.letter,
+            resolve_drive_assignment
+        ));
+
+        // 本当に追っていることは、途中の文字だけを共有に差し替えると答えが変わることで分かる。
+        let first_letter = first.letter;
+        let as_if_the_first_were_a_share = |drive: char| {
+            if drive == first_letter {
+                Some(r"\\wsl.localhost\Ubuntu".to_owned())
+            } else {
+                resolve_drive_assignment(drive)
+            }
+        };
+        assert_eq!(
+            unc_spelling_of_drive(second.letter, &as_if_the_first_were_a_share),
+            Some(r"\\wsl.localhost\Ubuntu\below".to_owned())
+        );
+        assert!(drive_leads_to_wsl_share(
+            second.letter,
+            as_if_the_first_were_a_share
+        ));
+
+        // ジャンクションを `subst` したドライブの上に作ると、根の綴りのドライブ文字と、
+        // `canonicalize` が答えるドライブ文字が別になる = 根を開いた答えを読んでいることが
+        // 分かる。(UNC を指すリンクは `mklink /D` = 管理者権限が要るので、ここでは作れない。)
+        let junction = PathBuf::from(format!(r"{}:\junction", first.letter));
+        let created = smol::block_on(
+            smol::process::Command::new("cmd")
+                .arg("/C")
+                .arg("mklink")
+                .arg("/J")
+                .arg(&junction)
+                .arg(&below)
+                .output(),
+        )
+        .expect("running mklink");
+        assert!(
+            created.status.success(),
+            "mklink /J: {}",
+            String::from_utf8_lossy(&created.stderr)
+        );
+
+        let landed = std::fs::canonicalize(&junction).expect("the junction can be opened");
+        assert_eq!(
+            landed,
+            std::fs::canonicalize(&below).expect("the directory below can be opened")
+        );
+        let landed_drive =
+            drive_letter_of(&landed).expect("canonicalize answers with a drive letter");
+        assert_ne!(landed_drive, first.letter);
+
+        assert!(!root_leads_to_wsl_share(
+            &junction,
+            |path: &Path| std::fs::canonicalize(path),
+            |_drive| Destination::LocalVolume
+        ));
+        assert!(root_leads_to_wsl_share(
+            &junction,
+            |path: &Path| std::fs::canonicalize(path),
+            move |drive| if drive == landed_drive {
+                Destination::WslShare
+            } else {
+                Destination::LocalVolume
+            }
+        ));
+    }
+
+    /// The whole of it against this machine's WSL: a `subst` on a `subst` on the share is
+    /// polled, although nothing in the letter's spelling says where it leads.
+    ///
+    /// It assigns two drive letters, so it runs only when asked for:
+    ///
+    /// ```pwsh
+    /// $env:ZED_E2E_WSL_SUBST=1
+    /// cargo test -p fs --lib -- --ignored --nocapture e2e_wsl_share_reached
+    /// ```
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[ignore]
+    fn e2e_wsl_share_reached_through_two_drive_letters_is_polled() {
+        if !std::env::var("ZED_E2E_WSL_SUBST").is_ok_and(|value| value == "1") {
+            eprintln!("set ZED_E2E_WSL_SUBST=1 to run this against this machine's WSL");
+            return;
+        }
+        let distro = std::env::var("ZED_E2E_WSL_DISTRO").unwrap_or_else(|_| "Ubuntu".to_owned());
+        let share = PathBuf::from(format!(r"\\wsl.localhost\{distro}\home"));
+        assert!(share.exists(), "{} has to be reachable", share.display());
+
+        let first = SubstDrive::create(&share).expect("an unused drive letter for the share");
+        let second = SubstDrive::create(Path::new(&format!(r"{}:\", first.letter)))
+            .expect("a second unused drive letter");
+
+        assert!(drive_leads_to_wsl_share(
+            first.letter,
+            resolve_drive_assignment
+        ));
+        assert!(drive_leads_to_wsl_share(
+            second.letter,
+            resolve_drive_assignment
+        ));
+        assert!(requires_poll_watcher(Path::new(&format!(
+            r"{}:\",
+            second.letter
+        ))));
     }
 
     /// Only a path that starts with a drive letter has an assignment to resolve, and a path

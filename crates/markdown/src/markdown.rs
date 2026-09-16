@@ -45,8 +45,8 @@ use gpui::{
 use language::{CharClassifier, Language, LanguageRegistry, Rope};
 use parser::CodeBlockMetadata;
 use parser::{
-    MarkdownEvent, MarkdownTag, MarkdownTagEnd, ParsedMetadataBlock, parse_links_only,
-    parse_markdown_with_options,
+    InlineHtmlStyle, MarkdownEvent, MarkdownTag, MarkdownTagEnd, ParsedMetadataBlock,
+    parse_links_only, parse_markdown_with_options,
 };
 use pulldown_cmark::{Alignment, BlockQuoteKind};
 use sum_tree::TreeMap;
@@ -54,6 +54,7 @@ use theme::SyntaxTheme;
 use ui::{Checkbox, CopyButton, ScrollAxes, Scrollbars, Tooltip, WithScrollbar, prelude::*};
 use util::ResultExt;
 
+use crate::html::html_parser::HtmlDetailsKey;
 use crate::parser::CodeBlockKind;
 
 const MERMAID_MAX_ZOOM: f32 = 2.0;
@@ -484,9 +485,9 @@ pub struct Markdown {
     copied_code_blocks: HashSet<ElementId>,
     wrapped_code_blocks: HashSet<usize>,
     /// Open/closed state of the `<details>` disclosures the reader has toggled,
-    /// keyed by the HTML block's source offset and the disclosure's index within
-    /// that block, so it survives the reparse that follows every edit.
-    details_open: HashMap<(usize, usize), bool>,
+    /// keyed by the summary's own text rather than by position, so it survives
+    /// both the reparse that follows every edit and edits made before the block.
+    details_open: HashMap<HtmlDetailsKey, bool>,
     code_block_scroll_handles: BTreeMap<usize, ScrollHandle>,
     context_menu_link: Option<SharedString>,
     context_menu_selected_text: Option<SharedString>,
@@ -717,14 +718,14 @@ impl Markdown {
         }
     }
 
-    pub(crate) fn is_details_open(&self, key: (usize, usize), open_by_default: bool) -> bool {
+    pub(crate) fn is_details_open(&self, key: HtmlDetailsKey, open_by_default: bool) -> bool {
         self.details_open
             .get(&key)
             .copied()
             .unwrap_or(open_by_default)
     }
 
-    pub(crate) fn toggle_details(&mut self, key: (usize, usize), open_by_default: bool) {
+    pub(crate) fn toggle_details(&mut self, key: HtmlDetailsKey, open_by_default: bool) {
         let open = self.is_details_open(key, open_by_default);
         self.details_open.insert(key, !open);
     }
@@ -2496,18 +2497,18 @@ impl Element for MarkdownElement {
         let mut handled_html_block = false;
         let mut rendered_mermaid_block = false;
         let mut rendered_metadata_block = false;
-        // A `<details>` whose body is split across root blocks and is currently
-        // collapsed: everything up to the root block holding `</details>` is
-        // skipped, which keeps the div stack balanced because whole root blocks
-        // are dropped.
-        let mut pending_collapsed_details_end: Option<usize> = None;
-        let mut collapsed_details_end: Option<usize> = None;
+        // A `<details>` whose body is split across blocks and is currently
+        // collapsed: the parser picked a balanced run of events for the body, so
+        // dropping them leaves the div stack where it was.
+        let mut collapsed_details_events: Option<Range<usize>> = None;
         for (index, (range, event)) in parsed_markdown.events.iter().enumerate() {
-            if let Some(end) = collapsed_details_end {
-                if range.start < end {
+            if let Some(hidden) = collapsed_details_events.clone() {
+                if hidden.contains(&index) {
                     continue;
                 }
-                collapsed_details_end = None;
+                if index >= hidden.end {
+                    collapsed_details_events = None;
+                }
             }
 
             // Skip alt text for images that rendered
@@ -2553,7 +2554,6 @@ impl Element for MarkdownElement {
                             cx.theme().colors().border_variant,
                         );
                     }
-                    collapsed_details_end = pending_collapsed_details_end.take();
                 }
                 MarkdownEvent::Start(tag) => {
                     match tag {
@@ -2749,12 +2749,19 @@ impl Element for MarkdownElement {
                         MarkdownTag::HtmlBlock => {
                             builder.push_div(div(), range, markdown_end);
                             if let Some(block) = parsed_markdown.html_blocks.get(&range.start) {
-                                let collapsed =
-                                    self.render_html_block(block, &mut builder, markdown_end, cx);
+                                let collapsed = self.render_html_block(
+                                    block,
+                                    &mut builder,
+                                    markdown_end,
+                                    window,
+                                    cx,
+                                );
                                 handled_html_block = true;
-                                if let Some(span) = block.details_span.filter(|_| collapsed) {
-                                    pending_collapsed_details_end =
-                                        Some(span.close_root_block_start);
+                                if collapsed {
+                                    collapsed_details_events = block
+                                        .details_span
+                                        .as_ref()
+                                        .map(|span| span.hidden_events.clone());
                                 }
                             }
                         }
@@ -3173,6 +3180,22 @@ impl Element for MarkdownElement {
                     }
                     builder.push_text(&parsed_markdown.source[range.clone()], range.clone());
                 }
+                MarkdownEvent::InlineHtmlStyleStart(style) => match style {
+                    InlineHtmlStyle::Underline => {
+                        builder.push_text_style(TextStyleRefinement {
+                            underline: Some(UnderlineStyle {
+                                thickness: px(1.),
+                                color: None,
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        });
+                    }
+                    InlineHtmlStyle::Code => {
+                        builder.push_text_style(self.style.inline_code.clone());
+                    }
+                },
+                MarkdownEvent::InlineHtmlStyleEnd(_) => builder.pop_text_style(),
                 MarkdownEvent::Rule => {
                     builder.push_div(
                         div()
@@ -3573,30 +3596,53 @@ fn estimate_table_column_min_widths(
     font_size: Pixels,
     rem_size: Pixels,
 ) -> Vec<Pixels> {
-    let mut widths = vec![px(0.); column_count];
+    let mut widths = TableColumnMinWidths::new(column_count, font_size);
     for row in table_source.lines() {
         let row = row.trim();
         if row.is_empty() || is_table_delimiter_row(row) {
             continue;
         }
         for (index, cell) in table_row_cells(row).enumerate() {
-            let Some(width) = widths.get_mut(index) else {
-                break;
-            };
-            let cell_width = cell
-                .split('\n')
-                .map(|line| estimate_text_width(line.trim(), font_size))
-                .fold(px(0.), Pixels::max);
-            *width = (*width).max(cell_width);
+            widths.observe_cell(index, cell);
+        }
+    }
+    widths.finish(rem_size)
+}
+
+/// Collects the floors of a table's columns, shared by the markdown and the HTML
+/// table renderers so both react to a narrow pane the same way.
+pub(crate) struct TableColumnMinWidths {
+    widths: Vec<Pixels>,
+    font_size: Pixels,
+}
+
+impl TableColumnMinWidths {
+    pub(crate) fn new(column_count: usize, font_size: Pixels) -> Self {
+        Self {
+            widths: vec![px(0.); column_count],
+            font_size,
         }
     }
 
-    let max_width = font_size * MAX_COLUMN_EM;
-    let chrome = rem_size * CELL_CHROME_REMS + px(1.);
-    widths
-        .into_iter()
-        .map(|width| width.min(max_width) + chrome)
-        .collect()
+    pub(crate) fn observe_cell(&mut self, column_index: usize, cell: &str) {
+        let Some(width) = self.widths.get_mut(column_index) else {
+            return;
+        };
+        let cell_width = cell
+            .split('\n')
+            .map(|line| estimate_text_width(line.trim(), self.font_size))
+            .fold(px(0.), Pixels::max);
+        *width = (*width).max(cell_width);
+    }
+
+    pub(crate) fn finish(self, rem_size: Pixels) -> Vec<Pixels> {
+        let max_width = self.font_size * MAX_COLUMN_EM;
+        let chrome = rem_size * CELL_CHROME_REMS + px(1.);
+        self.widths
+            .into_iter()
+            .map(|width| width.min(max_width) + chrome)
+            .collect()
+    }
 }
 
 fn is_table_delimiter_row(row: &str) -> bool {

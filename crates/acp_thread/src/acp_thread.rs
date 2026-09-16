@@ -4775,7 +4775,7 @@ impl AcpThread {
         let headless = HeadlessTerminal::is_enabled(cx);
         // ADR-F17: the ceiling for whichever sandbox helper runs the command —
         // WSL's on this machine, or a remote host's.
-        let editor_network_allowlist = editor_network_allowlist(cx);
+        let ceiling = SandboxCeiling::read(cx);
 
         let terminal_id = acp::TerminalId::new(Uuid::new_v4().to_string());
         let terminal_task = cx.spawn({
@@ -4835,34 +4835,18 @@ impl AcpThread {
                     });
                     environment.extend(env);
                     environment.extend(zed_environment);
-                    let (task_command, task_args) = build_remote_sandbox_command(
+                    let spawn = remote_sandboxed_spawn(
                         &remote_binary,
                         &wrap,
-                        editor_network_allowlist.as_deref(),
+                        &ceiling,
                         cwd.as_deref(),
                         &environment,
-                        &[],
-                        false,
-                        // A one-off command is followed by the turn that
-                        // started it, which does not end before it does.
-                        None,
                         inner_command,
                         inner_args,
                     );
                     let terminal = project
                         .update(cx, |project, cx| {
-                            project.create_sandboxed_terminal_task(
-                                task::SpawnInTerminal {
-                                    command: Some(task_command),
-                                    args: task_args,
-                                    // `cwd: None`: the helper's path is relative
-                                    // to the remote home, where the transport
-                                    // starts it, and it `--chdir`s itself.
-                                    cwd: None,
-                                    ..Default::default()
-                                },
-                                cx,
-                            )
+                            project.create_sandboxed_terminal_task(spawn, cx)
                         })
                         .await?;
                     return anyhow::Ok(cx.new(|cx| {
@@ -4917,7 +4901,7 @@ impl AcpThread {
                                 cwd.clone(),
                                 Some(sandbox_wrap.clone()),
                                 env.clone(),
-                                editor_network_allowlist.clone(),
+                                ceiling.clone(),
                             ));
                             let timeout = cx.background_executor().timer(WSL_SANDBOX_WRAP_TIMEOUT);
                             let finished = futures::select_biased! {

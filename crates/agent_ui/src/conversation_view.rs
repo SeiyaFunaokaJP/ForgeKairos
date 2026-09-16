@@ -96,12 +96,13 @@ use crate::{
     Agent, AgentDiffPane, AgentInitialContent, AgentPanel, AgentPanelEvent, AllowAlways, AllowOnce,
     AuthorizeToolCall, ClearMessageQueue, CycleFavoriteModels, CycleModeSelector,
     CycleThinkingEffort, EditFirstQueuedMessage, ExpandMessageEditor, Follow, KeepAll, NewThread,
-    OpenAddContextMenu, OpenAgentDiff, RejectAll, RejectOnce, RemoveFirstQueuedMessage,
-    ScrollOutputLineDown, ScrollOutputLineUp, ScrollOutputPageDown, ScrollOutputPageUp,
-    ScrollOutputToBottom, ScrollOutputToNextMessage, ScrollOutputToPreviousMessage,
-    ScrollOutputToTop, SendImmediately, SendNextQueuedMessage, ToggleAutoApproveToolActions,
-    ToggleFastMode, ToggleProfileSelector, ToggleSteerFirstQueuedMessage, ToggleThinkingEffortMenu,
-    ToggleThinkingMode, ToggleToolPermissionSelector, UndoLastReject,
+    OpenAddContextMenu, OpenAgentDiff, ReconnectParkedAgent, RejectAll, RejectOnce,
+    RemoveFirstQueuedMessage, ScrollOutputLineDown, ScrollOutputLineUp, ScrollOutputPageDown,
+    ScrollOutputPageUp, ScrollOutputToBottom, ScrollOutputToNextMessage,
+    ScrollOutputToPreviousMessage, ScrollOutputToTop, SendImmediately, SendNextQueuedMessage,
+    ToggleAutoApproveToolActions, ToggleFastMode, ToggleProfileSelector,
+    ToggleSteerFirstQueuedMessage, ToggleThinkingEffortMenu, ToggleThinkingMode,
+    ToggleToolPermissionSelector, UndoLastReject,
 };
 
 const STOPWATCH_THRESHOLD: Duration = Duration::from_secs(30);
@@ -122,6 +123,12 @@ const ADD_AGENT_HOSTS_LABEL: &str = "許可リストに追加して起動";
 /// that is not there.
 const RETRY_AGENT_HOSTS_LABEL: &str = "もう一度試す";
 const DECLINE_AGENT_HOSTS_LABEL: &str = "追加せず中止";
+/// ADR-F49 (new decision): the way back on a card that otherwise offers none
+/// — see [`ConversationView::render_load_error`]. Worded as the allowlist
+/// card's second attempt is: both mean "start it again as it stands".
+const RETRY_AGENT_START_LABEL: &str = "もう一度試す";
+/// How a test finds that button in the frame the view just drew.
+const RETRY_AGENT_START_SELECTOR: &str = "RETRY-AGENT-START";
 
 /// ADR-F49: the consent's detail, as for the sandboxed Claude Code CLI: the
 /// hosts go into the IDE-wide allowlist, where the built-in agent's commands
@@ -815,11 +822,55 @@ enum ServerState {
         _loading: Entity<LoadingView>,
         connection: Option<Rc<dyn AgentConnection>>,
         _request_elicitation_subscription: Option<Subscription>,
+        /// ADR-F49 (new decision): the folders this start was asked for. A
+        /// start that never reaches a thread is the only one that could not
+        /// say afterwards which folders it was for, and the thread built next
+        /// has to be built on the same ones — see
+        /// [`ConversationView::work_dirs_in_hand`].
+        work_dirs: Option<PathList>,
     },
     LoadError {
         error: LoadError,
+        work_dirs: Option<PathList>,
     },
     Connected(ConnectedServerState),
+    Parked(ParkedServerState),
+}
+
+/// ADR-F49 (new decision): a draft whose agent the idle disconnect stopped,
+/// still on screen and still the user's to type in.
+///
+/// The view keeps its tab, its row and the editor it was written in — text,
+/// mentions and all — and holds nothing else: no [`AcpThread`], no session and
+/// no `Rc` on the connection, so the store dropping its entry really reaches
+/// the agent's process. The same editor is handed to the thread that comes
+/// back when the agent is asked for again ([`ConversationView::unpark`]),
+/// which is why nothing has to be copied out of it here.
+struct ParkedServerState {
+    message_editor: Entity<MessageEditor>,
+    /// The folders the session had been given. They are the user's choice as
+    /// much as the text is, and the session that is opened again has to be
+    /// opened on the same ones.
+    work_dirs: Option<PathList>,
+    _editor_subscription: Subscription,
+}
+
+/// What a parked view is being started again for: the user pressed send, or
+/// they asked for the agent back without sending anything
+/// ([`ConversationView::render_parked_notice`]).
+#[derive(Clone, Copy, PartialEq)]
+enum Unpark {
+    Only,
+    AndSend,
+}
+
+/// The draft editor a parked view hands to the thread it reconnects into, so
+/// that coming back does not rebuild the box the user was writing in.
+pub(crate) struct AdoptedDraft {
+    editor: Entity<MessageEditor>,
+    /// Whether a send the user already asked for is still owed once the thread
+    /// is there.
+    auto_submit: bool,
 }
 
 // current -> Entity
@@ -967,6 +1018,7 @@ impl ConversationView {
                 title,
                 project,
                 initial_content,
+                None,
                 source,
                 window,
                 cx,
@@ -1052,7 +1104,8 @@ impl ConversationView {
             ServerState::Loading {
                 connection: None, ..
             }
-            | ServerState::LoadError { .. } => None,
+            | ServerState::LoadError { .. }
+            | ServerState::Parked(_) => None,
         }
     }
 
@@ -1085,6 +1138,28 @@ impl ConversationView {
                     .unwrap_or((None, None));
                 (session_id, work_dirs, title)
             });
+        // ADR-F49 (new decision): a view with no thread to ask — it let its
+        // agent go, or the way back failed — still knows which folders the
+        // session was on, and the next one opens on those rather than on the
+        // project's default.
+        let work_dirs = work_dirs.or_else(|| self.work_dirs_in_hand(cx));
+
+        // ADR-F49 (new decision): with no session to resume this builds a
+        // draft from nothing, and its box would come up empty — which after a
+        // start that failed is the text the user had written gone, the parked
+        // draft's included ([`Self::unpark`] writes it out before asking for
+        // the agent). The panel fills a draft it rebuilds from the same store
+        // ([`AgentPanel::restore_new_draft`]), so this does too.
+        let initial_content = if resume_session_id.is_none() {
+            crate::draft_prompt_store::read(self.thread_id, cx).map(|blocks| {
+                AgentInitialContent::ContentBlock {
+                    blocks,
+                    auto_submit: false,
+                }
+            })
+        } else {
+            None
+        };
 
         self.clear_resolved_request_elicitations(cx);
         self.loading_status = None;
@@ -1110,6 +1185,7 @@ impl ConversationView {
             work_dirs,
             title,
             self.project.clone(),
+            initial_content,
             None,
             AgentThreadSource::AgentPanel,
             window,
@@ -1137,6 +1213,7 @@ impl ConversationView {
         title: Option<SharedString>,
         project: Entity<Project>,
         initial_content: Option<AgentInitialContent>,
+        adopted_draft: Option<AdoptedDraft>,
         source: AgentThreadSource,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1148,9 +1225,11 @@ impl ConversationView {
                 error: LoadError::Other(
                     "共有プロジェクトでは外部エージェントはまだサポートされていません。".into(),
                 ),
+                work_dirs,
             };
         }
         let session_work_dirs = work_dirs.unwrap_or_else(|| project.read(cx).default_path_list(cx));
+        let started_work_dirs = session_work_dirs.clone();
 
         let view = cx.weak_entity();
         let connection_entry = connection_store.update(cx, |store, cx| {
@@ -1293,6 +1372,7 @@ impl ConversationView {
                             conversation.clone(),
                             resumed_without_history,
                             initial_content,
+                            adopted_draft,
                             window,
                             cx,
                         );
@@ -1341,6 +1421,7 @@ impl ConversationView {
             _loading: loading_view,
             connection: None,
             _request_elicitation_subscription: None,
+            work_dirs: Some(started_work_dirs),
         }
     }
 
@@ -1350,6 +1431,7 @@ impl ConversationView {
         conversation: Entity<Conversation>,
         resumed_without_history: bool,
         initial_content: Option<AgentInitialContent>,
+        adopted_draft: Option<AdoptedDraft>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<ThreadView> {
@@ -1538,6 +1620,7 @@ impl ConversationView {
                 self.code_span_resolver.clone(),
                 self.thread_store.clone(),
                 initial_content,
+                adopted_draft,
                 subscriptions,
                 window,
                 cx,
@@ -1608,7 +1691,35 @@ impl ConversationView {
         // A fresh attempt failed, so whatever the last consent ran into is
         // stale; `ask_to_allow_agent_hosts` never comes through here.
         self.agent_hosts_consent_error = None;
-        self.set_server_state(ServerState::LoadError { error: err }, cx);
+        let work_dirs = self.work_dirs_in_hand(cx);
+        self.set_server_state(
+            ServerState::LoadError {
+                error: err,
+                work_dirs,
+            },
+            cx,
+        );
+    }
+
+    /// ADR-F49 (new decision): the folders the session this view holds is on —
+    /// or, where it holds none, the folders the one it is trying to hold was
+    /// asked for.
+    ///
+    /// Until the idle disconnect there was always a thread to ask by the time
+    /// anybody did. A view that let its agent go, or whose way back failed,
+    /// has none, and the thread built for it next
+    /// ([`Self::reset`], [`Self::unpark`]) has to open on the folders the user
+    /// chose rather than on the project's default.
+    fn work_dirs_in_hand(&self, cx: &App) -> Option<PathList> {
+        match &self.server_state {
+            ServerState::Connected(_) => self
+                .root_thread_view()
+                .and_then(|thread_view| thread_view.read(cx).thread.read(cx).work_dirs().cloned()),
+            ServerState::Loading { work_dirs, .. } | ServerState::LoadError { work_dirs, .. } => {
+                work_dirs.clone()
+            }
+            ServerState::Parked(parked) => parked.work_dirs.clone(),
+        }
     }
 
     fn handle_agent_servers_updated(
@@ -1623,6 +1734,9 @@ impl ConversationView {
         // This handles the case where a thread is restored before authentication completes.
         let should_retry = match &self.server_state {
             ServerState::Loading { .. } => false,
+            // A parked draft is not waiting for the agent to come back; the
+            // next send starts it.
+            ServerState::Parked(_) => false,
             ServerState::LoadError { .. } => true,
             ServerState::Connected(connected) => {
                 connected.auth_state.is_ok() && connected.has_thread_error(cx)
@@ -1646,55 +1760,102 @@ impl ConversationView {
     /// the panel with its connection still in hand — which is exactly what the
     /// idle disconnect is for — so what counts is that the thread is open
     /// somewhere (any window, any pane, the panel's own tabs included), or
-    /// that this view is still connecting or signing in. The one tab that does
-    /// not count is the panel's own new-thread slot while it holds an empty
-    /// draft nothing is showing (see below).
-    pub(crate) fn is_using_connection(&self, view: gpui::EntityId, cx: &App) -> bool {
+    /// that this view is still connecting or signing in. An empty draft counts
+    /// nowhere, on screen included: see [`Self::is_releasable_empty_draft`].
+    pub(crate) fn is_using_connection(&self, cx: &App) -> bool {
         if self.auth_task.is_some() {
             return true;
         }
         match &self.server_state {
             ServerState::Loading { .. } => return true,
+            // Nothing left to use: the connection was already let go of.
+            ServerState::Parked(_) => return false,
             ServerState::Connected(connected) if !connected.auth_state.is_ok() => return true,
             ServerState::Connected(_) | ServerState::LoadError { .. } => {}
         }
-        if !ThreadItem::is_open_in_a_tab(self.thread_id, cx) {
+        if self.is_releasable_empty_draft(cx) {
             return false;
         }
-        // ADR-F49 (new decision): the panel draws its new-thread slot from a
-        // tab of its own (ADR-F36 Phase B), so the agent the panel has
-        // selected had a thread open at all times and was never idle. An empty
-        // draft nothing is showing is not a thread the user is in — see
-        // [`AgentPanel::is_releasable_idle_draft`], which is also what makes
-        // letting go of it safe.
-        !self.parking_panel(cx).is_some_and(|panel| {
-            panel
-                .read(cx)
-                .is_releasable_idle_draft(self.thread_id, view, cx)
-        })
+        ThreadItem::is_open_in_a_tab(self.thread_id, cx)
+    }
+
+    /// ADR-F49 (new decision): whether this view holds an empty draft — one
+    /// its agent can be taken away from without the user losing anything.
+    ///
+    /// Nothing was ever sent in it, so there is no session to read back and
+    /// `supports_load_session` has no say: the next send starts the agent
+    /// again and opens a session of its own. What makes that safe is only that
+    /// the draft is empty and still, so each of those is asked for here:
+    ///
+    /// * it is still a draft — sending turns it into a thread with a history,
+    ///   which is read back from the agent rather than started over;
+    /// * the agent is not answering — a draft is generating for the length of
+    ///   the turn the first message starts;
+    /// * nothing is on its way out of the editor (`is_loading_contents`): an
+    ///   empty editor is then a message in flight rather than a draft nobody
+    ///   wrote in;
+    /// * the editor is empty, and so is the prompt the thread holds for it.
+    ///
+    /// Being on screen is deliberately not asked about. A draft the user is
+    /// looking at is one they may type in at any moment, and typing in it is
+    /// what a parked view still allows — what goes is the connection, not the
+    /// box.
+    fn is_releasable_empty_draft(&self, cx: &App) -> bool {
+        let Some(thread_view) = self.root_thread_view() else {
+            return false;
+        };
+        let thread_view = thread_view.read(cx);
+        if thread_view.is_loading_contents {
+            return false;
+        }
+        let thread = thread_view.thread.read(cx);
+        if !thread.is_draft_thread() || thread.status() != ThreadStatus::Idle {
+            return false;
+        }
+        if thread
+            .draft_prompt()
+            .is_some_and(|blocks| !blocks.is_empty())
+        {
+            return false;
+        }
+        thread_view
+            .message_editor
+            .read(cx)
+            .text(cx)
+            .trim()
+            .is_empty()
+    }
+
+    pub(crate) fn is_parked(&self) -> bool {
+        matches!(self.server_state, ServerState::Parked(_))
     }
 
     /// ADR-F49 (new decision): lets go of a connection nothing has used, so
     /// that the store dropping it really ends the agent. Answers whether it
     /// could.
     ///
-    /// Letting go means leaving the panel's parking slot: the thread is read
-    /// back from the agent when it is opened again, the way the panel's own
-    /// pruning ([`AgentPanel::cleanup_retained_threads`]) already relies on.
-    /// A thread that cannot be read back, or one whose agent is still
-    /// answering, is kept instead — losing a conversation is never worth an
-    /// idle process.
+    /// There are two ways to let go. A thread the panel is only parking leaves
+    /// the parking slot and is read back from the agent when it is opened
+    /// again, the way the panel's own pruning
+    /// ([`AgentPanel::cleanup_retained_threads`]) already relies on. An empty
+    /// draft instead stays exactly where it is — its tab, its row and the
+    /// editor it was written in — and drops the connection out from under
+    /// itself ([`Self::park`]). A thread that cannot be read back, or one
+    /// whose agent is still answering, is kept instead: losing a conversation
+    /// is never worth an idle process.
     ///
-    /// Takes the view rather than `&mut self`: letting go of the panel's empty
-    /// draft closes the tab that holds it, and the panel reads the view to
-    /// decide that — which it could not do while the view was leased to an
-    /// update of its own.
+    /// Takes the view rather than `&mut self` because the panel reads the view
+    /// to decide, which it could not do while the view was leased to an update
+    /// of its own.
     pub(crate) fn release_idle_connection(view: &Entity<Self>, cx: &mut App) -> bool {
         let view_id = view.entity_id();
-        let (thread_id, panel) = {
+        let (thread_id, panel, already_parked) = {
             let this = view.read(cx);
-            (this.thread_id, this.parking_panel(cx))
+            (this.thread_id, this.parking_panel(cx), this.is_parked())
         };
+        if already_parked {
+            return true;
+        }
         let Some(panel) = panel else {
             return false;
         };
@@ -1706,19 +1867,165 @@ impl ConversationView {
         }) {
             return true;
         }
-        // The empty draft is let go of by taking its tab out of the panel,
-        // which needs the panel's window — and this sweep runs from a timer
-        // that has none. A window that closed while it ran took its panel and
-        // its tabs with it, which `unwrap_or_default` reads as "nothing was
-        // let go of here".
+        // Parking subscribes to the draft editor for the send that starts the
+        // agent again, and a subscription belongs to a window — which this
+        // sweep, running from a timer, does not have. A window that closed
+        // while it ran took its panel with it, which `unwrap_or_default` reads
+        // as "nothing was let go of here".
         let window = panel.read(cx).window_handle();
-        window
+        let parked = window
             .update(cx, |_root, window, cx| {
-                panel.update(cx, |panel, cx| {
-                    panel.release_idle_draft(thread_id, view_id, window, cx)
-                })
+                view.update(cx, |this, cx| this.park(window, cx))
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if parked {
+            // The panel follows its draft through that draft's `AcpThread`,
+            // and the thread is what just went.
+            panel.update(cx, |panel, cx| panel.reobserve_draft_editor(view, cx));
+        }
+        parked
+    }
+
+    /// ADR-F49 (new decision): drops this view's connection while keeping the
+    /// draft that was written in it. Answers whether there was one to drop.
+    ///
+    /// Replacing the state is what lets the connection go: the [`AcpThread`],
+    /// the [`ThreadView`] and the `Rc` on the connection all belong to
+    /// [`ConnectedServerState`], and [`Self::set_server_state`] closes the
+    /// session before dropping them. The editor is lifted out first and is the
+    /// only thing that survives, which is what keeps the user's text, their
+    /// mentions and their caret.
+    fn park(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some((message_editor, work_dirs)) = self
+            .as_connected()
+            .and_then(|connected| connected.active_view())
+            .map(|thread_view| {
+                let thread_view = thread_view.read(cx);
+                (
+                    thread_view.message_editor.clone(),
+                    thread_view.thread.read(cx).work_dirs().cloned(),
+                )
+            })
+        else {
+            return false;
+        };
+        let editor_subscription = cx.subscribe_in(
+            &message_editor,
+            window,
+            |this, _editor, event, window, cx| match event {
+                MessageEditorEvent::Send | MessageEditorEvent::SendImmediately => {
+                    this.unpark(Unpark::AndSend, window, cx);
+                }
+                // Typing is not a reason to start the agent again — a user may
+                // draft for minutes — but what is typed is persisted the way a
+                // connected draft's is, so a window that closes before the
+                // send does not take the text with it.
+                MessageEditorEvent::Edited => this.schedule_draft_prompt_persist(cx),
+                _ => {}
+            },
+        );
+        // The session this view had went with the connection, so it must not
+        // be written out or resumed from.
+        self.root_session_id = None;
+        self.set_server_state(
+            ServerState::Parked(ParkedServerState {
+                message_editor,
+                work_dirs,
+                _editor_subscription: editor_subscription,
+            }),
+            cx,
+        );
+        log::info!(
+            "parked the empty draft of {}: nothing has used its connection",
+            self.agent.agent_id()
+        );
+        true
+    }
+
+    /// ADR-F49 (new decision): starts the agent again for a parked draft, along
+    /// the path a brand new draft already takes. The editor goes with it, so
+    /// whatever the user put there — before the agent was let go of and while
+    /// it was gone — is what the thread comes back into, and a send carries
+    /// it.
+    fn unpark(&mut self, then: Unpark, window: &mut Window, cx: &mut Context<Self>) {
+        let ServerState::Parked(parked) = &self.server_state else {
+            return;
+        };
+        let adopted = AdoptedDraft {
+            editor: parked.message_editor.clone(),
+            auto_submit: matches!(then, Unpark::AndSend),
+        };
+        let work_dirs = parked.work_dirs.clone();
+        // A start that does not come back replaces this view with a card of
+        // its own (the sign-in, the allowlist, the plain failure), and the box
+        // the user was writing in goes with it. What is in it is written out
+        // here rather than left to the persist debounce, which a send one
+        // keystroke after the last one outruns: the text is then in the store
+        // the next draft under this id is built from, wherever it is built
+        // ([`Self::reset`], [`AgentPanel::restore_new_draft`]).
+        let draft_blocks = parked
+            .message_editor
+            .read(cx)
+            .draft_content_blocks_snapshot(cx);
+        if !draft_blocks.is_empty() {
+            crate::draft_prompt_store::write(self.thread_id, &draft_blocks, cx)
+                .detach_and_log_err(cx);
+        }
+        // The same rule [`Self::reset`] follows: a start outside the sandbox
+        // that the idle disconnect ended is not one this view may take back on
+        // its own, or the banner would go on claiming the agent runs outside
+        // the sandbox while it is being started inside it.
+        if self.outside_sandbox.is_some_and(|id| {
+            self.connection_store
+                .read(cx)
+                .outside_sandbox_connection(id)
+                .is_none()
+        }) {
+            self.outside_sandbox = None;
+        }
+        let state = Self::initial_state(
+            self.agent.clone(),
+            self.connection_store.clone(),
+            self.connection_key.clone(),
+            self.outside_sandbox,
+            None,
+            work_dirs,
+            None,
+            self.project.clone(),
+            None,
+            Some(adopted),
+            AgentThreadSource::AgentPanel,
+            window,
+            cx,
+        );
+        self.set_server_state(state, cx);
+    }
+
+    /// The editor a draft is written in, wherever this view keeps it. Parking
+    /// moves it out of the [`ThreadView`], and everything that reads or writes
+    /// the draft has to follow it there.
+    ///
+    /// It is the root thread that is asked, not whichever thread is in front:
+    /// a draft has no subagents to navigate to, and the callers that read an
+    /// unsent prompt out of a view mean the thread the panel keeps for it.
+    pub(crate) fn draft_message_editor(&self, cx: &App) -> Option<Entity<MessageEditor>> {
+        match &self.server_state {
+            ServerState::Parked(parked) => Some(parked.message_editor.clone()),
+            _ => self
+                .root_thread_view()
+                .map(|thread_view| thread_view.read(cx).message_editor.clone()),
+        }
+    }
+
+    /// Whether this view holds a thread nothing has been sent in yet. A parked
+    /// view has no thread to ask, and parking only ever happens to a draft.
+    pub(crate) fn is_draft(&self, cx: &App) -> bool {
+        match &self.server_state {
+            ServerState::Parked(_) => true,
+            _ => self
+                .root_thread(cx)
+                .is_some_and(|thread| thread.read(cx).is_draft_thread()),
+        }
     }
 
     /// Whether [`Self::release_idle_connection`] would let go, asked without
@@ -1727,23 +2034,20 @@ impl ConversationView {
     /// stays anyway. `view` is this view's own entity id, which the store that
     /// asks already has.
     pub(crate) fn can_release_idle_connection(&self, view: gpui::EntityId, cx: &App) -> bool {
-        if self.is_using_connection(view, cx) {
+        if self.is_using_connection(cx) {
             return false;
+        }
+        if self.is_parked() {
+            return true;
+        }
+        // An empty draft: parking needs the panel only for the window its
+        // subscription is bound to, not for a slot to leave.
+        if self.is_releasable_empty_draft(cx) {
+            return self.parking_panel(cx).is_some();
         }
         let Some(panel) = self.parking_panel(cx) else {
             return false;
         };
-        // ADR-F49 (new decision): an empty draft in the panel's new-thread
-        // slot that nothing is showing. Nothing was ever sent in it, so there
-        // is no session to read back and `supports_load_session` has no say
-        // here: the panel builds the same thread again from its row and the
-        // draft-prompt store.
-        if panel
-            .read(cx)
-            .is_releasable_idle_draft(self.thread_id, view, cx)
-        {
-            return true;
-        }
         let Some(thread_view) = self.root_thread_view() else {
             // A draft that never started a session: there is nothing to read
             // back, and its unsent prompt would go with the view.
@@ -1774,6 +2078,16 @@ impl ConversationView {
                 .loading_status
                 .clone()
                 .unwrap_or_else(|| "読み込み中…".into()),
+            // A parked draft keeps the name its row carries, so its tab does
+            // not rename itself when its agent is let go of.
+            ServerState::Parked(_) => ThreadMetadataStore::try_global(cx)
+                .and_then(|store| {
+                    store
+                        .read(cx)
+                        .entry(self.thread_id)
+                        .and_then(|entry| entry.title())
+                })
+                .unwrap_or_else(|| DEFAULT_THREAD_TITLE.into()),
             ServerState::LoadError { error, .. } => match error {
                 LoadError::Unsupported { .. } => {
                     format!("{} をアップグレード", self.agent.agent_id()).into()
@@ -2018,9 +2332,11 @@ impl ConversationView {
                         self.focus_handle.focus(window, cx)
                     }
                 }
+                let work_dirs = self.work_dirs_in_hand(cx);
                 self.set_server_state(
                     ServerState::LoadError {
                         error: error.clone(),
+                        work_dirs,
                     },
                     cx,
                 );
@@ -2123,6 +2439,22 @@ impl ConversationView {
                 .timer(DRAFT_PROMPT_PERSIST_DEBOUNCE)
                 .await;
             let persist = this.update(cx, |this, cx| {
+                // ADR-F49 (new decision): a parked draft has no thread to hold
+                // its prompt, so the editor is read directly. Everything else
+                // about the write — the key, the debounce, the delete when it
+                // ends up empty — is the same, so a draft that was parked is
+                // read back on the next start like any other.
+                if let ServerState::Parked(parked) = &this.server_state {
+                    let snapshot = parked
+                        .message_editor
+                        .read(cx)
+                        .draft_content_blocks_snapshot(cx);
+                    return Some(if snapshot.is_empty() {
+                        crate::draft_prompt_store::delete(thread_id, cx)
+                    } else {
+                        crate::draft_prompt_store::write(thread_id, &snapshot, cx)
+                    });
+                }
                 let thread = this.root_thread(cx)?;
                 let thread = thread.read(cx);
                 if !thread.is_draft_thread() {
@@ -2339,8 +2671,15 @@ impl ConversationView {
                 conversation.update(cx, |conversation, cx| {
                     conversation.register_thread(subagent_thread.clone(), cx);
                 });
-                let view =
-                    this.new_thread_view(subagent_thread, conversation, false, None, window, cx);
+                let view = this.new_thread_view(
+                    subagent_thread,
+                    conversation,
+                    false,
+                    None,
+                    None,
+                    window,
+                    cx,
+                );
                 let Some(connected) = this.as_connected_mut() else {
                     return;
                 };
@@ -2987,11 +3326,11 @@ impl ConversationView {
 
     fn render_load_error(
         &self,
-        e: &LoadError,
+        error: &LoadError,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (title, message, action_slot): (_, SharedString, _) = match e {
+        let (title, message, action_slot): (_, SharedString, _) = match error {
             LoadError::Unsupported {
                 command: path,
                 current_version,
@@ -3077,12 +3416,42 @@ impl ConversationView {
             }
         };
 
+        // ADR-F49 (new decision): the plain failures — the agent did not come
+        // up, it exited, it could not be installed — had nothing on their card
+        // but the error itself, and the idle disconnect turned that into a
+        // dead end a user reaches by sending in a draft: the panel hands the
+        // same failed view back for as long as that agent is the selected one.
+        // The other errors each lead somewhere of their own (sign in, allow
+        // the hosts, start outside the sandbox, upgrade), so only these get a
+        // plain way back. It builds the thread again, unsent text and all
+        // ([`Self::reset`] reads the draft-prompt store).
+        let can_retry = matches!(
+            error,
+            LoadError::Other(_) | LoadError::Exited { .. } | LoadError::FailedToInstall(_)
+        );
+
         Callout::new()
             .severity(Severity::Error)
             .icon(IconName::XCircleFilled)
             .title(title)
             .description(message)
-            .actions_slot(div().children(action_slot))
+            .actions_slot(
+                h_flex()
+                    .gap_1()
+                    .children(action_slot)
+                    .when(can_retry, |this| {
+                        this.child(
+                            div()
+                                .debug_selector(|| RETRY_AGENT_START_SELECTOR.to_string())
+                                .child(
+                                    Button::new("retry-agent-start", RETRY_AGENT_START_LABEL)
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.reset(window, cx)
+                                        })),
+                                ),
+                        )
+                    }),
+            )
             .into_any_element()
     }
 
@@ -3567,12 +3936,14 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(active_thread) = self.active_thread() {
-            active_thread.update(cx, |thread, cx| {
-                thread.message_editor.update(cx, |editor, cx| {
-                    editor.insert_dragged_files(paths, added_worktrees, window, cx);
-                    editor.focus_handle(cx).focus(window, cx);
-                })
+        // ADR-F49 (new decision): a parked draft takes the drop into the same
+        // editor it always had. Attaching a file is not a reason to start the
+        // agent again — the send is — and what is attached rides along when it
+        // does, because that editor is the one the thread comes back into.
+        if let Some(message_editor) = self.draft_message_editor(cx) {
+            message_editor.update(cx, |editor, cx| {
+                editor.insert_dragged_files(paths, added_worktrees, window, cx);
+                editor.focus_handle(cx).focus(window, cx);
             });
         }
     }
@@ -3590,6 +3961,10 @@ impl ConversationView {
                 thread.active_editor(cx).update(cx, |editor, cx| {
                     editor.insert_selections(selection, window, cx);
                 })
+            });
+        } else if let Some(message_editor) = self.draft_message_editor(cx) {
+            message_editor.update(cx, |editor, cx| {
+                editor.insert_selections(selection, window, cx);
             });
         }
     }
@@ -3624,7 +3999,12 @@ impl ConversationView {
     /// While that agent runs, the view says so: the confirmation was for this
     /// start only, and the same agent in another view is still in its sandbox.
     fn render_outside_sandbox_banner(&self, cx: &App) -> Option<impl IntoElement> {
-        if !self.runs_outside_sandbox(cx) {
+        // ADR-F49 (new decision): a parked view has no agent running at all,
+        // in or out of its sandbox, so the banner would be saying something
+        // that stopped being true when the idle disconnect took the
+        // connection. Asking for it back goes into the sandbox again, which
+        // [`Self::unpark`] is what makes true.
+        if self.is_parked() || !self.runs_outside_sandbox(cx) {
             return None;
         }
         Some(
@@ -3772,6 +4152,28 @@ impl ConversationView {
         .detach();
     }
 
+    /// ADR-F49 (new decision): the row a parked draft shows where its thread
+    /// would put the model and attachment controls.
+    ///
+    /// Those controls need a connection and cannot be drawn without one, and a
+    /// row of buttons that quietly disappears after five minutes reads as a
+    /// bug. Saying what happened — and offering the way back that does not
+    /// involve sending anything — costs one line and leaves nothing to guess.
+    fn render_parked_notice(&self, cx: &mut Context<Self>) -> Callout {
+        Callout::new()
+            .severity(Severity::Info)
+            .icon(IconName::Info)
+            .title("使われていないのでエージェントを止めています。送信すると再接続します")
+            .border_position(ui::CalloutBorderPosition::Top)
+            .actions_slot(
+                Button::new("reconnect-parked-agent", "今すぐ再接続")
+                    .label_size(LabelSize::Small)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.unpark(Unpark::Only, window, cx);
+                    })),
+            )
+    }
+
     fn create_copy_button(&self, message: impl Into<String>) -> impl IntoElement {
         let message = message.into();
 
@@ -3888,6 +4290,9 @@ fn placeholder_text(agent_name: &str, has_commands: bool) -> String {
 
 impl Focusable for ConversationView {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
+        if let ServerState::Parked(parked) = &self.server_state {
+            return parked.message_editor.focus_handle(cx);
+        }
         match self.active_thread() {
             Some(thread) => thread.read(cx).focus_handle(cx),
             None => self.focus_handle.clone(),
@@ -3897,6 +4302,9 @@ impl Focusable for ConversationView {
 
 impl ConversationView {
     pub(crate) fn activation_focus_handle(&self, cx: &App) -> FocusHandle {
+        if let ServerState::Parked(parked) = &self.server_state {
+            return parked.message_editor.focus_handle(cx);
+        }
         self.active_thread()
             .map(|thread| thread.read(cx).activation_focus_handle(cx))
             .unwrap_or_else(|| self.focus_handle.clone())
@@ -3929,6 +4337,13 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) {
         self.rebind_notification_subscriptions(window, cx);
+
+        if let ServerState::Parked(parked) = &self.server_state {
+            parked.message_editor.clone().update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx)
+            });
+            return;
+        }
 
         let Some(connected) = self.as_connected() else {
             self.pending_window_rebind = Some(window.window_handle());
@@ -3968,6 +4383,22 @@ impl ConversationView {
 
 #[cfg(any(test, feature = "test-support"))]
 impl ConversationView {
+    /// Builds this view's thread again from scratch, the way the sign-in, the
+    /// allowlist and the failure cards all do once the user acts on them.
+    // `pub(crate)`、かつ呼ぶのはこのクレートのテストだけなので、
+    // `test-support` だけを有効にしたビルドでは dead_code になる。
+    #[cfg(test)]
+    pub(crate) fn test_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.reset(window, cx);
+    }
+
+    /// Lets go of this view's connection the way the idle disconnect does,
+    /// without waiting for the sweep that would otherwise ask for it.
+    #[cfg(test)]
+    pub(crate) fn test_park(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.park(window, cx)
+    }
+
     /// Expands a tool call so its content is visible.
     /// This is primarily useful for visual testing.
     pub fn expand_tool_call(&mut self, tool_call_id: acp::ToolCallId, cx: &mut Context<Self>) {
@@ -4055,6 +4486,48 @@ impl Render for ConversationView {
                     debug_panic!("This state should never be reached");
                     div().into_any_element()
                 }
+            }
+            // ADR-F49 (new decision): the draft box, and nothing else. There
+            // is no spinner and no "reconnecting" card because nothing is
+            // being waited for: the agent starts again when the user sends,
+            // and until then this is the same empty page a new thread shows.
+            ServerState::Parked(parked) => {
+                // Laid out like `ThreadView::render_message_editor` draws a
+                // thread with no messages yet, so that letting the agent go
+                // does not move the box the user is writing in.
+                let max_content_width = AgentSettings::get_global(cx).max_content_width;
+                h_flex()
+                    .flex_1()
+                    .size_full()
+                    .py_2()
+                    .bg(cx.theme().colors().editor_background)
+                    .justify_center()
+                    .on_action(cx.listener(|this, _: &ReconnectParkedAgent, window, cx| {
+                        this.unpark(Unpark::Only, window, cx);
+                    }))
+                    .child(
+                        v_flex()
+                            .when_some(max_content_width, |this, max_w| this.flex_basis(max_w))
+                            .when(max_content_width.is_none(), |this| this.w_full())
+                            .min_w_0()
+                            .h_full()
+                            .px_2()
+                            .flex_shrink_1()
+                            .flex_grow_0()
+                            .gap_2()
+                            .child(
+                                v_flex()
+                                    .relative()
+                                    .w_full()
+                                    .min_h_0()
+                                    .flex_1()
+                                    .pt_1()
+                                    .pr_2p5()
+                                    .child(parked.message_editor.clone()),
+                            )
+                            .child(self.render_parked_notice(cx)),
+                    )
+                    .into_any_element()
             }
         };
 
@@ -4428,6 +4901,7 @@ pub(crate) mod tests {
             view.set_server_state(
                 ServerState::LoadError {
                     error: LoadError::Other("load failed".into()),
+                    work_dirs: None,
                 },
                 cx,
             );
@@ -5256,6 +5730,7 @@ pub(crate) mod tests {
                         ServerState::Loading { .. } => "Loading (stuck!)",
                         ServerState::LoadError { .. } => "LoadError (wrong variant)",
                         ServerState::Connected(_) => "Connected",
+                        ServerState::Parked(_) => "Parked",
                     }
                 ),
             }
@@ -6590,6 +7065,56 @@ pub(crate) mod tests {
         });
     }
 
+    /// ADR-F49 (new decision): the banner is there while that agent runs. A
+    /// parked view has none running, in its sandbox or out of it, so the
+    /// banner would go on saying something the idle disconnect made untrue —
+    /// and asking for the agent back puts it in its sandbox again.
+    #[gpui::test]
+    async fn test_a_parked_view_stops_saying_its_agent_runs_outside_the_sandbox(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let outside_starts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let server = SandboxRefusingAgentServer {
+            connection: StubAgentConnection::new(),
+            outside_starts: outside_starts.clone(),
+        };
+        let (conversation_view, cx) = setup_conversation_view(server, cx).await;
+        cx.run_until_parked();
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.start_agent_outside_sandbox_once(window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.run_until_parked();
+        assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let banner_shows = |cx: &mut VisualTestContext| {
+            conversation_view.read_with(cx, |view, cx| {
+                view.render_outside_sandbox_banner(cx).is_some()
+            })
+        };
+        assert!(
+            banner_shows(cx),
+            "the agent really is running outside its sandbox"
+        );
+
+        assert!(
+            conversation_view.update_in(cx, |view, window, cx| view.test_park(window, cx)),
+            "the view lets that connection go"
+        );
+        // The store still hands that connection back — nothing swept it — so
+        // it is being parked that has to take the banner away.
+        assert!(
+            conversation_view.read_with(cx, |view, cx| view.runs_outside_sandbox(cx)),
+            "the connection the user confirmed is still in the store"
+        );
+        assert!(
+            !banner_shows(cx),
+            "but nothing of that agent is running any more, so the view stops              saying it runs outside its sandbox"
+        );
+    }
+
     /// ADR-F49 decision 19 (HIGH-2): the start outside the sandbox belongs to
     /// the view that confirmed it. Another view — and a new thread — connects
     /// in the sandbox as usual, and is refused again where the sandbox cannot
@@ -6812,7 +7337,8 @@ pub(crate) mod tests {
                 matches!(
                     &view.server_state,
                     ServerState::LoadError {
-                        error: LoadError::SandboxHostsNotAllowed(hosts)
+                        error: LoadError::SandboxHostsNotAllowed(hosts),
+                        ..
                     } if hosts.iter().any(|host| host.as_ref() == "registry.npmjs.org")
                 )
             })
@@ -6917,7 +7443,8 @@ pub(crate) mod tests {
                 matches!(
                     &view.server_state,
                     ServerState::LoadError {
-                        error: LoadError::SandboxHostsNotAllowed(hosts)
+                        error: LoadError::SandboxHostsNotAllowed(hosts),
+                        ..
                     } if hosts.iter().any(|host| host.as_ref() == "registry.npmjs.org")
                 ),
                 "the card that asks for the hosts must still be there to try again from"

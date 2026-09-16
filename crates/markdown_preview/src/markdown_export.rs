@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::{Context as _, Result, anyhow};
 use fs::{Fs, RemoveOptions};
 use markdown::parser::{
-    Alignment, CodeBlockKind, HeadingLevel, MarkdownEvent, MarkdownTag, MarkdownTagEnd,
-    extract_code_content_range, parse_markdown_events,
+    Alignment, CodeBlockKind, HeadingLevel, InlineHtmlStyle, MarkdownEvent, MarkdownTag,
+    MarkdownTagEnd, extract_code_content_range, parse_markdown_events,
 };
 use util::command::new_command;
 
@@ -467,6 +467,14 @@ fn render_body(source: &str, base_directory: Option<&Path>, output: &mut String)
             MarkdownEvent::Html | MarkdownEvent::InlineHtml => {
                 output.push_str(source.get(range).unwrap_or_default());
             }
+            MarkdownEvent::InlineHtmlStyleStart(style) => output.push_str(match style {
+                InlineHtmlStyle::Underline => "<u>",
+                InlineHtmlStyle::Code => "<code>",
+            }),
+            MarkdownEvent::InlineHtmlStyleEnd(style) => output.push_str(match style {
+                InlineHtmlStyle::Underline => "</u>",
+                InlineHtmlStyle::Code => "</code>",
+            }),
             MarkdownEvent::FootnoteReference(label) => {
                 output.push_str("<sup><a href=\"#fn-");
                 escape_attribute(&label, output);

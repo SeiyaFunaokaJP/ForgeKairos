@@ -863,19 +863,24 @@ fn compile_sandbox_permissions(
 
     let mut write_paths: Vec<settings::GrantedWritePath> = Vec::new();
     for entry in content.write_paths.map(|paths| paths.0).unwrap_or_default() {
-        // Normalize away `..`/`.` before storing, since coverage checks are
-        // purely lexical; drop entries whose requested (or resolved) path
-        // escapes the filesystem root.
-        let Ok(requested) = util::paths::normalize_lexically(&fold_wsl_grant(entry.requested))
-        else {
+        // Normalize away `..`/`.` *before* folding the WSL spelling:
+        // `canonical_wsl_grant_spelling` leaves a path containing `..`
+        // unchanged (ADR-F49 決定 40), so folding first on a path like
+        // `\\wsl$\Ubuntu\home\..\tmp` would be a no-op and only
+        // `normalize_lexically` afterwards would run, leaving the old
+        // `\\wsl$\` spelling stored instead of the folded one. Coverage
+        // checks are purely lexical, so entries whose requested (or
+        // resolved) path escapes the filesystem root are dropped.
+        let Ok(requested) = util::paths::normalize_lexically(&entry.requested) else {
             continue;
         };
+        let requested = fold_wsl_grant(requested);
         let granted = match entry.resolved {
             Some(resolved) => {
-                let Ok(resolved) = util::paths::normalize_lexically(&fold_wsl_grant(resolved))
-                else {
+                let Ok(resolved) = util::paths::normalize_lexically(&resolved) else {
                     continue;
                 };
+                let resolved = fold_wsl_grant(resolved);
                 settings::GrantedWritePath::resolved_on_fs(requested, resolved, entry.on_windows_fs)
             }
             None => settings::GrantedWritePath::from_requested(requested),
@@ -1439,6 +1444,88 @@ mod tests {
                     r"\\wsl.localhost\ubuntu\home\u\build"
                 )),
             ]
+        );
+    }
+
+    /// ADR-F49 決定 40 の残: folding has to run *after* lexical normalization.
+    /// `canonical_wsl_grant_spelling` leaves any path containing `..`
+    /// unchanged, so folding it first on `\\wsl$\Ubuntu\home\..\tmp` is a
+    /// no-op and only `normalize_lexically` afterwards would resolve the
+    /// `..` — leaving the old `\\wsl$\` spelling stored instead of the
+    /// folded one.
+    ///
+    /// `normalize_lexically` reads a path with the host's rules, and only
+    /// Windows splits a `\\server\share\…` spelling into components, so a row
+    /// with a `..` in it is only folded on Windows. Elsewhere the spelling is
+    /// one opaque component and the row stays as it was written — what it did
+    /// before this order change, and no wider than it (a `\\wsl…` row never
+    /// names a place a Unix host can write).
+    #[test]
+    fn test_sandbox_permissions_fold_wsl_grant_with_parent_dir_component() {
+        let json = json!({
+            "write_paths": [
+                r"\\wsl$\Ubuntu\home\..\tmp",
+            ]
+        });
+
+        let content: settings::SandboxPermissionsContent = serde_json::from_value(json).unwrap();
+        let permissions = compile_sandbox_permissions(Some(content));
+
+        let expected = if cfg!(target_os = "windows") {
+            r"\\wsl.localhost\ubuntu\tmp"
+        } else {
+            r"\\wsl$\Ubuntu\home\..\tmp"
+        };
+        assert_eq!(
+            permissions.write_paths,
+            vec![settings::GrantedWritePath::from_requested(PathBuf::from(
+                expected
+            ))]
+        );
+    }
+
+    /// ADR-F49 決定 40 の残: normalizing before folding must not let a `..`
+    /// carry a grant out of the distribution it was approved in. Each of these
+    /// leaves that distribution's root — into a second distribution, into the
+    /// share root, or above it — so `normalize_lexically` refuses it and the
+    /// row is dropped, exactly as it was when folding ran first. Windows only:
+    /// elsewhere the spelling is one opaque component, stored unchanged.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_sandbox_permissions_drops_wsl_grants_leaving_their_distribution() {
+        for escaping in [
+            r"\\wsl$\Ubuntu\..\Debian\home",
+            r"\\wsl$\Ubuntu\..\..",
+            r"\\wsl.localhost\Ubuntu\home\..\..\..\etc",
+            r"\\wsl.localhost\Ubuntu\home\u\..\..\..\Debian\home\u",
+        ] {
+            let json = json!({ "write_paths": [escaping] });
+            let content: settings::SandboxPermissionsContent =
+                serde_json::from_value(json).unwrap();
+
+            assert_eq!(
+                compile_sandbox_permissions(Some(content)).write_paths,
+                vec![],
+                "{escaping}"
+            );
+        }
+    }
+
+    /// ADR-F49 決定 40: a `..` that only walks back to the distribution's own
+    /// root leaves a bare share, which `canonical_wsl_grant_spelling` does not
+    /// fold, so the row keeps naming that root in the spelling it was written
+    /// in — it never turns into a grant on a different distribution.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_sandbox_permissions_keeps_wsl_distribution_root_unfolded() {
+        let json = json!({ "write_paths": [r"\\wsl$\Ubuntu\home\.."] });
+        let content: settings::SandboxPermissionsContent = serde_json::from_value(json).unwrap();
+
+        assert_eq!(
+            compile_sandbox_permissions(Some(content)).write_paths,
+            vec![settings::GrantedWritePath::from_requested(PathBuf::from(
+                r"\\wsl$\Ubuntu\"
+            ))]
         );
     }
 

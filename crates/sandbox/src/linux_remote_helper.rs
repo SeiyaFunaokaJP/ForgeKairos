@@ -3373,7 +3373,7 @@ fn is_an_address_of_this_host(address: std::net::IpAddr) -> bool {
 /// [`PublicAddressesOnly`] for an any-host grant that no editor-wide allowlist
 /// caps, because `Allowlist::any()` on its own waives the proxy's filter on
 /// local addresses.
-fn any_host_policy(
+pub(crate) fn any_host_policy(
     network: &RemoteSandboxNetwork,
     network_ceiling: Option<&Arc<crate::EditorAllowlistCeiling>>,
 ) -> Option<Arc<dyn http_proxy::DestinationPolicy>> {

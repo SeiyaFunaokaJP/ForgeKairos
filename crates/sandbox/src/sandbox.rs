@@ -231,6 +231,17 @@ pub fn set_network_ceiling(policy: Option<Arc<dyn DestinationPolicy>>) {
         .unwrap_or_else(|error| error.into_inner()) = policy;
 }
 
+/// Whether this process has published a ceiling at all.
+///
+/// For a caller whose grant *is* the ceiling — "this command may reach whatever
+/// the editor may", which is [`SandboxNetPolicy::Unrestricted`] plus a ceiling
+/// to do the deciding — the question has to be asked before the policy is
+/// built: those same words in a process that published none (an embedder, a
+/// test) say "no restriction at all", which is the opposite of what was meant.
+pub fn network_ceiling_published() -> bool {
+    network_ceiling().is_some()
+}
+
 fn network_ceiling() -> Option<Arc<dyn DestinationPolicy>> {
     NETWORK_CEILING
         .read()
@@ -2783,7 +2794,7 @@ mod editor_allowlist_ceiling_tests {
 /// [`Sandbox::ensure_restricted_proxy`] reads it per proxy.
 #[cfg(not(target_os = "windows"))]
 fn unrestricted_is_capped_by_ceiling() -> bool {
-    network_ceiling().is_some()
+    network_ceiling_published()
 }
 
 /// Turn a [`SandboxNetPolicy::Unrestricted`] grant into a plan.
@@ -3761,6 +3772,14 @@ mod tests {
     /// The ADR-F17 hole: an `allow_all_hosts` grant used to skip the proxy
     /// entirely, which meant the editor-wide allowlist never got to see the
     /// command's traffic. It has to be proxied like any other grant.
+    ///
+    /// The decision is made in two places — here for a command this process
+    /// runs, and in the helper's own proxy for one inside WSL or on an SSH host
+    /// — and under a ceiling the two have to agree, or the same grant would
+    /// reach different hosts depending on where the project lives. Both leave
+    /// the ceiling deciding alone, loopback and private addresses included:
+    /// what makes a local model server the user listed reachable from every
+    /// backend (ADR-F17, the accepted side effect of the ceiling).
     #[test]
     fn unrestricted_network_is_proxied_so_the_ceiling_still_applies() {
         with_ceiling(Some(Arc::new(TestCeiling)), || {
@@ -3775,16 +3794,41 @@ mod tests {
                 }
             }
         });
+        #[cfg(target_os = "linux")]
+        {
+            let ceiling = Arc::new(
+                EditorAllowlistCeiling::parse(&["example.com".to_string()])
+                    .expect("valid allowlist entries"),
+            );
+            assert!(
+                linux_remote_helper::any_host_policy(
+                    &RemoteSandboxNetwork::AnyHost,
+                    Some(&ceiling)
+                )
+                .is_none(),
+                "the helper's proxy leaves a capped any-host grant to the ceiling as well"
+            );
+        }
     }
 
     /// No ceiling, nothing to enforce: proxying would only narrow the grant to
     /// HTTP(S) for no benefit, so this stays the raw network it always was.
+    ///
+    /// This is where the backends deliberately part company. A helper's proxy
+    /// is there either way — the command's network namespace has no other way
+    /// out — so an uncapped any-host grant is still judged there, and falls
+    /// back to public addresses only rather than to the host's own services.
     #[test]
     fn unrestricted_network_stays_unproxied_when_no_ceiling_is_published() {
         with_ceiling(None, || {
             let sandbox = unrestricted_network_sandbox();
             assert!(matches!(&sandbox.network, NetSetup::Unrestricted));
         });
+        #[cfg(target_os = "linux")]
+        assert!(
+            linux_remote_helper::any_host_policy(&RemoteSandboxNetwork::AnyHost, None).is_some(),
+            "an uncapped any-host grant in the helper is limited to public addresses"
+        );
     }
 
     #[test]

@@ -1,7 +1,9 @@
 pub mod fs_watcher;
 pub mod verified_write;
 
-pub use fs_watcher::{path_is_on_wsl_share, requires_poll_watcher};
+pub use fs_watcher::{
+    note_watch_root, path_is_on_wsl_share, requires_poll_watcher, requires_poll_watcher_for_root,
+};
 pub use verified_write::VerifiedWriteError;
 
 use parking_lot::Mutex;
@@ -1196,6 +1198,18 @@ impl Fs for RealFs {
             tx.clone(),
             pending_paths.clone(),
         ));
+
+        // `path` is this watch's root, and it is the one path followed through its junctions
+        // and its directory symbolic links (ADR-F49 決定 44): everything registered below it
+        // then answers from where the root led, without an open of its own. Following it is a
+        // blocking open, and some callers await this future on the foreground thread
+        // (`git_store` watches `~/.gitconfig` that way), so it is done on the executor.
+        executor
+            .spawn({
+                let path = path.to_path_buf();
+                async move { fs_watcher::note_watch_root(&path) }
+            })
+            .await;
 
         if let Err(e) = watcher.add(path) {
             log::warn!("Failed to watch {}:\n{e}", path.display());

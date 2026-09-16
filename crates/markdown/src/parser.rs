@@ -729,7 +729,9 @@ pub(crate) fn parse_markdown_with_options(
     }
 
     if parse_html {
-        link_html_details_spans(&mut html_blocks, &state.root_block_starts);
+        style_inline_html_tags(&mut state.events, text);
+        html::html_parser::assign_details_ordinals(&mut html_blocks);
+        link_html_details_spans(&mut html_blocks, &state.events);
     }
 
     let heading_slugs = if parse_heading_slugs {
@@ -758,7 +760,7 @@ pub(crate) fn parse_markdown_with_options(
 /// body as ordinary markdown, and `</details>` as a block of its own.
 fn link_html_details_spans(
     html_blocks: &mut BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
-    root_block_starts: &[usize],
+    events: &[(Range<usize>, MarkdownEvent)],
 ) {
     let mut open_block_starts = Vec::new();
     let mut spans = Vec::new();
@@ -779,17 +781,239 @@ fn link_html_details_spans(
     // is paired with; the last one wins, which is the outermost disclosure's own
     // `</details>` and so the furthest the renderer may have to skip.
     for (open_start, close_start) in spans {
-        let close_root_block_start = root_block_starts
-            .iter()
-            .rev()
-            .find(|start| **start <= close_start)
-            .copied()
-            .unwrap_or(close_start);
+        let Some(hidden_events) = html_details_body_events(events, open_start, close_start) else {
+            continue;
+        };
 
         if let Some(block) = html_blocks.get_mut(&open_start) {
-            block.details_span = Some(html::html_parser::HtmlDetailsSpan {
-                close_root_block_start,
-            });
+            block.details_span = Some(html::html_parser::HtmlDetailsSpan { hidden_events });
+        }
+    }
+}
+
+/// The events between an opening `<details>` block and the block that closes it,
+/// trimmed to the last point where the nesting is back where it started. A
+/// disclosure inside a list item or a block quote shares its container with the
+/// text around it, so the body cannot be cut at a root block boundary; skipping
+/// an unbalanced run would instead leave the renderer's div stack short of a
+/// `pop` and misplace everything after it.
+fn html_details_body_events(
+    events: &[(Range<usize>, MarkdownEvent)],
+    open_block_start: usize,
+    close_block_start: usize,
+) -> Option<Range<usize>> {
+    let open_end = events.iter().position(|(range, event)| {
+        range.start == open_block_start
+            && matches!(event, MarkdownEvent::End(MarkdownTagEnd::HtmlBlock))
+    })?;
+    let mut start = open_end + 1;
+    // The opening block's own root block has to be popped, so the body starts
+    // after it rather than at the block's end.
+    if matches!(events.get(start), Some((_, MarkdownEvent::RootEnd(_)))) {
+        start += 1;
+    }
+
+    let mut index = start;
+    let mut balanced_end = start;
+    let mut depth = 0usize;
+    let mut root_depth = 0usize;
+
+    while let Some((range, event)) = events.get(index) {
+        if depth == 0 && root_depth == 0 && range.start >= close_block_start {
+            break;
+        }
+        match event {
+            MarkdownEvent::Start(_) => depth += 1,
+            MarkdownEvent::End(_) => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            }
+            MarkdownEvent::RootStart => root_depth += 1,
+            MarkdownEvent::RootEnd(_) => {
+                if root_depth == 0 {
+                    break;
+                }
+                root_depth -= 1;
+            }
+            _ => {}
+        }
+        index += 1;
+        if depth == 0 && root_depth == 0 {
+            balanced_end = index;
+        }
+    }
+
+    (start < balanced_end).then_some(start..balanced_end)
+}
+
+/// The inline HTML tags a plain paragraph may carry that the preview can style
+/// instead of dropping. `<b>text</b>` reaches the renderer as two empty
+/// substitutions around the text, which used to leave the text unstyled.
+fn inline_html_style_tag(html: &str) -> Option<(&'static str, bool)> {
+    let inner = html
+        .trim()
+        .strip_prefix('<')
+        .and_then(|tag| tag.strip_suffix('>'))?;
+    if inner.ends_with('/') {
+        return None;
+    }
+    let (inner, closing) = match inner.strip_prefix('/') {
+        Some(inner) => (inner, true),
+        None => (inner, false),
+    };
+
+    let name = inner.split_ascii_whitespace().next()?.to_ascii_lowercase();
+    let name = match name.as_str() {
+        "b" | "strong" => "strong",
+        "i" | "em" => "em",
+        "s" | "del" | "strike" => "del",
+        "u" | "ins" => "u",
+        "code" | "kbd" | "samp" | "tt" | "var" => "code",
+        "sub" => "sub",
+        "sup" => "sup",
+        _ => return None,
+    };
+
+    Some((name, closing))
+}
+
+fn inline_html_style_events(name: &str) -> Option<(MarkdownEvent, MarkdownEvent)> {
+    Some(match name {
+        "strong" => (
+            MarkdownEvent::Start(MarkdownTag::Strong),
+            MarkdownEvent::End(MarkdownTagEnd::Strong),
+        ),
+        "em" => (
+            MarkdownEvent::Start(MarkdownTag::Emphasis),
+            MarkdownEvent::End(MarkdownTagEnd::Emphasis),
+        ),
+        "del" => (
+            MarkdownEvent::Start(MarkdownTag::Strikethrough),
+            MarkdownEvent::End(MarkdownTagEnd::Strikethrough),
+        ),
+        "u" => (
+            MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Underline),
+            MarkdownEvent::InlineHtmlStyleEnd(InlineHtmlStyle::Underline),
+        ),
+        "code" => (
+            MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Code),
+            MarkdownEvent::InlineHtmlStyleEnd(InlineHtmlStyle::Code),
+        ),
+        _ => return None,
+    })
+}
+
+/// Styles the inline formatting tags of ordinary paragraphs, which the HTML
+/// block path has been styling since the disclosures landed. Only properly
+/// nested pairs are rewritten: an unmatched tag keeps being dropped, so the
+/// events stay balanced and the renderer's style stack cannot drift.
+fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &str) {
+    let mut open: Vec<(&'static str, usize, usize)> = Vec::new();
+    let mut pairs = Vec::new();
+    let mut depth = 0usize;
+
+    for index in 0..events.len() {
+        let Some((range, event)) = events.get(index) else {
+            break;
+        };
+
+        let is_dropped_tag = match event {
+            MarkdownEvent::SubstitutedText(substituted) => substituted.is_empty(),
+            MarkdownEvent::InlineHtml => true,
+            MarkdownEvent::Start(_) => {
+                depth += 1;
+                false
+            }
+            MarkdownEvent::End(_) => {
+                depth = depth.saturating_sub(1);
+                open.retain(|(_, _, tag_depth)| *tag_depth <= depth);
+                false
+            }
+            _ => false,
+        };
+
+        if !is_dropped_tag {
+            continue;
+        }
+
+        let Some((name, closing)) = text
+            .get(range.clone())
+            .and_then(|html| inline_html_style_tag(html))
+        else {
+            continue;
+        };
+
+        if closing {
+            if open.last().is_some_and(|(open_name, _, open_depth)| {
+                *open_name == name && *open_depth == depth
+            }) && let Some((name, open_index, _)) = open.pop()
+            {
+                pairs.push((name, open_index, index));
+            }
+        } else {
+            open.push((name, index, depth));
+        }
+    }
+
+    for (name, open_index, close_index) in pairs {
+        let Some(open_range) = events.get(open_index).map(|(range, _)| range.clone()) else {
+            continue;
+        };
+        let Some(close_range) = events.get(close_index).map(|(range, _)| range.clone()) else {
+            continue;
+        };
+        // Both ends carry the whole span the way pulldown's own emphasis events
+        // do, so copying part of it still re-adds the tags around the selection.
+        let span = open_range.start..close_range.end;
+
+        if let Some((start_event, end_event)) = inline_html_style_events(name) {
+            if let Some(event) = events.get_mut(open_index) {
+                *event = (span.clone(), start_event);
+            }
+            if let Some(event) = events.get_mut(close_index) {
+                *event = (span, end_event);
+            }
+        } else {
+            substitute_unicode_script(events, name, open_index, close_index, text);
+        }
+    }
+}
+
+/// Rewrites `<sub>`/`<sup>` contents to the matching Unicode characters, the
+/// only way the preview can show them smaller: a line is laid out at a single
+/// font size, so a run cannot shrink or leave the baseline on its own.
+fn substitute_unicode_script(
+    events: &mut [(Range<usize>, MarkdownEvent)],
+    name: &str,
+    open_index: usize,
+    close_index: usize,
+    text: &str,
+) {
+    // Every event keeps the characters that came from its own source range, and
+    // the mapping is one character for one character, so each is rewritten on
+    // its own. Anything that is not plain text, or that Unicode has no
+    // character for, leaves the whole span alone.
+    let mut substitutions = Vec::new();
+    for index in open_index + 1..close_index {
+        let Some((range, event)) = events.get(index) else {
+            return;
+        };
+        let contents = match event {
+            MarkdownEvent::Text => text.get(range.clone()).unwrap_or_default(),
+            MarkdownEvent::SubstitutedText(substituted) => substituted.as_str(),
+            _ => return,
+        };
+        let Some(substituted) = html::html_parser::unicode_script_for_tag(contents, name) else {
+            return;
+        };
+        substitutions.push((index, substituted));
+    }
+
+    for (index, substituted) in substitutions {
+        if let Some((_, event)) = events.get_mut(index) {
+            *event = MarkdownEvent::SubstitutedText(substituted);
         }
     }
 }
@@ -880,6 +1104,11 @@ pub enum MarkdownEvent {
     Html,
     /// An inline HTML node.
     InlineHtml,
+    /// Start of an inline HTML formatting span that markdown has no tag of its
+    /// own for, such as `<u>` or `<kbd>`. Both ends carry the whole span's range.
+    InlineHtmlStyleStart(InlineHtmlStyle),
+    /// End of an [`MarkdownEvent::InlineHtmlStyleStart`] span.
+    InlineHtmlStyleEnd(InlineHtmlStyle),
     /// A reference to a footnote with given label, which may or may not be defined
     /// by an event with a `Tag::FootnoteDefinition` tag. Definitions and references to them may
     /// occur in any order.
@@ -896,6 +1125,15 @@ pub enum MarkdownEvent {
     RootStart,
     /// End of a root-level block. Contains the root block index.
     RootEnd(usize),
+}
+
+/// Text styles an inline HTML tag can ask for that markdown itself cannot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InlineHtmlStyle {
+    /// `<u>` and `<ins>`.
+    Underline,
+    /// `<code>` and the other monospace tags.
+    Code,
 }
 
 /// Tags for elements that can contain other elements.
@@ -2005,10 +2243,10 @@ mod tests {
         let parsed = parse_markdown_with_options("<code>x</code>", true, false, false);
 
         assert!(
-            parsed
-                .events
-                .iter()
-                .any(|(_, event)| matches!(event, MarkdownEvent::InlineHtml)),
+            parsed.events.iter().any(|(_, event)| matches!(
+                event,
+                MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Code)
+            )),
             "<code> is turned into a code span by the renderer: {:?}",
             parsed.events
         );
@@ -2025,16 +2263,335 @@ mod tests {
         let span = parsed
             .html_blocks
             .get(&0)
-            .and_then(|block| block.details_span)
+            .and_then(|block| block.details_span.clone())
             .expect("the opening block should be linked to the closing one");
 
-        assert_eq!(span.close_root_block_start, close_start);
+        let hidden = parsed
+            .events
+            .get(span.hidden_events)
+            .expect("the hidden events should be inside the event list");
+        assert!(
+            hidden
+                .iter()
+                .any(|(range, event)| matches!(event, MarkdownEvent::Text)
+                    && source.get(range.clone()) == Some("本文")),
+            "the body should be hidden: {hidden:?}"
+        );
+        assert!(
+            hidden.iter().all(|(range, _)| range.start < close_start),
+            "nothing from the closing block should be hidden: {hidden:?}"
+        );
         assert!(
             parsed
                 .html_blocks
                 .get(&close_start)
                 .is_some_and(|block| block.unmatched_details_closes == 1)
         );
+    }
+
+    #[test]
+    fn test_inline_html_formatting_is_styled_in_a_plain_paragraph() {
+        let source = "a <b>bold</b> <u>under</u> <kbd>K</kbd> <del>gone</del> <i>it</i>";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+        let events = parsed
+            .events
+            .iter()
+            .map(|(_, event)| event.clone())
+            .collect::<Vec<_>>();
+
+        for expected in [
+            MarkdownEvent::Start(MarkdownTag::Strong),
+            MarkdownEvent::End(MarkdownTagEnd::Strong),
+            MarkdownEvent::Start(MarkdownTag::Strikethrough),
+            MarkdownEvent::Start(MarkdownTag::Emphasis),
+            MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Underline),
+            MarkdownEvent::InlineHtmlStyleEnd(InlineHtmlStyle::Underline),
+            MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Code),
+            MarkdownEvent::InlineHtmlStyleEnd(InlineHtmlStyle::Code),
+        ] {
+            assert!(
+                events.contains(&expected),
+                "{expected:?} is missing from {events:?}"
+            );
+        }
+
+        // Both ends carry the whole span, the way pulldown spells its own
+        // emphasis, so a selection that cuts through it can be rebalanced.
+        let strong = parsed
+            .events
+            .iter()
+            .find(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Strong)))
+            .map(|(range, _)| range.clone())
+            .expect("the bold span should be styled");
+        assert_eq!(&source[strong], "<b>bold</b>");
+    }
+
+    #[test]
+    fn test_unbalanced_inline_html_formatting_is_still_dropped() {
+        for source in ["a <b>bold", "a </b> b", "a <b>x</i> b"] {
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            assert!(
+                !parsed
+                    .events
+                    .iter()
+                    .any(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Strong))),
+                "{source} has no balanced pair to style: {:?}",
+                parsed.events
+            );
+            let starts = parsed
+                .events
+                .iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::Start(_)))
+                .count();
+            let ends = parsed
+                .events
+                .iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::End(_)))
+                .count();
+            assert_eq!(starts, ends, "{source} should keep its events balanced");
+        }
+    }
+
+    #[test]
+    fn test_inline_html_styling_only_looks_at_real_tags() {
+        let strong_spans = |source: &str| {
+            parse_markdown_with_options(source, true, false, false)
+                .events
+                .into_iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Strong)))
+                .count()
+        };
+
+        // Attributes, casing and a `<br>` in the middle all still describe the
+        // same pair of tags.
+        assert_eq!(strong_spans("a <b class=\"x\">y</b>"), 1);
+        assert_eq!(strong_spans("a <B>y</B>"), 1);
+        assert_eq!(strong_spans("a <b>y<br>z</b>"), 1);
+        assert_eq!(strong_spans("a <b><b>y</b></b>"), 2);
+
+        // A tag that is only ever text: inside a code span, inside a fence, or
+        // inside a comment. Styling any of them would eat the text around it.
+        assert_eq!(strong_spans("a `<b>y</b>` z"), 0);
+        assert_eq!(strong_spans("```\n<b>y</b>\n```\n"), 0);
+        assert_eq!(strong_spans("a <!-- <b> --> y <!-- </b> --> z"), 0);
+        assert_eq!(strong_spans("a <br> y"), 0);
+
+        // A pair that starts inside a link's text and ends outside it would
+        // cross the link's own events.
+        assert_eq!(strong_spans("[a <b>x](https://example.com) y</b> z"), 0);
+        assert_eq!(strong_spans("[a <b>x</b>](https://example.com)"), 1);
+    }
+
+    #[test]
+    fn test_inline_html_formatting_does_not_cross_a_block_boundary() {
+        // The `<b>` ends with the first paragraph, so pairing it with the
+        // `</b>` of the second would leave the renderer's style stack crossed.
+        let parsed = parse_markdown_with_options("a <b>x\n\ny</b> b", true, false, false);
+        assert!(
+            !parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Strong))),
+            "{:?}",
+            parsed.events
+        );
+    }
+
+    #[test]
+    fn test_sub_and_sup_in_a_paragraph_use_unicode_characters() {
+        let parsed =
+            parse_markdown_with_options("H<sub>2</sub>O x<sup>2</sup>", true, false, false);
+        let substituted = parsed
+            .events
+            .iter()
+            .filter_map(|(_, event)| match event {
+                MarkdownEvent::SubstitutedText(text) if !text.is_empty() => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            substituted,
+            vec!["\u{2082}".to_string(), "\u{b2}".to_string()]
+        );
+
+        let unmapped = parse_markdown_with_options("a<sub>zz</sub>", true, false, false);
+        assert!(
+            !unmapped.events.iter().any(|(_, event)| matches!(
+                event,
+                MarkdownEvent::SubstitutedText(text) if !text.is_empty()
+            )),
+            "Unicode has no subscript for those letters: {:?}",
+            unmapped.events
+        );
+    }
+
+    #[test]
+    fn test_details_inside_a_list_item_hides_only_its_own_body() {
+        let source = "- item\n\n  <details>\n  <summary>\u{984c}</summary>\n\n  \u{672c}\u{6587}\n\n  </details>\n\n\u{5f8c}\u{308d}\n";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+
+        let open_start = source.find("<details>").expect("the opening tag is there");
+        let span = parsed
+            .html_blocks
+            .get(&open_start)
+            .and_then(|block| block.details_span.clone())
+            .expect("a disclosure inside a list item should still be linked");
+
+        let hidden = parsed
+            .events
+            .get(span.hidden_events)
+            .expect("the hidden events should be inside the event list");
+        let hidden_text = |needle: &str| {
+            hidden.iter().any(|(range, event)| {
+                matches!(event, MarkdownEvent::Text) && source.get(range.clone()) == Some(needle)
+            })
+        };
+        assert!(hidden_text("\u{672c}\u{6587}"), "{hidden:?}");
+        assert!(!hidden_text("\u{5f8c}\u{308d}"), "{hidden:?}");
+
+        let starts = hidden
+            .iter()
+            .filter(|(_, event)| matches!(event, MarkdownEvent::Start(_)))
+            .count();
+        let ends = hidden
+            .iter()
+            .filter(|(_, event)| matches!(event, MarkdownEvent::End(_)))
+            .count();
+        assert_eq!(
+            starts, ends,
+            "the hidden run has to be balanced or the div stack breaks: {hidden:?}"
+        );
+    }
+
+    #[test]
+    fn test_details_inside_a_block_quote_hides_only_its_own_body() {
+        let source = "> <details>\n> <summary>\u{984c}</summary>\n>\n> \u{672c}\u{6587}\n>\n> </details>\n\n\u{5f8c}\u{308d}\n";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+
+        let open_start = source.find("<details>").expect("the opening tag is there");
+        let span = parsed
+            .html_blocks
+            .get(&open_start)
+            .and_then(|block| block.details_span.clone())
+            .expect("a disclosure inside a block quote should still be linked");
+
+        let hidden = parsed
+            .events
+            .get(span.hidden_events)
+            .expect("the hidden events should be inside the event list");
+        let hidden_text = |needle: &str| {
+            hidden.iter().any(|(range, event)| {
+                matches!(event, MarkdownEvent::Text) && source.get(range.clone()) == Some(needle)
+            })
+        };
+        assert!(hidden_text("\u{672c}\u{6587}"), "{hidden:?}");
+        assert!(!hidden_text("\u{5f8c}\u{308d}"), "{hidden:?}");
+    }
+
+    #[test]
+    fn test_details_body_events_survive_the_inline_html_rewrite() {
+        // `hidden_events` is an index range, so anything that adds or drops an
+        // event after it is measured would hide the wrong run. The inline
+        // formatting tags before, inside and after the disclosure all go through
+        // that rewrite, in a list item where the body cannot be cut at a root
+        // block boundary.
+        let source = "a <b>\u{592a}\u{5b57}</b>\n\n- item\n\n  <details>\n  <summary>\u{984c}</summary>\n\n  \u{672c}\u{6587} <u>\u{4e0b}\u{7dda}</u>\n\n  </details>\n\n\u{5f8c}\u{308d} <i>\u{659c}\u{4f53}</i>\n";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+
+        let open_start = source.find("<details>").expect("the opening tag is there");
+        let close_start = source.find("</details>").expect("the closing tag is there");
+        let span = parsed
+            .html_blocks
+            .get(&open_start)
+            .and_then(|block| block.details_span.clone())
+            .expect("the disclosure should be linked to its closing block");
+        let hidden = parsed
+            .events
+            .get(span.hidden_events)
+            .expect("the hidden events should be inside the event list");
+
+        assert!(
+            hidden
+                .iter()
+                .all(|(range, _)| range.start >= open_start && range.start < close_start),
+            "only the disclosure's own body may be hidden: {hidden:?}"
+        );
+        let hidden_has = |wanted: &MarkdownEvent| hidden.iter().any(|(_, event)| event == wanted);
+        assert!(
+            hidden_has(&MarkdownEvent::InlineHtmlStyleStart(
+                InlineHtmlStyle::Underline
+            )),
+            "the body's own `<u>` belongs to the hidden run: {hidden:?}"
+        );
+        assert!(
+            !hidden_has(&MarkdownEvent::Start(MarkdownTag::Strong))
+                && !hidden_has(&MarkdownEvent::Start(MarkdownTag::Emphasis)),
+            "the paragraphs around the disclosure stay visible: {hidden:?}"
+        );
+
+        let balance = |wanted_start: fn(&MarkdownEvent) -> bool,
+                       wanted_end: fn(&MarkdownEvent) -> bool| {
+            hidden
+                .iter()
+                .filter(|(_, event)| wanted_start(event))
+                .count() as isize
+                - hidden.iter().filter(|(_, event)| wanted_end(event)).count() as isize
+        };
+        assert_eq!(
+            balance(
+                |event| matches!(event, MarkdownEvent::Start(_)),
+                |event| matches!(event, MarkdownEvent::End(_))
+            ),
+            0,
+            "an unbalanced run would leave the renderer's div stack short: {hidden:?}"
+        );
+        assert_eq!(
+            balance(
+                |event| matches!(event, MarkdownEvent::RootStart),
+                |event| matches!(event, MarkdownEvent::RootEnd(_))
+            ),
+            0,
+            "an unbalanced run would leave the renderer's div stack short: {hidden:?}"
+        );
+    }
+
+    #[test]
+    fn test_crossed_inline_html_tags_stay_properly_nested() {
+        // Equal counts are not enough: `<b>` and `<i>` that cross would pair
+        // into interleaved spans, and the renderer pops the style stack blindly.
+        // `Strong` and `Strong`, `Heading(H1)` and `Heading`: the variant name is
+        // the only spelling the two tag enums share.
+        let variant_name = |tag: String| {
+            tag.split(['(', ' ', '{'])
+                .next()
+                .unwrap_or_default()
+                .to_string()
+        };
+        for source in [
+            "a <b>x<i>y</b>z</i> b",
+            "a <b>x\n\ny</b> b",
+            "- <b>x\n- y</b>\n",
+            "> <b>x\n\n<i>y</b> z</i>\n",
+        ] {
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let mut stack = Vec::new();
+            for (_, event) in parsed.events.iter() {
+                match event {
+                    MarkdownEvent::Start(tag) => stack.push(variant_name(format!("{tag:?}"))),
+                    MarkdownEvent::End(tag) => {
+                        let opened = stack.pop().expect("an End without a Start");
+                        assert_eq!(
+                            opened,
+                            variant_name(format!("{tag:?}")),
+                            "{source:?}: {opened} was closed by {tag:?}: {:?}",
+                            parsed.events
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            assert!(stack.is_empty(), "{source:?} left {stack:?} open");
+        }
     }
 
     #[test]

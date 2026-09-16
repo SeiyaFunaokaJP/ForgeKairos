@@ -862,6 +862,7 @@ impl ThreadView {
         code_span_resolver: AgentCodeSpanResolver,
         thread_store: Option<Entity<ThreadStore>>,
         initial_content: Option<AgentInitialContent>,
+        adopted_draft: Option<AdoptedDraft>,
         mut subscriptions: Vec<Subscription>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -875,50 +876,69 @@ impl ThreadView {
         let mut should_auto_submit = false;
         let mut show_external_source_prompt_warning = false;
 
-        let message_editor = cx.new(|cx| {
-            let mut editor = MessageEditor::new(
-                workspace.clone(),
-                project.clone(),
-                thread_store,
-                session_capabilities.clone(),
-                agent_id.clone(),
-                &placeholder,
-                editor::EditorMode::AutoHeight {
-                    min_lines: AgentSettings::get_global(cx).message_editor_min_lines,
-                    max_lines: Some(AgentSettings::get_global(cx).set_message_editor_max_lines()),
-                },
-                window,
-                cx,
-            );
-            if let Some(content) = initial_content {
-                match content {
-                    AgentInitialContent::ThreadSummary { session_id, title } => {
-                        editor.insert_thread_summary(session_id, title, window, cx);
-                    }
-                    AgentInitialContent::ContentBlock {
-                        blocks,
-                        auto_submit,
-                    } => {
-                        should_auto_submit = auto_submit;
-                        editor.set_message(blocks, window, cx);
-                    }
-                    AgentInitialContent::FromExternalSource(prompt) => {
-                        show_external_source_prompt_warning = true;
-                        // SECURITY: Be explicit about not auto submitting prompt from external source.
-                        should_auto_submit = false;
-                        editor.set_message(
-                            vec![acp::ContentBlock::Text(acp::TextContent::new(
-                                prompt.into_string(),
-                            ))],
-                            window,
-                            cx,
-                        );
-                    }
-                }
-            } else if let Some(draft) = thread.read(cx).draft_prompt() {
-                editor.set_message(draft.to_vec(), window, cx);
-            }
+        // ADR-F49 (new decision): a draft that was parked while its agent was
+        // idle comes back into the box it was written in rather than a new
+        // one, so the text, the mentions and the caret are where the user left
+        // them. What it does need is this session's capabilities: the editor
+        // was last told about a connection that is gone.
+        let adopted_editor = adopted_draft.map(|adopted| {
+            should_auto_submit = adopted.auto_submit;
+            let editor = adopted.editor;
+            editor.update(cx, |editor, cx| {
+                editor.set_session_capabilities(session_capabilities.clone(), cx);
+                editor.set_placeholder_text(&placeholder, window, cx);
+            });
             editor
+        });
+
+        let message_editor = adopted_editor.unwrap_or_else(|| {
+            cx.new(|cx| {
+                let mut editor = MessageEditor::new(
+                    workspace.clone(),
+                    project.clone(),
+                    thread_store,
+                    session_capabilities.clone(),
+                    agent_id.clone(),
+                    &placeholder,
+                    editor::EditorMode::AutoHeight {
+                        min_lines: AgentSettings::get_global(cx).message_editor_min_lines,
+                        max_lines: Some(
+                            AgentSettings::get_global(cx).set_message_editor_max_lines(),
+                        ),
+                    },
+                    window,
+                    cx,
+                );
+                if let Some(content) = initial_content {
+                    match content {
+                        AgentInitialContent::ThreadSummary { session_id, title } => {
+                            editor.insert_thread_summary(session_id, title, window, cx);
+                        }
+                        AgentInitialContent::ContentBlock {
+                            blocks,
+                            auto_submit,
+                        } => {
+                            should_auto_submit = auto_submit;
+                            editor.set_message(blocks, window, cx);
+                        }
+                        AgentInitialContent::FromExternalSource(prompt) => {
+                            show_external_source_prompt_warning = true;
+                            // SECURITY: Be explicit about not auto submitting prompt from external source.
+                            should_auto_submit = false;
+                            editor.set_message(
+                                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                                    prompt.into_string(),
+                                ))],
+                                window,
+                                cx,
+                            );
+                        }
+                    }
+                } else if let Some(draft) = thread.read(cx).draft_prompt() {
+                    editor.set_message(draft.to_vec(), window, cx);
+                }
+                editor
+            })
         });
 
         let show_codex_windows_warning = cfg!(windows)
