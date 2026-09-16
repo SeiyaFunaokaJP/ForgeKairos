@@ -1549,6 +1549,68 @@ mod tests {
         });
     }
 
+    /// A diagram wider than the preview keeps its natural size, so it overflows
+    /// the scroll container ([`mermaid_scroll_container`]) rather than being
+    /// shrunk to fit. Fitting the whole diagram into the width stays an
+    /// explicit zoom gesture, because a wide diagram scaled down is unreadable.
+    #[gpui::test]
+    fn test_wide_diagram_starts_at_its_natural_size(cx: &mut TestAppContext) {
+        ensure_theme_initialized(cx);
+
+        let markdown = cx.new(|cx| Markdown::new("".into(), None, None, cx));
+        let (parsed_svg, image) = markdown.update(cx, |_, cx| {
+            let svg_renderer = cx.svg_renderer();
+            let parsed_svg = Arc::new(
+                svg_renderer
+                    .parse_svg(
+                        br#"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="100"></svg>"#,
+                    )
+                    .unwrap(),
+            );
+            let image = svg_renderer.render_parsed(&parsed_svg, 1.0).unwrap();
+            (parsed_svg, image)
+        });
+
+        let contents = mermaid_contents("graph A");
+        let source_offset = 0;
+        markdown.update(cx, |markdown, cx| {
+            markdown.parsed_markdown.mermaid_diagrams.insert(
+                source_offset,
+                ParsedMarkdownMermaidDiagram {
+                    content_range: 0..contents.contents.len(),
+                    contents: contents.clone(),
+                },
+            );
+            markdown.mermaid_state.cache.insert(
+                contents.clone(),
+                Arc::new(CachedMermaidDiagram::new_for_test(
+                    Some(image),
+                    None,
+                    Some(parsed_svg),
+                )),
+            );
+            markdown
+                .mermaid_views
+                .entry(source_offset)
+                .or_default()
+                .container_width_for_test = Some(px(200.));
+
+            // Without this the assertions below would hold for a diagram that
+            // already fits, and would say nothing about the wide case.
+            assert_eq!(
+                markdown.mermaid_min_zoom_level(source_offset),
+                0.25,
+                "the diagram must be four times the container width"
+            );
+            assert_eq!(
+                markdown.effective_mermaid_zoom_level(source_offset, cx),
+                1.0,
+                "a diagram four times the container width must not be shrunk to fit"
+            );
+            assert_eq!(markdown.mermaid_zoom_level(source_offset), 1.0);
+        });
+    }
+
     #[gpui::test]
     fn test_mermaid_zoom_to_fit_tracks_container_width(cx: &mut TestAppContext) {
         ensure_theme_initialized(cx);

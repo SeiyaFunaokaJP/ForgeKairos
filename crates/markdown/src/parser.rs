@@ -230,6 +230,51 @@ fn is_br_tag(html: &str) -> bool {
         .is_some_and(|name| name.eq_ignore_ascii_case("br"))
 }
 
+/// Formatting tags that contribute no text of their own, such as `<kbd>` or
+/// `<sup>`. The text-merging path already drops them once a paragraph has
+/// started, so matching that here keeps a tag that opens a paragraph from
+/// showing up as literal markup. `<code>` is left out because the renderer
+/// turns it into an inline code span.
+fn is_formatting_only_tag(html: &str) -> bool {
+    let Some(inner) = html
+        .trim()
+        .strip_prefix('<')
+        .and_then(|tag| tag.strip_suffix('>'))
+    else {
+        return false;
+    };
+    let inner = inner.strip_suffix('/').unwrap_or(inner);
+    let inner = inner.strip_prefix('/').unwrap_or(inner);
+
+    inner.split_ascii_whitespace().next().is_some_and(|name| {
+        matches!(
+            name.to_ascii_lowercase().as_str(),
+            "abbr"
+                | "b"
+                | "big"
+                | "cite"
+                | "del"
+                | "em"
+                | "font"
+                | "i"
+                | "ins"
+                | "kbd"
+                | "mark"
+                | "s"
+                | "samp"
+                | "small"
+                | "span"
+                | "strike"
+                | "strong"
+                | "sub"
+                | "sup"
+                | "tt"
+                | "u"
+                | "var"
+        )
+    })
+}
+
 /// Parses `text` into the same event stream the preview renders, for consumers
 /// that need the events without any GPUI state.
 ///
@@ -663,6 +708,8 @@ pub(crate) fn parse_markdown_with_options(
             pulldown_cmark::Event::InlineHtml(html) => {
                 if parse_html && is_br_tag(&html) {
                     state.push_event(range, MarkdownEvent::HardBreak)
+                } else if parse_html && is_formatting_only_tag(&html) {
+                    state.push_event(range, MarkdownEvent::SubstitutedText(String::new()))
                 } else {
                     state.push_event(range, MarkdownEvent::InlineHtml)
                 }
@@ -679,6 +726,10 @@ pub(crate) fn parse_markdown_with_options(
             }
             pulldown_cmark::Event::InlineMath(_) | pulldown_cmark::Event::DisplayMath(_) => {}
         }
+    }
+
+    if parse_html {
+        link_html_details_spans(&mut html_blocks, &state.root_block_starts);
     }
 
     let heading_slugs = if parse_heading_slugs {
@@ -698,6 +749,48 @@ pub(crate) fn parse_markdown_with_options(
         heading_slugs,
         footnote_definitions,
         link_definition_spans,
+    }
+}
+
+/// Pairs each HTML block that leaves a `<details>` open with the later block
+/// that closes it. Blank lines inside a disclosure end the CommonMark HTML
+/// block, so the recommended GitHub spelling arrives as an opening block, the
+/// body as ordinary markdown, and `</details>` as a block of its own.
+fn link_html_details_spans(
+    html_blocks: &mut BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
+    root_block_starts: &[usize],
+) {
+    let mut open_block_starts = Vec::new();
+    let mut spans = Vec::new();
+
+    for (block_start, block) in html_blocks.iter() {
+        for _ in 0..block.unmatched_details_closes {
+            let Some(open_start) = open_block_starts.pop() else {
+                break;
+            };
+            spans.push((open_start, *block_start));
+        }
+        for _ in 0..block.unclosed_details {
+            open_block_starts.push(*block_start);
+        }
+    }
+
+    // A block that leaves several disclosures open is recorded once per close it
+    // is paired with; the last one wins, which is the outermost disclosure's own
+    // `</details>` and so the furthest the renderer may have to skip.
+    for (open_start, close_start) in spans {
+        let close_root_block_start = root_block_starts
+            .iter()
+            .rev()
+            .find(|start| **start <= close_start)
+            .copied()
+            .unwrap_or(close_start);
+
+        if let Some(block) = html_blocks.get_mut(&open_start) {
+            block.details_span = Some(html::html_parser::HtmlDetailsSpan {
+                close_root_block_start,
+            });
+        }
     }
 }
 
@@ -1876,6 +1969,89 @@ mod tests {
                 "\"{input}\" should not be treated as a <br> hard break"
             );
         }
+    }
+
+    #[test]
+    fn test_leading_formatting_tag_is_not_rendered_as_text() {
+        let parsed =
+            parse_markdown_with_options("<kbd>Ctrl</kbd>+<sup>1</sup>", true, false, false);
+
+        assert!(
+            !parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::InlineHtml)),
+            "formatting tags should not reach the renderer as literal markup: {:?}",
+            parsed.events
+        );
+    }
+
+    #[test]
+    fn test_leading_formatting_tag_is_preserved_without_parse_html() {
+        let parsed = parse_markdown_with_options("<kbd>Ctrl</kbd>", false, false, false);
+
+        assert!(
+            parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::InlineHtml)),
+            "without parse_html the tag stays inline HTML: {:?}",
+            parsed.events
+        );
+    }
+
+    #[test]
+    fn test_inline_code_tag_still_reaches_the_renderer() {
+        let parsed = parse_markdown_with_options("<code>x</code>", true, false, false);
+
+        assert!(
+            parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::InlineHtml)),
+            "<code> is turned into a code span by the renderer: {:?}",
+            parsed.events
+        );
+    }
+
+    #[test]
+    fn test_details_spans_are_linked_across_blocks() {
+        let source = "<details>\n<summary>題</summary>\n\n本文\n\n</details>\n";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+
+        let close_start = source
+            .find("</details>")
+            .expect("source contains the closing tag");
+        let span = parsed
+            .html_blocks
+            .get(&0)
+            .and_then(|block| block.details_span)
+            .expect("the opening block should be linked to the closing one");
+
+        assert_eq!(span.close_root_block_start, close_start);
+        assert!(
+            parsed
+                .html_blocks
+                .get(&close_start)
+                .is_some_and(|block| block.unmatched_details_closes == 1)
+        );
+    }
+
+    #[test]
+    fn test_self_contained_details_has_no_span() {
+        let parsed = parse_markdown_with_options(
+            "<details><summary>題</summary>本文</details>",
+            true,
+            false,
+            false,
+        );
+
+        assert!(
+            parsed
+                .html_blocks
+                .get(&0)
+                .is_some_and(|block| block.details_span.is_none())
+        );
     }
 
     #[test]

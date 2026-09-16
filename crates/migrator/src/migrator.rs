@@ -258,6 +258,7 @@ pub fn migrate_settings(text: &str) -> Result<Option<String>> {
             &SETTINGS_QUERY_2026_05_04,
         ),
         MigrationType::Json(migrations::m_2026_08_17::make_git_gutter_width_an_enum),
+        MigrationType::Json(migrations::m_2026_09_16::fold_wsl_sandbox_grant_spellings),
     ];
     run_migrations(text, migrations)
 }
@@ -5480,5 +5481,74 @@ mod tests {
 
         // no gutter key — no change
         assert_migrate_settings(&r#"{ "theme": "One Dark" }"#.unindent(), None);
+    }
+
+    /// ADR-F49 decision 34: grants saved under an older spelling of a WSL
+    /// distribution are rewritten to the one the sandbox stores and compares
+    /// now, and the row that spelling left behind next to the new one goes.
+    #[test]
+    fn test_fold_wsl_sandbox_grant_spellings() {
+        assert_migrate_settings(
+            &r#"
+            {
+                "agent": {
+                    "sandbox_permissions": {
+                        "write_paths": [
+                            "\\\\wsl$\\Ubuntu\\home\\u\\build",
+                            {
+                                "requested": "/tmp/x",
+                                "resolved": "\\\\wsl.localhost\\Ubuntu\\tmp\\x"
+                            },
+                            {
+                                "requested": "\\\\wsl.localhost\\ubuntu\\tmp\\x",
+                                "resolved": "\\\\wsl.localhost\\ubuntu\\tmp\\x"
+                            },
+                            "C:\\work\\shared"
+                        ]
+                    }
+                }
+            }
+            "#
+            .unindent(),
+            Some(
+                &r#"
+                {
+                    "agent": {
+                        "sandbox_permissions": {
+                            "write_paths": [
+                                "\\\\wsl.localhost\\ubuntu\\home\\u\\build",
+                                {
+                                    "requested": "/tmp/x",
+                                    "resolved": "\\\\wsl.localhost\\ubuntu\\tmp\\x"
+                                },
+                                "C:\\work\\shared"
+                            ]
+                        }
+                    }
+                }
+                "#
+                .unindent(),
+            ),
+        );
+
+        // Grants already in that spelling, and grants that are not in a
+        // distribution at all, are left alone.
+        assert_migrate_settings(
+            &r#"
+            {
+                "agent": {
+                    "sandbox_permissions": {
+                        "write_paths": [
+                            "\\\\wsl.localhost\\ubuntu\\tmp\\x",
+                            "/tmp/y",
+                            "C:\\work\\shared"
+                        ]
+                    }
+                }
+            }
+            "#
+            .unindent(),
+            None,
+        );
     }
 }

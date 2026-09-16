@@ -112,6 +112,7 @@ dependencies = [
  "fs",
  "futures 0.3.32",
  "gpui",
+ "http_client",
  "http_proxy",
  "image",
  "indoc",
@@ -9937,6 +9938,7 @@ dependencies = [
  "theme",
  "theme_settings",
  "ui",
+ "unicode-width",
  "util",
 ]
 
@@ -10285,6 +10287,7 @@ dependencies = [
  "tree-sitter",
  "tree-sitter-json",
  "unindent",
+ "util",
 ]
 
 [[package]]

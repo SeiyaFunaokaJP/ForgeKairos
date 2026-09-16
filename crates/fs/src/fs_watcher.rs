@@ -235,9 +235,10 @@ fn requires_poll_watcher_with_mode(path: &Path, mode: &str) -> bool {
         // `ReadDirectoryChangesW` fails with `ERROR_INVALID_FUNCTION` on the 9P share that
         // serves a WSL distribution's own filesystem, so a worktree opened through
         // `\\wsl.localhost\<distro>\…` would never see a change made from inside WSL
-        // (ADR-F49 decision 33). Decided on the spelling alone: this runs for every
-        // registration, and touching the share to ask would cost a round trip through 9P.
-        return util::path_mapping::is_wsl_share_path(path);
+        // (ADR-F49 decision 33). Decided on the spelling alone where the spelling says it;
+        // the share reached through a drive letter costs one lookup per drive, never a
+        // round trip through 9P.
+        return path_is_on_wsl_share(path);
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
@@ -245,6 +246,178 @@ fn requires_poll_watcher_with_mode(path: &Path, mode: &str) -> bool {
         let _ = path;
         false
     }
+}
+
+/// Whether `path` is on the 9P share that serves a WSL distribution's own filesystem.
+///
+/// Both spellings count: `\\wsl.localhost\<distro>\…` itself, and a drive letter that is
+/// assigned to such a share (`net use Z: \\wsl.localhost\Ubuntu`, or `subst`). The letter
+/// says nothing on its own, so the assignment behind it is resolved once per drive.
+pub fn path_is_on_wsl_share(path: &Path) -> bool {
+    if util::path_mapping::is_wsl_share_path(path) {
+        return true;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        drive_of_path_is_wsl_share(path)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+/// What each drive letter resolved to, so that the assignment is asked for once instead of
+/// once per watch registration (a worktree registers thousands). A drive re-assigned while
+/// Zed is running therefore keeps its old answer until the next start.
+#[cfg(target_os = "windows")]
+static WSL_SHARE_DRIVES: LazyLock<Mutex<HashMap<char, bool>>> =
+    LazyLock::new(|| Mutex::new(HashMap::default()));
+
+#[cfg(target_os = "windows")]
+fn drive_of_path_is_wsl_share(path: &Path) -> bool {
+    let Some(drive) = drive_letter_of(path) else {
+        return false;
+    };
+    if let Some(known) = WSL_SHARE_DRIVES.lock().get(&drive) {
+        return *known;
+    }
+    let is_share = drive_leads_to_wsl_share(drive, resolve_drive_assignment);
+    WSL_SHARE_DRIVES.lock().insert(drive, is_share);
+    is_share
+}
+
+/// The drive letter a path starts with (`Z:\…`, `Z:/…`, `\\?\Z:\…`). A UNC path or a
+/// relative path has none.
+#[cfg(target_os = "windows")]
+fn drive_letter_of(path: &Path) -> Option<char> {
+    let text = path.to_str()?;
+    let text = text.strip_prefix(r"\\?\").unwrap_or(text);
+    let mut characters = text.chars();
+    let letter = characters.next()?;
+    if !letter.is_ascii_alphabetic() || characters.next() != Some(':') {
+        return None;
+    }
+    match characters.next() {
+        None | Some('\\') | Some('/') => Some(letter.to_ascii_uppercase()),
+        // `Z:relative` is relative to that drive's current directory, not to its root.
+        Some(_) => None,
+    }
+}
+
+/// Whether what `drive` is assigned to is a WSL share. `resolve` answers with the assignment
+/// as Windows spells it, which is what makes this testable without a real mapped drive.
+#[cfg(target_os = "windows")]
+fn drive_leads_to_wsl_share(drive: char, resolve: impl Fn(char) -> Option<String>) -> bool {
+    resolve(drive)
+        .as_deref()
+        .and_then(unc_spelling_of_assignment)
+        .is_some_and(|unc| util::path_mapping::is_wsl_share_path(Path::new(&unc)))
+}
+
+/// An assignment as `\\<server>\<share>…`, or `None` when it does not name one.
+///
+/// `WNetGetConnectionW` already answers in that spelling, but `QueryDosDeviceW` answers with
+/// the device the letter points at: `\??\UNC\wsl.localhost\Ubuntu\home` for a `subst`, and
+/// `\Device\<redirector>\;Z:0000000000012345\wsl.localhost\Ubuntu` for a network assignment,
+/// where the device name and the `;<letter>:<id>` bookkeeping component come first. A letter
+/// on a local volume answers `\Device\HarddiskVolume3`, which names no share.
+#[cfg(target_os = "windows")]
+fn unc_spelling_of_assignment(assignment: &str) -> Option<String> {
+    for prefix in [r"\??\UNC\", r"\\?\UNC\"] {
+        if let Some(rest) = assignment.strip_prefix(prefix) {
+            return Some(format!(r"\\{rest}"));
+        }
+    }
+    if assignment.starts_with(r"\\?\") || assignment.starts_with(r"\??\") {
+        return None;
+    }
+    if assignment.starts_with(r"\\") {
+        return Some(assignment.to_owned());
+    }
+    let device = assignment.strip_prefix(r"\Device\")?;
+    let components: Vec<&str> = device
+        .split('\\')
+        .skip(1)
+        .skip_while(|component| component.starts_with(';'))
+        .collect();
+    let [server, share, ..] = components.as_slice() else {
+        return None;
+    };
+    (!server.is_empty() && !share.is_empty()).then(|| format!(r"\\{}", components.join("\\")))
+}
+
+/// How `drive` is assigned, asked of Windows itself: `WNetGetConnectionW` for the assignments
+/// a redirector serves (`net use`), and `QueryDosDeviceW` for the rest (`subst`).
+#[cfg(target_os = "windows")]
+fn resolve_drive_assignment(drive: char) -> Option<String> {
+    network_connection_of_drive(drive).or_else(|| dos_device_of_drive(drive))
+}
+
+#[cfg(target_os = "windows")]
+fn network_connection_of_drive(drive: char) -> Option<String> {
+    use windows::{
+        Win32::{
+            Foundation::{ERROR_CONNECTION_UNAVAIL, ERROR_MORE_DATA, NO_ERROR},
+            NetworkManagement::WNet::WNetGetConnectionW,
+        },
+        core::{HSTRING, PWSTR},
+    };
+
+    let local_name = HSTRING::from(format!("{drive}:"));
+    let mut remote_name = vec![0u16; 512];
+    // At most one retry: the first call reports the length it needs.
+    for _ in 0..2 {
+        let mut length = remote_name.len() as u32;
+        let result = unsafe {
+            WNetGetConnectionW(
+                &local_name,
+                Some(PWSTR(remote_name.as_mut_ptr())),
+                &mut length,
+            )
+        };
+        // A mapping that is only remembered — nothing has touched the letter since the
+        // session began — answers `ERROR_CONNECTION_UNAVAIL` with the name it reconnects
+        // to, and opening a worktree on it is what reconnects it.
+        if result == NO_ERROR || result == ERROR_CONNECTION_UNAVAIL {
+            return string_until_nul(&remote_name);
+        }
+        if result != ERROR_MORE_DATA {
+            return None;
+        }
+        let needed = length as usize;
+        if needed <= remote_name.len() || needed > 32 * 1024 {
+            return None;
+        }
+        remote_name = vec![0u16; needed];
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn dos_device_of_drive(drive: char) -> Option<String> {
+    use windows::{Win32::Storage::FileSystem::QueryDosDeviceW, core::HSTRING};
+
+    let device_name = HSTRING::from(format!("{drive}:"));
+    let mut target = vec![0u16; 1024];
+    // The answer is a list of NUL-terminated names; only the first one is the assignment.
+    let written = unsafe { QueryDosDeviceW(&device_name, Some(target.as_mut_slice())) };
+    if written == 0 {
+        return None;
+    }
+    string_until_nul(&target)
+}
+
+#[cfg(target_os = "windows")]
+fn string_until_nul(buffer: &[u16]) -> Option<String> {
+    let text: Vec<u16> = buffer
+        .iter()
+        .copied()
+        .take_while(|unit| *unit != 0)
+        .collect();
+    (!text.is_empty()).then(|| String::from_utf16_lossy(&text))
 }
 
 fn register_existing_path(
@@ -2230,6 +2403,76 @@ mod tests {
         assert!(!requires_poll_watcher_with_mode(drive, "native"));
     }
 
+    /// A drive letter assigned to a WSL share is the same 9P share, so it has to be polled
+    /// too — and, in `worktree`, watched apart from the scan. Nothing in the spelling says
+    /// so, so the assignment behind the letter decides.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_drive_letter_assigned_to_a_wsl_share_leads_to_one() {
+        let assigned = |target: &'static str| move |_drive: char| Some(target.to_owned());
+
+        for target in [
+            r"\\wsl.localhost\Ubuntu",
+            r"\\wsl$\Ubuntu\home\user",
+            r"\??\UNC\wsl.localhost\Ubuntu\home",
+            r"\Device\LanmanRedirector\;Z:0000000000012345\wsl.localhost\Ubuntu",
+            r"\Device\Mup\wsl.localhost\Ubuntu\home\user",
+            r"\Device\P9\;Z:000000000005b1d3\wsl$\Ubuntu",
+        ] {
+            assert!(
+                drive_leads_to_wsl_share('Z', assigned(target)),
+                "{target:?}"
+            );
+        }
+
+        for target in [
+            r"\\fileserver\share",
+            r"\Device\HarddiskVolume3",
+            r"\Device\LanmanRedirector\;Z:0000000000012345\fileserver\share",
+            r"\??\C:\somewhere",
+            r"\Device\Mup\wsl.localhost",
+            "",
+        ] {
+            assert!(
+                !drive_leads_to_wsl_share('Z', assigned(target)),
+                "{target:?}"
+            );
+        }
+
+        assert!(!drive_leads_to_wsl_share('Z', |_| None));
+
+        // 実際の Windows への問い合わせも通しておく。この機械の一時ディレクトリのドライブは
+        // WSL の共有ではないので、答えは false で、割り当ての無いドライブでも止まらない。
+        let temporary = tempfile::tempdir().expect("a temporary directory");
+        assert!(!path_is_on_wsl_share(temporary.path()));
+        assert!(!path_is_on_wsl_share(Path::new(r"Z:\no-such-assignment")));
+
+        // 上の false だけでは、問い合わせ自体が黙って失敗していても通ってしまう (それは
+        // ドライブ文字を見ていなかった頃と同じ答え) ので、実在する文字には答えが出ることを
+        // 確かめる。
+        if let Some(drive) = drive_letter_of(temporary.path()) {
+            let assignment = resolve_drive_assignment(drive)
+                .expect("Windows answers what an existing drive letter is assigned to");
+            assert!(assignment.starts_with('\\'), "{assignment:?}");
+        }
+    }
+
+    /// Only a path that starts with a drive letter has an assignment to resolve, and a path
+    /// relative to a drive's own current directory is not one of them.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_path_names_the_drive_whose_assignment_is_resolved() {
+        assert_eq!(drive_letter_of(Path::new(r"z:\project\src")), Some('Z'));
+        assert_eq!(drive_letter_of(Path::new("Z:/project/src")), Some('Z'));
+        assert_eq!(drive_letter_of(Path::new(r"\\?\Z:\project")), Some('Z'));
+        assert_eq!(drive_letter_of(Path::new("Z:")), Some('Z'));
+
+        assert_eq!(drive_letter_of(Path::new(r"\\wsl.localhost\Ubuntu")), None);
+        assert_eq!(drive_letter_of(Path::new(r"Z:project\src")), None);
+        assert_eq!(drive_letter_of(Path::new(r"\project\src")), None);
+        assert_eq!(drive_letter_of(Path::new("project")), None);
+    }
+
     /// A volume that isn't a WSL share but still has no `ReadDirectoryChangesW` is caught by
     /// the failure of the native watch itself.
     #[cfg(target_os = "windows")]
@@ -2353,15 +2596,18 @@ mod tests {
                 .and_then(|error| error.raw_os_error()),
             Some(ERROR_PATH_NOT_FOUND)
         );
-        let file_id_error =
-            smol::block_on(crate::file_id(&link)).expect_err("the file id needs the target");
-        assert_eq!(
-            file_id_error
-                .downcast_ref::<std::io::Error>()
-                .and_then(std::io::Error::raw_os_error),
-            Some(ERROR_PATH_NOT_FOUND),
-            "this is the error `worktree` recognizes such a link by"
-        );
+        // 辿れないリンクは、リンク自身を開き直して file id を取る道が残っている (壊れた
+        // symlink を普通のドライブで走査するため)。その開き直しが 9P の共有でも通るなら
+        // リンクは worktree に載り、通らなければ `worktree` はこのエラーで見分けて飛ばす。
+        if let Err(file_id_error) = smol::block_on(crate::file_id(&link)) {
+            assert_eq!(
+                file_id_error
+                    .downcast_ref::<std::io::Error>()
+                    .and_then(std::io::Error::raw_os_error),
+                Some(ERROR_PATH_NOT_FOUND),
+                "this is the error `worktree` recognizes such a link by"
+            );
+        }
 
         let (tx, _rx) = async_channel::unbounded();
         let pending_path_events: Arc<Mutex<Vec<PathEvent>>> = Default::default();

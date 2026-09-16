@@ -560,17 +560,29 @@ impl AgentSettingsContent {
             .0;
 
         // Mirror `util::paths::insert_subtree`, keeping the grant set minimal,
-        // but compare by each entry's canonical (resolved) grant path.
-        let canonical = granted.canonical_or_requested().to_path_buf();
-        if write_paths
-            .iter()
-            .any(|existing| canonical.starts_with(existing.canonical_or_requested()))
-        {
+        // but compare by each entry's canonical (resolved) grant path — in the
+        // one spelling a grant in a WSL distribution has (ADR-F49 decision
+        // 34), so a row saved under an older one is still recognized as the
+        // same folder and pruned rather than left behind.
+        let canonical = fold_wsl_grant_spelling(granted.canonical_or_requested());
+        if write_paths.iter().any(|existing| {
+            canonical.starts_with(fold_wsl_grant_spelling(existing.canonical_or_requested()))
+        }) {
             return;
         }
-        write_paths.retain(|existing| !existing.canonical_or_requested().starts_with(&canonical));
+        write_paths.retain(|existing| {
+            !fold_wsl_grant_spelling(existing.canonical_or_requested()).starts_with(&canonical)
+        });
         write_paths.push(granted);
     }
+}
+
+/// ADR-F49 decision 34: a grant that names a folder in a WSL distribution, in
+/// the one spelling those are stored and compared in; anything else unchanged.
+fn fold_wsl_grant_spelling(path: &Path) -> PathBuf {
+    path.to_str()
+        .and_then(util::path_mapping::canonical_wsl_grant_spelling)
+        .map_or_else(|| path.to_path_buf(), PathBuf::from)
 }
 
 #[with_fallible_options]

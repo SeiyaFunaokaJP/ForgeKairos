@@ -305,6 +305,12 @@ pub struct Style {
     /// Roughly equivalent to the Tailwind `grid-cols-<number>`
     pub grid_cols: Option<GridTemplate>,
 
+    /// An explicit minimum width for each grid column, in order. Each column
+    /// becomes `minmax(<width>, max-content)`, so it never shrinks below its
+    /// entry but still grows to fit its content when there is room. Takes
+    /// precedence over `grid_cols`.
+    pub grid_cols_min_widths: Option<Vec<Pixels>>,
+
     /// The row span of this element
     /// Equivalent to the Tailwind `grid-rows-<number>`
     pub grid_rows: Option<GridTemplate>,
@@ -811,6 +817,7 @@ impl Default for Style {
             opacity: None,
             grid_rows: None,
             grid_cols: None,
+            grid_cols_min_widths: None,
             grid_location: None,
 
             #[cfg(debug_assertions)]

@@ -140,6 +140,16 @@ pub trait AgentConnection {
         None
     }
 
+    /// ADR-F49 decision 24: why this agent was started without the IDE's
+    /// diagnostics tool, in Japanese, when the channel that carries it could
+    /// not be brought up. The agent runs either way — it is simply given one
+    /// tool fewer — so this is a notice on its threads rather than a refusal,
+    /// and `None` means nothing was lost (it has the tool, or was never meant
+    /// to have one).
+    fn sandbox_ide_unavailable(&self) -> Option<SharedString> {
+        None
+    }
+
     /// Whether [`Self::terminal_auth_task`] comes back already wrapped in the
     /// agent's sandbox (ADR-F49 decision 16), to be spawned as it is, with
     /// nothing of the terminal's own around it.
@@ -812,6 +822,7 @@ mod test_support {
         agent_id: AgentId,
         telemetry_id: SharedString,
         sandbox_write_scope: Option<Vec<std::path::PathBuf>>,
+        sandbox_ide_unavailable: Option<SharedString>,
     }
 
     struct Session {
@@ -836,12 +847,20 @@ mod test_support {
                 agent_id: AgentId::new("stub"),
                 telemetry_id: "stub".into(),
                 sandbox_write_scope: None,
+                sandbox_ide_unavailable: None,
             }
         }
 
         /// Makes the stub an agent run in a sandbox that may write `paths`.
         pub fn with_sandbox_write_scope(mut self, paths: Vec<std::path::PathBuf>) -> Self {
             self.sandbox_write_scope = Some(paths);
+            self
+        }
+
+        /// Makes the stub an agent whose sandbox could not be given the IDE's
+        /// diagnostics tool, for this reason.
+        pub fn with_sandbox_ide_unavailable(mut self, reason: impl Into<SharedString>) -> Self {
+            self.sandbox_ide_unavailable = Some(reason.into());
             self
         }
 
@@ -959,6 +978,10 @@ mod test_support {
 
         fn sandbox_write_scope(&self) -> Option<Vec<std::path::PathBuf>> {
             self.sandbox_write_scope.clone()
+        }
+
+        fn sandbox_ide_unavailable(&self) -> Option<SharedString> {
+            self.sandbox_ide_unavailable.clone()
         }
 
         fn telemetry_id(&self) -> SharedString {

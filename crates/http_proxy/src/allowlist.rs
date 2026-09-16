@@ -199,6 +199,32 @@ impl HostPattern {
             }
         }
     }
+
+    /// The hosts both patterns permit, as a pattern — the narrower of the two
+    /// when one covers the other, and nothing when they share no host.
+    ///
+    /// Any two of these patterns intersect in a set that is itself one pattern
+    /// or empty (two wildcards nest or are disjoint; a wildcard and an exact
+    /// host meet in that host or nowhere), so intersecting two lists is
+    /// intersecting every pair — nothing is lost by taking them one at a time.
+    ///
+    /// ADR-F49 decision 13: this is how an agent's own hosts are narrowed to
+    /// what the IDE-wide allowlist permits. Pattern by pattern is what keeps a
+    /// wildcard: `*.example.com` under a ceiling of `*.a.example.com` is
+    /// `*.a.example.com`. Asking an allowlist whether it "allows the host
+    /// `*.example.com`" instead — what this replaced — answers by matching the
+    /// `*.` as an ordinary label. That agrees with this wherever one side
+    /// covers the other whole, but only by coincidence, and it keeps nothing
+    /// of a wildcard the other side permits just a part of.
+    pub fn intersect(&self, other: &HostPattern) -> Option<HostPattern> {
+        if self.covers(other) {
+            Some(other.clone())
+        } else if other.covers(self) {
+            Some(self.clone())
+        } else {
+            None
+        }
+    }
 }
 
 /// Whether `host` is a strict subdomain of `parent`. Both are expected to be
@@ -479,5 +505,43 @@ mod tests {
         // A narrower wildcard does not cover a broader one.
         let narrow = HostPattern::parse("*.api.github.com").unwrap();
         assert!(!narrow.covers(&HostPattern::parse("*.github.com").unwrap()));
+    }
+
+    /// ADR-F49 decision 13: narrowing one list of patterns by another keeps
+    /// the part of each wildcard the other permits, rather than dropping the
+    /// wildcard whole.
+    #[test]
+    fn intersect_keeps_the_narrower_of_two_overlapping_patterns() {
+        let intersect = |left: &str, right: &str| {
+            let left = HostPattern::parse(left).expect("a valid pattern");
+            let right = HostPattern::parse(right).expect("a valid pattern");
+            let result = left.intersect(&right);
+            assert_eq!(
+                result,
+                right.intersect(&left),
+                "the shared part of two patterns does not depend on their order"
+            );
+            result.map(|pattern| pattern.to_string())
+        };
+
+        assert_eq!(
+            intersect("*.github.com", "*.api.github.com").as_deref(),
+            Some("*.api.github.com")
+        );
+        assert_eq!(
+            intersect("*.github.com", "api.github.com").as_deref(),
+            Some("api.github.com")
+        );
+        assert_eq!(
+            intersect("*.github.com", "*.github.com").as_deref(),
+            Some("*.github.com")
+        );
+        assert_eq!(
+            intersect("*.github.com", "github.com"),
+            None,
+            "a subdomain wildcard does not reach its own parent"
+        );
+        assert_eq!(intersect("*.github.com", "*.example.com"), None);
+        assert_eq!(intersect("github.com", "example.com"), None);
     }
 }

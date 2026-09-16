@@ -965,6 +965,7 @@ shift 3
             stdin: bridge_stdin,
             stdout: bridge_stdout,
             log: bridge_log,
+            slot: bridge_slot,
         } = sandbox::start_ide_bridge(
             &wsl_program,
             &bridge_args,
@@ -988,6 +989,7 @@ shift 3
             _bridge_log: bridge_log,
             sandbox: None,
             worktree_writer,
+            bridge_slot,
             slot,
         };
         worktree_writer_resolved.await;
@@ -1351,6 +1353,10 @@ shift 3
         sandbox: Option<sandbox::Sandbox>,
         /// ADR-F50: the session's hold on the worktrees it can write.
         worktree_writer: SandboxedWriterGuard,
+        /// ADR-F49 (new decision): this bridge's place in
+        /// [`sandbox::MAX_IDE_BRIDGES`], given back once its `wsl.exe` is gone
+        /// so that the count never runs ahead of the bridges that exist.
+        bridge_slot: sandbox::IdeBridgeSlot,
         /// Freed last, once the bridge is gone.
         slot: SessionSlot,
     }
@@ -1363,6 +1369,7 @@ shift 3
                 _bridge_log,
                 sandbox,
                 worktree_writer,
+                bridge_slot,
                 slot,
             } = self;
             // Ends the bridge's stdin: it removes its socket and lock and exits.
@@ -1382,6 +1389,11 @@ shift 3
                 // Dropping it stops `wsl.exe`; the next launch sweeps what is left.
                 Err(_) => log::warn!("[claude-sandbox] the IDE bridge did not exit; stopping it"),
             }
+            // Before the slot: a bridge that ran past the timeout is still
+            // there until this drop stops it, and handing its place on to the
+            // next one first would let more `wsl.exe` run than the limit says.
+            drop(bridge);
+            drop(bridge_slot);
             drop(slot);
         }
     }

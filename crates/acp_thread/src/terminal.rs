@@ -1074,6 +1074,25 @@ pub(crate) fn editor_network_allowlist(cx: &App) -> Option<Vec<String>> {
     )
 }
 
+/// The sandbox a command is about to be wrapped in, with the editor-wide
+/// allowlist handed to it on Windows (ADR-F17): the WSL helper's proxy runs
+/// inside the distro, where the live policy object cannot follow, so the
+/// entries travel with the command. A separate step so that what the caller
+/// assembles for it can be checked without WSL.
+fn sandbox_for_wrap(
+    sandbox_wrap: &SandboxWrap,
+    #[cfg(target_os = "windows")] editor_network_allowlist: Option<Vec<String>>,
+) -> anyhow::Result<sandbox::Sandbox> {
+    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
+    let mut sandbox =
+        sandbox::Sandbox::new(sandbox_wrap.to_policy()?).map_err(anyhow::Error::new)?;
+    #[cfg(target_os = "windows")]
+    if let Some(entries) = editor_network_allowlist {
+        sandbox.set_editor_network_allowlist(entries);
+    }
+    Ok(sandbox)
+}
+
 pub(crate) async fn prepare_sandbox_wrap(
     program: String,
     args: Vec<String>,
@@ -1091,12 +1110,11 @@ pub(crate) async fn prepare_sandbox_wrap(
         return Ok((program, args, env, None));
     };
 
-    let mut sandbox =
-        sandbox::Sandbox::new(sandbox_wrap.to_policy()?).map_err(anyhow::Error::new)?;
-    #[cfg(target_os = "windows")]
-    if let Some(entries) = editor_network_allowlist {
-        sandbox.set_editor_network_allowlist(entries);
-    }
+    let mut sandbox = sandbox_for_wrap(
+        &sandbox_wrap,
+        #[cfg(target_os = "windows")]
+        editor_network_allowlist,
+    )?;
     let command = sandbox::CommandAndArgs {
         program,
         args,
@@ -2240,6 +2258,118 @@ mod sandboxed_spawn_tests {
             "{uncapped:?}"
         );
         assert!(remote_command_reaches(&uncapped, "example.com"));
+    }
+
+    /// ADR-F17: the ceiling a sandboxed command is built with is the
+    /// editor-wide allowlist as it stands at that moment — what
+    /// `AcpThread::create_terminal` reads here and hands to whichever helper
+    /// runs the command, a remote host's or WSL's. An allowlist that permits
+    /// nothing is still a ceiling and must not read as "no ceiling".
+    #[gpui::test]
+    fn a_command_is_built_with_the_editors_live_allowlist_as_its_ceiling(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let argv_with = |ceiling: Option<&[String]>| {
+            let wrap = SandboxWrap {
+                writable_paths: vec![PathBuf::from("/home/user/project")],
+                // The command's own half permits everything, so what it can
+                // reach is the ceiling alone.
+                network: SandboxNetworkAccess::All,
+                ..Default::default()
+            };
+            let helper = RelPath::from_unix_str(".zed_server/zed-remote-server-stable-1.17.2")
+                .expect("a valid relative path");
+            let (_, args) = build_remote_sandbox_command(
+                helper,
+                &wrap,
+                ceiling,
+                None,
+                &HashMap::default(),
+                &[],
+                false,
+                None,
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "curl https://example.com".to_string()],
+            );
+            let [_, payload] = args.as_slice() else {
+                panic!("the argv travels as one hex-encoded argument: {args:?}");
+            };
+            sandbox::decode_remote_sandbox_helper_argv(payload).expect("the packed argv decodes")
+        };
+
+        cx.update(|cx| {
+            assert_eq!(
+                editor_network_allowlist(cx),
+                None,
+                "a process with no editor-wide allowlist publishes no ceiling"
+            );
+
+            let (policy, errors) = http_client::EgressPolicy::from_host_strings(["api.github.com"]);
+            assert!(errors.is_empty(), "{errors:?}");
+            let handle = http_client::EgressPolicyHandle::new(policy);
+            cx.set_global(egress_policy::EgressAllowlistGlobal(handle.clone()));
+
+            let ceiling = editor_network_allowlist(cx);
+            assert_eq!(
+                ceiling.as_deref(),
+                Some(["api.github.com".to_string()].as_slice())
+            );
+            let argv = argv_with(ceiling.as_deref());
+            assert!(remote_command_reaches(&argv, "api.github.com"));
+            assert!(
+                !remote_command_reaches(&argv, "example.com"),
+                "an any-host command must not reach past the editor's allowlist: {argv:?}"
+            );
+
+            // The handle is live, so the next command is built against the
+            // edited allowlist rather than the one this process started with.
+            let (policy, errors) = http_client::EgressPolicy::from_host_strings(["example.com"]);
+            assert!(errors.is_empty(), "{errors:?}");
+            handle.set(policy);
+            let argv = argv_with(editor_network_allowlist(cx).as_deref());
+            assert!(remote_command_reaches(&argv, "example.com"));
+            assert!(!remote_command_reaches(&argv, "api.github.com"));
+
+            // An allowlist that permits nothing is a ceiling that refuses
+            // everything, not a missing one.
+            handle.set(http_client::EgressPolicy::deny_all());
+            let ceiling = editor_network_allowlist(cx);
+            assert_eq!(ceiling.as_deref(), Some([].as_slice()));
+            let argv = argv_with(ceiling.as_deref());
+            assert!(
+                argv.iter().any(|argument| argument == "--network-ceiling"),
+                "{argv:?}"
+            );
+            assert!(!remote_command_reaches(&argv, "example.com"));
+        });
+    }
+
+    /// ADR-F17: the same ceiling reaches WSL's helper by travelling with the
+    /// command — its proxy runs inside the distribution, where the live policy
+    /// object cannot follow.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_wsl_command_carries_the_editors_allowlist_as_its_ceiling() {
+        let project = tempfile::tempdir().expect("create temp dir");
+        let wrap = SandboxWrap {
+            writable_paths: vec![project.path().to_path_buf()],
+            is_local: true,
+            ..Default::default()
+        };
+
+        let capped = sandbox_for_wrap(&wrap, Some(vec!["api.github.com".to_string()]))
+            .expect("a sandbox for the command");
+        assert_eq!(
+            capped.editor_network_allowlist(),
+            Some(["api.github.com".to_string()].as_slice())
+        );
+
+        let uncapped = sandbox_for_wrap(&wrap, None).expect("a sandbox for the command");
+        assert_eq!(
+            uncapped.editor_network_allowlist(),
+            None,
+            "a process with no editor-wide allowlist leaves the command's own policy alone"
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@ mod user_agents_md;
 
 use std::cmp::Ordering::{Equal, Greater, Less};
 use std::fmt;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
 use anyhow::Context as _;
@@ -866,12 +866,14 @@ fn compile_sandbox_permissions(
         // Normalize away `..`/`.` before storing, since coverage checks are
         // purely lexical; drop entries whose requested (or resolved) path
         // escapes the filesystem root.
-        let Ok(requested) = util::paths::normalize_lexically(&entry.requested) else {
+        let Ok(requested) = util::paths::normalize_lexically(&fold_wsl_grant(entry.requested))
+        else {
             continue;
         };
         let granted = match entry.resolved {
             Some(resolved) => {
-                let Ok(resolved) = util::paths::normalize_lexically(&resolved) else {
+                let Ok(resolved) = util::paths::normalize_lexically(&fold_wsl_grant(resolved))
+                else {
                     continue;
                 };
                 settings::GrantedWritePath::resolved_on_fs(requested, resolved, entry.on_windows_fs)
@@ -895,6 +897,23 @@ fn compile_sandbox_permissions(
         warn_confusable_unicode: content.warn_confusable_unicode.unwrap_or(true),
         warn_ntfs_grants: content.warn_ntfs_grants.unwrap_or(true),
     }
+}
+
+/// ADR-F49 decision 34: a grant in a WSL distribution, in the one spelling
+/// grants are stored and compared in. Grants saved before that decision name
+/// the distribution as `wsl.exe` reported it (`\\wsl.localhost\Ubuntu\…`), and
+/// comparison is a plain `starts_with`, so the same folder approved again was
+/// asked for again and left a second row behind. Folding them here is what
+/// makes the old row cover the new grant; `migrator` folds the rows in the
+/// settings file itself so the duplicate also disappears from the list.
+///
+/// Not gated on Windows: the spelling only ever arises there, but a settings
+/// file is read on whatever machine has it, and both ends of a comparison must
+/// fold the same way.
+fn fold_wsl_grant(path: PathBuf) -> PathBuf {
+    path.to_str()
+        .and_then(util::path_mapping::canonical_wsl_grant_spelling)
+        .map_or(path, PathBuf::from)
 }
 
 /// Subtree-insert mirroring [`util::paths::insert_subtree`], but over
@@ -1390,6 +1409,36 @@ mod tests {
                 PathBuf::from("/tmp/other"),
                 PathBuf::from("/tmp/real"),
             )]
+        );
+    }
+
+    /// ADR-F49 decision 34: a grant saved before the distribution's name was
+    /// folded to lower case names the same folder as one saved after, so it
+    /// covers it — no second approval — and the two rows become one.
+    #[test]
+    fn test_sandbox_permissions_fold_wsl_distribution_spellings() {
+        let json = json!({
+            "write_paths": [
+                { "requested": "/tmp/x", "resolved": r"\\wsl.localhost\Ubuntu\tmp\x" },
+                { "requested": "/tmp/x", "resolved": r"\\wsl.localhost\ubuntu\tmp\x" },
+                r"\\wsl$\Ubuntu\home\u\build",
+            ]
+        });
+
+        let content: settings::SandboxPermissionsContent = serde_json::from_value(json).unwrap();
+        let permissions = compile_sandbox_permissions(Some(content));
+
+        assert_eq!(
+            permissions.write_paths,
+            vec![
+                settings::GrantedWritePath::resolved(
+                    PathBuf::from("/tmp/x"),
+                    PathBuf::from(r"\\wsl.localhost\ubuntu\tmp\x"),
+                ),
+                settings::GrantedWritePath::from_requested(PathBuf::from(
+                    r"\\wsl.localhost\ubuntu\home\u\build"
+                )),
+            ]
         );
     }
 

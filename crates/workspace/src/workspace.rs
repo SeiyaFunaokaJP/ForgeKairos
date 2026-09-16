@@ -5620,27 +5620,34 @@ impl Workspace {
                 let mut focus_center = false;
                 let panel = dock.update(cx, |dock, cx| {
                     // A stacked panel is already on screen; activating it would
-                    // demote the panel sharing the dock with it.
+                    // demote the panel sharing the dock with it. Fetch the panel
+                    // by index (not `active_panel`) so that neither branch has to
+                    // promote or reveal it before `should_focus` has decided this
+                    // is the opening direction: unfocusing an already-open panel
+                    // must not reveal it to the user (see `Panel::revealed_by_user`).
                     let is_stacked = dock.secondary_panel_index() == Some(panel_index);
-                    if !is_stacked {
-                        dock.activate_panel(panel_index, window, cx);
-                    }
-
-                    let panel = if is_stacked {
-                        dock.panel_at(panel_index).cloned()
-                    } else {
-                        dock.active_panel().cloned()
-                    };
+                    let panel = dock.panel_at(panel_index).cloned();
                     if let Some(panel) = panel.as_ref() {
                         if should_focus(&**panel, window, cx) {
-                            dock.set_open(true, window, cx);
                             if is_stacked {
                                 // `activate_panel` says so for the other branch;
                                 // a stacked panel is reached without it.
                                 dock.reveal_panel_to_user(panel_index, window, cx);
+                            } else {
+                                dock.activate_panel(panel_index, window, cx);
                             }
+                            dock.set_open(true, window, cx);
                             panel.activation_focus_handle(cx).focus(window, cx);
                         } else {
+                            // This direction went through `activate_panel` too
+                            // before the reveal was taken out of it, and the rest
+                            // of what it does has to stay: a dock the user toggles
+                            // focus in counts as one they arranged, which is what
+                            // keeps `ensure_starts_open_panels` from rearranging it
+                            // later. A stacked panel never reached it.
+                            if !is_stacked {
+                                dock.restore_active_panel(panel_index, window, cx);
+                            }
                             focus_center = true;
                         }
                     }
@@ -18092,6 +18099,90 @@ mod tests {
                 "stacking the browser beside it is not asking for it"
             );
         });
+    }
+
+    #[gpui::test]
+    async fn test_toggle_panel_focus_does_not_reveal_on_the_closing_direction(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(panel.clone(), window, cx);
+            panel
+        });
+
+        // Opening direction: the panel was asked for by name (`should_focus` is
+        // true because it is not focused yet).
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_panel_focus::<TestPanel>(window, cx);
+        });
+        panel.read_with(cx, |panel, _| assert_eq!(panel.reveal_calls, 1));
+
+        // Closing direction: the panel is already focused, so `should_focus`
+        // is false and focus transfers back to the center. This must not
+        // reveal the panel again (it was toggled closed, not asked for).
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.toggle_panel_focus::<TestPanel>(window, cx);
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.reveal_calls, 1,
+                "closing the panel must not reveal it again"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_restore_active_panel_does_not_reveal(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        let (panel_a, panel_b) = workspace.update_in(cx, |workspace, window, cx| {
+            let panel_a = cx.new(|cx| TestPanel::new(DockPosition::Right, 100, cx));
+            workspace.add_panel(panel_a.clone(), window, cx);
+            let panel_b = cx.new(|cx| TestPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(panel_b.clone(), window, cx);
+            (panel_a, panel_b)
+        });
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+
+        // A modal restoring the dock's pre-modal active panel (like the commit
+        // modal's `on_before_dismiss`) is not the user naming a panel.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.restore_active_panel(0, window, cx);
+        });
+        dock.update_in(cx, |dock, window, cx| {
+            dock.restore_active_panel(1, window, cx);
+        });
+        dock.read_with(cx, |dock, _| {
+            assert_eq!(
+                dock.active_panel().map(|panel| panel.panel_id()),
+                Some(panel_b.entity_id()),
+                "the active panel index still changes"
+            );
+        });
+        panel_a.read_with(cx, |panel, _| assert_eq!(panel.reveal_calls, 0));
+        panel_b.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.reveal_calls, 0,
+                "restoring the dock's previous active panel must not reveal it"
+            );
+        });
+
+        // Contrast: actually asking for a panel by name does reveal it.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(0, window, cx);
+        });
+        panel_a.read_with(cx, |panel, _| assert_eq!(panel.reveal_calls, 1));
     }
 
     #[gpui::test]

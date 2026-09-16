@@ -2272,8 +2272,12 @@ impl Pane {
         cx.emit(Event::RemovedItem { item: item.clone() });
         if self.items.is_empty() {
             item.deactivated(window, cx);
+            // Whether or not the empty pane goes, the toolbar holds the item it
+            // was showing, and a pane that stays would hold the last tab's item
+            // — and everything it owns — for as long as it lives. A pane with
+            // no items has no active item for the toolbar to show either.
+            self.update_toolbar(window, cx);
             if close_pane_if_empty {
-                self.update_toolbar(window, cx);
                 cx.emit(Event::Remove {
                     focus_on_pane: focus_on_pane_if_closed,
                 });

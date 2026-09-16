@@ -237,6 +237,56 @@ pub fn encode_ide_lock_preamble(content: &[u8]) -> Vec<u8> {
     preamble
 }
 
+/// ADR-F49 (new decision): the most IDE bridges one Zed keeps running at once.
+///
+/// A bridge is not free: a `wsl.exe` of this process, a helper process inside
+/// the distro, a rendezvous socket and a multiplexer. One is started for every
+/// sandboxed agent connection (決定 35 took the exclusive claim off that path,
+/// so one project and one agent no longer cap it at a single bridge) and for
+/// every sandboxed CLI session, so their number follows how many windows,
+/// projects and agents are open and nothing bounded it. Roomy enough that no
+/// ordinary session meets it, and the idle disconnect gives back the ones
+/// nobody uses.
+pub const MAX_IDE_BRIDGES: usize = 16;
+
+static RUNNING_IDE_BRIDGES: AtomicUsize = AtomicUsize::new(0);
+
+/// One of [`MAX_IDE_BRIDGES`]. Hold it for as long as its bridge runs — a
+/// dropped slot is a free one, and nothing else counts bridges.
+///
+/// A bridge over the limit is **refused**, never traded for an older one. What
+/// a bridge carries is opened from inside the sandbox, so an agent that asks
+/// for bridges is the untrusted side of this, and closing the oldest would let
+/// it take the IDE channel away from every session that was already working:
+/// the running agent would lose its diagnostics tool, and the CLI's lock file
+/// goes with its bridge. Refusing costs the *new* session that tool alone,
+/// which is the case its caller already handles — it starts the agent without
+/// an IDE server and says so in the log.
+pub struct IdeBridgeSlot;
+
+impl IdeBridgeSlot {
+    /// Takes a slot, or `None` when [`MAX_IDE_BRIDGES`] are already running.
+    pub fn take() -> Option<Self> {
+        RUNNING_IDE_BRIDGES
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |running| {
+                (running < MAX_IDE_BRIDGES).then(|| running + 1)
+            })
+            .ok()
+            .map(|_| Self)
+    }
+
+    #[cfg(test)]
+    fn running() -> usize {
+        RUNNING_IDE_BRIDGES.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for IdeBridgeSlot {
+    fn drop(&mut self) {
+        RUNNING_IDE_BRIDGES.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 // ===========================================================================
 // Zed's side: demultiplexing the bridge's standard I/O
 // ===========================================================================
@@ -2555,6 +2605,32 @@ mod tests {
     use super::*;
     use futures::executor::LocalPool;
     use futures::task::SpawnExt as _;
+
+    /// ADR-F49 (new decision): the bridges a Zed runs at once are counted, one
+    /// beyond the limit is turned away rather than trading an older one for
+    /// it, and a bridge that ends gives its slot back.
+    #[test]
+    fn the_running_bridges_are_counted_and_capped() {
+        let before = IdeBridgeSlot::running();
+        let slots = (0..MAX_IDE_BRIDGES - before)
+            .map(|_| IdeBridgeSlot::take().expect("a slot below the limit is given out"))
+            .collect::<Vec<_>>();
+        assert_eq!(IdeBridgeSlot::running(), MAX_IDE_BRIDGES);
+        assert!(
+            IdeBridgeSlot::take().is_none(),
+            "the bridge past the limit is refused, and the ones already running stay"
+        );
+        assert_eq!(
+            IdeBridgeSlot::running(),
+            MAX_IDE_BRIDGES,
+            "a refusal takes no slot of its own"
+        );
+
+        drop(slots);
+        assert_eq!(IdeBridgeSlot::running(), before);
+        let slot = IdeBridgeSlot::take();
+        assert!(slot.is_some(), "a bridge that ended freed its slot");
+    }
 
     /// The setup lines the bridge prints (in the distro) are read back by
     /// whoever started it (on Windows), and every failure code has a reason of

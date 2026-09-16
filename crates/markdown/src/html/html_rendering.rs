@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 use gpui::{
     App, FontStyle, FontWeight, StrikethroughStyle, TextAlign, TextStyleRefinement, UnderlineStyle,
@@ -8,10 +8,13 @@ use ui::prelude::*;
 
 use crate::html::html_parser::{
     HtmlHighlightStyle, HtmlImage, HtmlParagraph, HtmlParagraphChunk, ParsedHtmlBlock,
-    ParsedHtmlElement, ParsedHtmlList, ParsedHtmlListItemType, ParsedHtmlTable, ParsedHtmlTableRow,
-    ParsedHtmlText,
+    ParsedHtmlDetails, ParsedHtmlElement, ParsedHtmlList, ParsedHtmlListItemType, ParsedHtmlTable,
+    ParsedHtmlTableRow, ParsedHtmlText,
 };
 use crate::{MarkdownElement, MarkdownElementBuilder};
+
+/// Shown in place of a missing `<summary>`, matching what a browser puts there.
+const DEFAULT_DETAILS_SUMMARY: &str = "詳細";
 
 pub(crate) struct HtmlSourceAllocator {
     source_range: Range<usize>,
@@ -37,21 +40,49 @@ impl HtmlSourceAllocator {
 }
 
 impl MarkdownElement {
+    /// Renders an HTML block, returning whether it ends in a `<details>` whose
+    /// body continues in later blocks and is currently collapsed, so the caller
+    /// can skip those blocks.
     pub(crate) fn render_html_block(
         &self,
         block: &ParsedHtmlBlock,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
         cx: &mut App,
-    ) {
+    ) -> bool {
         let mut source_allocator = HtmlSourceAllocator::new(block.source_range.clone());
-        self.render_html_elements(
-            &block.children,
-            &mut source_allocator,
-            builder,
-            markdown_end,
-            cx,
-        );
+
+        let spanning_index = block.details_span.and_then(|_| {
+            block
+                .children
+                .iter()
+                .rposition(|element| matches!(element, ParsedHtmlElement::Details(_)))
+        });
+
+        let mut collapsed = false;
+        for (index, element) in block.children.iter().enumerate() {
+            match element {
+                ParsedHtmlElement::Details(details) if Some(index) == spanning_index => {
+                    collapsed = !self.render_html_details(
+                        details,
+                        true,
+                        &mut source_allocator,
+                        builder,
+                        markdown_end,
+                        cx,
+                    );
+                }
+                _ => self.render_html_element(
+                    element,
+                    &mut source_allocator,
+                    builder,
+                    markdown_end,
+                    cx,
+                ),
+            }
+        }
+
+        collapsed
     }
 
     fn render_html_elements(
@@ -138,7 +169,124 @@ impl MarkdownElement {
             ParsedHtmlElement::Image(image) => {
                 self.render_html_image(image, builder, cx);
             }
+            ParsedHtmlElement::Details(details) => {
+                self.render_html_details(
+                    details,
+                    false,
+                    source_allocator,
+                    builder,
+                    markdown_end,
+                    cx,
+                );
+            }
+            ParsedHtmlElement::Rule(rule_range) => {
+                builder.push_div(
+                    div()
+                        .border_b_1()
+                        .my_2()
+                        .border_color(self.style.rule_color),
+                    rule_range,
+                    markdown_end,
+                );
+                builder.pop_div();
+            }
         }
+    }
+
+    /// Renders a `<details>` disclosure, returning whether it is open.
+    ///
+    /// `spans_blocks` is set for the disclosure whose body continues in the
+    /// following root blocks: its own container has to end with this block, so
+    /// only the summary row and whatever shares the block are drawn here.
+    fn render_html_details(
+        &self,
+        details: &ParsedHtmlDetails,
+        spans_blocks: bool,
+        source_allocator: &mut HtmlSourceAllocator,
+        builder: &mut MarkdownElementBuilder,
+        markdown_end: usize,
+        cx: &mut App,
+    ) -> bool {
+        let key = (details.source_range.start, details.index);
+        let open_by_default = details.open;
+        let is_open = self.markdown.read(cx).is_details_open(key, open_by_default);
+
+        builder.push_div(
+            div().when(!spans_blocks, |this| {
+                this.my_1()
+                    .border_1()
+                    .border_color(cx.theme().colors().border)
+                    .rounded_sm()
+                    .px_2()
+                    .py_1()
+            }),
+            &details.source_range,
+            markdown_end,
+        );
+
+        let markdown = self.markdown.clone();
+        let summary_id = ElementId::NamedChild(
+            Arc::new(ElementId::from(("markdown-details", markdown.entity_id()))),
+            format!("{}-{}", key.0, key.1).into(),
+        );
+
+        builder.push_div(
+            div()
+                .id(summary_id)
+                .flex()
+                .flex_row()
+                .items_start()
+                .gap_1()
+                .cursor_pointer()
+                .on_click(move |_event, _window, cx| {
+                    markdown.update(cx, |markdown, cx| {
+                        markdown.toggle_details(key, open_by_default);
+                        cx.notify();
+                    });
+                })
+                .child(
+                    Icon::new(if is_open {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .size(IconSize::Small)
+                    .color(Color::Muted),
+                ),
+            &details.source_range,
+            markdown_end,
+        );
+
+        if details.summary.is_empty() {
+            let summary_range = source_allocator.allocate(DEFAULT_DETAILS_SUMMARY.len());
+            builder.push_text(DEFAULT_DETAILS_SUMMARY, summary_range);
+        } else {
+            self.render_html_paragraph(
+                &details.summary,
+                source_allocator,
+                builder,
+                cx,
+                markdown_end,
+            );
+        }
+
+        builder.pop_div();
+
+        if is_open && !details.children.is_empty() {
+            builder.push_div(div().pl_3(), &details.source_range, markdown_end);
+            self.render_html_elements(
+                &details.children,
+                source_allocator,
+                builder,
+                markdown_end,
+                cx,
+            );
+            builder.pop_div();
+        }
+
+        builder.pop_div();
+
+        is_open
     }
 
     fn render_html_list(
@@ -405,12 +553,20 @@ impl MarkdownElement {
 
             let mut refinement = TextStyleRefinement::default();
             let mut has_refinement = false;
+            let mut is_code = false;
 
             for (highlight_range, style) in &text.highlights {
                 if highlight_range.start < end && highlight_range.end > start {
                     apply_html_highlight_style(&mut refinement, style);
                     has_refinement = true;
+                    is_code |= style.code;
                 }
+            }
+
+            if is_code {
+                let mut code_style = self.style.inline_code.clone();
+                code_style.refine(&refinement);
+                refinement = code_style;
             }
 
             let link = text.links.iter().find_map(|(link_range, link)| {
@@ -436,7 +592,34 @@ impl MarkdownElement {
                 builder.push_text_style(refinement);
             }
 
-            builder.push_text(&text_contents[start..end], source_start..source_end);
+            // `<br>` reaches the renderer as a newline inside the paragraph's
+            // text. Handing it to the builder's line break instead of leaving it
+            // in the string makes it lay out exactly like markdown's own hard
+            // break, including in the flex-wrap row a paragraph with an image
+            // uses, where a bare newline would leave an empty line behind.
+            let segment = &text_contents[start..end];
+            if segment.contains('\n') {
+                let mut rendered = start;
+                for piece in segment.split('\n') {
+                    if rendered > start {
+                        builder.push_line_break(
+                            allocated_range.start + (rendered - 1).min(allocated_len)
+                                ..allocated_range.start + rendered.min(allocated_len),
+                        );
+                    }
+                    if !piece.is_empty() {
+                        builder.push_text(
+                            piece,
+                            allocated_range.start + rendered.min(allocated_len)
+                                ..allocated_range.start
+                                    + (rendered + piece.len()).min(allocated_len),
+                        );
+                    }
+                    rendered += piece.len() + 1;
+                }
+            } else {
+                builder.push_text(segment, source_start..source_end);
+            }
 
             if has_refinement {
                 builder.pop_text_style();
@@ -541,7 +724,9 @@ fn html_table_columns_count(rows: &[ParsedHtmlTableRow]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{TestAppContext, size};
+    use std::{cell::RefCell, rc::Rc};
+
+    use gpui::{Entity, TestAppContext, size};
     use ui::prelude::*;
 
     use crate::{
@@ -661,5 +846,186 @@ mod tests {
         assert_eq!(rendered_lines[0], "Hello");
         assert_eq!(rendered_lines[1], "world");
         assert!(rendered_lines.iter().any(|line| line.contains("item")));
+    }
+
+    /// Renders `source` with HTML parsing on, optionally toggling a disclosure
+    /// first, and returns everything the preview laid out as one string.
+    fn render_html_preview(
+        source: &str,
+        toggled_details: Option<(usize, usize)>,
+        cx: &mut TestAppContext,
+    ) -> String {
+        // The disclosure's summary row handles clicks, and an element with
+        // listeners can only be laid out while a view is rendering, so the
+        // markdown has to be drawn from inside one.
+        struct PreviewTestView {
+            markdown: Entity<Markdown>,
+            rendered_text: Rc<RefCell<Option<crate::RenderedText>>>,
+        }
+
+        impl Render for PreviewTestView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let rendered_text = self.rendered_text.clone();
+                MarkdownElement::new(self.markdown.clone(), MarkdownStyle::default())
+                    .code_block_renderer(CodeBlockRenderer::Default {
+                        copy_button_visibility: CopyButtonVisibility::Hidden,
+                        wrap_button_visibility: WrapButtonVisibility::Hidden,
+                        border: false,
+                    })
+                    .on_render(move |text| *rendered_text.borrow_mut() = Some(text))
+            }
+        }
+
+        ensure_theme_initialized(cx);
+
+        let markdown = cx.new(|cx| {
+            Markdown::new_with_options(
+                source.to_string().into(),
+                None,
+                None,
+                MarkdownOptions {
+                    parse_html: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        if let Some(key) = toggled_details {
+            markdown.update(cx, |markdown, cx| {
+                markdown.toggle_details(key, false);
+                cx.notify();
+            });
+        }
+
+        let rendered_text = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view({
+            let markdown = markdown.clone();
+            let rendered_text = rendered_text.clone();
+            move |_, _| PreviewTestView {
+                markdown,
+                rendered_text,
+            }
+        });
+        cx.run_until_parked();
+
+        let rendered_text = rendered_text
+            .borrow()
+            .clone()
+            .expect("markdown should be rendered in the test view");
+
+        rendered_text
+            .lines
+            .iter()
+            .map(|line| line.layout.wrapped_text())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[gpui::test]
+    fn test_details_hides_its_body_until_the_summary_is_clicked(cx: &mut TestAppContext) {
+        let source = "<details><summary>題</summary>本文</details>";
+
+        let collapsed = render_html_preview(source, None, cx);
+        assert!(collapsed.contains('題'), "got: {collapsed:?}");
+        assert!(!collapsed.contains("本文"), "got: {collapsed:?}");
+
+        let expanded = render_html_preview(source, Some((0, 0)), cx);
+        assert!(expanded.contains('題'), "got: {expanded:?}");
+        assert!(expanded.contains("本文"), "got: {expanded:?}");
+    }
+
+    #[gpui::test]
+    fn test_details_open_attribute_starts_expanded(cx: &mut TestAppContext) {
+        let expanded = render_html_preview(
+            "<details open><summary>題</summary>本文</details>",
+            None,
+            cx,
+        );
+        assert!(expanded.contains("本文"), "got: {expanded:?}");
+    }
+
+    #[gpui::test]
+    fn test_details_without_summary_falls_back_to_a_label(cx: &mut TestAppContext) {
+        let collapsed = render_html_preview("<details>本文だけ</details>", None, cx);
+        assert!(collapsed.contains("詳細"), "got: {collapsed:?}");
+        assert!(!collapsed.contains("本文だけ"), "got: {collapsed:?}");
+    }
+
+    #[gpui::test]
+    fn test_details_split_across_blocks_hides_the_markdown_body(cx: &mut TestAppContext) {
+        let source = "<details>\n<summary>題</summary>\n\n本文 **太字**\n\n</details>\n\n後ろ";
+
+        let collapsed = render_html_preview(source, None, cx);
+        assert!(collapsed.contains('題'), "got: {collapsed:?}");
+        assert!(!collapsed.contains("本文"), "got: {collapsed:?}");
+        assert!(collapsed.contains("後ろ"), "got: {collapsed:?}");
+        assert!(!collapsed.contains("details"), "got: {collapsed:?}");
+
+        let expanded = render_html_preview(source, Some((0, 0)), cx);
+        assert!(expanded.contains("本文"), "got: {expanded:?}");
+        assert!(expanded.contains("太字"), "got: {expanded:?}");
+        assert!(expanded.contains("後ろ"), "got: {expanded:?}");
+    }
+
+    #[gpui::test]
+    fn test_br_inside_an_html_block_renders_a_line_break(cx: &mut TestAppContext) {
+        for source in ["<p>a<br>b</p>", "<div>a<br/>b</div>"] {
+            let rendered = render_html_preview(source, None, cx);
+            assert!(
+                rendered.contains("a\nb"),
+                "{source} should break the line; got: {rendered:?}"
+            );
+            assert!(
+                !rendered.contains("<br"),
+                "{source} should not show the tag; got: {rendered:?}"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn test_br_inside_a_markdown_table_cell_renders_a_line_break(cx: &mut TestAppContext) {
+        let rendered = render_html_preview("| a<br>b | c |\n| --- | --- |\n| d | e |", None, cx);
+        assert!(rendered.contains("a\nb"), "got: {rendered:?}");
+        assert!(!rendered.contains("<br"), "got: {rendered:?}");
+    }
+
+    #[gpui::test]
+    fn test_unsupported_html_block_still_shows_its_text(cx: &mut TestAppContext) {
+        let rendered =
+            render_html_preview("<section><figure>図の説明</figure></section>", None, cx);
+        assert!(rendered.contains("図の説明"), "got: {rendered:?}");
+    }
+
+    #[gpui::test]
+    fn test_adjacent_details_keep_their_own_summaries(cx: &mut TestAppContext) {
+        // No blank line between `</details>` and the next `<details>`, so one
+        // HTML block both closes a disclosure and opens the next one.
+        let source = "<details>
+<summary>A</summary>
+
+本文A
+
+</details>
+<details>
+<summary>B</summary>
+
+本文B
+
+</details>
+
+後ろ";
+
+        let collapsed = render_html_preview(source, None, cx);
+        assert!(collapsed.contains('A'), "got: {collapsed:?}");
+        assert!(collapsed.contains('B'), "got: {collapsed:?}");
+        assert!(!collapsed.contains("本文"), "got: {collapsed:?}");
+        assert!(collapsed.contains("後ろ"), "got: {collapsed:?}");
+
+        let first_expanded = render_html_preview(source, Some((0, 0)), cx);
+        assert!(first_expanded.contains("本文A"), "got: {first_expanded:?}");
+        assert!(!first_expanded.contains("本文B"), "got: {first_expanded:?}");
+        assert!(first_expanded.contains('B'), "got: {first_expanded:?}");
     }
 }

@@ -438,6 +438,12 @@ pub struct AcpConnection {
     /// `Some` only for an agent in a WSL sandbox whose channel came up; the
     /// session's `mcpServers` name it, so it lives as long as the connection.
     ide_link: Option<SandboxIdeLink>,
+    /// ADR-F49 decision 24: why this connection's agent has no IDE server at
+    /// all, when that is worth telling the user (the channel could not be
+    /// brought up — WSL timing out, the bridge refusing). The agent still ran,
+    /// with one tool fewer, so it is a notice on its threads rather than a
+    /// refusal; `None` when it has one, and when nothing was lost.
+    ide_unavailable: Option<SharedString>,
     /// The same for a sign-in, which runs on a terminal of its own: kept by
     /// the sign-in's task id, so that starting the sign-in again replaces it
     /// and the terminal's end releases it
@@ -483,6 +489,10 @@ struct SandboxIdeLink {
     _bridge: util::command::Child,
     /// Keeps the bridge's stderr in the log (and drained).
     _log: Task<()>,
+    /// ADR-F49 (new decision): this bridge's place in
+    /// [`sandbox::MAX_IDE_BRIDGES`]. **Declared last**, so the slot is only
+    /// handed to the next bridge once this one's `wsl.exe` is gone.
+    _slot: sandbox::IdeBridgeSlot,
 }
 
 #[derive(Clone, Default)]
@@ -974,72 +984,78 @@ impl AcpConnection {
                 None
             }
         };
-        let (child, sandbox_session, agent_sandbox, ide_link, pending_processes) = match launch {
-            AgentLaunch::Host => (
-                host_agent_command(&project, &command, root_dir.as_ref(), cx),
-                None,
-                None,
-                None,
-                PendingSandboxProcessAccess::NotSandboxed,
-            ),
-            AgentLaunch::LocalSandbox => {
-                let (child, session, sandbox) = local_sandboxed_agent_command(
-                    &agent_id,
-                    &project,
-                    &command,
-                    root_dir.clone(),
-                    cx,
-                )
-                .await?;
-                (
-                    child,
-                    Some(Rc::new(session)),
-                    Some(sandbox),
-                    None,
-                    PendingSandboxProcessAccess::Local,
-                )
-            }
-            AgentLaunch::WslSandbox { distro } => {
-                let WslAgentLaunch {
-                    child,
-                    session,
-                    sandbox,
-                    session_id,
-                    ide_link,
-                } = wsl_sandboxed_agent_command(
-                    &project,
-                    &command,
-                    distro.clone(),
-                    root_dir.clone(),
-                    paths.as_ref(),
-                    cx,
-                )
-                .await?;
-                (
-                    child,
-                    Some(Rc::new(session)),
-                    Some(sandbox),
-                    ide_link,
-                    PendingSandboxProcessAccess::Wsl { session_id, distro },
-                )
-            }
-            AgentLaunch::RemoteHelper { remote_binary } => {
-                let (child, session, session_id) = remote_sandboxed_agent_command(
-                    &project,
-                    &command,
-                    remote_binary,
-                    root_dir.clone(),
-                    cx,
-                )?;
-                (
-                    child,
-                    Some(Rc::new(session)),
+        let (child, sandbox_session, agent_sandbox, ide_link, ide_unavailable, pending_processes) =
+            match launch {
+                AgentLaunch::Host => (
+                    host_agent_command(&project, &command, root_dir.as_ref(), cx),
                     None,
                     None,
-                    PendingSandboxProcessAccess::Remote { session_id },
-                )
-            }
-        };
+                    None,
+                    None,
+                    PendingSandboxProcessAccess::NotSandboxed,
+                ),
+                AgentLaunch::LocalSandbox => {
+                    let (child, session, sandbox) = local_sandboxed_agent_command(
+                        &agent_id,
+                        &project,
+                        &command,
+                        root_dir.clone(),
+                        cx,
+                    )
+                    .await?;
+                    (
+                        child,
+                        Some(Rc::new(session)),
+                        Some(sandbox),
+                        None,
+                        None,
+                        PendingSandboxProcessAccess::Local,
+                    )
+                }
+                AgentLaunch::WslSandbox { distro } => {
+                    let WslAgentLaunch {
+                        child,
+                        session,
+                        sandbox,
+                        session_id,
+                        ide_link,
+                        ide_unavailable,
+                    } = wsl_sandboxed_agent_command(
+                        &project,
+                        &command,
+                        distro.clone(),
+                        root_dir.clone(),
+                        paths.as_ref(),
+                        cx,
+                    )
+                    .await?;
+                    (
+                        child,
+                        Some(Rc::new(session)),
+                        Some(sandbox),
+                        ide_link,
+                        ide_unavailable,
+                        PendingSandboxProcessAccess::Wsl { session_id, distro },
+                    )
+                }
+                AgentLaunch::RemoteHelper { remote_binary } => {
+                    let (child, session, session_id) = remote_sandboxed_agent_command(
+                        &project,
+                        &command,
+                        remote_binary,
+                        root_dir.clone(),
+                        cx,
+                    )?;
+                    (
+                        child,
+                        Some(Rc::new(session)),
+                        None,
+                        None,
+                        None,
+                        PendingSandboxProcessAccess::Remote { session_id },
+                    )
+                }
+            };
         let mut child = Child::spawn(child, Stdio::piped(), Stdio::piped(), Stdio::piped())?;
         // ADR-F49 decision 18 (C): only now is the sandbox's own process there
         // to be named. What the agent's answers leave running in it keeps the
@@ -1328,6 +1344,7 @@ impl AcpConnection {
             sandbox_processes,
             _agent_sandbox: agent_sandbox,
             ide_link,
+            ide_unavailable,
             login_sandboxes: Rc::default(),
             paths,
         })
@@ -1387,6 +1404,7 @@ impl AcpConnection {
             sandbox_processes: None,
             _agent_sandbox: None,
             ide_link: None,
+            ide_unavailable: None,
             login_sandboxes: Rc::default(),
             paths,
             session_list: None,
@@ -2269,6 +2287,117 @@ fn sandbox_unavailable(reason: impl Into<SharedString>) -> anyhow::Error {
     anyhow::Error::new(LoadError::SandboxUnavailable(reason.into()))
 }
 
+/// The line a technical detail is put on when the only further information
+/// about a failure is English diagnostic text. It is never folded into the
+/// Japanese sentence above it (ADR-F07): the sentence the user reads stays
+/// whole, and what follows is plainly marked as a diagnostic.
+const SANDBOX_DIAGNOSTIC_LABEL: &str = "技術的な詳細";
+
+/// ADR-F07 / ADR-F49 決定 38: turns a failure on the way into an agent's
+/// sandbox into the card's Japanese text (`conversation_view.rs`'s
+/// "サンドボックスで起動できません"), and logs the failure as it came.
+///
+/// `headline` is what could not be done, as a whole Japanese sentence without
+/// its full stop; [`sandbox_reason_ja`] adds why, when the reason is one this
+/// side can word.
+fn sandbox_setup_failed(headline: &str, error: &anyhow::Error) -> anyhow::Error {
+    log::warn!("acp: {headline}: {error:#}");
+    let (reason, diagnostic) = sandbox_reason_ja(error);
+    let mut message = match reason {
+        Some(reason) => format!("{headline}: {reason}"),
+        None => format!("{headline}。"),
+    };
+    if let Some(diagnostic) = diagnostic {
+        message.push('\n');
+        message.push_str(SANDBOX_DIAGNOSTIC_LABEL);
+        message.push_str(": ");
+        message.push_str(&diagnostic);
+    }
+    sandbox_unavailable(message)
+}
+
+/// Why the `sandbox` crate refused, as (a Japanese sentence, the English
+/// diagnostic that has no Japanese wording).
+///
+/// The crate words only its Windows environment failures for the user
+/// ([`sandbox::WslSandboxUnavailable`]); everything else it reports is English
+/// text meant for the log. So the sentence is built from the **type**, as
+/// [`wsl_worktree_roots_reason_ja`] builds its own from the variant, and
+/// whatever detail is left in English is handed back separately rather than
+/// spliced into the sentence.
+fn sandbox_reason_ja(error: &anyhow::Error) -> (Option<String>, Option<String>) {
+    #[cfg(target_os = "windows")]
+    if let Some(unavailable) = error.downcast_ref::<sandbox::WslSandboxUnavailable>() {
+        // Its `Display` is the Japanese explanation of what to fix, prefix
+        // and all.
+        return (Some(unavailable.to_string()), None);
+    }
+    match error.downcast_ref::<sandbox::SandboxError>() {
+        Some(error) => sandbox_error_reason_ja(error),
+        // Everything else on these paths words its own refusal (this file,
+        // and `project::agent_sandbox`'s configuration folder), so it is the
+        // sentence rather than a diagnostic.
+        None => (Some(format!("{error:#}")), None),
+    }
+}
+
+/// The whole text for a [`sandbox::SandboxError`] that has no headline of its
+/// own to sit under, laid out as [`sandbox_setup_failed`] lays its own out.
+fn sandbox_error_message_ja(error: &sandbox::SandboxError) -> String {
+    let (reason, diagnostic) = sandbox_error_reason_ja(error);
+    let mut message =
+        reason.unwrap_or_else(|| "サンドボックスを作成できませんでした。".to_string());
+    if let Some(diagnostic) = diagnostic {
+        message.push('\n');
+        message.push_str(SANDBOX_DIAGNOSTIC_LABEL);
+        message.push_str(": ");
+        message.push_str(&diagnostic);
+    }
+    message
+}
+
+/// See [`sandbox_reason_ja`]. Split out so every variant is answered for, and
+/// so a new one fails to compile rather than falling back to English.
+fn sandbox_error_reason_ja(error: &sandbox::SandboxError) -> (Option<String>, Option<String>) {
+    let whole = |sentence: &str| (Some(sentence.to_string()), None);
+    match error {
+        sandbox::SandboxError::UnsupportedPlatform => {
+            whole("この OS 向けのサンドボックスの実装がありません。")
+        }
+        // Worded once, next to the other sandbox failures the agent panel
+        // shows (`acp_thread::LinuxWslSandboxError`).
+        sandbox::SandboxError::BwrapNotFound
+        | sandbox::SandboxError::BwrapSetuidRejected
+        | sandbox::SandboxError::SandboxProbeFailed => (
+            Some(acp_thread::LinuxWslSandboxError::from(error.clone()).user_facing_message()),
+            None,
+        ),
+        // Already the Japanese explanation of what to fix.
+        sandbox::SandboxError::WslUnavailable(message) => (Some(message.clone()), None),
+        sandbox::SandboxError::BridgeExecutableUnavailable(detail) => (
+            Some(
+                "サンドボックスのブリッジ実行ファイルを見つけられませんでした。\
+                 Zed のインストールが壊れている可能性があります。"
+                    .to_string(),
+            ),
+            Some(detail.clone()),
+        ),
+        sandbox::SandboxError::UnsupportedPolicy(detail) => (
+            Some("この環境では、要求されたサンドボックスの構成を適用できません。".to_string()),
+            Some(detail.clone()),
+        ),
+        sandbox::SandboxError::InvalidRequest(detail) => (
+            Some("サンドボックスへの要求の内容が不正です。".to_string()),
+            Some(detail.clone()),
+        ),
+        sandbox::SandboxError::Io(detail) => (
+            Some("サンドボックスの準備中に入出力エラーが発生しました。".to_string()),
+            Some(detail.clone()),
+        ),
+        sandbox::SandboxError::Other(detail) => (None, Some(detail.clone())),
+    }
+}
+
 /// ADR-F07: the reason [`util::path_mapping::WslPathMapper::for_worktree_roots`]
 /// refused, worded in Japanese for the "サンドボックスで起動できません" card
 /// (`conversation_view.rs::render_load_error`). Built from the enum rather
@@ -2315,12 +2444,54 @@ fn hosts_missing_from_editor_allowlist(hosts: &AgentSandboxHosts, cx: &App) -> V
     let Some(allowlist) = cx.try_global::<egress_policy::EgressAllowlistGlobal>() else {
         return Vec::new();
     };
+    let allowlist = allowlist.0.snapshot();
+    let listed = host_patterns(allowlist.patterns().iter().map(ToString::to_string));
     hosts
         .iter()
-        .filter(|host| {
-            !http_client::RequestHost::parse(host).is_some_and(|host| allowlist.0.allows(&host))
-        })
+        .filter(|host| !editor_allowlist_permits(host, &allowlist, &listed))
         .map(|host| SharedString::from(host.clone()))
+        .collect()
+}
+
+/// Whether the IDE-wide allowlist already permits everything one entry of an
+/// agent's host list names.
+///
+/// An exact host is asked of the allowlist as a request for it would be, so
+/// loopback names and IP literals (which the allowlist knows and host patterns
+/// do not) keep answering as they do for the app's own traffic. A `*.`
+/// wildcard names a whole space of hosts instead of one, so it is permitted
+/// only if one of the allowlist's own patterns covers all of it. Asking
+/// `allows()` about the literal text `*.example.com` — what this replaced —
+/// asks about a hostname nobody resolves, and reaches the same answer only
+/// because `*.` parses as an ordinary label: a coincidence, not the rule this
+/// decision rests on.
+fn editor_allowlist_permits(
+    entry: &str,
+    allowlist: &http_client::EgressPolicy,
+    listed: &[http_proxy::HostPattern],
+) -> bool {
+    match http_proxy::HostPattern::parse(entry) {
+        Ok(pattern @ http_proxy::HostPattern::Subdomain(_)) => {
+            listed.iter().any(|listed| listed.covers(&pattern))
+        }
+        _ => http_client::RequestHost::parse(entry).is_some_and(|host| allowlist.allows(&host)),
+    }
+}
+
+/// The host patterns among `entries`, with the entries that are not patterns
+/// (an IP literal in the IDE-wide allowlist, a typo in an agent's settings)
+/// left out: they name no domain, so they can neither cover nor be covered by
+/// one, and dropping them here only ever narrows what is granted.
+fn host_patterns(entries: impl IntoIterator<Item = String>) -> Vec<http_proxy::HostPattern> {
+    entries
+        .into_iter()
+        .filter_map(|entry| match http_proxy::HostPattern::parse(&entry) {
+            Ok(pattern) => Some(pattern),
+            Err(error) => {
+                log::warn!("not treating '{entry}' as a sandbox host pattern: {error}");
+                None
+            }
+        })
         .collect()
 }
 
@@ -2471,9 +2642,7 @@ async fn local_sandboxed_agent_command(
         })
         .await
         .map_err(|error| {
-            sandbox_unavailable(format!(
-                "エージェントの設定フォルダーを用意できませんでした: {error:#}"
-            ))
+            sandbox_setup_failed("エージェントの設定フォルダーを用意できませんでした", &error)
         })?;
     let AgentSandboxState::Resolved { config_dir, hosts } = placed.state.clone() else {
         return Err(sandbox_unavailable(
@@ -2486,7 +2655,9 @@ async fn local_sandboxed_agent_command(
     write_scope.push(config_dir);
     let policy =
         local_agent_sandbox_policy(&write_scope, &git_dirs, &placed.readable_paths, &hosts)
-            .map_err(|error| sandbox_unavailable(format!("{error:#}")))?;
+            .map_err(|error| {
+                sandbox_setup_failed("サンドボックスの構成を組み立てられませんでした", &error)
+            })?;
     let upstream_proxy = cx.update(|cx| crate::upstream_proxy_env(cx));
     let env = sandboxed_agent_environment(placed.env, upstream_proxy);
     let agent = sandbox::CommandAndArgs {
@@ -2503,12 +2674,12 @@ async fn local_sandboxed_agent_command(
                 sandbox::Sandbox::can_create(&policy).map_err(|error| {
                     acp_thread::LinuxWslSandboxError::from(error).user_facing_message()
                 })?;
-                let mut sandbox =
-                    sandbox::Sandbox::new(policy).map_err(|error| error.to_string())?;
+                let mut sandbox = sandbox::Sandbox::new(policy)
+                    .map_err(|error| sandbox_error_message_ja(&error))?;
                 let wrapped = sandbox
                     .wrap(&agent)
                     .await
-                    .map_err(|error| error.to_string())?;
+                    .map_err(|error| sandbox_error_message_ja(&error))?;
                 Ok::<_, String>((wrapped, sandbox))
             }
         })
@@ -2601,6 +2772,8 @@ struct WslAgentLaunch {
     session_id: String,
     /// Decision 24: the restricted IDE server, when its channel came up.
     ide_link: Option<SandboxIdeLink>,
+    /// Why it did not, when that is something to tell the thread about.
+    ide_unavailable: Option<SharedString>,
 }
 
 /// ADR-F49 決定 24: what an ACP agent's IDE session is named inside the
@@ -2667,9 +2840,7 @@ async fn wsl_sandboxed_agent_command(
         .await
         .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
         .map_err(|error| {
-            sandbox_unavailable(format!(
-                "エージェントの設定フォルダーを用意できませんでした: {error:#}"
-            ))
+            sandbox_setup_failed("エージェントの設定フォルダーを用意できませんでした", &error)
         })?;
     let distro_name = sandbox::registered_wsl_distro_name(distro.as_deref());
     let WslAgentPlan {
@@ -2691,7 +2862,9 @@ async fn wsl_sandboxed_agent_command(
         &sandbox_command.readable_paths,
         &hosts,
     )
-    .map_err(|error| sandbox_unavailable(format!("{error:#}")))?;
+    .map_err(|error| {
+        sandbox_setup_failed("サンドボックスの構成を組み立てられませんでした", &error)
+    })?;
 
     let editor_allowlist = cx.update(|cx| editor_allowlist_entries(cx));
     let session_id = new_sandbox_session_id();
@@ -2702,9 +2875,12 @@ async fn wsl_sandboxed_agent_command(
     // cannot be brought up the agent starts without it.
     let ide = match paths {
         Some(paths) => start_restricted_ide_channel(project, distro.as_deref(), paths, cx).await,
-        None => None,
+        None => RestrictedIdeChannel {
+            link: None,
+            unavailable: None,
+        },
     };
-    let ide_forward = ide.as_ref().map(|(_, forward)| forward.clone());
+    let ide_forward = ide.link.as_ref().map(|(_, forward)| forward.clone());
     let agent = sandbox::CommandAndArgs {
         program: command.path.to_string_lossy().into_owned(),
         args: command.args.clone(),
@@ -2729,8 +2905,14 @@ async fn wsl_sandboxed_agent_command(
         .with_timeout(WSL_WRAP_TIMEOUT, cx.background_executor())
         .await
         .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
-        .map_err(|error| sandbox_unavailable(format!("{error:#}")))?;
-    let ide_link = ide.map(|(link, _)| link);
+        .map_err(|error| {
+            sandbox_setup_failed("エージェントをサンドボックスで起動できませんでした", &error)
+        })?;
+    let RestrictedIdeChannel {
+        link: ide_link,
+        unavailable: ide_unavailable,
+    } = ide;
+    let ide_link = ide_link.map(|(link, _)| link);
 
     let mut child = util::command::new_std_command(&wrapped.program);
     child.args(&wrapped.args);
@@ -2760,6 +2942,7 @@ async fn wsl_sandboxed_agent_command(
         sandbox,
         session_id,
         ide_link,
+        ide_unavailable,
     })
 }
 
@@ -2778,23 +2961,50 @@ async fn wsl_sandboxed_agent_command(
 /// is loosened, the agent is simply given one tool fewer — but it is worth
 /// knowing, so every way out of here says why.
 #[cfg(target_os = "windows")]
+struct RestrictedIdeChannel {
+    link: Option<(SandboxIdeLink, sandbox::IdeForward)>,
+    /// Why the agent has no diagnostics tool, in Japanese, for the thread's
+    /// own notice to put its sentence in front of
+    /// (`thread_view.rs::render_sandbox_ide_notice`). `None` when the channel
+    /// came up, and when no workspace holds the project — there is then no
+    /// thread on screen to tell, and nothing the user could do about it.
+    unavailable: Option<SharedString>,
+}
+
+#[cfg(target_os = "windows")]
 async fn start_restricted_ide_channel(
     project: &Entity<Project>,
     distro: Option<&str>,
     paths: &Arc<AcpPathTranslator>,
     cx: &mut AsyncApp,
-) -> Option<(SandboxIdeLink, sandbox::IdeForward)> {
+) -> RestrictedIdeChannel {
     match restricted_ide_channel(project, distro, paths, cx).await {
-        Ok(Some(link)) => Some(link),
+        Ok(Some(link)) => RestrictedIdeChannel {
+            link: Some(link),
+            unavailable: None,
+        },
         Ok(None) => {
             log::info!(
                 "acp: no workspace holds this project, so its sandboxed agent gets no IDE server"
             );
-            None
+            RestrictedIdeChannel {
+                link: None,
+                unavailable: None,
+            }
         }
         Err(error) => {
             log::warn!("acp: the sandboxed agent gets no IDE server: {error:#}");
-            None
+            // The English diagnostic of the pair stays in the log the line
+            // above: this is a sentence for the thread to show (ADR-F07).
+            let (reason, _diagnostic) = sandbox_reason_ja(&error);
+            RestrictedIdeChannel {
+                link: None,
+                unavailable: Some(
+                    reason
+                        .unwrap_or_else(|| "理由は Zed のログに記録しました。".to_string())
+                        .into(),
+                ),
+            }
         }
     }
 }
@@ -2880,6 +3090,7 @@ async fn restricted_ide_channel(
         stdin,
         stdout,
         log,
+        slot,
     } = sandbox::start_ide_bridge(
         &program,
         &arguments,
@@ -2908,6 +3119,7 @@ async fn restricted_ide_channel(
             _mux: mux,
             _bridge: child,
             _log: executor.spawn(log),
+            _slot: slot,
         },
         sandbox::IdeForward {
             inner_port,
@@ -2994,34 +3206,45 @@ struct RemoteAgentPlan {
 /// what the agent itself is told its reach is.
 ///
 /// No allowlist at all is not "everything": the ceiling that would judge the
-/// agent's traffic is missing, so the agent reaches nothing (`editor_allows`
-/// answers false for every host, and `editor_allowlist` is `None`).
+/// agent's traffic is missing, so the agent reaches nothing.
+///
+/// The narrowing is pattern against pattern, so a wildcard on either side
+/// survives it as the part of itself the other permits (see
+/// [`http_proxy::HostPattern::intersect`]). Judging the agent's entry as if it
+/// were a hostname — what the ceiling's proxy does per connection, with a real
+/// host in hand — kept `*.example.com` only where the allowlist covered all of
+/// it (and then only because `*.` matches as an ordinary label), and dropped
+/// it whole where the allowlist permits a part of it.
 fn remote_agent_network(
     hosts: &AgentSandboxHosts,
     editor_allowlist: Option<&[String]>,
-    editor_allows: impl Fn(&str) -> bool,
 ) -> acp_thread::SandboxNetworkAccess {
-    let patterns = match hosts {
-        AgentSandboxHosts::Listed(hosts) => hosts
-            .iter()
-            .filter(|host| editor_allows(host))
-            .cloned()
-            .collect::<Vec<_>>(),
-        AgentSandboxHosts::EditorAllowlist => match editor_allowlist {
-            Some(entries) => entries.to_vec(),
-            None => return acp_thread::SandboxNetworkAccess::None,
-        },
+    let Some(editor_allowlist) = editor_allowlist else {
+        return acp_thread::SandboxNetworkAccess::None;
     };
-    let patterns = patterns
-        .iter()
-        .filter_map(|pattern| match http_proxy::HostPattern::parse(pattern) {
-            Ok(pattern) => Some(pattern),
-            Err(error) => {
-                log::warn!("not passing host pattern '{pattern}' to the remote sandbox: {error}");
-                None
+    let listed = host_patterns(editor_allowlist.iter().cloned());
+    let patterns = match hosts {
+        AgentSandboxHosts::Listed(hosts) => {
+            // One agent pattern can meet several of the allowlist's (its own
+            // `*.example.com` under both `*.example.com` and
+            // `*.a.example.com`), so the results are reduced to the ones that
+            // are not already inside another — the same minimal cover the
+            // grants themselves are kept as, and what the agent is told its
+            // reach is.
+            let mut patterns: Vec<http_proxy::HostPattern> = Vec::new();
+            for host in host_patterns(hosts.iter().cloned()) {
+                for shared in listed.iter().filter_map(|listed| host.intersect(listed)) {
+                    if patterns.iter().any(|kept| kept.covers(&shared)) {
+                        continue;
+                    }
+                    patterns.retain(|kept| !shared.covers(kept));
+                    patterns.push(shared);
+                }
             }
-        })
-        .collect::<Vec<_>>();
+            patterns
+        }
+        AgentSandboxHosts::EditorAllowlist => listed,
+    };
     if patterns.is_empty() {
         acp_thread::SandboxNetworkAccess::None
     } else {
@@ -3112,14 +3335,8 @@ fn remote_sandboxed_agent_command(
     ensure_hosts_allowed(hosts, cx)?;
     let (worktree_roots, git_dirs, network, network_ceiling, remote_client) =
         project.read_with(cx, |project, cx| {
-            let allowlist = cx.try_global::<egress_policy::EgressAllowlistGlobal>();
             let editor_allowlist = editor_allowlist_entries(cx);
-            let network = remote_agent_network(hosts, editor_allowlist.as_deref(), |host| {
-                allowlist.is_some_and(|allowlist| {
-                    http_client::RequestHost::parse(host)
-                        .is_some_and(|host| allowlist.0.allows(&host))
-                })
-            });
+            let network = remote_agent_network(hosts, editor_allowlist.as_deref());
             (
                 acp_thread::sandbox_worktree_writable_paths(project, cx),
                 acp_thread::sandbox_git_dirs(project, cx),
@@ -3220,9 +3437,7 @@ async fn wrap_login_in_sandbox(
                 })
                 .await
                 .map_err(|error| {
-                    sandbox_unavailable(format!(
-                        "サインインをサンドボックスで起動できませんでした: {error:#}"
-                    ))
+                    sandbox_setup_failed("サインインをサンドボックスで起動できませんでした", &error)
                 })?;
             login_sandboxes
                 .borrow_mut()
@@ -3260,9 +3475,7 @@ async fn wrap_login_in_sandbox(
                 .await
                 .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
                 .map_err(|error| {
-                    sandbox_unavailable(format!(
-                        "サインインをサンドボックスで起動できませんでした: {error:#}"
-                    ))
+                    sandbox_setup_failed("サインインをサンドボックスで起動できませんでした", &error)
                 })?;
             login_sandboxes
                 .borrow_mut()
@@ -3811,6 +4024,10 @@ impl AgentConnection for AcpConnection {
 
     fn sandbox_process_monitor(&self) -> Option<Entity<acp_thread::SandboxProcessMonitor>> {
         self.sandbox_processes.clone()
+    }
+
+    fn sandbox_ide_unavailable(&self) -> Option<SharedString> {
+        self.ide_unavailable.clone()
     }
 
     fn authenticate(&self, method_id: acp::AuthMethodId, cx: &mut App) -> Task<Result<()>> {
@@ -4732,6 +4949,98 @@ mod tests {
         }
     }
 
+    /// ADR-F07 / 決定 38: the card never shows the `sandbox` crate's English
+    /// text as the sentence — every variant is worded here, and what is left
+    /// in English goes on its own, labelled line.
+    #[test]
+    fn sandbox_failures_are_worded_in_japanese() {
+        let cases = [
+            (sandbox::SandboxError::UnsupportedPlatform, None),
+            (sandbox::SandboxError::BwrapNotFound, None),
+            (sandbox::SandboxError::BwrapSetuidRejected, None),
+            (sandbox::SandboxError::SandboxProbeFailed, None),
+            (
+                sandbox::SandboxError::WslUnavailable(
+                    "WSL でサンドボックスを作成できませんでした: 既定のディストリビューションがありません。"
+                        .to_string(),
+                ),
+                None,
+            ),
+            (
+                sandbox::SandboxError::BridgeExecutableUnavailable("no such file".to_string()),
+                Some("no such file"),
+            ),
+            (
+                sandbox::SandboxError::UnsupportedPolicy("readable paths".to_string()),
+                Some("readable paths"),
+            ),
+            (
+                sandbox::SandboxError::InvalidRequest("invalid network host".to_string()),
+                Some("invalid network host"),
+            ),
+            (
+                sandbox::SandboxError::Io("failed to start network proxy".to_string()),
+                Some("failed to start network proxy"),
+            ),
+            (
+                sandbox::SandboxError::Other("bwrap exited with 1".to_string()),
+                Some("bwrap exited with 1"),
+            ),
+        ];
+
+        for (error, diagnostic) in cases {
+            let anyhow_error = anyhow!(error.clone());
+            let message = sandbox_setup_failed("エージェントを起動できませんでした", &anyhow_error)
+                .downcast::<LoadError>()
+                .expect("the card's error");
+            let LoadError::SandboxUnavailable(message) = message else {
+                panic!("expected a sandbox card for {error:?}");
+            };
+            let (sentence, detail) = match message.split_once('\n') {
+                Some((sentence, detail)) => (sentence, Some(detail)),
+                None => (message.as_ref(), None),
+            };
+            assert!(
+                sentence.starts_with("エージェントを起動できませんでした"),
+                "{sentence:?}"
+            );
+            // The sentence the user reads carries no English of the crate's
+            // own, whether or not a diagnostic followed it.
+            for english in [" the ", " a ", " is ", " with ", " no ", " to "] {
+                assert!(
+                    !sentence.contains(english),
+                    "{english:?} left in {sentence:?}"
+                );
+            }
+            match diagnostic {
+                Some(expected) => assert_eq!(
+                    detail,
+                    Some(format!("{SANDBOX_DIAGNOSTIC_LABEL}: {expected}").as_str()),
+                ),
+                None => assert_eq!(detail, None, "{message:?}"),
+            }
+        }
+    }
+
+    /// Anything that words its own refusal (`project::agent_sandbox`'s
+    /// configuration folder, this file's policy) is the sentence itself, not a
+    /// diagnostic appended to a vaguer one.
+    #[test]
+    fn a_failure_that_words_itself_is_the_sentence() {
+        let error = anyhow!("書込を許可するフォルダーを確認できませんでした。");
+        let message =
+            sandbox_setup_failed("サンドボックスの構成を組み立てられませんでした", &error)
+                .downcast::<LoadError>()
+                .expect("the card's error");
+        let LoadError::SandboxUnavailable(message) = message else {
+            panic!("expected a sandbox card");
+        };
+        assert_eq!(
+            message.as_ref(),
+            "サンドボックスの構成を組み立てられませんでした: 書込を許可するフォルダーを確認できませんでした。"
+        );
+    }
+
     /// ADR-F49 第 2a 段: where an agent starts, and when it does not.
     #[test]
     fn an_agent_starts_in_the_sandbox_its_project_has() {
@@ -4861,29 +5170,89 @@ mod tests {
         };
 
         assert_eq!(
-            hosts_of(remote_agent_network(&listed, Some(&[]), |host| {
-                host == "api.anthropic.com"
-            })),
+            hosts_of(remote_agent_network(
+                &listed,
+                Some(&["api.anthropic.com".to_string()])
+            )),
             ["api.anthropic.com"]
         );
         assert!(matches!(
-            remote_agent_network(&listed, None, |_| false),
+            remote_agent_network(&listed, Some(&[])),
+            acp_thread::SandboxNetworkAccess::None
+        ));
+        assert!(matches!(
+            remote_agent_network(&listed, None),
             acp_thread::SandboxNetworkAccess::None
         ));
         assert_eq!(
             hosts_of(remote_agent_network(
                 &AgentSandboxHosts::EditorAllowlist,
                 Some(&["*.example.com".to_string()]),
-                |_| false
             )),
             ["*.example.com"]
         );
         assert!(
             matches!(
-                remote_agent_network(&AgentSandboxHosts::EditorAllowlist, None, |_| true),
+                remote_agent_network(&AgentSandboxHosts::EditorAllowlist, None),
                 acp_thread::SandboxNetworkAccess::None
             ),
             "no allowlist to take a part of is not every host (fail-closed)"
+        );
+    }
+
+    /// ADR-F49 decision 13 + ADR-F17: the narrowing keeps the part of a
+    /// wildcard the IDE-wide allowlist permits. What this replaced asked "is
+    /// this entry allowed" of a string that names no single host, which
+    /// answered for a wildcard the allowlist covers whole only by matching
+    /// `*.` as a label, and dropped one it permits a part of.
+    #[test]
+    fn a_remote_agents_wildcard_hosts_survive_the_narrowing() {
+        let hosts_of = |hosts: &[&str], allowlist: &[&str]| {
+            let hosts = AgentSandboxHosts::Listed(
+                hosts
+                    .iter()
+                    .map(|host| host.to_string())
+                    .collect::<Vec<_>>(),
+            );
+            let allowlist = allowlist
+                .iter()
+                .map(|entry| entry.to_string())
+                .collect::<Vec<_>>();
+            match remote_agent_network(&hosts, Some(&allowlist)) {
+                acp_thread::SandboxNetworkAccess::Restricted(allowlist) => allowlist
+                    .patterns()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>(),
+                acp_thread::SandboxNetworkAccess::None => Vec::new(),
+                other => panic!("expected a list of hosts, got {other:?}"),
+            }
+        };
+
+        assert_eq!(
+            hosts_of(&["*.example.com"], &["*.example.com"]),
+            ["*.example.com"],
+            "a wildcard the allowlist lists exactly stays whole"
+        );
+        assert_eq!(
+            hosts_of(&["*.example.com"], &["*.a.example.com", "b.example.com"]),
+            ["*.a.example.com", "b.example.com"],
+            "and otherwise becomes the part of itself the allowlist permits"
+        );
+        assert_eq!(
+            hosts_of(&["*.example.com"], &["*.example.com", "*.a.example.com"]),
+            ["*.example.com"],
+            "without repeating a host two allowlist entries both permit"
+        );
+        assert_eq!(
+            hosts_of(&["*.example.com"], &["example.com"]),
+            Vec::<String>::new(),
+            "a subdomain wildcard does not reach its own parent"
+        );
+        assert_eq!(
+            hosts_of(&["api.example.com"], &["*.example.com"]),
+            ["api.example.com"],
+            "an exact host under a listed wildcard is still just that host"
         );
     }
 
@@ -4903,7 +5272,7 @@ mod tests {
         let AgentSandboxState::Resolved { hosts, .. } = &sandbox.state else {
             panic!("the sandbox was placed");
         };
-        let network = remote_agent_network(hosts, Some(&[]), |_| true);
+        let network = remote_agent_network(hosts, Some(&["api.anthropic.com".to_string()]));
 
         let plan = plan_remote_agent(
             &remote_helper(),
@@ -5142,6 +5511,25 @@ mod tests {
                 hosts_missing_from_editor_allowlist(&AgentSandboxHosts::EditorAllowlist, cx)
                     .is_empty(),
                 "an agent with no hosts of its own asks for nothing"
+            );
+
+            // A wildcard is asked for as a whole: the allowlist permits it once
+            // one of its own entries covers all of it, and listing one host
+            // under it is not that.
+            let wildcard = AgentSandboxHosts::Listed(vec!["*.anthropic.com".to_string()]);
+            assert_eq!(
+                hosts_missing_from_editor_allowlist(&wildcard, cx),
+                ["*.anthropic.com"]
+            );
+            let (policy, errors) =
+                http_client::EgressPolicy::from_host_strings(["*.anthropic.com"]);
+            assert!(errors.is_empty(), "{errors:?}");
+            cx.set_global(egress_policy::EgressAllowlistGlobal(
+                http_client::EgressPolicyHandle::new(policy),
+            ));
+            assert!(
+                hosts_missing_from_editor_allowlist(&wildcard, cx).is_empty(),
+                "adding the very entry the agent asked for must settle it"
             );
         });
     }
@@ -8823,6 +9211,7 @@ done
             sandbox,
             session_id,
             ide_link: _,
+            ide_unavailable: _,
         } = wsl_sandboxed_agent_command(
             &project,
             &command,

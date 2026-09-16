@@ -798,6 +798,12 @@ impl BrowserPanel {
                 if *local {
                     self.activate_pane(pane.clone(), cx);
                 }
+                // 名指しで出したあと (`revealed_by_user`) に、裏で待たせていた
+                // URL 無しのタブが前面へ来たら、この瞬間に起こす。名指しより前
+                // (復元・裏での差し替え) はここを通っても何もしない。
+                if self.revealed_by_user {
+                    Self::wake_active_browser_item(pane, window, cx);
+                }
                 self.hide_inactive_surfaces(cx);
                 self.serialize(cx);
             }
@@ -892,6 +898,23 @@ impl BrowserPanel {
             pane::Event::ItemPinned | pane::Event::ItemUnpinned => self.serialize(cx),
             _ => {}
         }
+    }
+
+    /// そのペインで今前面にいるタブが待機ホーム ([`BrowserView::pending_home_url`])
+    /// を持っていれば読み込む。パネルが名指しで出されたとき ([`Self::revealed_by_user`])
+    /// と、名指しされたあとに裏のタブが前面へ来たとき ([`Self::handle_pane_event`] の
+    /// `ActivateItem`) の両方から呼ぶ。既に読み込み済みのタブは `load_deferred_home_page`
+    /// が何もせずに戻る。
+    fn wake_active_browser_item(pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(view) = pane
+            .read(cx)
+            .active_item()
+            .and_then(|item| item.downcast::<BrowserItem>())
+            .map(|item| item.read(cx).view().clone())
+        else {
+            return;
+        };
+        view.update(cx, |view, cx| view.load_deferred_home_page(window, cx));
     }
 
     // -- 永続化 --------------------------------------------------------------
@@ -1325,18 +1348,11 @@ impl Panel for BrowserPanel {
 
     fn revealed_by_user(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.revealed_by_user = true;
-        // 画面に出ているタブ (ペインごとに 1 枚) だけを起こす。裏のタブは表に
-        // 出たところで WebView2 が作られるので、そこまで待たせる理由が無い。
+        // 画面に出ているタブ (ペインごとに 1 枚) だけを起こす。裏のタブはまだ
+        // 白いまま置き、`handle_pane_event` が前面に来た瞬間に起こす
+        // (表に出るまで通信しない、待機ホームの趣旨を保つ)。
         for pane in self.center.panes().into_iter().cloned().collect::<Vec<_>>() {
-            let Some(view) = pane
-                .read(cx)
-                .active_item()
-                .and_then(|item| item.downcast::<BrowserItem>())
-                .map(|item| item.read(cx).view().clone())
-            else {
-                continue;
-            };
-            view.update(cx, |view, cx| view.load_deferred_home_page(window, cx));
+            Self::wake_active_browser_item(&pane, window, cx);
         }
     }
 
@@ -3047,6 +3063,74 @@ mod tests {
             "",
             "restoring an empty tab must not send it to the home page"
         );
+    }
+
+    #[gpui::test]
+    async fn a_background_tab_wakes_up_once_it_comes_to_the_front(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace = window_handle
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the window should hold a workspace");
+        let (_, workspace_id) = workspace_with_database_id(&window_handle, cx);
+
+        // Two tabs restored without a saved URL in the same pane (no row in
+        // `browser_items` for either `item_id`): the first is the front tab,
+        // the second sits behind it, both waiting.
+        let serialized = SerializedBrowserPanel {
+            root: SerializedBrowserPaneGroup::Pane(SerializedBrowserPane {
+                active: true,
+                items: vec![
+                    SerializedPanelItem {
+                        kind: "Browser".into(),
+                        item_id: 4_242,
+                        active: true,
+                        preview: false,
+                    },
+                    SerializedPanelItem {
+                        kind: "Browser".into(),
+                        item_id: 4_243,
+                        active: false,
+                        preview: false,
+                    },
+                ],
+                urls: Vec::new(),
+                active_item: None,
+            }),
+        };
+        let mut async_cx = async_window(cx);
+        assert!(restore(&panel, serialized, Some(workspace_id), &mut async_cx).await);
+        cx.run_until_parked();
+
+        // Asking for the browser (ADR-F48) wakes only the front tab.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.focus_panel::<BrowserPanel>(window, cx);
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&panel.active_pane, cx),
+                vec![DEFAULT_HOME_URL.to_string(), String::new()],
+                "the panel is revealed, but the background tab is still white"
+            );
+        });
+
+        // Bringing the background tab to the front (a tab click) wakes it too,
+        // without needing the panel to be revealed again.
+        panel.update_in(cx, |panel, window, cx| {
+            panel.active_pane.update(cx, |pane, cx| {
+                pane.activate_item(1, true, true, window, cx);
+            });
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&panel.active_pane, cx),
+                vec![DEFAULT_HOME_URL.to_string(); 2],
+                "the background tab wakes up as soon as it becomes the front tab"
+            );
+        });
     }
 
     #[gpui::test]

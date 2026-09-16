@@ -1658,6 +1658,15 @@ pub struct AgentPanel {
     pending_layout_serialization: Task<Option<()>>,
     last_created_entry_kind: AgentPanelEntryKind,
     draft_thread: Option<Entity<ConversationView>>,
+    /// ADR-F49 (new decision): the empty draft the idle disconnect took out of
+    /// the slot above ([`Self::release_idle_draft`]). Its row and its unsent
+    /// prompt outlive the view, so the slot is filled from this id again
+    /// rather than with a second draft beside it.
+    released_idle_draft: Option<ThreadId>,
+    /// The window this panel is in. The idle disconnect reaches the panel from
+    /// a sweep that has no window of its own, and taking a tab out of a pane
+    /// needs one.
+    window_handle: gpui::AnyWindowHandle,
     retained_threads: HashMap<ThreadId, Entity<ConversationView>>,
     terminals: HashMap<TerminalId, AgentTerminal>,
     pending_terminal_spawn: Option<TerminalId>,
@@ -1748,10 +1757,15 @@ impl AgentPanel {
                 })
         };
 
+        // ADR-F49 (new decision): a slot the idle disconnect emptied still has
+        // a draft to come back to, so the id is written the way it would have
+        // been: a restart then reads that draft back rather than leaving its
+        // row behind as a ghost.
         let new_draft_thread_id = self
             .draft_thread
             .as_ref()
-            .map(|draft| draft.read(cx).thread_id);
+            .map(|draft| draft.read(cx).thread_id)
+            .or(self.released_idle_draft);
 
         let kvp = KeyValueStore::global(cx);
         self.pending_serialization = Some(cx.background_spawn(async move {
@@ -2238,6 +2252,8 @@ impl AgentPanel {
             focus_handle: cx.focus_handle(),
             context_server_registry,
             draft_thread: None,
+            released_idle_draft: None,
+            window_handle: window.window_handle(),
             retained_threads: HashMap::default(),
             terminals: HashMap::default(),
             pending_terminal_spawn: None,
@@ -3706,6 +3722,7 @@ impl AgentPanel {
         cx: &mut Context<Self>,
     ) -> Entity<ConversationView> {
         let desired_agent = self.selected_agent(cx);
+        self.restore_released_idle_draft(&desired_agent, window, cx);
         if let Some(draft) = &self.draft_thread {
             let draft_entity = draft.entity_id();
             let agent_matches = *draft.read(cx).agent_key() == desired_agent;
@@ -5022,6 +5039,169 @@ impl AgentPanel {
             .is_some_and(|view| view.entity_id() == conversation_view)
     }
 
+    /// ADR-F49 (new decision): whether the panel's new-thread slot holds this
+    /// exact view, with an empty draft nothing is showing.
+    ///
+    /// The slot is not a parking slot, so [`Self::is_parking_thread`] never
+    /// speaks for what is in it. The panel keeps one draft for the agent it
+    /// has selected whether or not the user ever types in it, and that draft's
+    /// thread holds the agent's connection, so the selected agent would keep
+    /// its process for as long as the window lives. An **empty** draft is the
+    /// one thing in the slot that costs nothing to let go of: no session was
+    /// ever started, and the same thread — its id, its row in the sidebar and
+    /// its unsent prompt — is read back by
+    /// [`Self::restore_released_idle_draft`].
+    ///
+    /// "Nothing is showing it" means the panel is not drawing the draft:
+    /// either the user is looking at something else in it, or the panel is not
+    /// the visible one in its dock. A draft on screen is one the user may type
+    /// in at any moment.
+    pub(crate) fn is_releasable_idle_draft(
+        &self,
+        thread_id: ThreadId,
+        conversation_view: gpui::EntityId,
+        cx: &App,
+    ) -> bool {
+        let Some(draft) = self.draft_thread.as_ref() else {
+            return false;
+        };
+        if draft.entity_id() != conversation_view || draft.read(cx).thread_id != thread_id {
+            return false;
+        }
+        if self.is_active && self.base_view_shows(conversation_view) {
+            return false;
+        }
+        // The panel's new-thread slot is drawn from a tab of the panel's own
+        // (ADR-F36 Phase B), and that tab is what holds the view. A tab under
+        // this thread's id that shows *another* copy of it — another
+        // workspace's panel keeps its own draft under the same id — is not
+        // this panel's to take, and that copy would keep the connection.
+        if ThreadItem::is_open_in_a_tab(thread_id, cx)
+            && ThreadItem::item_showing_view(thread_id, conversation_view, cx).is_none()
+        {
+            return false;
+        }
+        // Sending turns a draft into a thread of its own, which is read back
+        // from the agent's session rather than from the draft-prompt store.
+        if !draft
+            .read(cx)
+            .root_thread(cx)
+            .is_some_and(|thread| thread.read(cx).is_draft_thread())
+        {
+            return false;
+        }
+        // A message the user has just sent leaves the editor before it reaches
+        // the thread, and until it does the thread has no entry to say it is
+        // no longer a draft: in between, an empty editor is a message in
+        // flight rather than a draft nobody wrote in, and letting go here
+        // would drop the view and the message with it.
+        if draft
+            .read(cx)
+            .active_thread()
+            .is_some_and(|thread_view| thread_view.read(cx).is_loading_contents)
+        {
+            return false;
+        }
+        !self.draft_has_content(draft, cx)
+    }
+
+    /// ADR-F49 (new decision): lets go of the empty draft in the new-thread
+    /// slot, so that dropping the connection it holds really ends the agent.
+    ///
+    /// The draft the panel was drawing goes with it when the panel is not on
+    /// screen — the slot is not the only thing holding that view, and a view
+    /// left in `base_view` would keep the connection whatever the store does.
+    /// The panel puts the same draft back the next time it is shown
+    /// ([`Self::ensure_thread_initialized`]) or asked for a new thread
+    /// ([`Self::ensure_draft`]).
+    pub(crate) fn release_idle_draft(
+        &mut self,
+        thread_id: ThreadId,
+        conversation_view: gpui::EntityId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self.is_releasable_idle_draft(thread_id, conversation_view, cx) {
+            return false;
+        }
+        // Written before the tab goes: closing the last tab in the pane sends
+        // the panel back to its usual draft, and this is what tells it to wait
+        // for the panel to be on screen instead.
+        self.released_idle_draft = Some(thread_id);
+        self.draft_thread = None;
+        self._draft_editor_observation = None;
+        // A draft that has never been shown has no tab of its own, and the
+        // slot was then the only thing holding it.
+        self.take_thread_from_tab(thread_id, window, cx);
+        if self.base_view_shows(conversation_view) {
+            self.base_view = BaseView::Uninitialized;
+            self.refresh_base_view_subscriptions(window, cx);
+            cx.emit(AgentPanelEvent::ActiveViewChanged);
+        }
+        self.serialize(cx);
+        cx.notify();
+        true
+    }
+
+    /// ADR-F49 (new decision): puts back the draft [`Self::release_idle_draft`]
+    /// took out of the new-thread slot, with its id, its row in the sidebar
+    /// and whatever the draft-prompt store holds for it, so that an agent
+    /// disconnected while nobody looked leaves no ghost row behind and no
+    /// second draft beside it.
+    ///
+    /// A draft of another agent is not put back: the user asked for
+    /// `desired_agent` in the meantime, and an empty draft's row goes the way
+    /// [`Self::ensure_draft`] already sends it when the slot is retargeted.
+    fn restore_released_idle_draft(
+        &mut self,
+        desired_agent: &Agent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.draft_thread.is_some() {
+            return;
+        }
+        let Some(thread_id) = self.released_idle_draft.take() else {
+            return;
+        };
+        let agent = ThreadMetadataStore::try_global(cx)
+            .and_then(|store| store.read(cx).entry(thread_id).cloned())
+            .filter(|metadata| metadata.is_draft())
+            .map(|metadata| Agent::from(metadata.agent_id));
+        match agent {
+            Some(agent) if agent == *desired_agent => {
+                self.restore_new_draft(thread_id, window, cx);
+            }
+            // The row goes only while it is still the empty draft that was let
+            // go of. Its row stayed in the sidebar while it was away, so the
+            // user may have opened it there and written in it since, and
+            // deleting it then would take that text with it
+            // ([`ThreadMetadataStore::delete`] drops the draft's prompt too).
+            Some(_)
+                if !ThreadItem::is_open_in_a_tab(thread_id, cx)
+                    && crate::draft_prompt_store::read(thread_id, cx).is_none() =>
+            {
+                ThreadMetadataStore::global(cx).update(cx, |store, cx| {
+                    store.delete(thread_id, cx);
+                })
+            }
+            Some(_) | None => {}
+        }
+    }
+
+    pub(crate) fn window_handle(&self) -> gpui::AnyWindowHandle {
+        self.window_handle
+    }
+
+    fn base_view_shows(&self, conversation_view: gpui::EntityId) -> bool {
+        matches!(
+            &self.base_view,
+            BaseView::AgentThread {
+                conversation_view: shown,
+            } if shown.entity_id() == conversation_view
+        )
+    }
+
     fn cleanup_retained_threads(&mut self, cx: &App) {
         let mut potential_removals = self
             .retained_threads
@@ -5374,7 +5554,16 @@ impl AgentPanel {
                 let old_view = std::mem::replace(&mut self.base_view, BaseView::Uninitialized);
                 self.retain_running_thread(old_view, cx);
                 self.refresh_base_view_subscriptions(window, cx);
-                self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
+                // ADR-F49 (new decision): the tab that just closed is the
+                // empty draft the idle disconnect took out of a panel that is
+                // off screen, and making another one here would connect to the
+                // agent again in the same breath. It comes back when the panel
+                // is next shown ([`Self::ensure_thread_initialized`]). A panel
+                // the user is looking at always gets its draft, which
+                // [`Self::ensure_draft`] then fills from the released one.
+                if self.released_idle_draft.is_none() || self.is_active {
+                    self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
+                }
                 cx.emit(AgentPanelEvent::ActiveViewChanged);
                 cx.notify();
             }
@@ -6733,6 +6922,14 @@ impl AgentPanel {
     fn ensure_thread_initialized(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(self.base_view, BaseView::Uninitialized) {
             if self.pending_terminal_spawn.is_some() {
+                return;
+            }
+            // ADR-F49 (new decision): the view this panel was drawing is gone
+            // because the idle disconnect took the empty draft in it, so what
+            // it draws again is that draft — not the terminal the panel would
+            // otherwise open for a new entry.
+            if self.released_idle_draft.is_some() {
+                self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
                 return;
             }
             if self.should_create_terminal_for_new_entry(cx) {
@@ -11494,6 +11691,202 @@ mod tests {
             assert!(
                 !listed.contains(&elsewhere),
                 "threads from other projects stay out of the panel's list"
+            );
+        });
+    }
+
+    /// Whether the panel's store still holds a connection to the stub agent,
+    /// which is what the idle disconnect drops.
+    fn stub_is_connected(panel: &Entity<AgentPanel>, cx: &VisualTestContext) -> bool {
+        panel.read_with(cx, |panel, cx| {
+            panel
+                .connection_store
+                .read(cx)
+                .entry(&Agent::Stub)
+                .is_some()
+        })
+    }
+
+    /// The panel with the stub agent selected and an empty draft in its
+    /// new-thread slot, on screen, connected.
+    async fn setup_panel_showing_an_empty_draft(
+        cx: &mut TestAppContext,
+    ) -> (Entity<AgentPanel>, ThreadId, VisualTestContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        crate::test_support::set_stub_agent_connection(StubAgentConnection::new());
+        panel.update_in(&mut cx, |panel, window, cx| {
+            // A panel shown for the first time makes a draft for its own
+            // agent; this is about the external one, so that thread goes
+            // first and the stub's draft is the only one the panel holds.
+            for thread_id in panel.tabbed_threads.keys().copied().collect::<Vec<_>>() {
+                panel.test_close_thread_tab(thread_id, window, cx);
+                ThreadMetadataStore::global(cx).update(cx, |store, cx| {
+                    store.delete(thread_id, cx);
+                });
+            }
+            panel.selected_agent = Agent::Stub;
+            panel.activate_draft(true, AgentThreadSource::AgentPanel, window, cx);
+        });
+        cx.run_until_parked();
+        let thread_id = active_thread_id(&panel, &cx);
+        assert!(
+            stub_is_connected(&panel, &cx),
+            "a draft for an external agent connects to it"
+        );
+        (panel, thread_id, cx)
+    }
+
+    /// ADR-F49 (new decision): the empty draft the panel keeps for the agent it
+    /// has selected held that agent's connection for as long as the window
+    /// lived, so the one agent the user picked last was the one that never
+    /// stopped. A draft nothing is showing is let go of instead, and showing
+    /// the panel again brings the same draft back — same id, same row — and
+    /// connects again.
+    #[gpui::test]
+    async fn test_an_unseen_empty_draft_lets_its_agent_go_and_comes_back(cx: &mut TestAppContext) {
+        let (panel, thread_id, mut cx) = setup_panel_showing_an_empty_draft(cx).await;
+        let released_view = panel.read_with(&cx, |panel, _cx| {
+            panel
+                .draft_thread
+                .as_ref()
+                .expect("the panel holds the draft it is drawing")
+                .downgrade()
+        });
+
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            stub_is_connected(&panel, &cx),
+            "a draft the panel is drawing is one the user may type in at any              moment, so its agent stays"
+        );
+
+        // The user closes the panel: nothing shows the draft any more.
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.set_active(false, window, cx);
+        });
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+
+        assert!(
+            !stub_is_connected(&panel, &cx),
+            "an empty draft nobody is looking at lets its agent go"
+        );
+        panel.read_with(&cx, |panel, _cx| {
+            assert!(
+                panel.draft_thread.is_none() && matches!(panel.base_view, BaseView::Uninitialized),
+                "nothing may keep the view, or the connection it holds outlives                  the store's entry for it"
+            );
+            assert_eq!(
+                panel.released_idle_draft,
+                Some(thread_id),
+                "the draft that was let go of is the one to come back"
+            );
+        });
+        // Nothing but the store's own entry may keep it: the view holds a
+        // connection of its own, so a tab, a pane (its toolbar included) or the
+        // parking slot that kept the view would keep the agent's process too.
+        released_view.assert_released();
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.set_active(true, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, cx| {
+            assert_eq!(
+                panel
+                    .draft_thread
+                    .as_ref()
+                    .map(|draft| draft.read(cx).thread_id),
+                Some(thread_id),
+                "the same draft comes back rather than a second one beside it"
+            );
+            assert_eq!(
+                panel.active_thread_id(cx),
+                Some(thread_id),
+                "and it is what the panel draws again"
+            );
+            assert!(panel.released_idle_draft.is_none());
+        });
+        assert!(
+            stub_is_connected(&panel, &cx),
+            "the draft that came back connects to its agent again"
+        );
+    }
+
+    /// The other way back: the user asks for a new thread while the panel is
+    /// still off screen. That is the same draft too — a new one would leave the
+    /// released draft's row behind in the sidebar as a ghost.
+    #[gpui::test]
+    async fn test_a_released_empty_draft_comes_back_when_a_new_thread_is_asked_for(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, thread_id, mut cx) = setup_panel_showing_an_empty_draft(cx).await;
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.set_active(false, window, cx);
+        });
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(!stub_is_connected(&panel, &cx));
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.activate_new_thread(false, AgentThreadSource::AgentPanel, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, cx| {
+            assert_eq!(
+                panel
+                    .draft_thread
+                    .as_ref()
+                    .map(|draft| draft.read(cx).thread_id),
+                Some(thread_id),
+                "the new-thread slot is filled from the draft that was let go of"
+            );
+        });
+        cx.update(|_window, cx| {
+            let drafts = ThreadMetadataStore::global(cx)
+                .read(cx)
+                .entries()
+                .filter(|thread| thread.is_draft())
+                .map(|thread| thread.thread_id)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                drafts,
+                vec![thread_id],
+                "no ghost row is left beside the draft that came back"
+            );
+        });
+        assert!(stub_is_connected(&panel, &cx));
+    }
+
+    /// A draft with something typed in it is never let go of: its unsent
+    /// prompt is the user's, and the panel is the only place it is being
+    /// edited.
+    #[gpui::test]
+    async fn test_a_draft_with_an_unsent_prompt_keeps_its_agent(cx: &mut TestAppContext) {
+        let (panel, thread_id, mut cx) = setup_panel_showing_an_empty_draft(cx).await;
+        crate::test_support::type_draft_prompt(&panel, "まだ送っていない下書き", &mut cx);
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.set_active(false, window, cx);
+        });
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+
+        assert!(
+            stub_is_connected(&panel, &cx),
+            "a draft the user has written in keeps its agent"
+        );
+        panel.read_with(&cx, |panel, cx| {
+            assert_eq!(
+                panel
+                    .draft_thread
+                    .as_ref()
+                    .map(|draft| draft.read(cx).thread_id),
+                Some(thread_id),
+                "and stays in the new-thread slot with its text"
             );
         });
     }

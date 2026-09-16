@@ -10795,7 +10795,7 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
                         .markdown_preview
                         .as_ref()?
                         .limit_content_width
-                        .unwrap_or(true);
+                        .unwrap_or(false);
                     Some(if enabled { 1 } else { 0 })
                 },
                 fields: vec![

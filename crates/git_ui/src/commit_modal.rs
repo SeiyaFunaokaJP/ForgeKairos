@@ -90,7 +90,7 @@ impl ModalView for CommitModal {
             .dock
             .update(cx, |dock, cx| {
                 if let Some(active_index) = self.restore_dock.active_index {
-                    dock.activate_panel(active_index, window, cx)
+                    dock.restore_active_panel(active_index, window, cx)
                 }
                 dock.set_open(self.restore_dock.is_open, window, cx)
             })

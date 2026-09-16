@@ -419,19 +419,23 @@ pub fn ensure_agent_config_dir(
 ) -> Result<PathBuf> {
     ensure!(
         is_project_key(project_key),
-        "invalid project key {project_key:?}"
+        "プロジェクトの識別子 {project_key:?} が不正です。"
     );
     #[cfg(unix)]
     {
         let config_dir = agent_config_dir(home, project_key, profile);
         let relative = config_dir.strip_prefix(home).map_err(|_| {
-            anyhow::anyhow!("{} is not below {}", config_dir.display(), home.display())
+            anyhow::anyhow!(
+                "{} は {} の下にありません。",
+                config_dir.display(),
+                home.display()
+            )
         })?;
         let folder = no_follow::open_directory_below(home, relative)?;
         for directory in profile.directories_below(&config_dir) {
-            let below = directory
-                .strip_prefix(&config_dir)
-                .map_err(|_| anyhow::anyhow!("{} is not below the folder", directory.display()))?;
+            let below = directory.strip_prefix(&config_dir).map_err(|_| {
+                anyhow::anyhow!("{} は設定フォルダーの下にありません。", directory.display())
+            })?;
             no_follow::open_directory_below_fd(&folder, &config_dir, below)?;
         }
         for name in sandbox::WORKTREE_PROTECTED_RELATIVE {
@@ -465,7 +469,7 @@ mod no_follow {
     /// home), one component at a time; see [`open_directory_below_fd`].
     pub(super) fn open_directory_below(base: &Path, relative: &Path) -> Result<OwnedFd> {
         let base_path = CString::new(base.as_os_str().as_bytes())
-            .with_context(|| format!("{} contains a NUL byte", base.display()))?;
+            .with_context(|| format!("{} に NUL バイトが含まれています。", base.display()))?;
         // The base is where the walk starts from and is trusted, so it is
         // opened following links: a home reached through one is still the
         // account's home.
@@ -479,7 +483,7 @@ mod no_follow {
         };
         if raw < 0 {
             return Err(io::Error::last_os_error())
-                .with_context(|| format!("opening {}", base.display()));
+                .with_context(|| format!("{} を開けませんでした。", base.display()));
         }
         // SAFETY: freshly opened by us and owned by nothing else.
         let base_directory = unsafe { OwnedFd::from_raw_fd(raw) };
@@ -499,15 +503,15 @@ mod no_follow {
         let mut directory: Option<OwnedFd> = None;
         for component in relative.components() {
             let Component::Normal(name) = component else {
-                bail!("{} has an unexpected path component", relative.display());
+                bail!("{} に想定外のパス成分があります。", relative.display());
             };
             walked.push(name);
             let name = CString::new(name.as_bytes())
-                .with_context(|| format!("{} contains a NUL byte", walked.display()))?;
+                .with_context(|| format!("{} に NUL バイトが含まれています。", walked.display()))?;
             let current = directory.as_ref().unwrap_or(parent);
             directory = Some(open_or_create_subdirectory(current, &name, &walked)?);
         }
-        directory.context("no directory to open")
+        directory.context("開くフォルダーがありません。")
     }
 
     fn open_or_create_subdirectory(
@@ -536,8 +540,9 @@ mod no_follow {
                 if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o700) } != 0 {
                     let create_error = io::Error::last_os_error();
                     if create_error.kind() != io::ErrorKind::AlreadyExists {
-                        return Err(create_error)
-                            .with_context(|| format!("creating {}", display.display()));
+                        return Err(create_error).with_context(|| {
+                            format!("{} を作成できませんでした。", display.display())
+                        });
                     }
                 }
                 created = true;
@@ -545,7 +550,7 @@ mod no_follow {
             }
             return Err(error).with_context(|| {
                 format!(
-                    "opening {} (it must be a real directory, not a link)",
+                    "{} を開けませんでした (リンクではなく実体のフォルダーである必要があります)。",
                     display.display()
                 )
             });
@@ -566,7 +571,7 @@ mod no_follow {
         display: &Path,
     ) -> Result<()> {
         let name = CString::new(name)
-            .with_context(|| format!("{} contains a NUL byte", display.display()))?;
+            .with_context(|| format!("{} に NUL バイトが含まれています。", display.display()))?;
         // SAFETY: `parent` is open, `name` is NUL-terminated, and a creating
         // open is given its mode.
         let raw = unsafe {
@@ -587,7 +592,7 @@ mod no_follow {
         if error.kind() == io::ErrorKind::AlreadyExists {
             return ensure_owned_file(parent, &name, display);
         }
-        Err(error).with_context(|| format!("creating {}", display.display()))
+        Err(error).with_context(|| format!("{} を作成できませんでした。", display.display()))
     }
 
     /// The entry `name` already in `parent`, examined without following it:
@@ -609,11 +614,11 @@ mod no_follow {
         } != 0
         {
             return Err(io::Error::last_os_error())
-                .with_context(|| format!("examining {}", display.display()));
+                .with_context(|| format!("{} を確認できませんでした。", display.display()));
         }
         ensure!(
             status.st_mode & libc::S_IFMT == libc::S_IFREG,
-            "{} is not a regular file (it must not be a link)",
+            "{} は通常のファイルではありません (リンクであってはいけません)。",
             display.display()
         );
         ensure_owned_by_this_account(&status, display)
@@ -625,11 +630,11 @@ mod no_follow {
         // SAFETY: `directory` is open and `status` is writable.
         if unsafe { libc::fstat(directory.as_raw_fd(), &mut status) } != 0 {
             return Err(io::Error::last_os_error())
-                .with_context(|| format!("examining {}", display.display()));
+                .with_context(|| format!("{} を確認できませんでした。", display.display()));
         }
         ensure!(
             status.st_mode & libc::S_IFMT == libc::S_IFDIR,
-            "{} is not a directory",
+            "{} はフォルダーではありません。",
             display.display()
         );
         ensure_owned_by_this_account(&status, display)
@@ -644,12 +649,12 @@ mod no_follow {
         let own_uid = unsafe { libc::geteuid() };
         ensure!(
             status.st_uid == own_uid,
-            "{} belongs to another account",
+            "{} は他のアカウントのものです。",
             display.display()
         );
         ensure!(
             status.st_mode & 0o022 == 0,
-            "{} can be written by other accounts",
+            "{} は他のアカウントから書き換えられる状態です。",
             display.display()
         );
         Ok(())

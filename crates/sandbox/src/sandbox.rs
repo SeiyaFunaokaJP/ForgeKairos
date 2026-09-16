@@ -46,8 +46,9 @@ mod windows_wsl;
 pub mod ide_bridge;
 pub use ide_bridge::{
     BridgeConnection, BridgeConnections, BridgeFrame, BridgeFrameDecoder, BridgeFrameKind,
-    BridgeMuxHandle, MAX_BRIDGE_CONNECTIONS, MAX_BRIDGE_FRAME_PAYLOAD, MAX_IDE_LOCK_CONTENT,
-    encode_frame, encode_ide_lock_preamble, spawn_bridge_mux,
+    BridgeMuxHandle, IdeBridgeSlot, MAX_BRIDGE_CONNECTIONS, MAX_BRIDGE_FRAME_PAYLOAD,
+    MAX_IDE_BRIDGES, MAX_IDE_LOCK_CONTENT, encode_frame, encode_ide_lock_preamble,
+    spawn_bridge_mux,
 };
 
 /// ADR-F18: the locations every sandbox protects regardless of what the caller
@@ -82,13 +83,14 @@ pub use util::{
 #[cfg(target_os = "windows")]
 pub use windows_wsl::{
     IDE_BRIDGE_READY_TIMEOUT, IdeBridge, IdeBridgeSessionRunning, ResolvedGrant, WslArchiveKind,
-    WslSessionDistro, ensure_wsl_agent_config_dir, ide_bridge_invocation, ide_rendezvous_path,
-    install_npm_package_in_wsl, is_forwardable_env_var, list_wsl_sandbox_processes,
-    read_wsl_npm_package_json, registered_wsl_distro_name, resolve_canonical_for_grant,
-    stage_agent_binary, stage_wsl_runtime_archive, stage_wsl_runtime_file, staged_agent_binary,
-    staged_wsl_runtime, start_ide_bridge, stop_wsl_sandbox_processes, sweep_ide_rendezvous,
-    wsl_agent_runtime_data_directory, wsl_distro_for_path, wsl_machine_architecture,
-    wsl_npm_package_executable, wsl_runtime_executable,
+    WslSandboxUnavailable, WslSessionDistro, ensure_wsl_agent_config_dir, ide_bridge_invocation,
+    ide_rendezvous_path, install_npm_package_in_wsl, is_forwardable_env_var,
+    list_wsl_sandbox_processes, read_wsl_npm_package_json, registered_wsl_distro_name,
+    resolve_canonical_for_grant, stage_agent_binary, stage_wsl_runtime_archive,
+    stage_wsl_runtime_file, staged_agent_binary, staged_wsl_runtime, start_ide_bridge,
+    stop_wsl_sandbox_processes, sweep_ide_rendezvous, wsl_agent_runtime_data_directory,
+    wsl_distro_for_path, wsl_machine_architecture, wsl_npm_package_executable,
+    wsl_runtime_executable,
 };
 
 #[cfg(target_os = "windows")]
@@ -1595,6 +1597,14 @@ impl Sandbox {
     #[cfg(target_os = "windows")]
     pub fn set_editor_network_allowlist(&mut self, entries: Vec<String>) {
         self.editor_network_allowlist = Some(entries);
+    }
+
+    /// What [`Self::set_editor_network_allowlist`] was given, so the caller
+    /// that assembles it can check its own work without WSL. What the helper
+    /// is actually told is derived from this when the command is wrapped.
+    #[cfg(target_os = "windows")]
+    pub fn editor_network_allowlist(&self) -> Option<&[String]> {
+        self.editor_network_allowlist.as_deref()
     }
 
     /// Windows only: wrap the command as a long-running interactive session

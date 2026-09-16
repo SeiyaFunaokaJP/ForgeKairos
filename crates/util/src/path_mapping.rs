@@ -386,6 +386,34 @@ pub fn is_wsl_share_path(path: &Path) -> bool {
     )
 }
 
+/// ADR-F49 決定 34: ディストリビューションの中のフォルダーを指す書込許可を、保存と
+/// 比較に使う唯一の綴り (`\\wsl.localhost\<distro 小文字>\…`) に畳む。WSL の共有でない
+/// パス (ドライブ、他のサーバーの共有、素の Linux のパス) と、ディストリビューションの
+/// ルート自身は `None` = 畳まずそのまま扱う。
+///
+/// 畳むのはサーバー名 (`\\wsl$\` は同じ場所の古い綴り・`\\?\UNC\` は `canonicalize` が
+/// 返す形) と ASCII の大文字小文字だけで、その先の名前は ext4 では区別されるので触らない。
+/// `sandbox` が承認時に作る綴り (`wsl_share_path_spelling`) と同じ規則。決定 34 より前に
+/// 保存された `\\wsl.localhost\Ubuntu\…` の行が、同じ場所の新しい許可と一致せず再承認に
+/// なっていたのを直すために、設定の読み込み時と設定ファイルの移行で使う。
+///
+/// `..` を含むパスは `None`: 畳んだ先が利用者に見せた場所とは限らない。
+pub fn canonical_wsl_grant_spelling(path: &str) -> Option<String> {
+    let parsed = WindowsPath::parse(path)?;
+    let WindowsRoot::Unc { server, share } = parsed.root else {
+        return None;
+    };
+    if !is_wsl_server(server) || parsed.components.is_empty() {
+        return None;
+    }
+    let mut spelling = format!(r"\\wsl.localhost\{}", share.to_ascii_lowercase());
+    for component in parsed.components {
+        spelling.push('\\');
+        spelling.push_str(component);
+    }
+    Some(spelling)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WindowsRoot<'a> {
     Drive(char),
@@ -1751,5 +1779,64 @@ mod tests {
         ] {
             assert!(!is_wsl_share_path(Path::new(path)), "{path}");
         }
+    }
+
+    /// ADR-F49 決定 34: 同じ場所を指す共有の綴りは 1 つに畳み、場所が変わりうるもの
+    /// (別のサーバー・ドライブ・ルート自身・`..`) には触らない。
+    #[test]
+    fn folds_the_spellings_of_a_grant_in_a_distribution() {
+        for (path, folded) in [
+            (
+                r"\\wsl.localhost\Ubuntu\home\u\repo",
+                r"\\wsl.localhost\ubuntu\home\u\repo",
+            ),
+            (
+                r"\\wsl$\Ubuntu\home\u\repo",
+                r"\\wsl.localhost\ubuntu\home\u\repo",
+            ),
+            (
+                r"\\?\UNC\wsl.localhost\UBUNTU\home\u\repo",
+                r"\\wsl.localhost\ubuntu\home\u\repo",
+            ),
+            (
+                "//wsl.localhost/Ubuntu/home/u/repo",
+                r"\\wsl.localhost\ubuntu\home\u\repo",
+            ),
+            (
+                // ext4 では名前の大文字小文字は別の場所。
+                r"\\wsl.localhost\Ubuntu\home\U\Repo",
+                r"\\wsl.localhost\ubuntu\home\U\Repo",
+            ),
+            (
+                r"\\wsl.localhost\Ubuntu-24.04\tmp\x",
+                r"\\wsl.localhost\ubuntu-24.04\tmp\x",
+            ),
+        ] {
+            assert_eq!(
+                canonical_wsl_grant_spelling(path).as_deref(),
+                Some(folded),
+                "{path}"
+            );
+        }
+
+        for path in [
+            r"I:\zed-jp-llm\crates",
+            r"\\server\share\project",
+            "/home/u/repo",
+            // ディストリビューションのルート自身は書込許可の形ではない。
+            r"\\wsl.localhost\Ubuntu",
+            r"\\wsl.localhost\Ubuntu\\",
+            // 畳んだ先が見せた場所とは限らないものは触らない。
+            r"\\wsl.localhost\Ubuntu\home\..\root",
+            "",
+        ] {
+            assert_eq!(canonical_wsl_grant_spelling(path), None, "{path}");
+        }
+
+        assert_eq!(
+            canonical_wsl_grant_spelling(r"\\wsl.localhost\ubuntu\home\u\repo").as_deref(),
+            Some(r"\\wsl.localhost\ubuntu\home\u\repo"),
+            "畳んだ綴りは畳んでも変わらない"
+        );
     }
 }

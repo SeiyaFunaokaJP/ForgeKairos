@@ -337,7 +337,8 @@ fn grant_distro(requested: Option<&str>, session: &WslSessionDistro) -> Result<O
         (Some(requested), Some(session)) => {
             ensure!(
                 requested.eq_ignore_ascii_case(session),
-                "it is in WSL distribution `{requested}`, but this session runs in `{session}`"
+                "WSL ディストリビューション `{requested}` にありますが、このセッションは \
+                 `{session}` で動いています。"
             );
             Ok(Some(requested.to_string()))
         }
@@ -602,7 +603,7 @@ pub async fn resolve_canonical_for_grant(
     if parse_native_drive_path(&path_string).is_ok() {
         let canonical = smol::fs::canonicalize(&requested).await.with_context(|| {
             format!(
-                "failed to resolve writable path `{}` on the Windows host",
+                "書込を許可するパス `{}` を Windows 側で解決できませんでした。",
                 requested.display()
             )
         })?;
@@ -613,8 +614,8 @@ pub async fn resolve_canonical_for_grant(
         let canonical = strip_windows_verbatim_prefix(canonical);
         ensure!(
             parse_native_drive_path(&canonical.to_string_lossy()).is_ok(),
-            "cannot grant sandbox write access to `{}`: it resolves to `{}`, \
-             which is not a Windows drive path",
+            "`{}` への書き込みは許可できません: 解決先が `{}` であり、Windows の\
+             ドライブ上のパスではありません。",
             requested.display(),
             canonical.display()
         );
@@ -629,9 +630,9 @@ pub async fn resolve_canonical_for_grant(
     // runs in, or a `\\wsl.localhost\<distro>\…` share naming one distro.
     let wsl_path = parse_distro_native_path(&path_string).map_err(|_| {
         anyhow::anyhow!(
-            "cannot grant sandbox write access to `{}`: only Windows drive paths \
-             (`C:\\...`), WSL absolute paths (`/...`) and folders in a WSL \
-             distribution (`\\\\wsl.localhost\\<distro>\\...`) are supported",
+            "`{}` への書き込みは許可できません: 指定できるのは Windows のドライブのパス \
+             (`C:\\...`)、WSL の絶対パス (`/...`)、WSL ディストリビューションの中の\
+             フォルダー (`\\\\wsl.localhost\\<distro>\\...`) だけです。",
             requested.display()
         )
     })?;
@@ -643,16 +644,12 @@ pub async fn resolve_canonical_for_grant(
     // approved and then never usable.
     ensure!(
         wsl_path.path != "/",
-        "cannot grant sandbox write access to `{}`: it names a whole WSL \
-         distribution rather than a folder in one",
+        "`{}` への書き込みは許可できません: WSL ディストリビューション全体であり、\
+         その中のフォルダーではありません。",
         requested.display()
     );
-    let distro = grant_distro(wsl_path.distro.as_deref(), &session).with_context(|| {
-        format!(
-            "cannot grant sandbox write access to `{}`",
-            requested.display()
-        )
-    })?;
+    let distro = grant_distro(wsl_path.distro.as_deref(), &session)
+        .with_context(|| format!("`{}` への書き込みは許可できません", requested.display()))?;
     let mapping = PathMapping::Wsl(wsl_path);
 
     ensure_distro_registered(distro.as_deref())?;
@@ -679,7 +676,7 @@ pub async fn resolve_canonical_for_grant(
     let output = run_wsl_command(&wsl_exe, distro.as_deref(), &args, "書込許可の解決").await?;
     if !output.status.success() {
         return Err(anyhow::anyhow!(
-            "failed to resolve writable path `{}`{}",
+            "書込を許可するパス `{}` を解決できませんでした。{}",
             requested.display(),
             command_failure_details(output.status.code(), &output.stderr)
         ));
@@ -2452,6 +2449,10 @@ pub struct IdeBridge {
     /// that lives as long as the bridge: it logs those lines and keeps the
     /// bridge's stderr pipe from filling up and stalling it.
     pub log: futures::future::BoxFuture<'static, ()>,
+    /// This bridge's place in [`crate::MAX_IDE_BRIDGES`]. Keep it next to
+    /// whatever keeps `child`: dropping it hands the slot to the next bridge,
+    /// so a slot dropped early lets more bridges run than the limit says.
+    pub slot: crate::IdeBridgeSlot,
 }
 
 /// ADR-F49: start the bridge [`ide_bridge_invocation`] described, hand it the
@@ -2479,6 +2480,20 @@ pub async fn start_ide_bridge(
     use smol::process::windows::CommandExt as _;
 
     const PREAMBLE_FAILED: &str = "IDE 連携の中継に接続情報を渡せませんでした";
+
+    // ADR-F49 (new decision): taken before the process is started, and given
+    // back by every path out of here that does not return the bridge.
+    let Some(slot) = crate::IdeBridgeSlot::take() else {
+        log::warn!(
+            "refusing an IDE bridge: {} are already running",
+            crate::MAX_IDE_BRIDGES
+        );
+        bail!(
+            "IDE 連携の中継がすでに {} 本動いているため、これ以上は起動できません。\
+             使っていないエージェントのスレッドやターミナルを閉じてからやり直してください。",
+            crate::MAX_IDE_BRIDGES
+        );
+    };
 
     let mut command = Command::new(program);
     command
@@ -2543,6 +2558,7 @@ pub async fn start_ide_bridge(
         stdin,
         stdout,
         log,
+        slot,
     })
 }
 
@@ -5752,7 +5768,7 @@ mod tests {
         let refused = grant_distro(Some("Debian"), &WslSessionDistro::named("Ubuntu"))
             .expect_err("a grant in another distribution than the session's");
         assert!(
-            format!("{refused:#}").contains("this session runs in `Ubuntu`"),
+            format!("{refused:#}").contains("このセッションは `Ubuntu` で動いています"),
             "{refused:#}"
         );
     }
@@ -5776,7 +5792,7 @@ mod tests {
                 panic!("{requested} names a whole distribution, not a folder in one");
             };
             assert!(
-                format!("{refused:#}").contains("whole WSL distribution"),
+                format!("{refused:#}").contains("WSL ディストリビューション全体"),
                 "{requested}: {refused:#}"
             );
         }
@@ -8043,6 +8059,8 @@ zed-sweep-removed acp-2222
     //     set ZED_E2E_WSL_RUNTIME=1
     //     set ZED_E2E_NODE_TARBALL=<node-v24.11.0-linux-x64.tar.gz>
     //     set ZED_E2E_NODE_SHA256=<its digest>
+    //     rem 既定は zed-e2e。名前に e2e を含む、本番と重ならない根にだけ置ける。
+    //     set ZED_E2E_WSL_ROOT=<staging root below the data directory>
     //     cargo test -p sandbox --target-dir ... e2e_ -- --ignored --nocapture --test-threads=1
     //
     // `e2e_zz_clean_up` removes everything they staged.
@@ -8057,34 +8075,74 @@ zed-sweep-removed acp-2222
                   leaves one command running while it looks at the sandbox"
     )]
     mod e2e {
-        pub(super) const NODE_RELATIVE: &str = "node/wsl-sandbox/node-v24.11.0-linux-x64";
         pub(super) const PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
         pub(super) const PACKAGE_SPEC: &str = "@agentclientprotocol/claude-agent-acp@0.76.0";
-        pub(super) const INSTALL_RELATIVE: &str =
-            "external_agents/wsl-sandbox/registry/npx/zed-e2e";
         pub(super) const PROJECT_KEY: &str = "00112233445566ff";
+
+        /// データディレクトリからの相対で、E2E が置くものすべての根。本番と同じ場所に
+        /// 置くと `e2e_zz_clean_up` の `rm -rf` がユーザーの staged Node.js を消すので、
+        /// 本番の木とは重ねない。同じディストリビューションで複数の run を区別したい
+        /// ときのために `ZED_E2E_WSL_ROOT` で差し替えられる。
+        pub(super) const DEFAULT_ROOT: &str = "zed-e2e";
+
+        /// 本物の Zed がディストリビューションのデータディレクトリに置くものの、先頭の
+        /// 成分 (`project` の `agent_server_store` が持つ綴り。この crate からは参照
+        /// できないので書き出してある)。E2E の根はこのどちらでもない。
+        pub(super) const PRODUCTION_ROOTS: [&str; 2] = ["node", "external_agents"];
 
         pub(super) fn enabled() -> bool {
             std::env::var("ZED_E2E_WSL_RUNTIME").is_ok_and(|value| value == "1")
+        }
+
+        /// `root` が E2E 専用の場所か。staging が受け付ける相対パスで、本番が使う木の外で、
+        /// かつ根の名前が E2E のものと名乗っていること。データフォルダーには
+        /// `PRODUCTION_ROOTS` 以外にも本番のものが増えるので、名乗った根だけを消す。
+        pub(super) fn is_isolated_root(root: &str) -> bool {
+            super::ensure_safe_relative_path(root, "end-to-end root").is_ok()
+                && root.split('/').next().is_some_and(|first| {
+                    !PRODUCTION_ROOTS.contains(&first) && first.contains("e2e")
+                })
+        }
+
+        pub(super) fn root_relative() -> String {
+            let root =
+                std::env::var("ZED_E2E_WSL_ROOT").unwrap_or_else(|_| DEFAULT_ROOT.to_owned());
+            assert!(
+                is_isolated_root(&root),
+                "ZED_E2E_WSL_ROOT={root:?} だと本番が置いたものを消してしまう"
+            );
+            root
+        }
+
+        /// 根の下の綴りは本番と同じにしてあるので、スクリプトから見える入れ子は本物と
+        /// 同じになる。
+        pub(super) fn staged_relative(relative: &str) -> String {
+            format!("{}/{relative}", root_relative())
+        }
+
+        pub(super) fn node_relative() -> String {
+            staged_relative("node/wsl-sandbox/node-v24.11.0-linux-x64")
+        }
+
+        pub(super) fn install_relative() -> String {
+            staged_relative("external_agents/wsl-sandbox/registry/npx/zed-e2e")
         }
 
         /// The staged Linux Node.js, staging it from `ZED_E2E_NODE_TARBALL`
         /// first if it is not there yet.
         pub(super) fn node_directory() -> String {
             let digest = std::env::var("ZED_E2E_NODE_SHA256").expect("ZED_E2E_NODE_SHA256");
-            if let Some(staged) = smol::block_on(super::staged_wsl_runtime(
-                None,
-                NODE_RELATIVE,
-                Some(&digest),
-            ))
-            .expect("checking for a staged Node.js")
+            let relative = node_relative();
+            if let Some(staged) =
+                smol::block_on(super::staged_wsl_runtime(None, &relative, Some(&digest)))
+                    .expect("checking for a staged Node.js")
             {
                 return staged;
             }
             let tarball = std::env::var("ZED_E2E_NODE_TARBALL").expect("ZED_E2E_NODE_TARBALL");
             smol::block_on(super::stage_wsl_runtime_archive(
                 None,
-                NODE_RELATIVE,
+                &relative,
                 std::path::Path::new(&tarball),
                 &digest,
                 super::WslArchiveKind::TarGz,
@@ -8217,6 +8275,70 @@ zed-sweep-removed acp-2222
             ))
             .expect("removing what the end-to-end test staged");
         }
+
+        /// 中身があるときは何もしない。本番と共用の場所を消さないための掃除。
+        pub(super) fn remove_if_empty(path: &str) {
+            let wsl_exe = super::wsl_exe_path();
+            match smol::block_on(super::run_wsl_command(
+                &wsl_exe,
+                None,
+                ["--exec", "rmdir", "--", path],
+                "e2e clean-up",
+            )) {
+                Ok(output) if output.status.success() => {}
+                Ok(_) => eprintln!("{path} is not empty, so it is left as it is"),
+                Err(error) => eprintln!("could not remove {path}: {error:#}"),
+            }
+        }
+    }
+
+    /// 上の end-to-end が置く場所と、`e2e_zz_clean_up` が消す場所は、本物の Zed が
+    /// 置いた場所と重ならない。重なっていた頃は、掃除がユーザーの staged Node.js を
+    /// 消していた。E2E 自体には WSL が要るが、この隔離は綴りだけで決まるので、ここで
+    /// 確かめられる。
+    #[test]
+    fn the_end_to_end_staging_never_reaches_what_a_real_zed_staged() {
+        // 本物の Zed が置く場所 (`project` の `agent_server_store` の綴り)。
+        let production = [
+            "node/wsl-sandbox/node-v24.11.0-linux-x64",
+            "external_agents/wsl-sandbox/registry/npx/zed-e2e",
+        ];
+        let root = e2e::root_relative();
+        let staged = [e2e::node_relative(), e2e::install_relative()];
+        assert_ne!(staged[0], staged[1]);
+
+        for path in &staged {
+            // 掃除は根ごと消すので、置くものが根の下にあることがそのまま安全の根拠。
+            assert!(path.starts_with(&format!("{root}/")), "{path}");
+            assert!(
+                ensure_safe_relative_path(path, "end-to-end path").is_ok(),
+                "{path}"
+            );
+            for production in production {
+                assert!(!path.starts_with(production), "{path}");
+                assert!(!production.starts_with(path.as_str()), "{path}");
+            }
+        }
+
+        for accepted in ["zed-e2e", "e2e/run-1", "e2e-2"] {
+            assert!(e2e::is_isolated_root(accepted), "{accepted}");
+        }
+        for refused in [
+            "node",
+            "node/e2e",
+            "external_agents",
+            "external_agents/wsl-sandbox/e2e",
+            // 本番のものは `node` と `external_agents` だけではないので、E2E だと名乗らない
+            // 根は受け付けない。
+            "tmp",
+            "db",
+            "",
+            "/absolute",
+            "../outside",
+            "e2e/../node",
+        ] {
+            assert!(!e2e::is_isolated_root(refused), "{refused}");
+        }
     }
 
     /// (a) The pinned Linux Node.js is staged in the distro and runs *inside*
@@ -8235,14 +8357,14 @@ zed-sweep-removed acp-2222
         // under any marker, and a runtime staged under a different digest is
         // not mistaken for the one asked for.
         assert_eq!(
-            smol::block_on(staged_wsl_runtime(None, e2e::NODE_RELATIVE, None))
+            smol::block_on(staged_wsl_runtime(None, &e2e::node_relative(), None))
                 .expect("checking for any complete runtime"),
             Some(node_directory.clone())
         );
         assert_eq!(
             smol::block_on(staged_wsl_runtime(
                 None,
-                e2e::NODE_RELATIVE,
+                &e2e::node_relative(),
                 Some(&"0".repeat(64))
             ))
             .expect("checking for another digest"),
@@ -8280,7 +8402,7 @@ zed-sweep-removed acp-2222
             None,
             &node_directory,
             e2e::PACKAGE_SPEC,
-            e2e::INSTALL_RELATIVE,
+            &e2e::install_relative(),
             vec!["registry.npmjs.org".to_string()],
             None,
         ))
@@ -8631,7 +8753,9 @@ zed-sweep-removed acp-2222
         assert!(observed.contains("gitconfig=ref"), "{observed}");
     }
 
-    /// Removes what the end-to-end tests staged in the distro.
+    /// Removes what the end-to-end tests staged in the distro. Everything they
+    /// stage is below their own root, so this never reaches what a real Zed
+    /// staged there — a staged Node.js is hundreds of megabytes to fetch again.
     #[test]
     #[ignore]
     fn e2e_zz_clean_up() {
@@ -8640,15 +8764,15 @@ zed-sweep-removed acp-2222
         }
         let data_directory = smol::block_on(wsl_agent_runtime_data_directory(None))
             .expect("the distro's data directory");
-        for relative in [e2e::NODE_RELATIVE, e2e::INSTALL_RELATIVE] {
-            e2e::remove(&format!("{data_directory}/{relative}"));
-        }
+        e2e::remove(&format!("{data_directory}/{}", e2e::root_relative()));
         let home =
             smol::block_on(query_distro_home(&wsl_exe_path(), None)).expect("the distro's home");
         e2e::remove(&format!(
             "{home}/.zed-jp-enhance-claude/projects/{}",
             e2e::PROJECT_KEY
         ));
-        e2e::remove(&format!("{home}/{}", WSL_STAGING_HOME_RELATIVE));
+        // 作業フォルダーの根は本番と共用で、中身はインストールごとの一時フォルダー
+        // (作った側が消す)。空のときだけ、つまり進行中のインストールが無いときだけ消す。
+        e2e::remove_if_empty(&format!("{home}/{}", WSL_STAGING_HOME_RELATIVE));
     }
 }

@@ -20,6 +20,7 @@ pub use path_range::{LineCol, PathWithRange};
 use settings::Settings as _;
 use smallvec::SmallVec;
 use theme_settings::ThemeSettings;
+use unicode_width::UnicodeWidthChar as _;
 use util::maybe;
 
 use std::borrow::Cow;
@@ -125,6 +126,12 @@ pub struct MarkdownStyle {
     pub height_is_multiple_of_line_height: bool,
     pub prevent_mouse_interaction: bool,
     pub table_columns_min_size: bool,
+    /// When true, each table column gets a floor of its own estimated width,
+    /// capped so that a long prose column still wraps. A table whose floors no
+    /// longer fit scrolls horizontally instead of squeezing every column into
+    /// an equal share of the pane. Has no effect when `table_columns_min_size`
+    /// is set.
+    pub table_overflow_x_scroll: bool,
     pub soft_break_as_hard_break: bool,
 }
 
@@ -150,6 +157,7 @@ impl Default for MarkdownStyle {
             height_is_multiple_of_line_height: false,
             prevent_mouse_interaction: false,
             table_columns_min_size: false,
+            table_overflow_x_scroll: false,
             soft_break_as_hard_break: false,
         }
     }
@@ -338,6 +346,7 @@ impl MarkdownStyle {
         let body_font_size = rems(0.92);
         self.base_text_style.font_size = body_font_size.into();
         self.container_style.text.font_size = Some(body_font_size.into());
+        self.table_overflow_x_scroll = true;
 
         self.base_text_style.color = colors.text_muted.blend(colors.text.opacity(0.25));
         self.inline_code.color = Some(colors.text);
@@ -474,6 +483,10 @@ pub struct Markdown {
     mermaid_views: HashMap<usize, MermaidViewState>,
     copied_code_blocks: HashSet<ElementId>,
     wrapped_code_blocks: HashSet<usize>,
+    /// Open/closed state of the `<details>` disclosures the reader has toggled,
+    /// keyed by the HTML block's source offset and the disclosure's index within
+    /// that block, so it survives the reparse that follows every edit.
+    details_open: HashMap<(usize, usize), bool>,
     code_block_scroll_handles: BTreeMap<usize, ScrollHandle>,
     context_menu_link: Option<SharedString>,
     context_menu_selected_text: Option<SharedString>,
@@ -669,6 +682,7 @@ impl Markdown {
             mermaid_views: HashMap::default(),
             copied_code_blocks: HashSet::default(),
             wrapped_code_blocks: HashSet::default(),
+            details_open: HashMap::default(),
             code_block_scroll_handles: BTreeMap::default(),
             context_menu_link: None,
             context_menu_selected_text: None,
@@ -701,6 +715,18 @@ impl Markdown {
         if !self.wrapped_code_blocks.remove(&id) {
             self.wrapped_code_blocks.insert(id);
         }
+    }
+
+    pub(crate) fn is_details_open(&self, key: (usize, usize), open_by_default: bool) -> bool {
+        self.details_open
+            .get(&key)
+            .copied()
+            .unwrap_or(open_by_default)
+    }
+
+    pub(crate) fn toggle_details(&mut self, key: (usize, usize), open_by_default: bool) {
+        let open = self.is_details_open(key, open_by_default);
+        self.details_open.insert(key, !open);
     }
 
     fn code_block_scroll_handle(&mut self, id: usize) -> Option<ScrollHandle> {
@@ -2470,7 +2496,20 @@ impl Element for MarkdownElement {
         let mut handled_html_block = false;
         let mut rendered_mermaid_block = false;
         let mut rendered_metadata_block = false;
+        // A `<details>` whose body is split across root blocks and is currently
+        // collapsed: everything up to the root block holding `</details>` is
+        // skipped, which keeps the div stack balanced because whole root blocks
+        // are dropped.
+        let mut pending_collapsed_details_end: Option<usize> = None;
+        let mut collapsed_details_end: Option<usize> = None;
         for (index, (range, event)) in parsed_markdown.events.iter().enumerate() {
+            if let Some(end) = collapsed_details_end {
+                if range.start < end {
+                    continue;
+                }
+                collapsed_details_end = None;
+            }
+
             // Skip alt text for images that rendered
             if let Some(current_img_block_range) = &current_img_block_range
                 && current_img_block_range.end > range.end
@@ -2514,6 +2553,7 @@ impl Element for MarkdownElement {
                             cx.theme().colors().border_variant,
                         );
                     }
+                    collapsed_details_end = pending_collapsed_details_end.take();
                 }
                 MarkdownEvent::Start(tag) => {
                     match tag {
@@ -2709,8 +2749,13 @@ impl Element for MarkdownElement {
                         MarkdownTag::HtmlBlock => {
                             builder.push_div(div(), range, markdown_end);
                             if let Some(block) = parsed_markdown.html_blocks.get(&range.start) {
-                                self.render_html_block(block, &mut builder, markdown_end, cx);
+                                let collapsed =
+                                    self.render_html_block(block, &mut builder, markdown_end, cx);
                                 handled_html_block = true;
+                                if let Some(span) = block.details_span.filter(|_| collapsed) {
+                                    pending_collapsed_details_end =
+                                        Some(span.close_root_block_start);
+                                }
                             }
                         }
                         MarkdownTag::List(bullet_index) => {
@@ -2829,6 +2874,20 @@ impl Element for MarkdownElement {
                             builder.table.start(alignments.clone());
 
                             let column_count = alignments.len();
+                            let column_min_widths = self.style.table_overflow_x_scroll.then(|| {
+                                estimate_table_column_min_widths(
+                                    parsed_markdown
+                                        .source
+                                        .get(range.clone())
+                                        .unwrap_or_default(),
+                                    column_count,
+                                    self.style
+                                        .base_text_style
+                                        .font_size
+                                        .to_pixels(window.rem_size()),
+                                    window.rem_size(),
+                                )
+                            });
                             builder.push_div(div().flex(), range, markdown_end);
                             builder.push_div(
                                 div()
@@ -2836,11 +2895,14 @@ impl Element for MarkdownElement {
                                     .debug_selector(|| "markdown_table".into())
                                     .min_w_0()
                                     .grid()
-                                    .when(self.style.table_columns_min_size, |this| {
-                                        this.w_full().grid_cols_min_content(column_count as u16)
-                                    })
-                                    .when(!self.style.table_columns_min_size, |this| {
-                                        this.grid_cols_max_content(column_count as u16)
+                                    .map(|this| {
+                                        if self.style.table_columns_min_size {
+                                            this.w_full().grid_cols_min_content(column_count as u16)
+                                        } else if let Some(column_min_widths) = column_min_widths {
+                                            this.grid_cols_min_widths(column_min_widths)
+                                        } else {
+                                            this.grid_cols_max_content(column_count as u16)
+                                        }
                                     })
                                     .mb_2()
                                     .border(px(1.5))
@@ -3488,6 +3550,86 @@ fn alignment_to_text_align(alignment: Alignment) -> Option<TextAlign> {
         Alignment::Right => Some(TextAlign::Right),
         Alignment::None => None,
     }
+}
+
+/// A rough advance width per character, relative to the font size. Taffy has to
+/// know a column's floor before anything is laid out, so the real shaped width is
+/// not available yet; these are averages, not measurements.
+const NARROW_CHARACTER_EM: f32 = 0.55;
+const WIDE_CHARACTER_EM: f32 = 1.0;
+/// The widest floor a column may claim. Past this a column is expected to wrap
+/// instead, so that one prose column cannot push the whole table off the pane.
+const MAX_COLUMN_EM: f32 = 12.0;
+/// `px_1()` on either side of a cell plus its 1px divider, which the floor has to
+/// cover as well or the text is squeezed even at the column's estimated width.
+const CELL_CHROME_REMS: f32 = 0.5;
+
+/// Estimates a floor for each column of a markdown table, so that short columns
+/// keep their natural width instead of being squeezed into an equal share of a
+/// narrow pane, while a long prose column is still allowed to wrap.
+fn estimate_table_column_min_widths(
+    table_source: &str,
+    column_count: usize,
+    font_size: Pixels,
+    rem_size: Pixels,
+) -> Vec<Pixels> {
+    let mut widths = vec![px(0.); column_count];
+    for row in table_source.lines() {
+        let row = row.trim();
+        if row.is_empty() || is_table_delimiter_row(row) {
+            continue;
+        }
+        for (index, cell) in table_row_cells(row).enumerate() {
+            let Some(width) = widths.get_mut(index) else {
+                break;
+            };
+            let cell_width = cell
+                .split('\n')
+                .map(|line| estimate_text_width(line.trim(), font_size))
+                .fold(px(0.), Pixels::max);
+            *width = (*width).max(cell_width);
+        }
+    }
+
+    let max_width = font_size * MAX_COLUMN_EM;
+    let chrome = rem_size * CELL_CHROME_REMS + px(1.);
+    widths
+        .into_iter()
+        .map(|width| width.min(max_width) + chrome)
+        .collect()
+}
+
+fn is_table_delimiter_row(row: &str) -> bool {
+    row.chars()
+        .all(|character| matches!(character, '-' | ':' | '|' | ' ' | '\t'))
+}
+
+fn table_row_cells(row: &str) -> impl Iterator<Item = &str> {
+    let row = row.strip_prefix('|').unwrap_or(row);
+    let row = row.strip_suffix('|').unwrap_or(row);
+    let mut cells = Vec::new();
+    let mut cell_start = 0;
+    let bytes = row.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
+        // A `\|` is an escaped pipe inside a cell, not a column separator.
+        if *byte == b'|' && (index == 0 || bytes.get(index - 1) != Some(&b'\\')) {
+            cells.push(row.get(cell_start..index).unwrap_or_default());
+            cell_start = index + 1;
+        }
+    }
+    cells.push(row.get(cell_start..).unwrap_or_default());
+    cells.into_iter()
+}
+
+fn estimate_text_width(text: &str, font_size: Pixels) -> Pixels {
+    let ems: f32 = text
+        .chars()
+        .map(|character| match character.width() {
+            Some(2) => WIDE_CHARACTER_EM,
+            _ => NARROW_CHARACTER_EM,
+        })
+        .sum();
+    font_size * ems
 }
 
 // The contents of loose list items are wrapped in a paragraph, so their task
@@ -5560,6 +5702,151 @@ mod tests {
         );
     }
 
+    #[gpui::test]
+    fn test_table_overflow_x_scroll_avoids_wrapping_content(cx: &mut TestAppContext) {
+        ensure_theme_initialized(cx);
+
+        struct TableView {
+            markdown: Entity<Markdown>,
+            style: MarkdownStyle,
+        }
+        impl Render for TableView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(MarkdownElement::new(
+                    self.markdown.clone(),
+                    self.style.clone(),
+                ))
+            }
+        }
+
+        let table_bounds = |table_overflow_x_scroll: bool, cx: &mut TestAppContext| {
+            let mut style = MarkdownStyle::default();
+            style.table_overflow_x_scroll = table_overflow_x_scroll;
+            let window = cx.open_window(size(px(200.), px(600.)), |_, cx| {
+                let markdown = cx.new(|cx| Markdown::new(REVIEW_TABLE.into(), None, None, cx));
+                TableView { markdown, style }
+            });
+            cx.run_until_parked();
+            gpui::VisualTestContext::from_window(window.into(), cx)
+                .debug_bounds("markdown_table")
+                .expect("table should have been rendered")
+        };
+
+        let wrapped = table_bounds(false, cx);
+        let scrolling = table_bounds(true, cx);
+
+        // The outer box stays clipped to the available width either way, so a wide
+        // table never blows out the surrounding layout.
+        assert_eq!(wrapped.size.width, px(200.));
+        assert_eq!(scrolling.size.width, px(200.));
+
+        // Without table_overflow_x_scroll every column is squeezed into an equal share
+        // of the 200px pane, so cell text wraps a few characters at a time and the table
+        // grows very tall. With it enabled each column keeps a floor of its own width and
+        // the leftover goes to the table's horizontal scrollbar instead.
+        assert!(
+            scrolling.size.height < wrapped.size.height,
+            "table_overflow_x_scroll should keep rows compact instead of wrapping cell \
+             text to fit; wrapped height {:?}, scrolling height {:?}",
+            wrapped.size.height,
+            scrolling.size.height
+        );
+    }
+
+    const COLUMN_FLOOR_TABLE: &str = concat!(
+        "| Identifier | Severity | Location | Summary |\n",
+        "|---|---|---|---|\n",
+        "| R1 | High | src/main.rs | Unwrap on user input can panic and that is bad |\n",
+    );
+
+    fn render_table_with_column_floors(
+        source: &str,
+        width: Pixels,
+        cx: &mut TestAppContext,
+    ) -> RenderedText {
+        ensure_theme_initialized(cx);
+        let markdown = cx.new(|cx| Markdown::new(source.to_string().into(), None, None, cx));
+        cx.run_until_parked();
+        render_markdown_entity_in_view(
+            markdown,
+            MarkdownStyle {
+                table_overflow_x_scroll: true,
+                ..MarkdownStyle::default()
+            },
+            None,
+            Some(width),
+            cx,
+        )
+    }
+
+    #[test]
+    fn test_table_column_min_widths_measure_characters_and_cap_long_columns() {
+        let font_size = px(10.);
+        let source = concat!(
+            "| ab | 日本 | a very long prose column that goes well past the cap |\n",
+            "|---|---|---|\n",
+        );
+        let widths = estimate_table_column_min_widths(source, 3, font_size, px(0.));
+        let [narrow, wide, capped] = widths.as_slice() else {
+            panic!("expected three columns, got {widths:?}");
+        };
+        // Two narrow characters, two full-width ones, plus the 1px cell divider.
+        assert!((f32::from(*narrow) - 12.).abs() < 0.1, "{narrow:?}");
+        assert!((f32::from(*wide) - 21.).abs() < 0.1, "{wide:?}");
+        assert!(
+            (f32::from(*capped) - (f32::from(font_size) * MAX_COLUMN_EM + 1.)).abs() < 0.1,
+            "a long column should stop at {MAX_COLUMN_EM}em, got {capped:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_table_column_floors_let_prose_wrap_inside_a_wide_pane(cx: &mut TestAppContext) {
+        let source = concat!(
+            "| ID | Summary |\n",
+            "|---|---|\n",
+            "| R1 | This table cell contains a fairly long sentence of prose that would \
+             normally wrap onto several lines. |\n",
+        );
+        let rendered = render_table_with_column_floors(source, px(900.), cx);
+        for (index, line) in rendered.lines.iter().enumerate() {
+            let right = line.layout.bounds().right();
+            assert!(
+                right <= px(900.),
+                "cell {index} ends at {right:?}, past the 900px pane; a prose column is \
+                 capped at {MAX_COLUMN_EM}em so it wraps instead of forcing a scroll"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn test_table_column_floors_keep_short_columns_from_being_squeezed(cx: &mut TestAppContext) {
+        let rendered = render_table_with_column_floors(COLUMN_FLOOR_TABLE, px(200.), cx);
+        let left_of = |header: &str| {
+            let start = COLUMN_FLOOR_TABLE
+                .find(header)
+                .expect("header should be present in the table source");
+            rendered
+                .bounds_for_source_range(start..start + header.len())
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| panic!("{header} should have been rendered"))
+                .left()
+        };
+
+        // The default rem size, which is also the default base text size.
+        let font_size = px(16.);
+        for (header, next_header) in [("Identifier", "Severity"), ("Severity", "Location")] {
+            let column_width = left_of(next_header) - left_of(header);
+            let estimate = estimate_text_width(header, font_size);
+            assert!(
+                column_width >= estimate,
+                "the {header} column is only {column_width:?} wide, under its estimated \
+                 {estimate:?}; short columns should keep their own width instead of being \
+                 squeezed into an equal share of the pane"
+            );
+        }
+    }
+
     #[test]
     fn test_table_state_current_cell_alignment_centers_headers() {
         let mut table = TableState::default();
@@ -6364,6 +6651,26 @@ mod tests {
         });
     }
 
+    #[gpui::test]
+    fn test_only_preview_style_enables_table_overflow_x_scroll(cx: &mut TestAppContext) {
+        ensure_theme_initialized(cx);
+        let (_, cx) = cx.add_window_view(|_, _| TestWindow);
+        cx.update(|window, cx| {
+            assert!(
+                MarkdownStyle::themed(MarkdownFont::Preview, window, cx).table_overflow_x_scroll,
+                "the markdown preview should scroll wide tables instead of wrapping them"
+            );
+            assert!(
+                !MarkdownStyle::themed(MarkdownFont::Editor, window, cx).table_overflow_x_scroll,
+                "inline/hover markdown should keep shrinking tables to fit, unaffected"
+            );
+            assert!(
+                !MarkdownStyle::themed(MarkdownFont::Agent, window, cx).table_overflow_x_scroll,
+                "the agent panel should keep shrinking tables to fit, unaffected"
+            );
+        });
+    }
+
     fn failing_image_source() -> ImageSource {
         ImageSource::Custom(Arc::new(|_, _| {
             Some(Err(gpui::ImageCacheError::Asset(
@@ -6699,19 +7006,53 @@ mod tests {
 
     #[gpui::test]
     fn test_wide_table_scrolls_horizontally(cx: &mut TestAppContext) {
+        assert_table_scrolls_horizontally(
+            indoc::indoc! {r#"
+                | left | right |
+                | --- | --- |
+                | value | far_right_cell_content_that_is_much_wider_than_the_viewport |
+            "#},
+            "left",
+            "far_right_cell_content_that_is_much_wider_than_the_viewport",
+            MarkdownStyle {
+                table_columns_min_size: true,
+                ..MarkdownStyle::default()
+            },
+            cx,
+        );
+    }
+
+    #[gpui::test]
+    fn test_table_wider_than_its_column_floors_scrolls_horizontally(cx: &mut TestAppContext) {
+        // Four columns whose floors add up to more than the 300px viewport, so the
+        // table has to overflow rather than squeeze them.
+        assert_table_scrolls_horizontally(
+            COLUMN_FLOOR_TABLE,
+            "Identifier",
+            "Unwrap on user input can panic and that is bad",
+            MarkdownStyle {
+                table_overflow_x_scroll: true,
+                ..MarkdownStyle::default()
+            },
+            cx,
+        );
+    }
+
+    fn assert_table_scrolls_horizontally(
+        source: &str,
+        left_cell: &str,
+        right_cell: &str,
+        style: MarkdownStyle,
+        cx: &mut TestAppContext,
+    ) {
         ensure_theme_initialized(cx);
-        let source = indoc::indoc! {r#"
-            | left | right |
-            | --- | --- |
-            | value | far_right_cell_content_that_is_much_wider_than_the_viewport |
-        "#};
-        let left_cell_start = source.find("left").expect("left cell should be present");
-        let left_cell_range = left_cell_start..left_cell_start + "left".len();
-        let right_cell = "far_right_cell_content_that_is_much_wider_than_the_viewport";
+        let left_cell_start = source.find(left_cell).expect("left cell should be present");
+        let left_cell_range = left_cell_start..left_cell_start + left_cell.len();
         let right_cell_start = source
             .find(right_cell)
             .expect("right cell should be present");
         let right_cell_range = right_cell_start..right_cell_start + right_cell.len();
+        let source = source.to_string();
 
         let markdown = cx.new(|cx| Markdown::new(source.into(), None, None, cx));
         let rendered_text = Rc::new(RefCell::new(None));
@@ -6719,10 +7060,7 @@ mod tests {
             let rendered_text = rendered_text.clone();
             move |_, _| MarkdownTestView {
                 markdown,
-                style: MarkdownStyle {
-                    table_columns_min_size: true,
-                    ..MarkdownStyle::default()
-                },
+                style,
                 code_span_link: None,
                 rendered_text,
             }

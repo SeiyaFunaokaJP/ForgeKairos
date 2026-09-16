@@ -584,7 +584,7 @@ impl AgentConnectionStore {
             held == slot
                 && view
                     .upgrade()
-                    .is_some_and(|view| view.read(cx).is_using_connection(cx))
+                    .is_some_and(|view| view.read(cx).is_using_connection(view.entity_id(), cx))
         })
     }
 
@@ -606,12 +606,13 @@ impl AgentConnectionStore {
         // would take the pause and the list away while the processes run on,
         // so an agent with something behind it is left alone and looked at
         // again at the next check, going as soon as the last of them ends.
+        // Which sandbox is which is the monitor's to answer.
         if let AgentConnectionEntry::Connected(state) = entry.read(cx)
             && let Some(monitor) = state.connection.sandbox_process_monitor()
-            && monitor.read(cx).follows_something()
+            && let Some(reason) = monitor.read(cx).reason_to_hold_an_unused_connection()
         {
             log::info!(
-                "keeping the unused connection to {}: its sandbox still has something running",
+                "keeping the unused connection to {}: {reason}",
                 slot.agent().id()
             );
             return;
@@ -635,7 +636,7 @@ impl AgentConnectionStore {
             return;
         }
         for view in holders {
-            if !view.update(cx, |view, cx| view.release_idle_connection(cx)) {
+            if !ConversationView::release_idle_connection(&view, cx) {
                 return;
             }
         }
@@ -724,17 +725,44 @@ mod tests {
     /// ADR-F49 decision 18 (C): a sandbox whose processes a test writes down.
     struct TestSandbox {
         running: RefCell<Vec<sandbox::SandboxProcess>>,
+        tracking: SandboxProcessTracking,
+        /// The trusted side cannot read this one, which is what puts a sandbox
+        /// that has a route at all into case B.
+        listing_fails: bool,
     }
 
     impl TestSandbox {
         fn new(pids: &[u32]) -> Rc<Self> {
             let sandbox = Rc::new(Self {
                 running: RefCell::default(),
+                tracking: SandboxProcessTracking::Trackable,
+                listing_fails: false,
             });
             for pid in pids {
                 sandbox.start(*pid);
             }
             sandbox
+        }
+
+        /// A WSL distro or a remote host that did not answer what runs in the
+        /// sandbox it built: a PID namespace all the same, and one that ends
+        /// with the connection.
+        fn that_cannot_be_listed() -> Rc<Self> {
+            Rc::new(Self {
+                running: RefCell::default(),
+                tracking: SandboxProcessTracking::Trackable,
+                listing_fails: true,
+            })
+        }
+
+        /// macOS's Seatbelt: no boundary to read and none to end, so what it
+        /// holds outlives the agent.
+        fn that_cannot_be_looked_into() -> Rc<Self> {
+            Rc::new(Self {
+                running: RefCell::default(),
+                tracking: SandboxProcessTracking::Untrackable,
+                listing_fails: true,
+            })
         }
 
         fn start(&self, pid: u32) {
@@ -755,10 +783,15 @@ mod tests {
 
     impl SandboxProcessSource for TestSandbox {
         fn tracking(&self) -> SandboxProcessTracking {
-            SandboxProcessTracking::Trackable
+            self.tracking
         }
 
         fn list(&self, _cx: &App) -> Task<Result<Vec<sandbox::SandboxProcess>>> {
+            if self.listing_fails {
+                return Task::ready(Err(anyhow::anyhow!(
+                    "the host did not say what runs in the agent's sandbox"
+                )));
+            }
             Task::ready(Ok(self.running.borrow().clone()))
         }
 
@@ -958,6 +991,43 @@ mod tests {
         assert!(
             !is_connected(&store, cx),
             "with nothing left running, the unused connection goes"
+        );
+    }
+
+    /// ADR-F49 (new decision): a sandbox whose listing the host never answered
+    /// is in case B by accident rather than by nature. WSL and a remote host
+    /// both build a PID namespace that this connection holds open, so ending
+    /// the connection ends what is inside it — there is nothing left for the
+    /// pause to protect, and keeping the connection would only keep the agent.
+    #[gpui::test]
+    async fn test_an_unlistable_sandbox_that_ends_with_its_connection_is_dropped(
+        cx: &mut TestAppContext,
+    ) {
+        let (store, _project) = setup(cx).await;
+        connect_to_a_sandboxed_stub(&store, TestSandbox::that_cannot_be_listed(), cx);
+        assert!(is_connected(&store, cx));
+
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            !is_connected(&store, cx),
+            "a sandbox nobody could list still ends with its connection, so the              unused connection goes and takes the agent with it"
+        );
+    }
+
+    /// macOS's Seatbelt (case B by nature) has no such boundary: what the
+    /// agent left behind outlives the connection, so dropping it would take
+    /// the pause away from processes that are still there.
+    #[gpui::test]
+    async fn test_a_sandbox_that_outlives_its_connection_is_kept(cx: &mut TestAppContext) {
+        let (store, _project) = setup(cx).await;
+        connect_to_a_sandboxed_stub(&store, TestSandbox::that_cannot_be_looked_into(), cx);
+
+        cx.executor().advance_clock(Duration::from_secs(60 * 60));
+        cx.run_until_parked();
+        assert!(
+            is_connected(&store, cx),
+            "a sandbox this side can neither read nor end keeps its connection"
         );
     }
 

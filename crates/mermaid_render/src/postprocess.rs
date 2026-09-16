@@ -12,6 +12,7 @@
 //! details.
 
 mod accent_colors;
+mod center_edge_labels;
 mod element_fixup;
 mod inject_css;
 mod strip_foreignobject;
@@ -36,6 +37,7 @@ pub(super) fn postprocess(svg: &str, theme: &MermaidTheme) -> Result<String> {
     // those fallback labels, but drops any that merely duplicate a native
     // <text> (e.g. user journey renders some labels both ways).
     let events = strip_foreignobject::process(events, svg);
+    let events = center_edge_labels::process(events);
     let events = element_fixup::process(events, theme);
 
     let events = accent_colors::process(events, theme);

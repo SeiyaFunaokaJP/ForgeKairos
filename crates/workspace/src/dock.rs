@@ -1742,6 +1742,31 @@ impl Dock {
     }
 
     pub fn activate_panel(&mut self, panel_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_active_panel_index(panel_ix, window, cx);
+        self.reveal_panel_to_user(panel_ix, window, cx);
+    }
+
+    /// Like `activate_panel`, but for code that puts a dock back on a panel it
+    /// already had (re-applying the pre-modal state after a commit modal closes,
+    /// or toggling focus away from a panel) rather than the user asking for a
+    /// panel by name. Does not call `Panel::revealed_by_user`, so panels such as
+    /// the browser do not treat it as a request to navigate away from their
+    /// waiting home tab.
+    pub fn restore_active_panel(
+        &mut self,
+        panel_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_active_panel_index(panel_ix, window, cx);
+    }
+
+    fn set_active_panel_index(
+        &mut self,
+        panel_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.arranged_by_user = true;
         if Some(panel_ix) != self.active_panel_index {
             // Activating the stacked panel promotes it rather than hiding it: both
@@ -1751,7 +1776,6 @@ impl Dock {
             target.promote(panel_ix);
             self.arrange(target, window, cx);
         }
-        self.reveal_panel_to_user(panel_ix, window, cx);
     }
 
     /// Tells the panel at `index` that the user asked for it (see

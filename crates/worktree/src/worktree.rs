@@ -6833,7 +6833,7 @@ fn is_beyond_scan_depth(file_scan_depth: Option<u32>, path: &RelPath) -> bool {
 #[cfg(target_os = "windows")]
 fn is_link_only_wsl_can_follow(path: &Path, error: &anyhow::Error) -> bool {
     const ERROR_PATH_NOT_FOUND: i32 = 3;
-    util::path_mapping::is_wsl_share_path(path)
+    fs::path_is_on_wsl_share(path)
         && error.chain().any(|error| {
             error
                 .downcast_ref::<std::io::Error>()

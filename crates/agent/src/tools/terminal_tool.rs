@@ -706,13 +706,23 @@ async fn run_terminal_tool(
                     // persist a canonical attributed to a distribution this
                     // session does not run in — the very confusion decision 33
                     // removes, and one that would outlive the command — so
-                    // nothing is resolved and the refusal comes later, with the
-                    // same reason.
+                    // nothing is resolved.
                     log::warn!("no single WSL distro for this project's folders: {error}");
+                    // ADR-F49 決定 34: dropping the requested grants would leave
+                    // the model (and the user) believing the command may write
+                    // where it may not, so the refusal is the tool's result
+                    // rather than a line in the log. With nothing requested
+                    // there is nothing to mislead anyone about, and
+                    // `wrap_invocation` refuses the command with the same
+                    // reason a moment later.
+                    if !write_paths.is_empty() {
+                        return Err(format!("{}{error}", unresolved_grant_refusal(&write_paths)));
+                    }
                     None
                 }
             };
             let mut resolved_paths = Vec::with_capacity(write_paths.len());
+            let mut refused = Vec::new();
             if let Some(session_distro) = session_distro {
                 for requested in write_paths {
                     match sandbox::resolve_canonical_for_grant(
@@ -733,9 +743,21 @@ async fn run_terminal_tool(
                                 "could not resolve sandbox write path {} in WSL: {error:#}",
                                 requested.display()
                             );
+                            refused.push(format!("{error:#}"));
                         }
                     }
                 }
+            }
+            // The same fail-closed reasoning as above, per path: a grant that
+            // could not be resolved is one the command will not have.
+            if !refused.is_empty() {
+                return Err(format!(
+                    "サンドボックスの書き込み許可を解決できなかったため、コマンドを実行しませんでした。\n\
+                     {}\n\
+                     許可を求める場所を、このセッションが動いている WSL ディストリビューションの中の\
+                     既存のフォルダーに変えてから、もう一度実行してください。",
+                    refused.join("\n")
+                ));
             }
             resolved_paths
         }
@@ -1040,6 +1062,24 @@ fn resolve_write_paths(
             .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
     });
     join_write_paths(raw_paths, base.as_deref(), windows_paths)
+}
+
+/// ADR-F49 決定 34: what the model is told when the write grants it asked for
+/// cannot be resolved because this project's folders name more than one WSL
+/// distribution. It ends without a full stop: the (Japanese) reason follows.
+#[cfg(target_os = "windows")]
+fn unresolved_grant_refusal(requested: &[PathBuf]) -> String {
+    let paths = requested
+        .iter()
+        .map(|path| format!("`{}`", path.display()))
+        .collect::<Vec<_>>()
+        .join("、");
+    format!(
+        "{paths} への書き込み許可を、このセッションの WSL ディストリビューションで解決できません\
+         でした。承認されていない場所を承認済みとして扱わないため、コマンドは実行していません。\
+         1 つの WSL ディストリビューションのフォルダーだけを開いてから、もう一度実行してください。\
+         理由: "
+    )
 }
 
 /// ADR-F49 decision 33: every path a sandboxed command carries into WSL, which
@@ -3447,6 +3487,38 @@ mod tests {
             false,
         );
         assert_eq!(joined, vec![PathBuf::from("/mnt/c/example/write-root")]);
+    }
+
+    /// ADR-F49 決定 34: grants that cannot be resolved are not quietly
+    /// dropped. What the model is told names every path it asked for, says the
+    /// command did not run, and says what to do — in Japanese (ADR-F07), with
+    /// the reason appended by the caller.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_unresolved_grant_refusal_names_the_paths_and_what_to_do() {
+        let refusal = unresolved_grant_refusal(&[
+            PathBuf::from("/home/me/cache"),
+            PathBuf::from(r"\\wsl.localhost\Debian\home\me\build"),
+        ]);
+
+        assert!(refusal.contains("`/home/me/cache`"), "{refusal}");
+        assert!(
+            refusal.contains(r"`\\wsl.localhost\Debian\home\me\build`"),
+            "{refusal}"
+        );
+        assert!(
+            refusal.contains("コマンドは実行していません"),
+            "the model has to learn the command did not run: {refusal}"
+        );
+        assert!(
+            refusal.contains("もう一度実行してください"),
+            "and what would make it run: {refusal}"
+        );
+        // The (Japanese) reason is appended to this, so it ends open.
+        assert!(refusal.ends_with("理由: "), "{refusal}");
+        for english in [" the ", " a ", " is ", " cannot "] {
+            assert!(!refusal.contains(english), "{english:?} left in {refusal}");
+        }
     }
 
     /// ADR-F49 decision 33: the distribution a bare `/…` grant is resolved (and

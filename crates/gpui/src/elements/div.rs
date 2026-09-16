@@ -5194,4 +5194,64 @@ mod tests {
         assert_eq!(bounds("cell-1").origin.x, px(100.));
         assert_eq!(bounds("cell-2").origin.x, px(300.));
     }
+
+    struct NarrowGrid {
+        min_widths: Option<Vec<Pixels>>,
+    }
+
+    impl Render for NarrowGrid {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let widths = [px(100.), px(200.), px(50.)];
+            div().size_full().child(
+                div()
+                    .w(px(120.))
+                    .overflow_hidden()
+                    .grid()
+                    .map(|this| match self.min_widths.clone() {
+                        Some(min_widths) => this.grid_cols_min_widths(min_widths),
+                        None => this.grid_cols_max_content(widths.len() as u16),
+                    })
+                    .children(widths.into_iter().enumerate().map(|(index, width)| {
+                        div()
+                            .debug_selector(move || format!("narrow-cell-{index}"))
+                            .w(width)
+                            .h(px(10.))
+                    })),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn grid_cols_min_widths_keep_columns_above_their_minimum(cx: &mut TestAppContext) {
+        let mut column_origins = |min_widths: Option<Vec<Pixels>>| {
+            let window = cx.add_window(|_, _| NarrowGrid { min_widths });
+            cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+                .unwrap();
+            cx.update_window(window.into(), |_, window, _| {
+                (0..3)
+                    .map(|index| {
+                        window
+                            .rendered_frame
+                            .debug_bounds
+                            .get(&format!("narrow-cell-{index}"))
+                            .copied()
+                            .unwrap_or_else(|| panic!("narrow-cell-{index} was not rendered"))
+                            .origin
+                            .x
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap()
+        };
+
+        // `minmax(0, max-content)` squeezes every track down to an equal share of the
+        // grid's own box when that box is narrower than the content.
+        assert_eq!(column_origins(None), vec![px(0.), px(40.), px(80.)]);
+        // Per-column minimums hold the first two columns open and let the grid overflow
+        // its box, while the last column still grows past its minimum to fit its content.
+        assert_eq!(
+            column_origins(Some(vec![px(60.), px(80.), px(10.)])),
+            vec![px(0.), px(60.), px(140.)]
+        );
+    }
 }

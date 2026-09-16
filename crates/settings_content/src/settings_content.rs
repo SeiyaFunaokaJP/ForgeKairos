@@ -1321,7 +1321,7 @@ pub struct MarkdownPreviewSettingsContent {
     /// enabled, content is constrained to `max_width` and centered
     /// horizontally within the preview pane, for optimal readability.
     ///
-    /// Default: true
+    /// Default: false
     pub limit_content_width: Option<bool>,
     /// The maximum width, in pixels, of the rendered markdown content when
     /// `limit_content_width` is enabled.

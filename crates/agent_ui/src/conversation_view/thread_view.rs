@@ -647,6 +647,11 @@ pub struct ThreadView {
     sandbox_status_key: Option<SandboxStatusKey>,
     pending_sandbox_status_key: Option<SandboxStatusKey>,
     pub multi_root_callout_dismissed: bool,
+    /// ADR-F49 決定 24: the "no diagnostics tool" notice this thread has been
+    /// dismissed out of. Kept per view, like the callouts above: the reason
+    /// belongs to the connection and outlives any one thread, so it would
+    /// otherwise come back on every thread of that agent.
+    pub(crate) sandbox_ide_notice_dismissed: bool,
     pub generating_indicator_in_list: bool,
     pub skill_loading_issues: Vec<SkillLoadingIssue>,
     /// Issues the user has explicitly dismissed. Each entry is matched against
@@ -1110,6 +1115,7 @@ impl ThreadView {
             sandbox_status_key: None,
             pending_sandbox_status_key: None,
             multi_root_callout_dismissed: false,
+            sandbox_ide_notice_dismissed: false,
             generating_indicator_in_list: false,
             skill_loading_issues: Vec::new(),
             dismissed_skill_loading_issues: HashSet::default(),
@@ -11955,6 +11961,45 @@ impl ThreadView {
             )
     }
 
+    /// See [`Self::render_sandbox_ide_notice`]: what the notice says, or
+    /// `None` when there is none to show.
+    pub(crate) fn sandbox_ide_notice_reason(&self, cx: &App) -> Option<SharedString> {
+        if self.sandbox_ide_notice_dismissed {
+            return None;
+        }
+        self.thread.read(cx).connection().sandbox_ide_unavailable()
+    }
+
+    /// ADR-F49 決定 24: the IDE channel that carries `getDiagnostics` into
+    /// the sandbox could not be brought up (WSL timing out, the bridge
+    /// refusing), so this thread's agent runs with one tool fewer. Nothing is
+    /// loosened by it, but the agent will answer as if the project had no
+    /// diagnostics, so it is said here rather than only in the log.
+    fn render_sandbox_ide_notice(&self, cx: &mut Context<Self>) -> Option<Callout> {
+        let reason = self.sandbox_ide_notice_reason(cx)?;
+
+        Some(
+            Callout::new()
+                .severity(Severity::Warning)
+                .icon(IconName::Warning)
+                .title("このスレッドのエージェントには IDE の診断ツールが渡っていません")
+                .description(format!(
+                    "エージェントは `getDiagnostics` を使えないため、エディターが出している\
+                     エラーや警告は見えません。{reason}"
+                ))
+                .border_position(self.callout_border_position())
+                .dismiss_action(
+                    IconButton::new("dismiss-sandbox-ide-notice", IconName::Close)
+                        .icon_size(IconSize::Small)
+                        .tooltip(Tooltip::text("閉じる"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.sandbox_ide_notice_dismissed = true;
+                            cx.notify();
+                        })),
+                ),
+        )
+    }
+
     fn render_multi_root_callout(&self, cx: &mut Context<Self>) -> Option<Callout> {
         if self.multi_root_callout_dismissed {
             return None;
@@ -12844,6 +12889,7 @@ impl Render for ThreadView {
             )
             .child(conversation)
             .children(self.render_multi_root_callout(cx))
+            .children(self.render_sandbox_ide_notice(cx))
             .children(self.render_activity_bar(window, cx))
             .when(self.show_external_source_prompt_warning, |this| {
                 this.child(self.render_external_source_prompt_warning(cx))

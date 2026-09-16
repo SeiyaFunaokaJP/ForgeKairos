@@ -2,7 +2,7 @@ use crate::{
     self as gpui, AbsoluteLength, AlignContent, AlignItems, AlignSelf, BorderStyle, CursorStyle,
     DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontFeatures, FontStyle,
     FontWeight, GridPlacement, GridTemplate, GridTemplateMinSize, Hsla, JustifyContent, Length,
-    SharedString, StrikethroughStyle, StyleRefinement, TextAlign, TextOverflow,
+    Pixels, SharedString, StrikethroughStyle, StyleRefinement, TextAlign, TextOverflow,
     TextStyleRefinement, UnderlineStyle, WhiteSpace, px, relative, rems,
 };
 pub use gpui_macros::{
@@ -773,6 +773,15 @@ pub trait Styled: Sized {
             repeat: cols,
             min_size: GridTemplateMinSize::MaxContent,
         });
+        self
+    }
+
+    /// Gives each grid column, in order, its own minimum width while still letting it
+    /// grow to its max-content size. A column never shrinks below its width here, so the
+    /// grid overflows its own box once the widths no longer fit; combine this with
+    /// `overflow_x_scroll` so that overflow can be scrolled into view.
+    fn grid_cols_min_widths(mut self, min_widths: impl Into<Vec<Pixels>>) -> Self {
+        self.style().grid_cols_min_widths = Some(min_widths.into());
         self
     }
 

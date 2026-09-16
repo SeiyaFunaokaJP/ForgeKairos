@@ -485,6 +485,24 @@ impl ToTaffy<taffy::style::Style> for Style {
             .unwrap_or_default()
         }
 
+        // grid-template-columns: minmax(<width>, max-content) ... , one track per
+        // entry, so each column keeps its own floor and the grid overflows its own
+        // box once those floors no longer fit.
+        fn to_grid_min_widths<T: taffy::style::CheapCloneStr>(
+            min_widths: &[Pixels],
+            scale_factor: f32,
+        ) -> Vec<taffy::GridTemplateComponent<T>> {
+            min_widths
+                .iter()
+                .map(|min_width| {
+                    taffy::GridTemplateComponent::Single(minmax(
+                        length(round_to_device_pixel(min_width.0, scale_factor)),
+                        max_content(),
+                    ))
+                })
+                .collect()
+        }
+
         taffy::style::Style {
             display: self.display.into(),
             overflow: self.overflow.into(),
@@ -509,7 +527,10 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_grow: self.flex_grow,
             flex_shrink: self.flex_shrink,
             grid_template_rows: to_grid_repeat(&self.grid_rows),
-            grid_template_columns: to_grid_repeat(&self.grid_cols),
+            grid_template_columns: match self.grid_cols_min_widths.as_deref() {
+                Some(min_widths) => to_grid_min_widths(min_widths, scale_factor),
+                None => to_grid_repeat(&self.grid_cols),
+            },
             grid_row: self
                 .grid_location
                 .as_ref()

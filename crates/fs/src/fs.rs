@@ -1,7 +1,7 @@
 pub mod fs_watcher;
 pub mod verified_write;
 
-pub use fs_watcher::requires_poll_watcher;
+pub use fs_watcher::{path_is_on_wsl_share, requires_poll_watcher};
 pub use verified_write::VerifiedWriteError;
 
 use parking_lot::Mutex;
@@ -3732,19 +3732,49 @@ fn read_recursive<'a>(
 // https://github.com/rust-lang/rust/issues/63010
 #[cfg(target_os = "windows")]
 async fn file_id(path: impl AsRef<Path>) -> Result<u64> {
+    let path = path.as_ref();
+    match file_id_of_opened(path, FollowLink::Yes).await {
+        Ok(id) => Ok(id),
+        // リンク先の無い symlink は開けないので、リンク自身 (reparse point) を開いて
+        // その id を返す。Unix が壊れたリンクに `symlink_metadata` の inode を返すのと
+        // 同じ扱いで、これが無いと `Fs::metadata` が失敗し、そのリンクを含むディレクトリ
+        // の走査のたびに ERROR が記録される。リンク自身も開けなかったときは、呼び出し側
+        // (`worktree` は WSL が作ったリンクをエラー番号で見分ける) のために、辿ろうとして
+        // 得た方のエラーを返す。
+        Err(follow_error) => match file_id_of_opened(path, FollowLink::No).await {
+            Ok(id) => Ok(id),
+            Err(_) => Err(follow_error),
+        },
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FollowLink {
+    Yes,
+    No,
+}
+
+#[cfg(target_os = "windows")]
+async fn file_id_of_opened(path: &Path, follow: FollowLink) -> Result<u64> {
     use std::os::windows::io::AsRawHandle;
 
     use smol::fs::windows::OpenOptionsExt;
     use windows::Win32::{
         Foundation::HANDLE,
         Storage::FileSystem::{
-            BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, GetFileInformationByHandle,
+            BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+            GetFileInformationByHandle,
         },
     };
 
+    let mut flags = FILE_FLAG_BACKUP_SEMANTICS.0;
+    if follow == FollowLink::No {
+        flags |= FILE_FLAG_OPEN_REPARSE_POINT.0;
+    }
     let file = smol::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
+        .custom_flags(flags)
         .open(path)
         .await?;
 
@@ -3781,5 +3811,78 @@ fn atomic_replace<P: AsRef<Path>>(
             None,
             None,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// リンク先の無い symlink があっても、そのディレクトリの走査 (`worktree` がやること)
+    /// が失敗しないこと。Windows の file id はリンク先を開いて取るので、これが無いと
+    /// `Fs::metadata` が `ERROR_FILE_NOT_FOUND` を返し、走査のたびに ERROR が記録される。
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn a_broken_symlink_is_scanned_without_an_error(cx: &mut gpui::TestAppContext) {
+        use super::{Fs as _, RealFs};
+        use futures::StreamExt as _;
+
+        // `mklink` を待つ間、テストの実行器に外から起こされることを許す。
+        cx.executor().allow_parking();
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let missing = directory.path().join("no-such-target");
+        let link = directory.path().join("broken-link");
+        if std::os::windows::fs::symlink_file(&missing, &link).is_err() {
+            // Windows では開発者モードか管理者でないと symlink を作れない。ジャンクション
+            // なら特権が要らず、リンク先が無ければ同じく開けない reparse point になる。
+            match super::new_command("cmd")
+                .args(["/c", "mklink", "/J"])
+                .arg(&link)
+                .arg(&missing)
+                .output()
+                .await
+            {
+                Ok(output) if output.status.success() => {}
+                other => {
+                    eprintln!("skipping: could not create a broken reparse point: {other:?}");
+                    return;
+                }
+            }
+        }
+        std::fs::write(directory.path().join("plain.txt"), b"hi").expect("a plain file");
+        assert!(
+            std::fs::symlink_metadata(&link).is_ok() && std::fs::metadata(&link).is_err(),
+            "the link is there but cannot be followed, which is what used to fail the scan"
+        );
+
+        let fs = RealFs::new(None, cx.executor());
+        let metadata = fs
+            .metadata(&link)
+            .await
+            .expect("the metadata of a broken link is readable")
+            .expect("the link itself exists");
+        assert!(metadata.is_symlink);
+
+        let own_id = super::file_id(&link).await.expect("the link's own file id");
+        let target_id = super::file_id(directory.path().join("plain.txt"))
+            .await
+            .expect("a plain file's id");
+        assert_ne!(
+            own_id, target_id,
+            "the link's id is its own, not another entry's"
+        );
+
+        let mut children = fs
+            .read_dir(directory.path())
+            .await
+            .expect("the directory is readable");
+        let mut scanned = Vec::new();
+        while let Some(child) = children.next().await {
+            let child = child.expect("every child of the directory is listed");
+            fs.metadata(&child)
+                .await
+                .unwrap_or_else(|error| panic!("scanning {}: {error:#}", child.display()))
+                .unwrap_or_else(|| panic!("{} was listed but has no metadata", child.display()));
+            scanned.push(child);
+        }
+        assert_eq!(scanned.len(), 2, "both entries are scanned: {scanned:?}");
     }
 }

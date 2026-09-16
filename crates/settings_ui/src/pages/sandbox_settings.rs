@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use agent_settings::AgentSettings;
 use gpui::{ReadGlobal as _, ScrollHandle, prelude::*};
@@ -557,16 +557,45 @@ fn remove_network_host(host: String, cx: &mut App) {
 /// Insert a hand-authored write-path entry (no resolved canonical) into the
 /// settings list as a minimal subtree, mirroring `util::paths::insert_subtree`
 /// but over [`settings::GrantedWritePathContent`] keyed on the requested path.
+///
+/// Containment is judged on the folded spelling (ADR-F49 decision 34), so a
+/// folder the file already grants under an older spelling of its WSL
+/// distribution is not granted a second time under the new one. What is
+/// stored is still what the user typed.
 fn insert_write_path_subtree(paths: &mut Vec<settings::GrantedWritePathContent>, path: PathBuf) {
-    if paths.iter().any(|entry| path.starts_with(&entry.requested)) {
+    let folded = fold_grant_spelling(&path);
+    if paths
+        .iter()
+        .any(|entry| folded.starts_with(fold_grant_spelling(&entry.requested)))
+    {
         return;
     }
-    paths.retain(|entry| !entry.requested.starts_with(&path));
+    paths.retain(|entry| !fold_grant_spelling(&entry.requested).starts_with(&folded));
     paths.push(settings::GrantedWritePathContent {
         requested: path,
         resolved: None,
         on_windows_fs: false,
     });
+}
+
+/// ADR-F49 decision 34: a grant that names a folder in a WSL distribution, in
+/// the one spelling those are stored and compared in; anything else unchanged.
+fn fold_grant_spelling(path: &Path) -> PathBuf {
+    path.to_str()
+        .and_then(util::path_mapping::canonical_wsl_grant_spelling)
+        .map_or_else(|| path.to_path_buf(), PathBuf::from)
+}
+
+/// ADR-F49 decision 34: whether a row names the folder the user acted on.
+///
+/// The rows here are the file's own (see [`raw_sandbox_lists`]), and one
+/// folder in a WSL distribution can be written several ways — a row approved
+/// before that decision names the distribution as `wsl.exe` reported it, one
+/// approved after names it in lower case. Matching by location is what makes
+/// removing or editing the row the user clicked reach every row that grants
+/// that same folder, rather than leaving a stale twin behind.
+fn names_the_same_grant(row: &Path, acted_on: &Path) -> bool {
+    fold_grant_spelling(row) == fold_grant_spelling(acted_on)
 }
 
 fn add_write_path(path: PathBuf, cx: &mut App) {
@@ -590,7 +619,9 @@ fn update_write_path(old_path: PathBuf, new_path: PathBuf, cx: &mut App) {
     };
     update_sandbox_permissions(cx, move |permissions| {
         if let Some(paths) = permissions.write_paths.as_mut() {
-            paths.0.retain(|entry| entry.requested != old_path);
+            paths
+                .0
+                .retain(|entry| !names_the_same_grant(&entry.requested, &old_path));
             insert_write_path_subtree(&mut paths.0, new_path);
         }
     });
@@ -599,7 +630,9 @@ fn update_write_path(old_path: PathBuf, new_path: PathBuf, cx: &mut App) {
 fn remove_write_path(path: PathBuf, cx: &mut App) {
     update_sandbox_permissions(cx, move |permissions| {
         if let Some(paths) = permissions.write_paths.as_mut() {
-            paths.0.retain(|entry| entry.requested != path);
+            paths
+                .0
+                .retain(|entry| !names_the_same_grant(&entry.requested, &path));
         }
     });
 }

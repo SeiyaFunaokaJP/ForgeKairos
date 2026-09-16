@@ -450,12 +450,31 @@ impl SandboxProcessMonitor {
         self.session_writer.is_some()
     }
 
-    /// Whether anything still ties the agent to its sandbox: an answer left
-    /// something running, or the sandbox cannot be looked into at all. Either
-    /// way this connection is what the pause and the dialog's stop button hang
-    /// from, so nothing may drop it for having gone unused.
-    pub fn follows_something(&self) -> bool {
-        self.session_writer.is_some() || !self.followed.borrow().is_empty()
+    /// ADR-F49 (new decision): why the idle disconnect may not drop the
+    /// connection this monitor belongs to, or `None` when it may.
+    ///
+    /// What an answer left running holds it: that list, the dialog's stop
+    /// button and the writer registration all hang from this connection, and
+    /// the processes would go on writing without them.
+    ///
+    /// Case B — a sandbox this side could not read — divides. Every route that
+    /// can be read at all is a PID namespace the connection holds open (this
+    /// machine's Bubblewrap, a remote host's helper, a WSL distro's), so one
+    /// whose *listing* failed is still a sandbox that ends when the connection
+    /// does, taking everything in it with it: there is nothing left for the
+    /// pause to protect, and keeping the connection only keeps the agent
+    /// running. macOS's Seatbelt has no such boundary — what it holds outlives
+    /// the agent — so that one is kept, as before.
+    pub fn reason_to_hold_an_unused_connection(&self) -> Option<&'static str> {
+        if !self.followed.borrow().is_empty() {
+            return Some("its sandbox still has something an answer left running");
+        }
+        if self.session_writer.is_some()
+            && self.source.tracking() != SandboxProcessTracking::Trackable
+        {
+            return Some("its sandbox cannot be looked into and does not end with it");
+        }
+        None
     }
 
     /// What an answer left running and has not ended, for a test.
