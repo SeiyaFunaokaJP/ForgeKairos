@@ -58,6 +58,8 @@ extend-exclude = [
     "script/danger/dangerfile.ts",
     # File type extensions are not typos
     "crates/zed/resources/windows/zed.iss",
+    # The Inno Setup Japanese messages credit their translator by name.
+    "crates/zed/resources/windows/messages/Default.ja.isl",
     # typos-cli doesn't understand our `vˇariable` markup
     "crates/editor/src/hover_links.rs",
     # typos-cli doesn't understand `setis` is intentional test case
