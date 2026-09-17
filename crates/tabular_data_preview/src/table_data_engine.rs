@@ -53,6 +53,8 @@ impl TableDataEngine {
     /// Recomputes the unique filter entries for every column from the current table data.
     /// Must be called after content changes (e.g. after parsing).
     pub fn calculate_available_filters(&mut self) {
+        self.filter_stack
+            .forget_columns_beyond(self.contents.number_of_cols);
         self.all_filters =
             calculate_available_filters(&self.contents.rows, self.contents.number_of_cols);
     }
@@ -176,9 +178,7 @@ mod tests {
     #[test]
     fn a_filtered_table_maps_through_the_retained_rows() {
         let mut engine = engine_for("h\na\nb\na");
-        engine
-            .toggle_filter(AnyColumn(0), Some("a".into()))
-            .expect("the column has an `a` entry to filter on");
+        engine.toggle_filter(AnyColumn(0), Some("a".into()));
         let mapping = DisplayToDataMapping::compute(&engine.contents, &engine.filter_stack, None);
 
         assert!(!mapping.is_identity());

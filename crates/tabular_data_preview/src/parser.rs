@@ -317,6 +317,20 @@ pub fn from_buffer_with_delimiter(
     }
 }
 
+/// Parses delimited text into plain cell values, without the buffer anchors
+/// [`from_buffer_with_delimiter`] hangs off every cell.
+///
+/// The table comparison works on text it was handed rather than on an open
+/// buffer - the committed version of a file has no buffer at all - and it only
+/// ever needs the values. Going through the same scanner is what makes two
+/// files that differ only in their quoting compare as equal.
+pub(crate) fn parse_cell_rows(text: &str, delimiter: char) -> Vec<Vec<SharedString>> {
+    parse_delimited_text_with_positions(text, delimiter)
+        .into_iter()
+        .map(|row| row.cells.into_iter().map(|(value, _range)| value).collect())
+        .collect()
+}
+
 fn span_for_range(buffer_snapshot: &BufferSnapshot, range: Range<usize>) -> CellContentSpan {
     CellContentSpan {
         start: buffer_snapshot.anchor_before(range.start),

@@ -93,6 +93,7 @@ use invisibles::is_standalone_grapheme;
 pub use invisibles::{is_invisible, replacement};
 pub use wrap_map::{WrapPoint, WrapRow, WrapSnapshot};
 
+use crate::markdown_actions::is_closing_fence;
 use collections::{HashMap, HashSet, IndexSet};
 use gpui::{
     App, Context, Entity, EntityId, Font, HighlightStyle, Hsla, LineLayout, Pixels, UnderlineStyle,
@@ -1495,10 +1496,25 @@ impl<'a> HighlightedChunk<'a> {
 /// language; also what `MarkdownPreviewView::is_markdown_file` matches on.
 const MARKDOWN_LANGUAGE_NAME: &str = "Markdown";
 
-/// How much of a line is read while deciding whether it is a Markdown heading.
-/// The answer is settled by the first few characters, so a single very long
-/// line cannot make the gutter walk it in full.
-const MARKDOWN_HEADING_LINE_LIMIT: usize = 256;
+/// How many characters of a line are read while deciding what Markdown block it
+/// starts. Headings, code fences and the `<details>` tag all settle the answer
+/// within the first few characters, so a single very long line cannot make the
+/// gutter walk it in full. The one thing this truncates is a `</details>`
+/// written more than this many characters into a line, which CommonMark would
+/// not read as a block of its own anyway.
+const MARKDOWN_LINE_LIMIT: usize = 256;
+
+/// How far ahead the scan that pairs `<details>` with `</details>` looks. The
+/// gutter asks for a crease once per visible row and `editor::FoldAll` asks for
+/// every row in the buffer, so a `<details>` that is never closed must not walk
+/// a large file to its end each time it is drawn.
+const MARKDOWN_DETAILS_SCAN_LIMIT: u32 = 2_000;
+
+/// How many characters that same scan reads before it gives up, so that a
+/// region of very long lines costs no more than one of ordinary ones. At two
+/// hundred characters per row it is well past any prose the row limit allows,
+/// and a scan cut short by it offers no fold rather than a wrong one.
+const MARKDOWN_DETAILS_SCAN_CHAR_LIMIT: usize = 400_000;
 
 /// The fold a Markdown heading row offers: the heading line stays visible and
 /// its body — nested headings included — is hidden.
@@ -1526,6 +1542,106 @@ fn markdown_atx_heading_level(line: &str) -> Option<u32> {
     }
     let rest = after_indent.get(hashes..)?;
     (rest.is_empty() || rest.starts_with([' ', '\t'])).then_some(hashes as u32)
+}
+
+/// `Some((marker, length))` when `line` is a CommonMark code fence delimiter:
+/// up to three spaces of indent and then at least three backticks or tildes.
+/// Whether it *opens* a block cannot be told from the line alone, which is what
+/// [`DisplaySnapshot::markdown_fence_fold`] asks tree-sitter for.
+fn markdown_fence_delimiter(line: &str) -> Option<(char, usize)> {
+    let after_indent = line.trim_start_matches(' ');
+    if line.len() - after_indent.len() > 3 {
+        return None;
+    }
+    let marker = after_indent
+        .chars()
+        .next()
+        .filter(|character| *character == '`' || *character == '~')?;
+    let length = after_indent
+        .chars()
+        .take_while(|character| *character == marker)
+        .count();
+    if length < 3 {
+        return None;
+    }
+    // A backtick fence cannot carry a backtick after its delimiter, which is
+    // what keeps an inline code span from reading as a fence.
+    if marker == '`' && after_indent.get(length..)?.contains('`') {
+        return None;
+    }
+    Some((marker, length))
+}
+
+/// Whether `line` opens an HTML block with a `<details>` tag: up to three spaces
+/// of indent and then the tag. CommonMark needs the tag at the start of the line
+/// for the disclosure to be a block of its own; a `<details>` in the middle of a
+/// paragraph is inline HTML, which no renderer folds.
+fn markdown_details_block_open(line: &str) -> bool {
+    const OPEN_TAG: &str = "<details";
+
+    let after_indent = line.trim_start_matches(' ');
+    if line.len() - after_indent.len() > 3 {
+        return false;
+    }
+    // Compared in place rather than through `to_ascii_lowercase`, because this
+    // runs on every row of every Markdown buffer and has nothing to allocate.
+    after_indent
+        .get(..OPEN_TAG.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(OPEN_TAG))
+        && after_indent
+            .get(OPEN_TAG.len()..)
+            .is_some_and(markdown_tag_name_ends)
+}
+
+/// Walks the `<details>` and `</details>` tags of `line` in document order,
+/// applying each to `depth`, and returns `true` once the disclosure the scan
+/// started from is closed. Order matters because one line can close one
+/// disclosure and open the next.
+fn markdown_details_tags(line: &str, depth: &mut usize) -> bool {
+    // Almost every row the scan walks is prose, and this runs on all of them,
+    // so the copy below is only made once a tag could possibly be there.
+    if !line.contains('<') {
+        return false;
+    }
+    // Lowercasing ASCII keeps every byte offset, so the slices below stay on
+    // character boundaries.
+    let lowered = line.to_ascii_lowercase();
+    let mut skip_to = 0;
+    for (index, character) in lowered.char_indices() {
+        if index < skip_to || character != '<' {
+            continue;
+        }
+        let Some(rest) = lowered.get(index..) else {
+            continue;
+        };
+        if rest.starts_with("<!--") {
+            skip_to = match rest.find("-->") {
+                Some(end) => index + end + "-->".len(),
+                None => lowered.len(),
+            };
+            continue;
+        }
+        if let Some(after) = rest.strip_prefix("</details") {
+            if markdown_tag_name_ends(after) && *depth > 0 {
+                *depth -= 1;
+                if *depth == 0 {
+                    return true;
+                }
+            }
+        } else if let Some(after) = rest.strip_prefix("<details")
+            && markdown_tag_name_ends(after)
+        {
+            *depth += 1;
+        }
+    }
+    false
+}
+
+fn markdown_tag_name_ends(after_name: &str) -> bool {
+    match after_name.chars().next() {
+        None => true,
+        Some(character) => character == '>' || character == '/' || character.is_whitespace(),
+    }
 }
 
 #[derive(Clone)]
@@ -2307,21 +2423,88 @@ impl DisplaySnapshot {
         self.buffer_snapshot()
             .chars_at(Point::new(row, 0))
             .take_while(|character| *character != '\n')
-            .take(MARKDOWN_HEADING_LINE_LIMIT)
+            .take(MARKDOWN_LINE_LIMIT)
             .collect()
     }
 
-    /// `Some(level)` when `row` of a Markdown buffer is an ATX heading row.
+    /// Hands rows `start_row..=end_row` to `visit` in one walk of the buffer,
+    /// each truncated to [`MARKDOWN_LINE_LIMIT`] characters. `visit` returning
+    /// `true` stops the walk.
     ///
-    /// The language is checked per row rather than once per buffer because a
-    /// fenced code block is an injected layer of its own language, and a
-    /// comment line inside one can read as a heading.
-    fn markdown_heading_level_at(&self, row: u32) -> Option<u32> {
-        let snapshot = self.buffer_snapshot();
-        if snapshot
+    /// Seeking the rope once rather than once per row is what keeps the
+    /// `<details>` scan off the gutter's critical path: asking
+    /// [`Self::markdown_line`] for two thousand rows in a row costs two
+    /// thousand seeks and as many allocations, which is enough to be seen in a
+    /// frame.
+    ///
+    /// Returns whether every row through `end_row` was reached. A walk stopped
+    /// by [`MARKDOWN_DETAILS_SCAN_CHAR_LIMIT`] has seen no further than it got,
+    /// so its caller cannot conclude anything about the rows beyond.
+    fn markdown_rows_from(
+        &self,
+        start_row: u32,
+        end_row: u32,
+        mut visit: impl FnMut(u32, &str) -> bool,
+    ) -> bool {
+        if start_row > end_row {
+            return true;
+        }
+
+        let mut row = start_row;
+        let mut line = String::new();
+        let mut line_length = 0;
+        let mut budget = MARKDOWN_DETAILS_SCAN_CHAR_LIMIT;
+        for character in self.buffer_snapshot().chars_at(Point::new(start_row, 0)) {
+            if budget == 0 {
+                return false;
+            }
+            budget -= 1;
+            if character == '\n' {
+                if visit(row, &line) || row == end_row {
+                    return true;
+                }
+                row += 1;
+                line.clear();
+                line_length = 0;
+            } else if line_length < MARKDOWN_LINE_LIMIT {
+                line.push(character);
+                line_length += 1;
+            }
+        }
+        // The last row of a buffer that does not end in a newline never reaches
+        // the branch above.
+        visit(row, &line);
+        true
+    }
+
+    /// Whether the syntax layer at the start of `row` is the Markdown layer
+    /// itself rather than a language injected into it.
+    ///
+    /// The layer is checked per row rather than once per buffer because a fenced
+    /// code block is an injected layer of its own language: a comment line
+    /// inside one can read as a heading, and the text objects of one turn up
+    /// alongside Markdown's own.
+    fn is_markdown_layer_row(&self, row: u32) -> bool {
+        self.buffer_snapshot()
             .language_at(MultiBufferPoint::new(row, 0))
-            .is_none_or(|language| language.name() != MARKDOWN_LANGUAGE_NAME)
-        {
+            .is_some_and(|language| language.name() == MARKDOWN_LANGUAGE_NAME)
+    }
+
+    /// Whether the buffer `row` belongs to is a Markdown buffer.
+    ///
+    /// [`Self::is_markdown_layer_row`] is the wrong test for a `<details>` row:
+    /// Markdown injects every HTML block into the HTML grammar, so such a row
+    /// reports HTML rather than Markdown wherever an HTML grammar is installed.
+    fn is_markdown_buffer_row(&self, row: u32) -> bool {
+        self.buffer_snapshot()
+            .point_to_buffer_offset(MultiBufferPoint::new(row, 0))
+            .and_then(|(buffer, _)| buffer.language())
+            .is_some_and(|language| language.name() == MARKDOWN_LANGUAGE_NAME)
+    }
+
+    /// `Some(level)` when `row` of a Markdown buffer is an ATX heading row.
+    fn markdown_heading_level_at(&self, row: u32) -> Option<u32> {
+        if !self.is_markdown_layer_row(row) {
             return None;
         }
         markdown_atx_heading_level(&self.markdown_line(row))
@@ -2432,6 +2615,162 @@ impl DisplaySnapshot {
         folds
     }
 
+    /// The fold a Markdown row offers besides the heading folds: a fenced code
+    /// block or a `<details>` disclosure, each leaving its own first line
+    /// visible the way a folded function leaves its signature.
+    pub fn markdown_block_fold(
+        &self,
+        buffer_row: MultiBufferRow,
+    ) -> Option<Range<MultiBufferPoint>> {
+        // The gutter asks for a crease per visible row and `editor::FoldAll`
+        // asks for every row in the buffer, of whatever language, so the
+        // language test comes before the row is even read, and one read of the
+        // row then serves both of the tests below.
+        if !self.is_markdown_buffer_row(buffer_row.0) {
+            return None;
+        }
+        let line = self.markdown_line(buffer_row.0);
+        if markdown_fence_delimiter(&line).is_some() {
+            self.markdown_fence_fold(buffer_row)
+        } else if markdown_details_block_open(&line) {
+            self.markdown_details_fold(buffer_row, &line)
+        } else {
+            None
+        }
+    }
+
+    /// The range the opening fence of a fenced code block folds away: the fence
+    /// line stays visible and everything through the closing fence is hidden.
+    /// A fence that is never closed runs to the end of the buffer, which is the
+    /// extent the grammar gives it.
+    ///
+    /// Markdown has no fold query in this tree, so the extent comes from the
+    /// `fenced_code_block` text object in `textobjects.scm`.
+    fn markdown_fence_fold(&self, buffer_row: MultiBufferRow) -> Option<Range<MultiBufferPoint>> {
+        // `text_object_ranges` reports the captures of every layer, so the
+        // functions of an injected language inside a ```rust block arrive here
+        // too. Only the Markdown layer captures a fence row.
+        if !self.is_markdown_layer_row(buffer_row.0) {
+            return None;
+        }
+
+        let snapshot = self.buffer_snapshot();
+        let row_start = MultiBufferPoint::new(buffer_row.0, 0).to_offset(snapshot);
+        let row_end =
+            MultiBufferPoint::new(buffer_row.0, snapshot.line_len(buffer_row)).to_offset(snapshot);
+        let block_end = snapshot
+            .text_object_ranges(row_start..row_end, TreeSitterOptions::default())
+            .find_map(|(range, text_object)| {
+                // A closing fence has the same block as its ancestor, so the
+                // capture has to start on this row for it to be the opening
+                // one. An indented fence starts past column 0, which is why
+                // this compares rows rather than offsets.
+                (text_object == TextObject::AroundFunction
+                    && range.start.to_point(snapshot).row == buffer_row.0)
+                    .then_some(range.end)
+            })?
+            .to_point(snapshot);
+
+        // The block takes in the newline that ends its closing fence, which
+        // puts its end at the start of the row after the block.
+        let end_row = if block_end.column == 0 {
+            block_end.row.saturating_sub(1)
+        } else {
+            block_end.row
+        }
+        .min(snapshot.max_row().0);
+        if end_row <= buffer_row.0 {
+            return None;
+        }
+
+        Some(
+            MultiBufferPoint::new(buffer_row.0, snapshot.line_len(buffer_row))
+                ..MultiBufferPoint::new(end_row, snapshot.line_len(MultiBufferRow(end_row))),
+        )
+    }
+
+    /// The range a `<details>` row folds away: the opening tag's line — which is
+    /// where `markdown::InsertDetails` puts the `<summary>` — stays visible and
+    /// everything through the matching `</details>` is hidden.
+    ///
+    /// A CommonMark HTML block ends at the first blank line, so the opening tag,
+    /// the body and `</details>` are separate blocks and no tree-sitter node
+    /// spans the pair. The tags are matched by scanning forward instead,
+    /// skipping fenced code blocks so that a `</details>` quoted in an example
+    /// closes nothing.
+    fn markdown_details_fold(
+        &self,
+        buffer_row: MultiBufferRow,
+        line: &str,
+    ) -> Option<Range<MultiBufferPoint>> {
+        let mut depth = 0;
+        if markdown_details_tags(line, &mut depth) || depth == 0 {
+            // The disclosure is closed on its own line, so it has no body rows
+            // to hide.
+            return None;
+        }
+        if self.markdown_row_is_inside_fence(buffer_row.0) {
+            return None;
+        }
+
+        let snapshot = self.buffer_snapshot();
+        let max_row = snapshot.max_row().0;
+        let scan_end = max_row.min(buffer_row.0.saturating_add(MARKDOWN_DETAILS_SCAN_LIMIT));
+        let mut open_fence = None;
+        let mut close_row = None;
+        let reached_scan_end = self.markdown_rows_from(buffer_row.0 + 1, scan_end, |row, line| {
+            match open_fence {
+                Some((marker, length)) => {
+                    if is_closing_fence(line, marker, length) {
+                        open_fence = None;
+                    }
+                }
+                None => {
+                    if let Some(fence) = markdown_fence_delimiter(line) {
+                        open_fence = Some(fence);
+                    } else if markdown_details_tags(line, &mut depth) {
+                        close_row = Some(row);
+                        return true;
+                    }
+                }
+            }
+            false
+        });
+
+        let end_row = match close_row {
+            Some(row) => row,
+            // An unclosed `<details>` still has a body to hide, but only the
+            // scan that reached the end of the buffer rather than one of its
+            // own limits knows that there is no closing tag further down.
+            None if reached_scan_end && scan_end == max_row => max_row,
+            None => return None,
+        };
+        if end_row <= buffer_row.0 {
+            return None;
+        }
+
+        Some(
+            MultiBufferPoint::new(buffer_row.0, snapshot.line_len(buffer_row))
+                ..MultiBufferPoint::new(end_row, snapshot.line_len(MultiBufferRow(end_row))),
+        )
+    }
+
+    /// Whether `row` sits inside a fenced code block, where a `<details>` tag is
+    /// an example rather than a disclosure.
+    fn markdown_row_is_inside_fence(&self, row: u32) -> bool {
+        let snapshot = self.buffer_snapshot();
+        let row_start = MultiBufferPoint::new(row, 0).to_offset(snapshot);
+        let row_end =
+            MultiBufferPoint::new(row, snapshot.line_len(MultiBufferRow(row))).to_offset(snapshot);
+        snapshot
+            .text_object_ranges(row_start..row_end, TreeSitterOptions::default())
+            .any(|(range, text_object)| {
+                text_object == TextObject::AroundFunction
+                    && range.start < row_start
+                    && self.is_markdown_layer_row(range.start.to_point(snapshot).row)
+            })
+    }
+
     /// Returns the indent length of `row` if it starts with a closing bracket.
     fn closing_bracket_indent_len(&self, row: u32) -> Option<u32> {
         let snapshot = self.buffer_snapshot();
@@ -2498,6 +2837,16 @@ impl DisplaySnapshot {
         {
             Some(Crease::Inline {
                 range: heading.range,
+                placeholder: self.fold_placeholder.clone(),
+                render_toggle: None,
+                render_trailer: None,
+                metadata: None,
+            })
+        } else if !self.is_line_folded(MultiBufferRow(start.row))
+            && let Some(range) = self.markdown_block_fold(buffer_row)
+        {
+            Some(Crease::Inline {
+                range,
                 placeholder: self.fold_placeholder.clone(),
                 render_toggle: None,
                 render_trailer: None,
@@ -2891,6 +3240,109 @@ pub mod tests {
     use theme::{LoadThemes, SyntaxTheme};
     use unindent::Unindent as _;
     use util::test::{marked_text_ranges, sample_text};
+
+    #[test]
+    fn test_markdown_fence_delimiter() {
+        assert_eq!(markdown_fence_delimiter("```"), Some(('`', 3)));
+        assert_eq!(markdown_fence_delimiter("~~~~"), Some(('~', 4)));
+        assert_eq!(markdown_fence_delimiter("```rust"), Some(('`', 3)));
+        // A tilde fence may carry backticks in its info string; a backtick one
+        // may not, which is what keeps `a ``b`` c` from reading as a fence.
+        assert_eq!(markdown_fence_delimiter("~~~ `x`"), Some(('~', 3)));
+        assert_eq!(markdown_fence_delimiter("``` `x`"), None);
+        assert_eq!(markdown_fence_delimiter("``"), None, "two is too few");
+        assert_eq!(markdown_fence_delimiter("   ```"), Some(('`', 3)));
+        assert_eq!(
+            markdown_fence_delimiter("    ```"),
+            None,
+            "four spaces make an indented code block, not a fence"
+        );
+        assert_eq!(markdown_fence_delimiter("\t```"), None);
+        assert_eq!(markdown_fence_delimiter("- ```"), None);
+        assert_eq!(markdown_fence_delimiter(""), None);
+        assert_eq!(markdown_fence_delimiter("日本語```"), None);
+    }
+
+    #[test]
+    fn test_markdown_details_block_open() {
+        assert!(markdown_details_block_open("<details>"));
+        assert!(markdown_details_block_open("<DETAILS>"));
+        assert!(markdown_details_block_open("<details open>"));
+        assert!(markdown_details_block_open("<Details class=\"x\">"));
+        assert!(markdown_details_block_open(
+            "   <details><summary>a</summary>"
+        ));
+        assert!(
+            markdown_details_block_open("<details"),
+            "a tag broken across lines still opens a block"
+        );
+        assert!(
+            !markdown_details_block_open("    <details>"),
+            "four spaces make an indented code block"
+        );
+        assert!(!markdown_details_block_open("<detailsx>"));
+        assert!(!markdown_details_block_open("<detail>"));
+        assert!(!markdown_details_block_open("text <details>"));
+        assert!(!markdown_details_block_open("> <details>"));
+        assert!(!markdown_details_block_open("`<details>`"));
+        assert!(
+            !markdown_details_block_open("日本<details>"),
+            "a multi-byte prefix must not be sliced through"
+        );
+        assert!(!markdown_details_block_open("日"));
+        assert!(!markdown_details_block_open(""));
+    }
+
+    #[test]
+    fn test_markdown_details_tags() {
+        let tags = |line: &str, start: usize| {
+            let mut depth = start;
+            let closed = markdown_details_tags(line, &mut depth);
+            (closed, depth)
+        };
+
+        assert_eq!(tags("<details>", 0), (false, 1));
+        assert_eq!(tags("</details>", 1), (true, 0));
+        assert_eq!(tags("</DETAILS >", 1), (true, 0));
+        assert_eq!(
+            tags("<details><summary>a</summary>本文</details>", 0),
+            (true, 0),
+            "a disclosure written on one line closes on it"
+        );
+        assert_eq!(
+            tags("</details><details>", 1),
+            (true, 0),
+            "a line that closes one disclosure and opens the next ends the first \
+             one, whatever it goes on to open"
+        );
+        assert_eq!(
+            tags("</details>", 2),
+            (false, 1),
+            "the scan reports only the disclosure it started from"
+        );
+        assert_eq!(
+            tags("</details>", 0),
+            (false, 0),
+            "a stray closing tag closes nothing"
+        );
+        assert_eq!(tags("<detailsx></detailsx>", 1), (false, 1));
+        assert_eq!(
+            tags("<!-- <details> --></details>", 1),
+            (true, 0),
+            "a tag inside a comment is not counted"
+        );
+        assert_eq!(
+            tags("<!-- </details>", 1),
+            (false, 1),
+            "a comment left open swallows the rest of its line"
+        );
+        assert_eq!(
+            tags("日本語 </details> 日本語", 1),
+            (true, 0),
+            "a multi-byte line is scanned on character boundaries"
+        );
+        assert_eq!(tags("ただの本文", 1), (false, 1));
+    }
 
     #[gpui::test(iterations = 100)]
     async fn test_random_display_map(cx: &mut gpui::TestAppContext, mut rng: StdRng) {

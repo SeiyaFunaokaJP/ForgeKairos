@@ -19,14 +19,51 @@ mod inject_css;
 mod strip_foreignobject;
 pub(crate) mod util;
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use anyhow::{Context as _, Result};
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use quick_xml::events::attributes::Attribute;
 
 use crate::{DiagramGeometry, MermaidTheme};
+
+/// [`Attribute::unescape_value`] for a value `merman` may have cut short.
+///
+/// `merman` strips `!important` out of a `style` attribute after it has escaped
+/// the attribute, by splitting the escaped text on `;` and joining the pieces
+/// back without the empty last one. A value whose last character is an escaped
+/// quote — which is what a `font-family` whose last entry is a quoted font name
+/// produces — therefore arrives as `…&quot;Segoe UI Emoji&quot`, and
+/// `quick_xml` refuses the whole attribute. A missing semicolon must not cost
+/// the diagram, so it is put back.
+pub(crate) fn unescape_attribute_value<'a>(attribute: &Attribute<'a>) -> Result<Cow<'a, str>> {
+    match attribute.unescape_value() {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let escaped = std::str::from_utf8(attribute.value.as_ref())?;
+            let incomplete_entity = escaped
+                .rfind('&')
+                .and_then(|start| escaped.get(start + 1..))
+                .is_some_and(|name| {
+                    !name.is_empty()
+                        && name
+                            .chars()
+                            .all(|character| character.is_ascii_alphanumeric() || character == '#')
+                });
+            if !incomplete_entity {
+                return Err(error.into());
+            }
+            let completed = format!("{escaped};");
+            let Ok(repaired) = quick_xml::escape::unescape(&completed) else {
+                return Err(error.into());
+            };
+            Ok(Cow::Owned(repaired.into_owned()))
+        }
+    }
+}
 
 pub(super) fn postprocess(svg: &str, theme: &MermaidTheme) -> Result<(String, DiagramGeometry)> {
     // merman 0.6 already applies the generic resvg-safe cleanup before this point.

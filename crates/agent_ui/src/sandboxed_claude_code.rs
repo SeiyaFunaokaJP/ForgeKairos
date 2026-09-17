@@ -1,9 +1,14 @@
-//! Claude Code CLI の起動導線 (ADR-F49 決定 1・3・6)。
+//! Claude Code CLI の起動導線 (ADR-F49 決定 1・3・6、第 3 段)。
 //!
-//! 「Claude Code を起動」は、Windows のローカルのプロジェクトではサンドボックス (WSL のヘルパー) の
-//! 対話セッションとして CLI を起動し、IDE 連携はヘルパーの IDE 転送 → ブリッジ → サンドボックス用の
-//! IDE セッションで繋ぐ。それ以外 (リモート・共同編集・Windows 以外・フォルダーなし) と
-//! 「サンドボックスの外で起動」は、この PC の `claude` を起動のたびに確認してから起動する。
+//! 「Claude Code を起動」は、
+//! * Windows のローカルのプロジェクトでは、サンドボックス (WSL のヘルパー) の対話セッションとして
+//!   CLI を起動し、IDE 連携はヘルパーの IDE 転送 → ブリッジ → サンドボックス用の IDE セッションで繋ぐ。
+//! * SSH で繋いだ Linux のプロジェクトでは、接続先の remote_server をサンドボックスヘルパーとして
+//!   同じ形で起動する (ADR-F18)。CLI は**この PC で取得・検証**してから接続先へ送る。IDE 連携は、
+//!   ホスト側のファイルの実体を見る確認 (`ide_server` の `RealRoots`) がクライアントの
+//!   ファイルシステムしか見られないため、この段では繋がない。
+//! * それ以外 (共同編集・対応しない接続方法・Windows 以外のローカル・フォルダーなし) と
+//!   「サンドボックスの外で起動」は、その場の `claude` を起動のたびに確認してから起動する。
 //!
 //! ハンドラーが `terminal_view` ではなくここにあるのは、IDE セッション (`ide_server`) と Linux 版の
 //! CLI の取得 (F49-L1) を使うため。`terminal_view` はどちらにも依存できない (`agent_ui` が
@@ -12,11 +17,21 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gpui::{App, Context, PromptButton, PromptLevel, Window};
+use anyhow::Result;
+use gpui::{
+    App, AppContext as _, AsyncWindowContext, Context, Entity, PromptButton, PromptLevel,
+    WeakEntity, Window,
+};
 use project::Project;
+use task::{Shell, SpawnInTerminal};
+use terminal::Terminal;
+use terminal_view::TerminalView;
+use terminal_view::terminal_panel::prepare_task_for_spawn;
 use util::ResultExt as _;
 use workspace::Workspace;
 use zed_actions::terminal::{LaunchClaudeCode, LaunchClaudeCodeOutsideSandbox};
+
+use crate::AgentPanel;
 
 /// The program the launch actions start.
 const CLAUDE_PROGRAM: &str = "claude";
@@ -28,8 +43,12 @@ const CANCEL_LABEL: &str = "キャンセル";
 
 const COLLABORATION_REASON: &str =
     "共同編集中のプロジェクトでは、サンドボックスの Claude Code は使えません。";
-const REMOTE_REASON: &str =
-    "リモートのプロジェクトでは、サンドボックスの Claude Code はまだ使えません。";
+/// SSH 以外の接続 (WSL リモート接続・Docker など)。置き場も待ち合わせもそれぞれ違うので、
+/// この段では外へ回す。
+const REMOTE_CONNECTION_REASON: &str =
+    "この接続方法では、サンドボックスの Claude Code はまだ使えません。";
+const REMOTE_NOT_LINUX_REASON: &str =
+    "接続先が Linux ではないため、サンドボックスの Claude Code は使えません。";
 const UNSUPPORTED_OS_REASON: &str = "この OS では、サンドボックスの Claude Code はまだ使えません。";
 const NO_FOLDER_REASON: &str =
     "フォルダーを開いていないため、サンドボックスの Claude Code は使えません。";
@@ -41,10 +60,7 @@ type HostLauncher =
 
 pub(crate) fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
-        register_launch_actions(
-            workspace,
-            Rc::new(terminal_view::session_tools::spawn_claude_code_on_host),
-        );
+        register_launch_actions(workspace, Rc::new(launch_on_host));
     })
     .detach();
 }
@@ -59,9 +75,11 @@ fn register_launch_actions(workspace: &mut Workspace, launch_on_host: HostLaunch
             let effort = action.effort.clone();
             match route_for(shape) {
                 #[cfg(target_os = "windows")]
-                LaunchRoute::Sandbox => launch::launch_in_sandbox(workspace, effort, window, cx),
+                LaunchRoute::LocalSandbox => {
+                    launch::launch_in_sandbox(workspace, effort, window, cx)
+                }
                 #[cfg(not(target_os = "windows"))]
-                LaunchRoute::Sandbox => confirm_and_launch_outside_sandbox(
+                LaunchRoute::LocalSandbox => confirm_and_launch_outside_sandbox(
                     effort,
                     Some(UNSUPPORTED_OS_REASON),
                     on_remote_host,
@@ -69,6 +87,9 @@ fn register_launch_actions(workspace: &mut Workspace, launch_on_host: HostLaunch
                     window,
                     cx,
                 ),
+                LaunchRoute::RemoteSandbox => {
+                    remote_launch::launch_on_remote_host(workspace, effort, window, cx)
+                }
                 LaunchRoute::OutsideSandbox { reason } => confirm_and_launch_outside_sandbox(
                     effort,
                     Some(reason),
@@ -101,16 +122,32 @@ struct ProjectShape {
     /// Seen by collaborators: the sandbox's IDE session serves only a project
     /// nobody else sees.
     is_collaborative: bool,
-    is_local: bool,
+    /// `None` for a local project; otherwise how it is connected.
+    remote: Option<RemoteShape>,
     has_folder: bool,
     sandbox_platform: bool,
+}
+
+/// The connection of a remote project, as the sandbox cares about it: only an
+/// SSH host runs the helper this launcher knows how to drive (ADR-F18), and
+/// only a Linux one has the helper at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RemoteShape {
+    is_ssh: bool,
+    is_linux: bool,
 }
 
 impl ProjectShape {
     fn of(project: &Project, cx: &App) -> Self {
         Self {
             is_collaborative: project.is_via_collab() || project.remote_id().is_some(),
-            is_local: project.is_local(),
+            remote: project.remote_client().map(|remote_client| {
+                let remote_client = remote_client.read(cx);
+                RemoteShape {
+                    is_ssh: remote_client.connection_type() == "ssh",
+                    is_linux: remote_client.remote_platform().os == remote::RemoteOs::Linux,
+                }
+            }),
             has_folder: !sandbox_roots(project, cx).is_empty(),
             sandbox_platform: cfg!(target_os = "windows"),
         }
@@ -119,24 +156,34 @@ impl ProjectShape {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LaunchRoute {
-    Sandbox,
+    /// This machine's WSL sandbox.
+    LocalSandbox,
+    /// The sandbox helper of the SSH host the project is on.
+    RemoteSandbox,
     /// Always confirmed first, with `reason` saying why it is not the sandbox.
-    OutsideSandbox {
-        reason: &'static str,
-    },
+    OutsideSandbox { reason: &'static str },
 }
 
 fn route_for(shape: ProjectShape) -> LaunchRoute {
     let reason = if shape.is_collaborative {
         COLLABORATION_REASON
-    } else if !shape.is_local {
-        REMOTE_REASON
+    } else if let Some(remote) = shape.remote {
+        // The client's own OS does not matter here: the sandbox is the host's.
+        if !remote.is_ssh {
+            REMOTE_CONNECTION_REASON
+        } else if !remote.is_linux {
+            REMOTE_NOT_LINUX_REASON
+        } else if !shape.has_folder {
+            NO_FOLDER_REASON
+        } else {
+            return LaunchRoute::RemoteSandbox;
+        }
     } else if !shape.sandbox_platform {
         UNSUPPORTED_OS_REASON
     } else if !shape.has_folder {
         NO_FOLDER_REASON
     } else {
-        return LaunchRoute::Sandbox;
+        return LaunchRoute::LocalSandbox;
     };
     LaunchRoute::OutsideSandbox { reason }
 }
@@ -236,26 +283,270 @@ fn confirm_and_launch_outside_sandbox(
     .detach();
 }
 
-/// The platform-independent parts of a sandboxed session: where its files go,
-/// what it runs, how its bridge reports, which leftovers are ours, and the IDE
-/// glue — kept apart from the launch so that tests exercise them everywhere.
-#[cfg(any(target_os = "windows", test))]
+/// CLI のタブを置けるエージェントパネル。置けないときは `None` で、呼び出し元は
+/// 今までどおりターミナルパネルに開く (ADR-F53 の置き場の規則)。
+///
+/// パネルが登録されていても、AI を有効にしていない (`agent.enabled = false` =
+/// このフォークの既定、ADR-F09) ときは「無い」ものとして扱う。パネルが外れるのは
+/// `disable_ai` だけなので、既定のままの利用者にもパネルは登録されている: そこへ
+/// CLI のタブを置くと、opt-in していない AI のパネルが勝手に前に出たうえ、タブを
+/// 閉じたときの `AgentPanel::activate_draft` が下書きのスレッドを作り、その
+/// `AgentConnectionStore::request_connection` がエージェントへの接続まで始めて
+/// しまう。CLI 自体は人間の操作 (ADR-F38) なので AI が無効でも使える。
+///
+/// ターミナルを開けないプロジェクト (共同編集のゲスト) も `None`: 元の経路
+/// ([`terminal_view::terminal_panel::TerminalPanel::spawn_task`]) はそこで断る
+/// 文言を持っているので、判断ごとそちらに任せる。
+pub(crate) fn agent_panel_for_cli_tab(
+    workspace: &Workspace,
+    cx: &App,
+) -> Option<Entity<AgentPanel>> {
+    if !workspace.project().read(cx).supports_terminal(cx) {
+        return None;
+    }
+    let panel = workspace.panel::<AgentPanel>(cx)?;
+    workspace::Panel::enabled(panel.read(cx), cx).then_some(panel)
+}
+
+/// CLI のタブを持っているペインの持ち主。前面化のしかたが持ち主ごとに違う。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum TerminalTabHost {
+    AgentPanel,
+    TerminalPanel,
+    /// 中央のペイン、またはほかのドックのパネル (タブは動かせる)。
+    Elsewhere,
+}
+
+/// このワークスペースで `terminal` を出しているタブ (持ち主・ペイン・並び順)。
+///
+/// ADR-F53 でセッションの端末はエージェントパネルのタブに置かれるようになり、
+/// タブはそこから中央や別のドックへ動かせるので、「二重起動です」と言うときの
+/// 前面化はどこにあっても効く必要がある。エージェントパネル → ターミナルパネル
+/// → それ以外の順に探すのは、前 2 つは畳まれていることがあり、先に開かないと
+/// タブを選んでも何も見えないから。
+pub(crate) fn terminal_tab_location(
+    workspace: &Workspace,
+    terminal: &Entity<Terminal>,
+    cx: &App,
+) -> Option<(TerminalTabHost, Entity<workspace::Pane>, usize)> {
+    let holds_terminal = |pane: &Entity<workspace::Pane>| {
+        pane.read(cx).items().position(|item| {
+            item.downcast::<TerminalView>()
+                .is_some_and(|view| view.read(cx).terminal() == terminal)
+        })
+    };
+    let in_panes = |panes: Vec<Entity<workspace::Pane>>| {
+        panes
+            .into_iter()
+            .find_map(|pane| holds_terminal(&pane).map(|index| (pane, index)))
+    };
+
+    if let Some((pane, index)) = workspace
+        .panel::<AgentPanel>(cx)
+        .and_then(|panel| in_panes(workspace::Panel::panes(panel.read(cx))))
+    {
+        return Some((TerminalTabHost::AgentPanel, pane, index));
+    }
+    if let Some((pane, index)) = workspace
+        .panel::<terminal_view::terminal_panel::TerminalPanel>(cx)
+        .and_then(|panel| in_panes(panel.read(cx).panes().into_iter().cloned().collect()))
+    {
+        return Some((TerminalTabHost::TerminalPanel, pane, index));
+    }
+    let (pane, index) = in_panes(workspace.all_panes(cx))?;
+    Some((TerminalTabHost::Elsewhere, pane, index))
+}
+
+/// セッションの端末の作り方。ADR-F53 で変えたのはタブの置き場だけなので、
+/// 経路ごとの実行のしかたはここで区別してそのまま保つ。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SessionTerminalKind {
+    /// サンドボックスのラッパーをそのまま実行する。ラッパーより手前で走る
+    /// 端末側の環境 (ディレクトリ環境・`terminal.env`・ツールチェーン) は
+    /// 足さない ([`Project::create_sandboxed_terminal_task`])。
+    Sandboxed,
+    /// この PC の `claude`。人がターミナルに打つのと同じように、プロジェクトの
+    /// シェルで包む ([`prepare_task_for_spawn`] = ターミナルパネル経路と同じ)。
+    Host,
+}
+
+/// 組み立てたタスクを**エージェントパネルのタブ**として開く (ADR-F53)。
+///
+/// ワークスペースとパネルはそれぞれ別の `update` で触る (パネルの更新中に
+/// ワークスペースを読むと二重リースで落ちる)。
+async fn open_terminal_tab_in_agent_panel(
+    workspace: &WeakEntity<Workspace>,
+    panel: Entity<AgentPanel>,
+    spawn_task: SpawnInTerminal,
+    kind: SessionTerminalKind,
+    cx: &mut AsyncWindowContext,
+) -> Result<Entity<Terminal>> {
+    let (project, remote_shell, is_windows) = workspace.read_with(cx, |workspace, cx| {
+        let project = workspace.project().clone();
+        let project_ref = project.read(cx);
+        let remote_shell = project_ref
+            .remote_client()
+            .and_then(|remote_client| remote_client.read(cx).shell());
+        let is_windows = project_ref.path_style(cx).is_windows();
+        (project, remote_shell, is_windows)
+    })?;
+
+    let spawn_task = match kind {
+        SessionTerminalKind::Sandboxed => spawn_task,
+        SessionTerminalKind::Host => {
+            let shell = match remote_shell {
+                Some(remote_shell) if spawn_task.shell == Shell::System => {
+                    Shell::Program(remote_shell)
+                }
+                _ => spawn_task.shell.clone(),
+            };
+            prepare_task_for_spawn(&spawn_task, &shell, is_windows)
+        }
+    };
+
+    let terminal = project
+        .update(cx, |project, cx| match kind {
+            SessionTerminalKind::Sandboxed => {
+                project.create_sandboxed_terminal_task(spawn_task, cx)
+            }
+            SessionTerminalKind::Host => project.create_terminal_task(spawn_task, cx),
+        })
+        .await?;
+
+    let (terminal_view, focus) = workspace.update_in(cx, |workspace, window, cx| {
+        let workspace_handle = workspace.weak_handle();
+        let workspace_id = workspace.database_id();
+        let project = workspace.project().downgrade();
+        let terminal = terminal.clone();
+        let view = cx.new(|cx| {
+            TerminalView::new(
+                terminal,
+                workspace_handle,
+                workspace_id,
+                project,
+                window,
+                cx,
+            )
+        });
+        // 端末が立ち上がるまでに何かのモーダルが開いていたら、そちらへの
+        // キー入力を奪わずタブを出すだけにする (`add_terminal_with` と同じ判断)。
+        (view, !workspace.has_active_modal(window, cx))
+    })?;
+
+    panel.update_in(cx, |panel, window, cx| {
+        panel.add_terminal_tab(terminal_view, focus, window, cx);
+    })?;
+    workspace.update_in(cx, |workspace, window, cx| {
+        if focus {
+            workspace.focus_panel::<AgentPanel>(window, cx);
+        } else {
+            workspace.open_panel::<AgentPanel>(window, cx);
+        }
+    })?;
+
+    Ok(terminal)
+}
+
+/// 公式 CLI をこの PC で (サンドボックスの外で) 起動する。置き場はサンドボックス
+/// 経路と同じ規則: エージェントパネルがあればそのタブ、無ければターミナル
+/// パネル (ADR-F53)。プログラム・引数・環境・案内の中身は `terminal_view` 側の
+/// 組み立てをそのまま使う。
+fn launch_on_host(
+    workspace: &mut Workspace,
+    effort: Option<String>,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    launch_on_host_in_tab(
+        workspace,
+        effort,
+        &terminal_view::session_tools::spawn_claude_code_on_host,
+        window,
+        cx,
+    );
+}
+
+/// [`launch_on_host`] の中身。エージェントパネルが無いときの置き場
+/// (`without_agent_panel`) を差し替えられるのはテストのため。
+fn launch_on_host_in_tab(
+    workspace: &mut Workspace,
+    effort: Option<String>,
+    without_agent_panel: &dyn Fn(
+        &mut Workspace,
+        Option<String>,
+        &mut Window,
+        &mut Context<Workspace>,
+    ),
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let Some(panel) = agent_panel_for_cli_tab(workspace, cx) else {
+        without_agent_panel(workspace, effort, window, cx);
+        return;
+    };
+
+    let spawn_task = terminal_view::session_tools::claude_code_launch_task(effort, workspace, cx);
+    // この PC なら `which`、接続先なら `command -v` を 1 往復 — どちらの案内文も
+    // ターミナルパネル経路と同じものを使う (ADR-F53)。
+    let lookup = terminal_view::session_tools::claude_code_launch_lookup(workspace, cx);
+
+    cx.spawn_in(window, async move |workspace, cx| {
+        let executor = cx.background_executor().clone();
+        if let Some(message) = lookup.missing_message(&executor).await {
+            workspace
+                .update(cx, |workspace, cx| workspace.show_error(message, cx))
+                .log_err();
+            return;
+        }
+
+        if let Err(error) = open_terminal_tab_in_agent_panel(
+            &workspace,
+            panel,
+            spawn_task,
+            SessionTerminalKind::Host,
+            cx,
+        )
+        .await
+        {
+            workspace
+                .update(cx, |workspace, cx| {
+                    workspace.show_error(
+                        format!("ターミナルでコマンドを実行できませんでした: {error:#}"),
+                        cx,
+                    )
+                })
+                .log_err();
+        }
+    })
+    .detach();
+}
+
+/// The parts of a sandboxed session that do not depend on which Linux runs it:
+/// where its files go, what it runs, which leftovers are ours, and the session
+/// bookkeeping — kept apart from the launches so that the WSL one (第 1 段), the
+/// SSH one (第 3 段) and the tests all work from the same definitions.
 mod session {
     use std::cell::RefCell;
     use std::path::PathBuf;
     use std::rc::Rc;
-    use std::sync::Arc;
 
-    use anyhow::{Context as _, Result, ensure};
+    use anyhow::{Context as _, Result, anyhow, ensure};
     use collections::HashMap;
-    use futures::channel::mpsc;
-    use futures::{AsyncRead, AsyncWrite, StreamExt as _};
-    use gpui::{App, Entity, Global, SharedString, Task, WeakEntity};
+    use gpui::{
+        App, AsyncWindowContext, Context, Entity, Global, PromptButton, PromptLevel, SharedString,
+        Task, WeakEntity, Window,
+    };
     use project::agent_sandbox::is_project_key;
     pub(super) use project::agent_sandbox::project_key;
     use project::{AgentWriteScope, AgentWriterKind, Project, SandboxedWriterGuard};
+    use task::{RevealStrategy, RevealTarget, SpawnInTerminal, TaskId};
     use terminal::Terminal;
-    use workspace::Workspace;
+    use terminal_view::terminal_panel::TerminalPanel;
+    use util::ResultExt as _;
+    use workspace::{Toast, Workspace, notifications::NotificationId};
+
+    use crate::AgentPanel;
+    use crate::agent_registry_ui::{add_consented_hosts, allowlist_write_error, missing_hosts};
 
     /// The hosts the CLI itself talks to: the model API (with `/api/oauth/*`)
     /// and the token endpoint of the paste-a-code login.
@@ -281,10 +572,13 @@ mod session {
     const PROJECTS_HOME_RELATIVE: &str = sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE;
     const CONFIG_DIR_NAME: &str = "config";
     /// Where the CLI looks for IDE locks under `CLAUDE_CONFIG_DIR`.
+    #[cfg(any(target_os = "windows", test))]
     const LOCK_DIRECTORY_NAME: &str = "ide";
     /// The shape `sandbox::ide_rendezvous_path` documents:
     /// `<home>/.cache/zed-jp-enhance/ide/<session_id>/bridge.sock`.
+    #[cfg(any(target_os = "windows", test))]
     const RENDEZVOUS_HOME_RELATIVE: &str = ".cache/zed-jp-enhance/ide";
+    #[cfg(any(target_os = "windows", test))]
     const RENDEZVOUS_SOCKET_NAME: &str = "bridge.sock";
     /// Names this launcher's rendezvous directories, so the sweep leaves every
     /// other one alone.
@@ -306,6 +600,7 @@ exec "$0" "$@""#;
     }
 
     /// Where a session's files live inside the distro.
+    #[cfg(any(target_os = "windows", test))]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub(super) struct SessionLayout {
         /// Holds every session's rendezvous directory.
@@ -318,6 +613,7 @@ exec "$0" "$@""#;
         pub(super) lock_file: String,
     }
 
+    #[cfg(any(target_os = "windows", test))]
     impl SessionLayout {
         pub(super) fn from_rendezvous(
             rendezvous: &str,
@@ -338,8 +634,7 @@ exec "$0" "$@""#;
                 .strip_suffix(&format!("/{RENDEZVOUS_HOME_RELATIVE}"))
                 .filter(|home| home.starts_with('/'))
                 .with_context(unexpected)?;
-            let config_root = format!("{home}/{PROJECTS_HOME_RELATIVE}/{project_key}");
-            let config_dir = format!("{config_root}/{CONFIG_DIR_NAME}");
+            let (config_root, config_dir) = config_paths(home, project_key)?;
             let lock_directory = format!("{config_dir}/{LOCK_DIRECTORY_NAME}");
             let lock_file = format!("{lock_directory}/{inner_port}.lock");
             Ok(Self {
@@ -352,17 +647,43 @@ exec "$0" "$@""#;
         }
     }
 
+    /// ADR-F49 決定 15: the project's configuration root and, inside it, the
+    /// directory the CLI is pointed at, below `home` — the account's home on
+    /// whichever Linux the session runs on, so the WSL session and the SSH one
+    /// place them by the same rule.
+    pub(super) fn config_paths(home: &str, project_key: &str) -> Result<(String, String)> {
+        ensure!(
+            is_project_key(project_key),
+            "プロジェクトの識別子が不正です (内部エラー): {project_key:?}"
+        );
+        ensure!(
+            home.starts_with('/') && !home.ends_with('/') && !home.contains(['\n', '\0']),
+            "接続先のホームディレクトリの形が想定と違います (内部エラー): {home:?}"
+        );
+        let config_root = format!("{home}/{PROJECTS_HOME_RELATIVE}/{project_key}");
+        let config_dir = format!("{config_root}/{CONFIG_DIR_NAME}");
+        Ok((config_root, config_dir))
+    }
+
+    /// What the CLI is started with. `ide_port` is the port inside the sandbox
+    /// the IDE channel listens on, and `None` for a session without one (the
+    /// SSH host in 第 3 段): then nothing points the CLI at an IDE, so it runs
+    /// as it would in a plain terminal instead of waiting for one.
     pub(super) fn session_environment(
-        layout: &SessionLayout,
-        inner_port: u16,
+        config_dir: &str,
+        ide_port: Option<u16>,
     ) -> Vec<(String, String)> {
-        [
-            ("CLAUDE_CONFIG_DIR", layout.config_dir.clone()),
-            // On its own this makes the CLI connect to the IDE whose lock is
-            // named after this port.
-            ("CLAUDE_CODE_SSE_PORT", inner_port.to_string()),
-            // Otherwise the CLI works the address out with `ip route` in WSL.
-            ("CLAUDE_CODE_IDE_HOST_OVERRIDE", "127.0.0.1".to_string()),
+        let mut environment = vec![("CLAUDE_CONFIG_DIR", config_dir.to_string())];
+        if let Some(ide_port) = ide_port {
+            environment.extend([
+                // On its own this makes the CLI connect to the IDE whose lock is
+                // named after this port.
+                ("CLAUDE_CODE_SSE_PORT", ide_port.to_string()),
+                // Otherwise the CLI works the address out with `ip route` in WSL.
+                ("CLAUDE_CODE_IDE_HOST_OVERRIDE", "127.0.0.1".to_string()),
+            ]);
+        }
+        environment.extend([
             ("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1".to_string()),
             ("DISABLE_AUTOUPDATER", "1".to_string()),
             ("DISABLE_UPDATES", "1".to_string()),
@@ -373,16 +694,42 @@ exec "$0" "$@""#;
             ),
             ("ENABLE_CLAUDEAI_MCP_SERVERS", "false".to_string()),
             ("CLAUDE_CODE_DISABLE_ARTIFACT", "1".to_string()),
-            // `wsl.exe` does not carry the terminal's own over.
+            // Neither `wsl.exe` nor the helper carries the terminal's own over.
             ("TERM", "xterm-256color".to_string()),
             ("COLORTERM", "truecolor".to_string()),
-        ]
-        .into_iter()
-        .map(|(name, value)| (name.to_string(), value))
-        .collect()
+        ]);
+        environment
+            .into_iter()
+            .map(|(name, value)| (name.to_string(), value))
+            .collect()
+    }
+
+    /// ADR-F49 決定 1: how the CLI is started inside the sandbox — the shell
+    /// that sets what only exists there and then becomes the CLI, with
+    /// `claude_path` as `$0`. Shared by both sandboxes; the caller appends
+    /// nothing after `effort`.
+    pub(super) fn launch_invocation(
+        claude_path: &str,
+        effort: Option<&str>,
+    ) -> Result<(String, Vec<String>)> {
+        ensure!(
+            claude_path.starts_with('/') && !claude_path.contains(['\n', '\0']),
+            "サンドボックスで使う Claude Code の場所が絶対パスではありません (内部エラー): \
+             {claude_path:?}"
+        );
+        let mut args = vec![
+            "-c".to_string(),
+            LAUNCH_SCRIPT.to_string(),
+            claude_path.to_string(),
+        ];
+        if let Some(effort) = effort {
+            args.extend(["--effort".to_string(), effort.to_string()]);
+        }
+        Ok((LAUNCH_SHELL.to_string(), args))
     }
 
     /// Everything the sandbox is asked for, before any of it is resolved.
+    #[cfg(any(target_os = "windows", test))]
     #[derive(Debug)]
     pub(super) struct SessionPlan {
         pub(super) command: sandbox::CommandAndArgs,
@@ -392,6 +739,7 @@ exec "$0" "$@""#;
         pub(super) ide_forward: sandbox::IdeForward,
     }
 
+    #[cfg(any(target_os = "windows", test))]
     pub(super) fn plan_session(
         layout: &SessionLayout,
         rendezvous: &str,
@@ -400,29 +748,17 @@ exec "$0" "$@""#;
         roots: &[PathBuf],
         inner_port: u16,
     ) -> Result<SessionPlan> {
-        ensure!(
-            claude_path.starts_with('/') && !claude_path.contains(['\n', '\0']),
-            "サンドボックスで使う Claude Code の場所が絶対パスではありません (内部エラー): \
-             {claude_path:?}"
-        );
         let first_root = roots
             .first()
             .context("Claude Code を実行するフォルダーがありません。")?;
-        let mut args = vec![
-            "-c".to_string(),
-            LAUNCH_SCRIPT.to_string(),
-            claude_path.to_string(),
-        ];
-        if let Some(effort) = effort {
-            args.extend(["--effort".to_string(), effort.to_string()]);
-        }
+        let (program, args) = launch_invocation(claude_path, effort)?;
         let mut writable_paths = roots.to_vec();
         writable_paths.push(PathBuf::from(&layout.config_root));
         Ok(SessionPlan {
             command: sandbox::CommandAndArgs {
-                program: LAUNCH_SHELL.to_string(),
+                program,
                 args,
-                env: session_environment(layout, inner_port)
+                env: session_environment(&layout.config_dir, Some(inner_port))
                     .into_iter()
                     .collect(),
                 cwd: Some(first_root.clone()),
@@ -507,13 +843,13 @@ exec "$0" "$@""#;
         }
     }
 
-    /// One configuration, hence at most one session: the distro, by its
-    /// registered name (WSL compares names without case), and the project's
-    /// key.
-    pub(super) fn session_key(distro: Option<&str>, project_key: &str) -> String {
+    /// One configuration, hence at most one session: where it runs — the
+    /// distro by its registered name (WSL compares names without case), or the
+    /// host by its connection — and the project's key.
+    pub(super) fn session_key(where_it_runs: Option<&str>, project_key: &str) -> String {
         format!(
             "{}/{project_key}",
-            distro.unwrap_or_default().to_lowercase()
+            where_it_runs.unwrap_or_default().to_lowercase()
         )
     }
 
@@ -521,12 +857,23 @@ exec "$0" "$@""#;
     /// folders, and — through the distro's share, where the WSL home can be a
     /// worktree too — its configuration root, when `distro` names the distro.
     /// Shared with the external agents started in the WSL sandbox (第 2b 段).
+    #[cfg(any(target_os = "windows", test))]
     pub(super) fn session_write_scope(
         roots: &[PathBuf],
         config_root: &str,
         distro: Option<&str>,
     ) -> Vec<PathBuf> {
         project::agent_sandbox::wsl_session_write_scope(roots, config_root, distro)
+    }
+
+    /// ADR-F50 on an SSH host: the roots and the configuration root are the
+    /// host's own paths, which is how its worktrees are spelled too, so there
+    /// is no second spelling to add — unlike WSL, where the same folder is
+    /// also reachable through `\\wsl.localhost\<distro>\…`.
+    pub(super) fn remote_session_write_scope(roots: &[PathBuf], config_root: &str) -> Vec<PathBuf> {
+        let mut scope = roots.to_vec();
+        scope.push(PathBuf::from(config_root));
+        scope
     }
 
     /// ADR-F50: registers the session as the writer of `scope` until the
@@ -550,18 +897,23 @@ exec "$0" "$@""#;
         })
     }
 
+    #[cfg(any(target_os = "windows", test))]
     const SWEEP_DIRECTORY_PREFIX: &str = "zed-sweep-dir ";
+    #[cfg(any(target_os = "windows", test))]
     const SWEEP_LOCK_PREFIX: &str = "zed-sweep-lock ";
+    #[cfg(any(target_os = "windows", test))]
     const SWEEP_COMMAND_PREFIX: &str = "zed-sweep-cmd ";
 
     /// Leftovers of sessions whose bridge is gone (Zed or WSL went down
     /// before it could clean up).
+    #[cfg(any(target_os = "windows", test))]
     #[derive(Debug, Default, PartialEq, Eq)]
     pub(super) struct StaleEntries {
         pub(super) rendezvous: Vec<String>,
         pub(super) locks: Vec<String>,
     }
 
+    #[cfg(any(target_os = "windows", test))]
     impl StaleEntries {
         pub(super) fn is_empty(&self) -> bool {
             self.rendezvous.is_empty() && self.locks.is_empty()
@@ -571,6 +923,7 @@ exec "$0" "$@""#;
     /// From the sweep's listing (see `launch::SWEEP_LIST_SCRIPT`): the entries
     /// named the way this launcher names them that no running process — a
     /// bridge, or the helper connecting to it — names on its command line.
+    #[cfg(any(target_os = "windows", test))]
     pub(super) fn stale_entries(listing: &str, layout: &SessionLayout) -> StaleEntries {
         let mut directories = Vec::new();
         let mut locks = Vec::new();
@@ -601,6 +954,7 @@ exec "$0" "$@""#;
         }
     }
 
+    #[cfg(any(target_os = "windows", test))]
     fn is_session_id(name: &str) -> bool {
         name.strip_prefix(SESSION_ID_PREFIX).is_some_and(|id| {
             id.len() == 32
@@ -610,6 +964,7 @@ exec "$0" "$@""#;
         })
     }
 
+    #[cfg(any(target_os = "windows", test))]
     fn is_lock_file_name(name: &str) -> bool {
         name.strip_suffix(".lock").is_some_and(|port| {
             (1..=5).contains(&port.len())
@@ -618,11 +973,13 @@ exec "$0" "$@""#;
         })
     }
 
+    #[cfg(any(target_os = "windows", test))]
     const HELPER_FAILURE_MARKER: &str = "zed-wsl-sandbox: ";
 
     /// Why the session never started, when the helper refused to build the
     /// sandbox: it exits 126 after a marker line, which lands on the session's
     /// terminal screen rather than in anything Zed reads.
+    #[cfg(any(target_os = "windows", test))]
     pub(super) fn helper_failure_message(exit_code: Option<u32>, screen: &str) -> Option<String> {
         let start = std::iter::once(0)
             .chain(screen.match_indices('\n').map(|(index, _)| index + 1))
@@ -634,65 +991,646 @@ exec "$0" "$@""#;
         acp_thread::wsl_sandbox_setup_failure_message(exit_code, screen.get(start..)?)
     }
 
-    /// The IDE session, started before the bridge: its auth token goes into
-    /// the lock file the bridge writes before any connection can arrive.
-    pub(super) struct PendingIdeSession {
-        session: ide_server::SandboxIdeSessionHandle,
-        connections: mpsc::UnboundedSender<sandbox::BridgeConnection>,
+    pub(super) const LAUNCH_FAILED_PREFIX: &str =
+        "Claude Code (サンドボックス) を起動できませんでした: ";
+    pub(super) const PREPARING_MESSAGE: &str = "Claude Code (サンドボックス) を準備しています…";
+    pub(super) const PREPARING_SANDBOX_MESSAGE: &str = "サンドボックスと IDE 連携を準備しています…";
+    pub(super) const SANDBOX_TAB_LABEL: &str = "Claude Code (サンドボックス)";
+    const HOSTS_MESSAGE: &str = "Claude Code (サンドボックス) の通信に許可リストへの追加が必要です";
+    const ADD_HOSTS_LABEL: &str = "許可リストに追加して起動";
+    const DECLINE_HOSTS_LABEL: &str = "追加せず中止";
+
+    struct SandboxLaunchProgress;
+
+    pub(super) fn progress_id() -> NotificationId {
+        NotificationId::unique::<SandboxLaunchProgress>()
     }
 
-    /// Keeps the IDE side of a session alive. Dropping it ends the bridge's
-    /// stdin, so the bridge removes its socket and lock and exits, and ends
-    /// the IDE session, which closes its diff tabs.
-    pub(super) struct IdeLink {
-        _mux: sandbox::BridgeMuxHandle,
-        _forward: Task<()>,
-        _session: ide_server::SandboxIdeSessionHandle,
+    pub(super) fn show_progress(
+        workspace: &mut Workspace,
+        message: &str,
+        cx: &mut Context<Workspace>,
+    ) {
+        workspace.show_toast(Toast::new(progress_id(), message.to_string()), cx);
     }
 
-    impl PendingIdeSession {
-        pub(super) fn start(
-            workspace: WeakEntity<Workspace>,
-            mapper: Arc<dyn ide_server::PathMapper>,
-            roots: Vec<PathBuf>,
-            cx: &mut App,
-        ) -> (Self, String) {
-            let (sender, receiver) = mpsc::unbounded();
-            let (session, info) =
-                ide_server::start_sandbox_session(workspace, receiver, mapper, roots, cx);
-            (
-                Self {
-                    session,
-                    connections: sender,
-                },
-                info.auth_token,
+    pub(super) const ALREADY_RUNNING_MESSAGE: &str =
+        "このプロジェクトの Claude Code (サンドボックス) はすでに実行中です";
+
+    struct AlreadyRunning;
+
+    pub(super) fn already_running_id() -> NotificationId {
+        NotificationId::unique::<AlreadyRunning>()
+    }
+
+    pub(super) fn show_already_running(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
+        workspace.show_toast(
+            Toast::new(already_running_id(), ALREADY_RUNNING_MESSAGE.to_string()).autohide(),
+            cx,
+        );
+    }
+
+    /// The project's slot, or `None` after saying that its session already
+    /// runs and showing that session's tab.
+    pub(super) fn take_session_slot(
+        key: String,
+        workspace: &WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<SessionSlot> {
+        let running = cx.default_global::<RunningSessions>().clone();
+        let existing = match running.take(key) {
+            Ok(slot) => return Some(slot),
+            Err(existing) => existing,
+        };
+        workspace
+            .update(cx, |workspace, cx| {
+                show_already_running(workspace, cx);
+                if let Some(terminal) = existing.and_then(|terminal| terminal.upgrade()) {
+                    reveal_terminal(workspace, &terminal, window, cx);
+                }
+            })
+            .log_err();
+        None
+    }
+
+    /// Brings the tab of `terminal` forward, wherever it is in this workspace:
+    /// the agent panel (ADR-F53), the terminal panel, the center, or another
+    /// dock. The panel that holds it is opened first, since activating a tab in
+    /// a hidden dock would leave the user looking at nothing.
+    pub(super) fn reveal_terminal(
+        workspace: &mut Workspace,
+        terminal: &Entity<Terminal>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let Some((host, pane, index)) = super::terminal_tab_location(workspace, terminal, cx)
+        else {
+            return;
+        };
+        match host {
+            super::TerminalTabHost::AgentPanel => {
+                workspace.focus_panel::<AgentPanel>(window, cx);
+            }
+            super::TerminalTabHost::TerminalPanel => {
+                workspace.focus_panel::<TerminalPanel>(window, cx);
+            }
+            // 中央やほかのドックへ移されたタブ。`activate_item` の
+            // `activate_pane` がそのペインを前に出す。
+            super::TerminalTabHost::Elsewhere => {}
+        }
+        pane.update(cx, |pane, cx| {
+            pane.activate_item(index, true, true, window, cx)
+        });
+    }
+
+    pub(super) enum HostsConsent {
+        Declined,
+        /// `network_ceiling` is the editor-wide allowlist the session's
+        /// network nests inside; `None` when this process has none.
+        Granted {
+            network_ceiling: Option<Vec<String>>,
+        },
+    }
+
+    /// The editor-wide allowlist caps what the session may reach, so the
+    /// Anthropic hosts it lacks are added — with the user's consent, as for an
+    /// agent install (ADR-F12) — before the session starts.
+    pub(super) async fn consent_to_claude_hosts(
+        cx: &mut AsyncWindowContext,
+    ) -> Result<HostsConsent> {
+        let hosts = CLAUDE_HOSTS
+            .iter()
+            .map(|host| SharedString::new_static(host))
+            .collect::<Vec<_>>();
+        let (ceiling, missing) =
+            cx.update(|_, cx| (editor_allowlist(cx), missing_hosts(&hosts, cx)))?;
+        let Some(mut ceiling) = ceiling else {
+            return Ok(HostsConsent::Granted {
+                network_ceiling: None,
+            });
+        };
+        if missing.is_empty() {
+            return Ok(HostsConsent::Granted {
+                network_ceiling: Some(ceiling),
+            });
+        }
+        let detail = hosts_detail(&missing);
+        let answer = cx.prompt(
+            PromptLevel::Warning,
+            HOSTS_MESSAGE,
+            Some(&detail),
+            &[
+                PromptButton::ok(ADD_HOSTS_LABEL),
+                PromptButton::cancel(DECLINE_HOSTS_LABEL),
+            ],
+        );
+        if !answer.await.is_ok_and(|index| index == 0) {
+            return Ok(HostsConsent::Declined);
+        }
+        let added = missing.iter().map(ToString::to_string).collect::<Vec<_>>();
+        cx.update(|_, cx| add_consented_hosts(added.clone(), cx))?
+            .await
+            .map_err(|error| anyhow!(allowlist_write_error(&error)))?;
+        // The allowlist's watcher takes the file in a little later; the
+        // session starts now, with the hosts the user just agreed to.
+        ceiling.extend(added);
+        Ok(HostsConsent::Granted {
+            network_ceiling: Some(ceiling),
+        })
+    }
+
+    /// The editor-wide allowlist as it stands now, as the sandbox helper's
+    /// proxy takes it; `None` in a process that has none.
+    pub(super) fn editor_allowlist(cx: &App) -> Option<Vec<String>> {
+        let global = cx.try_global::<egress_policy::EgressAllowlistGlobal>()?;
+        Some(
+            global
+                .0
+                .snapshot()
+                .patterns()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        )
+    }
+
+    /// Opens the session's terminal tab on `(program, args, environment)` —
+    /// the local `wsl.exe` invocation of the WSL sandbox, or the `ssh` one the
+    /// project's transport builds for the host's helper. Shared so that both
+    /// sandboxes land in the same place: the agent panel's tab (ADR-F53), or
+    /// the terminal panel when there is no panel to put it in.
+    pub(super) async fn spawn_terminal(
+        workspace: &WeakEntity<Workspace>,
+        program: String,
+        args: Vec<String>,
+        environment: Vec<(String, String)>,
+        session_id: &str,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<Entity<Terminal>> {
+        let spawn_task = SpawnInTerminal {
+            id: TaskId(format!("terminal::claude-code-sandbox::{session_id}")),
+            full_label: SANDBOX_TAB_LABEL.to_string(),
+            label: SANDBOX_TAB_LABEL.to_string(),
+            command: Some(program),
+            args,
+            command_label: SANDBOX_TAB_LABEL.to_string(),
+            env: environment.into_iter().collect(),
+            use_new_terminal: true,
+            allow_concurrent_runs: true,
+            reveal: RevealStrategy::Always,
+            reveal_target: RevealTarget::Dock,
+            show_summary: false,
+            show_command: false,
+            // The same line run again would find the session it belongs to
+            // gone: its bridge, or its registration as the folders' writer.
+            show_rerun: false,
+            ..SpawnInTerminal::default()
+        };
+        // ADR-F53: 置き場はエージェントパネルのタブ。パネルが無いときだけ
+        // 今までどおりターミナルパネルに開く。
+        if let Some(panel) = workspace.read_with(cx, |workspace, cx| {
+            super::agent_panel_for_cli_tab(workspace, cx)
+        })? {
+            return super::open_terminal_tab_in_agent_panel(
+                workspace,
+                panel,
+                spawn_task,
+                super::SessionTerminalKind::Sandboxed,
+                cx,
             )
+            .await;
         }
 
-        /// Takes the bridge's multiplexed stdout (`reader`) and stdin
-        /// (`writer`) apart into the session's connections.
-        pub(super) fn attach<R, W>(self, reader: R, writer: W, cx: &mut App) -> IdeLink
-        where
-            R: AsyncRead + Unpin + Send + 'static,
-            W: AsyncWrite + Unpin + Send + 'static,
-        {
-            let executor = cx.background_executor().clone();
-            let (mut connections, mux) =
-                sandbox::spawn_bridge_mux(reader, writer, |future| executor.spawn(future).detach());
-            let sender = self.connections;
-            let forward = executor.spawn(async move {
-                while let Some(connection) = connections.next().await {
-                    if sender.unbounded_send(connection).is_err() {
-                        break;
+        let terminal_panel = workspace
+            .read_with(cx, |workspace, cx| workspace.panel::<TerminalPanel>(cx))?
+            .context("ターミナルパネルが利用できません。")?;
+        let terminal = terminal_panel
+            .update_in(cx, |terminal_panel, window, cx| {
+                terminal_panel.add_terminal_with(
+                    RevealStrategy::Always,
+                    window,
+                    cx,
+                    move |project, cx| project.create_sandboxed_terminal_task(spawn_task, cx),
+                )
+            })?
+            .await?;
+        terminal
+            .upgrade()
+            .context("セッションのターミナルが開いた直後に閉じられました。")
+    }
+
+    /// The IDE channel, which only the WSL sandbox has: on an SSH host the
+    /// session's file requests would be checked against this machine's file
+    /// system (`ide_server::path_mapping`), which knows nothing about the
+    /// host's, so 第 3 段 runs without one.
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) use ide_link::{IdeLink, PendingIdeSession};
+
+    #[cfg(any(target_os = "windows", test))]
+    mod ide_link {
+        use std::path::PathBuf;
+        use std::sync::Arc;
+
+        use futures::channel::mpsc;
+        use futures::{AsyncRead, AsyncWrite, StreamExt as _};
+        use gpui::{App, Task, WeakEntity};
+        use workspace::Workspace;
+
+        /// The IDE session, started before the bridge: its auth token goes into
+        /// the lock file the bridge writes before any connection can arrive.
+        pub(crate) struct PendingIdeSession {
+            session: ide_server::SandboxIdeSessionHandle,
+            connections: mpsc::UnboundedSender<sandbox::BridgeConnection>,
+        }
+
+        /// Keeps the IDE side of a session alive. Dropping it ends the bridge's
+        /// stdin, so the bridge removes its socket and lock and exits, and ends
+        /// the IDE session, which closes its diff tabs.
+        pub(crate) struct IdeLink {
+            _mux: sandbox::BridgeMuxHandle,
+            _forward: Task<()>,
+            _session: ide_server::SandboxIdeSessionHandle,
+        }
+
+        impl PendingIdeSession {
+            pub(crate) fn start(
+                workspace: WeakEntity<Workspace>,
+                mapper: Arc<dyn ide_server::PathMapper>,
+                roots: Vec<PathBuf>,
+                cx: &mut App,
+            ) -> (Self, String) {
+                let (sender, receiver) = mpsc::unbounded();
+                let (session, info) =
+                    ide_server::start_sandbox_session(workspace, receiver, mapper, roots, cx);
+                (
+                    Self {
+                        session,
+                        connections: sender,
+                    },
+                    info.auth_token,
+                )
+            }
+
+            /// Takes the bridge's multiplexed stdout (`reader`) and stdin
+            /// (`writer`) apart into the session's connections.
+            pub(crate) fn attach<R, W>(self, reader: R, writer: W, cx: &mut App) -> IdeLink
+            where
+                R: AsyncRead + Unpin + Send + 'static,
+                W: AsyncWrite + Unpin + Send + 'static,
+            {
+                let executor = cx.background_executor().clone();
+                let (mut connections, mux) = sandbox::spawn_bridge_mux(reader, writer, |future| {
+                    executor.spawn(future).detach()
+                });
+                let sender = self.connections;
+                let forward = executor.spawn(async move {
+                    while let Some(connection) = connections.next().await {
+                        if sender.unbounded_send(connection).is_err() {
+                            break;
+                        }
                     }
+                });
+                IdeLink {
+                    _mux: mux,
+                    _forward: forward,
+                    _session: self.session,
                 }
-            });
-            IdeLink {
-                _mux: mux,
-                _forward: forward,
-                _session: self.session,
             }
         }
+    }
+}
+
+/// ADR-F49 第 3 段: the sandboxed session on the Linux host of an SSH-remote
+/// project.
+///
+/// The helper is the host's own `remote_server`, re-invoked as the sandbox
+/// helper (ADR-F18) — already uploaded and verified by the connection, so no
+/// second binary and no proto change. The CLI is fetched **on this machine**,
+/// where the release key and the allowlist are, and sent to the host, so a host
+/// with no way out to the network still runs a checked build.
+///
+/// It runs with no IDE channel: the requests a sandboxed session makes about
+/// files are checked against a file system `ide_server` can open
+/// (`ide_server::path_mapping`), and on a remote project that is this machine's,
+/// not the host's — every request would be refused as outside the workspace.
+/// Nothing points the CLI at an IDE, so it behaves as it does in a plain
+/// terminal; wiring it is what a later step has to do.
+mod remote_launch {
+    use std::path::PathBuf;
+
+    use anyhow::{Context as _, Result, anyhow, bail};
+    use collections::HashMap;
+    use gpui::{AsyncWindowContext, Context, Entity, WeakEntity, Window};
+    use project::{Project, SandboxedWriterGuard};
+    use remote::RemoteClient;
+    use terminal::Terminal;
+    use util::ResultExt as _;
+    use workspace::Workspace;
+
+    use super::session::{
+        CLAUDE_HOSTS, HostsConsent, LAUNCH_FAILED_PREFIX, PREPARING_MESSAGE,
+        PREPARING_SANDBOX_MESSAGE, SessionSlot, already_running_id, config_paths,
+        consent_to_claude_hosts, launch_invocation, new_session_id, progress_id, project_key,
+        register_session_writer, remote_session_write_scope, session_environment, session_key,
+        show_progress, spawn_terminal, take_session_slot,
+    };
+
+    /// Where the staged CLI and anything else this launcher leaves on the host
+    /// lives (see `managed_claude_binary`), relative to the account's home.
+    /// Protected for every session, so that one whose folder *is* the account's
+    /// home cannot overwrite the very binary it runs: in WSL the helper adds
+    /// this itself, but on an SSH host it is the client that has to ask.
+    const HOST_CACHE_HOME_RELATIVE: &str = ".cache/zed-jp-enhance";
+
+    /// Makes the project's configuration root (`$1`) and the directory the CLI
+    /// is pointed at inside it (`$2`), owner-only: it holds the session's login
+    /// token and the hooks it runs. `umask` covers the parents `mkdir -p`
+    /// creates on the way, and the two known directories are set explicitly in
+    /// case they are older than this.
+    const CREATE_CONFIG_SCRIPT: &str = r#"set -u
+umask 077
+mkdir -p "$2" || exit 1
+chmod 700 "$1" "$2" 2>/dev/null || true
+"#;
+
+    pub(super) fn launch_on_remote_host(
+        workspace: &mut Workspace,
+        effort: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let (project, roots, key_roots, git_dirs, remote_client) = {
+            let project = workspace.project().read(cx);
+            (
+                workspace.project().clone(),
+                super::sandbox_roots(project, cx),
+                project::agent_sandbox::project_key_roots(project.worktree_store().read(cx), cx),
+                acp_thread::sandbox_git_dirs(project, cx),
+                project.remote_client(),
+            )
+        };
+        let Some(remote_client) = remote_client else {
+            workspace.show_error(
+                format!("{LAUNCH_FAILED_PREFIX}プロジェクトは接続先のホストに繋がっていません。"),
+                cx,
+            );
+            return;
+        };
+        show_progress(workspace, PREPARING_MESSAGE, cx);
+        cx.spawn_in(window, async move |workspace, cx| {
+            let outcome = start_session(
+                workspace.clone(),
+                project,
+                remote_client,
+                roots,
+                key_roots,
+                git_dirs,
+                effort,
+                cx,
+            )
+            .await;
+            workspace
+                .update(cx, |workspace, cx| {
+                    workspace.dismiss_toast(&progress_id(), cx);
+                    if let Err(error) = outcome {
+                        workspace.show_error(format!("{LAUNCH_FAILED_PREFIX}{error:#}"), cx);
+                    }
+                })
+                .log_err();
+        })
+        .detach();
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "everything the session is built from, read from the workspace before it starts"
+    )]
+    async fn start_session(
+        workspace: WeakEntity<Workspace>,
+        project: Entity<Project>,
+        remote_client: Entity<RemoteClient>,
+        roots: Vec<PathBuf>,
+        key_roots: Vec<PathBuf>,
+        git_dirs: Vec<PathBuf>,
+        effort: Option<String>,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<()> {
+        if roots.is_empty() {
+            bail!("Claude Code を実行するフォルダーがありません。");
+        }
+        // The key is the project's folders, not the session's writable ones,
+        // and is left in the host's own spelling: resolving links is the host's
+        // to do and this machine cannot, while the worktrees are the only
+        // spelling it is ever given — so the same project keys the same way
+        // every time, which is what the key is for.
+        let project_key = project_key(&key_roots);
+        let (connection, remote_binary) = remote_client.read_with(cx, |remote_client, _| {
+            (
+                remote_client.connection_options().display_name(),
+                remote_client.remote_server_binary_path(),
+            )
+        });
+        let remote_binary = remote_binary.context(
+            "接続先のホストの Zed サーバーがまだ用意されていません。接続が終わるまで待ってから\
+             もう一度お試しください。",
+        )?;
+        // Held until the session ends: a second one on the same configuration
+        // would share its configuration directory and its login.
+        let key = session_key(Some(&connection), &project_key);
+        let Some(slot) = cx.update(|window, cx| take_session_slot(key, &workspace, window, cx))?
+        else {
+            return Ok(());
+        };
+        let HostsConsent::Granted { network_ceiling } = consent_to_claude_hosts(cx).await? else {
+            return Ok(());
+        };
+        // As in the WSL launch: the installer's own failures carry an English
+        // detail behind the Japanese headline, and `{error:#}` at the call site
+        // would splice it into the toast, so collapse to the headline here.
+        let binary = claude_binary(workspace.clone(), remote_client.clone(), cx)
+            .await
+            .map_err(|error| {
+                log::warn!("[claude-sandbox] Claude Code を用意できませんでした: {error:#}");
+                anyhow!("{error}")
+            })?;
+        let home = binary
+            .home_on_host
+            .context("接続先のホームディレクトリが分かりませんでした (内部エラー)。")?;
+        let (config_root, config_dir) = config_paths(&home, &project_key)?;
+        workspace.update(cx, |workspace, cx| {
+            show_progress(workspace, PREPARING_SANDBOX_MESSAGE, cx)
+        })?;
+        // The helper skips a write grant that is not there yet (it logs and
+        // carries on), so the CLI would start unable to write its own
+        // configuration — and unable to keep a sign-in. In WSL the IDE bridge
+        // creates these; on an SSH host there is no bridge, so it happens here.
+        crate::managed_claude_binary::run_remote_host_script(
+            remote_client.clone(),
+            CREATE_CONFIG_SCRIPT,
+            vec![config_root.clone(), config_dir.clone()],
+            cx,
+        )
+        .await
+        .context("接続先に Claude Code の設定フォルダーを作成できませんでした。")?;
+
+        let session_id = new_session_id();
+        let (program, args) = launch_invocation(&binary.path_on_host, effort.as_deref())?;
+        let environment = session_environment(&config_dir, None);
+        let first_root = roots
+            .first()
+            .context("Claude Code を実行するフォルダーがありません。")?
+            .clone();
+        let wrap = acp_thread::SandboxWrap {
+            writable_paths: roots
+                .iter()
+                .cloned()
+                .chain([PathBuf::from(&config_root)])
+                .collect(),
+            extra_write_paths: Vec::new(),
+            network: acp_thread::SandboxNetworkAccess::Restricted(
+                http_proxy::Allowlist::from_patterns(
+                    CLAUDE_HOSTS
+                        .iter()
+                        .map(|host| http_proxy::HostPattern::parse(host))
+                        .collect::<std::result::Result<Vec<_>, _>>()
+                        .map_err(|error| {
+                            anyhow!("Claude Code の接続先が不正です (内部エラー): {error}")
+                        })?,
+                ),
+            ),
+            // The `.git` paths arrive spelled the way the host spells them
+            // (`acp_thread::sandbox_git_dirs` uses the project's path style),
+            // and the cache is built from the home the host reported.
+            protected_paths: git_dirs
+                .into_iter()
+                .chain([PathBuf::from(format!("{home}/{HOST_CACHE_HOME_RELATIVE}"))])
+                .collect(),
+            allow_fs_write: false,
+            // The proxy that would confine it runs on the host, inside the
+            // helper, not in this process.
+            is_local: false,
+        };
+        // ADR-F46: the helper's own process is given no environment; everything
+        // the CLI gets travels in the helper's own argv through `--setenv`, and
+        // the helper applies it inside its jail. The transport turns this into
+        // the `ssh` line when the terminal starts it, which is also what gives
+        // it a pty — so nothing is built here but the helper's invocation.
+        let (helper_program, helper_args) = acp_thread::build_remote_sandbox_command(
+            &remote_binary,
+            &wrap,
+            network_ceiling.as_deref(),
+            Some(&first_root),
+            &environment.into_iter().collect::<HashMap<_, _>>(),
+            &[],
+            true,
+            Some(&session_id),
+            program,
+            args,
+        );
+
+        // ADR-F50: the CLI writes its folders and its configuration from its
+        // first moment, so it is their writer before it starts.
+        let write_scope = remote_session_write_scope(&roots, &config_root);
+        let (worktree_writer, worktree_writer_resolved) =
+            cx.update(|_, cx| register_session_writer(&project, write_scope, cx))?;
+        let resources = SessionResources {
+            worktree_writer,
+            slot,
+        };
+        worktree_writer_resolved.await;
+        let terminal = spawn_terminal(
+            &workspace,
+            helper_program,
+            helper_args,
+            Vec::new(),
+            &session_id,
+            cx,
+        )
+        .await?;
+        resources.slot.set_terminal(terminal.downgrade());
+        watch_session(terminal, resources, workspace, cx)
+    }
+
+    /// The CLI the session runs: the managed Linux build, fetched and verified
+    /// here and staged on the host (ADR-F49 decision 2 / 第 3 段).
+    async fn claude_binary(
+        workspace: WeakEntity<Workspace>,
+        remote_client: Entity<RemoteClient>,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<crate::ManagedClaudeBinary> {
+        cx.update(|window, cx| {
+            crate::ensure_managed_claude_binary(
+                crate::ManagedClaudeTarget::RemoteHost(remote_client),
+                window,
+                cx,
+                move |progress, _window, cx| {
+                    workspace
+                        .update(cx, |workspace, cx| {
+                            show_progress(workspace, &progress.message(), cx)
+                        })
+                        .log_err();
+                },
+            )
+        })?
+        .await
+    }
+
+    /// What a running remote session holds on to. There is no bridge and no
+    /// sandbox object on this machine: the helper on the host owns both its
+    /// namespaces and its proxy, and the terminal's own process is the `ssh`
+    /// that runs it.
+    struct SessionResources {
+        /// ADR-F50: the session's hold on the worktrees it can write.
+        worktree_writer: SandboxedWriterGuard,
+        /// Freed last, once nothing else of the session is left.
+        slot: SessionSlot,
+    }
+
+    /// Frees the session's hold on the worktrees when the CLI exits or its
+    /// terminal closes, and says why when the host's helper refused to build
+    /// the sandbox (ADR-F18's fail-closed marker).
+    fn watch_session(
+        terminal: Entity<Terminal>,
+        resources: SessionResources,
+        workspace: WeakEntity<Workspace>,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<()> {
+        let completion = cx.update(|_, cx| terminal.read(cx).wait_for_completed_task(cx))?;
+        let terminal = terminal.downgrade();
+        cx.spawn(async move |cx| {
+            let status = completion.await;
+            let SessionResources {
+                worktree_writer,
+                slot,
+            } = resources;
+            // The CLI has exited, so nothing of its writes is still to come.
+            drop(worktree_writer);
+            drop(slot);
+            let exit_code = status
+                .and_then(|status| status.code())
+                .and_then(|code| u32::try_from(code).ok());
+            let message = terminal
+                .read_with(cx, |terminal, _| {
+                    acp_thread::remote_sandbox_setup_failure_message(
+                        exit_code,
+                        &terminal.get_content(),
+                    )
+                })
+                .ok()
+                .flatten();
+            if let Some(workspace) = workspace.upgrade() {
+                workspace.update(cx, |workspace, cx| {
+                    // Saying that the session runs is wrong once it has ended.
+                    workspace.dismiss_toast(&already_running_id(), cx);
+                    if let Some(message) = message {
+                        workspace.show_error(message, cx);
+                    }
+                });
+            }
+        })
+        .detach();
+        Ok(())
     }
 }
 
@@ -706,33 +1644,23 @@ mod launch {
     use anyhow::{Context as _, Result, anyhow, bail};
     use fs::Fs;
     use gpui::{
-        App, AsyncWindowContext, BackgroundExecutor, Context, Entity, FutureExt as _, PromptButton,
-        PromptLevel, SharedString, Task, WeakEntity, Window,
+        AsyncWindowContext, BackgroundExecutor, Context, Entity, FutureExt as _, Task, WeakEntity,
+        Window,
     };
     use project::SandboxedWriterGuard;
     use project::agent_sandbox::canonical_project_key_roots;
-    use task::{RevealStrategy, RevealTarget, SpawnInTerminal, TaskId};
     use terminal::Terminal;
-    use terminal_view::TerminalView;
-    use terminal_view::terminal_panel::TerminalPanel;
     use util::ResultExt as _;
     use util::command::Stdio;
-    use workspace::{Toast, Workspace, notifications::NotificationId};
+    use workspace::Workspace;
 
     use super::session::{
-        CLAUDE_HOSTS, IdeLink, PendingIdeSession, RunningSessions, SessionLayout, SessionPlan,
-        SessionSlot, helper_failure_message, hosts_detail, new_session_id, plan_session,
-        project_key, register_session_writer, session_key, session_write_scope, stale_entries,
+        HostsConsent, IdeLink, LAUNCH_FAILED_PREFIX, PREPARING_MESSAGE, PREPARING_SANDBOX_MESSAGE,
+        PendingIdeSession, SessionLayout, SessionPlan, SessionSlot, already_running_id,
+        consent_to_claude_hosts, helper_failure_message, new_session_id, plan_session, progress_id,
+        project_key, register_session_writer, session_key, session_write_scope,
+        show_already_running, show_progress, spawn_terminal, stale_entries, take_session_slot,
     };
-    use crate::agent_registry_ui::{add_consented_hosts, allowlist_write_error, missing_hosts};
-
-    const LAUNCH_FAILED_PREFIX: &str = "Claude Code (サンドボックス) を起動できませんでした: ";
-    const PREPARING_MESSAGE: &str = "Claude Code (サンドボックス) を準備しています…";
-    const PREPARING_SANDBOX_MESSAGE: &str = "サンドボックスと IDE 連携を準備しています…";
-    const SANDBOX_TAB_LABEL: &str = "Claude Code (サンドボックス)";
-    const HOSTS_MESSAGE: &str = "Claude Code (サンドボックス) の通信に許可リストへの追加が必要です";
-    const ADD_HOSTS_LABEL: &str = "許可リストに追加して起動";
-    const DECLINE_HOSTS_LABEL: &str = "追加せず中止";
 
     /// One `wsl.exe` round trip, which a cold WSL can take this long to answer.
     const WSL_STEP_TIMEOUT: Duration = Duration::from_secs(90);
@@ -790,16 +1718,6 @@ shift 3
     done
 )
 "#;
-
-    struct SandboxLaunchProgress;
-
-    fn progress_id() -> NotificationId {
-        NotificationId::unique::<SandboxLaunchProgress>()
-    }
-
-    fn show_progress(workspace: &mut Workspace, message: &str, cx: &mut Context<Workspace>) {
-        workspace.show_toast(Toast::new(progress_id(), message.to_string()), cx);
-    }
 
     pub(super) fn launch_in_sandbox(
         workspace: &mut Workspace,
@@ -1014,149 +1932,17 @@ shift 3
         let (wrapped, sandbox) =
             in_wsl(&executor, wrap_session(plan, git_dirs, network_ceiling)).await?;
         resources.sandbox = Some(sandbox);
-        let terminal = spawn_terminal(&workspace, wrapped, &session_id, cx).await?;
+        let terminal = spawn_terminal(
+            &workspace,
+            wrapped.program,
+            wrapped.args,
+            wrapped.env.into_iter().collect(),
+            &session_id,
+            cx,
+        )
+        .await?;
         resources.slot.set_terminal(terminal.downgrade());
         watch_session(terminal, resources, workspace, cx)
-    }
-
-    const ALREADY_RUNNING_MESSAGE: &str =
-        "このプロジェクトの Claude Code (サンドボックス) はすでに実行中です";
-
-    struct AlreadyRunning;
-
-    pub(super) fn already_running_id() -> NotificationId {
-        NotificationId::unique::<AlreadyRunning>()
-    }
-
-    fn show_already_running(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
-        workspace.show_toast(
-            Toast::new(already_running_id(), ALREADY_RUNNING_MESSAGE.to_string()).autohide(),
-            cx,
-        );
-    }
-
-    /// The project's slot, or `None` after saying that its session already
-    /// runs and showing that session's tab.
-    pub(super) fn take_session_slot(
-        key: String,
-        workspace: &WeakEntity<Workspace>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Option<SessionSlot> {
-        let running = cx.default_global::<RunningSessions>().clone();
-        let existing = match running.take(key) {
-            Ok(slot) => return Some(slot),
-            Err(existing) => existing,
-        };
-        workspace
-            .update(cx, |workspace, cx| {
-                show_already_running(workspace, cx);
-                if let Some(terminal) = existing.and_then(|terminal| terminal.upgrade()) {
-                    reveal_terminal(workspace, &terminal, window, cx);
-                }
-            })
-            .log_err();
-        None
-    }
-
-    /// Brings the tab of `terminal` forward, when it is in this workspace's
-    /// terminal panel.
-    fn reveal_terminal(
-        workspace: &mut Workspace,
-        terminal: &Entity<Terminal>,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        let Some(terminal_panel) = workspace.panel::<TerminalPanel>(cx) else {
-            return;
-        };
-        let found = terminal_panel
-            .read(cx)
-            .panes()
-            .into_iter()
-            .find_map(|pane| {
-                let index = pane.read(cx).items().position(|item| {
-                    item.downcast::<TerminalView>()
-                        .is_some_and(|view| view.read(cx).terminal() == terminal)
-                })?;
-                Some((pane.clone(), index))
-            });
-        let Some((pane, index)) = found else {
-            return;
-        };
-        workspace.focus_panel::<TerminalPanel>(window, cx);
-        pane.update(cx, |pane, cx| {
-            pane.activate_item(index, true, true, window, cx)
-        });
-    }
-
-    enum HostsConsent {
-        Declined,
-        /// `network_ceiling` is the editor-wide allowlist the session's
-        /// network nests inside; `None` when this process has none.
-        Granted {
-            network_ceiling: Option<Vec<String>>,
-        },
-    }
-
-    /// The editor-wide allowlist caps what the session may reach, so the
-    /// Anthropic hosts it lacks are added — with the user's consent, as for an
-    /// agent install (ADR-F12) — before the session starts.
-    async fn consent_to_claude_hosts(cx: &mut AsyncWindowContext) -> Result<HostsConsent> {
-        let hosts = CLAUDE_HOSTS
-            .iter()
-            .map(|host| SharedString::new_static(host))
-            .collect::<Vec<_>>();
-        let (ceiling, missing) =
-            cx.update(|_, cx| (editor_allowlist(cx), missing_hosts(&hosts, cx)))?;
-        let Some(mut ceiling) = ceiling else {
-            return Ok(HostsConsent::Granted {
-                network_ceiling: None,
-            });
-        };
-        if missing.is_empty() {
-            return Ok(HostsConsent::Granted {
-                network_ceiling: Some(ceiling),
-            });
-        }
-        let detail = hosts_detail(&missing);
-        let answer = cx.prompt(
-            PromptLevel::Warning,
-            HOSTS_MESSAGE,
-            Some(&detail),
-            &[
-                PromptButton::ok(ADD_HOSTS_LABEL),
-                PromptButton::cancel(DECLINE_HOSTS_LABEL),
-            ],
-        );
-        if !answer.await.is_ok_and(|index| index == 0) {
-            return Ok(HostsConsent::Declined);
-        }
-        let added = missing.iter().map(ToString::to_string).collect::<Vec<_>>();
-        cx.update(|_, cx| add_consented_hosts(added.clone(), cx))?
-            .await
-            .map_err(|error| anyhow!(allowlist_write_error(&error)))?;
-        // The allowlist's watcher takes the file in a little later; the
-        // session starts now, with the hosts the user just agreed to.
-        ceiling.extend(added);
-        Ok(HostsConsent::Granted {
-            network_ceiling: Some(ceiling),
-        })
-    }
-
-    /// The editor-wide allowlist as it stands now, as the sandbox helper's
-    /// proxy takes it; `None` in a process that has none.
-    fn editor_allowlist(cx: &App) -> Option<Vec<String>> {
-        let global = cx.try_global::<egress_policy::EgressAllowlistGlobal>()?;
-        Some(
-            global
-                .0
-                .snapshot()
-                .patterns()
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-        )
     }
 
     /// Development only: the absolute path, inside the distro, of a program to
@@ -1183,7 +1969,7 @@ shift 3
         let binary = cx
             .update(|window, cx| {
                 crate::ensure_managed_claude_binary(
-                    distro,
+                    crate::ManagedClaudeTarget::WslDistro(distro),
                     window,
                     cx,
                     move |progress, _window, cx| {
@@ -1196,7 +1982,7 @@ shift 3
                 )
             })?
             .await?;
-        Ok(binary.path_in_wsl)
+        Ok(binary.path_on_host)
     }
 
     async fn in_wsl<T: Send + 'static>(
@@ -1321,48 +2107,6 @@ shift 3
         Ok((wrapped, sandbox))
     }
 
-    async fn spawn_terminal(
-        workspace: &WeakEntity<Workspace>,
-        wrapped: sandbox::WrappedCommand,
-        session_id: &str,
-        cx: &mut AsyncWindowContext,
-    ) -> Result<Entity<Terminal>> {
-        let spawn_task = SpawnInTerminal {
-            id: TaskId(format!("terminal::claude-code-sandbox::{session_id}")),
-            full_label: SANDBOX_TAB_LABEL.to_string(),
-            label: SANDBOX_TAB_LABEL.to_string(),
-            command: Some(wrapped.program),
-            args: wrapped.args,
-            command_label: SANDBOX_TAB_LABEL.to_string(),
-            env: wrapped.env.into_iter().collect(),
-            use_new_terminal: true,
-            allow_concurrent_runs: true,
-            reveal: RevealStrategy::Always,
-            reveal_target: RevealTarget::Dock,
-            show_summary: false,
-            show_command: false,
-            // The same `wsl.exe` line run again would find its bridge gone.
-            show_rerun: false,
-            ..SpawnInTerminal::default()
-        };
-        let terminal_panel = workspace
-            .read_with(cx, |workspace, cx| workspace.panel::<TerminalPanel>(cx))?
-            .context("ターミナルパネルが利用できません。")?;
-        let terminal = terminal_panel
-            .update_in(cx, |terminal_panel, window, cx| {
-                terminal_panel.add_terminal_with(
-                    RevealStrategy::Always,
-                    window,
-                    cx,
-                    move |project, cx| project.create_sandboxed_terminal_task(spawn_task, cx),
-                )
-            })?
-            .await?;
-        terminal
-            .upgrade()
-            .context("セッションのターミナルが開いた直後に閉じられました。")
-    }
-
     /// What a running session holds on to.
     struct SessionResources {
         ide: IdeLink,
@@ -1478,15 +2222,16 @@ mod tests {
     use zed_actions::terminal::{LaunchClaudeCode, LaunchClaudeCodeOutsideSandbox};
 
     use super::session::{
-        PendingIdeSession, RunningSessions, SessionLayout, StaleEntries, helper_failure_message,
-        hosts_detail, plan_session, project_key, register_session_writer, session_key,
+        PendingIdeSession, RunningSessions, SessionLayout, StaleEntries, config_paths,
+        helper_failure_message, hosts_detail, launch_invocation, plan_session, project_key,
+        register_session_writer, remote_session_write_scope, session_environment, session_key,
         session_write_scope, stale_entries,
     };
     use super::{
         CLAUDE_PROGRAM, COLLABORATION_REASON, HostLauncher, LaunchRoute, NO_FOLDER_REASON,
-        OUTSIDE_SANDBOX_MESSAGE, OUTSIDE_SANDBOX_NOTICE, ProjectShape, REMOTE_REASON,
-        UNSUPPORTED_OS_REASON, outside_sandbox_detail, outside_sandbox_message,
-        register_launch_actions, route_for,
+        OUTSIDE_SANDBOX_MESSAGE, OUTSIDE_SANDBOX_NOTICE, ProjectShape, REMOTE_CONNECTION_REASON,
+        REMOTE_NOT_LINUX_REASON, RemoteShape, UNSUPPORTED_OS_REASON, outside_sandbox_detail,
+        outside_sandbox_message, register_launch_actions, route_for,
     };
 
     const SESSION_ID: &str = "claude-0123456789abcdef0123456789abcdef";
@@ -1506,18 +2251,47 @@ mod tests {
     fn launches_in_the_sandbox_only_where_it_can() {
         let sandboxable = ProjectShape {
             is_collaborative: false,
-            is_local: true,
+            remote: None,
             has_folder: true,
             sandbox_platform: true,
         };
-        assert_eq!(route_for(sandboxable), LaunchRoute::Sandbox);
+        let ssh_linux = RemoteShape {
+            is_ssh: true,
+            is_linux: true,
+        };
+        assert_eq!(route_for(sandboxable), LaunchRoute::LocalSandbox);
+        // 第 3 段: an SSH host runs the session in its own helper, whatever this
+        // machine is — the sandbox is the host's.
+        for sandbox_platform in [true, false] {
+            assert_eq!(
+                route_for(ProjectShape {
+                    remote: Some(ssh_linux),
+                    sandbox_platform,
+                    ..sandboxable
+                }),
+                LaunchRoute::RemoteSandbox
+            );
+        }
         for (shape, reason) in [
             (
                 ProjectShape {
-                    is_local: false,
+                    remote: Some(RemoteShape {
+                        is_ssh: false,
+                        is_linux: true,
+                    }),
                     ..sandboxable
                 },
-                REMOTE_REASON,
+                REMOTE_CONNECTION_REASON,
+            ),
+            (
+                ProjectShape {
+                    remote: Some(RemoteShape {
+                        is_ssh: true,
+                        is_linux: false,
+                    }),
+                    ..sandboxable
+                },
+                REMOTE_NOT_LINUX_REASON,
             ),
             (
                 ProjectShape {
@@ -1526,10 +2300,12 @@ mod tests {
                 },
                 COLLABORATION_REASON,
             ),
+            // Collaboration wins over the connection: the session's folders are
+            // ones other people see.
             (
                 ProjectShape {
                     is_collaborative: true,
-                    is_local: false,
+                    remote: Some(ssh_linux),
                     ..sandboxable
                 },
                 COLLABORATION_REASON,
@@ -1543,14 +2319,15 @@ mod tests {
             ),
             (
                 ProjectShape {
-                    is_local: false,
-                    sandbox_platform: false,
+                    has_folder: false,
                     ..sandboxable
                 },
-                REMOTE_REASON,
+                NO_FOLDER_REASON,
             ),
+            // A remote project with no folder has nothing to run in either.
             (
                 ProjectShape {
+                    remote: Some(ssh_linux),
                     has_folder: false,
                     ..sandboxable
                 },
@@ -1647,6 +2424,27 @@ mod tests {
         }
     }
 
+    /// ADR-F53: this session is the official CLI signing itself in, which a
+    /// Claude subscription may be used for; the ACP Claude agent drives the
+    /// Agent SDK from this IDE's harness, which it may not. So the agent gets
+    /// a folder of its own beside this session's, never the same one — this
+    /// test fails the moment the two are one place again.
+    #[test]
+    fn the_acp_claude_agent_does_not_share_this_sessions_folder() {
+        let layout = layout();
+        let agent_config_dir = project::agent_sandbox::agent_config_dir(
+            Path::new("/root"),
+            PROJECT_KEY,
+            &project::agent_sandbox::SandboxedAgentProfile::Claude,
+        );
+        assert_eq!(
+            agent_config_dir.parent(),
+            Some(Path::new(&layout.config_root)),
+            "both folders live in the project's own directory"
+        );
+        assert_ne!(agent_config_dir, PathBuf::from(&layout.config_dir));
+    }
+
     #[test]
     fn the_outside_sandbox_confirmation_names_what_runs_where() {
         let local = outside_sandbox_detail(CLAUDE_PROGRAM, false, Some(NO_FOLDER_REASON));
@@ -1654,7 +2452,7 @@ mod tests {
         assert!(local.contains("この PC の `claude`"), "{local}");
         assert!(local.ends_with(NO_FOLDER_REASON), "{local}");
 
-        let remote = outside_sandbox_detail(CLAUDE_PROGRAM, true, Some(REMOTE_REASON));
+        let remote = outside_sandbox_detail(CLAUDE_PROGRAM, true, Some(REMOTE_CONNECTION_REASON));
         assert!(
             remote.starts_with("接続先のホストの `claude` を"),
             "{remote}"
@@ -1841,6 +2639,117 @@ mod tests {
         assert!(plan_session(&layout, RENDEZVOUS, CLAUDE_PATH, None, &[], PORT).is_err());
     }
 
+    /// 第 3 段: the session on an SSH host is placed by the same rule as the
+    /// WSL one — the account's home decides, and the project's key names the
+    /// folder — so the two never see each other's configuration, and a session
+    /// gets no IDE channel it cannot serve.
+    #[test]
+    fn a_remote_session_is_placed_like_the_wsl_one_and_has_no_ide_channel() {
+        let (config_root, config_dir) =
+            config_paths("/home/ubuntu", PROJECT_KEY).expect("a valid placement");
+        assert_eq!(
+            config_root,
+            "/home/ubuntu/.zed-jp-enhance-claude/projects/0123456789abcdef"
+        );
+        assert_eq!(config_dir, format!("{config_root}/config"));
+        // The same rule the rendezvous-derived layout applies, so the WSL
+        // session and an SSH one with the same home land in the same place.
+        assert_eq!(layout().config_dir, format!("{CONFIG_ROOT}/config"));
+        assert_eq!(
+            config_paths("/root", PROJECT_KEY)
+                .expect("a valid placement")
+                .1,
+            layout().config_dir
+        );
+        for bad_home in ["root", "/root/", "/root\n", ""] {
+            assert!(config_paths(bad_home, PROJECT_KEY).is_err(), "{bad_home:?}");
+        }
+        assert!(config_paths("/root", "not a key").is_err());
+
+        let with_ide = session_environment(&config_dir, Some(45123));
+        let without_ide = session_environment(&config_dir, None);
+        let names = |environment: &[(String, String)]| {
+            let mut names = environment
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        // Nothing points the CLI at an IDE when there is none to point it at:
+        // with the port set it would wait for a lock file that never arrives.
+        assert!(
+            !names(&without_ide).contains(&"CLAUDE_CODE_SSE_PORT".to_string()),
+            "{without_ide:?}"
+        );
+        assert!(
+            !names(&without_ide).contains(&"CLAUDE_CODE_IDE_HOST_OVERRIDE".to_string()),
+            "{without_ide:?}"
+        );
+        assert_eq!(
+            names(&with_ide)
+                .into_iter()
+                .filter(|name| !name.starts_with("CLAUDE_CODE_SSE")
+                    && !name.starts_with("CLAUDE_CODE_IDE"))
+                .collect::<Vec<_>>(),
+            names(&without_ide),
+            "the rest of the environment is the same either way"
+        );
+        assert_eq!(
+            without_ide
+                .iter()
+                .find(|(name, _)| name == "CLAUDE_CONFIG_DIR")
+                .map(|(_, value)| value.as_str()),
+            Some(config_dir.as_str())
+        );
+    }
+
+    /// ADR-F50 on an SSH host: the folders and the configuration are the
+    /// host's own paths, which is how its worktrees are spelled, so the scope
+    /// is exactly those — there is no second spelling as there is in WSL.
+    #[test]
+    fn a_remote_session_holds_its_folders_and_its_configuration() {
+        let roots = [PathBuf::from("/srv/app"), PathBuf::from("/srv/lib")];
+        assert_eq!(
+            remote_session_write_scope(&roots, CONFIG_ROOT),
+            [
+                PathBuf::from("/srv/app"),
+                PathBuf::from("/srv/lib"),
+                PathBuf::from(CONFIG_ROOT),
+            ]
+        );
+    }
+
+    /// The launch itself is shared: the shell that sets what only exists inside
+    /// the sandbox and then becomes the CLI by absolute path, never by `PATH`.
+    #[test]
+    fn the_launch_never_looks_the_cli_up_on_path() {
+        let (program, args) =
+            launch_invocation(CLAUDE_PATH, Some("high")).expect("an absolute path");
+        assert_eq!(program, "/bin/sh");
+        assert_eq!(args.first().map(String::as_str), Some("-c"));
+        assert_eq!(
+            args.get(2..),
+            Some(
+                &[
+                    CLAUDE_PATH.to_string(),
+                    "--effort".to_string(),
+                    "high".to_string(),
+                ][..]
+            )
+        );
+        assert_eq!(
+            launch_invocation(CLAUDE_PATH, None)
+                .expect("an absolute path")
+                .1
+                .get(2..),
+            Some(&[CLAUDE_PATH.to_string()][..])
+        );
+        for bad in ["claude", "~/claude", "/tmp/cl\naude"] {
+            assert!(launch_invocation(bad, None).is_err(), "{bad:?}");
+        }
+    }
+
     #[test]
     fn the_sweep_only_takes_our_leftovers_whose_bridge_is_gone() {
         let layout = layout();
@@ -1986,10 +2895,40 @@ mod tests {
         assert_eq!(launches.borrow().last(), Some(&Some("high".to_string())));
     }
 
-    #[cfg(target_os = "windows")]
+    /// ADR-F53: エージェントパネルが無い (`disable_ai` で外されている、
+    /// パネル未登録) ときは、今までどおりターミナルパネルに開く。CLI は人間の
+    /// 操作 (ADR-F38) なので AI が無効でも使えなければならない。
+    #[gpui::test]
+    async fn without_an_agent_panel_the_cli_still_opens_in_the_terminal_panel(
+        cx: &mut TestAppContext,
+    ) {
+        let (_project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
+        let (fallback, fallbacks) = recording_launcher();
+        // 置き場の判断だけを見る: 本物の起動は `claude` を本当に動かすので、
+        // パネルが無いときに通る経路を記録するものに差し替える。
+        let launcher: HostLauncher = Rc::new(move |workspace, effort, window, cx| {
+            super::launch_on_host_in_tab(workspace, effort, fallback.as_ref(), window, cx);
+        });
+        register_and_focus(&workspace, launcher, &mut cx);
+
+        cx.dispatch_action(LaunchClaudeCodeOutsideSandbox {
+            effort: Some("high".to_string()),
+        });
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt(), "起動のたびに確認する");
+        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.run_until_parked();
+
+        assert_eq!(
+            *fallbacks.borrow(),
+            [Some("high".to_string())],
+            "パネルが無ければターミナルパネル経路へ、引数もそのまま"
+        );
+    }
+
     #[gpui::test]
     async fn saying_that_the_session_already_runs_goes_away_by_itself(cx: &mut TestAppContext) {
-        use super::launch::{already_running_id, take_session_slot};
+        use super::session::{already_running_id, take_session_slot};
 
         let (_project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
         let weak_workspace = workspace.downgrade();

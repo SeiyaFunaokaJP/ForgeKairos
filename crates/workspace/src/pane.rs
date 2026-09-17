@@ -899,6 +899,14 @@ impl Pane {
         self.should_display_tab_bar = Rc::new(should_display_tab_bar);
     }
 
+    /// Asks the predicate the next render would ask, so a caller that installed
+    /// one can test it without drawing the pane.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn should_display_tab_bar(&self, window: &Window, cx: &mut Context<Pane>) -> bool {
+        let should_display_tab_bar = self.should_display_tab_bar.clone();
+        should_display_tab_bar(window, cx)
+    }
+
     pub fn set_should_display_welcome_page(&mut self, should_display_welcome_page: bool) {
         self.should_display_welcome_page = should_display_welcome_page;
     }

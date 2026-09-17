@@ -2289,6 +2289,49 @@ mod tests {
         );
     }
 
+    /// The shape `markdown::InsertDetails` writes: the summary shares the
+    /// opening tag's line, and `</details>` follows the closing fence with no
+    /// blank line between them.
+    #[test]
+    fn test_details_written_by_insert_details_hides_its_code_block() {
+        let source = "<details><summary>開く</summary>\n\n```\n本文\n```\n</details>\n";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+
+        let close_start = source
+            .find("</details>")
+            .expect("source contains the closing tag");
+        let span = parsed
+            .html_blocks
+            .get(&0)
+            .and_then(|block| block.details_span.clone())
+            .expect("the opening block should be linked to the closing one");
+
+        let hidden = parsed
+            .events
+            .get(span.hidden_events)
+            .expect("the hidden events should be inside the event list");
+        assert!(
+            hidden
+                .iter()
+                .any(|(range, event)| matches!(event, MarkdownEvent::Text)
+                    && source
+                        .get(range.clone())
+                        .is_some_and(|text| text.trim() == "本文")),
+            "the code block's body should be hidden while the disclosure is closed: {hidden:?}"
+        );
+        assert!(
+            hidden.iter().all(|(range, _)| range.start < close_start),
+            "nothing from the closing block should be hidden: {hidden:?}"
+        );
+        assert!(
+            parsed
+                .html_blocks
+                .get(&close_start)
+                .is_some_and(|block| block.unmatched_details_closes == 1),
+            "`</details>` on the line right after the fence still closes the disclosure"
+        );
+    }
+
     #[test]
     fn test_inline_html_formatting_is_styled_in_a_plain_paragraph() {
         let source = "a <b>bold</b> <u>under</u> <kbd>K</kbd> <del>gone</del> <i>it</i>";

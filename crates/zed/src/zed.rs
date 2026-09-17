@@ -5733,6 +5733,16 @@ mod tests {
             Some(&"tabular_data::InsertRowsOrColumns".to_string())
         );
         assert_eq!(
+            windows_bindings_for("ctrl-d", &grid, cx).first(),
+            Some(&"tabular_data::FillDown".to_string()),
+            "ctrl-d fills down in the grid rather than selecting the next match"
+        );
+        assert_eq!(
+            windows_bindings_for("ctrl-r", &grid, cx).first(),
+            Some(&"tabular_data::FillRight".to_string()),
+            "ctrl-r fills right in the grid rather than opening a recent project"
+        );
+        assert_eq!(
             windows_bindings_for("ctrl-,", &grid, cx).first(),
             Some(&"zed::OpenSettings".to_string()),
             "the settings key is nobody's but the workspace's"
@@ -5743,6 +5753,11 @@ mod tests {
             windows_bindings_for("ctrl--", &editor, cx).first(),
             Some(&"zed::DecreaseBufferFontSize".to_string()),
             "outside the grid the key still sizes the buffer font"
+        );
+        assert_eq!(
+            windows_bindings_for("ctrl-d", &editor, cx).first(),
+            Some(&"editor::SelectNext".to_string()),
+            "outside the grid the key still selects the next match"
         );
     }
 

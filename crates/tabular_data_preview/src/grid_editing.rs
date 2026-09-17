@@ -25,7 +25,9 @@ use editor::{
         ToggleBlockComments, ToggleComments, Transpose, Undo,
     },
 };
-use gpui::{ClipboardItem, DismissEvent, Div, Focusable as _, MouseButton, Point, point};
+use gpui::{
+    ClipboardItem, DismissEvent, Div, Focusable as _, MouseButton, MouseUpEvent, Point, point,
+};
 use ui::{ContextMenu, prelude::*};
 use zed_actions::editor::{MoveDown, MoveUp};
 
@@ -40,7 +42,10 @@ use crate::{
         clipboard_text_to_block,
     },
     grid::{CellEditMode, GridCell, GridMotion, GridRow, GridSelectionKind},
+    grid_fill::{FillDown, FillRight},
     grid_styles::{CellColor, StyleField, StyleShift, extend_with_color_palette},
+    renderer::table_diff_view::DiffSelectedCells,
+    table_data_engine::sorting_by_column::{AppliedSorting, SortDirection},
     types::AnyColumn,
 };
 use text::TransactionId;
@@ -66,6 +71,153 @@ macro_rules! swallow_when_idle {
         )+
         element
     }};
+}
+
+/// What the pointer was on when the context menu was asked for.
+///
+/// A spreadsheet's row and column headings have menus of their own: one menu
+/// offering every row *and* column operation is both long and ambiguous, since
+/// "行を削除" means the selected rows whether or not the user clicked a row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GridMenuTarget {
+    Cell,
+    RowHeader,
+    /// The column whose heading was clicked, which the sorting entries act on.
+    /// A right click inside the selection keeps that selection, so the caret's
+    /// column is not necessarily the one under the pointer.
+    ColumnHeader(AnyColumn),
+}
+
+/// One line of the grid's context menu.
+pub(crate) enum GridMenuEntry {
+    Separator,
+    /// An entry that dispatches an action, which is also how the menu comes to
+    /// show that action's keystroke.
+    Action {
+        label: &'static str,
+        action: Box<dyn gpui::Action>,
+    },
+    /// A palette of cell colors, which is a submenu rather than an entry.
+    Colors {
+        label: &'static str,
+        field: StyleField,
+    },
+    /// Sorting one column, which has no action to dispatch: sorting is held per
+    /// column rather than as a command.
+    Sort {
+        label: &'static str,
+        col: AnyColumn,
+        direction: Option<SortDirection>,
+    },
+    /// Opening one column's filter popover. Not an action either: the popover is
+    /// opened through the handle the column's own button registers, so the entry
+    /// has to name the column rather than dispatch a command.
+    Filter {
+        label: &'static str,
+        col: AnyColumn,
+    },
+}
+
+/// What the grid's context menu offers for `target`.
+///
+/// Kept apart from the menu it builds so that the one thing about it worth
+/// pinning down - which operations each target offers, and in which order - can
+/// be checked without a window.
+pub(crate) fn grid_context_menu_entries(target: GridMenuTarget) -> Vec<GridMenuEntry> {
+    let action = |label: &'static str, action: Box<dyn gpui::Action>| GridMenuEntry::Action {
+        label,
+        action,
+    };
+    let rows = || {
+        vec![
+            action("上に行を挿入", Box::new(InsertRowAbove)),
+            action("下に行を挿入", Box::new(InsertRowBelow)),
+            action("行を削除", Box::new(DeleteRows)),
+        ]
+    };
+    let columns = || {
+        vec![
+            action("左に列を挿入", Box::new(InsertColumnLeft)),
+            action("右に列を挿入", Box::new(InsertColumnRight)),
+            action("列を削除", Box::new(DeleteColumns)),
+        ]
+    };
+    // A selected row or column is a perfectly good range to copy or clear, so
+    // the clipboard is offered on every target rather than only on a cell.
+    let clipboard = || {
+        vec![
+            action("切り取り", Box::new(CutCells)),
+            action("コピー", Box::new(CopyCells)),
+            action("貼り付け", Box::new(PasteCells)),
+            action("内容を消去", Box::new(ClearCells)),
+        ]
+    };
+    let colors = || {
+        vec![
+            GridMenuEntry::Colors {
+                label: "塗りつぶしの色",
+                field: StyleField::Fill,
+            },
+            GridMenuEntry::Colors {
+                label: "文字の色",
+                field: StyleField::Text,
+            },
+            action("色をクリア", Box::new(ClearCellColors)),
+        ]
+    };
+    let sorting = |col: AnyColumn| {
+        vec![
+            GridMenuEntry::Sort {
+                label: "昇順で並べ替え",
+                col,
+                direction: Some(SortDirection::Asc),
+            },
+            GridMenuEntry::Sort {
+                label: "降順で並べ替え",
+                col,
+                direction: Some(SortDirection::Desc),
+            },
+            GridMenuEntry::Sort {
+                label: "並べ替えを解除",
+                col,
+                direction: None,
+            },
+            GridMenuEntry::Filter {
+                label: "絞り込み…",
+                col,
+            },
+        ]
+    };
+
+    let groups = match target {
+        // The cell menu keeps the order it has always had: it is the one the
+        // keyboard opens as well, where nothing was clicked.
+        GridMenuTarget::Cell => vec![
+            vec![
+                action("切り取り", Box::new(CutCells)),
+                action("コピー", Box::new(CopyCells)),
+                action("貼り付け", Box::new(PasteCells)),
+            ],
+            rows(),
+            columns(),
+            colors(),
+            vec![action("内容を消去", Box::new(ClearCells))],
+            vec![action("選択したセルを比較", Box::new(DiffSelectedCells))],
+        ],
+        GridMenuTarget::RowHeader => vec![rows(), clipboard(), colors()],
+        GridMenuTarget::ColumnHeader(col) => {
+            vec![columns(), sorting(col), clipboard(), colors()]
+        }
+    };
+
+    let mut entries = Vec::new();
+    for group in groups {
+        if !entries.is_empty() {
+            entries.push(GridMenuEntry::Separator);
+        }
+        entries.extend(group);
+    }
+    entries
 }
 
 /// Repeats a single pasted value across the selection, the way a spreadsheet
@@ -340,7 +492,16 @@ impl TabularDataPreviewPane {
 
     ///// Clipboard /////
 
+    /// Copies the selection as a block of tab separated text.
+    ///
+    /// Blocks of different shapes have no one block of text between them, so a
+    /// multiple selection is refused outright, exactly as Excel refuses it.
+    /// Excel's one exception - blocks that happen to line up along a shared set
+    /// of rows or columns are joined - is deliberately not taken over.
     pub(crate) fn copy_cells(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.refuse_on_multiple_ranges(cx) {
+            return false;
+        }
         let rect = self.selection_rect();
         if !self.within_cell_budget(rect.cell_count(), cx) {
             return false;
@@ -364,20 +525,14 @@ impl TabularDataPreviewPane {
         }
     }
 
+    /// Empties every selected cell. Unlike copying, this has the same meaning
+    /// on every block of a multiple selection, so it covers them all - with the
+    /// overlap between two blocks counted and written once.
     pub(crate) fn clear_selected_cells(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let rect = self.selection_rect();
-        if !self.within_cell_budget(rect.cell_count(), cx) {
+        if !self.within_cell_budget(self.selection_area(), cx) {
             return;
         }
-        let mut cells = Vec::new();
-        for row_index in rect.first_row..=rect.last_row {
-            let Some(row_ref) = self.row_ref(GridRow::from_index(row_index)) else {
-                continue;
-            };
-            for col in rect.cols() {
-                cells.push((row_ref, AnyColumn(col)));
-            }
-        }
+        let cells = self.all_selected_cells();
         if cells.is_empty() {
             return;
         }
@@ -450,7 +605,14 @@ impl TabularDataPreviewPane {
     /// first selected row or below the last one, which is what a spreadsheet
     /// does. Under a sort the new rows land next to the data row the selected
     /// display row stands for, so they appear where the user pointed.
-    fn insert_rows(&mut self, above: bool, cx: &mut Context<Self>) {
+    ///
+    /// Only the block the active cell is in counts, because the one place the
+    /// rows go has to be one block's edge.
+    fn insert_rows(&mut self, above: bool, window: &mut Window, cx: &mut Context<Self>) {
+        // A cell left open for input is addressed by the data row it started on,
+        // which the rows about to be inserted renumber: committing first puts
+        // what was typed in the row the user typed it into.
+        self.commit_editing(window, cx);
         let rect = self.selection_rect();
         let count = rect.last_row - rect.first_row + 1;
         let anchor_row = GridRow::from_index(if above { rect.first_row } else { rect.last_row });
@@ -480,12 +642,16 @@ impl TabularDataPreviewPane {
         };
         self.grid.cursor = GridCell::new(GridRow::from_index(target), self.grid.cursor.col);
         self.grid.anchor = None;
+        self.grid.previous_ranges.clear();
         cx.notify();
     }
 
-    fn delete_selected_rows(&mut self, cx: &mut Context<Self>) {
-        let rect = self.selection_rect();
-        let rows = self.selected_row_refs();
+    /// Deletes every row the selection touches, whichever block it is in, as one
+    /// undo step. Rows two overlapping blocks share are deleted once.
+    fn delete_selected_rows(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.commit_editing(window, cx);
+        let first_row = self.selection_bounding_rect().first_row;
+        let rows = self.all_selected_row_refs();
         if rows.is_empty() {
             return;
         }
@@ -497,15 +663,19 @@ impl TabularDataPreviewPane {
         self.record_style_shift(transaction_id, StyleShift::delete_rows(physical_rows), cx);
 
         self.grid.cursor = GridCell::new(
-            GridRow::from_index(rect.first_row.max(self.first_row_index())),
+            GridRow::from_index(first_row.max(self.first_row_index())),
             self.grid.cursor.col,
         );
         self.grid.anchor = None;
+        self.grid.previous_ranges.clear();
         self.grid.selection_kind = GridSelectionKind::Cells;
         cx.notify();
     }
 
-    fn insert_columns(&mut self, left: bool, cx: &mut Context<Self>) {
+    /// Only the block the active cell is in counts, for the same reason as
+    /// [`Self::insert_rows`].
+    fn insert_columns(&mut self, left: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.commit_editing(window, cx);
         let rect = self.selection_rect();
         let count = rect.last_col - rect.first_col + 1;
         let index = if left {
@@ -525,12 +695,16 @@ impl TabularDataPreviewPane {
 
         self.grid.cursor = GridCell::new(self.grid.cursor.row, AnyColumn(index));
         self.grid.anchor = None;
+        self.grid.previous_ranges.clear();
         cx.notify();
     }
 
-    fn delete_selected_columns(&mut self, cx: &mut Context<Self>) {
-        let rect = self.selection_rect();
-        let cols: Vec<AnyColumn> = rect.cols().map(AnyColumn).collect();
+    /// Deletes every column the selection touches, whichever block it is in, as
+    /// one undo step.
+    fn delete_selected_columns(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.commit_editing(window, cx);
+        let first_col = self.selection_bounding_rect().first_col;
+        let cols = self.all_selected_cols();
         if cols.is_empty() {
             return;
         }
@@ -545,9 +719,25 @@ impl TabularDataPreviewPane {
             cx,
         );
 
-        self.grid.cursor = GridCell::new(self.grid.cursor.row, AnyColumn(rect.first_col));
+        self.grid.cursor = GridCell::new(self.grid.cursor.row, AnyColumn(first_col));
         self.grid.anchor = None;
+        self.grid.previous_ranges.clear();
         self.grid.selection_kind = GridSelectionKind::Cells;
+        cx.notify();
+    }
+
+    /// Sorts by `col_idx`, which is the column whose heading menu was opened
+    /// rather than the caret's: a right click inside the selection keeps that
+    /// selection, so the caret can be sitting in another column entirely.
+    fn sort_column(
+        &mut self,
+        col_idx: AnyColumn,
+        direction: Option<SortDirection>,
+        cx: &mut Context<Self>,
+    ) {
+        self.engine.applied_sorting =
+            direction.map(|direction| AppliedSorting { col_idx, direction });
+        self.apply_sort(cx);
         cx.notify();
     }
 
@@ -561,37 +751,54 @@ impl TabularDataPreviewPane {
 
     pub(crate) fn deploy_grid_context_menu(
         &mut self,
+        target: GridMenuTarget,
         position: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let dispatch_context = self.grid.cell_editor.focus_handle(cx);
-        let view = cx.entity();
+        // Weak, because the menu this builds is stored back on the grid: a
+        // strong handle inside one of its entries would close the loop, and a
+        // menu left open when the tab is closed would keep the grid, its buffer
+        // and its editor alive for as long as the window.
+        let view = cx.entity().downgrade();
         let menu = ContextMenu::build(window, cx, move |menu, _window, _cx| {
-            let fill_view = view.clone();
-            let text_view = view;
-            menu.context(dispatch_context)
-                .action("切り取り", Box::new(CutCells))
-                .action("コピー", Box::new(CopyCells))
-                .action("貼り付け", Box::new(PasteCells))
-                .separator()
-                .action("上に行を挿入", Box::new(InsertRowAbove))
-                .action("下に行を挿入", Box::new(InsertRowBelow))
-                .action("行を削除", Box::new(DeleteRows))
-                .separator()
-                .action("左に列を挿入", Box::new(InsertColumnLeft))
-                .action("右に列を挿入", Box::new(InsertColumnRight))
-                .action("列を削除", Box::new(DeleteColumns))
-                .separator()
-                .submenu("塗りつぶしの色", move |menu, _window, _cx| {
-                    extend_with_color_palette(menu, &fill_view, StyleField::Fill)
-                })
-                .submenu("文字の色", move |menu, _window, _cx| {
-                    extend_with_color_palette(menu, &text_view, StyleField::Text)
-                })
-                .action("色をクリア", Box::new(ClearCellColors))
-                .separator()
-                .action("内容を消去", Box::new(ClearCells))
+            let mut menu = menu.context(dispatch_context);
+            for entry in grid_context_menu_entries(target) {
+                menu = match entry {
+                    GridMenuEntry::Separator => menu.separator(),
+                    GridMenuEntry::Action { label, action } => menu.action(label, action),
+                    GridMenuEntry::Colors { label, field } => {
+                        let view = view.clone();
+                        menu.submenu(label, move |menu, _window, _cx| {
+                            extend_with_color_palette(menu, &view, field)
+                        })
+                    }
+                    GridMenuEntry::Filter { label, col } => {
+                        let view = view.clone();
+                        menu.entry(label, None, move |window, cx| {
+                            view.update(cx, |this, cx| {
+                                this.open_filter_menu_for_column(col, window, cx);
+                            })
+                            .ok();
+                        })
+                    }
+                    GridMenuEntry::Sort {
+                        label,
+                        col,
+                        direction,
+                    } => {
+                        let view = view.clone();
+                        menu.entry(label, None, move |_window, cx| {
+                            view.update(cx, |this, cx| {
+                                this.sort_column(col, direction, cx);
+                            })
+                            .ok();
+                        })
+                    }
+                };
+            }
+            menu
         });
 
         window.focus(&menu.focus_handle(cx), cx);
@@ -600,7 +807,13 @@ impl TabularDataPreviewPane {
             window,
             |this, _menu, _event: &DismissEvent, window, cx| {
                 this.grid.context_menu.take();
-                this.focus_cell_editor(window, cx);
+                // An entry of this menu may have opened the column's filter
+                // popover on its way out, and that popover closes itself the
+                // moment it loses the focus: taking the caret back here would
+                // shut it before the user saw it.
+                if !this.filter_menu_handle.is_deployed() {
+                    this.focus_cell_editor(window, cx);
+                }
                 cx.notify();
             },
         );
@@ -618,7 +831,15 @@ impl TabularDataPreviewPane {
     }
 
     /// Opens the grid's menu from the keyboard, under the caret's cell.
+    ///
+    /// Nothing was clicked, so what the selection covers stands in for it: a
+    /// selected row asks for the row menu just as its heading would.
     fn deploy_context_menu_at_caret(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let target = match self.grid.selection_kind {
+            GridSelectionKind::Rows => GridMenuTarget::RowHeader,
+            GridSelectionKind::Columns => GridMenuTarget::ColumnHeader(self.grid.cursor.col),
+            GridSelectionKind::Cells | GridSelectionKind::All => GridMenuTarget::Cell,
+        };
         let generation = self.grid.render_generation;
         let position = self
             .grid
@@ -632,7 +853,7 @@ impl TabularDataPreviewPane {
                     .map(|bounds| bounds.origin)
             })
             .unwrap_or_else(|| point(px(0.), px(0.)));
-        self.deploy_grid_context_menu(position, window, cx);
+        self.deploy_grid_context_menu(target, position, window, cx);
     }
 
     /// True while an in place edit should keep a left/right style key for its
@@ -690,34 +911,34 @@ impl TabularDataPreviewPane {
             .on_action(cx.listener(|this, _: &InsertLineBreak, window, cx| {
                 this.insert_line_break(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &InsertRowAbove, _window, cx| {
-                this.insert_rows(true, cx);
+            .on_action(cx.listener(|this, _: &InsertRowAbove, window, cx| {
+                this.insert_rows(true, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &InsertRowBelow, _window, cx| {
-                this.insert_rows(false, cx);
+            .on_action(cx.listener(|this, _: &InsertRowBelow, window, cx| {
+                this.insert_rows(false, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &DeleteRows, _window, cx| {
-                this.delete_selected_rows(cx);
+            .on_action(cx.listener(|this, _: &DeleteRows, window, cx| {
+                this.delete_selected_rows(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &InsertColumnLeft, _window, cx| {
-                this.insert_columns(true, cx);
+            .on_action(cx.listener(|this, _: &InsertColumnLeft, window, cx| {
+                this.insert_columns(true, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &InsertColumnRight, _window, cx| {
-                this.insert_columns(false, cx);
+            .on_action(cx.listener(|this, _: &InsertColumnRight, window, cx| {
+                this.insert_columns(false, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &DeleteColumns, _window, cx| {
-                this.delete_selected_columns(cx);
+            .on_action(cx.listener(|this, _: &DeleteColumns, window, cx| {
+                this.delete_selected_columns(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &InsertRowsOrColumns, _window, cx| {
+            .on_action(cx.listener(|this, _: &InsertRowsOrColumns, window, cx| {
                 match this.grid.selection_kind {
-                    GridSelectionKind::Columns => this.insert_columns(true, cx),
-                    _ => this.insert_rows(true, cx),
+                    GridSelectionKind::Columns => this.insert_columns(true, window, cx),
+                    _ => this.insert_rows(true, window, cx),
                 }
             }))
-            .on_action(cx.listener(|this, _: &DeleteRowsOrColumns, _window, cx| {
+            .on_action(cx.listener(|this, _: &DeleteRowsOrColumns, window, cx| {
                 match this.grid.selection_kind {
-                    GridSelectionKind::Columns => this.delete_selected_columns(cx),
-                    _ => this.delete_selected_rows(cx),
+                    GridSelectionKind::Columns => this.delete_selected_columns(window, cx),
+                    _ => this.delete_selected_rows(window, cx),
                 }
             }))
             .on_action(cx.listener(|this, _: &ClearCells, window, cx| {
@@ -754,6 +975,12 @@ impl TabularDataPreviewPane {
             }))
             .on_action(cx.listener(|this, _: &ClearCellColors, _window, cx| {
                 this.set_selection_color(StyleField::Both, CellColor::None, cx);
+            }))
+            .on_action(cx.listener(|this, _: &FillDown, _window, cx| {
+                this.fill_within_selection(true, cx);
+            }))
+            .on_action(cx.listener(|this, _: &FillRight, _window, cx| {
+                this.fill_within_selection(false, cx);
             }))
     }
 
@@ -986,13 +1213,21 @@ impl TabularDataPreviewPane {
                 this.commit_editing(window, cx);
                 cx.propagate();
             }))
+            // The modifiers are read here rather than where the drag started,
+            // because a fill or a border drag only becomes a copy from the
+            // secondary key being held as the button comes up, the way Excel
+            // reads it.
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(|this, _event, _window, _cx| this.end_drag()),
+                cx.listener(|this, event: &MouseUpEvent, _window, cx| {
+                    this.end_drag(event.modifiers, cx);
+                }),
             )
             .on_mouse_up_out(
                 MouseButton::Left,
-                cx.listener(|this, _event, _window, _cx| this.end_drag()),
+                cx.listener(|this, event: &MouseUpEvent, _window, cx| {
+                    this.end_drag(event.modifiers, cx);
+                }),
             );
         Self::swallow_text_actions(element, cx)
     }
@@ -1072,7 +1307,7 @@ impl TabularDataPreviewPane {
 pub(crate) mod tests {
     use super::*;
     use crate::{
-        grid::{GridRow, ROWS_PER_PAGE_BEFORE_LAYOUT},
+        grid::{GridRow, MULTI_RANGE_REFUSAL, ROWS_PER_PAGE_BEFORE_LAYOUT, SelectionChange},
         types::DisplayRow,
     };
     use editor::Editor;
@@ -2133,5 +2368,613 @@ c,d"
             );
             assert!(body_row_is_visible(pane, page));
         });
+    }
+
+    ///// Multiple selections /////
+
+    fn body_cell(row: usize, col: usize) -> GridCell {
+        GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+    }
+
+    /// Selects `blocks`, the first one on its own and every later one added
+    /// beside it, which is what Ctrl+dragging over each of them does.
+    fn select_blocks(
+        pane: &Entity<TabularDataPreviewPane>,
+        blocks: &[(GridCell, GridCell)],
+        cx: &mut VisualTestContext,
+    ) {
+        pane.update(cx, |pane, cx| {
+            for (index, (from, to)) in blocks.iter().enumerate() {
+                let start = if index == 0 {
+                    SelectionChange::Replace
+                } else {
+                    SelectionChange::Add
+                };
+                pane.change_cell_selection(*from, start, cx);
+                pane.change_cell_selection(*to, SelectionChange::Extend, cx);
+            }
+        });
+    }
+
+    #[gpui::test]
+    async fn test_copying_a_multiple_selection_is_refused(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(
+            "a,b,c
+1,2,3
+4,5,6",
+            cx,
+        )
+        .await;
+
+        cx.update(|_window, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string("untouched".to_owned()));
+        });
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(0, 0)),
+                (body_cell(1, 2), body_cell(1, 2)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(CopyCells);
+        cx.run_until_parked();
+
+        let clipboard = cx.update(|_window, cx| cx.read_from_clipboard());
+        assert_eq!(
+            clipboard.and_then(|item| item.text()),
+            Some("untouched".to_owned()),
+            "two blocks have no one block of text to put on the clipboard"
+        );
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.status_message.as_deref(),
+                Some(MULTI_RANGE_REFUSAL)
+            );
+        });
+    }
+
+    /// Cutting copies first, so the refusal has to stop it before it empties
+    /// anything.
+    #[gpui::test]
+    async fn test_cutting_a_multiple_selection_changes_nothing(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid(
+            "a,b,c
+1,2,3
+4,5,6",
+            cx,
+        )
+        .await;
+
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(0, 0)),
+                (body_cell(1, 2), body_cell(1, 2)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(CutCells);
+        cx.run_until_parked();
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "a,b,c
+1,2,3
+4,5,6"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_clearing_empties_every_selected_block(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid(
+            "a,b,c
+1,2,3
+4,5,6
+7,8,9",
+            cx,
+        )
+        .await;
+
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(0, 1)),
+                (body_cell(2, 2), body_cell(2, 2)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(ClearCells);
+        cx.run_until_parked();
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "a,b,c
+,,3
+4,5,6
+7,8,"
+        );
+
+        // Both blocks went in as one batch of edits, so one undo takes both back.
+        cx.dispatch_action(editor::actions::Undo);
+        cx.run_until_parked();
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "a,b,c
+1,2,3
+4,5,6
+7,8,9"
+        );
+    }
+
+    /// The cells two blocks share are written once, so the whole operation is
+    /// still a single undo step and still counts once against the budget.
+    #[gpui::test]
+    async fn test_clearing_overlapping_blocks_is_one_undo_step(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid(
+            "a,b,c
+1,2,3
+4,5,6
+7,8,9",
+            cx,
+        )
+        .await;
+
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(1, 1)),
+                (body_cell(1, 1), body_cell(2, 2)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(ClearCells);
+        cx.run_until_parked();
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "a,b,c
+,,3
+,,
+7,,"
+        );
+
+        cx.dispatch_action(editor::actions::Undo);
+        cx.run_until_parked();
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "a,b,c
+1,2,3
+4,5,6
+7,8,9"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_deleting_rows_takes_every_selected_block(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid(
+            "h
+a
+b
+c
+d
+e",
+            cx,
+        )
+        .await;
+
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(0, 0)),
+                (body_cell(2, 0), body_cell(3, 0)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(DeleteRows);
+        cx.run_until_parked();
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "h
+b
+e"
+        );
+        pane.read_with(&cx, |pane, _| {
+            assert!(!pane.has_multiple_selection_ranges());
+        });
+
+        cx.dispatch_action(editor::actions::Undo);
+        cx.run_until_parked();
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "h
+a
+b
+c
+d
+e"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_deleting_columns_takes_every_selected_block(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid(
+            "a,b,c,d,e
+1,2,3,4,5",
+            cx,
+        )
+        .await;
+
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(0, 0)),
+                (body_cell(0, 3), body_cell(0, 4)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(DeleteColumns);
+        cx.run_until_parked();
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "b,c
+2,3"
+        );
+
+        cx.dispatch_action(editor::actions::Undo);
+        cx.run_until_parked();
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "a,b,c,d,e
+1,2,3,4,5"
+        );
+    }
+
+    /// Pasting has a corner to start from rather than a shape to cover, so it
+    /// goes into the block the active cell is in and leaves the rest alone.
+    #[gpui::test]
+    async fn test_pasting_lands_in_the_block_of_the_active_cell(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid(
+            "a,b,c
+1,2,3
+4,5,6",
+            cx,
+        )
+        .await;
+
+        cx.update(|_window, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string("z".to_owned()));
+        });
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(0, 0)),
+                (body_cell(1, 2), body_cell(1, 2)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(PasteCells);
+        cx.run_until_parked();
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "a,b,c
+1,2,3
+4,5,z"
+        );
+    }
+
+    /// Inserting rows needs one edge to insert at, so it takes the block the
+    /// active cell is in - and the count of rows from that block alone.
+    #[gpui::test]
+    async fn test_inserting_rows_uses_the_block_of_the_active_cell(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid(
+            "h
+a
+b
+c", cx,
+        )
+        .await;
+
+        select_blocks(
+            &pane,
+            &[
+                (body_cell(0, 0), body_cell(0, 0)),
+                (body_cell(2, 0), body_cell(2, 0)),
+            ],
+            &mut cx,
+        );
+        cx.dispatch_action(InsertRowAbove);
+        cx.run_until_parked();
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "h
+a
+b
+
+c"
+        );
+    }
+
+    ///// The structural actions and an open cell /////
+
+    /// The toolbar's and the keyboard's "insert a row" address the cell left
+    /// open for input by the data row it was opened on, and inserting hands that
+    /// index to the blank row: what was typed has to be written out first, or it
+    /// lands one row down from where the user typed it.
+    #[gpui::test]
+    async fn test_the_insert_row_action_writes_out_the_open_cell_first(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("h,n\na,1\nb,2", cx).await;
+
+        cx.simulate_keystrokes("down down");
+        cx.simulate_input("zzz");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| assert!(pane.grid.editing.is_some()));
+
+        cx.dispatch_action(InsertRowAbove);
+        cx.run_until_parked();
+
+        // The caret was on the second body row, so the blank row goes above that
+        // row and what was typed stays with the row it was typed into.
+        assert_eq!(buffer_text(&editor, &mut cx), "h,n\na,1\n,\nzzz,2");
+    }
+
+    /// The same for deleting: the open cell's row is about to stop existing, and
+    /// every data row under it takes a new index.
+    #[gpui::test]
+    async fn test_the_delete_rows_action_writes_out_the_open_cell_first(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("h,n\na,1\nb,2\nc,3", cx).await;
+
+        cx.simulate_keystrokes("down");
+        cx.simulate_input("zzz");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| assert!(pane.grid.editing.is_some()));
+
+        cx.dispatch_action(DeleteRows);
+        cx.run_until_parked();
+
+        // What was typed went into the row it was typed in, and that row is the
+        // one the delete then took.
+        assert_eq!(buffer_text(&editor, &mut cx), "h,n\nb,2\nc,3");
+
+        cx.dispatch_action(editor::actions::Undo);
+        cx.run_until_parked();
+        assert_eq!(buffer_text(&editor, &mut cx), "h,n\nzzz,1\nb,2\nc,3");
+    }
+
+    #[gpui::test]
+    async fn test_the_insert_column_action_writes_out_the_open_cell_first(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("h,n\na,1", cx).await;
+
+        cx.simulate_keystrokes("down right");
+        cx.simulate_input("zzz");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| assert!(pane.grid.editing.is_some()));
+
+        cx.dispatch_action(InsertColumnLeft);
+        cx.run_until_parked();
+
+        assert_eq!(buffer_text(&editor, &mut cx), "h,,n\na,,zzz");
+    }
+
+    ///// Right clicking a heading /////
+
+    /// A cell range that happens to cross a row says nothing about that row, so
+    /// the heading's menu - whose row entries act on the selection - gets the row
+    /// that was actually clicked.
+    #[gpui::test]
+    async fn test_right_clicking_a_row_outside_a_row_selection_takes_that_row(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, _editor, mut cx) = open_grid("h\na\nb\nc", cx).await;
+
+        select_blocks(&pane, &[(body_cell(0, 0), body_cell(2, 0))], &mut cx);
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.on_row_mouse_down(
+                GridRow::Body(DisplayRow(1)),
+                MouseButton::Right,
+                gpui::Modifiers::none(),
+                point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.selection_kind, GridSelectionKind::Rows);
+            assert_eq!(pane.selected_rows(), vec![GridRow::Body(DisplayRow(1))]);
+        });
+    }
+
+    /// Rows picked as rows are meant to be acted on together, so a right click
+    /// inside them keeps them.
+    #[gpui::test]
+    async fn test_right_clicking_inside_a_row_selection_keeps_it(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("h\na\nb\nc", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_row_selection(GridRow::Body(DisplayRow(0)), SelectionChange::Replace, cx);
+            pane.change_row_selection(GridRow::Body(DisplayRow(2)), SelectionChange::Extend, cx);
+        });
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.on_row_mouse_down(
+                GridRow::Body(DisplayRow(1)),
+                MouseButton::Right,
+                gpui::Modifiers::none(),
+                point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.selected_rows(),
+                vec![
+                    GridRow::Body(DisplayRow(0)),
+                    GridRow::Body(DisplayRow(1)),
+                    GridRow::Body(DisplayRow(2)),
+                ]
+            );
+        });
+    }
+
+    /// The same for a column heading, and for a column added with Ctrl: a block
+    /// of columns picked as columns survives a right click inside it.
+    #[gpui::test]
+    async fn test_right_clicking_a_column_outside_a_column_selection_takes_it(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3", cx).await;
+
+        select_blocks(&pane, &[(body_cell(0, 0), body_cell(0, 2))], &mut cx);
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.on_column_mouse_down(
+                AnyColumn(1),
+                MouseButton::Right,
+                gpui::Modifiers::none(),
+                point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.selection_kind, GridSelectionKind::Columns);
+            assert_eq!(pane.all_selected_cols(), vec![AnyColumn(1)]);
+        });
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_column_selection(AnyColumn(0), SelectionChange::Replace, cx);
+            pane.change_column_selection(AnyColumn(2), SelectionChange::Add, cx);
+        });
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.on_column_mouse_down(
+                AnyColumn(2),
+                MouseButton::Right,
+                gpui::Modifiers::none(),
+                point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.all_selected_cols(),
+                vec![AnyColumn(0), AnyColumn(2)],
+                "a column added with Ctrl is still a column selection"
+            );
+        });
+    }
+
+    /// The menu a right click builds holds the grid, and the grid holds the
+    /// menu: a strong handle in one of its entries keeps the whole pane, its
+    /// buffer and its editor alive for as long as the window.
+    #[gpui::test]
+    async fn test_closing_the_grid_releases_it_despite_an_open_context_menu(
+        cx: &mut TestAppContext,
+    ) {
+        use workspace::SaveIntent;
+
+        let (workspace, pane, _editor, mut cx) = open_grid_in_workspace("a,b\nc,d", cx).await;
+        cx.run_until_parked();
+
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.deploy_grid_context_menu(
+                GridMenuTarget::ColumnHeader(AnyColumn(0)),
+                point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                pane.grid.context_menu.is_some(),
+                "the menu has to be open, or nothing holds the grid"
+            );
+        });
+
+        let item_id = pane.entity_id();
+        let released = pane.downgrade();
+        drop(pane);
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.active_pane().update(cx, |pane, cx| {
+                    pane.close_item_by_id(item_id, SaveIntent::Skip, window, cx)
+                })
+            })
+            .await
+            .expect("closing the grid tab should succeed");
+        cx.run_until_parked();
+
+        released.assert_released();
+    }
+
+    /// The two entries the four parts of this feature only earn together: the
+    /// column heading is where a user who never found the arrow looks for
+    /// filtering, and the cell menu is where a selection is compared.
+    #[test]
+    fn test_the_menus_offer_filtering_and_comparing() {
+        let labels = |target| {
+            grid_context_menu_entries(target)
+                .into_iter()
+                .filter_map(|entry| match entry {
+                    GridMenuEntry::Separator => None,
+                    GridMenuEntry::Action { label, .. }
+                    | GridMenuEntry::Colors { label, .. }
+                    | GridMenuEntry::Sort { label, .. }
+                    | GridMenuEntry::Filter { label, .. } => Some(label),
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let columns = labels(GridMenuTarget::ColumnHeader(AnyColumn(1)));
+        let sorting = columns
+            .iter()
+            .position(|label| *label == "並べ替えを解除")
+            .expect("the column menu should offer sorting");
+        let filtering = columns
+            .iter()
+            .position(|label| *label == "絞り込み…")
+            .expect("the column menu should offer filtering");
+        assert_eq!(
+            filtering,
+            sorting + 1,
+            "filtering belongs with sorting, after it: {columns:?}"
+        );
+        assert!(
+            !labels(GridMenuTarget::RowHeader).contains(&"絞り込み…"),
+            "a row heading has no column to filter"
+        );
+
+        let cell = labels(GridMenuTarget::Cell);
+        assert_eq!(
+            cell.last(),
+            Some(&"選択したセルを比較"),
+            "comparing is the cell menu's last entry: {cell:?}"
+        );
+    }
+
+    /// The column the filter entry carries is the one that was clicked, the way
+    /// the sorting entries already work.
+    #[test]
+    fn test_the_filter_entry_carries_the_clicked_column() {
+        let filter_columns = |target| {
+            grid_context_menu_entries(target)
+                .into_iter()
+                .filter_map(|entry| match entry {
+                    GridMenuEntry::Filter { col, .. } => Some(col),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            filter_columns(GridMenuTarget::ColumnHeader(AnyColumn(3))),
+            vec![AnyColumn(3)]
+        );
+        assert!(filter_columns(GridMenuTarget::Cell).is_empty());
     }
 }

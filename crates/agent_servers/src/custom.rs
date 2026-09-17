@@ -13,11 +13,61 @@ use project::{
 use settings::{AgentConfigOptionValue, SettingsStore, update_settings_file};
 use std::{rc::Rc, sync::Arc};
 use ui::IconName;
+use util::ResultExt as _;
 
 pub const GEMINI_ID: &str = "gemini";
 pub const CLAUDE_AGENT_ID: &str = "claude-acp";
 pub const CODEX_ID: &str = "codex-acp";
 pub const CURSOR_ID: &str = "cursor";
+
+/// ADR-F53: the ACP Claude agent's own sign-in, which opens `/login` in a
+/// terminal and stores a Claude subscription's credentials.
+pub const CLAUDE_SUBSCRIPTION_AUTH_METHOD: &str = "claude-login";
+
+/// ADR-F53: whether this fork restricts `agent_id` to an API key, so that the
+/// card that would ask for a sign-in says where a subscription is used
+/// instead.
+pub fn is_api_key_only_agent(agent_id: &str) -> bool {
+    agent_id == CLAUDE_AGENT_ID
+}
+
+/// ADR-F53: whether an authentication method of `agent_id` signs in with a
+/// Claude subscription, which this route may not use.
+///
+/// The ACP Claude agent drives the Agent SDK from this IDE's harness, and a
+/// Free / Pro / Max sign-in is scoped to Claude Code and Anthropic's own apps,
+/// so the method is neither offered nor started here; an API key reaches the
+/// agent through its `env` instead, needing no method at all. Anything that
+/// reads as a sign-in rather than a key — the vendor may rename or add one —
+/// is refused as well, so that a new version cannot quietly put a
+/// subscription back on this route. Other agents are left alone: what their
+/// vendors permit is their own terms' business.
+pub fn is_subscription_auth_method(agent_id: &str, method_id: &str) -> bool {
+    if !is_api_key_only_agent(agent_id) {
+        return false;
+    }
+    method_id == CLAUDE_SUBSCRIPTION_AUTH_METHOD
+        || method_id == "login"
+        || method_id.ends_with("-login")
+        || method_id.contains("oauth")
+        || method_id.contains("subscription")
+}
+
+/// ADR-F53: whether the agent about to be started is pointed at **this**
+/// machine's copy of the fork's own `CLAUDE_CONFIG_DIR`.
+///
+/// [`project::agent_sandbox::claude_acp_host_config_dir`] is a path on the
+/// machine this IDE runs on, so it is named only for an agent that runs here.
+/// One that runs on a host this project is connected to is pointed at that
+/// host's own folder where its command is resolved, since a path of this
+/// machine's would name nothing there.
+fn points_at_this_machines_claude_folder(
+    agent_id: &str,
+    is_registry_agent: bool,
+    runs_on_this_machine: bool,
+) -> bool {
+    agent_id == CLAUDE_AGENT_ID && is_registry_agent && runs_on_this_machine
+}
 
 /// A generic agent server implementation for custom user-defined agents
 pub struct CustomAgentServer {
@@ -226,10 +276,34 @@ impl AgentServer for CustomAgentServer {
         if delegate.store.read(cx).no_browser() {
             extra_env.insert("NO_BROWSER".to_owned(), "1".to_owned());
         }
+        let claude_takes_this_machines_folder = points_at_this_machines_claude_folder(
+            agent_id.as_ref(),
+            is_registry_agent,
+            !project.read(cx).is_via_remote_server(),
+        );
+        let fs = project.read(cx).fs().clone();
         if is_registry_agent {
             match agent_id.as_ref() {
-                CLAUDE_AGENT_ID => {
-                    extra_env.insert("ANTHROPIC_API_KEY".into(), "".into());
+                // ADR-F53: upstream blanked `ANTHROPIC_API_KEY` here to push
+                // the agent onto its OAuth sign-in. This route is API-key
+                // only, so the key is left alone — the sandbox builds its
+                // environment from nothing anyway, and there the key comes
+                // from the agent's settings.
+                //
+                // The folder is the fork's own even outside the sandbox, so
+                // that a subscription the official CLI is signed in with is
+                // not picked up here. The sandbox lays its per-project folder
+                // over this (`profile.environment`), and the agent's own
+                // settings override both. An agent on a host this project is
+                // connected to is named its folder there, by the host that
+                // resolves its command.
+                CLAUDE_AGENT_ID if claude_takes_this_machines_folder => {
+                    extra_env.insert(
+                        "CLAUDE_CONFIG_DIR".into(),
+                        project::agent_sandbox::claude_acp_host_config_dir()
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
                 }
                 CODEX_ID => {
                     if let Ok(api_key) = std::env::var("CODEX_API_KEY") {
@@ -266,6 +340,15 @@ impl AgentServer for CustomAgentServer {
                 if let Some(api_key) = cx.update(api_key_for_gemini_cli).await.ok() {
                     extra_env.insert("GEMINI_API_KEY".into(), api_key);
                 }
+            }
+            // The agent looks its configuration folder up rather than creating
+            // it in every version, so the folder it is pointed at is made
+            // here. Failing to make it is not fatal: the agent still starts,
+            // and its own message says what it could not write.
+            if claude_takes_this_machines_folder {
+                fs.create_dir(&project::agent_sandbox::claude_acp_host_config_dir())
+                    .await
+                    .log_err();
             }
             let command = store
                 .update(cx, |store, cx| {
@@ -410,6 +493,63 @@ mod tests {
                 cx,
             );
         });
+    }
+
+    /// ADR-F53: the ACP Claude agent's sign-in stores a Claude subscription's
+    /// credentials for the Agent SDK, which this route may not use, so it is
+    /// neither offered nor started. Everything else — the same agent's other
+    /// methods, and every other agent's — is left as the vendor advertises it.
+    #[test]
+    fn only_the_acp_claudes_subscription_sign_in_is_refused() {
+        assert!(is_subscription_auth_method(
+            CLAUDE_AGENT_ID,
+            CLAUDE_SUBSCRIPTION_AUTH_METHOD
+        ));
+        for renamed in ["login", "claude-code-login", "claude-oauth", "subscription"] {
+            assert!(
+                is_subscription_auth_method(CLAUDE_AGENT_ID, renamed),
+                "a sign-in under another name is refused too: {renamed}"
+            );
+        }
+        for kept in ["anthropic-api-key", "api-key", "bedrock", "vertex"] {
+            assert!(
+                !is_subscription_auth_method(CLAUDE_AGENT_ID, kept),
+                "an API-key method is what this route is for: {kept}"
+            );
+        }
+        for other_agent in [CODEX_ID, GEMINI_ID, CURSOR_ID, "my-custom-agent"] {
+            assert!(
+                !is_subscription_auth_method(other_agent, CLAUDE_SUBSCRIPTION_AUTH_METHOD),
+                "another vendor's terms are its own business: {other_agent}"
+            );
+        }
+    }
+
+    /// ADR-F53: the folder that keeps the official CLI's sign-in off this
+    /// route is a path on the machine the agent runs on, so this side names it
+    /// only for an agent it starts itself. A project on a host it connects to
+    /// is left to that host, which names its own folder.
+    #[test]
+    fn only_an_acp_claude_on_this_machine_takes_this_machines_folder() {
+        assert!(points_at_this_machines_claude_folder(
+            CLAUDE_AGENT_ID,
+            true,
+            true
+        ));
+        assert!(
+            !points_at_this_machines_claude_folder(CLAUDE_AGENT_ID, true, false),
+            "a path of this machine's would name nothing on the host the agent runs on"
+        );
+        assert!(
+            !points_at_this_machines_claude_folder(CLAUDE_AGENT_ID, false, true),
+            "a command the user configured under the same name is not the registry's agent"
+        );
+        for other_agent in [CODEX_ID, GEMINI_ID, CURSOR_ID] {
+            assert!(
+                !points_at_this_machines_claude_folder(other_agent, true, true),
+                "another agent keeps its own folder: {other_agent}"
+            );
+        }
     }
 
     #[gpui::test]

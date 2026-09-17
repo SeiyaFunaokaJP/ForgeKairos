@@ -519,6 +519,7 @@ dependencies = [
  "hex",
  "html_to_markdown",
  "http_client",
+ "http_proxy",
  "ide_server",
  "idna",
  "image",
@@ -5196,6 +5197,7 @@ dependencies = [
  "tree-sitter-go",
  "tree-sitter-html",
  "tree-sitter-md",
+ "tree-sitter-mermaid",
  "tree-sitter-python",
  "tree-sitter-rust",
  "tree-sitter-typescript",
@@ -16790,6 +16792,7 @@ name = "tabular_data_preview"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "buffer_diff",
  "clock",
  "command_palette_hooks",
  "db",
@@ -16797,6 +16800,7 @@ dependencies = [
  "fs",
  "fuzzy",
  "gpui",
+ "imara-diff",
  "language",
  "log",
  "picker",

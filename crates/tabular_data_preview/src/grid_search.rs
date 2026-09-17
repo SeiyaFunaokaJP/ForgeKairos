@@ -408,6 +408,10 @@ impl SearchableItem for TabularDataPreviewPane {
     /// and activating a hit leaves it that way - so turning the toggle back on
     /// comes back to the rectangle the last one pinned. Only closing the bar
     /// forgets it.
+    ///
+    /// A search range is one rectangle, so a multiple selection is pinned by
+    /// the rectangle around all of its blocks rather than by the blocks
+    /// themselves; the corners between two blocks are therefore searched too.
     fn toggle_filtered_search_ranges(
         &mut self,
         enabled: Option<FilteredSearchRange>,
@@ -418,7 +422,7 @@ impl SearchableItem for TabularDataPreviewPane {
             self.grid.search.previous_filtered_range = Some(pinned);
         }
         if let Some(requested) = enabled {
-            let rect = self.selection_rect();
+            let rect = self.selection_bounding_rect();
             if rect.cell_count() > 1 {
                 self.grid.search.filtered_range = Some(rect);
             } else if requested != FilteredSearchRange::Selection {
@@ -1307,6 +1311,46 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(buffer_text(&editor, &cx), "k,v\nba,1");
+    }
+
+    /// A search range is one rectangle, so two blocks are pinned by the
+    /// rectangle around both - the cells between them included, which is what
+    /// the grid tells the user by drawing that rectangle's border.
+    #[gpui::test]
+    async fn test_two_blocks_pin_the_rectangle_around_them(cx: &mut TestAppContext) {
+        let (pane, _editor, search_bar, mut cx) =
+            open_grid_with_search("k,v,w\na,b,a\nc,a,d\na,b,a", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(
+                GridCell::new(GridRow::Body(DisplayRow(0)), AnyColumn(0)),
+                crate::grid::SelectionChange::Replace,
+                cx,
+            );
+            pane.change_cell_selection(
+                GridCell::new(GridRow::Body(DisplayRow(2)), AnyColumn(0)),
+                crate::grid::SelectionChange::Add,
+                cx,
+            );
+            pane.change_cell_selection(
+                GridCell::new(GridRow::Body(DisplayRow(2)), AnyColumn(2)),
+                crate::grid::SelectionChange::Extend,
+                cx,
+            );
+        });
+        deploy_search(
+            &mut cx,
+            Deploy {
+                focus: true,
+                replace_enabled: false,
+                selection_search_enabled: true,
+            },
+        );
+        search_for(&search_bar, "a", BarOptions::NONE, &mut cx);
+
+        // Every `a` of the three body rows. The last block alone would be the
+        // bottom row, and would leave three of them out.
+        assert_eq!(highlighted_cells(&pane, &cx).len(), 5);
     }
 
     #[gpui::test]

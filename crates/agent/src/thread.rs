@@ -12,7 +12,8 @@ use crate::{
     ProjectSnapshot, ReadFileTool, RenameTool, RepoMapTool, RepoMapToolInput,
     SandboxedTerminalTool, SpawnAgentTool, SystemPromptTemplate, Template, Templates,
     TerminalExecution, TerminalTool, ToolPermissionDecision, WebSearchTool, WriteFileTool,
-    decide_permission_from_settings, decide_terminal_permission,
+    decide_permission_for_paths_outside_project, decide_permission_from_settings,
+    decide_terminal_permission,
 };
 use acp_thread::{ClientUserMessageId, MentionUri};
 use action_log::ActionLog;
@@ -917,6 +918,11 @@ pub struct ToolPermissionContext {
     pub tool_name: String,
     pub input_values: Vec<String>,
     pub scope: ToolPermissionScope,
+    /// Where the command will run, for the terminal tool. `None` for every
+    /// other tool, and for a terminal command whose execution isn't
+    /// established at this point; both are then judged as if the command could
+    /// run with Zed's own reach (決定 2).
+    pub terminal_execution: Option<TerminalExecution>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -965,6 +971,7 @@ impl ToolPermissionContext {
             tool_name: tool_name.into(),
             input_values,
             scope: ToolPermissionScope::ToolInput,
+            terminal_execution: None,
         }
     }
 
@@ -973,11 +980,20 @@ impl ToolPermissionContext {
             tool_name: tool_name.into(),
             input_values: target_paths,
             scope: ToolPermissionScope::SymlinkTarget,
+            terminal_execution: None,
         }
     }
 
     pub fn for_agent_skills(mut self) -> Self {
         self.scope = ToolPermissionScope::AgentSkills;
+        self
+    }
+
+    /// Marks a terminal command as one that will run inside the sandbox, so
+    /// the permission rules can take the sandbox's own boundary into account
+    /// (決定 2).
+    pub fn in_sandbox(mut self) -> Self {
+        self.terminal_execution = Some(TerminalExecution::Sandboxed);
         self
     }
 
@@ -2307,8 +2323,8 @@ impl Thread {
     }
 
     /// Applies the restricted-workspace downgrade to the user's chosen profile.
-    /// In a restricted workspace, the built-in `write`/`ask` profiles are
-    /// downgraded to `minimal` — but only when both the chosen profile and
+    /// In a restricted workspace, the built-in `write`/`edit`/`ask` profiles
+    /// are downgraded to `minimal` — but only when both the chosen profile and
     /// `minimal` are unmodified, shipped defaults, so we never override a user's
     /// custom or customized profiles.
     ///
@@ -2320,6 +2336,7 @@ impl Thread {
         cx: &App,
     ) -> (AgentProfileId, bool) {
         let is_write_or_ask = profile_id.as_str() == builtin_profiles::WRITE
+            || profile_id.as_str() == builtin_profiles::EDIT
             || profile_id.as_str() == builtin_profiles::ASK;
         let minimal = AgentProfileId(builtin_profiles::MINIMAL.into());
         if is_write_or_ask
@@ -5992,13 +6009,19 @@ impl ToolCallEventStream {
             PermissionJudgeContext::new(context.tool_name.clone(), context.input_values.clone());
         let tool_name = context.tool_name.clone();
         let input_values = context.input_values.clone();
+        let terminal_execution = context.terminal_execution;
         let check_settings: Box<dyn Fn(&App) -> ToolPermissionDecision> =
             Box::new(move |cx: &App| {
-                decide_permission_from_settings(
-                    &tool_name,
-                    &input_values,
-                    agent_settings::AgentSettings::get_global(cx),
-                )
+                let settings = agent_settings::AgentSettings::get_global(cx);
+                match terminal_execution {
+                    Some(execution) => decide_terminal_permission(
+                        &input_values,
+                        &settings.tool_permissions,
+                        util::shell::ShellKind::system(),
+                        execution,
+                    ),
+                    None => decide_permission_from_settings(&tool_name, &input_values, settings),
+                }
             });
 
         self.run_authorization_loop(
@@ -6025,6 +6048,79 @@ impl ToolCallEventStream {
         let title = title.into();
         let options = context.build_permission_options();
         self.run_authorization_loop(title, options, Some(context), None, None, cx)
+    }
+
+    /// Like [`Self::authorize`], but for a path that lies outside every
+    /// worktree root of the project (決定 3).
+    ///
+    /// Blanket approval reaches as far as the project, not the whole disk, so
+    /// "allow everything" mode cannot approve this call on its own: only the
+    /// user, or a pattern they wrote that names this path, can
+    /// (see [`decide_permission_for_paths_outside_project`]). A deny default
+    /// or a deny pattern still refuses it without asking, and a standing allow
+    /// the user adds while the prompt is open still resolves it.
+    ///
+    /// Its choices are narrowed to the ones that mean what the card says
+    /// (see [`Self::drop_choices_binding_more_than_this_path`]).
+    pub fn authorize_outside_project(
+        &self,
+        title: impl Into<String>,
+        context: ToolPermissionContext,
+        cx: &mut App,
+    ) -> Task<Result<()>> {
+        // The card is the only place the user learns why a mode that approves
+        // everything is asking, so the reason is part of the title rather than
+        // left to the path for them to work out.
+        let title = format!("{} (プロジェクトの外)", title.into());
+        let mut options = context.build_permission_options();
+        Self::drop_choices_binding_more_than_this_path(&mut options);
+        let tool_name = context.tool_name.clone();
+        let input_values = context.input_values.clone();
+        let check_settings: Box<dyn Fn(&App) -> ToolPermissionDecision> =
+            Box::new(move |cx: &App| {
+                decide_permission_for_paths_outside_project(
+                    &tool_name,
+                    &input_values,
+                    agent_settings::AgentSettings::get_global(cx),
+                )
+            });
+
+        // No judge context: out here the settings never hand the decision to
+        // the judge, which is told to refuse writes outside the worktree
+        // roots anyway.
+        self.run_authorization_loop(
+            title,
+            options,
+            Some(context),
+            Some(check_settings),
+            None,
+            cx,
+        )
+    }
+
+    /// Removes the "always" choice that writes the tool's own default rather
+    /// than a pattern (決定 3).
+    ///
+    /// On a card about one path outside the project that choice means
+    /// something else than it says: allowing sets the tool's default to
+    /// "allow", which out here is read back as "ask" — so it neither runs this
+    /// call unprompted nor stops the next one — while quietly approving every
+    /// call of that tool inside the project; denying likewise turns the tool
+    /// off everywhere. What is left is the choice that names this path, which
+    /// writes a pattern and so binds exactly what the card is about, and the
+    /// once-only pair (which the auto-resolution path in
+    /// [`Self::run_authorization_loop`] also needs).
+    fn drop_choices_binding_more_than_this_path(options: &mut acp_thread::PermissionOptions) {
+        // A path card is always a plain dropdown: the pattern-picking variant
+        // is built for the terminal tool only.
+        if let acp_thread::PermissionOptions::Dropdown(choices) = options {
+            choices.retain(|choice| {
+                let writes_the_tools_default = choice.sub_patterns.is_empty()
+                    && (matches!(choice.allow.kind, acp::PermissionOptionKind::AllowAlways)
+                        || matches!(choice.deny.kind, acp::PermissionOptionKind::RejectAlways));
+                !writes_the_tools_default
+            });
+        }
     }
 
     /// Gate an agent terminal command that will run outside any sandbox, with
@@ -6272,16 +6368,23 @@ impl ToolCallEventStream {
     /// Confirm, before running a command whose sandbox will contain a Windows
     /// drive (DrvFs) path, that the user accepts the weaker integrity
     /// guarantees. This is a transient gate *in front of* the normal sandbox
-    /// flow — it is never persisted or recorded as a grant; the only way to
-    /// stop it recurring is to disable `warn_ntfs_grants` in settings (offered
-    /// via the banner's gear). Returns `Ok(())` on 「続行」 (after which the
-    /// caller proceeds to any escalation prompt) and `Err` on 「中止」.
+    /// flow — it is never persisted or recorded as a grant. 「続行」 answers it
+    /// for the rest of the thread (in memory only, 決定 1), because the caveat
+    /// is a property of the project's location rather than of the command:
+    /// asked per command it fired on every single one. 「中止」 is not
+    /// remembered, so the next command asks again. Returns `Ok(())` on 「続行」
+    /// (after which the caller proceeds to any escalation prompt) and `Err` on
+    /// 「中止」.
     pub(crate) fn authorize_windows_fs_warning(&self, cx: &mut App) -> Task<Result<()>> {
         // If the warning is already disabled, don't prompt.
         if !AgentSettings::get_global(cx)
             .sandbox_permissions
             .warn_ntfs_grants
         {
+            return Task::ready(Ok(()));
+        }
+
+        if self.sandbox_grants.borrow().windows_fs_warning_accepted() {
             return Task::ready(Ok(()));
         }
 
@@ -6315,6 +6418,7 @@ impl ToolCallEventStream {
         // which tears down the stream and turns the prompt into a phantom
         // decline.
         let tool_call_id = self.tool_call_id.clone();
+        let sandbox_grants = self.sandbox_grants.clone();
         cx.spawn(async move |_cx| {
             let (response_tx, response_rx) = oneshot::channel();
             if let Err(error) = stream
@@ -6347,7 +6451,10 @@ impl ToolCallEventStream {
                 .map_err(|_| anyhow!("authorization channel closed"))?;
             ensure_tool_call_authorization_not_interrupted(&outcome)?;
             match acp_thread::SandboxPermission::from_id(outcome.option_id.0.as_ref()) {
-                Some(acp_thread::SandboxPermission::AllowOnce) => Ok(()),
+                Some(acp_thread::SandboxPermission::AllowOnce) => {
+                    sandbox_grants.borrow_mut().accept_windows_fs_warning();
+                    Ok(())
+                }
                 _ => Err(anyhow!("Windows-drive write aborted by user")),
             }
         })
@@ -9356,6 +9463,293 @@ mod tests {
         authorize.await.unwrap();
     }
 
+    /// 決定 4: the read-and-edit profile hands the model the file tools and
+    /// nothing that runs a command or reaches the network. Both terminal
+    /// variants are configured under the single `terminal` name, so leaving
+    /// that name out has to drop the sandboxed variant too.
+    #[gpui::test]
+    async fn test_edit_profile_enables_file_tools_only(cx: &mut TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+
+        let (thread, _event_stream) = setup_thread_for_test(cx).await;
+        let model = Arc::new(FakeLanguageModel::default());
+        cx.update(|cx| {
+            thread.update(cx, |thread, cx| {
+                thread.set_model(model, cx);
+                thread
+                    .add_default_tools(Rc::new(crate::tests::FakeThreadEnvironment::default()), cx);
+            });
+        });
+
+        let tool_names = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                thread.read_with(cx, |thread, cx| {
+                    thread
+                        .enabled_tools(cx)
+                        .keys()
+                        .map(|name| name.to_string())
+                        .collect::<Vec<_>>()
+                })
+            })
+        };
+
+        // Only one terminal variant exists at a time and both are exposed
+        // under the `terminal` name, so the profile has to drop it in either
+        // sandbox state.
+        for sandboxing in [false, true] {
+            cx.update(|cx| cx.update_flags(sandboxing, vec!["sandboxing".to_string()]));
+
+            cx.update(|cx| {
+                thread.update(cx, |thread, cx| {
+                    thread.set_profile(AgentProfileId(builtin_profiles::WRITE.into()), cx)
+                });
+            });
+            assert!(
+                tool_names(cx).iter().any(|name| name == TerminalTool::NAME),
+                "with sandboxing {sandboxing} the write profile still hands over a terminal, \
+                 so the edit profile's missing one is that profile's doing"
+            );
+
+            cx.update(|cx| {
+                thread.update(cx, |thread, cx| {
+                    thread.set_profile(AgentProfileId(builtin_profiles::EDIT.into()), cx)
+                });
+            });
+            let tools = tool_names(cx);
+            let enabled = |name: &str| tools.iter().any(|tool| tool == name);
+
+            for name in [
+                EditFileTool::NAME,
+                WriteFileTool::NAME,
+                CreateDirectoryTool::NAME,
+                ReadFileTool::NAME,
+                GrepTool::NAME,
+                ListDirectoryTool::NAME,
+                FindPathTool::NAME,
+                DiagnosticsTool::NAME,
+                RepoMapTool::NAME,
+            ] {
+                assert!(
+                    enabled(name),
+                    "{name} should be enabled by the edit profile"
+                );
+            }
+            for name in [
+                TerminalTool::NAME,
+                SandboxedTerminalTool::NAME,
+                FetchTool::NAME,
+                WebSearchTool::NAME,
+                DeletePathTool::NAME,
+                MovePathTool::NAME,
+                CopyPathTool::NAME,
+                SpawnAgentTool::NAME,
+            ] {
+                assert!(
+                    !enabled(name),
+                    "{name} should be disabled by the edit profile"
+                );
+            }
+        }
+    }
+
+    /// 決定 3: every choice on the card for a path outside the project has to
+    /// mean what it says. The choice that names the path writes a pattern and
+    /// is kept; the tool-wide one writes the tool's default, which out here
+    /// wouldn't stop the next prompt while it silently approved the tool
+    /// everywhere inside the project, so it is gone.
+    #[gpui::test]
+    async fn test_outside_project_card_offers_only_path_scoped_choices(cx: &mut TestAppContext) {
+        crate::tests::init_test(cx);
+
+        let outside = "/etc/hosts".to_string();
+        let (event_stream, mut receiver) = ToolCallEventStream::test();
+        let context = ToolPermissionContext::new(EditFileTool::NAME, vec![outside.clone()]);
+        let _authorize =
+            cx.update(|cx| event_stream.authorize_outside_project("編集", context, cx));
+        let authorization = receiver.expect_authorization().await;
+
+        let acp_thread::PermissionOptions::Dropdown(choices) = &authorization.options else {
+            panic!("a path card is a plain dropdown");
+        };
+
+        // The builder does offer that choice for this very context, so the
+        // card's not having it is this code's doing.
+        let offered_by_the_builder =
+            ToolPermissionContext::new(EditFileTool::NAME, vec![outside.clone()])
+                .build_permission_options();
+        let acp_thread::PermissionOptions::Dropdown(offered_by_the_builder) =
+            &offered_by_the_builder
+        else {
+            panic!("a path card is a plain dropdown");
+        };
+        assert!(
+            offered_by_the_builder
+                .iter()
+                .any(|choice| choice.sub_patterns.is_empty()
+                    && matches!(choice.allow.kind, acp::PermissionOptionKind::AllowAlways)),
+            "the tool-wide choice is what this card has to drop"
+        );
+
+        assert!(
+            !choices.iter().any(|choice| choice.sub_patterns.is_empty()
+                && matches!(choice.allow.kind, acp::PermissionOptionKind::AllowAlways)),
+            "no choice may write the tool's own default here, but the card offers {:?}",
+            choices
+                .iter()
+                .map(|choice| choice.label())
+                .collect::<Vec<_>>()
+        );
+        // The once-only pair `run_authorization_loop` auto-resolves against is
+        // untouched.
+        for kind in [
+            acp::PermissionOptionKind::AllowOnce,
+            acp::PermissionOptionKind::RejectOnce,
+        ] {
+            assert!(
+                authorization.options.first_option_of_kind(kind).is_some(),
+                "{kind:?} has to stay on the card"
+            );
+        }
+
+        let standing = choices
+            .iter()
+            .find(|choice| !choice.sub_patterns.is_empty())
+            .expect("the choice that names this path is still offered");
+        assert!(
+            matches!(standing.allow.kind, acp::PermissionOptionKind::AllowAlways),
+            "the surviving standing choice is the always-allow one"
+        );
+        assert!(
+            matches!(
+                standing.build_outcome(true).params,
+                Some(acp_thread::SelectedPermissionParams::Terminal { .. })
+            ),
+            "it carries patterns, so pressing it writes a pattern instead of the tool's default"
+        );
+
+        // Pressing it has to lift the prompt for what it named — and for
+        // nothing else. The label is the containing directory, so that is the
+        // scope asserted here.
+        cx.update(|cx| {
+            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+            settings.tool_permissions.default = settings::ToolPermissionMode::Confirm;
+            settings.tool_permissions.tools.insert(
+                Arc::from(EditFileTool::NAME),
+                agent_settings::ToolRules {
+                    default: None,
+                    always_allow: standing
+                        .sub_patterns
+                        .iter()
+                        .map(|pattern| {
+                            agent_settings::CompiledRegex::new(pattern, false)
+                                .expect("the offered pattern compiles")
+                        })
+                        .collect(),
+                    always_deny: Vec::new(),
+                    always_confirm: Vec::new(),
+                    invalid_patterns: Vec::new(),
+                },
+            );
+            agent_settings::AgentSettings::override_global(settings, cx);
+
+            let settings = agent_settings::AgentSettings::get_global(cx);
+            assert_eq!(
+                decide_permission_for_paths_outside_project(
+                    EditFileTool::NAME,
+                    std::slice::from_ref(&outside),
+                    settings,
+                ),
+                ToolPermissionDecision::Allow,
+                "the path the choice named no longer prompts"
+            );
+            assert_eq!(
+                decide_permission_for_paths_outside_project(
+                    EditFileTool::NAME,
+                    &["/var/tmp/notes".to_string()],
+                    settings,
+                ),
+                ToolPermissionDecision::Confirm,
+                "another place outside the project still prompts"
+            );
+            assert_eq!(
+                crate::decide_permission_for_paths(
+                    EditFileTool::NAME,
+                    &["root/src/main.rs".to_string()],
+                    settings,
+                ),
+                ToolPermissionDecision::Confirm,
+                "and the tool's default is untouched, so nothing inside the project \
+                 was approved along the way"
+            );
+        });
+    }
+
+    /// 決定 1: the Windows-drive (DrvFs) warning is a property of where the
+    /// project lives, not of the command, so 「続行」 answers it for the rest of
+    /// the thread. 「中止」 is not remembered, and another thread is asked on
+    /// its own.
+    #[gpui::test]
+    async fn test_windows_fs_warning_is_asked_once_per_thread(cx: &mut TestAppContext) {
+        crate::tests::init_test(cx);
+
+        let accept = |authorization: ToolCallAuthorization| {
+            authorization
+                .response
+                .send(acp_thread::SelectedPermissionOutcome::new(
+                    acp::PermissionOptionId::new(acp_thread::SandboxPermission::AllowOnce.as_id()),
+                    acp::PermissionOptionKind::AllowOnce,
+                ))
+                .expect("the warning prompt should still be waiting");
+        };
+
+        let grants = Rc::new(RefCell::new(ThreadSandboxGrants::default()));
+        let (event_stream, mut receiver) = ToolCallEventStream::test_with_grants(grants.clone());
+        let authorize = cx.update(|cx| event_stream.authorize_windows_fs_warning(cx));
+        accept(receiver.expect_authorization().await);
+        authorize.await.expect("continuing runs the command");
+
+        let (event_stream, mut receiver) = ToolCallEventStream::test_with_grants(grants.clone());
+        cx.update(|cx| event_stream.authorize_windows_fs_warning(cx))
+            .await
+            .expect("the accepted warning no longer gates the thread's commands");
+        assert!(
+            receiver.try_recv().is_err(),
+            "the warning must not be shown twice in the same thread"
+        );
+
+        // The acknowledgement is not a grant: nothing was recorded, so a
+        // reopened thread (which restores only the persisted grants) asks
+        // again.
+        assert_eq!(
+            grants.borrow().to_db(),
+            crate::db::DbSandboxGrants::default()
+        );
+
+        let other_thread = Rc::new(RefCell::new(ThreadSandboxGrants::default()));
+        let (event_stream, mut receiver) =
+            ToolCallEventStream::test_with_grants(other_thread.clone());
+        let authorize = cx.update(|cx| event_stream.authorize_windows_fs_warning(cx));
+        let authorization = receiver.expect_authorization().await;
+        authorization
+            .response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new(acp_thread::SandboxPermission::Deny.as_id()),
+                acp::PermissionOptionKind::RejectOnce,
+            ))
+            .unwrap();
+        assert!(
+            authorize.await.is_err(),
+            "another thread is asked on its own, and aborting cancels the command"
+        );
+
+        let (event_stream, mut receiver) = ToolCallEventStream::test_with_grants(other_thread);
+        let authorize = cx.update(|cx| event_stream.authorize_windows_fs_warning(cx));
+        accept(receiver.expect_authorization().await);
+        authorize
+            .await
+            .expect("an abort must not be remembered, so the next command asks again");
+    }
+
     #[test]
     fn test_auto_resolve_permission_outcome_uses_once_only_options() {
         let options = acp_thread::PermissionOptions::Dropdown(vec![
@@ -9689,6 +10083,16 @@ mod tests {
                 thread.read(cx).profile(cx).as_str(),
                 builtin_profiles::MINIMAL,
             );
+
+            // 決定 4: the read-and-edit profile hands out edit tools, so a
+            // restricted workspace downgrades it as well.
+            let (downgraded, was_downgraded) = Thread::profile_for_restricted_workspace(
+                AgentProfileId(builtin_profiles::EDIT.into()),
+                &project,
+                cx,
+            );
+            assert!(was_downgraded);
+            assert_eq!(downgraded.as_str(), builtin_profiles::MINIMAL);
 
             trusted.update(cx, |trusted, cx| {
                 trusted.trust(

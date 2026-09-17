@@ -2,13 +2,24 @@
 //!
 //! Mermaid has no coordinates: the picture's geometry comes out of `merman`'s
 //! layout pass, so a canvas where boxes are dragged around cannot exist. What
-//! *is* editable is the graph itself — its nodes, edges, labels, shapes,
-//! direction and groups — and that is what this modal puts on screen, beside a
-//! live drawing of what the fence will look like once it is written back.
+//! *is* editable is the diagram itself — its elements, their links, their
+//! labels and their order — and that is what this modal puts on screen, beside
+//! a live drawing of what the fence will look like once it is written back.
+//!
+//! The shell is the same for every diagram kind: the header, the preview, the
+//! Tab order, the validation line and the single write back. Only the middle of
+//! the form changes, and each kind's half of it lives in a module of its own
+//! ([`pie`], [`state`], [`sequence`], [`er`]); the flowchart's stayed here
+//! because it was here first.
 //!
 //! Like the table editor, the buffer stays the single source of truth: the
 //! modal reads one fence, edits a copy, and writes the whole body back with one
 //! `Buffer::edit` so that undo takes the diagram back in one step (ADR-F51).
+
+mod er;
+mod pie;
+mod sequence;
+mod state;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,9 +34,9 @@ use gpui::{
 };
 use mermaid_render::flowchart_model::{
     ArrowKind, EDGE_STYLE_PRESETS, FlowDirection, FlowchartDocument, FlowchartEdge, FlowchartNode,
-    FlowchartSubgraph, NodeShape, StrokeKind, emit_flowchart, is_flowchart_source,
-    is_valid_node_id, parse_flowchart,
+    FlowchartSubgraph, NodeShape, StrokeKind, is_valid_node_id,
 };
+use mermaid_render::mermaid_model::{MermaidDiagramKind, MermaidDocument, parse_document};
 use settings::Settings as _;
 use theme_settings::ThemeSettings;
 use ui::{
@@ -43,9 +54,27 @@ pub fn register(workspace: &mut Workspace) {
         let Some(editor) =
             MarkdownPreviewView::resolve_active_item_as_markdown_editor(workspace, cx)
         else {
+            // Reachable from the command palette with anything at all in front,
+            // where returning in silence leaves the user guessing. The preview
+            // pane is an active item of its own, so the message asks for the
+            // editor rather than for the file.
+            workspace.show_error(
+                anyhow::anyhow!("Markdown のエディターを選んでから実行してください。"),
+                cx,
+            );
             return;
         };
-        let target = editor.update(cx, |editor, cx| editor.mermaid_fence_target(cx));
+        // A Markdown document with no diagram in it still has somewhere to put
+        // one, so the action starts a fence rather than refusing.
+        let target = editor.update(cx, |editor, cx| {
+            let target = editor
+                .mermaid_fence_target(cx)
+                .or_else(|| editor.new_mermaid_fence_target(cx))?;
+            // The diagram may be nowhere near the cursor, and confirming the
+            // modal rewrites it, so the editor is moved onto it first.
+            editor.reveal_mermaid_fence_target(&target, window, cx);
+            Some(target)
+        });
         open(workspace, editor, target, window, cx);
     });
 }
@@ -63,7 +92,7 @@ pub fn open(
 ) {
     let Some(target) = target else {
         workspace.show_error(
-            anyhow::anyhow!("カーソルが Mermaid のコードブロックの中にありません。"),
+            anyhow::anyhow!("Mermaid 図のコードブロックが見つかりません。"),
             cx,
         );
         return;
@@ -80,21 +109,23 @@ pub fn open(
         return;
     }
 
-    let document = match parse_flowchart(&target.source) {
-        Ok(document) => document,
-        // A flowchart that will not open is either malformed or spelled in a
-        // way the form cannot hold without dropping part of it; either way the
-        // reason comes from the parser and is shown as it is.
-        Err(error) if is_flowchart_source(&target.source) => {
-            workspace.show_error(
-                anyhow::anyhow!("Mermaid 図を構造化編集で開けません: {error}"),
-                cx,
-            );
-            return;
-        }
-        Err(error) => {
-            workspace.show_error(anyhow::anyhow!("{error}"), cx);
-            return;
+    // An empty fence has no kind yet; the modal opens on the picker instead.
+    let document = if target.source.trim().is_empty() {
+        None
+    } else {
+        match parse_document(&target.source) {
+            Ok(document) => Some(document),
+            // A diagram that will not open is either malformed or spelled in a
+            // way the form cannot hold without dropping part of it; either way
+            // the reason comes from the parser and is shown as it is, and the
+            // fence is left exactly as it was.
+            Err(error) => {
+                workspace.show_error(
+                    anyhow::anyhow!("Mermaid 図を構造化編集で開けません: {error}"),
+                    cx,
+                );
+                return;
+            }
         }
     };
 
@@ -114,6 +145,26 @@ struct SubgraphRow {
     title: Entity<Editor>,
 }
 
+/// Everything the flowchart form holds: the structure that is not typed into a
+/// text field, and one field per editable string.
+struct FlowchartForm {
+    document: FlowchartDocument,
+    nodes: Vec<NodeRow>,
+    edge_labels: Vec<Entity<Editor>>,
+    subgraphs: Vec<SubgraphRow>,
+}
+
+/// The half of the form that depends on which diagram is being edited.
+enum Form {
+    /// The fence is empty and the kind has not been picked yet.
+    Choosing,
+    Flowchart(FlowchartForm),
+    Pie(pie::PieForm),
+    State(state::StateForm),
+    Sequence(sequence::SequenceForm),
+    Er(er::ErForm),
+}
+
 /// The drawing of the source the form currently describes.
 #[derive(Default)]
 struct Preview {
@@ -125,13 +176,7 @@ struct Preview {
 pub struct MermaidEditor {
     editor: WeakEntity<Editor>,
     target: MermaidFenceTarget,
-    /// Everything about the diagram that is not typed into a text field: the
-    /// direction, shapes, arrows, group membership and the statements that are
-    /// carried through untouched.
-    document: FlowchartDocument,
-    nodes: Vec<NodeRow>,
-    edge_labels: Vec<Entity<Editor>>,
-    subgraphs: Vec<SubgraphRow>,
+    form: Form,
     preview: Preview,
     message: Option<SharedString>,
     focus_handle: FocusHandle,
@@ -143,50 +188,103 @@ impl MermaidEditor {
     fn new(
         editor: WeakEntity<Editor>,
         target: MermaidFenceTarget,
-        document: FlowchartDocument,
+        document: Option<MermaidDocument>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let mut this = Self {
             editor,
             target,
-            document,
-            nodes: Vec::new(),
-            edge_labels: Vec::new(),
-            subgraphs: Vec::new(),
+            form: Form::Choosing,
             preview: Preview::default(),
             message: None,
             focus_handle: cx.focus_handle(),
             scroll_handle: ScrollHandle::new(),
             subscriptions: Vec::new(),
         };
-
-        for index in 0..this.document.nodes.len() {
-            let node = &this.document.nodes[index];
-            let (id, label) = (node.id.clone(), node.label.clone());
-            let row = NodeRow {
-                id: this.new_field(&id, window, cx),
-                label: this.new_field(&label, window, cx),
-            };
-            this.nodes.push(row);
+        if let Some(document) = document {
+            this.set_document(document, window, cx);
         }
-        for index in 0..this.document.edges.len() {
-            let label = this.document.edges[index].label.clone().unwrap_or_default();
-            let field = this.new_field(&label, window, cx);
-            this.edge_labels.push(field);
-        }
-        for index in 0..this.document.subgraphs.len() {
-            let group = &this.document.subgraphs[index];
-            let (id, title) = (group.id.clone(), group.title.clone());
-            let row = SubgraphRow {
-                id: this.new_field(&id, window, cx),
-                title: this.new_field(&title, window, cx),
-            };
-            this.subgraphs.push(row);
-        }
-
         this.schedule_preview(cx);
         this
+    }
+
+    /// Builds the form for `document`, replacing whatever was on screen. Only
+    /// the kind picker leads here twice, and it does so before anything has
+    /// been typed.
+    fn set_document(
+        &mut self,
+        document: MermaidDocument,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.form = Form::Choosing;
+        self.subscriptions.clear();
+        self.form = match document {
+            MermaidDocument::Flowchart(document) => {
+                Form::Flowchart(self.new_flowchart_form(document, window, cx))
+            }
+            MermaidDocument::Pie(document) => Form::Pie(self.new_pie_form(document, window, cx)),
+            MermaidDocument::State(document) => {
+                Form::State(self.new_state_form(document, window, cx))
+            }
+            MermaidDocument::Sequence(document) => {
+                Form::Sequence(self.new_sequence_form(document, window, cx))
+            }
+            MermaidDocument::Er(document) => Form::Er(self.new_er_form(document, window, cx)),
+        };
+        self.message = None;
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    fn new_flowchart_form(
+        &mut self,
+        document: FlowchartDocument,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> FlowchartForm {
+        let mut nodes = Vec::with_capacity(document.nodes.len());
+        for node in &document.nodes {
+            let (id, label) = (node.id.clone(), node.label.clone());
+            nodes.push(NodeRow {
+                id: self.new_field(&id, window, cx),
+                label: self.new_field(&label, window, cx),
+            });
+        }
+        let mut edge_labels = Vec::with_capacity(document.edges.len());
+        for edge in &document.edges {
+            let label = edge.label.clone().unwrap_or_default();
+            edge_labels.push(self.new_field(&label, window, cx));
+        }
+        let mut subgraphs = Vec::with_capacity(document.subgraphs.len());
+        for group in &document.subgraphs {
+            let (id, title) = (group.id.clone(), group.title.clone());
+            subgraphs.push(SubgraphRow {
+                id: self.new_field(&id, window, cx),
+                title: self.new_field(&title, window, cx),
+            });
+        }
+        FlowchartForm {
+            document,
+            nodes,
+            edge_labels,
+            subgraphs,
+        }
+    }
+
+    fn flowchart(&self) -> Option<&FlowchartForm> {
+        match &self.form {
+            Form::Flowchart(form) => Some(form),
+            _ => None,
+        }
+    }
+
+    fn flowchart_mut(&mut self) -> Option<&mut FlowchartForm> {
+        match &mut self.form {
+            Form::Flowchart(form) => Some(form),
+            _ => None,
+        }
     }
 
     /// A single line editor whose edits refresh the preview.
@@ -217,6 +315,9 @@ impl MermaidEditor {
             cx.subscribe(&field, |this, _field, event: &EditorEvent, cx| {
                 if matches!(event, EditorEvent::BufferEdited) {
                     this.schedule_preview(cx);
+                    // The invalid-value frames are drawn from the field text,
+                    // so they have to be redrawn as it changes.
+                    cx.notify();
                 }
             }),
         );
@@ -226,13 +327,32 @@ impl MermaidEditor {
     /// The ids the id fields currently hold, which is what the edge endpoint
     /// menus and the group membership boxes offer.
     fn node_ids(&self, cx: &App) -> Vec<String> {
-        self.nodes
-            .iter()
-            .map(|row| row.id.read(cx).text(cx).trim().to_string())
-            .collect()
+        self.flowchart()
+            .map(|form| {
+                form.nodes
+                    .iter()
+                    .map(|row| row.id.read(cx).text(cx).trim().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
-    /// The document the form currently describes: the structure held in
+    /// The document the form currently describes, or `None` while no kind has
+    /// been picked.
+    fn current_document(&self, cx: &App) -> Option<MermaidDocument> {
+        match &self.form {
+            Form::Choosing => None,
+            Form::Flowchart(form) => Some(MermaidDocument::Flowchart(Self::current_flowchart(
+                form, cx,
+            ))),
+            Form::Pie(form) => Some(MermaidDocument::Pie(form.current_document(cx))),
+            Form::State(form) => Some(MermaidDocument::State(form.current_document(cx))),
+            Form::Sequence(form) => Some(MermaidDocument::Sequence(form.current_document(cx))),
+            Form::Er(form) => Some(MermaidDocument::Er(form.current_document(cx))),
+        }
+    }
+
+    /// The flowchart the form currently describes: the structure held in
     /// `document` with the text fields' current contents written over it.
     ///
     /// Everything else in the document refers to a node or a group by id, so
@@ -240,21 +360,21 @@ impl MermaidEditor {
     /// membership and the statements that were kept verbatim. Otherwise the old
     /// id would still be written out and Mermaid would draw an extra, empty box
     /// under it.
-    fn current_document(&self, cx: &App) -> FlowchartDocument {
-        let mut document = self.document.clone();
+    fn current_flowchart(form: &FlowchartForm, cx: &App) -> FlowchartDocument {
+        let mut document = form.document.clone();
         let mut renames: Vec<(String, String)> = Vec::new();
-        for (node, row) in document.nodes.iter_mut().zip(&self.nodes) {
+        for (node, row) in document.nodes.iter_mut().zip(&form.nodes) {
             let id = row.id.read(cx).text(cx).trim().to_string();
             if id != node.id {
                 renames.push((std::mem::replace(&mut node.id, id.clone()), id));
             }
             node.label = row.label.read(cx).text(cx).to_string();
         }
-        for (edge, field) in document.edges.iter_mut().zip(&self.edge_labels) {
+        for (edge, field) in document.edges.iter_mut().zip(&form.edge_labels) {
             let label = field.read(cx).text(cx);
             edge.label = (!label.is_empty()).then_some(label);
         }
-        for (group, row) in document.subgraphs.iter_mut().zip(&self.subgraphs) {
+        for (group, row) in document.subgraphs.iter_mut().zip(&form.subgraphs) {
             let id = row.id.read(cx).text(cx).trim().to_string();
             if id != group.id {
                 renames.push((std::mem::replace(&mut group.id, id.clone()), id));
@@ -287,10 +407,23 @@ impl MermaidEditor {
         document
     }
 
-    /// The first thing wrong with the ids the user typed, in the words shown
-    /// above the form. Edges and groups refer to nodes by id, so an id that
-    /// Mermaid cannot read breaks more than the node it is on.
-    fn id_problem(&self, document: &FlowchartDocument) -> Option<SharedString> {
+    /// The first thing wrong with what the user typed, in the words shown above
+    /// the form, or `None` when the diagram can be written back.
+    fn problem(document: &MermaidDocument) -> Option<SharedString> {
+        let field_problem = match document {
+            MermaidDocument::Flowchart(document) => Self::flowchart_problem(document),
+            MermaidDocument::Pie(document) => pie::problem(document),
+            MermaidDocument::State(document) => state::problem(document),
+            MermaidDocument::Sequence(document) => sequence::problem(document),
+            MermaidDocument::Er(document) => er::problem(document),
+        };
+        field_problem.or_else(|| document.structure_error().map(SharedString::from))
+    }
+
+    /// The first thing wrong with the ids the user typed. Edges and groups refer
+    /// to nodes by id, so an id that Mermaid cannot read breaks more than the
+    /// node it is on.
+    fn flowchart_problem(document: &FlowchartDocument) -> Option<SharedString> {
         let mut seen: Vec<&str> = Vec::new();
         for id in document
             .nodes
@@ -326,17 +459,27 @@ impl MermaidEditor {
             cx.background_executor()
                 .timer(Duration::from_millis(200))
                 .await;
-            let Some((source, problem)) = this
+            let Some(described) = this
                 .update(cx, |this, cx| {
-                    let document = this.current_document(cx);
-                    (emit_flowchart(&document), this.id_problem(&document))
+                    this.current_document(cx)
+                        .map(|document| (document.emit(), Self::problem(&document)))
                 })
                 .ok()
             else {
                 return;
             };
+            let Some((source, problem)) = described else {
+                // Nothing has been picked yet, so there is nothing to draw.
+                this.update(cx, |this, cx| {
+                    this.preview.image = None;
+                    this.preview.error = None;
+                    cx.notify();
+                })
+                .ok();
+                return;
+            };
             if problem.is_some() {
-                // The warning above the form is where a bad id is reported,
+                // The warning above the form is where a bad value is reported,
                 // and the last good drawing stays on screen beside it.
                 this.update(cx, |this, cx| {
                     this.message = problem;
@@ -376,34 +519,43 @@ impl MermaidEditor {
     }
 
     fn add_node(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let id = self.current_document(cx).unused_id("node");
+        let Some(form) = self.flowchart() else {
+            return;
+        };
+        let id = Self::current_flowchart(form, cx).unused_id("node");
         let row = NodeRow {
             id: self.new_field(&id, window, cx),
             label: self.new_field(&id, window, cx),
         };
-        self.document.nodes.push(FlowchartNode {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        form.document.nodes.push(FlowchartNode {
             label: id.clone(),
             id,
             markdown_label: false,
             shape: NodeShape::Rectangle,
             classes: Vec::new(),
         });
-        self.nodes.push(row);
+        form.nodes.push(row);
         self.schedule_preview(cx);
         cx.notify();
     }
 
     fn remove_node(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.nodes.len() {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        if index >= form.nodes.len() {
             return;
         }
-        let removed = self.document.nodes.remove(index).id;
-        self.nodes.remove(index);
+        let removed = form.document.nodes.remove(index).id;
+        form.nodes.remove(index);
         // An edge or a group that still pointed at the node would declare it
         // again as a bare id, quietly bringing it back as an empty box. The
         // edges go from the back so that the label fields, which are held
         // alongside the edges by index, stay lined up with them.
-        let orphaned = self
+        let orphaned = form
             .document
             .edges
             .iter()
@@ -412,12 +564,12 @@ impl MermaidEditor {
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
         for index in orphaned.into_iter().rev() {
-            self.document.edges.remove(index);
-            if index < self.edge_labels.len() {
-                self.edge_labels.remove(index);
+            form.document.edges.remove(index);
+            if index < form.edge_labels.len() {
+                form.edge_labels.remove(index);
             }
         }
-        for group in &mut self.document.subgraphs {
+        for group in &mut form.document.subgraphs {
             group.node_ids.retain(|node_id| *node_id != removed);
         }
         self.schedule_preview(cx);
@@ -425,28 +577,38 @@ impl MermaidEditor {
     }
 
     fn move_node(&mut self, index: usize, forward: bool, cx: &mut Context<Self>) {
-        let Some(other) = neighbour(index, forward, self.nodes.len()) else {
+        let Some(form) = self.flowchart_mut() else {
             return;
         };
-        self.document.nodes.swap(index, other);
-        self.nodes.swap(index, other);
+        let Some(other) = neighbour(index, forward, form.nodes.len()) else {
+            return;
+        };
+        form.document.nodes.swap(index, other);
+        form.nodes.swap(index, other);
         self.schedule_preview(cx);
         cx.notify();
     }
 
     fn add_edge(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(first) = self.document.nodes.first().map(|node| node.id.clone()) else {
+        let Some(form) = self.flowchart() else {
+            return;
+        };
+        let Some(first) = form.document.nodes.first().map(|node| node.id.clone()) else {
             self.message = Some("先にノードを追加してください。".into());
             cx.notify();
             return;
         };
-        let second = self
+        let second = form
             .document
             .nodes
             .get(1)
             .map(|node| node.id.clone())
             .unwrap_or_else(|| first.clone());
-        self.document.edges.push(FlowchartEdge {
+        let field = self.new_field("", window, cx);
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        form.document.edges.push(FlowchartEdge {
             from: first,
             to: second,
             label: None,
@@ -455,43 +617,54 @@ impl MermaidEditor {
             stroke: StrokeKind::Normal,
             length: 1,
         });
-        let field = self.new_field("", window, cx);
-        self.edge_labels.push(field);
+        form.edge_labels.push(field);
         self.schedule_preview(cx);
         cx.notify();
     }
 
     fn remove_edge(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.document.edges.len() {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        if index >= form.document.edges.len() {
             return;
         }
-        self.document.edges.remove(index);
-        if index < self.edge_labels.len() {
-            self.edge_labels.remove(index);
+        form.document.edges.remove(index);
+        if index < form.edge_labels.len() {
+            form.edge_labels.remove(index);
         }
         self.schedule_preview(cx);
         cx.notify();
     }
 
     fn move_edge(&mut self, index: usize, forward: bool, cx: &mut Context<Self>) {
-        let Some(other) = neighbour(index, forward, self.document.edges.len()) else {
+        let Some(form) = self.flowchart_mut() else {
             return;
         };
-        self.document.edges.swap(index, other);
-        if other < self.edge_labels.len() && index < self.edge_labels.len() {
-            self.edge_labels.swap(index, other);
+        let Some(other) = neighbour(index, forward, form.document.edges.len()) else {
+            return;
+        };
+        form.document.edges.swap(index, other);
+        if other < form.edge_labels.len() && index < form.edge_labels.len() {
+            form.edge_labels.swap(index, other);
         }
         self.schedule_preview(cx);
         cx.notify();
     }
 
     fn add_subgraph(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let id = self.current_document(cx).unused_id("group");
+        let Some(form) = self.flowchart() else {
+            return;
+        };
+        let id = Self::current_flowchart(form, cx).unused_id("group");
         let row = SubgraphRow {
             id: self.new_field(&id, window, cx),
             title: self.new_field(&id, window, cx),
         };
-        self.document.subgraphs.push(FlowchartSubgraph {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        form.document.subgraphs.push(FlowchartSubgraph {
             title: id.clone(),
             id,
             direction: None,
@@ -499,19 +672,22 @@ impl MermaidEditor {
             classes: Vec::new(),
             parent: None,
         });
-        self.subgraphs.push(row);
+        form.subgraphs.push(row);
         self.schedule_preview(cx);
         cx.notify();
     }
 
     fn remove_subgraph(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.subgraphs.len() {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        if index >= form.subgraphs.len() {
             return;
         }
-        self.document.subgraphs.remove(index);
-        self.subgraphs.remove(index);
+        form.document.subgraphs.remove(index);
+        form.subgraphs.remove(index);
         // Nesting is held as an index into the list that just shifted.
-        for group in &mut self.document.subgraphs {
+        for group in &mut form.document.subgraphs {
             group.parent = match group.parent {
                 Some(parent) if parent == index => None,
                 Some(parent) if parent > index => Some(parent - 1),
@@ -522,8 +698,30 @@ impl MermaidEditor {
         cx.notify();
     }
 
+    /// `None` leaves the group without a `direction` line, so that it follows
+    /// the diagram's own direction.
+    fn set_subgraph_direction(
+        &mut self,
+        index: usize,
+        direction: Option<FlowDirection>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        let Some(group) = form.document.subgraphs.get_mut(index) else {
+            return;
+        };
+        group.direction = direction;
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
     fn toggle_membership(&mut self, group_index: usize, node_id: &str, cx: &mut Context<Self>) {
-        let Some(group) = self.document.subgraphs.get_mut(group_index) else {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        let Some(group) = form.document.subgraphs.get_mut(group_index) else {
             return;
         };
         if let Some(position) = group.node_ids.iter().position(|id| id == node_id) {
@@ -536,21 +734,43 @@ impl MermaidEditor {
     }
 
     fn confirm(&mut self, _: &menu::SecondaryConfirm, window: &mut Window, cx: &mut Context<Self>) {
-        let document = self.current_document(cx);
-        if let Some(problem) = self.id_problem(&document) {
+        let Some(document) = self.current_document(cx) else {
+            self.message = Some("図の種類を選んでください。".into());
+            cx.notify();
+            return;
+        };
+        if let Some(problem) = Self::problem(&document) {
             self.message = Some(problem);
             cx.notify();
             return;
         }
 
-        let source = emit_flowchart(&document);
+        let source = document.emit();
+        // The last line of defence: a document that emits source the parser
+        // cannot read back would leave the fence in a state the editor could
+        // not reopen, so it is not written at all.
+        if let Err(error) = parse_document(&source) {
+            self.message = Some(format!("この内容は書き戻せません: {error}").into());
+            cx.notify();
+            return;
+        }
+
         let target = &self.target;
-        self.editor
+        let written = self
+            .editor
             .update(cx, |editor, cx| {
-                editor.write_mermaid_fence(target, &source, window, cx);
+                editor.write_mermaid_fence(target, &source, window, cx)
             })
             .log_err();
-        cx.emit(DismissEvent);
+        match written {
+            // The fence changed under the modal — another pane, a reload — so
+            // the edit is dropped and the modal stays open with the work in it.
+            Some(Err(error)) => {
+                self.message = Some(format!("{error}").into());
+                cx.notify();
+            }
+            _ => cx.emit(DismissEvent),
+        }
     }
 
     fn cancel(&mut self, _: &menu::Cancel, _window: &mut Window, cx: &mut Context<Self>) {
@@ -560,18 +780,27 @@ impl MermaidEditor {
     /// Every text field, in the order they are drawn, which is the order Tab
     /// walks them in.
     fn fields(&self) -> Vec<Entity<Editor>> {
-        let nodes = self
-            .nodes
-            .iter()
-            .flat_map(|row| [row.id.clone(), row.label.clone()]);
-        let subgraphs = self
-            .subgraphs
-            .iter()
-            .flat_map(|row| [row.id.clone(), row.title.clone()]);
-        nodes
-            .chain(self.edge_labels.iter().cloned())
-            .chain(subgraphs)
-            .collect()
+        match &self.form {
+            Form::Choosing => Vec::new(),
+            Form::Flowchart(form) => {
+                let nodes = form
+                    .nodes
+                    .iter()
+                    .flat_map(|row| [row.id.clone(), row.label.clone()]);
+                let subgraphs = form
+                    .subgraphs
+                    .iter()
+                    .flat_map(|row| [row.id.clone(), row.title.clone()]);
+                nodes
+                    .chain(form.edge_labels.iter().cloned())
+                    .chain(subgraphs)
+                    .collect()
+            }
+            Form::Pie(form) => form.fields(),
+            Form::State(form) => form.fields(),
+            Form::Sequence(form) => form.fields(),
+            Form::Er(form) => form.fields(),
+        }
     }
 
     fn step_field(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -603,8 +832,40 @@ impl MermaidEditor {
         cx.stop_propagation();
     }
 
+    /// The buttons an empty fence opens on, one per diagram kind the structured
+    /// editor can hold.
+    fn render_kind_picker(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut buttons = h_flex().w_full().flex_wrap().gap_1();
+        for kind in MermaidDiagramKind::ALL {
+            buttons = buttons.child(
+                Button::new(
+                    SharedString::from(format!("mermaid-kind-{kind:?}")),
+                    kind.label(),
+                )
+                .style(ButtonStyle::Outlined)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.set_document(MermaidDocument::empty(kind), window, cx);
+                })),
+            );
+        }
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(section_title("図の種類"))
+            .child(buttons)
+            // The form is built from the kind that was picked and there is no
+            // way back to this screen, so the way out is said here.
+            .child(section_title(
+                "選び直すには、キャンセルしてもう一度開いてください。",
+            ))
+            .into_any_element()
+    }
+
     fn render_direction(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let current = self.document.direction;
+        let Some(form) = self.flowchart() else {
+            return div().into_any_element();
+        };
+        let current = form.document.direction;
         let this = cx.entity().downgrade();
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             for direction in FlowDirection::ALL {
@@ -616,7 +877,9 @@ impl MermaidEditor {
                     None,
                     move |_window, cx| {
                         this.update(cx, |this, cx| {
-                            this.document.direction = direction;
+                            if let Some(form) = this.flowchart_mut() {
+                                form.document.direction = direction;
+                            }
                             this.schedule_preview(cx);
                             cx.notify();
                         })
@@ -643,22 +906,29 @@ impl MermaidEditor {
     }
 
     fn render_nodes(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let last = self.nodes.len().saturating_sub(1);
+        let Some(form) = self.flowchart() else {
+            return div().into_any_element();
+        };
+        let last = form.nodes.len().saturating_sub(1);
         let mut section = v_flex().w_full().gap_1().child(section_title("ノード"));
-        for index in 0..self.nodes.len() {
-            let Some(row) = self.nodes.get(index) else {
+        for index in 0..form.nodes.len() {
+            let Some(row) = form.nodes.get(index) else {
                 continue;
             };
-            let Some(node) = self.document.nodes.get(index) else {
+            let Some(node) = form.document.nodes.get(index) else {
                 continue;
             };
+            let id_is_valid = is_valid_node_id(row.id.read(cx).text(cx).trim());
             section = section.child(
                 h_flex()
                     .w_full()
                     .gap_1()
-                    .child(field_frame(&row.id, ID_FIELD_WIDTH, window, cx).child(row.id.clone()))
                     .child(
-                        field_frame(&row.label, LABEL_FIELD_WIDTH, window, cx)
+                        field_frame(&row.id, ID_FIELD_WIDTH, id_is_valid, window, cx)
+                            .child(row.id.clone()),
+                    )
+                    .child(
+                        field_frame(&row.label, LABEL_FIELD_WIDTH, true, window, cx)
                             .flex_1()
                             .child(row.label.clone()),
                     )
@@ -713,7 +983,9 @@ impl MermaidEditor {
                     move |_window, cx| {
                         let chosen = chosen.clone();
                         this.update(cx, |this, cx| {
-                            if let Some(node) = this.document.nodes.get_mut(index) {
+                            if let Some(form) = this.flowchart_mut()
+                                && let Some(node) = form.document.nodes.get_mut(index)
+                            {
                                 node.shape = chosen;
                             }
                             this.schedule_preview(cx);
@@ -733,11 +1005,14 @@ impl MermaidEditor {
     }
 
     fn render_edges(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let last = self.document.edges.len().saturating_sub(1);
+        let Some(form) = self.flowchart() else {
+            return div().into_any_element();
+        };
+        let last = form.document.edges.len().saturating_sub(1);
         let node_ids = self.node_ids(cx);
         let mut section = v_flex().w_full().gap_1().child(section_title("つながり"));
-        for index in 0..self.document.edges.len() {
-            let Some(edge) = self.document.edges.get(index) else {
+        for index in 0..form.document.edges.len() {
+            let Some(edge) = form.document.edges.get(index) else {
                 continue;
             };
             let from = edge.from.clone();
@@ -749,9 +1024,9 @@ impl MermaidEditor {
                 .child(self.render_endpoint_menu(index, true, from, &node_ids, window, cx))
                 .child(self.render_arrow_menu(index, operator, window, cx))
                 .child(self.render_endpoint_menu(index, false, to, &node_ids, window, cx));
-            if let Some(field) = self.edge_labels.get(index) {
+            if let Some(field) = form.edge_labels.get(index) {
                 row = row.child(
-                    field_frame(field, LABEL_FIELD_WIDTH, window, cx)
+                    field_frame(field, LABEL_FIELD_WIDTH, true, window, cx)
                         .flex_1()
                         .child(field.clone()),
                 );
@@ -800,7 +1075,9 @@ impl MermaidEditor {
                     move |_window, cx| {
                         let id = id.clone();
                         this.update(cx, |this, cx| {
-                            if let Some(edge) = this.document.edges.get_mut(index) {
+                            if let Some(form) = this.flowchart_mut()
+                                && let Some(edge) = form.document.edges.get_mut(index)
+                            {
                                 if is_from {
                                     edge.from = id;
                                 } else {
@@ -848,7 +1125,9 @@ impl MermaidEditor {
                     None,
                     move |_window, cx| {
                         this.update(cx, |this, cx| {
-                            if let Some(edge) = this.document.edges.get_mut(index) {
+                            if let Some(form) = this.flowchart_mut()
+                                && let Some(edge) = form.document.edges.get_mut(index)
+                            {
                                 edge.arrow = arrow;
                                 edge.stroke = stroke;
                             }
@@ -869,13 +1148,16 @@ impl MermaidEditor {
     }
 
     fn render_subgraphs(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(form) = self.flowchart() else {
+            return div().into_any_element();
+        };
         let node_ids = self.node_ids(cx);
         let mut section = v_flex().w_full().gap_1().child(section_title("グループ"));
-        for index in 0..self.subgraphs.len() {
-            let Some(row) = self.subgraphs.get(index) else {
+        for index in 0..form.subgraphs.len() {
+            let Some(row) = form.subgraphs.get(index) else {
                 continue;
             };
-            let Some(group) = self.document.subgraphs.get(index) else {
+            let Some(group) = form.document.subgraphs.get(index) else {
                 continue;
             };
             let mut members = h_flex().w_full().flex_wrap().gap_x_2();
@@ -896,6 +1178,7 @@ impl MermaidEditor {
                     )),
                 );
             }
+            let id_is_valid = is_valid_node_id(row.id.read(cx).text(cx).trim());
             section = section.child(
                 v_flex()
                     .w_full()
@@ -905,14 +1188,20 @@ impl MermaidEditor {
                             .w_full()
                             .gap_1()
                             .child(
-                                field_frame(&row.id, ID_FIELD_WIDTH, window, cx)
+                                field_frame(&row.id, ID_FIELD_WIDTH, id_is_valid, window, cx)
                                     .child(row.id.clone()),
                             )
                             .child(
-                                field_frame(&row.title, LABEL_FIELD_WIDTH, window, cx)
+                                field_frame(&row.title, LABEL_FIELD_WIDTH, true, window, cx)
                                     .flex_1()
                                     .child(row.title.clone()),
                             )
+                            .child(self.render_subgraph_direction_menu(
+                                index,
+                                group.direction,
+                                window,
+                                cx,
+                            ))
                             .child(
                                 IconButton::new(
                                     SharedString::from(format!("mermaid-group-remove-{index}")),
@@ -937,6 +1226,73 @@ impl MermaidEditor {
                     .on_click(cx.listener(|this, _, window, cx| this.add_subgraph(window, cx))),
             )
             .into_any_element()
+    }
+
+    /// A group can lay its own nodes out in another direction than the diagram
+    /// around it, which Mermaid spells as a `direction` line inside the
+    /// `subgraph` block. "指定なし" drops that line, leaving the group to follow
+    /// the diagram.
+    fn render_subgraph_direction_menu(
+        &self,
+        index: usize,
+        current: Option<FlowDirection>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let this = cx.entity().downgrade();
+        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+            for choice in [None].into_iter().chain(FlowDirection::ALL.map(Some)) {
+                let this = this.clone();
+                menu = menu.toggleable_entry(
+                    subgraph_direction_label(choice),
+                    choice == current,
+                    IconPosition::Start,
+                    None,
+                    move |_window, cx| {
+                        this.update(cx, |this, cx| {
+                            this.set_subgraph_direction(index, choice, cx);
+                        })
+                        .log_err();
+                    },
+                );
+            }
+            menu
+        });
+
+        DropdownMenu::new(
+            ("mermaid-group-direction", index),
+            subgraph_direction_label(current),
+            menu,
+        )
+        .style(DropdownStyle::Outlined)
+        .trigger_size(ButtonSize::Compact)
+        .into_any_element()
+    }
+
+    /// The middle of the form: whichever sections the diagram being edited has.
+    fn render_form(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        match &self.form {
+            Form::Choosing => vec![self.render_kind_picker(cx)],
+            Form::Flowchart(_) => vec![
+                self.render_nodes(window, cx),
+                self.render_edges(window, cx),
+                self.render_subgraphs(window, cx),
+            ],
+            Form::Pie(_) => self.render_pie(window, cx),
+            Form::State(_) => self.render_state(window, cx),
+            Form::Sequence(_) => self.render_sequence(window, cx),
+            Form::Er(_) => self.render_er(window, cx),
+        }
+    }
+
+    /// The row above the form: the diagram's own direction, where it has one.
+    fn render_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        match &self.form {
+            Form::Flowchart(_) => self.render_direction(window, cx),
+            Form::State(_) => self.render_state_toolbar(window, cx),
+            Form::Er(_) => self.render_er_toolbar(window, cx),
+            Form::Choosing | Form::Pie(_) | Form::Sequence(_) => div().into_any_element(),
+        }
     }
 
     fn render_preview(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -973,9 +1329,12 @@ impl MermaidEditor {
             );
         } else if self.preview.error.is_none() {
             pane = pane.child(
-                Label::new("描画中…")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
+                Label::new(match self.form {
+                    Form::Choosing => "図の種類を選ぶと表示されます",
+                    _ => "描画中…",
+                })
+                .size(LabelSize::Small)
+                .color(Color::Muted),
             );
         }
 
@@ -998,6 +1357,7 @@ impl MermaidEditor {
                     .child(
                         Button::new("mermaid-confirm", "反映")
                             .style(ButtonStyle::Filled)
+                            .disabled(matches!(self.form, Form::Choosing))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.confirm(&menu::SecondaryConfirm, window, cx)
                             })),
@@ -1011,28 +1371,61 @@ impl MermaidEditor {
 /// the form's two text columns fight over the row.
 const ID_FIELD_WIDTH: Rems = Rems(8.);
 const LABEL_FIELD_WIDTH: Rems = Rems(12.);
+const NUMBER_FIELD_WIDTH: Rems = Rems(5.);
 const PREVIEW_WIDTH: Rems = Rems(28.);
 const PREVIEW_HEIGHT: Rems = Rems(30.);
 const MODAL_WIDTH: Rems = Rems(72.);
 const FORM_HEIGHT: Rems = Rems(30.);
 
-fn section_title(text: &'static str) -> Label {
+fn section_title(text: impl Into<SharedString>) -> Label {
     Label::new(text).size(LabelSize::Small).color(Color::Muted)
 }
 
-fn field_frame(field: &Entity<Editor>, width: Rems, window: &Window, cx: &mut App) -> gpui::Div {
+/// The frame around one text field. `is_valid` is what the model layer says
+/// about the text the field holds; an invalid value gets a red border so that
+/// the reason above the form can be traced to the row it came from.
+fn field_frame(
+    field: &Entity<Editor>,
+    width: Rems,
+    is_valid: bool,
+    window: &Window,
+    cx: &mut App,
+) -> gpui::Div {
     let focused = field.focus_handle(cx).contains_focused(window, cx);
-    ui::input_frame_sized(ui::InputFrameSize::Compact, focused, cx)
+    let frame = ui::input_frame_sized(ui::InputFrameSize::Compact, focused, cx)
         .w(width)
-        .flex_none()
+        .flex_none();
+    if is_valid {
+        frame
+    } else {
+        frame.border_color(cx.theme().status().error_border)
+    }
 }
 
 /// The up, down and delete buttons every list row carries.
 fn row_controls(
-    prefix: &'static str,
+    prefix: &str,
     index: usize,
     at_start: bool,
     at_end: bool,
+    move_up: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    move_down: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    remove: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    row_controls_labelled(
+        prefix, index, at_start, at_end, "削除", move_up, move_down, remove,
+    )
+}
+
+/// The same, for a row whose deletion takes more with it than the row itself
+/// and has to say so before it is pressed.
+#[allow(clippy::too_many_arguments)]
+fn row_controls_labelled(
+    prefix: &str,
+    index: usize,
+    at_start: bool,
+    at_end: bool,
+    remove_tooltip: &'static str,
     move_up: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
     move_down: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
     remove: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
@@ -1069,9 +1462,21 @@ fn row_controls(
             )
             .shape(IconButtonShape::Square)
             .icon_size(IconSize::XSmall)
-            .tooltip(Tooltip::text("削除"))
+            .tooltip(Tooltip::text(remove_tooltip))
             .on_click(remove),
         )
+}
+
+/// The "add a row" button every list section ends with.
+fn add_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    Button::new(id, label)
+        .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
+        .label_size(LabelSize::Small)
+        .on_click(on_click)
 }
 
 /// Keeps the statements that came through verbatim pointing at the elements
@@ -1141,6 +1546,13 @@ fn edge_operator_label(edge: &FlowchartEdge) -> SharedString {
         .unwrap_or_else(|| SharedString::from("-->"))
 }
 
+fn subgraph_direction_label(direction: Option<FlowDirection>) -> &'static str {
+    match direction {
+        Some(direction) => direction.label(),
+        None => "指定なし",
+    }
+}
+
 /// Rasters come back at [`SMOOTH_SVG_SCALE_FACTOR`] device pixels per logical
 /// pixel, so the natural size is the image's own size divided by it.
 fn preview_size(image: &RenderImage) -> Size<gpui::Pixels> {
@@ -1153,13 +1565,15 @@ fn preview_size(image: &RenderImage) -> Size<gpui::Pixels> {
 
 impl Render for MermaidEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let direction = self.render_direction(window, cx);
-        let nodes = self.render_nodes(window, cx);
-        let edges = self.render_edges(window, cx);
-        let subgraphs = self.render_subgraphs(window, cx);
+        let toolbar = self.render_toolbar(window, cx);
+        let sections = self.render_form(window, cx);
         let preview = self.render_preview(cx);
         let footer = self.render_footer(cx);
         let message = self.message.clone();
+        let headline = match &self.form {
+            Form::Choosing => SharedString::from("Mermaid 図を作成"),
+            _ => SharedString::from("Mermaid 図を編集"),
+        };
 
         div()
             .key_context("MermaidEditor")
@@ -1172,12 +1586,12 @@ impl Render for MermaidEditor {
             .capture_action(cx.listener(Self::focus_previous_field))
             .child(
                 Modal::new("mermaid-editor", None)
-                    .header(ModalHeader::new().headline("Mermaid 図を編集").description(
-                        "Mermaid は配置を自動で決めます (座標は持てません)。ここでは要素・つながり・文字・向き・グループを編集します。",
+                    .header(ModalHeader::new().headline(headline).description(
+                        "Mermaid は配置を自動で決めます (座標は持てません)。ここでは図の要素・つながり・文字を編集します。",
                     ))
                     .section(
                         Section::new()
-                            .child(direction)
+                            .child(toolbar)
                             .children(message.map(|message| {
                                 Label::new(message)
                                     .size(LabelSize::Small)
@@ -1196,9 +1610,7 @@ impl Render for MermaidEditor {
                                             .max_h(FORM_HEIGHT)
                                             .overflow_scroll()
                                             .track_scroll(&self.scroll_handle)
-                                            .child(nodes)
-                                            .child(edges)
-                                            .child(subgraphs),
+                                            .children(sections),
                                     )
                                     .child(preview),
                             ),
@@ -1210,8 +1622,8 @@ impl Render for MermaidEditor {
 
 impl Focusable for MermaidEditor {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        match self.nodes.first() {
-            Some(row) => row.id.focus_handle(cx),
+        match self.fields().first() {
+            Some(field) => field.focus_handle(cx),
             None => self.focus_handle.clone(),
         }
     }
@@ -1229,443 +1641,4 @@ impl ModalView for MermaidEditor {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use editor::test::editor_test_context::EditorTestContext;
-    use gpui::TestAppContext;
-    use indoc::indoc;
-    use std::sync::Arc;
-
-    #[gpui::test]
-    async fn adding_a_node_writes_the_fence_back(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart TD
-                  Aˇ[開始] --> B[終了]
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                modal.add_node(window, cx);
-                let Some(row) = modal.nodes.last() else {
-                    panic!("the new node should have a row");
-                };
-                row.id.update(cx, |id, cx| id.set_text("C", window, cx));
-                row.label
-                    .update(cx, |label, cx| label.set_text("追加", window, cx));
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        let text = cx.update_editor(|editor, _window, cx| editor.text(cx));
-        assert_eq!(
-            text,
-            indoc! {"
-                ```mermaid
-                flowchart TB
-                    A[開始]
-                    B[終了]
-                    C[追加]
-                    A --> B
-                ```
-            "},
-        );
-    }
-
-    #[gpui::test]
-    async fn a_duplicate_id_is_refused_and_the_fence_is_left_alone(cx: &mut TestAppContext) {
-        let source = indoc! {"
-            ```mermaid
-            flowchart TD
-              Aˇ[開始] --> B[終了]
-            ```
-        "};
-        let (mut cx, modal, _app_state) = open_on(source, cx).await;
-        let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
-
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                let Some(row) = modal.nodes.last() else {
-                    panic!("the diagram should have two nodes");
-                };
-                row.id.update(cx, |id, cx| id.set_text("A", window, cx));
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        assert_eq!(
-            cx.update_editor(|editor, _window, cx| editor.text(cx)),
-            before,
-            "a diagram with two nodes called A must not be written back"
-        );
-        let message = cx.update(|_window, cx| modal.read(cx).message.clone());
-        assert_eq!(
-            message.as_deref(),
-            Some("ID「A」が重複しています。"),
-            "the modal should say why it refused"
-        );
-    }
-
-    #[gpui::test]
-    async fn an_empty_id_is_refused(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart TD
-                  Aˇ[開始] --> B[終了]
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                let Some(row) = modal.nodes.first() else {
-                    panic!("the diagram should have a node");
-                };
-                row.id.update(cx, |id, cx| id.set_text("  ", window, cx));
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        let message = cx.update(|_window, cx| modal.read(cx).message.clone());
-        assert_eq!(message.as_deref(), Some("ID が空の要素があります。"));
-    }
-
-    #[gpui::test]
-    async fn a_group_collects_the_nodes_that_are_ticked(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                  Aˇ --> B
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                modal.add_subgraph(window, cx);
-                let Some(row) = modal.subgraphs.last() else {
-                    panic!("the new group should have a row");
-                };
-                row.id.update(cx, |id, cx| id.set_text("g", window, cx));
-                row.title
-                    .update(cx, |title, cx| title.set_text("まとまり", window, cx));
-                modal.toggle_membership(0, "A", cx);
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        assert_eq!(
-            cx.update_editor(|editor, _window, cx| editor.text(cx)),
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                    A
-                    B
-                    A --> B
-                    subgraph g [まとまり]
-                        A
-                    end
-                ```
-            "},
-        );
-    }
-
-    #[gpui::test]
-    async fn removing_a_node_takes_its_edges_and_memberships_with_it(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart TD
-                  Aˇ -->|一| B
-                  B -->|二| C
-                  subgraph g [まとまり]
-                    B
-                    C
-                  end
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        // The label fields are held beside the edges by index, so dropping the
-        // middle node has to drop its two edges' fields as well.
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                let removed = modal
-                    .nodes
-                    .iter()
-                    .position(|row| row.id.read(cx).text(cx) == "B")
-                    .expect("B should have a row");
-                modal.remove_node(removed, cx);
-                assert_eq!(modal.document.edges.len(), 0);
-                assert_eq!(modal.edge_labels.len(), 0);
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        assert_eq!(
-            cx.update_editor(|editor, _window, cx| editor.text(cx)),
-            indoc! {"
-                ```mermaid
-                flowchart TB
-                    A
-                    C
-                    subgraph g [まとまり]
-                        C
-                    end
-                ```
-            "},
-        );
-    }
-
-    /// Everything but the node's own declaration names it by id, so a rename
-    /// that stopped at the declaration would leave the edges, the group and the
-    /// style statement pointing at an id Mermaid would draw as an extra box.
-    #[gpui::test]
-    async fn renaming_a_node_follows_into_everything_that_names_it(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                  Aˇ[開始] --> B[終了]
-                  subgraph g [まとまり]
-                    A
-                  end
-                  style A fill:#f00
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                let Some(row) = modal.nodes.first() else {
-                    panic!("the diagram should have a node");
-                };
-                row.id.update(cx, |id, cx| id.set_text("Start", window, cx));
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        assert_eq!(
-            cx.update_editor(|editor, _window, cx| editor.text(cx)),
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                    Start[開始]
-                    B[終了]
-                    Start --> B
-                    subgraph g [まとまり]
-                        Start
-                    end
-                  style Start fill:#f00
-                ```
-            "},
-        );
-    }
-
-    /// A `style` statement declares the node it names, so one left behind would
-    /// bring the deleted node back as an empty box.
-    #[gpui::test]
-    async fn deleting_a_node_takes_its_style_statement_with_it(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                  Aˇ --> B
-                  style A fill:#f00
-                  style B fill:#0f0
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                modal.remove_node(0, cx);
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        assert_eq!(
-            cx.update_editor(|editor, _window, cx| editor.text(cx)),
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                    B
-                  style B fill:#0f0
-                ```
-            "},
-        );
-    }
-
-    /// The modal holds a field editor per row, a subscription per field and a
-    /// pending preview task; none of them may hold the modal itself.
-    #[gpui::test]
-    async fn the_modal_and_its_fields_are_released(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart TD
-                  Aˇ[開始] --> B[終了]
-                  subgraph g [まとまり]
-                    A
-                  end
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        let released = modal.downgrade();
-        let fields = cx.update(|_window, cx| {
-            modal
-                .read(cx)
-                .fields()
-                .iter()
-                .map(|field| field.downgrade())
-                .collect::<Vec<_>>()
-        });
-        assert!(!fields.is_empty(), "the form should have text fields");
-
-        // Typing leaves a preview task in flight; dropping the modal before it
-        // comes back must not keep it alive.
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                let Some(row) = modal.nodes.first() else {
-                    panic!("the diagram should have a node");
-                };
-                row.label
-                    .update(cx, |label, cx| label.set_text("途中", window, cx));
-                modal.cancel(&menu::Cancel, window, cx);
-            })
-        });
-        drop(modal);
-        cx.run_until_parked();
-
-        released.assert_released();
-        for field in fields {
-            field.assert_released();
-        }
-    }
-
-    #[gpui::test]
-    async fn removing_one_of_two_edges_keeps_the_other_label(cx: &mut TestAppContext) {
-        let (mut cx, modal, _app_state) = open_on(
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                  Aˇ -->|一| B
-                  B -->|二| C
-                ```
-            "},
-            cx,
-        )
-        .await;
-
-        cx.update(|window, cx| {
-            modal.update(cx, |modal, cx| {
-                modal.remove_edge(0, cx);
-                modal.confirm(&menu::SecondaryConfirm, window, cx);
-            })
-        });
-
-        assert_eq!(
-            cx.update_editor(|editor, _window, cx| editor.text(cx)),
-            indoc! {"
-                ```mermaid
-                flowchart LR
-                    A
-                    B
-                    C
-                    B -->|二| C
-                ```
-            "},
-        );
-    }
-
-    /// A fence holding a diagram the structured editor cannot express is
-    /// refused before the modal is built, which is the branch `open` takes.
-    #[gpui::test]
-    async fn another_diagram_type_does_not_open(cx: &mut TestAppContext) {
-        let _state = init_test(cx);
-        let mut cx = EditorTestContext::new(cx).await;
-        cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_language()), cx));
-        cx.set_state(indoc! {"
-            ```mermaid
-            sequenceDiagram
-              Aˇ->>B: hi
-            ```
-        "});
-
-        let target = cx
-            .update_editor(|editor, _window, cx| editor.mermaid_fence_target(cx))
-            .expect("the cursor is inside a mermaid fence");
-        let error = parse_flowchart(&target.source)
-            .err()
-            .expect("a sequence diagram is not a flowchart");
-        assert!(
-            format!("{error}").contains("フローチャート"),
-            "unexpected message: {error}"
-        );
-    }
-
-    fn init_test(cx: &mut TestAppContext) -> Arc<workspace::AppState> {
-        cx.update(|cx| {
-            let state = workspace::AppState::test(cx);
-            editor::init(cx);
-            crate::init(cx);
-            state
-        })
-    }
-
-    fn markdown_language() -> Arc<language::Language> {
-        Arc::new(language::Language::new(
-            language::LanguageConfig {
-                name: "Markdown".into(),
-                ..Default::default()
-            },
-            None,
-        ))
-    }
-
-    /// An editor holding `state` with the modal opened on the fence the cursor
-    /// marker sits in.
-    async fn open_on(
-        state: &str,
-        cx: &mut TestAppContext,
-    ) -> (
-        EditorTestContext,
-        Entity<MermaidEditor>,
-        Arc<workspace::AppState>,
-    ) {
-        let app_state = init_test(cx);
-        let mut cx = EditorTestContext::new(cx).await;
-        cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_language()), cx));
-        cx.set_state(state);
-
-        let editor = cx.editor.clone();
-        let target = cx
-            .update_editor(|editor, _window, cx| editor.mermaid_fence_target(cx))
-            .expect("the cursor is inside a mermaid fence");
-        let document = parse_flowchart(&target.source).expect("the fence holds a flowchart");
-        let modal = cx.update(|window, cx| {
-            cx.new(|cx| MermaidEditor::new(editor.downgrade(), target, document, window, cx))
-        });
-        (cx, modal, app_state)
-    }
-}
+mod tests;

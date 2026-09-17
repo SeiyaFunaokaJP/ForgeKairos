@@ -994,6 +994,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "Markdown: コードブロックで囲む",
     ),
     (
+        "markdown::InsertDetails",
+        "Markdown: 折り畳み (details) を挿入",
+    ),
+    (
         "markdown::NewlineInvertHardBreak",
         "Markdown: 改行 (行末スペース補完を反転)",
     ),
@@ -1139,6 +1143,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "agent::TogglePanelThreadHistory",
         "エージェント: パネル内のスレッド履歴の切り替え",
+    ),
+    (
+        "agent::TogglePanelTabBar",
+        "エージェント: パネルのタブバーの切り替え",
     ),
     (
         "agent::ToggleThinkingMode",
@@ -1899,6 +1907,36 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "tabular_data::ClearCellColors",
         "表 (CSV / TSV): セルの色をクリア",
+    ),
+    (
+        "tabular_data::FillDown",
+        "表 (CSV / TSV): 下方向へコピー (フィル)",
+    ),
+    (
+        "tabular_data::FillRight",
+        "表 (CSV / TSV): 右方向へコピー (フィル)",
+    ),
+    ("tabular_data::AppendRow", "表 (CSV / TSV): 末尾に行を追加"),
+    (
+        "tabular_data::AppendColumn",
+        "表 (CSV / TSV): 末尾に列を追加",
+    ),
+    (
+        "tabular_data::ClearAllFilters",
+        "表 (CSV / TSV): 絞り込みをすべて解除",
+    ),
+    (
+        "tabular_data::ToggleFilterMenu",
+        "表 (CSV / TSV): 絞り込みメニューを開く",
+    ),
+    ("tabular_data::DiffWithHead", "表 (CSV / TSV): HEAD と比較"),
+    (
+        "tabular_data::DiffWithFile",
+        "表 (CSV / TSV): ファイルと比較",
+    ),
+    (
+        "tabular_data::DiffSelectedCells",
+        "表 (CSV / TSV): 選択したセルを比較",
     ),
 ];
 

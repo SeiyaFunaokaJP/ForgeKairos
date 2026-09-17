@@ -5582,7 +5582,7 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
             .await
             .expect_err("the \"deny\" default should refuse a command no allow pattern matches");
         assert!(
-            error.to_lowercase().contains("disabled"),
+            error.contains("無効になっています"),
             "error should mention the tool is disabled, got: {error}"
         );
     }
@@ -5683,9 +5683,9 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
             result.is_err(),
             "expected command to be blocked by tool-specific deny default"
         );
-        let err_msg = result.unwrap_err().to_lowercase();
+        let err_msg = result.unwrap_err();
         assert!(
-            err_msg.contains("disabled"),
+            err_msg.contains("無効になっています"),
             "error should mention the tool is disabled, got: {err_msg}"
         );
     }
@@ -7375,7 +7375,10 @@ async fn test_edit_file_tool_deny_rule_blocks_edit(cx: &mut TestAppContext) {
     let result = task.await;
     assert!(result.is_err(), "expected edit to be blocked");
     assert!(
-        result.unwrap_err().to_string().contains("blocked"),
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("ブロックされました"),
         "error should mention the edit was blocked"
     );
 }
@@ -7423,7 +7426,7 @@ async fn test_delete_path_tool_deny_rule_blocks_deletion(cx: &mut TestAppContext
     let result = task.await;
     assert!(result.is_err(), "expected deletion to be blocked");
     assert!(
-        result.unwrap_err().contains("blocked"),
+        result.unwrap_err().contains("ブロックされました"),
         "error should mention the deletion was blocked"
     );
 }
@@ -7479,7 +7482,7 @@ async fn test_move_path_tool_denies_if_destination_denied(cx: &mut TestAppContex
         "expected move to be blocked due to destination path"
     );
     assert!(
-        result.unwrap_err().contains("blocked"),
+        result.unwrap_err().contains("ブロックされました"),
         "error should mention the move was blocked"
     );
 }
@@ -7535,7 +7538,7 @@ async fn test_move_path_tool_denies_if_source_denied(cx: &mut TestAppContext) {
         "expected move to be blocked due to source path"
     );
     assert!(
-        result.unwrap_err().contains("blocked"),
+        result.unwrap_err().contains("ブロックされました"),
         "error should mention the move was blocked"
     );
 }
@@ -7590,7 +7593,7 @@ async fn test_copy_path_tool_deny_rule_blocks_copy(cx: &mut TestAppContext) {
     let result = task.await;
     assert!(result.is_err(), "expected copy to be blocked");
     assert!(
-        result.unwrap_err().contains("blocked"),
+        result.unwrap_err().contains("ブロックされました"),
         "error should mention the copy was blocked"
     );
 }
@@ -7721,7 +7724,7 @@ async fn test_web_search_tool_deny_rule_blocks_search(cx: &mut TestAppContext) {
     match result.unwrap_err() {
         crate::WebSearchToolOutput::Error { error } => {
             assert!(
-                error.contains("blocked"),
+                error.contains("ブロックされました"),
                 "error should mention the search was blocked"
             );
         }
@@ -7898,7 +7901,7 @@ async fn test_fetch_tool_deny_rule_blocks_url(cx: &mut TestAppContext) {
     let result = task.await;
     assert!(result.is_err(), "expected fetch to be blocked");
     assert!(
-        result.unwrap_err().contains("blocked"),
+        result.unwrap_err().contains("ブロックされました"),
         "error should mention the fetch was blocked"
     );
 }

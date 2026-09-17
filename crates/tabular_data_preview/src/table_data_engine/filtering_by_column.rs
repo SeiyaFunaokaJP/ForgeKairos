@@ -39,21 +39,170 @@ impl FilterEntry {
     }
 }
 
+/// One of the text conditions Excel offers beside the value checklist, for when
+/// the user wants "everything containing x" rather than a list of values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TextFilterOp {
+    Contains,
+    NotContains,
+    Equals,
+    StartsWith,
+    EndsWith,
+    Blank,
+    NotBlank,
+}
+
+impl TextFilterOp {
+    /// Every operator, in the order the popover offers them.
+    pub(crate) const ALL: [TextFilterOp; 7] = [
+        TextFilterOp::Contains,
+        TextFilterOp::NotContains,
+        TextFilterOp::Equals,
+        TextFilterOp::StartsWith,
+        TextFilterOp::EndsWith,
+        TextFilterOp::Blank,
+        TextFilterOp::NotBlank,
+    ];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            TextFilterOp::Contains => "含む",
+            TextFilterOp::NotContains => "含まない",
+            TextFilterOp::Equals => "等しい",
+            TextFilterOp::StartsWith => "前方一致",
+            TextFilterOp::EndsWith => "後方一致",
+            TextFilterOp::Blank => "空白",
+            TextFilterOp::NotBlank => "空白以外",
+        }
+    }
+
+    /// Whether the operator reads the text the user typed at all.
+    pub(crate) fn needs_needle(self) -> bool {
+        !matches!(self, TextFilterOp::Blank | TextFilterOp::NotBlank)
+    }
+
+    /// How the condition reads as a phrase, e.g. `「abc」を含む`. Written out per
+    /// operator rather than as "label + needle" because the particle differs.
+    pub(crate) fn describe(self, needle: &str) -> String {
+        match self {
+            TextFilterOp::Contains => format!("「{needle}」を含む"),
+            TextFilterOp::NotContains => format!("「{needle}」を含まない"),
+            TextFilterOp::Equals => format!("「{needle}」と等しい"),
+            TextFilterOp::StartsWith => format!("「{needle}」で始まる"),
+            TextFilterOp::EndsWith => format!("「{needle}」で終わる"),
+            TextFilterOp::Blank => "空白".to_owned(),
+            TextFilterOp::NotBlank => "空白以外".to_owned(),
+        }
+    }
+}
+
+/// A text condition on one column.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TextFilter {
+    pub(crate) op: TextFilterOp,
+    /// What the user typed, kept as typed so the popover can show it back.
+    pub(crate) needle: SharedString,
+    /// `needle` case folded once, so that testing a row does not fold it again
+    /// for every cell.
+    folded_needle: String,
+}
+
+impl TextFilter {
+    pub(crate) fn new(op: TextFilterOp, needle: SharedString) -> Self {
+        let folded_needle = needle.to_lowercase();
+        Self {
+            op,
+            needle,
+            folded_needle,
+        }
+    }
+
+    /// Whether a cell's value passes this condition. Case is ignored, the way
+    /// Excel's text filters ignore it.
+    pub(crate) fn matches(&self, value: Option<&SharedString>) -> bool {
+        let value = value.map(SharedString::as_ref).unwrap_or_default();
+        match self.op {
+            // A cell holding nothing but spaces reads as empty in the grid, so
+            // it counts as blank here too.
+            TextFilterOp::Blank => value.trim().is_empty(),
+            TextFilterOp::NotBlank => !value.trim().is_empty(),
+            TextFilterOp::Contains => value.to_lowercase().contains(&self.folded_needle),
+            TextFilterOp::NotContains => !value.to_lowercase().contains(&self.folded_needle),
+            TextFilterOp::Equals => value.to_lowercase() == self.folded_needle,
+            TextFilterOp::StartsWith => value.to_lowercase().starts_with(&self.folded_needle),
+            TextFilterOp::EndsWith => value.to_lowercase().ends_with(&self.folded_needle),
+        }
+    }
+
+    /// How the condition reads where the UI reports what a column is filtered by.
+    pub(crate) fn description(&self) -> String {
+        self.op.describe(&self.needle)
+    }
+}
+
+/// What one column is filtered by.
+///
+/// Excel keeps a value checklist and a text condition per column and combines
+/// them; here the two replace each other, so that a checkmark in the list means
+/// exactly one thing - that value is in the set of values being kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ColumnFilter {
+    /// A row is kept when its cell in this column holds one of these values.
+    Values(HashSet<Option<SharedString>>),
+    Text(TextFilter),
+}
+
+impl ColumnFilter {
+    fn keeps(&self, value: Option<&SharedString>) -> bool {
+        match self {
+            ColumnFilter::Values(values) => values.contains(&value.cloned()),
+            ColumnFilter::Text(filter) => filter.matches(value),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub(crate) struct FilterStack {
-    /// Which cell values are currently allowed for each filtered column
-    retention_config: HashMap<AnyColumn, HashSet<Option<SharedString>>>,
+    /// How each filtered column is filtered. A column with no entry here is not
+    /// filtered at all.
+    column_filters: HashMap<AnyColumn, ColumnFilter>,
 }
 
 impl FilterStack {
     pub(crate) fn is_empty(&self) -> bool {
-        self.retention_config.is_empty()
+        self.column_filters.is_empty()
+    }
+
+    /// Drops the filters of columns a table this wide does not have.
+    ///
+    /// Filters outlive a reparse, which is what lets one survive an edit to the
+    /// cells it is filtering; a column *delete* would otherwise leave one
+    /// behind on a column index that is now past the end of every row, and
+    /// since a missing cell is not one of the values it keeps, the whole table
+    /// would go blank with no heading left to clear the filter from.
+    pub(crate) fn forget_columns_beyond(&mut self, number_of_cols: usize) {
+        self.column_filters
+            .retain(|col, _| col.get() < number_of_cols);
     }
 }
 
 impl TableDataEngine {
     pub(crate) fn has_active_filters(&self, col: AnyColumn) -> bool {
-        self.filter_stack.retention_config.contains_key(&col)
+        self.filter_stack.column_filters.contains_key(&col)
+    }
+
+    /// Whether any column at all is filtered, which is what the blue row
+    /// numbers and the toolbar's "clear every filter" button key off.
+    pub(crate) fn has_any_filters(&self) -> bool {
+        !self.filter_stack.is_empty()
+    }
+
+    /// The text condition on `col`, when that is what it is filtered by.
+    pub(crate) fn text_filter(&self, col: AnyColumn) -> Option<&TextFilter> {
+        match self.filter_stack.column_filters.get(&col) {
+            Some(ColumnFilter::Text(filter)) => Some(filter),
+            _ => None,
+        }
     }
 
     /// Marks an entry unavailable if choosing it would leave zero rows, so users
@@ -71,12 +220,13 @@ impl TableDataEngine {
             .get(&column)
             .ok_or_else(|| anyhow::anyhow!("Expected {column:?} to have filter entries"))?;
 
-        let empty = HashSet::new();
-        let active_column_filters = self
-            .filter_stack
-            .retention_config
-            .get(&column)
-            .unwrap_or(&empty);
+        // A text condition is not a set of values, so while one is in force none
+        // of the checklist's entries is checked; the popover reports the
+        // condition itself instead.
+        let applied_values = match self.filter_stack.column_filters.get(&column) {
+            Some(ColumnFilter::Values(values)) => Some(values),
+            _ => None,
+        };
 
         // Rows that survive every *other* active column's filter. `column`'s own
         // filter is excluded so its entries reflect what selecting them would
@@ -88,7 +238,7 @@ impl TableDataEngine {
         // display by name; any other currently active column is a valid choice.
         let blocking_column = self
             .filter_stack
-            .retention_config
+            .column_filters
             .keys()
             .find(|&&col| col != column)
             .copied();
@@ -103,7 +253,8 @@ impl TableDataEngine {
                     .copied()
                     .collect();
 
-                let is_applied = active_column_filters.contains(&entry.content);
+                let is_applied =
+                    applied_values.is_some_and(|values| values.contains(&entry.content));
                 let state = if adjusted_rows.is_empty() {
                     let blocked_by = blocking_column.ok_or_else(|| {
                         anyhow::anyhow!(
@@ -133,63 +284,73 @@ impl TableDataEngine {
     }
 
     pub(crate) fn clear_filters_for_col(&mut self, col: AnyColumn) {
-        self.filter_stack.retention_config.remove(&col);
+        self.filter_stack.column_filters.remove(&col);
     }
 
-    /// Toggle a filter value for a column. Returns `true` if the filter was
-    /// added, `false` if it was removed.
-    pub(crate) fn toggle_filter(
-        &mut self,
-        column: AnyColumn,
-        value: Option<SharedString>,
-    ) -> anyhow::Result<bool> {
-        let is_currently_applied = self
-            .filter_stack
-            .retention_config
-            .get(&column)
-            .is_some_and(|filters| filters.contains(&value));
+    /// Drops every column's filter at once.
+    pub(crate) fn clear_all_filters(&mut self) {
+        self.filter_stack.column_filters.clear();
+    }
 
-        if is_currently_applied {
-            self.remove_filter(column, value)?;
-            Ok(false)
-        } else {
-            self.apply_filter(column, value);
-            Ok(true)
+    /// Checks or unchecks one value of a column's checklist.
+    ///
+    /// Unchecking the last checked value leaves the column unfiltered rather
+    /// than filtered down to nothing, which is the only reading of an empty
+    /// checklist that leaves the user a way back.
+    pub(crate) fn toggle_filter(&mut self, column: AnyColumn, value: Option<SharedString>) {
+        match self.filter_stack.column_filters.get_mut(&column) {
+            Some(ColumnFilter::Values(values)) => {
+                if !values.contains(&value) {
+                    values.insert(value);
+                } else if values.len() == 1 {
+                    self.filter_stack.column_filters.remove(&column);
+                } else {
+                    values.remove(&value);
+                }
+            }
+            // Checking a value while a text condition is in force replaces the
+            // condition: the two are alternatives, and the last one set wins.
+            Some(filter) => *filter = ColumnFilter::Values(HashSet::from_iter([value])),
+            None => {
+                self.filter_stack
+                    .column_filters
+                    .insert(column, ColumnFilter::Values(HashSet::from_iter([value])));
+            }
         }
     }
 
-    fn remove_filter(
+    /// Replaces whatever `column` was filtered by with this set of values. An
+    /// empty set would leave no rows at all, so it clears the column instead.
+    pub(crate) fn set_value_filter(
         &mut self,
         column: AnyColumn,
-        value: Option<SharedString>,
-    ) -> anyhow::Result<()> {
-        let entries = self
-            .filter_stack
-            .retention_config
-            .get_mut(&column)
-            .ok_or_else(|| {
-                anyhow::anyhow!("Expected {column:?} to be present in active filters")
-            })?;
-
-        debug_assert!(
-            entries.contains(&value),
-            "Expected value to be present in {column:?} active filters"
-        );
-
-        if entries.len() == 1 {
-            self.filter_stack.retention_config.remove(&column);
-        } else {
-            entries.remove(&value);
+        values: HashSet<Option<SharedString>>,
+    ) {
+        if values.is_empty() {
+            self.filter_stack.column_filters.remove(&column);
+            return;
         }
-        Ok(())
-    }
-
-    fn apply_filter(&mut self, column: AnyColumn, value: Option<SharedString>) {
         self.filter_stack
-            .retention_config
-            .entry(column)
-            .or_default()
-            .insert(value);
+            .column_filters
+            .insert(column, ColumnFilter::Values(values));
+    }
+
+    /// Replaces whatever `column` was filtered by with a text condition. A
+    /// condition that reads the typed text but was given none keeps every row,
+    /// so it clears the column instead.
+    pub(crate) fn set_text_filter(
+        &mut self,
+        column: AnyColumn,
+        op: TextFilterOp,
+        needle: SharedString,
+    ) {
+        if op.needs_needle() && needle.is_empty() {
+            self.filter_stack.column_filters.remove(&column);
+            return;
+        }
+        self.filter_stack
+            .column_filters
+            .insert(column, ColumnFilter::Text(TextFilter::new(op, needle)));
     }
 }
 
@@ -232,7 +393,7 @@ pub fn retain_rows(
     filter_stack: &FilterStack,
     exclude: Option<AnyColumn>,
 ) -> HashSet<DataRow> {
-    let config = &filter_stack.retention_config;
+    let config = &filter_stack.column_filters;
     if config.is_empty() {
         return (0..content_rows.len()).map(DataRow).collect();
     }
@@ -241,12 +402,11 @@ pub fn retain_rows(
         .iter()
         .enumerate()
         .filter(|(_, row)| {
-            config.iter().all(|(col, allowed_values)| {
+            config.iter().all(|(col, filter)| {
                 if Some(*col) == exclude {
                     return true;
                 }
-                let cell_value = row.get(*col).and_then(|cell| cell.display_value().cloned());
-                allowed_values.contains(&cell_value)
+                filter.keeps(row.get(*col).and_then(|cell| cell.display_value()))
             })
         })
         .map(|(index, _)| DataRow(index))
@@ -329,7 +489,7 @@ mod tests {
         toggles: &[(AnyColumn, Option<SharedString>)],
     ) -> StateSnapshot {
         for (column, value) in toggles {
-            engine.toggle_filter(*column, value.clone()).unwrap();
+            engine.toggle_filter(*column, value.clone());
         }
 
         (0..cols)
@@ -354,6 +514,215 @@ mod tests {
                 (column, column_snapshot)
             })
             .collect()
+    }
+
+    /// The values of column 0 that survive the engine's filters, in row order,
+    /// with a virtual (missing) cell written as `<なし>`.
+    fn kept_values(engine: &TableDataEngine) -> Vec<String> {
+        let mut rows: Vec<DataRow> = retain_rows(&engine.contents.rows, &engine.filter_stack, None)
+            .into_iter()
+            .collect();
+        rows.sort();
+        rows.iter()
+            .map(|row| {
+                engine
+                    .contents
+                    .rows
+                    .get(**row)
+                    .and_then(|row| row.get(AnyColumn(0)))
+                    .and_then(|cell| cell.display_value())
+                    .map(|value| value.as_ref().to_owned())
+                    .unwrap_or_else(|| "<なし>".to_owned())
+            })
+            .collect()
+    }
+
+    /// `matches` reads a missing cell, which no fixture table can produce in its
+    /// first column, so the two blank operators are checked against it directly.
+    #[test]
+    fn blank_covers_a_missing_cell() {
+        assert!(TextFilter::new(TextFilterOp::Blank, "".into()).matches(None));
+        assert!(!TextFilter::new(TextFilterOp::NotBlank, "".into()).matches(None));
+        // A missing cell has no text to contain anything either.
+        assert!(!TextFilter::new(TextFilterOp::Contains, "a".into()).matches(None));
+        assert!(TextFilter::new(TextFilterOp::NotContains, "a".into()).matches(None));
+    }
+
+    fn kept_with_text_filter(table_text: &str, op: TextFilterOp, needle: &str) -> Vec<String> {
+        let mut engine = build_engine(table_text);
+        engine.set_text_filter(AnyColumn(0), op, needle.into());
+        kept_values(&engine)
+    }
+
+    /// Case is ignored on both sides, and multibyte values are compared whole
+    /// rather than by byte, which a naive slice of the haystack would break on.
+    #[test]
+    fn text_conditions_ignore_case_and_survive_multibyte_values() {
+        const TABLE: &str = "c0\nApfel\napfelsaft\nBirne\n日本語\nに日本";
+
+        assert_eq!(
+            kept_with_text_filter(TABLE, TextFilterOp::Contains, "APFEL"),
+            vec!["Apfel", "apfelsaft"]
+        );
+        assert_eq!(
+            kept_with_text_filter(TABLE, TextFilterOp::NotContains, "apfel"),
+            vec!["Birne", "日本語", "に日本"]
+        );
+        assert_eq!(
+            kept_with_text_filter(TABLE, TextFilterOp::Equals, "apfel"),
+            vec!["Apfel"]
+        );
+        assert_eq!(
+            kept_with_text_filter(TABLE, TextFilterOp::StartsWith, "日本"),
+            vec!["日本語"]
+        );
+        assert_eq!(
+            kept_with_text_filter(TABLE, TextFilterOp::EndsWith, "日本"),
+            vec!["に日本"]
+        );
+    }
+
+    /// An empty cell and a cell holding only spaces both read as empty in the
+    /// grid, so "blank" has to cover them both.
+    #[test]
+    fn blank_covers_empty_and_whitespace_cells() {
+        const TABLE: &str = "c0,c1\na,1\n,2\n   ,3\nb,4";
+
+        assert_eq!(
+            kept_with_text_filter(TABLE, TextFilterOp::Blank, ""),
+            vec!["", "   "]
+        );
+        assert_eq!(
+            kept_with_text_filter(TABLE, TextFilterOp::NotBlank, ""),
+            vec!["a", "b"]
+        );
+    }
+
+    /// The needle-reading operators filter nothing without a needle, and a
+    /// column left in that state has to come out unfiltered rather than empty.
+    #[test]
+    fn a_condition_without_a_needle_leaves_the_column_unfiltered() {
+        let mut engine = build_engine("c0\na\nb");
+        engine.set_text_filter(AnyColumn(0), TextFilterOp::Contains, "".into());
+
+        assert!(!engine.has_active_filters(AnyColumn(0)));
+        assert!(!engine.has_any_filters());
+        assert_eq!(kept_values(&engine), vec!["a", "b"]);
+    }
+
+    /// The checklist and the text condition are alternatives: setting either one
+    /// replaces the other, and neither leaves the column half filtered by both.
+    #[test]
+    fn a_text_condition_and_the_value_checklist_replace_each_other() {
+        let mut engine = build_engine("c0\nabc\nabd\nxyz");
+        let column = AnyColumn(0);
+
+        engine.toggle_filter(column, Some("xyz".into()));
+        assert_eq!(kept_values(&engine), vec!["xyz"]);
+
+        engine.set_text_filter(column, TextFilterOp::StartsWith, "ab".into());
+        assert_eq!(kept_values(&engine), vec!["abc", "abd"]);
+        assert!(engine.text_filter(column).is_some());
+        // Nothing in the checklist reads as checked while the condition stands.
+        let entries = engine
+            .get_filters_for_column(column)
+            .expect("the column has filter entries");
+        assert!(
+            entries.iter().all(|(_, state)| matches!(
+                state,
+                FilterEntryState::Available { is_applied: false }
+            )),
+            "a text condition should leave every checklist entry unchecked: {entries:?}"
+        );
+
+        // And back: checking a value drops the condition instead of narrowing it.
+        engine.toggle_filter(column, Some("xyz".into()));
+        assert!(engine.text_filter(column).is_none());
+        assert_eq!(kept_values(&engine), vec!["xyz"]);
+    }
+
+    /// A text condition on one column has to compose with another column's
+    /// checklist, and clearing everything has to bring every row back.
+    #[test]
+    fn filters_on_several_columns_compose_and_clear() {
+        let mut engine = build_engine("c0,c1\nabc,keep\nabd,drop\nxyz,keep");
+
+        engine.set_text_filter(AnyColumn(0), TextFilterOp::StartsWith, "ab".into());
+        engine.toggle_filter(AnyColumn(1), Some("keep".into()));
+        assert_eq!(kept_values(&engine), vec!["abc"]);
+
+        engine.clear_filters_for_col(AnyColumn(0));
+        assert_eq!(kept_values(&engine), vec!["abc", "xyz"]);
+
+        engine.clear_all_filters();
+        assert!(!engine.has_any_filters());
+        assert_eq!(kept_values(&engine), vec!["abc", "abd", "xyz"]);
+    }
+
+    /// Unchecking the last checked value has to leave the column unfiltered, not
+    /// filtered down to no rows at all.
+    #[test]
+    fn unchecking_the_last_value_leaves_the_column_unfiltered() {
+        let mut engine = build_engine("c0\na\nb");
+        let column = AnyColumn(0);
+
+        engine.toggle_filter(column, Some("a".into()));
+        assert_eq!(kept_values(&engine), vec!["a"]);
+
+        engine.toggle_filter(column, Some("a".into()));
+        assert!(!engine.has_active_filters(column));
+        assert_eq!(kept_values(&engine), vec!["a", "b"]);
+    }
+
+    /// The "select everything the search narrowed the list to" button hands the
+    /// engine a set of values; an empty one has to read as "no filter".
+    #[test]
+    fn a_value_set_replaces_the_column_filter_and_an_empty_one_clears_it() {
+        let mut engine = build_engine("c0\na\nb\nc");
+        let column = AnyColumn(0);
+
+        engine.set_text_filter(column, TextFilterOp::Equals, "a".into());
+        engine.set_value_filter(column, HashSet::from_iter([Some("b".into())]));
+        assert!(engine.text_filter(column).is_none());
+        assert_eq!(kept_values(&engine), vec!["b"]);
+
+        engine.set_value_filter(column, HashSet::new());
+        assert!(!engine.has_active_filters(column));
+        assert_eq!(kept_values(&engine), vec!["a", "b", "c"]);
+    }
+
+    /// Deleting a filtered column reparses the buffer into a table that has no
+    /// such column; the filter has to go with it rather than hide every row for
+    /// want of a cell to read.
+    #[test]
+    fn a_reparse_forgets_the_filter_of_a_column_that_is_gone() {
+        let mut engine = build_engine("c0,c1\na,1\nb,2");
+        engine.toggle_filter(AnyColumn(1), Some("1".into()));
+        assert_eq!(kept_values(&engine), vec!["a"]);
+
+        // What deleting the second column leaves the grid to reparse.
+        engine.contents = Arc::new(TableLikeContent::from_str("c0\na\nb".to_owned(), true));
+        engine.calculate_available_filters();
+
+        assert!(!engine.has_any_filters());
+        assert_eq!(kept_values(&engine), vec!["a", "b"]);
+    }
+
+    /// The filter of a column that is still there survives the reparse that an
+    /// edit to another column triggers.
+    #[test]
+    fn a_reparse_keeps_the_filter_of_a_column_that_remains() {
+        let mut engine = build_engine("c0,c1\na,1\nb,2");
+        engine.toggle_filter(AnyColumn(0), Some("a".into()));
+
+        engine.contents = Arc::new(TableLikeContent::from_str(
+            "c0,c1\na,9\nb,2".to_owned(),
+            true,
+        ));
+        engine.calculate_available_filters();
+
+        assert!(engine.has_active_filters(AnyColumn(0)));
+        assert_eq!(kept_values(&engine), vec!["a"]);
     }
 
     proptest! {

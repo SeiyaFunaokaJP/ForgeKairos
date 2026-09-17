@@ -133,6 +133,7 @@ tree-sitter-typescript.workspace = true
 tree-sitter-yaml.workspace = true
 tree-sitter-bash.workspace = true
 tree-sitter-md.workspace = true
+tree-sitter-mermaid.workspace = true
 unindent.workspace = true
 util = { workspace = true, features = ["test-support"] }
 workspace = { workspace = true, features = ["test-support"] }

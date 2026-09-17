@@ -45,7 +45,10 @@ const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
 /// re-authenticated here.
 const CLAUDE_SUBSCRIPTION_NAME: &str = "Claude (サブスクリプション)";
 
-const CLAUDE_SUBSCRIPTION_DESCRIPTION: &str = "公式の Claude Code CLI をこの IDE のターミナルで実行して、Claude Pro / Max のサブスクリプションを利用します。CLI は同梱しておらず、公式のインストールコマンドで導入します。API キーの従量課金は上の Anthropic をご利用ください。";
+/// ADR-F53: the route is the official CLI running itself, so the card says
+/// where it opens and that the sign-in happens on the CLI's own screen —
+/// nothing here relays a subscription's credentials.
+const CLAUDE_SUBSCRIPTION_DESCRIPTION: &str = "エージェントパネルのタブで公式の Claude Code が開きます。ログインは Claude Code の画面で行います。CLI は同梱しておらず、公式のインストールコマンドで導入します。API キーの従量課金は上の Anthropic をご利用ください。";
 
 /// The one line left on the Anthropic card: the same question is asked from
 /// there, but the answer now has a card of its own right below it.

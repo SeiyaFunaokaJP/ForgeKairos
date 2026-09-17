@@ -4,12 +4,12 @@
 //! The cell editor itself, the keyboard handlers and the structural operations
 //! live in [`crate::grid_editing`]; this module owns the state they work on.
 
-use std::{cell::Cell as MutableCell, ops::Range, rc::Rc, sync::Arc};
+use std::{cell::Cell as MutableCell, collections::HashSet, ops::Range, rc::Rc, sync::Arc};
 
 use editor::{Editor, EditorEvent};
 use gpui::{
-    AnyElement, Bounds, Entity, Focusable as _, ListOffset, MouseButton, Point, Subscription,
-    TextStyleRefinement, canvas,
+    AnyElement, Bounds, Entity, Focusable as _, ListOffset, Modifiers, MouseButton, Point,
+    Subscription, TextStyleRefinement, canvas,
 };
 use settings::Settings as _;
 use theme_settings::ThemeSettings;
@@ -18,6 +18,7 @@ use ui::{ContextMenu, prelude::*};
 use crate::{
     TabularDataPreviewPane,
     edit_engine::RowRef,
+    grid_editing::GridMenuTarget,
     grid_search::GridSearchState,
     types::{AnyColumn, DisplayRow, TableCell},
 };
@@ -89,7 +90,60 @@ pub(crate) enum GridDrag {
     Cells,
     Rows,
     Columns,
+    /// The fill handle at the corner of the selection, dragged to copy the
+    /// block along one axis.
+    Fill {
+        origin: GridRect,
+    },
+    /// The selection's own border, dragged to move the block (or, with the
+    /// secondary modifier held when the button comes up, to copy it).
+    Move {
+        origin: GridRect,
+        grabbed: GridCell,
+    },
 }
+
+/// How a pointer or key event changes the selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectionChange {
+    /// No modifier: a single range, replacing everything selected before.
+    Replace,
+    /// Shift: the current range grows to reach the new cell.
+    Extend,
+    /// Ctrl (Cmd on macOS): a new range starts at the new cell and the ranges
+    /// selected before it stay.
+    Add,
+}
+
+impl SelectionChange {
+    /// What the modifiers held during a click mean for the selection.
+    pub(crate) fn from_modifiers(modifiers: Modifiers) -> Self {
+        if modifiers.secondary() {
+            SelectionChange::Add
+        } else if modifiers.shift {
+            SelectionChange::Extend
+        } else {
+            SelectionChange::Replace
+        }
+    }
+}
+
+/// One block of the selection: the corner it started from, the corner it
+/// reaches, and what it is anchored to.
+///
+/// Kept as the two cells rather than as a resolved [`GridRect`] because a row or
+/// column range covers whatever the table is wide or tall *now*, and the table's
+/// shape changes under the selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GridSelectionRange {
+    pub(crate) anchor: GridCell,
+    pub(crate) focus: GridCell,
+    pub(crate) kind: GridSelectionKind,
+}
+
+/// What the grid says when an operation only makes sense on one block, which is
+/// the wording Excel refuses the same operations with.
+pub(crate) const MULTI_RANGE_REFUSAL: &str = "複数の選択範囲に対してはこの操作を実行できません。";
 
 /// The rectangle of cells covered by the selection, in grid coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,8 +174,38 @@ impl GridRect {
         self.first_col..self.last_col + 1
     }
 
+    pub(crate) fn rows(&self) -> Range<usize> {
+        self.first_row..self.last_row + 1
+    }
+
     pub(crate) fn cell_count(&self) -> usize {
         (self.last_row - self.first_row + 1).saturating_mul(self.last_col - self.first_col + 1)
+    }
+
+    pub(crate) fn row_count(&self) -> usize {
+        self.last_row - self.first_row + 1
+    }
+
+    pub(crate) fn col_count(&self) -> usize {
+        self.last_col - self.first_col + 1
+    }
+
+    pub(crate) fn contains_rect(&self, other: GridRect) -> bool {
+        self.first_row <= other.first_row
+            && self.last_row >= other.last_row
+            && self.first_col <= other.first_col
+            && self.last_col >= other.last_col
+    }
+
+    /// The smallest rectangle covering both, which is how the pieces of a
+    /// multiple selection are reduced for the things that can only take one.
+    pub(crate) fn union(self, other: GridRect) -> GridRect {
+        GridRect {
+            first_row: self.first_row.min(other.first_row),
+            last_row: self.last_row.max(other.last_row),
+            first_col: self.first_col.min(other.first_col),
+            last_col: self.last_col.max(other.last_col),
+        }
     }
 }
 
@@ -184,6 +268,14 @@ pub(crate) struct GridState {
     /// selected.
     pub(crate) anchor: Option<GridCell>,
     pub(crate) selection_kind: GridSelectionKind,
+    /// The ranges Ctrl+click added before the current one, oldest first.
+    ///
+    /// The current range - the one Shift and the arrow keys grow, and the one
+    /// the active cell lives in - is deliberately *not* in here: it stays
+    /// `cursor` plus `anchor` plus `selection_kind`, so that everything that can
+    /// only act on one rectangle keeps acting on the last one, the way a
+    /// spreadsheet does.
+    pub(crate) previous_ranges: Vec<GridSelectionRange>,
     pub(crate) editing: Option<CellEditMode>,
     /// Where the cell being edited lives in the data, resolved when the edit
     /// started. Held in data coordinates so that a sort or filter changing the
@@ -203,6 +295,8 @@ pub(crate) struct GridState {
     /// What the buffer search bar is currently highlighting.
     pub(crate) search: GridSearchState,
     pub(crate) drag: Option<GridDrag>,
+    /// Where a fill or a border drag would land if the button came up now.
+    pub(crate) drag_preview: Option<GridRect>,
     pub(crate) context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     pub(crate) active_cell_bounds: Rc<BoundsProbe>,
     pub(crate) root_bounds: Rc<BoundsProbe>,
@@ -244,6 +338,7 @@ impl GridState {
             cursor: GridCell::new(GridRow::Header, AnyColumn(0)),
             anchor: None,
             selection_kind: GridSelectionKind::Cells,
+            previous_ranges: Vec::new(),
             editing: None,
             editing_target: None,
             editing_cell: None,
@@ -251,6 +346,7 @@ impl GridState {
             status_message_is_sticky: false,
             search: GridSearchState::default(),
             drag: None,
+            drag_preview: None,
             context_menu: None,
             active_cell_bounds: Rc::default(),
             root_bounds: Rc::default(),
@@ -425,22 +521,32 @@ impl TabularDataPreviewPane {
         }
         self.grid.cursor = self.clamp_cell(self.grid.cursor);
         self.grid.anchor = self.grid.anchor.map(|anchor| self.clamp_cell(anchor));
+        let clamped: Vec<GridSelectionRange> = self
+            .grid
+            .previous_ranges
+            .iter()
+            .map(|range| GridSelectionRange {
+                anchor: self.clamp_cell(range.anchor),
+                focus: self.clamp_cell(range.focus),
+                kind: range.kind,
+            })
+            .collect();
+        self.grid.previous_ranges = clamped;
     }
 
-    pub(crate) fn selection_rect(&self) -> GridRect {
-        let cursor = self.grid.cursor;
-        let anchor = self.grid.anchor.unwrap_or(cursor);
-        let (cursor_row, anchor_row) = (cursor.row.index(), anchor.row.index());
-        let (cursor_col, anchor_col) = (cursor.col.get(), anchor.col.get());
+    /// The rectangle one block of the selection covers, in grid coordinates.
+    fn range_rect(&self, range: GridSelectionRange) -> GridRect {
+        let (focus_row, anchor_row) = (range.focus.row.index(), range.anchor.row.index());
+        let (focus_col, anchor_col) = (range.focus.col.get(), range.anchor.col.get());
 
         let mut rect = GridRect {
-            first_row: cursor_row.min(anchor_row),
-            last_row: cursor_row.max(anchor_row),
-            first_col: cursor_col.min(anchor_col),
-            last_col: cursor_col.max(anchor_col),
+            first_row: focus_row.min(anchor_row),
+            last_row: focus_row.max(anchor_row),
+            first_col: focus_col.min(anchor_col),
+            last_col: focus_col.max(anchor_col),
         };
 
-        match self.grid.selection_kind {
+        match range.kind {
             GridSelectionKind::Cells => {}
             GridSelectionKind::Rows => {
                 rect.first_col = 0;
@@ -460,11 +566,164 @@ impl TabularDataPreviewPane {
         rect
     }
 
+    /// The block the active cell is in, which is the one every operation that
+    /// only makes sense on a single rectangle - pasting, inserting rows or
+    /// columns, pinning the search - works on.
+    pub(crate) fn current_selection_range(&self) -> GridSelectionRange {
+        GridSelectionRange {
+            anchor: self.grid.anchor.unwrap_or(self.grid.cursor),
+            focus: self.grid.cursor,
+            kind: self.grid.selection_kind,
+        }
+    }
+
+    pub(crate) fn selection_rect(&self) -> GridRect {
+        self.range_rect(self.current_selection_range())
+    }
+
+    /// Every selected block, in the order they were selected, the current one
+    /// last.
+    pub(crate) fn selection_rects(&self) -> Vec<GridRect> {
+        self.selection_blocks()
+            .into_iter()
+            .map(|(rect, _kind)| rect)
+            .collect()
+    }
+
+    /// The same, with what each block is anchored to, which the colors need in
+    /// order to keep a whole row or column as one entry.
+    pub(crate) fn selection_blocks(&self) -> Vec<(GridRect, GridSelectionKind)> {
+        let mut blocks: Vec<(GridRect, GridSelectionKind)> = self
+            .grid
+            .previous_ranges
+            .iter()
+            .map(|range| (self.range_rect(*range), range.kind))
+            .collect();
+        blocks.push((self.selection_rect(), self.grid.selection_kind));
+        blocks
+    }
+
+    pub(crate) fn has_multiple_selection_ranges(&self) -> bool {
+        !self.grid.previous_ranges.is_empty()
+    }
+
+    /// The smallest rectangle covering the whole selection. Used where only one
+    /// rectangle can be expressed at all.
+    pub(crate) fn selection_bounding_rect(&self) -> GridRect {
+        self.selection_rects()
+            .into_iter()
+            .reduce(GridRect::union)
+            .unwrap_or_else(|| self.selection_rect())
+    }
+
+    /// How many cells the selection names, counting a cell two blocks share
+    /// twice.
+    ///
+    /// This is what the cell budget is measured against, before any of those
+    /// cells is resolved: a selection far taller than the table would otherwise
+    /// cost a pass over every row it names before anything noticed its size.
+    /// Counting an overlap twice only ever refuses earlier than necessary, and
+    /// the writes themselves are deduplicated.
+    pub(crate) fn selection_area(&self) -> usize {
+        self.selection_rects()
+            .iter()
+            .map(GridRect::cell_count)
+            .fold(0usize, usize::saturating_add)
+    }
+
+    /// Whether any block of the selection covers `cell`.
+    ///
+    /// Written without [`Self::selection_rects`] because this runs once per
+    /// drawn cell, and the single block case - which is nearly every frame -
+    /// must not allocate a vector to answer it.
+    pub(crate) fn selection_contains(&self, row: GridRow, col: AnyColumn) -> bool {
+        self.any_selected_block(|rect| rect.contains(row, col))
+    }
+
+    pub(crate) fn selection_contains_row(&self, row: GridRow) -> bool {
+        self.any_selected_block(|rect| rect.contains_row(row))
+    }
+
+    pub(crate) fn selection_contains_col(&self, col: AnyColumn) -> bool {
+        self.any_selected_block(|rect| rect.contains_col(col))
+    }
+
+    fn any_selected_block(&self, covers: impl Fn(GridRect) -> bool) -> bool {
+        covers(self.selection_rect())
+            || self
+                .grid
+                .previous_ranges
+                .iter()
+                .any(|range| covers(self.range_rect(*range)))
+    }
+
     pub(crate) fn selected_rows(&self) -> Vec<GridRow> {
         let rect = self.selection_rect();
         (rect.first_row..=rect.last_row)
             .map(GridRow::from_index)
             .collect()
+    }
+
+    /// Every row any block of the selection covers, top to bottom and without
+    /// repeats, which is what the row operations and the colors act on.
+    pub(crate) fn all_selected_rows(&self) -> Vec<GridRow> {
+        let mut rows: Vec<usize> = self
+            .selection_rects()
+            .iter()
+            .flat_map(|rect| rect.rows())
+            .collect();
+        rows.sort_unstable();
+        rows.dedup();
+        rows.into_iter().map(GridRow::from_index).collect()
+    }
+
+    pub(crate) fn all_selected_row_refs(&self) -> Vec<RowRef> {
+        self.all_selected_rows()
+            .into_iter()
+            .filter_map(|row| self.row_ref(row))
+            .collect()
+    }
+
+    /// Every column any block of the selection covers, left to right and
+    /// without repeats.
+    pub(crate) fn all_selected_cols(&self) -> Vec<AnyColumn> {
+        let mut cols: Vec<usize> = self
+            .selection_rects()
+            .iter()
+            .flat_map(|rect| rect.cols())
+            .collect();
+        cols.sort_unstable();
+        cols.dedup();
+        cols.into_iter().map(AnyColumn).collect()
+    }
+
+    /// Every cell of the selection, resolved to data coordinates and without
+    /// repeats, so that overlapping blocks are written once rather than twice.
+    pub(crate) fn all_selected_cells(&self) -> Vec<(RowRef, AnyColumn)> {
+        let mut cells: Vec<(RowRef, AnyColumn)> = Vec::new();
+        let mut seen = HashSet::new();
+        for rect in self.selection_rects() {
+            for row_index in rect.rows() {
+                let Some(row_ref) = self.row_ref(GridRow::from_index(row_index)) else {
+                    continue;
+                };
+                for col in rect.cols() {
+                    if seen.insert((row_ref, col)) {
+                        cells.push((row_ref, AnyColumn(col)));
+                    }
+                }
+            }
+        }
+        cells
+    }
+
+    /// Refuses an operation that Excel also refuses on a multiple selection.
+    pub(crate) fn refuse_on_multiple_ranges(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.has_multiple_selection_ranges() {
+            return false;
+        }
+        self.set_status_message(MULTI_RANGE_REFUSAL, cx);
+        true
     }
 
     /// The engine's name for `row`: `None` when the file has no header row to
@@ -592,20 +851,54 @@ impl TabularDataPreviewPane {
 
     ///// Selection /////
 
+    /// Puts the block the active cell is in away, so that a new one can start
+    /// beside it.
+    fn push_current_range(&mut self) {
+        let range = self.current_selection_range();
+        self.grid.previous_ranges.push(range);
+    }
+
+    fn reset_to_single_range(&mut self) {
+        self.grid.previous_ranges.clear();
+    }
+
     pub(crate) fn select_cell(&mut self, cell: GridCell, extend: bool, cx: &mut Context<Self>) {
+        let change = if extend {
+            SelectionChange::Extend
+        } else {
+            SelectionChange::Replace
+        };
+        self.change_cell_selection(cell, change, cx);
+    }
+
+    pub(crate) fn change_cell_selection(
+        &mut self,
+        cell: GridCell,
+        change: SelectionChange,
+        cx: &mut Context<Self>,
+    ) {
         if self.grid_is_empty() {
             return;
         }
         let cell = self.clamp_cell(cell);
         self.clear_stale_status_message();
-        if extend {
-            self.grid.anchor.get_or_insert(self.grid.cursor);
-            if self.grid.selection_kind == GridSelectionKind::All {
+        match change {
+            SelectionChange::Extend => {
+                self.grid.anchor.get_or_insert(self.grid.cursor);
+                if self.grid.selection_kind == GridSelectionKind::All {
+                    self.grid.selection_kind = GridSelectionKind::Cells;
+                }
+            }
+            SelectionChange::Add => {
+                self.push_current_range();
+                self.grid.anchor = None;
                 self.grid.selection_kind = GridSelectionKind::Cells;
             }
-        } else {
-            self.grid.anchor = None;
-            self.grid.selection_kind = GridSelectionKind::Cells;
+            SelectionChange::Replace => {
+                self.reset_to_single_range();
+                self.grid.anchor = None;
+                self.grid.selection_kind = GridSelectionKind::Cells;
+            }
         }
         self.grid.cursor = cell;
         // The search bar counts hits relative to the caret, so every move of it
@@ -615,6 +908,20 @@ impl TabularDataPreviewPane {
     }
 
     pub(crate) fn select_row(&mut self, row: GridRow, extend: bool, cx: &mut Context<Self>) {
+        let change = if extend {
+            SelectionChange::Extend
+        } else {
+            SelectionChange::Replace
+        };
+        self.change_row_selection(row, change, cx);
+    }
+
+    pub(crate) fn change_row_selection(
+        &mut self,
+        row: GridRow,
+        change: SelectionChange,
+        cx: &mut Context<Self>,
+    ) {
         if self.grid_is_empty() {
             return;
         }
@@ -627,10 +934,18 @@ impl TabularDataPreviewPane {
         // column regardless, through `GridSelectionKind::Rows`.
         let col = AnyColumn(self.grid.cursor.col.get().min(self.last_col_index()));
         self.clear_stale_status_message();
-        if extend {
-            self.grid.anchor.get_or_insert(self.grid.cursor);
-        } else {
-            self.grid.anchor = Some(GridCell::new(row, col));
+        match change {
+            SelectionChange::Extend => {
+                self.grid.anchor.get_or_insert(self.grid.cursor);
+            }
+            SelectionChange::Add => {
+                self.push_current_range();
+                self.grid.anchor = Some(GridCell::new(row, col));
+            }
+            SelectionChange::Replace => {
+                self.reset_to_single_range();
+                self.grid.anchor = Some(GridCell::new(row, col));
+            }
         }
         self.grid.cursor = GridCell::new(row, col);
         self.grid.selection_kind = GridSelectionKind::Rows;
@@ -639,6 +954,20 @@ impl TabularDataPreviewPane {
     }
 
     pub(crate) fn select_column(&mut self, col: AnyColumn, extend: bool, cx: &mut Context<Self>) {
+        let change = if extend {
+            SelectionChange::Extend
+        } else {
+            SelectionChange::Replace
+        };
+        self.change_column_selection(col, change, cx);
+    }
+
+    pub(crate) fn change_column_selection(
+        &mut self,
+        col: AnyColumn,
+        change: SelectionChange,
+        cx: &mut Context<Self>,
+    ) {
         if self.grid_is_empty() {
             return;
         }
@@ -651,10 +980,18 @@ impl TabularDataPreviewPane {
                 .clamp(self.first_row_index(), self.last_row_index()),
         );
         self.clear_stale_status_message();
-        if extend {
-            self.grid.anchor.get_or_insert(self.grid.cursor);
-        } else {
-            self.grid.anchor = Some(GridCell::new(row, col));
+        match change {
+            SelectionChange::Extend => {
+                self.grid.anchor.get_or_insert(self.grid.cursor);
+            }
+            SelectionChange::Add => {
+                self.push_current_range();
+                self.grid.anchor = Some(GridCell::new(row, col));
+            }
+            SelectionChange::Replace => {
+                self.reset_to_single_range();
+                self.grid.anchor = Some(GridCell::new(row, col));
+            }
         }
         self.grid.cursor = GridCell::new(row, col);
         self.grid.selection_kind = GridSelectionKind::Columns;
@@ -667,6 +1004,7 @@ impl TabularDataPreviewPane {
             return;
         }
         self.clear_stale_status_message();
+        self.reset_to_single_range();
         self.grid.anchor = Some(self.grid.cursor);
         self.grid.selection_kind = GridSelectionKind::All;
         cx.notify();
@@ -796,7 +1134,7 @@ impl TabularDataPreviewPane {
 
     /// Brings the caret's column inside the horizontally scrolling part of the
     /// table, which the pinned row identifier column is not part of.
-    fn scroll_column_into_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn scroll_column_into_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         const PINNED_COLUMNS: usize = 1;
         let rem_size = window.rem_size();
         let widths = self.column_widths.widths.read(cx);
@@ -842,7 +1180,7 @@ impl TabularDataPreviewPane {
         &mut self,
         cell: GridCell,
         button: MouseButton,
-        modifiers_shift: bool,
+        modifiers: Modifiers,
         click_count: usize,
         position: Point<Pixels>,
         window: &mut Window,
@@ -856,31 +1194,36 @@ impl TabularDataPreviewPane {
                     return;
                 }
                 self.commit_editing(window, cx);
-                self.select_cell(cell, modifiers_shift, cx);
+                let change = SelectionChange::from_modifiers(modifiers);
+                self.change_cell_selection(cell, change, cx);
                 self.grid.drag = Some(GridDrag::Cells);
             }
             MouseButton::Right => {
-                if !self.selection_rect().contains(cell.row, cell.col) {
+                if !self.selection_contains(cell.row, cell.col) {
                     self.select_cell(cell, false, cx);
                 }
-                self.deploy_grid_context_menu(position, window, cx);
+                self.deploy_grid_context_menu(GridMenuTarget::Cell, position, window, cx);
             }
             _ => {}
         }
     }
 
     pub(crate) fn on_cell_drag(&mut self, cell: GridCell, cx: &mut Context<Self>) {
-        if self.grid.drag != Some(GridDrag::Cells) {
-            return;
+        match self.grid.drag {
+            Some(GridDrag::Cells) => self.select_cell(cell, true, cx),
+            Some(GridDrag::Fill { origin }) => self.update_fill_preview(origin, cell, cx),
+            Some(GridDrag::Move { origin, grabbed }) => {
+                self.update_move_preview(origin, grabbed, cell, cx)
+            }
+            _ => {}
         }
-        self.select_cell(cell, true, cx);
     }
 
     pub(crate) fn on_row_mouse_down(
         &mut self,
         row: GridRow,
         button: MouseButton,
-        modifiers_shift: bool,
+        modifiers: Modifiers,
         position: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -888,17 +1231,48 @@ impl TabularDataPreviewPane {
         match button {
             MouseButton::Left => {
                 self.commit_editing(window, cx);
-                self.select_row(row, modifiers_shift, cx);
+                let change = SelectionChange::from_modifiers(modifiers);
+                self.change_row_selection(row, change, cx);
                 self.grid.drag = Some(GridDrag::Rows);
             }
             MouseButton::Right => {
-                if !self.selection_rect().contains_row(row) {
+                if !self.row_selection_survives_a_right_click_on(row) {
                     self.select_row(row, false, cx);
                 }
-                self.deploy_grid_context_menu(position, window, cx);
+                self.deploy_grid_context_menu(GridMenuTarget::RowHeader, position, window, cx);
             }
             _ => {}
         }
+    }
+
+    /// Whether a right click on `row`'s heading should keep the selection it
+    /// found rather than replace it with that one row.
+    ///
+    /// A spreadsheet keeps it only when the rows were picked as rows: several
+    /// rows selected by their headings are meant to be deleted or colored
+    /// together, and replacing that would undo the user's work. A cell range
+    /// that merely happens to cross the row says nothing about the row, so the
+    /// heading menu's row operations get the row that was actually clicked.
+    fn row_selection_survives_a_right_click_on(&self, row: GridRow) -> bool {
+        self.selection_contains_row(row)
+            && self.selection_blocks().iter().any(|(rect, kind)| {
+                matches!(kind, GridSelectionKind::Rows | GridSelectionKind::All)
+                    && rect.contains_row(row)
+            })
+    }
+
+    /// The same for a column heading, with one more condition: the column
+    /// heading's menu can open that column's filter popover, and the popover is
+    /// registered by the caret column's own button and by no other. Keeping a
+    /// selection whose caret sits on a different column would leave that entry
+    /// pointing at the wrong column, so the caret has to come along.
+    fn column_selection_survives_a_right_click_on(&self, col: AnyColumn) -> bool {
+        self.grid.cursor.col == col
+            && self.selection_contains_col(col)
+            && self.selection_blocks().iter().any(|(rect, kind)| {
+                matches!(kind, GridSelectionKind::Columns | GridSelectionKind::All)
+                    && rect.contains_col(col)
+            })
     }
 
     pub(crate) fn on_row_drag(&mut self, row: GridRow, cx: &mut Context<Self>) {
@@ -912,7 +1286,7 @@ impl TabularDataPreviewPane {
         &mut self,
         col: AnyColumn,
         button: MouseButton,
-        modifiers_shift: bool,
+        modifiers: Modifiers,
         position: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -920,14 +1294,20 @@ impl TabularDataPreviewPane {
         match button {
             MouseButton::Left => {
                 self.commit_editing(window, cx);
-                self.select_column(col, modifiers_shift, cx);
+                let change = SelectionChange::from_modifiers(modifiers);
+                self.change_column_selection(col, change, cx);
                 self.grid.drag = Some(GridDrag::Columns);
             }
             MouseButton::Right => {
-                if !self.selection_rect().contains_col(col) {
+                if !self.column_selection_survives_a_right_click_on(col) {
                     self.select_column(col, false, cx);
                 }
-                self.deploy_grid_context_menu(position, window, cx);
+                self.deploy_grid_context_menu(
+                    GridMenuTarget::ColumnHeader(col),
+                    position,
+                    window,
+                    cx,
+                );
             }
             _ => {}
         }
@@ -940,8 +1320,18 @@ impl TabularDataPreviewPane {
         self.select_column(col, true, cx);
     }
 
-    pub(crate) fn end_drag(&mut self) {
-        self.grid.drag = None;
+    pub(crate) fn end_drag(&mut self, modifiers: Modifiers, cx: &mut Context<Self>) {
+        let drag = self.grid.drag.take();
+        let preview = self.grid.drag_preview.take();
+        match (drag, preview) {
+            (Some(GridDrag::Fill { origin }), Some(preview)) => {
+                self.commit_fill(origin, preview, modifiers.secondary(), cx);
+            }
+            (Some(GridDrag::Move { origin, .. }), Some(preview)) => {
+                self.commit_block_move(origin, preview, modifiers.secondary(), cx);
+            }
+            _ => {}
+        }
     }
 
     /// An overlay that paints nothing and only reports where its parent ended
@@ -982,6 +1372,21 @@ impl TabularDataPreviewPane {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::grid_editing::tests::open_grid;
+    use gpui::TestAppContext;
+
+    fn body_cell(row: usize, col: usize) -> GridCell {
+        GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+    }
+
+    fn rect(first_row: usize, last_row: usize, first_col: usize, last_col: usize) -> GridRect {
+        GridRect {
+            first_row,
+            last_row,
+            first_col,
+            last_col,
+        }
+    }
 
     #[test]
     fn test_column_label() {
@@ -1029,5 +1434,196 @@ mod tests {
         assert!(!rect.contains(GridRow::Header, AnyColumn(2)));
         assert!(!rect.contains(GridRow::Body(DisplayRow(0)), AnyColumn(5)));
         assert_eq!(rect.cols(), 2..5);
+    }
+
+    #[test]
+    fn test_grid_rect_union() {
+        assert_eq!(rect(1, 2, 0, 1).union(rect(5, 6, 3, 4)), rect(1, 6, 0, 4));
+        assert_eq!(rect(1, 2, 0, 1).union(rect(1, 2, 0, 1)), rect(1, 2, 0, 1));
+    }
+
+    #[test]
+    fn test_selection_change_reads_the_modifiers() {
+        assert_eq!(
+            SelectionChange::from_modifiers(Modifiers::none()),
+            SelectionChange::Replace
+        );
+        assert_eq!(
+            SelectionChange::from_modifiers(Modifiers::shift()),
+            SelectionChange::Extend
+        );
+        assert_eq!(
+            SelectionChange::from_modifiers(Modifiers::secondary_key()),
+            SelectionChange::Add
+        );
+        // Ctrl+Shift+click keeps adding rather than extending, as in Excel.
+        let both = Modifiers {
+            shift: true,
+            ..Modifiers::secondary_key()
+        };
+        assert_eq!(SelectionChange::from_modifiers(both), SelectionChange::Add);
+    }
+
+    #[gpui::test]
+    async fn test_ctrl_click_adds_a_block_and_keeps_the_others(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3\n4,5,6\n7,8,9", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(body_cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(body_cell(1, 0), SelectionChange::Extend, cx);
+            pane.change_cell_selection(body_cell(2, 2), SelectionChange::Add, cx);
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.has_multiple_selection_ranges());
+            assert_eq!(
+                pane.selection_rects(),
+                vec![rect(1, 2, 0, 0), rect(3, 3, 2, 2)]
+            );
+            // The last block is what a single rectangle reader sees, and the
+            // active cell is in it.
+            assert_eq!(pane.selection_rect(), rect(3, 3, 2, 2));
+            assert_eq!(pane.grid.cursor, body_cell(2, 2));
+            assert!(pane.selection_contains(GridRow::Body(DisplayRow(0)), AnyColumn(0)));
+            assert!(pane.selection_contains(GridRow::Body(DisplayRow(2)), AnyColumn(2)));
+            assert!(!pane.selection_contains(GridRow::Body(DisplayRow(0)), AnyColumn(2)));
+            assert_eq!(pane.selection_bounding_rect(), rect(1, 3, 0, 2));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_shift_grows_only_the_added_block(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3\n4,5,6\n7,8,9", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(body_cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(body_cell(2, 1), SelectionChange::Add, cx);
+            pane.change_cell_selection(body_cell(2, 2), SelectionChange::Extend, cx);
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.selection_rects(),
+                vec![rect(1, 1, 0, 0), rect(3, 3, 1, 2)]
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_plain_click_collapses_back_to_one_block(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3\n4,5,6", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(body_cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(body_cell(1, 2), SelectionChange::Add, cx);
+            pane.change_cell_selection(body_cell(1, 1), SelectionChange::Replace, cx);
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(!pane.has_multiple_selection_ranges());
+            assert_eq!(pane.selection_rects(), vec![rect(2, 2, 1, 1)]);
+        });
+    }
+
+    /// Moving the caret with the arrow keys is a plain click's worth of change:
+    /// the added blocks go, the way they do in a spreadsheet.
+    #[gpui::test]
+    async fn test_moving_the_caret_drops_the_added_blocks(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3\n4,5,6", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(body_cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(body_cell(1, 2), SelectionChange::Add, cx);
+        });
+        pane.read_with(&cx, |pane, _| assert!(pane.has_multiple_selection_ranges()));
+
+        cx.simulate_keystrokes("up");
+        pane.read_with(&cx, |pane, _| {
+            assert!(!pane.has_multiple_selection_ranges());
+            assert_eq!(pane.grid.cursor, body_cell(0, 2));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_ctrl_clicking_row_and_column_headers_adds_them(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3\n4,5,6", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_row_selection(GridRow::Body(DisplayRow(0)), SelectionChange::Replace, cx);
+            pane.change_column_selection(AnyColumn(2), SelectionChange::Add, cx);
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            // The row covers every column, the column every row.
+            assert_eq!(
+                pane.selection_rects(),
+                vec![rect(1, 1, 0, 2), rect(0, 2, 2, 2)]
+            );
+            assert_eq!(
+                pane.all_selected_rows(),
+                vec![
+                    GridRow::Header,
+                    GridRow::Body(DisplayRow(0)),
+                    GridRow::Body(DisplayRow(1)),
+                ]
+            );
+            assert_eq!(
+                pane.all_selected_cols(),
+                vec![AnyColumn(0), AnyColumn(1), AnyColumn(2)]
+            );
+        });
+    }
+
+    /// Two blocks sharing cells must not hand those cells to an operation
+    /// twice: a double write would take two undo steps' worth of edits and
+    /// count twice against the cell budget.
+    #[gpui::test]
+    async fn test_overlapping_blocks_list_every_cell_once(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3\n4,5,6\n7,8,9", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(body_cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(body_cell(1, 1), SelectionChange::Extend, cx);
+            pane.change_cell_selection(body_cell(1, 1), SelectionChange::Add, cx);
+            pane.change_cell_selection(body_cell(2, 2), SelectionChange::Extend, cx);
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.selection_rects(),
+                vec![rect(1, 2, 0, 1), rect(2, 3, 1, 2)]
+            );
+            let cells = pane.all_selected_cells();
+            let unique: HashSet<_> = cells.iter().collect();
+            assert_eq!(cells.len(), unique.len(), "{cells:?} repeats a cell");
+            // Four cells per block, with the one at their crossing shared.
+            assert_eq!(cells.len(), 7);
+        });
+    }
+
+    /// A parse that shrinks the table has to pull the added blocks back inside
+    /// it, or an operation would resolve rows the table no longer has.
+    #[gpui::test]
+    async fn test_a_smaller_table_clamps_the_added_blocks(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(body_cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(body_cell(0, 2), SelectionChange::Add, cx);
+            pane.grid.previous_ranges = vec![GridSelectionRange {
+                anchor: body_cell(40, 9),
+                focus: body_cell(50, 12),
+                kind: GridSelectionKind::Cells,
+            }];
+            pane.clamp_cursor();
+        });
+
+        pane.read_with(&cx, |pane, _| {
+            // The fixture has one body row, so every corner lands on it.
+            assert_eq!(
+                pane.selection_rects(),
+                vec![rect(1, 1, 2, 2), rect(1, 1, 2, 2)]
+            );
+        });
     }
 }

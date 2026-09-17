@@ -18,24 +18,30 @@ use ui::{
 use workspace::{Pane, Workspace, searchable::SearchEvent};
 
 use crate::{
-    parser::EditorState, settings::TabularDataPreviewSettings,
-    tabular_data_settings::TabularDataSettings, types::TableLikeContent,
+    parser::EditorState,
+    renderer::render_table::{APPEND_COLUMN_WIDTH, APPEND_ROWS},
+    settings::TabularDataPreviewSettings,
+    tabular_data_settings::TabularDataSettings,
+    types::TableLikeContent,
 };
 use ::settings::Settings as _;
 
 mod edit_engine;
 mod grid;
 mod grid_editing;
+mod grid_fill;
 mod grid_search;
 mod grid_styles;
 mod parser;
 mod renderer;
 mod settings;
 mod table_data_engine;
+mod table_diff;
 pub mod tabular_data_settings;
 mod types;
 mod workspace_item;
 
+pub use crate::grid_fill::{FillDown, FillRight};
 pub use crate::grid_search::GridMatch;
 pub use crate::grid_styles::{CellColor, ClearCellColors, SetFillColor, SetTextColor};
 pub use crate::workspace_item::TabularBuffer;
@@ -113,6 +119,11 @@ pub struct TabularDataPreviewPane {
     /// Set by the pane; leaving the tab pushes an entry so that "go back" and "reopen
     /// closed tab" reach the grid the same way they reach an editor.
     nav_history: Option<workspace::ItemNavHistory>,
+    /// Opens the caret's column filter popover from the keyboard. Only that one
+    /// column's heading is rendered with the handle, so it always deploys the
+    /// menu of the column the caret is standing in.
+    pub(crate) filter_menu_handle:
+        ui::PopoverMenuHandle<picker::Picker<renderer::table_header::ColumnFilterDelegate>>,
     /// Redraws the grid when another grid on the same file repaints a cell.
     _styles_subscription: Subscription,
 }
@@ -133,15 +144,22 @@ pub fn init(cx: &mut App) {
 
 impl TabularDataPreviewPane {
     pub(crate) fn sync_column_widths(&self, cx: &mut Context<Self>) {
-        // plus 1 for the row identifier column
-        let cols = self.engine.contents.number_of_cols + 1;
+        // The row identifier column before the data columns, and the "+" column
+        // after them.
+        let cols = self.table_column_count();
         let line_number_width = self.calculate_row_identifier_column_width();
 
         let mut widths: Vec<AbsoluteLength> = self.calculate_data_column_widths();
         widths.insert(0, AbsoluteLength::Pixels(px(line_number_width)));
+        widths.push(AbsoluteLength::Pixels(px(APPEND_COLUMN_WIDTH)));
 
         let mut resize_behaviors = vec![TableResizeBehavior::Resizable; cols];
         resize_behaviors[0] = TableResizeBehavior::None;
+        // The "+" column holds no value that could want more room, and dragging
+        // it would only take room away from the last data column.
+        if let Some(last) = resize_behaviors.last_mut() {
+            *last = TableResizeBehavior::None;
+        }
 
         self.column_widths.widths.update(cx, |state, _cx| {
             if state.cols() != cols {
@@ -157,6 +175,7 @@ impl TabularDataPreviewPane {
     }
 
     pub fn register(workspace: &mut Workspace) {
+        Self::register_diff_actions(workspace);
         workspace.register_action_renderer(|div, _, _, cx| {
             div.on_action(cx.listener(|workspace, _: &OpenPreview, window, cx| {
                 if let Some(editor) =
@@ -350,6 +369,7 @@ impl TabularDataPreviewPane {
             last_parse_end_time: None,
             engine: TableDataEngine::default(),
             nav_history: None,
+            filter_menu_handle: ui::PopoverMenuHandle::default(),
             _styles_subscription: styles_subscription,
         };
 
@@ -375,10 +395,7 @@ impl TabularDataPreviewPane {
         value: Option<SharedString>,
         cx: &mut Context<Self>,
     ) {
-        if let Err(err) = self.engine.toggle_filter(col, value) {
-            log::error!("Failed to toggle filter: {err}");
-            return;
-        }
+        self.engine.toggle_filter(col, value);
         self.apply_filter_sort(cx);
     }
 
@@ -427,13 +444,16 @@ impl TabularDataPreviewPane {
     /// position. `ListState::reset` throws `logical_scroll_top` away, so calling it after every
     /// edit would snap the viewport back to the first row on each keystroke.
     fn sync_list_state(&self) {
-        let visible_rows = self.engine.d2d_mapping().visible_row_count();
-        if self.list_state.item_count() == visible_rows {
+        // One item more than the table has rows: the list also holds the
+        // trailing "+" row, which is not a row of the file. See
+        // [`crate::renderer::render_table::APPEND_ROWS`].
+        let list_items = self.engine.d2d_mapping().visible_row_count() + APPEND_ROWS;
+        if self.list_state.item_count() == list_items {
             // The list re-renders its visible items on notify anyway. Only variable-height rows can
             // have a stale measurement, and re-measuring costs one pass over every row, which is
             // too much to pay after each keystroke on a large file.
             if self.settings.multiline_cells_effectively_enabled() {
-                self.list_state.remeasure_items(0..visible_rows);
+                self.list_state.remeasure_items(0..list_items);
             }
             return;
         }
@@ -442,7 +462,7 @@ impl TabularDataPreviewPane {
         // Uses the row height measured on the last render. Cheaper than a full `.measure_all()`
         // pass; exact row heights are re-measured on scrolling.
         self.list_state
-            .reset_with_uniform_height(visible_rows, self.row_height);
+            .reset_with_uniform_height(list_items, self.row_height);
         // `scroll_to` clamps to the new row count, so a shrinking table lands on its last row
         // instead of jumping to the top.
         self.list_state.scroll_to(scroll_top);

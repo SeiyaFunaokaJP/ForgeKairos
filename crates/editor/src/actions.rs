@@ -472,6 +472,9 @@ actions!(
         InsertHorizontalRule,
         /// Wraps the selected lines in a fenced code block while in Markdown files.
         WrapInCodeBlock,
+        /// Inserts a `<details>` disclosure holding a fenced code block, with the
+        /// selected lines as its body, while in Markdown files.
+        InsertDetails,
         /// Inserts a newline with the opposite hard break behavior of `editor::Newline`:
         /// it adds the two trailing spaces when `hard_break_on_newline` is off, and
         /// leaves them out when it is on.

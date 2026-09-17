@@ -15,12 +15,13 @@ use gpui::{
 use itertools::Itertools as _;
 use project::{AgentServerStore, Project};
 use ui::{
-    ContextMenu, ScrollAxes, Scrollbars, ThreadItem, Tooltip, WithScrollbar, prelude::*,
-    right_click_menu,
+    ContextMenu, ListItem, ListItemSpacing, ScrollAxes, Scrollbars, ThreadItem, Tooltip,
+    WithScrollbar, prelude::*, right_click_menu,
 };
 use util::path_list::PathList;
 use workspace::Workspace;
 
+use crate::TerminalId;
 use crate::thread_metadata_store::{ThreadId, ThreadMetadata, ThreadMetadataStore};
 use crate::threads_archive_view::{TimeBucket, format_history_entry_timestamp};
 use crate::{ArchiveSelectedThread, NewThread, draft_prompt_store};
@@ -42,6 +43,29 @@ pub enum PanelThreadHistoryEvent {
         thread: ThreadMetadata,
         split: bool,
     },
+    /// 「開いているタブ」の行が選ばれた (ADR-F53)。
+    ActivateOpenTab(OpenTabId),
+    CloseOpenTab(OpenTabId),
+    /// ヘッダーの «。一覧そのものを閉じる。
+    Collapse,
+}
+
+/// パネルが開いているものの見分け (ADR-F53)。ペインのタブと、パネルが全面に
+/// 出す端末スレッドは別の仕組みなので、行の正体も 2 通りある。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpenTabId {
+    PaneItem(gpui::EntityId),
+    PanelTerminal(TerminalId),
+}
+
+/// 「開いているタブ」の 1 行。パネルが毎フレーム組み立てて渡す
+/// ([`PanelThreadHistory::set_open_tabs`])。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenTabRow {
+    pub id: OpenTabId,
+    pub title: SharedString,
+    pub icon: IconName,
+    pub is_active: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -59,6 +83,7 @@ pub struct PanelThreadHistory {
     agent_server_store: WeakEntity<AgentServerStore>,
     filter_editor: Entity<Editor>,
     items: Vec<HistoryListItem>,
+    open_tabs: Vec<OpenTabRow>,
     list_state: ListState,
     hovered_index: Option<usize>,
     active_thread_id: Option<ThreadId>,
@@ -121,6 +146,7 @@ impl PanelThreadHistory {
             agent_server_store,
             filter_editor,
             items: Vec::new(),
+            open_tabs: Vec::new(),
             list_state: ListState::new(0, gpui::ListAlignment::Top, px(1000.)),
             hovered_index: None,
             active_thread_id: None,
@@ -142,9 +168,24 @@ impl PanelThreadHistory {
         self.update_items(cx);
     }
 
+    /// Called by the panel on every render with what it currently has open, so
+    /// the list can show the tabs even while the tab bar is hidden (ADR-F53).
+    pub fn set_open_tabs(&mut self, open_tabs: Vec<OpenTabRow>, cx: &mut Context<Self>) {
+        if self.open_tabs == open_tabs {
+            return;
+        }
+        self.open_tabs = open_tabs;
+        cx.notify();
+    }
+
     #[cfg(test)]
     pub(crate) fn items(&self) -> &[HistoryListItem] {
         &self.items
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_tabs(&self) -> &[OpenTabRow] {
+        &self.open_tabs
     }
 
     fn update_items(&mut self, cx: &mut Context<Self>) {
@@ -365,13 +406,27 @@ impl PanelThreadHistory {
             .border_b_1()
             .border_color(cx.theme().colors().border)
             .child(
-                Button::new("panel-history-new-thread", "新規スレッド")
-                    .start_icon(Icon::new(IconName::Plus).size(IconSize::Small))
-                    .label_size(LabelSize::Small)
-                    .full_width()
-                    .on_click(cx.listener(|_this, _, _window, cx| {
-                        cx.emit(PanelThreadHistoryEvent::NewThread);
-                    })),
+                h_flex()
+                    .gap_1()
+                    .child(
+                        div().flex_1().min_w_0().child(
+                            Button::new("panel-history-new-thread", "新規スレッド")
+                                .start_icon(Icon::new(IconName::Plus).size(IconSize::Small))
+                                .label_size(LabelSize::Small)
+                                .full_width()
+                                .on_click(cx.listener(|_this, _, _window, cx| {
+                                    cx.emit(PanelThreadHistoryEvent::NewThread);
+                                })),
+                        ),
+                    )
+                    .child(
+                        IconButton::new("panel-history-collapse", IconName::ChevronLeft)
+                            .icon_size(IconSize::Small)
+                            .tooltip(Tooltip::text("スレッド履歴を閉じる"))
+                            .on_click(cx.listener(|_this, _, _window, cx| {
+                                cx.emit(PanelThreadHistoryEvent::Collapse);
+                            })),
+                    ),
             )
             .child(
                 h_flex()
@@ -397,6 +452,77 @@ impl PanelThreadHistory {
                         )
                     }),
             )
+    }
+
+    /// 「開いているタブ」の節。タブバーを隠していても、パネルが開いている
+    /// ものすべて (ペインのタブ + パネルの端末スレッド) にここから届く。
+    fn render_open_tabs(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        if self.open_tabs.is_empty() {
+            return None;
+        }
+
+        let rows =
+            self.open_tabs
+                .iter()
+                .enumerate()
+                .map(|(index, row)| {
+                    let id = row.id;
+                    let list_item = ListItem::new(("panel-open-tab", index))
+                        .spacing(ListItemSpacing::Sparse)
+                        .toggle_state(row.is_active)
+                        .start_slot(Icon::new(row.icon).size(IconSize::Small).color(
+                            if row.is_active {
+                                Color::Default
+                            } else {
+                                Color::Muted
+                            },
+                        ))
+                        .child(
+                            Label::new(row.title.clone())
+                                .size(LabelSize::Small)
+                                .truncate(),
+                        )
+                        .end_slot_on_hover(
+                            IconButton::new(("panel-open-tab-close", index), IconName::Close)
+                                .icon_size(IconSize::Small)
+                                .tooltip(Tooltip::text("タブを閉じる"))
+                                .on_click(cx.listener(move |_this, _, _window, cx| {
+                                    cx.emit(PanelThreadHistoryEvent::CloseOpenTab(id));
+                                    cx.stop_propagation();
+                                })),
+                        )
+                        .on_click(cx.listener(move |_this, _, _window, cx| {
+                            cx.emit(PanelThreadHistoryEvent::ActivateOpenTab(id));
+                        }));
+                    div()
+                        .debug_selector(move || format!("PANEL_OPEN_TAB-{index}"))
+                        .child(list_item)
+                })
+                .collect::<Vec<_>>();
+
+        Some(
+            v_flex()
+                .flex_none()
+                .border_b_1()
+                .border_color(cx.theme().colors().border)
+                .child(
+                    div().px_2().pt_1p5().pb_0p5().child(
+                        Label::new("開いているタブ")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    ),
+                )
+                .child(
+                    // 開きすぎたタブで履歴を潰さないよう、この節だけを畳んで
+                    // スクロールさせる。
+                    v_flex()
+                        .id("panel-open-tabs")
+                        .max_h(px(200.))
+                        .overflow_y_scroll()
+                        .pb_1()
+                        .children(rows),
+                ),
+        )
     }
 }
 
@@ -494,6 +620,7 @@ impl Render for PanelThreadHistory {
 
         v_flex()
             .key_context("PanelThreadHistory")
+            .debug_selector(|| "PANEL_THREAD_HISTORY".into())
             .track_focus(&self.focus_handle)
             .w(PANEL_THREAD_HISTORY_WIDTH)
             .flex_none()
@@ -505,6 +632,7 @@ impl Render for PanelThreadHistory {
                 cx.emit(PanelThreadHistoryEvent::NewThread);
             }))
             .child(self.render_header(cx))
+            .children(self.render_open_tabs(cx))
             .child(body)
     }
 }

@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use collections::HashMap;
 use project::agent_sandbox::{
     AgentSandboxCommand, AgentSandboxHosts, AgentSandboxState, SandboxedAgentProfile,
-    accept_remote_config_dir, accept_remote_hosts, agent_config_dir, is_project_key, project_key,
-    project_key_roots, readable_paths_in_data_dir,
+    accept_remote_config_dir, accept_remote_hosts, agent_config_dir, claude_acp_host_config_dir,
+    is_project_key, project_key, project_key_roots, readable_paths_in_data_dir,
 };
 
 #[test]
@@ -74,7 +74,7 @@ async fn the_key_is_taken_from_the_same_folders_everywhere(cx: &mut gpui::TestAp
 #[test]
 fn a_remote_folder_is_taken_only_where_the_client_names_it() {
     let claude = SandboxedAgentProfile::Claude;
-    let accepted = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/config";
+    let accepted = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp";
     assert_eq!(
         accept_remote_config_dir(accepted, &claude).expect("the folder the profile names"),
         PathBuf::from(accepted)
@@ -83,15 +83,18 @@ fn a_remote_folder_is_taken_only_where_the_client_names_it() {
     for refused in [
         // Another agent's folder, and with it its sign-in.
         "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/codex",
+        // ADR-F53: the sandboxed Claude Code CLI session's folder, which this
+        // route may not read a subscription's sign-in out of.
+        "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/config",
         // Not a project's directory.
-        "/home/u/.zed-jp-enhance-claude/projects/not-a-key/config",
+        "/home/u/.zed-jp-enhance-claude/projects/not-a-key/claude-acp",
         // Not below the sandboxed agents' projects directory.
-        "/home/u/.ssh/config",
-        "/home/u/projects/0123456789abcdef/config",
+        "/home/u/.ssh/claude-acp",
+        "/home/u/projects/0123456789abcdef/claude-acp",
         // Walks out of it.
-        "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/../../../config",
+        "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/../../../claude-acp",
         // Not absolute, and nothing at all.
-        ".zed-jp-enhance-claude/projects/0123456789abcdef/config",
+        ".zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp",
         "",
     ] {
         assert!(
@@ -129,10 +132,7 @@ fn a_remote_agent_stays_within_the_clients_hosts() {
     );
     assert_eq!(
         accept_remote_hosts(&claude, AgentSandboxHosts::EditorAllowlist),
-        AgentSandboxHosts::Listed(vec![
-            "api.anthropic.com".to_string(),
-            "platform.claude.com".to_string(),
-        ]),
+        AgentSandboxHosts::Listed(vec!["api.anthropic.com".to_string()]),
         "a vendor's agent does not get the whole editor allowlist for asking"
     );
 
@@ -184,7 +184,9 @@ fn each_agent_has_its_own_folder() {
         },
     ]
     .map(|profile| profile.config_folder_name());
-    assert_eq!(names, ["config", "codex", "gemini", "agent-my-agent"]);
+    // ADR-F53: Claude's is no longer the sandboxed CLI session's `config`, so
+    // a subscription the CLI signed in with is not on this route.
+    assert_eq!(names, ["claude-acp", "codex", "gemini", "agent-my-agent"]);
 
     let unsafe_name = SandboxedAgentProfile::Other {
         id: "../x/y".to_string(),
@@ -214,6 +216,36 @@ fn the_folder_is_below_the_projects_directory() {
     );
 }
 
+/// ADR-F53: the ACP Claude agent may only be used with an API key, so the
+/// folder it keeps its state in is never one the official Claude Code CLI
+/// signs in to: not the account's `~/.claude`, and not the sandboxed CLI
+/// session's per-project `config` folder, which lives below the account's home
+/// among the sandboxed agents' projects.
+#[test]
+fn the_acp_claude_never_shares_the_clis_folder() {
+    let home = Path::new("/home/user");
+    let key = "0123456789abcdef";
+    let sandboxed = agent_config_dir(home, key, &SandboxedAgentProfile::Claude);
+    let cli_session = home
+        .join(".zed-jp-enhance-claude")
+        .join("projects")
+        .join(key)
+        .join("config");
+    assert_ne!(sandboxed, cli_session);
+    assert_eq!(sandboxed.parent(), cli_session.parent());
+
+    let host = claude_acp_host_config_dir();
+    assert!(
+        host.starts_with(paths::external_agents_dir()),
+        "the host route's folder is one this fork manages: {host:?}"
+    );
+    assert_ne!(host, paths::home_dir().join(".claude"));
+    assert!(
+        !host.starts_with(paths::home_dir().join(".zed-jp-enhance-claude")),
+        "nor the sandboxed agents' projects directory: {host:?}"
+    );
+}
+
 fn environment_of(profile: SandboxedAgentProfile) -> HashMap<String, String> {
     profile.environment(Path::new("/c")).into_iter().collect()
 }
@@ -225,7 +257,9 @@ fn each_profile_keeps_the_agent_in_its_folder() {
     let claude = environment_of(SandboxedAgentProfile::Claude);
     assert_eq!(claude["CLAUDE_CONFIG_DIR"], "/c");
     assert_eq!(claude["HOME"], home);
-    assert_eq!(claude["NO_BROWSER"], "1");
+    // ADR-F53: no sign-in of the agent's own is offered on this route, so it
+    // is not pointed at the paste-a-code flow either.
+    assert!(!claude.contains_key("NO_BROWSER"), "{claude:?}");
 
     let codex = environment_of(SandboxedAgentProfile::Codex);
     assert_eq!(
@@ -252,9 +286,11 @@ fn each_profile_keeps_the_agent_in_its_folder() {
 
 #[test]
 fn vendors_have_their_hosts_and_others_the_allowlist() {
+    // ADR-F53: `platform.claude.com` is the OAuth token exchange, which only a
+    // subscription sign-in needs, and this route is API-key only.
     assert_eq!(
         SandboxedAgentProfile::Claude.hosts(),
-        Some(&["api.anthropic.com", "platform.claude.com"][..])
+        Some(&["api.anthropic.com"][..])
     );
     assert_eq!(
         SandboxedAgentProfile::Codex.hosts(),

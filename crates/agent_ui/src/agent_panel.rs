@@ -39,8 +39,8 @@ use crate::ManageProfiles;
 use crate::agent_connection_store::AgentConnectionStore;
 use crate::completion_provider::{AgentContextSelection, AgentContextSource};
 use crate::panel_thread_history::{
-    MIN_THREAD_WIDTH_BESIDE_HISTORY, PANEL_THREAD_HISTORY_WIDTH, PanelThreadHistory,
-    PanelThreadHistoryEvent,
+    MIN_THREAD_WIDTH_BESIDE_HISTORY, OpenTabId, OpenTabRow, PANEL_THREAD_HISTORY_WIDTH,
+    PanelThreadHistory, PanelThreadHistoryEvent,
 };
 use crate::terminal_thread_metadata_store::{
     TerminalThreadMetadata, TerminalThreadMetadataStore, compose_terminal_thread_title,
@@ -56,7 +56,7 @@ use crate::{
     AgentDiffPane, ConversationView, CopyThreadToClipboard, Follow, LoadThreadFromClipboard,
     NewTerminalThread, NewThread, OpenActiveThreadAsMarkdown, OpenAgentDiff, ResetFastModeWarnings,
     ResetTrialEndUpsell, ResetTrialUpsell, ShowAllSidebarThreadMetadata, ShowThreadMetadata,
-    ToggleNewThreadMenu, ToggleOptionsMenu, TogglePanelThreadHistory,
+    ToggleNewThreadMenu, ToggleOptionsMenu, TogglePanelTabBar, TogglePanelThreadHistory,
     conversation_view::{
         AcpThreadViewEvent, RootThreadUpdated, ThreadView, reset_fast_mode_warnings,
     },
@@ -89,7 +89,7 @@ use language_model::LanguageModelRegistry;
 use notifications::status_toast::StatusToast;
 use project::{Project, ProjectPath, Worktree};
 use settings::TerminalDockPosition;
-use settings::{NotifyWhenAgentWaiting, Settings, update_settings_file};
+use settings::{NotifyWhenAgentWaiting, PanelTabBar, Settings, update_settings_file};
 
 use search::{BufferSearchBar, buffer_search::Deploy as DeployBufferSearch};
 use terminal::{Event as TerminalEvent, terminal_settings::TerminalSettings};
@@ -113,6 +113,8 @@ use workspace::{
 const AGENT_PANEL_KEY: &str = "agent_panel";
 const AGENT_PANEL_LAYOUT_KEY: &str = "agent_panel_layout";
 const MIN_PANEL_WIDTH: Pixels = px(300.);
+/// 閉じているスレッド履歴の代わりに出す帯の幅 (ADR-F53)。
+const THREAD_HISTORY_RAIL_WIDTH: Pixels = px(14.);
 const LAST_USED_AGENT_KEY: &str = "agent_panel__last_used_external_agent";
 const LAST_CREATED_ENTRY_KIND_KEY: &str = "agent_panel__last_created_entry_kind";
 const TERMINAL_AGENT_TELEMETRY_ID: &str = "terminal";
@@ -955,6 +957,13 @@ pub fn init(cx: &mut App) {
                         });
                     }
                 })
+                .register_action(|workspace, _: &TogglePanelTabBar, window, cx| {
+                    if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
+                        panel.update(cx, |panel, cx| {
+                            panel.toggle_panel_tab_bar(&TogglePanelTabBar, window, cx);
+                        });
+                    }
+                })
                 .register_action(|_workspace, _: &ResetOnboarding, window, cx| {
                     window.dispatch_action(workspace::RestoreBanner.boxed_clone(), cx);
                     window.refresh();
@@ -1598,6 +1607,13 @@ enum BaseView {
     Terminal {
         terminal_id: TerminalId,
     },
+    /// スレッドではないタブ ([`AgentPanel::add_terminal_tab`] が置く公式
+    /// Claude Code CLI の端末、他所からドラッグしてきたタブ) が前に出ている
+    /// (ADR-F53)。描くのはペイングループなので、パネルはどのアイテムが表に
+    /// 出ているかだけを覚える。
+    PaneItem {
+        item_id: EntityId,
+    },
 }
 
 impl From<AgentThread> for BaseView {
@@ -1612,6 +1628,8 @@ enum VisibleSurface<'a> {
     Uninitialized,
     AgentThread(&'a Entity<ConversationView>),
     Terminal(&'a Entity<TerminalView>),
+    /// スレッドではないタブ。中身はペイングループが描く。
+    PaneItem,
 }
 
 enum WhichFontSize {
@@ -1623,7 +1641,9 @@ impl BaseView {
     pub fn which_font_size_used(&self) -> WhichFontSize {
         match self {
             BaseView::AgentThread { .. } => WhichFontSize::AgentFont,
-            BaseView::Terminal { .. } | BaseView::Uninitialized => WhichFontSize::None,
+            BaseView::Terminal { .. } | BaseView::PaneItem { .. } | BaseView::Uninitialized => {
+                WhichFontSize::None
+            }
         }
     }
 }
@@ -2196,6 +2216,15 @@ impl AgentPanel {
                 }
                 PanelThreadHistoryEvent::NewThread => {
                     this.new_thread(&NewThread, window, cx);
+                }
+                PanelThreadHistoryEvent::ActivateOpenTab(id) => {
+                    this.activate_open_tab(*id, window, cx);
+                }
+                PanelThreadHistoryEvent::CloseOpenTab(id) => {
+                    this.close_open_tab(*id, window, cx);
+                }
+                PanelThreadHistoryEvent::Collapse => {
+                    this.toggle_panel_thread_history(&TogglePanelThreadHistory, window, cx);
                 }
                 PanelThreadHistoryEvent::OpenInTab { thread, split } => {
                     let agent = Agent::from(thread.agent_id.clone());
@@ -2979,6 +3008,23 @@ impl AgentPanel {
         }
         cx.emit(AgentPanelEvent::EntryChanged);
         cx.notify();
+    }
+
+    /// 出来合いの [`TerminalView`] をこのパネルのアクティブなペインのタブとして
+    /// 置く (ADR-F53)。公式 Claude Code CLI のように「Zed が中身を作らない」
+    /// 端末の置き場で、パネルの端末スレッド (`terminals` / `BaseView::Terminal`)
+    /// とは別物: メタデータも永続化も持たず、タブを閉じれば終わる。
+    pub fn add_terminal_tab(
+        &mut self,
+        terminal_view: Entity<TerminalView>,
+        focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane = self.active_pane.clone();
+        pane.update(cx, |pane, cx| {
+            pane.add_item(Box::new(terminal_view), true, focus, None, window, cx);
+        });
     }
 
     pub fn activate_terminal(
@@ -4292,11 +4338,23 @@ impl AgentPanel {
         AgentSettings::get_global(cx).panel_thread_history && self.has_open_project(cx)
     }
 
+    /// Whether the panel is wide enough to give the history list its column
+    /// without squeezing the surface beside it.
+    fn fits_thread_history(&self) -> bool {
+        self.measured_panel_width.get().is_none_or(|width| {
+            width >= PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY
+        })
+    }
+
     fn thread_history_visible(&self, cx: &App) -> bool {
-        self.thread_history_enabled(cx)
-            && self.measured_panel_width.get().is_none_or(|width| {
-                width >= PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY
-            })
+        self.thread_history_enabled(cx) && self.fits_thread_history()
+    }
+
+    /// The thin strip that takes the list's place while the user has it closed.
+    /// A panel too narrow for the list is too narrow for the strip as well, and
+    /// there it would promise an expansion that would immediately hide itself.
+    fn thread_history_rail_visible(&self, cx: &App) -> bool {
+        !self.thread_history_enabled(cx) && self.has_open_project(cx) && self.fits_thread_history()
     }
 
     pub fn toggle_panel_thread_history(
@@ -4311,6 +4369,157 @@ impl AgentPanel {
                 .agent
                 .get_or_insert_default()
                 .set_panel_thread_history(visible);
+        });
+    }
+
+    /// 一覧そのものか、それを呼び戻す帯のどちらかが出ている = 開いている
+    /// タブへはそこから届く。
+    fn thread_history_reachable(&self, cx: &App) -> bool {
+        self.thread_history_visible(cx) || self.thread_history_rail_visible(cx)
+    }
+
+    /// Whether the panel's panes draw their tab bar. `auto` drops it while the
+    /// history list is showing beside a single pane: that list carries the open
+    /// tabs, so the horizontal row would repeat it (ADR-F53).
+    fn tab_bar_visible(&self, cx: &App) -> bool {
+        match AgentSettings::get_global(cx).panel_tab_bar {
+            PanelTabBar::Always => true,
+            // 「表示しない」でも、一覧も帯も出せない幅では開いているタブへ
+            // 行く手段が一つも残らない。行き止まりを作らないぶんだけ戻す。
+            PanelTabBar::Never => !self.thread_history_reachable(cx),
+            PanelTabBar::Auto => {
+                !(self.thread_history_visible(cx) && self.center.panes().len() == 1)
+            }
+        }
+    }
+
+    /// 縦の一覧の「開いているタブ」の節に出す行 (ADR-F53)。ペインのタブを
+    /// 並び順どおりに (分割しているときは全ペインぶん) 並べ、そのあとにタブを
+    /// 持たないパネルの端末スレッドを古い順で続ける。
+    fn open_tab_rows(&self, cx: &App) -> Vec<OpenTabRow> {
+        let active_pane_item_id = matches!(
+            self.base_view,
+            BaseView::AgentThread { .. } | BaseView::PaneItem { .. }
+        )
+        .then(|| {
+            self.active_pane
+                .read(cx)
+                .active_item()
+                .map(|item| item.item_id())
+        })
+        .flatten();
+
+        let mut rows = Vec::new();
+        for pane in self.center.panes() {
+            for item in pane.read(cx).items() {
+                let item_id = item.item_id();
+                rows.push(OpenTabRow {
+                    id: OpenTabId::PaneItem(item_id),
+                    title: item.tab_content_text(0, cx),
+                    icon: Self::open_tab_icon(item.as_ref(), cx),
+                    is_active: Some(item_id) == active_pane_item_id,
+                });
+            }
+        }
+
+        let active_terminal_id = self.active_terminal_id();
+        // `terminals` は HashMap なので、同じ時刻に生まれた 2 つが毎フレーム
+        // 入れ替わらないよう id まで見て並べる。
+        for (terminal_id, terminal) in self
+            .terminals
+            .iter()
+            .sorted_by_key(|(terminal_id, terminal)| (terminal.created_at, **terminal_id))
+        {
+            rows.push(OpenTabRow {
+                id: OpenTabId::PanelTerminal(*terminal_id),
+                title: terminal.title(cx),
+                icon: IconName::Terminal,
+                is_active: Some(*terminal_id) == active_terminal_id,
+            });
+        }
+
+        rows
+    }
+
+    fn open_tab_icon(item: &dyn ItemHandle, cx: &App) -> IconName {
+        let Some(thread_item) = item.downcast::<ThreadItem>() else {
+            return IconName::Terminal;
+        };
+        thread_item
+            .read(cx)
+            .conversation_view()
+            .read(cx)
+            .agent_key()
+            .icon()
+            .unwrap_or(IconName::ZedAgent)
+    }
+
+    /// 「開いているタブ」の行から前面化する。ペインのタブはそのペインごと
+    /// アクティブにし、パネルの端末スレッドは全面サーフェスに戻す。
+    fn activate_open_tab(&mut self, id: OpenTabId, window: &mut Window, cx: &mut Context<Self>) {
+        match id {
+            OpenTabId::PaneItem(item_id) => {
+                let Some((pane, index)) = self.pane_item_location(item_id, cx) else {
+                    return;
+                };
+                pane.update(cx, |pane, cx| {
+                    pane.activate_item(index, true, true, window, cx);
+                });
+                self.activate_pane(pane, cx);
+                self.sync_base_view_from_pane(window, cx);
+            }
+            OpenTabId::PanelTerminal(terminal_id) => {
+                self.activate_terminal(terminal_id, true, window, cx);
+            }
+        }
+    }
+
+    /// 「開いているタブ」の行の ×。未保存の確認などはペインの通常の経路に委ねる。
+    fn close_open_tab(&mut self, id: OpenTabId, window: &mut Window, cx: &mut Context<Self>) {
+        match id {
+            OpenTabId::PaneItem(item_id) => {
+                let Some((pane, _index)) = self.pane_item_location(item_id, cx) else {
+                    return;
+                };
+                pane.update(cx, |pane, cx| {
+                    pane.close_item_by_id(item_id, pane::SaveIntent::Close, window, cx)
+                })
+                .detach_and_log_err(cx);
+            }
+            OpenTabId::PanelTerminal(terminal_id) => {
+                self.close_terminal(terminal_id, window, cx);
+            }
+        }
+    }
+
+    fn pane_item_location(&self, item_id: EntityId, cx: &App) -> Option<(Entity<Pane>, usize)> {
+        self.center.panes().into_iter().find_map(|pane| {
+            let index = pane
+                .read(cx)
+                .items()
+                .position(|item| item.item_id() == item_id)?;
+            Some((pane.clone(), index))
+        })
+    }
+
+    pub fn toggle_panel_tab_bar(
+        &mut self,
+        _: &TogglePanelTabBar,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // `auto` is a rule, not a state, so the toggle writes the explicit
+        // value that flips what the user is looking at right now.
+        let tab_bar = if self.tab_bar_visible(cx) {
+            PanelTabBar::Never
+        } else {
+            PanelTabBar::Always
+        };
+        update_settings_file(self.fs.clone(), cx, move |settings, _| {
+            settings
+                .agent
+                .get_or_insert_default()
+                .set_panel_tab_bar(tab_bar);
         });
     }
 
@@ -5334,49 +5543,58 @@ impl AgentPanel {
     /// [`Self::active_pane`] のアクティブなアイテムに `base_view` を合わせる。
     /// タブのクリックやタブを閉じたあとの選び直しがここを通る。
     fn sync_base_view_from_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let active = self
-            .active_pane
-            .read(cx)
-            .active_item()
-            .and_then(|item| item.downcast::<ThreadItem>())
-            .map(|item| item.read(cx).conversation_view().clone());
+        let Some(item) = self.active_pane.read(cx).active_item() else {
+            // 最後のタブが閉じられた。パネルは畳まず、いつもの下書きに戻す
+            // (ADR-F36 Phase B)。
+            if matches!(self.base_view, BaseView::Terminal { .. }) {
+                return;
+            }
+            // レイアウトを組み立て直している最中は、途中の「まだ空の
+            // ペイン」を見て下書きを作らない (作ると復元したタブの隣に
+            // 空の下書きが混ざる)。
+            if self.restoring_layout {
+                return;
+            }
+            let old_view = std::mem::replace(&mut self.base_view, BaseView::Uninitialized);
+            self.retain_running_thread(old_view, cx);
+            self.refresh_base_view_subscriptions(window, cx);
+            self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
+            cx.emit(AgentPanelEvent::ActiveViewChanged);
+            cx.notify();
+            return;
+        };
 
-        match active {
-            Some(conversation_view) => {
-                if matches!(
-                    &self.base_view,
-                    BaseView::AgentThread { conversation_view: current }
-                        if current.entity_id() == conversation_view.entity_id()
-                ) {
-                    return;
-                }
-                self.set_base_view(
-                    BaseView::AgentThread { conversation_view },
-                    false,
-                    window,
-                    cx,
-                );
+        let Some(conversation_view) = item
+            .downcast::<ThreadItem>()
+            .map(|item| item.read(cx).conversation_view().clone())
+        else {
+            // スレッドではないタブ (公式 CLI の端末、他所から持ち込んだタブ) が
+            // 前に出ている。下書きに戻すとそのタブが裏へ落ちてしまうので、その
+            // タブを出したままにする (ADR-F53)。
+            let item_id = item.item_id();
+            if matches!(
+                self.base_view,
+                BaseView::PaneItem { item_id: current } if current == item_id
+            ) {
+                return;
             }
-            None => {
-                // 最後のタブが閉じられた。パネルは畳まず、いつもの下書きに戻す
-                // (ADR-F36 Phase B)。
-                if matches!(self.base_view, BaseView::Terminal { .. }) {
-                    return;
-                }
-                // レイアウトを組み立て直している最中は、途中の「まだ空の
-                // ペイン」を見て下書きを作らない (作ると復元したタブの隣に
-                // 空の下書きが混ざる)。
-                if self.restoring_layout {
-                    return;
-                }
-                let old_view = std::mem::replace(&mut self.base_view, BaseView::Uninitialized);
-                self.retain_running_thread(old_view, cx);
-                self.refresh_base_view_subscriptions(window, cx);
-                self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
-                cx.emit(AgentPanelEvent::ActiveViewChanged);
-                cx.notify();
-            }
+            self.set_base_view(BaseView::PaneItem { item_id }, false, window, cx);
+            return;
+        };
+
+        if matches!(
+            &self.base_view,
+            BaseView::AgentThread { conversation_view: current }
+                if current.entity_id() == conversation_view.entity_id()
+        ) {
+            return;
         }
+        self.set_base_view(
+            BaseView::AgentThread { conversation_view },
+            false,
+            window,
+            cx,
+        );
     }
 
     /// このペインを「次の操作の宛先」にする。フォーカスは動かさない。
@@ -5766,7 +5984,7 @@ impl AgentPanel {
                 }
                 None
             }
-            BaseView::Uninitialized => {
+            BaseView::PaneItem { .. } | BaseView::Uninitialized => {
                 self._thread_view_subscription = None;
                 self._active_thread_focus_subscription = None;
                 None
@@ -5786,7 +6004,17 @@ impl AgentPanel {
                 .get(terminal_id)
                 .map(|terminal| VisibleSurface::Terminal(&terminal.view))
                 .unwrap_or(VisibleSurface::Uninitialized),
+            BaseView::PaneItem { .. } => VisibleSurface::PaneItem,
         }
+    }
+
+    /// スレッド以外のタブを出しているときのツールバーの見出し = そのタブの名前。
+    fn pane_item_toolbar_title(&self, cx: &App) -> SharedString {
+        self.active_pane
+            .read(cx)
+            .active_item()
+            .map(|item| item.tab_content_text(0, cx))
+            .unwrap_or_else(|| SharedString::new_static("タブ"))
     }
 
     fn visible_font_size(&self) -> WhichFontSize {
@@ -6454,7 +6682,15 @@ fn new_thread_pane(
         );
         pane.set_can_navigate(false, cx);
         pane.display_nav_history_buttons(None);
-        pane.set_should_display_tab_bar(|_, _| true);
+        // Evaluated on every frame of the pane, so `agent.panel_tab_bar` and
+        // the state it depends on (the history list, how many panes the panel
+        // holds) take effect as soon as they change.
+        let tab_bar_panel = agent_panel.downgrade();
+        pane.set_should_display_tab_bar(move |_window, cx| {
+            tab_bar_panel
+                .read_with(cx, |panel, cx| panel.tab_bar_visible(cx))
+                .unwrap_or(true)
+        });
         pane.set_zoom_out_on_close(false);
 
         let split_predicate_panel = agent_panel.downgrade();
@@ -6598,6 +6834,12 @@ impl Panel for AgentPanel {
                 conversation_view.read(cx).activation_focus_handle(cx)
             }
             VisibleSurface::Terminal(terminal_view) => terminal_view.focus_handle(cx),
+            VisibleSurface::PaneItem => self
+                .active_pane
+                .read(cx)
+                .active_item()
+                .map(|item| item.item_focus_handle(cx))
+                .unwrap_or_else(|| self.focus_handle.clone()),
         }
     }
 
@@ -6837,7 +7079,7 @@ impl AgentPanel {
 
         match &self.base_view {
             BaseView::Uninitialized => false,
-            BaseView::Terminal { .. } => true,
+            BaseView::Terminal { .. } | BaseView::PaneItem { .. } => true,
             BaseView::AgentThread { conversation_view } => {
                 let has_entries = conversation_view
                     .read(cx)
@@ -7125,6 +7367,10 @@ impl AgentPanel {
                     Label::new("ターミナル").into_any_element()
                 }
             }
+            VisibleSurface::PaneItem => Label::new(self.pane_item_toolbar_title(cx))
+                .color(Color::Muted)
+                .truncate()
+                .into_any_element(),
 
             VisibleSurface::Uninitialized => {
                 Label::new("エージェント").truncate().into_any_element()
@@ -7221,6 +7467,7 @@ impl AgentPanel {
             _ => focus_handle.clone(),
         };
         let showing_terminal = matches!(self.visible_surface(), VisibleSurface::Terminal(_));
+        let fs = self.fs.clone();
 
         let conversation_view = match &self.base_view {
             BaseView::AgentThread { conversation_view } => Some(conversation_view.clone()),
@@ -7419,6 +7666,38 @@ impl AgentPanel {
                                 "パネル内のスレッド履歴の切り替え",
                                 Box::new(TogglePanelThreadHistory),
                             )
+                            .submenu("タブバー", {
+                                let fs = fs.clone();
+                                move |mut menu, _window, cx| {
+                                    let current = AgentSettings::get_global(cx).panel_tab_bar;
+                                    for (mode, label) in [
+                                        (PanelTabBar::Auto, "自動"),
+                                        (PanelTabBar::Always, "常に表示"),
+                                        (PanelTabBar::Never, "表示しない"),
+                                    ] {
+                                        let fs = fs.clone();
+                                        menu = menu.toggleable_entry(
+                                            label,
+                                            current == mode,
+                                            IconPosition::Start,
+                                            None,
+                                            move |_window, cx| {
+                                                update_settings_file(
+                                                    fs.clone(),
+                                                    cx,
+                                                    move |settings, _| {
+                                                        settings
+                                                            .agent
+                                                            .get_or_insert_default()
+                                                            .set_panel_tab_bar(mode);
+                                                    },
+                                                );
+                                            },
+                                        );
+                                    }
+                                    menu
+                                }
+                            })
                             .when(AgentSettings::get_global(cx).sidebar_enabled, |menu| {
                                 menu.action(
                                     "スレッドサイドバーの切り替え",
@@ -7468,9 +7747,12 @@ impl AgentPanel {
         let can_create_entries = self.has_open_project(cx);
         let supports_terminal = self.supports_terminal(cx);
         let showing_terminal = matches!(self.visible_surface(), VisibleSurface::Terminal(_));
+        let showing_pane_item = matches!(self.visible_surface(), VisibleSurface::PaneItem);
 
         let (selected_agent_custom_icon, selected_agent_label) = if showing_terminal {
             (None, SharedString::from("ターミナル"))
+        } else if showing_pane_item {
+            (None, self.pane_item_toolbar_title(cx))
         } else if let Agent::Custom { id, .. } = &self.selected_agent {
             let store = agent_server_store.read(cx);
             let icon = store.agent_icon(&id);
@@ -7562,6 +7844,35 @@ impl AgentPanel {
                                                 });
                                             }
                                         }
+                                    }),
+                            )
+                            // 公式 CLI はこのパネルのタブで動く (ADR-F53)。
+                            // 起動は `LaunchClaudeCode` に任せる: ここでパネルを
+                            // 直接触るとペインのリースが二重になる。
+                            .item(
+                                ContextMenuEntry::new("Claude Code を起動")
+                                    .action(Box::new(
+                                        zed_actions::terminal::LaunchClaudeCode::default(),
+                                    ))
+                                    .icon(IconName::Terminal)
+                                    .icon_color(Color::Muted)
+                                    .documentation_aside(
+                                        crate::ui::documentation_aside_side(cx),
+                                        |_| {
+                                            Label::new(
+                                                "公式の Claude Code CLI をこのパネルのタブで\
+                                                 起動します。ログインは CLI の画面で行います。",
+                                            )
+                                            .into_any_element()
+                                        },
+                                    )
+                                    .handler(move |window, cx| {
+                                        window.dispatch_action(
+                                            Box::new(
+                                                zed_actions::terminal::LaunchClaudeCode::default(),
+                                            ),
+                                            cx,
+                                        );
                                     }),
                             )
                         })
@@ -7678,6 +7989,10 @@ impl AgentPanel {
         let has_custom_icon = selected_agent_custom_icon.is_some();
         let selected_agent_builtin_icon = if showing_terminal {
             Some(IconName::Terminal)
+        } else if showing_pane_item {
+            // タブ自身のアイコンはタブバーが出しているので重ねない。ここに
+            // エージェントのアイコンを出すと、スレッドを見ているように見える。
+            None
         } else {
             self.selected_agent.icon()
         };
@@ -7723,12 +8038,16 @@ impl AgentPanel {
 
         enum ToolbarMode {
             Terminal,
+            /// スレッドではないタブ。見出しはそのタブの名前。
+            PaneItem,
             EmptyThread,
             ActiveThread,
         }
 
         let mode = if matches!(self.base_view, BaseView::Terminal { .. }) {
             ToolbarMode::Terminal
+        } else if matches!(self.base_view, BaseView::PaneItem { .. }) {
+            ToolbarMode::PaneItem
         } else if self.active_thread_has_messages(cx) {
             ToolbarMode::ActiveThread
         } else {
@@ -7880,7 +8199,7 @@ impl AgentPanel {
                     return false;
                 }
             }
-            BaseView::Terminal { .. } | BaseView::Uninitialized => {
+            BaseView::Terminal { .. } | BaseView::PaneItem { .. } | BaseView::Uninitialized => {
                 return false;
             }
         }
@@ -7932,7 +8251,9 @@ impl AgentPanel {
             });
 
         match &self.base_view {
-            BaseView::Uninitialized | BaseView::Terminal { .. } => false,
+            BaseView::Uninitialized | BaseView::Terminal { .. } | BaseView::PaneItem { .. } => {
+                false
+            }
             BaseView::AgentThread { conversation_view } => {
                 if conversation_view.read(cx).as_native_thread(cx).is_some() {
                     let history_is_empty = ThreadStore::global(cx).read(cx).is_empty();
@@ -8138,7 +8459,9 @@ impl AgentPanel {
                     });
                 }
             }
-            BaseView::Uninitialized => {}
+            // スレッドではないタブには覆いを置いていないので、落とし物は
+            // そのアイテム自身に届く (ここには来ない)。
+            BaseView::PaneItem { .. } | BaseView::Uninitialized => {}
         }
     }
 
@@ -8149,23 +8472,58 @@ impl AgentPanel {
     }
 
     /// Puts the thread history list to the left of whatever surface the panel
-    /// is showing. When the list is hidden the surface is returned untouched,
-    /// so the panel's element tree stays exactly as it was without it.
+    /// is showing. When the list is hidden the surface gets the thin strip that
+    /// brings it back, or — when the panel is too narrow for either — is
+    /// returned untouched, so the panel's element tree stays exactly as it was
+    /// without it.
     fn render_surface_with_thread_history(
         &self,
         surface: AnyElement,
         show_thread_history: bool,
+        cx: &mut Context<Self>,
     ) -> AnyElement {
-        if !show_thread_history {
+        let left = if show_thread_history {
+            self.thread_history.clone().into_any_element()
+        } else if self.thread_history_rail_visible(cx) {
+            self.render_thread_history_rail(cx).into_any_element()
+        } else {
             return surface;
-        }
+        };
 
         h_flex()
             .size_full()
             .min_h_0()
-            .child(self.thread_history.clone())
+            .child(left)
             .child(v_flex().flex_1().min_w_0().size_full().child(surface))
             .into_any_element()
+    }
+
+    /// 閉じている一覧の置き場所を残す細い帯 (ADR-F53)。ツールバーのボタンを
+    /// 知らなくても、ここを押せば一覧が戻る。
+    fn render_thread_history_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .id("panel-thread-history-rail")
+            .debug_selector(|| "PANEL_THREAD_HISTORY_RAIL".into())
+            .flex_none()
+            .w(THREAD_HISTORY_RAIL_WIDTH)
+            .h_full()
+            .justify_center()
+            .overflow_hidden()
+            .border_r_1()
+            .border_color(cx.theme().colors().border)
+            .bg(cx.theme().colors().panel_background)
+            .hover(|this| this.bg(cx.theme().colors().element_hover))
+            .tooltip(move |_window, cx| {
+                Tooltip::for_action("スレッド履歴を表示", &TogglePanelThreadHistory, cx)
+            })
+            .child(
+                Icon::new(IconName::ChevronRight)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.toggle_panel_thread_history(&TogglePanelThreadHistory, window, cx);
+            }))
     }
 
     /// パネルの中のタブ列 (ADR-F36 Phase B)。ワークスペースが取れないときだけ
@@ -8239,8 +8597,10 @@ impl Render for AgentPanel {
         // - Files can be dropped into the panel
         let show_thread_history = self.thread_history_visible(cx);
         let active_thread_id = self.active_thread_id(cx);
+        let open_tabs = self.open_tab_rows(cx);
         self.thread_history.update(cx, |thread_history, cx| {
             thread_history.set_active_thread_id(active_thread_id, cx);
+            thread_history.set_open_tabs(open_tabs, cx);
         });
 
         let content = v_flex()
@@ -8269,6 +8629,7 @@ impl Render for AgentPanel {
             .on_action(cx.listener(Self::manage_skills))
             .on_action(cx.listener(Self::toggle_options_menu))
             .on_action(cx.listener(Self::toggle_panel_thread_history))
+            .on_action(cx.listener(Self::toggle_panel_tab_bar))
             .on_action(cx.listener(Self::increase_font_size))
             .on_action(cx.listener(Self::decrease_font_size))
             .on_action(cx.listener(Self::reset_font_size))
@@ -8299,9 +8660,17 @@ impl Render for AgentPanel {
                 // `conversation_view` 自体は `ThreadItem` の中にある。
                 VisibleSurface::AgentThread(_) => parent
                     .children(self.render_pane_group(window, cx).map(|pane_group| {
-                        self.render_surface_with_thread_history(pane_group, show_thread_history)
+                        self.render_surface_with_thread_history(pane_group, show_thread_history, cx)
                     }))
                     .child(self.render_drag_target(false, cx)),
+                // スレッドではないタブ (公式 CLI の端末など) も同じペイン
+                // グループが描く。落とし物の受け皿は**重ねない**: 端末のタブは
+                // 自分でパスの貼り付けを受けるので、覆いを置くとそれを奪う。
+                VisibleSurface::PaneItem => {
+                    parent.children(self.render_pane_group(window, cx).map(|pane_group| {
+                        self.render_surface_with_thread_history(pane_group, show_thread_history, cx)
+                    }))
+                }
                 VisibleSurface::Terminal(terminal_view) => {
                     let search_bar = self
                         .active_terminal_id()
@@ -8330,6 +8699,7 @@ impl Render for AgentPanel {
                         .child(self.render_surface_with_thread_history(
                             terminal_content.into_any_element(),
                             show_thread_history,
+                            cx,
                         ))
                         .child(self.render_drag_target(true, cx))
                 }
@@ -8692,6 +9062,49 @@ impl AgentPanel {
         );
         self.deliver_terminal_init_command(&terminal_for_init_command, init_command, window, cx);
         Ok(())
+    }
+
+    /// 表示専用の端末を 1 枚、このパネルの**ペインのタブ**として置く
+    /// (ADR-F53 の置き場を、実 PTY を立てずに試すため)。
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn add_test_terminal_tab(
+        &mut self,
+        focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<TerminalView> {
+        let settings = TerminalSettings::get_global(cx).clone();
+        let path_style = self.project.read(cx).path_style(cx);
+        let builder = terminal::TerminalBuilder::new_display_only(
+            settings.cursor_shape,
+            settings.alternate_scroll,
+            settings.max_scroll_history_lines,
+            cx.entity_id().as_u64(),
+            cx.background_executor(),
+            path_style,
+        );
+        let terminal = cx.new(|cx| builder.subscribe(cx));
+        let terminal_view = cx.new(|cx| {
+            TerminalView::new(
+                terminal,
+                self.workspace.clone(),
+                self.workspace_id,
+                self.project.downgrade(),
+                window,
+                cx,
+            )
+        });
+        self.add_terminal_tab(terminal_view.clone(), focus, window, cx);
+        terminal_view
+    }
+
+    /// `base_view` が「スレッド以外のタブ」を指しているか、そのアイテムの id。
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_visible_pane_item_id(&self) -> Option<EntityId> {
+        match &self.base_view {
+            BaseView::PaneItem { item_id } => Some(*item_id),
+            _ => None,
+        }
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -12093,6 +12506,742 @@ mod tests {
                 "and without pulling the panel off what the user was looking at"
             );
         });
+    }
+
+    /// パネルのアクティブなペインに載っているタブの id (並び順のまま)。
+    fn panel_tab_ids(panel: &Entity<AgentPanel>, cx: &VisualTestContext) -> Vec<EntityId> {
+        panel.read_with(cx, |panel, cx| {
+            panel
+                .active_pane
+                .read(cx)
+                .items()
+                .map(|item| item.item_id())
+                .collect()
+        })
+    }
+
+    fn activate_panel_tab(panel: &Entity<AgentPanel>, index: usize, cx: &mut VisualTestContext) {
+        panel.update_in(cx, |panel, window, cx| {
+            let pane = panel.active_pane.clone();
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(index, true, true, window, cx)
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    /// ADR-F53: 公式 CLI はエージェントパネルのペインのタブで動く。スレッド
+    /// ではないタブが前に出てもパネルは下書きへ戻らず (戻すとそのタブが裏へ
+    /// 落ちる)、そのタブを描いたままにし、スレッドのタブへ戻れば追従する。
+    #[gpui::test]
+    async fn test_a_non_thread_tab_stays_in_front_and_the_panel_follows_it_back(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let thread_tabs = panel_tab_ids(&panel, &cx);
+        assert_eq!(
+            thread_tabs.len(),
+            1,
+            "パネルは最初に下書きのタブを 1 枚持つ"
+        );
+        let draft_view_id = panel.read_with(&cx, |panel, _cx| {
+            panel
+                .active_conversation_view()
+                .expect("下書きが表に出ている")
+                .entity_id()
+        });
+
+        let terminal_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        cx.run_until_parked();
+
+        let terminal_tab = terminal_view.entity_id();
+        assert_eq!(
+            panel_tab_ids(&panel, &cx),
+            vec![thread_tabs[0], terminal_tab],
+            "端末はスレッドのタブの隣に並ぶ"
+        );
+        panel.read_with(&cx, |panel, cx| {
+            assert_eq!(
+                panel.test_visible_pane_item_id(),
+                Some(terminal_tab),
+                "パネルは端末のタブを描いている"
+            );
+            assert!(
+                panel.active_conversation_view().is_none(),
+                "下書きへ戻されていない"
+            );
+            assert_eq!(
+                panel
+                    .active_pane
+                    .read(cx)
+                    .active_item()
+                    .map(|i| i.item_id()),
+                Some(terminal_tab),
+                "端末のタブが裏へ押しやられていない"
+            );
+        });
+        assert!(
+            cx.update(|window, cx| panel
+                .read(cx)
+                .activation_focus_handle(cx)
+                .contains_focused(window, cx)),
+            "パネルを触ったときのフォーカス先も端末のタブ"
+        );
+
+        activate_panel_tab(&panel, 0, &mut cx);
+        panel.read_with(&cx, |panel, _cx| {
+            assert!(
+                panel.test_visible_pane_item_id().is_none(),
+                "スレッドのタブへ戻れば端末の表示は畳む"
+            );
+            assert_eq!(
+                panel
+                    .active_conversation_view()
+                    .map(|view| view.entity_id()),
+                Some(draft_view_id),
+                "戻り先は元の下書き"
+            );
+        });
+
+        activate_panel_tab(&panel, 1, &mut cx);
+        panel.read_with(&cx, |panel, _cx| {
+            assert_eq!(
+                panel.test_visible_pane_item_id(),
+                Some(terminal_tab),
+                "往復しても追従する"
+            );
+        });
+    }
+
+    /// タブを閉じればセッションは終わる: パネルは残ったタブへ戻り、
+    /// `TerminalView` (と、その先の `Terminal` = CLI のプロセス) は解放される。
+    #[gpui::test]
+    async fn test_closing_the_cli_tab_returns_the_panel_and_releases_the_terminal(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let terminal_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        cx.run_until_parked();
+        let terminal_tab = terminal_view.entity_id();
+        let released = terminal_view.downgrade();
+        let terminal = terminal_view.read_with(&cx, |view, _cx| view.terminal().downgrade());
+        drop(terminal_view);
+
+        let close = panel.update_in(&mut cx, |panel, window, cx| {
+            let pane = panel.active_pane.clone();
+            pane.update(cx, |pane, cx| {
+                pane.close_item_by_id(terminal_tab, pane::SaveIntent::Skip, window, cx)
+            })
+        });
+        close.await.expect("端末のタブは確認なしで閉じられる");
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, _cx| {
+            assert!(
+                panel.test_visible_pane_item_id().is_none(),
+                "閉じたタブを描き続けない"
+            );
+            assert!(
+                panel.active_conversation_view().is_some(),
+                "残っているスレッドのタブへ戻る"
+            );
+        });
+        released.assert_released();
+        terminal.assert_released();
+    }
+
+    /// ADR-F53: 二重起動の「すでに実行中です」から既存のタブを前に出す探索は、
+    /// タブがエージェントパネルにあっても、そこから中央のペインへ動かされて
+    /// いても見つける。
+    #[gpui::test]
+    async fn test_a_cli_tab_is_found_wherever_the_user_moved_it(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        let workspace = panel.read_with(&cx, |panel, _cx| panel.workspace.clone());
+
+        let terminal_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        cx.run_until_parked();
+        let terminal = terminal_view.read_with(&cx, |view, _cx| view.terminal().clone());
+
+        let found = workspace
+            .read_with(&cx, |workspace, cx| {
+                crate::sandboxed_claude_code::terminal_tab_location(workspace, &terminal, cx)
+            })
+            .expect("the workspace can be read");
+        let (host, pane, index) = found.expect("パネルのタブが見つかる");
+        assert_eq!(
+            host,
+            crate::sandboxed_claude_code::TerminalTabHost::AgentPanel
+        );
+        assert_eq!(
+            pane.entity_id(),
+            panel.read_with(&cx, |panel, _cx| panel.active_pane.entity_id()),
+            "パネルのアクティブなペインのタブ"
+        );
+        assert_eq!(
+            pane.read_with(&cx, |pane, _cx| pane
+                .item_for_index(index)
+                .map(|item| item.item_id())),
+            Some(terminal_view.entity_id()),
+            "その並び順のタブがこの端末"
+        );
+
+        // タブを中央のペインへ動かしても見つかる。
+        let item = panel
+            .update_in(&mut cx, |panel, window, cx| {
+                let pane = panel.active_pane.clone();
+                pane.update(cx, |pane, cx| pane.take_active_item(window, cx))
+            })
+            .expect("端末のタブを取り出せる");
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.add_item_to_active_pane(item, None, true, window, cx);
+            })
+            .expect("the workspace can be updated");
+        cx.run_until_parked();
+
+        let found = workspace
+            .read_with(&cx, |workspace, cx| {
+                crate::sandboxed_claude_code::terminal_tab_location(workspace, &terminal, cx)
+            })
+            .expect("the workspace can be read");
+        let (host, _pane, _index) = found.expect("中央へ動かしたタブも見つかる");
+        assert_eq!(
+            host,
+            crate::sandboxed_claude_code::TerminalTabHost::Elsewhere,
+            "前面化はパネルではなくそのペインに任せる"
+        );
+    }
+
+    /// 最後のタブが端末だったときは、いつもどおり下書きに戻る。
+    #[gpui::test]
+    async fn test_closing_the_last_tab_when_it_is_a_terminal_returns_to_a_draft(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let terminal_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        cx.run_until_parked();
+        let terminal_tab = terminal_view.entity_id();
+        let released_view = terminal_view.downgrade();
+        let released_terminal =
+            terminal_view.read_with(&cx, |view, _cx| view.terminal().downgrade());
+        drop(terminal_view);
+
+        // 下書きのタブを先に閉じて、端末だけを残す。
+        let thread_tabs = panel_tab_ids(&panel, &cx)
+            .into_iter()
+            .filter(|id| *id != terminal_tab)
+            .collect::<Vec<_>>();
+        for tab in thread_tabs {
+            let close = panel.update_in(&mut cx, |panel, window, cx| {
+                let pane = panel.active_pane.clone();
+                pane.update(cx, |pane, cx| {
+                    pane.close_item_by_id(tab, pane::SaveIntent::Skip, window, cx)
+                })
+            });
+            close.await.expect("スレッドのタブを閉じられる");
+            cx.run_until_parked();
+        }
+        assert_eq!(panel_tab_ids(&panel, &cx), vec![terminal_tab]);
+
+        let close = panel.update_in(&mut cx, |panel, window, cx| {
+            let pane = panel.active_pane.clone();
+            pane.update(cx, |pane, cx| {
+                pane.close_item_by_id(terminal_tab, pane::SaveIntent::Skip, window, cx)
+            })
+        });
+        close.await.expect("端末のタブを閉じられる");
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, _cx| {
+            assert!(
+                panel.test_visible_pane_item_id().is_none(),
+                "端末の表示は畳む"
+            );
+            assert!(
+                panel.active_conversation_view().is_some(),
+                "パネルは畳まず、いつもの下書きに戻る"
+            );
+        });
+        assert_eq!(
+            panel_tab_ids(&panel, &cx).len(),
+            1,
+            "戻った下書きがタブ 1 枚として載っている"
+        );
+        // ペインが一度空になる経路。閉じたタブをツールバーや `base_view` が
+        // 握ったままだと CLI のプロセスが残るので、解放まで見る。
+        released_view.assert_released();
+        released_terminal.assert_released();
+    }
+
+    /// ADR-F53 + ADR-F09: CLI のタブをエージェントパネルに置いてよいのは、
+    /// 利用者が AI を有効にしているときだけ。既定 (`agent.enabled = false`) では
+    /// パネルは登録されたままなので、登録の有無だけで決めると opt-in していない
+    /// パネルが勝手に開く。
+    #[gpui::test]
+    async fn test_the_cli_tab_only_goes_to_the_panel_when_the_agent_is_enabled(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        let workspace = panel.read_with(&cx, |panel, _cx| panel.workspace.clone());
+
+        let set_agent_enabled = |enabled: bool, cx: &mut VisualTestContext| {
+            cx.update(|_window, cx| {
+                AgentSettings::override_global(
+                    AgentSettings {
+                        enabled,
+                        ..AgentSettings::get_global(cx).clone()
+                    },
+                    cx,
+                );
+            });
+        };
+
+        set_agent_enabled(true, &mut cx);
+        assert_eq!(
+            workspace
+                .read_with(&cx, |workspace, cx| {
+                    crate::sandboxed_claude_code::agent_panel_for_cli_tab(workspace, cx)
+                        .map(|panel| panel.entity_id())
+                })
+                .expect("the workspace can be read"),
+            Some(panel.entity_id()),
+            "AI を有効にしていればパネルのタブへ"
+        );
+
+        set_agent_enabled(false, &mut cx);
+        assert!(
+            workspace
+                .read_with(&cx, |workspace, cx| {
+                    crate::sandboxed_claude_code::agent_panel_for_cli_tab(workspace, cx).is_none()
+                })
+                .expect("the workspace can be read"),
+            "AI を有効にしていなければ (パネルが登録されていても) ターミナルパネルへ"
+        );
+    }
+
+    /// パネルのペインが「いまタブバーを描くか」を、ペイン自身に持たせた判定に
+    /// 訊く。パネルをリースしたままだと判定がパネルを読めないので、ハンドルを
+    /// 取り出してからリースの外で訊く (描画も同じ順序で起きる)。
+    fn pane_shows_tab_bar(panel: &Entity<AgentPanel>, cx: &mut VisualTestContext) -> bool {
+        let pane = panel.read_with(cx, |panel, _cx| panel.active_pane.clone());
+        cx.update(|window, cx| pane.update(cx, |pane, cx| pane.should_display_tab_bar(window, cx)))
+    }
+
+    fn override_agent_settings(
+        cx: &mut VisualTestContext,
+        update: impl FnOnce(&mut AgentSettings),
+    ) {
+        cx.update(|_window, cx| {
+            let mut settings = AgentSettings::get_global(cx).clone();
+            update(&mut settings);
+            AgentSettings::override_global(settings, cx);
+        });
+    }
+
+    /// ADR-F53: 縦の一覧が開いていて分割もしていないときは、横のタブ列は同じ
+    /// ことを二度言うだけなので `auto` は隠す。分割・一覧を閉じた・幅が足りない
+    /// のいずれかで戻る。
+    #[gpui::test]
+    async fn test_the_panel_tab_bar_follows_the_setting_and_the_layout(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        assert!(
+            !pane_shows_tab_bar(&panel, &mut cx),
+            "auto: 一覧が出ていてペインが 1 つならタブバーは出さない"
+        );
+
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
+        assert!(
+            pane_shows_tab_bar(&panel, &mut cx),
+            "auto: 一覧を閉じたらタブの行き先がタブバーしか無い"
+        );
+
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = true);
+        panel.update(&mut cx, |panel, _cx| {
+            panel.measured_panel_width.set(Some(
+                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+            ));
+        });
+        assert!(
+            pane_shows_tab_bar(&panel, &mut cx),
+            "auto: 幅が足りず一覧が引っ込んだときも同じ"
+        );
+        panel.update(&mut cx, |panel, _cx| {
+            panel.measured_panel_width.set(None);
+        });
+        assert!(!pane_shows_tab_bar(&panel, &mut cx));
+
+        let first_pane = panel.read_with(&cx, |panel, _cx| panel.active_pane.clone());
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.split_pane(&first_pane, SplitDirection::Right, window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            pane_shows_tab_bar(&panel, &mut cx),
+            "auto: 分割したらどのペインを見ているかはタブでしか分からない"
+        );
+
+        override_agent_settings(&mut cx, |settings| {
+            settings.panel_tab_bar = PanelTabBar::Never
+        });
+        assert!(
+            !pane_shows_tab_bar(&panel, &mut cx),
+            "never: 分割していても出さない"
+        );
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
+        assert!(
+            !pane_shows_tab_bar(&panel, &mut cx),
+            "never: 一覧を閉じていても、帯から呼び戻せるうちは出さない"
+        );
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = true);
+        panel.update(&mut cx, |panel, _cx| {
+            panel.measured_panel_width.set(Some(
+                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+            ));
+        });
+        assert!(
+            pane_shows_tab_bar(&panel, &mut cx),
+            "never: 一覧も帯も出せない幅では、タブへ行く手段が他に無いので戻す"
+        );
+        panel.update(&mut cx, |panel, _cx| {
+            panel.measured_panel_width.set(None);
+        });
+
+        override_agent_settings(&mut cx, |settings| {
+            settings.panel_tab_bar = PanelTabBar::Always
+        });
+        assert!(pane_shows_tab_bar(&panel, &mut cx));
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
+        assert!(
+            pane_shows_tab_bar(&panel, &mut cx),
+            "always: 一覧の開閉に関わらず出す"
+        );
+    }
+
+    /// `auto` は「規則」なので、トグルは今見えているものを裏返す値を書く。
+    #[gpui::test]
+    async fn test_toggling_the_tab_bar_writes_the_value_that_flips_it(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let fs = panel.read_with(&cx, |panel, _cx| panel.fs.clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+
+        assert!(!pane_shows_tab_bar(&panel, &mut cx));
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.toggle_panel_tab_bar(&TogglePanelTabBar, window, cx);
+        });
+        cx.run_until_parked();
+        cx.update(|_window, cx| {
+            assert_eq!(
+                AgentSettings::get_global(cx).panel_tab_bar,
+                PanelTabBar::Always,
+                "隠れていたので「常に表示」を書く"
+            );
+        });
+        assert!(pane_shows_tab_bar(&panel, &mut cx));
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.toggle_panel_tab_bar(&TogglePanelTabBar, window, cx);
+        });
+        cx.run_until_parked();
+        cx.update(|_window, cx| {
+            assert_eq!(
+                AgentSettings::get_global(cx).panel_tab_bar,
+                PanelTabBar::Never,
+                "見えていたので「表示しない」を書く"
+            );
+        });
+        assert!(!pane_shows_tab_bar(&panel, &mut cx));
+    }
+
+    /// ADR-F53: 縦の一覧の「開いているタブ」の節には、スレッドのタブも
+    /// スレッド以外のタブ (公式 CLI) も、パネルの端末スレッドも並ぶ。
+    #[gpui::test]
+    async fn test_the_history_lists_every_open_tab_and_switches_to_the_one_clicked(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.update(|_window, cx| {
+            cx.update_flags(true, vec!["agent-panel-terminal".to_string()]);
+        });
+        cx.run_until_parked();
+
+        let draft_tab = panel_tab_ids(&panel, &cx)
+            .first()
+            .copied()
+            .expect("パネルは下書きのタブを 1 枚持つ");
+        let cli_tab = panel
+            .update_in(&mut cx, |panel, window, cx| {
+                panel.add_test_terminal_tab(true, window, cx)
+            })
+            .entity_id();
+        let panel_terminal = panel
+            .update_in(&mut cx, |panel, window, cx| {
+                panel.insert_test_terminal("パネルの端末", true, window, cx)
+            })
+            .expect("端末スレッドを作れる");
+        cx.run_until_parked();
+
+        let rows = panel.read_with(&cx, |panel, cx| panel.open_tab_rows(cx));
+        assert_eq!(
+            rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![
+                OpenTabId::PaneItem(draft_tab),
+                OpenTabId::PaneItem(cli_tab),
+                OpenTabId::PanelTerminal(panel_terminal),
+            ],
+            "ペインのタブが並び順どおりに来て、タブを持たない端末スレッドが続く"
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.is_active)
+                .map(|row| row.id)
+                .collect::<Vec<_>>(),
+            vec![OpenTabId::PanelTerminal(panel_terminal)],
+            "強調されるのは今描いているものだけ"
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.icon == IconName::Terminal)
+                .collect::<Vec<_>>(),
+            vec![false, true, true],
+            "スレッドのタブだけエージェントのアイコンで、端末はどちらも端末のアイコン"
+        );
+
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, cx| {
+            assert_eq!(
+                panel.thread_history.read(cx).open_tabs(),
+                rows.as_slice(),
+                "描画のたびに一覧へ渡している"
+            );
+        });
+        let cli_row = cx
+            .debug_bounds("PANEL_OPEN_TAB-1")
+            .expect("一覧に CLI のタブの行が描かれている");
+        assert!(cli_row.size.width > px(0.), "行に幅がある");
+        cx.simulate_click(cli_row.center(), Modifiers::default());
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, _cx| {
+            assert_eq!(
+                panel.test_visible_pane_item_id(),
+                Some(cli_tab),
+                "行をクリックしたらそのタブが前に出る"
+            );
+        });
+        let rows = panel.read_with(&cx, |panel, cx| panel.open_tab_rows(cx));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.is_active)
+                .map(|row| row.id)
+                .collect::<Vec<_>>(),
+            vec![OpenTabId::PaneItem(cli_tab)],
+            "強調も移る"
+        );
+    }
+
+    /// 行の × はペインの通常の経路で閉じる: アイテムは解放される。
+    #[gpui::test]
+    async fn test_closing_an_open_tab_row_releases_the_item(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let terminal_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        cx.run_until_parked();
+        let cli_tab = terminal_view.entity_id();
+        let released = terminal_view.downgrade();
+        let terminal = terminal_view.read_with(&cx, |view, _cx| view.terminal().downgrade());
+        drop(terminal_view);
+
+        let history = panel.read_with(&cx, |panel, _cx| panel.thread_history.clone());
+        history.update(&mut cx, |_history, cx| {
+            cx.emit(PanelThreadHistoryEvent::CloseOpenTab(OpenTabId::PaneItem(
+                cli_tab,
+            )));
+        });
+        cx.run_until_parked();
+
+        assert!(
+            !panel_tab_ids(&panel, &cx).contains(&cli_tab),
+            "閉じたタブは一覧からも消える"
+        );
+        released.assert_released();
+        terminal.assert_released();
+    }
+
+    /// ADR-F53: スレッド以外を見ているときも縦の一覧は隣にいる。
+    #[gpui::test]
+    async fn test_the_history_is_drawn_beside_every_surface(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.update(|_window, cx| {
+            cx.update_flags(true, vec!["agent-panel-terminal".to_string()]);
+        });
+        cx.run_until_parked();
+
+        let history_width = |cx: &mut VisualTestContext| {
+            cx.update(|window, _cx| window.refresh());
+            cx.run_until_parked();
+            cx.debug_bounds("PANEL_THREAD_HISTORY")
+                .map(|bounds| bounds.size.width)
+        };
+
+        assert_eq!(
+            history_width(&mut cx),
+            Some(PANEL_THREAD_HISTORY_WIDTH),
+            "スレッドの隣"
+        );
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            history_width(&mut cx),
+            Some(PANEL_THREAD_HISTORY_WIDTH),
+            "スレッド以外のタブ (公式 CLI) の隣にも"
+        );
+
+        panel
+            .update_in(&mut cx, |panel, window, cx| {
+                panel.insert_test_terminal("パネルの端末", true, window, cx)
+            })
+            .expect("端末スレッドを作れる");
+        cx.run_until_parked();
+        assert_eq!(
+            history_width(&mut cx),
+            Some(PANEL_THREAD_HISTORY_WIDTH),
+            "全面の端末スレッドの隣にも"
+        );
+
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
+        assert_eq!(history_width(&mut cx), None, "閉じれば描かない");
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = true);
+        assert_eq!(history_width(&mut cx), Some(PANEL_THREAD_HISTORY_WIDTH));
+
+        // 幅は実測 (`render_width_probe`) なので、ウィンドウごと狭めて確かめる。
+        cx.simulate_resize(size(
+            PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+            px(700.),
+        ));
+        assert_eq!(
+            history_width(&mut cx),
+            None,
+            "両方を並べられない幅では引っ込む"
+        );
+    }
+
+    /// 一覧を閉じているあいだは、細い帯だけが残って戻り道になる。
+    #[gpui::test]
+    async fn test_the_collapsed_history_leaves_a_rail_that_brings_it_back(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        panel.read_with(&cx, |panel, cx| {
+            assert!(
+                !panel.thread_history_rail_visible(cx),
+                "一覧が出ているあいだは帯を出さない"
+            );
+        });
+
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        let rail = cx
+            .debug_bounds("PANEL_THREAD_HISTORY_RAIL")
+            .expect("閉じたら帯が出る");
+        assert_eq!(rail.size.width, THREAD_HISTORY_RAIL_WIDTH);
+
+        panel.update(&mut cx, |panel, _cx| {
+            panel.measured_panel_width.set(Some(
+                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+            ));
+        });
+        panel.read_with(&cx, |panel, cx| {
+            assert!(
+                !panel.thread_history_rail_visible(cx),
+                "帯を押しても一覧が出ない幅では帯も出さない"
+            );
+        });
+    }
+
+    /// 一覧のヘッダーの « と、閉じたあとに残る帯は、ツールバーのボタンと同じ
+    /// 設定値を書いて往復する (ADR-F53)。
+    #[gpui::test]
+    async fn test_the_collapse_button_and_the_rail_make_a_round_trip(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let fs = panel.read_with(&cx, |panel, _cx| panel.fs.clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        assert!(
+            cx.debug_bounds("PANEL_THREAD_HISTORY").is_some(),
+            "はじめは一覧が出ている"
+        );
+
+        let history = panel.read_with(&cx, |panel, _cx| panel.thread_history.clone());
+        history.update(&mut cx, |_history, cx| {
+            cx.emit(PanelThreadHistoryEvent::Collapse);
+        });
+        cx.run_until_parked();
+        cx.update(|_window, cx| {
+            assert!(
+                !AgentSettings::get_global(cx).panel_thread_history,
+                "« はツールバーのボタンと同じ設定値を閉じる側に書く"
+            );
+        });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert_eq!(
+            cx.debug_bounds("PANEL_THREAD_HISTORY"),
+            None,
+            "一覧そのものは消える"
+        );
+        let rail = cx
+            .debug_bounds("PANEL_THREAD_HISTORY_RAIL")
+            .expect("代わりに帯が残る");
+
+        cx.simulate_click(rail.center(), Modifiers::default());
+        cx.run_until_parked();
+        cx.update(|_window, cx| {
+            assert!(
+                AgentSettings::get_global(cx).panel_thread_history,
+                "帯を押すと一覧が戻る"
+            );
+        });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("PANEL_THREAD_HISTORY").is_some());
+        assert_eq!(
+            cx.debug_bounds("PANEL_THREAD_HISTORY_RAIL"),
+            None,
+            "戻ったら帯は引っ込む"
+        );
     }
 
     async fn setup_panel(cx: &mut TestAppContext) -> (Entity<AgentPanel>, VisualTestContext) {

@@ -34,6 +34,18 @@ enum MarkdownListKind {
     Task,
 }
 
+/// The opening tag `insert_markdown_details` writes. The `<summary>` shares the
+/// line with it so that the gutter fold, which hides everything below the
+/// opening row, leaves the summary on screen.
+const DETAILS_OPEN: &str = "<details><summary>";
+
+/// The `<summary>` text `insert_markdown_details` writes, left selected so it
+/// can be typed over.
+const DETAILS_SUMMARY: &str = "開く";
+
+/// The shortest code fence CommonMark accepts.
+const MINIMUM_FENCE_LENGTH: usize = 3;
+
 impl Editor {
     pub fn toggle_markdown_block_quote(
         &mut self,
@@ -262,6 +274,116 @@ impl Editor {
                 .map(|(anchor, offset)| {
                     let cursor = anchor.to_offset(&buffer) + offset;
                     cursor..cursor
+                })
+                .collect::<Vec<_>>();
+
+            this.change_selections(Default::default(), window, cx, |s| {
+                s.select_ranges(new_selections);
+            });
+            this.request_autoscroll(Autoscroll::fit(), cx);
+        });
+    }
+
+    /// Wraps the selected lines in a `<details>` disclosure whose body is a
+    /// fenced code block, or inserts an empty one at the cursor.
+    ///
+    /// The disclosure is written the way GitHub needs it: the opening tag and
+    /// its `<summary>` share a line, a blank line follows so that the body is
+    /// parsed as Markdown rather than as raw HTML, and `</details>` closes it on
+    /// a line of its own. The `<summary>` text is left selected so it can be
+    /// typed over straight away.
+    pub fn insert_markdown_details(
+        &mut self,
+        _: &InsertDetails,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.read_only(cx) || !self.is_in_markdown_language(cx) {
+            return;
+        }
+
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let max_row = snapshot.max_point().row;
+
+        let mut edits = Vec::new();
+        // The anchor the opening text was inserted at, paired with the byte
+        // offset of the summary within that text.
+        let mut summaries = Vec::new();
+        for selection in self.selections.all::<Point>(&self.display_snapshot(cx)) {
+            let start_row = selection.start.row;
+            let end_row = selection.end.row;
+            let body_start = Point::new(start_row, 0);
+            let body_end = Point::new(end_row, snapshot.line_len(MultiBufferRow(end_row)));
+            // A fence has to outrun the longest run of backticks it holds, and
+            // is always spelled with backticks so that a tilde fence in the body
+            // cannot close it either.
+            let fence = "`".repeat(
+                longest_backtick_run(
+                    snapshot
+                        .text_for_range(body_start..body_end)
+                        .flat_map(str::chars),
+                )
+                .saturating_add(1)
+                .max(MINIMUM_FENCE_LENGTH),
+            );
+
+            // A fence that touches the line above or below it is not a block of
+            // its own to a CommonMark renderer, so a blank line is kept on both
+            // sides of the disclosure. Inserting on a blank line already
+            // contributes one of the two line breaks a blank line needs, hence
+            // the single `\n` there.
+            let leading = if selection.is_empty() && selection.start.column > 0 {
+                // Splitting the line the cursor sits on would push its tail
+                // below the disclosure, so an empty selection inserts the whole
+                // block where the cursor is, as `InsertMermaidDiagram` does.
+                "\n\n"
+            } else if start_row > 0 && !snapshot.is_line_blank(MultiBufferRow(start_row - 1)) {
+                "\n"
+            } else {
+                ""
+            };
+            let summary_offset = leading.len() + DETAILS_OPEN.len();
+            let open = format!("{leading}{DETAILS_OPEN}{DETAILS_SUMMARY}</summary>\n\n{fence}\n");
+
+            let mut close = format!("\n{fence}\n</details>");
+            if selection.is_empty()
+                && selection.end.column < snapshot.line_len(MultiBufferRow(end_row))
+            {
+                close.push_str("\n\n");
+            } else if end_row < max_row && !snapshot.is_line_blank(MultiBufferRow(end_row + 1)) {
+                close.push('\n');
+            }
+
+            if selection.is_empty() {
+                // The two halves meet at the body, which is a single blank line
+                // so that the disclosure has room to be typed into.
+                let anchor = snapshot.anchor_before(snapshot.point_to_offset(selection.start));
+                summaries.push((anchor, summary_offset));
+                edits.push((anchor..anchor, format!("{open}{close}")));
+            } else {
+                let open_anchor = snapshot.anchor_before(snapshot.point_to_offset(body_start));
+                let close_anchor = snapshot.anchor_after(snapshot.point_to_offset(body_end));
+                summaries.push((open_anchor, summary_offset));
+                edits.push((open_anchor..open_anchor, open));
+                edits.push((close_anchor..close_anchor, close));
+            }
+        }
+
+        if edits.is_empty() {
+            return;
+        }
+
+        self.transact(window, cx, |this, window, cx| {
+            let buffer = this.buffer.update(cx, |buffer, cx| {
+                buffer.edit(edits, None, cx);
+                buffer.snapshot(cx)
+            });
+
+            let new_selections = summaries
+                .into_iter()
+                .map(|(anchor, offset)| {
+                    let start = anchor.to_offset(&buffer) + offset;
+                    start..start + DETAILS_SUMMARY.len()
                 })
                 .collect::<Vec<_>>();
 
@@ -623,6 +745,20 @@ impl Editor {
             .language_at(head)
             .is_some_and(|language| language.name() == "Markdown")
     }
+
+    /// Whether the buffer as a whole is Markdown, which is the question the
+    /// Mermaid entry points have to ask instead of `is_in_markdown_language`:
+    /// the body of a ```` ```mermaid ```` fence is an injection layer of its own,
+    /// so the language at the cursor there is Mermaid and a gate on it refuses
+    /// to edit the very diagram it was pointed at. Same test as the mouse
+    /// context menu and `MarkdownPreviewView::is_markdown_file`.
+    fn is_markdown_buffer(&self, cx: &App) -> bool {
+        self.buffer
+            .read(cx)
+            .as_singleton()
+            .and_then(|buffer| buffer.read(cx).language())
+            .is_some_and(|language| language.name() == "Markdown")
+    }
 }
 
 impl MermaidDiagramKind {
@@ -645,7 +781,7 @@ impl MermaidDiagramKind {
             Self::Flowchart => "フローチャート",
             Self::Sequence => "シーケンス図",
             Self::Class => "クラス図",
-            Self::State => "状態図",
+            Self::State => "状態遷移図",
             Self::EntityRelationship => "ER 図",
             Self::Gantt => "ガントチャート",
             Self::Pie => "円グラフ",
@@ -1360,12 +1496,24 @@ pub struct MermaidFenceTarget {
     /// The indentation the fence sits at, re-applied to every line written back
     /// so that a fence inside a list item stays inside it.
     indent: String,
+    /// The fence lines themselves, for a diagram that is not in the buffer yet.
+    /// `None` for a fence that is already there.
+    fence: Option<FenceToInsert>,
+}
+
+/// The text written around the diagram body when the fence has yet to be
+/// inserted, so that the whole fence arrives in the one edit that `write_mermaid_fence`
+/// makes — and so that dismissing the editor leaves the document untouched.
+struct FenceToInsert {
+    before: String,
+    after: String,
 }
 
 impl Editor {
-    /// The Mermaid fence the cursor is inside, for `markdown::EditMermaid`.
+    /// The Mermaid fence `markdown::EditMermaid` acts on: the one the cursor is
+    /// in, or the nearest one when the cursor is elsewhere.
     pub fn mermaid_fence_target(&self, cx: &mut App) -> Option<MermaidFenceTarget> {
-        if !self.is_in_markdown_language(cx) {
+        if !self.is_markdown_buffer(cx) {
             return None;
         }
         let cursor = self
@@ -1373,40 +1521,160 @@ impl Editor {
             .newest::<Point>(&self.display_snapshot(cx))
             .head();
         let snapshot = self.buffer.read(cx).snapshot(cx);
-        mermaid_fence_target(&snapshot, cursor.row)
+        nearest_mermaid_fence_target(&snapshot, cursor.row)
     }
 
     /// The Mermaid fence covering `offset`, for callers that know where the
     /// diagram is without moving the cursor there — the preview, which resolves
-    /// the fence from the diagram the user clicked.
+    /// the fence from the diagram the user clicked and must not be redirected to
+    /// a neighbouring one.
     pub fn mermaid_fence_target_at(
         &self,
         offset: usize,
         cx: &mut App,
     ) -> Option<MermaidFenceTarget> {
-        if !self.is_in_markdown_language(cx) {
+        if !self.is_markdown_buffer(cx) {
             return None;
         }
         let snapshot = self.buffer.read(cx).snapshot(cx);
         let offset = offset.min(snapshot.len().0);
         let row = snapshot.offset_to_point(MultiBufferOffset(offset)).row;
-        mermaid_fence_target(&snapshot, row)
+        mermaid_fence_target_at_row(&snapshot, row)
+    }
+
+    /// The fence a brand-new diagram goes into, for a Markdown document that
+    /// holds none. Nothing is written here: the fence lines travel with the
+    /// target and reach the buffer only if the editor is confirmed, so that
+    /// dismissing it leaves the document as it was.
+    pub fn new_mermaid_fence_target(&self, cx: &mut App) -> Option<MermaidFenceTarget> {
+        if !self.is_markdown_buffer(cx) {
+            return None;
+        }
+        let cursor = self
+            .selections
+            .newest::<Point>(&self.display_snapshot(cx))
+            .head();
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+
+        // A fence cannot open inside another fence: the new diagram would close
+        // the block it was dropped into and take the rest of it with it. A
+        // cursor in a code block sends the diagram past its closing line.
+        let cursor = match fenced_code_block_at(&buffer_lines(&snapshot), cursor.row) {
+            Some(block) => Point::new(
+                block.body_end,
+                snapshot.line_len(MultiBufferRow(block.body_end)),
+            ),
+            None => cursor,
+        };
+
+        // A fence that touches the line above or below it is not a block of its
+        // own to a CommonMark renderer, so a blank line is kept on both sides,
+        // the way `insert_mermaid_diagram` does it.
+        let mut before = String::new();
+        if cursor.column > 0 {
+            before.push_str("\n\n");
+        } else if cursor.row > 0 && !snapshot.is_line_blank(MultiBufferRow(cursor.row - 1)) {
+            before.push('\n');
+        }
+        before.push_str("```mermaid\n");
+        let mut after = String::from("```");
+        if cursor.column < snapshot.line_len(MultiBufferRow(cursor.row)) {
+            after.push_str("\n\n");
+        } else if cursor.row < snapshot.max_point().row
+            && !snapshot.is_line_blank(MultiBufferRow(cursor.row + 1))
+        {
+            after.push('\n');
+        }
+
+        let offset = snapshot.point_to_offset(cursor);
+        // Both ends take the same bias, so that text arriving at this very
+        // offset while the editor is open — a reload, a collaborator — is left
+        // alone instead of being swallowed by the insertion.
+        Some(MermaidFenceTarget {
+            range: snapshot.anchor_before(offset)..snapshot.anchor_before(offset),
+            // Empty, so that the structured editor asks which kind of diagram
+            // to start rather than assuming a flowchart.
+            source: String::new(),
+            info: "mermaid".to_string(),
+            indent: String::new(),
+            fence: Some(FenceToInsert { before, after }),
+        })
+    }
+
+    /// Whether `markdown::EditMermaid` has anything to do here, for the context
+    /// menu entry. Anywhere in a writable Markdown buffer it does: it edits the
+    /// diagram nearest the cursor, and starts one when there is no diagram yet.
+    pub fn can_edit_mermaid_diagram(&self, cx: &App) -> bool {
+        self.is_markdown_buffer(cx) && !self.read_only(cx)
+    }
+
+    /// Puts the cursor on the diagram the structured editor is being opened on,
+    /// for the case where the cursor was somewhere else entirely and the fence
+    /// was reached by falling back to the nearest one: that fence is rewritten
+    /// on confirm, so the user has to be able to see which one it is.
+    pub fn reveal_mermaid_fence_target(
+        &mut self,
+        target: &MermaidFenceTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // A fence that is not in the buffer yet goes in at the cursor, which is
+        // where the user is already looking.
+        if target.fence.is_some() {
+            return;
+        }
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let body_start = target.range.start.to_offset(&snapshot);
+        let first_body_row = snapshot.offset_to_point(body_start).row;
+        let closing_fence_row = snapshot
+            .offset_to_point(target.range.end.to_offset(&snapshot))
+            .row;
+        let cursor_row = snapshot
+            .offset_to_point(self.selections.newest_anchor().head().to_offset(&snapshot))
+            .row;
+        // The opening fence line sits one row above the body, so the cursor is
+        // already on this diagram from that row down to the closing fence.
+        if cursor_row + 1 >= first_body_row && cursor_row <= closing_fence_row {
+            return;
+        }
+
+        self.change_selections(Default::default(), window, cx, |selections| {
+            selections.select_ranges([body_start..body_start]);
+        });
+        self.request_autoscroll(Autoscroll::center(), cx);
     }
 
     /// Replaces the body of the fence `target` was resolved against with
     /// `source`, as a single edit so that undo takes the whole diagram back.
+    ///
+    /// Fails, without writing anything, when the fence no longer holds what it
+    /// held when `target` was resolved: the structured editor stays open for
+    /// minutes at a time, and another pane — or a reload — may have rewritten
+    /// the diagram underneath it. The anchors still point at the right place,
+    /// so the text itself is what is compared.
     pub fn write_mermaid_fence(
         &mut self,
         target: &MermaidFenceTarget,
         source: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
-        if self.read_only(cx) {
-            return;
-        }
+    ) -> Result<()> {
+        anyhow::ensure!(
+            !self.read_only(cx),
+            "このバッファーは読み取り専用のため、図を書き戻せません。"
+        );
+        anyhow::ensure!(
+            self.mermaid_fence_body(target, cx) == target.source,
+            "図のテキストが編集中に変更されました。もう一度開き直してください。"
+        );
 
         let mut text = String::new();
+        if let Some(fence) = &target.fence {
+            text.push_str(&fence.before);
+        }
+        // The cursor lands on the first line of the body, past the fence when
+        // the fence is being inserted along with it.
+        let cursor_offset = text.len();
         for line in source.lines() {
             if !line.is_empty() {
                 text.push_str(&target.indent);
@@ -1414,21 +1682,72 @@ impl Editor {
             }
             text.push('\n');
         }
+        if let Some(fence) = &target.fence {
+            text.push_str(&fence.after);
+        }
 
-        self.apply_markdown_edits(vec![(target.range.clone(), text)], vec![0], window, cx);
+        self.apply_markdown_edits(
+            vec![(target.range.clone(), text)],
+            vec![cursor_offset],
+            window,
+            cx,
+        );
+        Ok(())
+    }
+
+    /// What the fence `target` points at holds now, spelled the way
+    /// [`MermaidFenceTarget::source`] is: the fence's own indentation removed
+    /// and no trailing newline.
+    fn mermaid_fence_body(&self, target: &MermaidFenceTarget, cx: &App) -> String {
+        // A fence that is not in the buffer yet has nothing under its anchors,
+        // and its `source` is empty to match.
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        snapshot
+            .text_for_range(target.range.clone())
+            .collect::<String>()
+            .lines()
+            .map(|line| line.strip_prefix(&target.indent).unwrap_or(line))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
-fn mermaid_fence_target(snapshot: &MultiBufferSnapshot, row: u32) -> Option<MermaidFenceTarget> {
-    let max_row = snapshot.max_point().row;
-    let lines = (0..=max_row)
-        .map(|row| line_text(snapshot, row))
-        .collect::<Vec<_>>();
+/// The Mermaid fence `row` is in, or, when `row` is somewhere else, the nearest
+/// one: the next diagram down the document, and only then the one above it.
+fn nearest_mermaid_fence_target(
+    snapshot: &MultiBufferSnapshot,
+    row: u32,
+) -> Option<MermaidFenceTarget> {
+    let lines = buffer_lines(snapshot);
+    let block = nearest_mermaid_fence(&lines, row)?;
+    Some(fence_target(snapshot, &lines, &block))
+}
+
+/// The Mermaid fence covering `row`, and nothing else.
+fn mermaid_fence_target_at_row(
+    snapshot: &MultiBufferSnapshot,
+    row: u32,
+) -> Option<MermaidFenceTarget> {
+    let lines = buffer_lines(snapshot);
     let block = fenced_code_block_at(&lines, row)?;
     if !is_mermaid_fence_info(&block.info) {
         return None;
     }
+    Some(fence_target(snapshot, &lines, &block))
+}
 
+fn buffer_lines(snapshot: &MultiBufferSnapshot) -> Vec<String> {
+    let max_row = snapshot.max_point().row;
+    (0..=max_row)
+        .map(|row| line_text(snapshot, row))
+        .collect::<Vec<_>>()
+}
+
+fn fence_target(
+    snapshot: &MultiBufferSnapshot,
+    lines: &[String],
+    block: &FencedCodeBlock,
+) -> MermaidFenceTarget {
     let start = snapshot.point_to_offset(Point::new(block.body_start, 0));
     let end = snapshot.point_to_offset(Point::new(block.body_end, 0));
     let source = lines
@@ -1439,12 +1758,13 @@ fn mermaid_fence_target(snapshot: &MultiBufferSnapshot, row: u32) -> Option<Merm
         .collect::<Vec<_>>()
         .join("\n");
 
-    Some(MermaidFenceTarget {
+    MermaidFenceTarget {
         range: snapshot.anchor_before(start)..snapshot.anchor_after(end),
         source,
-        info: block.info,
-        indent: block.indent,
-    })
+        info: block.info.clone(),
+        indent: block.indent.clone(),
+        fence: None,
+    }
 }
 
 /// Whether `info` opens a fence the Markdown preview draws as a Mermaid
@@ -1464,10 +1784,17 @@ struct FencedCodeBlock {
     body_end: u32,
 }
 
-/// The fenced code block that `row` falls in, counting the fence lines
-/// themselves as part of the block. `None` for a row outside every block, and
-/// for a block that is never closed, which has no body to write back into.
-fn fenced_code_block_at(lines: &[String], row: u32) -> Option<FencedCodeBlock> {
+impl FencedCodeBlock {
+    /// The rows the block occupies, both fence lines included.
+    fn rows(&self) -> RangeInclusive<u32> {
+        self.body_start.saturating_sub(1)..=self.body_end
+    }
+}
+
+/// Every closed fenced code block in `lines`, in document order. A block that
+/// is never closed is left out: it has no body to write back into.
+fn fenced_code_blocks(lines: &[String]) -> Vec<FencedCodeBlock> {
+    let mut blocks = Vec::new();
     let mut open: Option<(u32, char, usize, String, String)> = None;
 
     for (index, line) in lines.iter().enumerate() {
@@ -1477,14 +1804,12 @@ fn fenced_code_block_at(lines: &[String], row: u32) -> Option<FencedCodeBlock> {
                 if !is_closing_fence(line, *marker, *length) {
                     continue;
                 }
-                if (*start..=index).contains(&row) {
-                    return Some(FencedCodeBlock {
-                        info: info.clone(),
-                        indent: indent.clone(),
-                        body_start: start + 1,
-                        body_end: index,
-                    });
-                }
+                blocks.push(FencedCodeBlock {
+                    info: info.clone(),
+                    indent: indent.clone(),
+                    body_start: start + 1,
+                    body_end: index,
+                });
                 open = None;
             }
             None => {
@@ -1495,7 +1820,32 @@ fn fenced_code_block_at(lines: &[String], row: u32) -> Option<FencedCodeBlock> {
         }
     }
 
-    None
+    blocks
+}
+
+/// The fenced code block that `row` falls in, counting the fence lines
+/// themselves as part of the block. `None` for a row outside every block, and
+/// for a block that is never closed, which has no body to write back into.
+fn fenced_code_block_at(lines: &[String], row: u32) -> Option<FencedCodeBlock> {
+    fenced_code_blocks(lines)
+        .into_iter()
+        .find(|block| block.rows().contains(&row))
+}
+
+/// The Mermaid fence `row` is in, or the nearest one when `row` is outside every
+/// Mermaid fence: the next diagram down the document first, so that a cursor
+/// standing before the first diagram lands on it rather than on nothing.
+fn nearest_mermaid_fence(lines: &[String], row: u32) -> Option<FencedCodeBlock> {
+    let fences = fenced_code_blocks(lines)
+        .into_iter()
+        .filter(|block| is_mermaid_fence_info(&block.info))
+        .collect::<Vec<_>>();
+    let index = fences
+        .iter()
+        .position(|block| block.rows().contains(&row))
+        .or_else(|| fences.iter().position(|block| *block.rows().start() > row))
+        .or_else(|| fences.iter().rposition(|block| block.body_end < row))?;
+    fences.into_iter().nth(index)
 }
 
 /// The fence character, its run length, the info string and the indentation of
@@ -1523,7 +1873,23 @@ fn parse_opening_fence(line: &str) -> Option<(char, usize, String, String)> {
     Some((marker, length, info, indent))
 }
 
-fn is_closing_fence(line: &str, marker: char, opening_length: usize) -> bool {
+/// The length of the longest run of backticks in `text`, which is what decides
+/// how long a fence has to be to hold it.
+fn longest_backtick_run(text: impl Iterator<Item = char>) -> usize {
+    let mut longest = 0;
+    let mut current = 0;
+    for character in text {
+        if character == '`' {
+            current += 1;
+            longest = longest.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    longest
+}
+
+pub(crate) fn is_closing_fence(line: &str, marker: char, opening_length: usize) -> bool {
     let trimmed = line.trim_start();
     if line.len() - trimmed.len() > 3 {
         return false;
@@ -1737,6 +2103,56 @@ mod tests {
     }
 
     #[test]
+    fn test_nearest_mermaid_fence() {
+        let lines = [
+            "文章",         // 0
+            "```mermaid",   // 1
+            "flowchart TD", // 2
+            "```",          // 3
+            "",             // 4
+            "```rust",      // 5
+            "fn main() {}", // 6
+            "```",          // 7
+            "",             // 8
+            "~~~mermaid",   // 9
+            "flowchart LR", // 10
+            "~~~",          // 11
+            "",             // 12
+        ]
+        .map(String::from);
+
+        // Inside a diagram, that diagram wins over either neighbour.
+        for row in 1..=3 {
+            assert_eq!(
+                nearest_mermaid_fence(&lines, row).map(|block| block.body_start),
+                Some(2),
+                "row {row}"
+            );
+        }
+        for row in 9..=11 {
+            assert_eq!(
+                nearest_mermaid_fence(&lines, row).map(|block| block.body_start),
+                Some(10),
+                "row {row}"
+            );
+        }
+
+        // Outside every diagram the next one down the document wins, and only
+        // past the last one does the one above it.
+        for (row, expected) in [(0, 2), (4, 10), (6, 10), (8, 10), (12, 10)] {
+            assert_eq!(
+                nearest_mermaid_fence(&lines, row).map(|block| block.body_start),
+                Some(expected),
+                "row {row}"
+            );
+        }
+
+        // Nothing to fall back to when the document holds no diagram.
+        let without_a_diagram = ["```rust".to_string(), "fn main() {}".into(), "```".into()];
+        assert!(nearest_mermaid_fence(&without_a_diagram, 1).is_none());
+    }
+
+    #[test]
     fn test_fenced_code_block_at_keeps_indentation() {
         let lines = ["- 項目", "  ```mermaid", "  flowchart TD", "  ```"].map(String::from);
         let block = fenced_code_block_at(&lines, 2).expect("row 2 is inside the fence");
@@ -1746,6 +2162,18 @@ mod tests {
         // Four spaces is indented code, not a fence.
         let indented = ["    ```mermaid".to_string(), "x".into(), "    ```".into()];
         assert!(fenced_code_block_at(&indented, 1).is_none());
+    }
+
+    #[test]
+    fn test_longest_backtick_run() {
+        assert_eq!(longest_backtick_run("".chars()), 0);
+        assert_eq!(longest_backtick_run("no ticks".chars()), 0);
+        assert_eq!(longest_backtick_run("a `b` c".chars()), 1);
+        assert_eq!(longest_backtick_run("```\nx\n````\n```".chars()), 4);
+        // A tilde fence in the body never decides the length, because the fence
+        // `insert_markdown_details` writes is always spelled with backticks.
+        assert_eq!(longest_backtick_run("~~~~~".chars()), 0);
+        assert_eq!(longest_backtick_run("日本語```".chars()), 3);
     }
 
     #[test]

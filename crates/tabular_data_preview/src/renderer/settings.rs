@@ -1,14 +1,16 @@
 use gpui::{Action as _, Modifiers, prelude::FluentBuilder as _};
 use ui::{
     ActiveTheme as _, AnyElement, Button, ButtonCommon as _, ButtonSize, ButtonStyle, Checkbox,
-    Clickable as _, Color, Context, ContextMenu, DropdownMenu, ElementId, Icon, IconButton,
-    IconName, IconPosition, IconSize, IntoElement as _, Label, LabelCommon as _, LabelSize,
-    ParentElement as _, Styled as _, ToggleState, Tooltip, Window, div, h_flex, text_for_keystroke,
+    Clickable as _, Color, Context, ContextMenu, Disableable as _, DropdownMenu, ElementId, Icon,
+    IconButton, IconName, IconPosition, IconSize, IntoElement as _, Label, LabelCommon as _,
+    LabelSize, ParentElement as _, Styled as _, ToggleState, Tooltip, Window, div, h_flex,
+    text_for_keystroke,
 };
 
 use crate::{
     ClearCells, DeleteColumns, DeleteRows, InsertColumnLeft, InsertColumnRight, InsertRowAbove,
     InsertRowBelow, OpenAsText, TabularDataPreviewPane, ToggleHeaderRow,
+    renderer::table_header::ClearAllFilters,
     settings::{FilterSortOrder, RowIdentifiers, VerticalAlignment},
 };
 
@@ -73,6 +75,8 @@ impl TabularDataPreviewPane {
             )
             .child(self.render_row_and_column_buttons())
             .child(self.render_color_buttons(cx))
+            .child(self.render_clear_filters_button())
+            .child(self.render_diff_menu(window, cx))
             .child(self.render_view_menu(window, cx))
             .child(div().flex_1())
             .child(self.render_grid_status(cx))
@@ -128,6 +132,30 @@ impl TabularDataPreviewPane {
                 ClearCells.boxed_clone(),
             ))
             .into_any_element()
+    }
+
+    /// Drops every column's filter at once.
+    ///
+    /// Sits in the toolbar rather than only in the column menus for two reasons:
+    /// getting back out of a table narrowed on several columns otherwise takes a
+    /// visit to each one, and a button that reads "絞り込み" is how a user who
+    /// never noticed the headings' arrows learns that the grid filters at all.
+    fn render_clear_filters_button(&self) -> AnyElement {
+        Button::new(
+            ElementId::Name("tabular-clear-all-filters".into()),
+            "絞り込みを解除",
+        )
+        .style(ButtonStyle::Subtle)
+        .size(ButtonSize::Compact)
+        .start_icon(Icon::new(IconName::Filter).size(IconSize::Small))
+        .disabled(!self.engine.has_any_filters())
+        .tooltip(Tooltip::text(
+            "すべての列の絞り込みを解除します。列ごとの絞り込みは見出しの ▾ から",
+        ))
+        .on_click(|_event, window, cx| {
+            window.dispatch_action(ClearAllFilters.boxed_clone(), cx);
+        })
+        .into_any_element()
     }
 
     fn render_view_menu(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

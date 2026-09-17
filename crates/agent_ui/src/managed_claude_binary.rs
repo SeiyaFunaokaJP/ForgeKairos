@@ -17,6 +17,7 @@ use std::{
     fmt,
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -31,17 +32,19 @@ use futures::{
     lock::Mutex as AsyncMutex,
 };
 use gpui::{
-    App, AsyncWindowContext, BackgroundExecutor, Global, PromptButton, PromptLevel, SharedString,
-    Task, Window,
+    App, AppContext as _, AsyncApp, AsyncWindowContext, BackgroundExecutor, Entity, Global,
+    PromptButton, PromptLevel, SharedString, Task, Window,
 };
 use http_client::{
     AsyncBody, EgressPolicyHandle, HttpClient, Response, egress_denied_hosts,
     hosts_required_to_download,
 };
+use remote::{Interactive, RemoteClient};
 use rsa::{BigUint, Pkcs1v15Sign, RsaPublicKey, traits::PublicKeyParts as _};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use util::ResultExt as _;
+use util::paths::RemotePathBuf;
 
 use crate::agent_registry_ui::{
     add_consented_hosts, allowlist_write_error, await_allowlist_pickup, missing_hosts,
@@ -118,28 +121,116 @@ const SIGNATURE_REFUSED: &str = "Claude Code のリリース情報の署名を�
 const CHECKSUM_REFUSED: &str = "ダウンロードした Claude Code のハッシュがリリース情報と一致しません。改ざんされている可能性があるため中止しました。";
 const SIZE_REFUSED: &str =
     "ダウンロードした Claude Code の大きさがリリース情報と一致しません。中止しました。";
-const NO_AVX2: &str =
-    "WSL の CPU で AVX2 を確認できないため、Linux 版 Claude Code (x64) は動作しません。";
-const NOT_GLIBC: &str = "この WSL ディストリビューションは musl のため、Linux 版 Claude Code (glibc 版) は動作しません。";
-const PROBE_UNREADABLE: &str = "WSL のアーキテクチャを調べられませんでした。";
 const STALLED: &str = "Claude Code の配布元から 60 秒間応答がないため中止しました。";
 const REDIRECT_REFUSED: &str = "Claude Code の配布元が別の場所へ転送しようとしたため中止しました。";
 const SAVE_FAILED: &str =
     "ダウンロードした Claude Code を保存できませんでした。ディスクの空き容量を確認してください。";
 const EXTRACT_FAILED: &str = "ダウンロードした Claude Code を展開できませんでした。";
-const STAGING_FAILED: &str = "Claude Code を WSL に配置できませんでした。";
-const STAGED_CHECK_FAILED: &str = "WSL に配置済みの Claude Code を確認できませんでした。";
 #[cfg(not(target_os = "windows"))]
 const WINDOWS_ONLY: &str = "サンドボックス用の Claude Code は Windows (WSL) でのみ使えます。";
 
-/// A Claude Code binary staged inside WSL. Run it by this absolute path, never
-/// by looking `claude` up on `PATH`: inside WSL `PATH` reaches the Windows
-/// drives, where an npm shim would start a Windows program through interop.
+/// Which Linux the CLI is staged on: the WSL distro of this machine's sandbox,
+/// or the Linux host of an SSH-remote project (ADR-F49 第 3 段). Only the
+/// wording differs — the same verified binary, the same layout below
+/// `~/.cache/zed-jp-enhance/agents/<sha256>/`, the same reuse — so it lives in
+/// one place rather than in each message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentHostKind {
+    WslDistro,
+    RemoteHost,
+}
+
+impl AgentHostKind {
+    /// 文言の主語。
+    fn subject(self) -> &'static str {
+        match self {
+            Self::WslDistro => "WSL",
+            Self::RemoteHost => "接続先のホスト",
+        }
+    }
+
+    fn unsupported_machine(self, machine: &str) -> String {
+        format!(
+            "{}のアーキテクチャ「{machine}」向けの Linux 版 Claude Code はありません \
+             (対応しているのは x86_64 と aarch64 です)。",
+            self.subject()
+        )
+    }
+
+    fn not_glibc(self) -> &'static str {
+        match self {
+            Self::WslDistro => {
+                "この WSL ディストリビューションは musl のため、Linux 版 Claude Code \
+                 (glibc 版) は動作しません。"
+            }
+            Self::RemoteHost => {
+                "接続先の Linux は musl のため、Linux 版 Claude Code (glibc 版) は動作しません。"
+            }
+        }
+    }
+
+    fn no_avx2(self) -> String {
+        format!(
+            "{}の CPU で AVX2 を確認できないため、Linux 版 Claude Code (x64) は動作しません。",
+            self.subject()
+        )
+    }
+
+    fn probe_unreadable(self) -> String {
+        format!("{}のアーキテクチャを調べられませんでした。", self.subject())
+    }
+
+    fn staging_failed(self) -> String {
+        format!("Claude Code を{}に配置できませんでした。", self.subject())
+    }
+
+    fn staged_check_failed(self) -> String {
+        format!(
+            "{}に配置済みの Claude Code を確認できませんでした。",
+            self.subject()
+        )
+    }
+
+    fn staging_progress(self) -> String {
+        format!("{}に配置しています…", self.subject())
+    }
+
+    fn consent_detail(self) -> &'static str {
+        match self {
+            Self::WslDistro => {
+                "サンドボックス (WSL) で実行する Claude Code を Anthropic の配布元から取得し、\
+                 署名とハッシュを確認してから WSL に配置します。"
+            }
+            Self::RemoteHost => {
+                "接続先のサンドボックスで実行する Claude Code を、この PC で Anthropic の\
+                 配布元から取得し、署名とハッシュを確認してから接続先へ送ります。"
+            }
+        }
+    }
+
+    fn update_detail(self) -> &'static str {
+        match self {
+            Self::WslDistro => "署名とハッシュを確認してから WSL に配置します。",
+            Self::RemoteHost => "署名とハッシュを確認してから接続先へ送ります。",
+        }
+    }
+}
+
+/// A Claude Code binary staged on the Linux the sandbox runs on: the WSL distro,
+/// or an SSH host. Run it by this absolute path, never by looking `claude` up on
+/// `PATH`: inside WSL `PATH` reaches the Windows drives, where an npm shim would
+/// start a Windows program through interop, and on a host the account's own
+/// `PATH` is not the sandbox's.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManagedClaudeBinary {
     pub version: String,
     pub sha256: String,
-    pub path_in_wsl: String,
+    pub path_on_host: String,
+    /// The account's home directory on the host, when the host reported it: a
+    /// remote session needs it to place its own directories, and cannot read
+    /// the host's environment any other way. `None` for the WSL backend, which
+    /// resolves its paths inside the distro itself.
+    pub home_on_host: Option<String>,
 }
 
 /// Which pointer in the release bucket an update follows.
@@ -169,9 +260,15 @@ impl ClaudeReleaseChannel {
 pub enum ManagedClaudeProgress {
     CheckingStaged,
     Verifying,
-    Downloading { received: u64, total: u64 },
+    Downloading {
+        received: u64,
+        total: u64,
+    },
     Extracting,
-    Staging,
+    /// 配置先は起動元 (WSL か接続先) で変わるので、文言をここに持たせる。
+    Staging {
+        destination: SharedString,
+    },
 }
 
 impl ManagedClaudeProgress {
@@ -186,7 +283,7 @@ impl ManagedClaudeProgress {
             )
             .into(),
             Self::Extracting => "展開してハッシュを確認しています…".into(),
-            Self::Staging => "WSL に配置しています…".into(),
+            Self::Staging { destination } => destination.clone(),
         }
     }
 }
@@ -204,36 +301,70 @@ fn megabytes(bytes: u64) -> u64 {
 /// A call for a distro that already has one running joins it (one download,
 /// one question); progress is reported to the caller that started it.
 pub fn ensure_managed_claude_binary(
-    distro: Option<String>,
+    target: ManagedClaudeTarget,
     window: &mut Window,
     cx: &mut App,
     on_progress: impl Fn(&ManagedClaudeProgress, &mut Window, &mut App) + 'static,
 ) -> Task<Result<ManagedClaudeBinary>> {
-    join_or_start(distro.clone(), cx, move |cx| {
-        run_installer(distro, Goal::Ensure, window, cx, on_progress)
+    let key = target.key(cx);
+    join_or_start(key, cx, move |cx| {
+        run_installer(target, Goal::Ensure, window, cx, on_progress)
     })
 }
 
 /// The user's "update" button: reads the version `channel` points at, shows it,
 /// and installs it. Never moves to a version older than the installed one.
 pub fn update_managed_claude_binary(
-    distro: Option<String>,
+    target: ManagedClaudeTarget,
     channel: ClaudeReleaseChannel,
     window: &mut Window,
     cx: &mut App,
     on_progress: impl Fn(&ManagedClaudeProgress, &mut Window, &mut App) + 'static,
 ) -> Task<Result<ManagedClaudeBinary>> {
-    run_installer(distro, Goal::Update(channel), window, cx, on_progress)
+    run_installer(target, Goal::Update(channel), window, cx, on_progress)
+}
+
+/// Where the CLI is staged, and how it gets there.
+#[derive(Clone)]
+pub enum ManagedClaudeTarget {
+    /// This machine's WSL sandbox; `None` is the default distribution.
+    WslDistro(Option<String>),
+    /// ADR-F49 第 3 段: the Linux host of an SSH-remote project. The binary is
+    /// fetched and verified here and sent over the project's own connection, so
+    /// a host that cannot reach the network still gets a checked build.
+    RemoteHost(Entity<RemoteClient>),
+}
+
+impl ManagedClaudeTarget {
+    /// What two calls have to share to join one install (one download, one
+    /// question). Distributions compare without case, as WSL does; a
+    /// connection is named the way its options display it.
+    fn key(&self, cx: &App) -> String {
+        match self {
+            Self::WslDistro(distro) => {
+                format!("wsl:{}", distro.clone().unwrap_or_default().to_lowercase())
+            }
+            Self::RemoteHost(remote_client) => {
+                let remote_client = remote_client.read(cx);
+                format!(
+                    "{}:{}",
+                    remote_client.connection_type(),
+                    remote_client.connection_options().display_name()
+                )
+            }
+        }
+    }
 }
 
 type InstallTask = Task<Result<ManagedClaudeBinary, Arc<anyhow::Error>>>;
 
 #[derive(Default)]
 struct InFlightInstalls {
-    /// The `ensure` running for each distro, held weakly: it lives only while
-    /// some caller still awaits it, so dropping every task it handed out
-    /// cancels it. A finished one is replaced, never joined.
-    installs: HashMap<Option<String>, WeakShared<InstallTask>>,
+    /// The `ensure` running for each target ([`ManagedClaudeTarget::key`]), held
+    /// weakly: it lives only while some caller still awaits it, so dropping
+    /// every task it handed out cancels it. A finished one is replaced, never
+    /// joined.
+    installs: HashMap<String, WeakShared<InstallTask>>,
     /// Serializes every installer's read-modify-write of the state file.
     state_lock: Arc<AsyncMutex<()>>,
 }
@@ -241,14 +372,14 @@ struct InFlightInstalls {
 impl Global for InFlightInstalls {}
 
 fn join_or_start(
-    distro: Option<String>,
+    key: String,
     cx: &mut App,
     start: impl FnOnce(&mut App) -> Task<Result<ManagedClaudeBinary>>,
 ) -> Task<Result<ManagedClaudeBinary>> {
     let running = cx
         .default_global::<InFlightInstalls>()
         .installs
-        .get(&distro)
+        .get(&key)
         .and_then(WeakShared::upgrade)
         .filter(|install| install.peek().is_none());
     let install = match running {
@@ -261,7 +392,7 @@ fn join_or_start(
             if let Some(weak) = install.downgrade() {
                 cx.default_global::<InFlightInstalls>()
                     .installs
-                    .insert(distro, weak);
+                    .insert(key, weak);
             }
             install
         }
@@ -291,7 +422,7 @@ impl std::error::Error for SharedFailure {
 }
 
 fn run_installer(
-    distro: Option<String>,
+    target: ManagedClaudeTarget,
     goal: Goal,
     window: &mut Window,
     cx: &mut App,
@@ -301,11 +432,24 @@ fn run_installer(
         Ok(source) => source,
         Err(error) => return Task::ready(Err(error)),
     };
+    // `Rc`, not `Arc`: a host is only ever used from the foreground thread,
+    // and the SSH one holds the project's `RemoteClient` and an `AsyncApp`,
+    // neither of which crosses threads.
+    let host: Rc<dyn AgentBinaryHost> = match target {
+        ManagedClaudeTarget::WslDistro(distro) => Rc::new(SystemWsl { distro }),
+        ManagedClaudeTarget::RemoteHost(remote_client) => Rc::new(RemoteAgentHost {
+            operations: Rc::new(SystemRemoteHost {
+                remote_client,
+                cx: cx.to_async(),
+            }),
+            executor: cx.background_executor().clone(),
+        }),
+    };
     let installer = Installer {
         // The shared client, not an IDE-lane one: this download is exactly what
         // the allowlist is there to gate.
         http: cx.http_client(),
-        wsl: Arc::new(SystemWsl),
+        host,
         executor: cx.background_executor().clone(),
         storage_dir: paths::data_dir().join("managed_agents").join("claude-code"),
         source: Arc::new(source),
@@ -328,7 +472,7 @@ fn run_installer(
             progress_tx.unbounded_send(update).ok();
         });
         let mut ui = WindowUi { cx: cx.clone() };
-        installer.run(distro, goal, &mut ui, progress).await
+        installer.run(goal, &mut ui, progress).await
     })
 }
 
@@ -423,13 +567,11 @@ enum LinuxPlatform {
 }
 
 impl LinuxPlatform {
-    fn from_machine(machine: &str) -> Result<Self> {
+    fn from_machine(machine: &str, host: AgentHostKind) -> Result<Self> {
         match machine.trim() {
             "x86_64" => Ok(Self::X64),
             "aarch64" => Ok(Self::Arm64),
-            other => bail!(
-                "WSL のアーキテクチャ「{other}」向けの Linux 版 Claude Code はありません (対応しているのは x86_64 と aarch64 です)。"
-            ),
+            other => bail!(host.unsupported_machine(other)),
         }
     }
 
@@ -445,31 +587,33 @@ impl LinuxPlatform {
 /// Reads what `PROBE_SCRIPT` printed. The x64 build needs AVX2 (Bun's default
 /// x64 target) and every build needs glibc; without them the CLI dies as it
 /// starts, so such a distro is refused before anything is fetched.
-fn platform_from_probe(output: &str) -> Result<LinuxPlatform> {
-    let mut machine = None;
-    let mut cpu_flags = "";
-    let mut libc = None;
-    for line in output.lines() {
-        let Some(answer) = line.trim_end().strip_prefix(PROBE_MARKER) else {
-            continue;
-        };
-        let (key, value) = answer.split_once(' ').unwrap_or((answer, ""));
-        match key {
-            "machine" => machine = Some(value.trim()),
-            "cpu-flags" => cpu_flags = value,
-            "libc" => libc = Some(value.trim()),
-            _ => {}
-        }
-    }
-    let platform = LinuxPlatform::from_machine(machine.context(PROBE_UNREADABLE)?)?;
-    ensure!(libc != Some("musl"), NOT_GLIBC);
+fn platform_from_probe(output: &str, host: AgentHostKind) -> Result<LinuxPlatform> {
+    let machine = probe_answer(output, "machine");
+    let cpu_flags = probe_answer(output, "cpu-flags").unwrap_or_default();
+    let libc = probe_answer(output, "libc").map(str::trim);
+    let platform = LinuxPlatform::from_machine(machine.context(host.probe_unreadable())?, host)?;
+    ensure!(libc != Some("musl"), host.not_glibc());
     if platform == LinuxPlatform::X64 {
         ensure!(
             cpu_flags.split_whitespace().any(|flag| flag == "avx2"),
-            NO_AVX2
+            host.no_avx2()
         );
     }
     Ok(platform)
+}
+
+/// The value of one `PROBE_MARKER` answer, or `None` when the probe did not
+/// print it. The last one wins, so nothing the host writes before the script
+/// runs can shadow the real answer.
+fn probe_answer<'a>(output: &'a str, wanted: &str) -> Option<&'a str> {
+    output
+        .lines()
+        .filter_map(|line| line.trim_end().strip_prefix(PROBE_MARKER))
+        .filter_map(|answer| {
+            let (key, value) = answer.split_once(' ').unwrap_or((answer, ""));
+            (key == wanted).then_some(value)
+        })
+        .next_back()
 }
 
 #[derive(Deserialize)]
@@ -523,9 +667,9 @@ struct VerifiedRelease {
 
 /// A refusal whose Japanese reason is what the user sees, with the English
 /// detail kept in the chain (and the log) for whoever investigates.
-fn refuse(reason: &'static str, detail: String) -> anyhow::Error {
+fn refuse(reason: impl fmt::Display, detail: String) -> anyhow::Error {
     log::warn!("claude-code: {detail}");
-    anyhow!(detail).context(reason)
+    anyhow!(detail).context(reason.to_string())
 }
 
 /// ASCII armor (RFC 4880 §6.2): exactly one `label` block and nothing around it.
@@ -1418,7 +1562,12 @@ struct ConsentPrompt {
 
 /// Worded like the ADR-F12 install consent banner (GLOSSARY「エージェント CLI
 /// のインストール同意」), so fetching this CLI reads as the same decision.
-fn consent_prompt(request: &ConsentRequest, hosts: &[String], missing: &[String]) -> ConsentPrompt {
+fn consent_prompt(
+    request: &ConsentRequest,
+    host: AgentHostKind,
+    hosts: &[String],
+    missing: &[String],
+) -> ConsentPrompt {
     let hosts_line = format!(
         "許可が必要なホスト: {} ({})",
         hosts.join("、"),
@@ -1432,9 +1581,7 @@ fn consent_prompt(request: &ConsentRequest, hosts: &[String], missing: &[String]
     match request {
         ConsentRequest::Install { version } => ConsentPrompt {
             message: format!("Linux 版 Claude Code v{version} を取得します"),
-            detail: format!(
-                "サンドボックス (WSL) で実行する Claude Code を Anthropic の配布元から取得し、署名とハッシュを確認してから WSL に配置します。\n{hosts_line}"
-            ),
+            detail: format!("{}\n{hosts_line}", host.consent_detail()),
             confirm: if adds_hosts {
                 "許可リストに追加してインストール"
             } else {
@@ -1443,9 +1590,7 @@ fn consent_prompt(request: &ConsentRequest, hosts: &[String], missing: &[String]
         },
         ConsentRequest::Update { from, to } => ConsentPrompt {
             message: format!("Claude Code を v{to} に更新します"),
-            detail: format!(
-                "現在の版: v{from}\n署名とハッシュを確認してから WSL に配置します。\n{hosts_line}"
-            ),
+            detail: format!("現在の版: v{from}\n{}\n{hosts_line}", host.update_detail()),
             confirm: if adds_hosts {
                 "許可リストに追加して更新"
             } else {
@@ -1474,6 +1619,7 @@ trait InstallerUi {
     fn confirm(
         &mut self,
         request: &ConsentRequest,
+        host: AgentHostKind,
         hosts: &[String],
         missing: &[String],
     ) -> LocalBoxFuture<'static, Result<bool>>;
@@ -1481,25 +1627,32 @@ trait InstallerUi {
     fn add_allowed_hosts(&mut self, hosts: Vec<String>) -> LocalBoxFuture<'static, Result<()>>;
 }
 
-trait WslAgentHost {
-    /// What `PROBE_SCRIPT` prints inside `distro`.
-    fn probe(&self, distro: Option<String>) -> LocalBoxFuture<'static, Result<String>>;
-    fn staged(
-        &self,
-        distro: Option<String>,
-        sha256: String,
-    ) -> LocalBoxFuture<'static, Result<Option<String>>>;
-    fn stage(
-        &self,
-        distro: Option<String>,
-        source: PathBuf,
-        sha256: String,
-    ) -> LocalBoxFuture<'static, Result<String>>;
+/// The Linux the CLI is staged on. One round trip per method, each of which
+/// the implementations make on their own transport (`wsl.exe`, or the
+/// project's own SSH connection).
+trait AgentBinaryHost {
+    fn kind(&self) -> AgentHostKind;
+    /// What the probe script prints there: the architecture, the CPU flags, the
+    /// C library, and — for a remote host — the account's home directory and
+    /// the free space where the binary would go.
+    fn probe(&self) -> LocalBoxFuture<'static, Result<String>>;
+    /// The absolute path of an intact staged copy with this digest, or `None`
+    /// when it has to be sent (again).
+    fn staged(&self, sha256: String) -> LocalBoxFuture<'static, Result<Option<String>>>;
+    /// Puts `source` in place and returns its absolute path there. `source`
+    /// must hash to `sha256`, which is checked again on what arrives.
+    fn stage(&self, source: PathBuf, sha256: String) -> LocalBoxFuture<'static, Result<String>>;
+    /// Whether `needed` bytes fit where the binary would go, judged from what
+    /// `probe` reported. `Ok(())` when the host does not report free space at
+    /// all: then the transfer itself is what says the disk is full.
+    fn ensure_room(&self, _probe: &str, _needed: u64) -> Result<()> {
+        Ok(())
+    }
 }
 
 struct Installer {
     http: Arc<dyn HttpClient>,
-    wsl: Arc<dyn WslAgentHost>,
+    host: Rc<dyn AgentBinaryHost>,
     executor: BackgroundExecutor,
     storage_dir: PathBuf,
     source: Arc<ReleaseSource>,
@@ -1509,13 +1662,22 @@ struct Installer {
 impl Installer {
     async fn run(
         &self,
-        distro: Option<String>,
         goal: Goal,
         ui: &mut dyn InstallerUi,
         progress: ProgressSink,
     ) -> Result<ManagedClaudeBinary> {
-        let probe = self.wsl.probe(distro.clone()).await?;
-        let platform = platform_from_probe(&probe)?;
+        let host_kind = self.host.kind();
+        let probe = self.host.probe().await?;
+        let platform = platform_from_probe(&probe, host_kind)?;
+        // The host's own home directory, which a remote session needs to place
+        // its configuration and which only the probe can tell us.
+        let home_on_host = match host_kind {
+            AgentHostKind::WslDistro => None,
+            AgentHostKind::RemoteHost => Some(
+                remote_home_from_probe(&probe)
+                    .map_err(|error| refuse(REMOTE_HOME_UNREADABLE, format!("{error:#}")))?,
+            ),
+        };
         let downloads_dir = self.storage_dir.join("downloads");
         self.executor
             .spawn({
@@ -1555,9 +1717,17 @@ impl Installer {
 
         progress(ManagedClaudeProgress::CheckingStaged);
         if let Some(sha256) = state.verified_sha256(version, platform, &signing_key)
-            && let Some(path_in_wsl) = self.staged(distro.clone(), sha256.clone()).await?
+            && let Some(path_on_host) = self.staged(sha256.clone()).await?
         {
-            return Ok(self.finish(version, platform, sha256, path_in_wsl).await);
+            return Ok(self
+                .finish(
+                    version,
+                    platform,
+                    sha256,
+                    path_on_host,
+                    home_on_host.clone(),
+                )
+                .await);
         }
 
         self.obtain_consent(&state, version, &consent, ui).await?;
@@ -1575,10 +1745,21 @@ impl Installer {
             })
             .await?;
         let sha256 = release.binary.sha256.clone();
-        // The record of it may be gone while the binary itself stayed in WSL.
-        if let Some(path_in_wsl) = self.staged(distro.clone(), sha256.clone()).await? {
-            return Ok(self.finish(version, platform, sha256, path_in_wsl).await);
+        // The record of it may be gone while the binary itself stayed there.
+        if let Some(path_on_host) = self.staged(sha256.clone()).await? {
+            return Ok(self
+                .finish(
+                    version,
+                    platform,
+                    sha256,
+                    path_on_host,
+                    home_on_host.clone(),
+                )
+                .await);
         }
+        // Before the download: nothing is fetched for a host that cannot hold
+        // it, and nothing is sent to one either.
+        self.host.ensure_room(&probe, release.binary.size)?;
 
         let work_dir = self
             .executor
@@ -1607,18 +1788,28 @@ impl Installer {
             })
             .await?;
 
-        progress(ManagedClaudeProgress::Staging);
-        let path_in_wsl = self
-            .wsl
-            .stage(distro, binary_path, sha256.clone())
+        progress(ManagedClaudeProgress::Staging {
+            destination: host_kind.staging_progress().into(),
+        });
+        let path_on_host = self
+            .host
+            .stage(binary_path, sha256.clone())
             .await
-            .map_err(|error| refuse(STAGING_FAILED, format!("{error:#}")))?;
+            .map_err(|error| refuse(host_kind.staging_failed(), format!("{error:#}")))?;
         self.executor
             .spawn(async move { work_dir.close() })
             .await
             .context("removing the downloaded Claude Code")
             .log_err();
-        Ok(self.finish(version, platform, sha256, path_in_wsl).await)
+        Ok(self
+            .finish(
+                version,
+                platform,
+                sha256,
+                path_on_host,
+                home_on_host.clone(),
+            )
+            .await)
     }
 
     async fn finish(
@@ -1626,7 +1817,8 @@ impl Installer {
         version: Version,
         platform: LinuxPlatform,
         sha256: String,
-        path_in_wsl: String,
+        path_on_host: String,
+        home_on_host: Option<String>,
     ) -> ManagedClaudeBinary {
         let signing_key = hex::encode_upper(self.source.signing_key_fingerprint);
         self.update_state(|state| {
@@ -1650,7 +1842,8 @@ impl Installer {
         ManagedClaudeBinary {
             version: version.to_string(),
             sha256,
-            path_in_wsl,
+            path_on_host,
+            home_on_host,
         }
     }
 
@@ -1668,7 +1861,10 @@ impl Installer {
         if state.consented_versions.contains(&version.to_string()) && missing.is_empty() {
             return Ok(());
         }
-        if !ui.confirm(request, &hosts, &missing).await? {
+        if !ui
+            .confirm(request, self.host.kind(), &hosts, &missing)
+            .await?
+        {
             bail!(DOWNLOAD_DECLINED);
         }
         if !missing.is_empty() {
@@ -1690,7 +1886,10 @@ impl Installer {
         let missing = ui.missing_hosts(&hosts)?;
         if !missing.is_empty() {
             let request = ConsentRequest::CheckForUpdate { channel };
-            if !ui.confirm(&request, &hosts, &missing).await? {
+            if !ui
+                .confirm(&request, self.host.kind(), &hosts, &missing)
+                .await?
+            {
                 bail!(UPDATE_CHECK_DECLINED);
             }
             ui.add_allowed_hosts(missing).await?;
@@ -1740,7 +1939,12 @@ impl Installer {
         let missing = ui.missing_hosts(&hosts)?;
         if !missing.is_empty() {
             if !ui
-                .confirm(&ConsentRequest::AllowHosts, &hosts, &missing)
+                .confirm(
+                    &ConsentRequest::AllowHosts,
+                    self.host.kind(),
+                    &hosts,
+                    &missing,
+                )
                 .await?
             {
                 return Err(error.context(DOWNLOAD_DECLINED));
@@ -1783,11 +1987,11 @@ impl Installer {
             .await
     }
 
-    async fn staged(&self, distro: Option<String>, sha256: String) -> Result<Option<String>> {
-        self.wsl
-            .staged(distro, sha256)
+    async fn staged(&self, sha256: String) -> Result<Option<String>> {
+        self.host
+            .staged(sha256)
             .await
-            .map_err(|error| refuse(STAGED_CHECK_FAILED, format!("{error:#}")))
+            .map_err(|error| refuse(self.host.kind().staged_check_failed(), format!("{error:#}")))
     }
 
     /// Read-modify-write under the lock every installer shares, so that an
@@ -1843,10 +2047,11 @@ impl InstallerUi for WindowUi {
     fn confirm(
         &mut self,
         request: &ConsentRequest,
+        host: AgentHostKind,
         hosts: &[String],
         missing: &[String],
     ) -> LocalBoxFuture<'static, Result<bool>> {
-        let prompt = consent_prompt(request, hosts, missing);
+        let prompt = consent_prompt(request, host, hosts, missing);
         let answer = self.cx.prompt(
             PromptLevel::Warning,
             &prompt.message,
@@ -1888,30 +2093,448 @@ impl InstallerUi for WindowUi {
     }
 }
 
-struct SystemWsl;
+struct SystemWsl {
+    distro: Option<String>,
+}
 
-impl WslAgentHost for SystemWsl {
-    fn probe(&self, distro: Option<String>) -> LocalBoxFuture<'static, Result<String>> {
+impl AgentBinaryHost for SystemWsl {
+    fn kind(&self) -> AgentHostKind {
+        AgentHostKind::WslDistro
+    }
+
+    fn probe(&self) -> LocalBoxFuture<'static, Result<String>> {
+        let distro = self.distro.clone();
         async move { wsl_probe(distro.as_deref()).await }.boxed_local()
     }
 
-    fn staged(
-        &self,
-        distro: Option<String>,
-        sha256: String,
-    ) -> LocalBoxFuture<'static, Result<Option<String>>> {
+    fn staged(&self, sha256: String) -> LocalBoxFuture<'static, Result<Option<String>>> {
+        let distro = self.distro.clone();
         async move { staged_agent_binary(distro.as_deref(), BINARY_NAME, &sha256).await }
             .boxed_local()
     }
 
-    fn stage(
-        &self,
-        distro: Option<String>,
-        source: PathBuf,
-        sha256: String,
-    ) -> LocalBoxFuture<'static, Result<String>> {
+    fn stage(&self, source: PathBuf, sha256: String) -> LocalBoxFuture<'static, Result<String>> {
+        let distro = self.distro.clone();
         async move { stage_agent_binary(distro.as_deref(), BINARY_NAME, &source, &sha256).await }
             .boxed_local()
+    }
+}
+
+// ===========================================================================
+// ADR-F49 第 3 段: the Linux host of an SSH-remote project
+// ===========================================================================
+
+/// Where the staged binaries live on the host, relative to the account's home
+/// — the same layout the WSL backend uses (`sandbox::stage_agent_binary`), so
+/// that the helper's protected set (`~/.cache/zed-jp-enhance`) covers it and
+/// the sandbox can read but not replace what it runs.
+const REMOTE_AGENTS_HOME_RELATIVE: &str = ".cache/zed-jp-enhance/agents";
+/// How much the host must have free beyond the binary itself, so that staging
+/// does not fill the disk it shares with the project.
+const REMOTE_STAGING_HEADROOM: u64 = 64 * 1024 * 1024;
+/// Opens the single result line the staging scripts print.
+const REMOTE_RESULT_PREFIX: &str = "zed-remote-agent ";
+
+/// The architecture, the CPU flags, the C library, the account's home and the
+/// free space where the binary would go. `$HOME` rather than the cache
+/// directory, which does not exist before the first staging.
+const REMOTE_PROBE_SCRIPT: &str = r#"
+printf 'zed-probe machine %s\n' "$(uname -m)"
+printf 'zed-probe cpu-flags %s\n' "$(grep -m 1 '^flags' /proc/cpuinfo | cut -d: -f2-)"
+if getconf GNU_LIBC_VERSION >/dev/null 2>&1; then
+    printf 'zed-probe libc glibc\n'
+elif ldd --version 2>&1 | grep -qi musl || ls /lib/ld-musl-* >/dev/null 2>&1; then
+    printf 'zed-probe libc musl\n'
+else
+    printf 'zed-probe libc unknown\n'
+fi
+printf 'zed-probe home %s\n' "$HOME"
+printf 'zed-probe available-kb %s\n' "$(df -Pk "$HOME" 2>/dev/null | tail -n 1 | tr -s ' ' | cut -d' ' -f4)"
+"#;
+
+/// Reports whether the binary with digest `$1` and name `$2` is there and
+/// intact. `sha256sum` reads standard input so that its output is the digest
+/// alone.
+///
+/// Its absence is reported before anything else, because this runs before the
+/// download: a host that cannot vouch for what it holds is refused without
+/// 224 MB being fetched here and sent there first.
+const REMOTE_STAGED_SCRIPT: &str = r#"set -u
+dir="$HOME/$3/$1"
+path="$dir/$2"
+if ! command -v sha256sum >/dev/null 2>&1; then
+    printf 'zed-remote-agent unverifiable\n'
+    exit 0
+fi
+if [ ! -f "$path" ] || [ ! -x "$path" ]; then
+    printf 'zed-remote-agent missing\n'
+    exit 0
+fi
+if [ "$(sha256sum < "$path" | cut -d' ' -f1)" = "$1" ]; then
+    touch "$dir" 2>/dev/null || true
+    printf 'zed-remote-agent path %s\n' "$path"
+else
+    printf 'zed-remote-agent mismatch\n'
+fi
+"#;
+
+/// Makes the directory the upload lands in, owner-only, and removes what an
+/// interrupted upload of this digest left there.
+const REMOTE_PREPARE_SCRIPT: &str = r#"set -u
+root="$HOME/$2"
+mkdir -p "$root" || exit 1
+chmod 700 "$HOME/.cache/zed-jp-enhance" 2>/dev/null || true
+rm -rf -- "$root/$1"
+"#;
+
+/// Checks what arrived (`$3`: the upload's directory) against the digest `$1`,
+/// makes it executable and moves it into its own `$1` directory. Then removes
+/// the other digests nobody has asked for in a day, and interrupted uploads.
+const REMOTE_FINALIZE_SCRIPT: &str = r#"set -u
+root="$HOME/$4"
+incoming="$root/$3/$2"
+dir="$root/$1"
+if [ ! -f "$incoming" ]; then
+    printf 'zed-remote-agent missing\n'
+    exit 0
+fi
+if ! command -v sha256sum >/dev/null 2>&1; then
+    rm -rf -- "$root/$3"
+    printf 'zed-remote-agent unverifiable\n'
+    exit 0
+fi
+if [ "$(sha256sum < "$incoming" | cut -d' ' -f1)" != "$1" ]; then
+    rm -rf -- "$root/$3"
+    printf 'zed-remote-agent mismatch\n'
+    exit 0
+fi
+mkdir -p "$dir" || exit 1
+chmod 755 "$incoming"
+mv -f "$incoming" "$dir/$2"
+rm -rf -- "$root/$3"
+touch "$dir"
+if command -v find >/dev/null 2>&1; then
+    find "$root" -mindepth 1 -maxdepth 1 -type d ! -name "$1" -mmin +1440 -exec rm -rf {} + 2>/dev/null || true
+fi
+printf 'zed-remote-agent path %s\n' "$dir/$2"
+"#;
+
+/// What one of the staging scripts reported.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum RemoteStagingResult {
+    /// The absolute path of an intact binary.
+    Ready(String),
+    /// It is not there (or not executable).
+    Missing,
+    /// What is there does not hash to the digest asked for.
+    Mismatch,
+    /// The host has no `sha256sum`, so nothing can be vouched for.
+    Unverifiable,
+}
+
+/// Reads the single result line. Anything else — a login banner, a warning the
+/// shell printed — is not a result, and a script that printed none at all
+/// fails rather than being read as "missing".
+fn remote_staging_result(output: &str) -> Result<RemoteStagingResult> {
+    let answer = output
+        .lines()
+        .filter_map(|line| line.trim_end().strip_prefix(REMOTE_RESULT_PREFIX))
+        .next_back()
+        .context("the host printed no result")?;
+    let (key, value) = answer.split_once(' ').unwrap_or((answer, ""));
+    match key {
+        "path" => {
+            let path = value.trim();
+            ensure!(
+                path.starts_with('/') && !path.contains(['\n', '\0']),
+                "the host reported {path:?}, which is not an absolute path"
+            );
+            Ok(RemoteStagingResult::Ready(path.to_string()))
+        }
+        "missing" => Ok(RemoteStagingResult::Missing),
+        "mismatch" => Ok(RemoteStagingResult::Mismatch),
+        "unverifiable" => Ok(RemoteStagingResult::Unverifiable),
+        other => bail!("the host reported {other:?}"),
+    }
+}
+
+/// The remote account's home directory, as the probe reported it.
+fn remote_home_from_probe(output: &str) -> Result<String> {
+    let home = probe_answer(output, "home").unwrap_or_default().trim();
+    ensure!(
+        home.starts_with('/') && !home.contains(['\n', '\0']),
+        "the host reported {home:?} as its home directory"
+    );
+    Ok(home.trim_end_matches('/').to_string())
+}
+
+/// The free space the probe reported where the binary would go; `None` when the
+/// host did not answer (no `df`, no `tr`/`cut`), which is not a refusal.
+fn remote_available_bytes(output: &str) -> Option<u64> {
+    probe_answer(output, "available-kb")?
+        .trim()
+        .parse::<u64>()
+        .ok()?
+        .checked_mul(1024)
+}
+
+/// 空き容量が足りなければ送らない。判断できないときは送って、転送の失敗に任せる。
+fn ensure_remote_room(output: &str, needed: u64) -> Result<()> {
+    let Some(available) = remote_available_bytes(output) else {
+        return Ok(());
+    };
+    let required = needed.saturating_add(REMOTE_STAGING_HEADROOM);
+    ensure!(
+        available >= required,
+        "接続先のホストの空き容量が足りません (必要 {} MB、空き {} MB)。\
+         接続先の空き容量を増やしてから、もう一度お試しください。",
+        megabytes(required),
+        megabytes(available)
+    );
+    Ok(())
+}
+
+const REMOTE_SCRIPT_FAILED: &str = "接続先のホストでコマンドを実行できませんでした。";
+const REMOTE_HOME_UNREADABLE: &str = "接続先のホストのホームディレクトリを調べられませんでした。";
+
+/// ADR-F49 第 3 段: runs `script` on the host of `remote_client` with
+/// `/bin/sh` and returns its standard output; a script that exits non-zero is
+/// an error carrying what it wrote to standard error. One round trip, with
+/// none of this process's environment and no working directory — the scripts
+/// use `$HOME`, which the account's own login always has.
+///
+/// `arguments` arrive as `$1`, `$2`, … (`$0` is a fixed name), so nothing in
+/// them is ever read as shell syntax. The script text itself is quoted by the
+/// transport for the host's login shell, which is a POSIX-style shell on every
+/// Linux this launcher runs on.
+///
+/// Lives here, beside the staging that needed it first, so that the launcher
+/// has one way of asking the host a question rather than two.
+pub(crate) fn run_remote_host_script(
+    remote_client: Entity<RemoteClient>,
+    script: &'static str,
+    arguments: Vec<String>,
+    cx: &AsyncApp,
+) -> LocalBoxFuture<'static, Result<String>> {
+    let cx = cx.clone();
+    async move {
+        let template = remote_client.read_with(&cx, |remote_client, _| {
+            let mut args = vec![
+                "-c".to_string(),
+                script.to_string(),
+                REMOTE_SCRIPT_NAME.to_string(),
+            ];
+            args.extend(arguments);
+            remote_client.build_command(
+                Some("/bin/sh".to_string()),
+                &args,
+                &HashMap::default(),
+                None,
+                None,
+                Interactive::No,
+            )
+        })?;
+        let output = cx
+            .background_spawn(async move {
+                let mut command = util::command::new_command(&template.program);
+                command
+                    .args(&template.args)
+                    .envs(template.env)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .kill_on_drop(true);
+                command.output().await
+            })
+            .await
+            .context(REMOTE_SCRIPT_FAILED)?;
+        if !output.status.success() {
+            // The headline is what the toast shows, as it is for the WSL probe;
+            // what the host actually said is kept behind it for the log.
+            return Err(refuse(
+                REMOTE_SCRIPT_FAILED,
+                format!(
+                    "the host exited with {:?}: {}",
+                    output.status.code(),
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+            ));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+    .boxed_local()
+}
+
+/// 接続先で 1 往復ずつ行う操作。実機を使わずに試せるよう、トレイトにしてある。
+trait RemoteAgentOperations {
+    /// Runs `script` with `/bin/sh` on the host and returns its standard
+    /// output. `arguments` arrive as `$1`, `$2`, … (`$0` is a fixed name).
+    fn run_script(
+        &self,
+        script: &'static str,
+        arguments: Vec<String>,
+    ) -> LocalBoxFuture<'static, Result<String>>;
+    /// Copies the local directory `source` into the host's `$HOME`-relative
+    /// `destination`, where it lands as `destination/<source's name>`.
+    fn upload(&self, source: PathBuf, destination: String) -> LocalBoxFuture<'static, Result<()>>;
+}
+
+struct RemoteAgentHost {
+    operations: Rc<dyn RemoteAgentOperations>,
+    executor: BackgroundExecutor,
+}
+
+impl RemoteAgentHost {
+    async fn staged_path(
+        operations: Rc<dyn RemoteAgentOperations>,
+        sha256: String,
+    ) -> Result<Option<String>> {
+        let output = operations
+            .run_script(
+                REMOTE_STAGED_SCRIPT,
+                vec![
+                    sha256,
+                    BINARY_NAME.to_string(),
+                    REMOTE_AGENTS_HOME_RELATIVE.to_string(),
+                ],
+            )
+            .await?;
+        match remote_staging_result(&output)? {
+            RemoteStagingResult::Ready(path) => Ok(Some(path)),
+            // A copy that does not match is not one to run; it is replaced.
+            RemoteStagingResult::Missing | RemoteStagingResult::Mismatch => Ok(None),
+            RemoteStagingResult::Unverifiable => bail!(REMOTE_UNVERIFIABLE),
+        }
+    }
+
+    async fn send(
+        operations: Rc<dyn RemoteAgentOperations>,
+        executor: BackgroundExecutor,
+        source: PathBuf,
+        sha256: String,
+    ) -> Result<String> {
+        if let Some(path) = Self::staged_path(operations.clone(), sha256.clone()).await? {
+            return Ok(path);
+        }
+        // Named after the digest rather than randomly, so that a second attempt
+        // replaces the first attempt's leftovers instead of adding to them.
+        let incoming = format!("incoming-{sha256}");
+        operations
+            .run_script(
+                REMOTE_PREPARE_SCRIPT,
+                vec![incoming.clone(), REMOTE_AGENTS_HOME_RELATIVE.to_string()],
+            )
+            .await?;
+        // The upload is of a directory, which is what every transport can do
+        // (`RemoteConnection::upload_directory`), so the binary is put in one
+        // named as it will be on the host.
+        let staging = source
+            .parent()
+            .context("the downloaded Claude Code has no directory")?
+            .join(&incoming);
+        executor
+            .spawn({
+                let staging = staging.clone();
+                let local = staging.join(BINARY_NAME);
+                async move {
+                    std::fs::create_dir_all(&staging)
+                        .and_then(|()| std::fs::rename(&source, &local))
+                        .with_context(|| format!("preparing {} for the upload", local.display()))
+                }
+            })
+            .await?;
+        let upload = operations
+            .upload(staging.clone(), REMOTE_AGENTS_HOME_RELATIVE.to_string())
+            .await;
+        // A failed upload leaves it to the caller, which removes the whole
+        // download directory (a `TempDir`) as it unwinds.
+        upload?;
+        executor
+            .spawn(async move { std::fs::remove_dir_all(&staging) })
+            .await
+            .context("removing the uploaded copy of Claude Code")
+            .log_err();
+        let output = operations
+            .run_script(
+                REMOTE_FINALIZE_SCRIPT,
+                vec![
+                    sha256,
+                    BINARY_NAME.to_string(),
+                    incoming,
+                    REMOTE_AGENTS_HOME_RELATIVE.to_string(),
+                ],
+            )
+            .await?;
+        match remote_staging_result(&output)? {
+            RemoteStagingResult::Ready(path) => Ok(path),
+            RemoteStagingResult::Missing => {
+                bail!("接続先へ送った Claude Code が見つかりません。もう一度お試しください。")
+            }
+            RemoteStagingResult::Mismatch => {
+                bail!("接続先へ送るあいだに Claude Code が変わりました。もう一度お試しください。")
+            }
+            RemoteStagingResult::Unverifiable => bail!(REMOTE_UNVERIFIABLE),
+        }
+    }
+}
+
+const REMOTE_UNVERIFIABLE: &str = "接続先のホストに `sha256sum` がないため、Claude Code が置き換えられていないことを\
+     確認できません。接続先に coreutils をインストールしてから再試行してください。";
+
+impl AgentBinaryHost for RemoteAgentHost {
+    fn kind(&self) -> AgentHostKind {
+        AgentHostKind::RemoteHost
+    }
+
+    fn probe(&self) -> LocalBoxFuture<'static, Result<String>> {
+        let operations = self.operations.clone();
+        async move { operations.run_script(REMOTE_PROBE_SCRIPT, Vec::new()).await }.boxed_local()
+    }
+
+    fn staged(&self, sha256: String) -> LocalBoxFuture<'static, Result<Option<String>>> {
+        let operations = self.operations.clone();
+        Self::staged_path(operations, sha256).boxed_local()
+    }
+
+    fn stage(&self, source: PathBuf, sha256: String) -> LocalBoxFuture<'static, Result<String>> {
+        let operations = self.operations.clone();
+        let executor = self.executor.clone();
+        Self::send(operations, executor, source, sha256).boxed_local()
+    }
+
+    fn ensure_room(&self, probe: &str, needed: u64) -> Result<()> {
+        ensure_remote_room(probe, needed)
+    }
+}
+
+/// `$0` for the staging scripts: the arguments start at `$1`.
+const REMOTE_SCRIPT_NAME: &str = "zed-claude-stage";
+
+struct SystemRemoteHost {
+    remote_client: Entity<RemoteClient>,
+    cx: AsyncApp,
+}
+
+impl RemoteAgentOperations for SystemRemoteHost {
+    fn run_script(
+        &self,
+        script: &'static str,
+        arguments: Vec<String>,
+    ) -> LocalBoxFuture<'static, Result<String>> {
+        run_remote_host_script(self.remote_client.clone(), script, arguments, &self.cx)
+    }
+
+    fn upload(&self, source: PathBuf, destination: String) -> LocalBoxFuture<'static, Result<()>> {
+        let cx = self.cx.clone();
+        let remote_client = self.remote_client.clone();
+        async move {
+            let upload = remote_client.read_with(&cx, |remote_client, cx| {
+                let home_relative = RemotePathBuf::new(destination, remote_client.path_style());
+                remote_client.upload_directory(source, home_relative, cx)
+            });
+            upload.await
+        }
+        .boxed_local()
     }
 }
 
@@ -2319,22 +2942,21 @@ mod tests {
         }
     }
 
-    impl WslAgentHost for FakeWsl {
-        fn probe(&self, _distro: Option<String>) -> LocalBoxFuture<'static, Result<String>> {
+    impl AgentBinaryHost for FakeWsl {
+        fn kind(&self) -> AgentHostKind {
+            AgentHostKind::WslDistro
+        }
+
+        fn probe(&self) -> LocalBoxFuture<'static, Result<String>> {
             future::ready(Ok(self.probe_output.clone())).boxed_local()
         }
 
-        fn staged(
-            &self,
-            _distro: Option<String>,
-            sha256: String,
-        ) -> LocalBoxFuture<'static, Result<Option<String>>> {
+        fn staged(&self, sha256: String) -> LocalBoxFuture<'static, Result<Option<String>>> {
             future::ready(Ok(self.staged.lock().get(&sha256).cloned())).boxed_local()
         }
 
         fn stage(
             &self,
-            _distro: Option<String>,
             source: PathBuf,
             sha256: String,
         ) -> LocalBoxFuture<'static, Result<String>> {
@@ -2377,6 +2999,7 @@ mod tests {
         fn confirm(
             &mut self,
             request: &ConsentRequest,
+            _host: AgentHostKind,
             _hosts: &[String],
             missing: &[String],
         ) -> LocalBoxFuture<'static, Result<bool>> {
@@ -2399,7 +3022,7 @@ mod tests {
     struct Harness {
         installer: Installer,
         server: Arc<FakeServer>,
-        wsl: Arc<FakeWsl>,
+        wsl: Rc<FakeWsl>,
         policy: EgressPolicyHandle,
         allowed: Vec<String>,
         progress: Arc<Mutex<Vec<ManagedClaudeProgress>>>,
@@ -2421,7 +3044,7 @@ mod tests {
                 .map(|host| host.to_string())
                 .collect::<Vec<_>>();
             let policy = EgressPolicyHandle::new(policy_allowing(&allowed));
-            let wsl = Arc::new(FakeWsl {
+            let wsl = Rc::new(FakeWsl {
                 probe_output: probe_output.to_string(),
                 staged: Mutex::default(),
                 stage_count: Mutex::default(),
@@ -2431,7 +3054,7 @@ mod tests {
                 // The real gate, so that consent and denial are exercised
                 // against what production requests go through.
                 http: Arc::new(AllowlistedHttpClient::new(fake_http, policy.clone())),
-                wsl: wsl.clone(),
+                host: wsl.clone(),
                 executor: cx.executor(),
                 storage_dir: storage.path().join("claude-code"),
                 source: Arc::new(test_key_source()),
@@ -2462,7 +3085,6 @@ mod tests {
             let progress = self.progress.clone();
             self.installer
                 .run(
-                    None,
                     goal,
                     ui,
                     Arc::new(move |update| progress.lock().push(update)),
@@ -2500,6 +3122,11 @@ mod tests {
             }
             files
         }
+    }
+
+    /// The key `ensure_managed_claude_binary` would use for a WSL target.
+    fn wsl_key(distro: Option<&str>) -> String {
+        format!("wsl:{}", distro.unwrap_or_default().to_lowercase())
     }
 
     fn staged_path(sha256: &str) -> String {
@@ -2990,39 +3617,370 @@ mod tests {
 
     #[test]
     fn test_probe_output_decides_the_platform() {
+        let wsl = AgentHostKind::WslDistro;
         assert_eq!(
-            platform_from_probe(X64_PROBE).expect("x64 with AVX2"),
+            platform_from_probe(X64_PROBE, wsl).expect("x64 with AVX2"),
             LinuxPlatform::X64
         );
         assert_eq!(
-            platform_from_probe(ARM64_PROBE).expect("arm64"),
+            platform_from_probe(ARM64_PROBE, wsl).expect("arm64"),
             LinuxPlatform::Arm64
         );
         // Lines without the marker, such as WSL's own messages, are ignored.
         let noisy = format!("machine riscv64\nlibc musl\n{X64_PROBE}警告: wsl\n");
         assert_eq!(
-            platform_from_probe(&noisy).expect("noise is ignored"),
+            platform_from_probe(&noisy, wsl).expect("noise is ignored"),
             LinuxPlatform::X64
         );
         let unknown_libc = X64_PROBE.replace("libc glibc", "libc unknown");
         assert_eq!(
-            platform_from_probe(&unknown_libc).expect("an unknown libc is let through"),
+            platform_from_probe(&unknown_libc, wsl).expect("an unknown libc is let through"),
             LinuxPlatform::X64
         );
 
-        let error = platform_from_probe(X64_WITHOUT_AVX2_PROBE).expect_err("no AVX2");
-        assert_eq!(error.to_string(), NO_AVX2);
-        let error = platform_from_probe(MUSL_PROBE).expect_err("musl");
-        assert_eq!(error.to_string(), NOT_GLIBC);
-        let error = platform_from_probe("x86_64\nflags : avx2\n").expect_err("no marker");
-        assert_eq!(error.to_string(), PROBE_UNREADABLE);
+        let error = platform_from_probe(X64_WITHOUT_AVX2_PROBE, wsl).expect_err("no AVX2");
+        assert_eq!(error.to_string(), wsl.no_avx2());
+        let error = platform_from_probe(MUSL_PROBE, wsl).expect_err("musl");
+        assert_eq!(error.to_string(), wsl.not_glibc());
+        let error = platform_from_probe("x86_64\nflags : avx2\n", wsl).expect_err("no marker");
+        assert_eq!(error.to_string(), wsl.probe_unreadable());
         for probe in [
             RISCV64_PROBE,
             "zed-probe machine armv7l\n",
             "zed-probe machine i686\n",
         ] {
-            assert!(platform_from_probe(probe).is_err(), "{probe:?}");
+            assert!(platform_from_probe(probe, wsl).is_err(), "{probe:?}");
         }
+    }
+
+    /// 第 3 段: what the host's probe says decides whether the CLI can go
+    /// there at all, and where. Every answer is read from the marker lines, so
+    /// a login banner cannot pass for one.
+    #[test]
+    fn test_the_remote_probe_decides_where_the_cli_goes_and_whether_it_fits() {
+        let probe = format!(
+            "Welcome to Ubuntu\n{X64_PROBE}zed-probe home /home/ubuntu\n\
+             zed-probe available-kb 4194304\n"
+        );
+        assert_eq!(
+            platform_from_probe(&probe, AgentHostKind::RemoteHost).expect("x64 glibc"),
+            LinuxPlatform::X64
+        );
+        assert_eq!(
+            remote_home_from_probe(&probe).expect("the account's home"),
+            "/home/ubuntu"
+        );
+        assert_eq!(remote_available_bytes(&probe), Some(4 * 1024 * 1024 * 1024));
+        // 224 MB into 4 GB, with room to spare.
+        ensure_remote_room(&probe, 224 * 1024 * 1024).expect("it fits");
+        // A trailing separator is dropped so the paths built from it are not
+        // spelled with a double slash.
+        assert_eq!(
+            remote_home_from_probe("zed-probe home /root/\n").expect("a home"),
+            "/root"
+        );
+        for bad in [
+            "zed-probe home relative/path\n",
+            "zed-probe home \n",
+            X64_PROBE,
+        ] {
+            assert!(remote_home_from_probe(bad).is_err(), "{bad:?}");
+        }
+
+        // Not enough room: refused with both numbers, and before anything is
+        // fetched or sent (see `Installer::run`).
+        let tight = format!("{X64_PROBE}zed-probe home /root\nzed-probe available-kb 262144\n");
+        let error =
+            ensure_remote_room(&tight, 224 * 1024 * 1024).expect_err("256 MB is not enough");
+        assert!(
+            error.to_string().contains("空き容量が足りません"),
+            "{error}"
+        );
+        assert!(error.to_string().contains("256 MB"), "{error}");
+        // A host that cannot say (no `df`, no `cut`) is not refused: the
+        // transfer is what reports a full disk then.
+        for unknown in [
+            format!("{X64_PROBE}zed-probe available-kb \n"),
+            format!("{X64_PROBE}zed-probe available-kb not-a-number\n"),
+            X64_PROBE.to_string(),
+        ] {
+            assert_eq!(remote_available_bytes(&unknown), None, "{unknown:?}");
+            ensure_remote_room(&unknown, 224 * 1024 * 1024).expect("not refused");
+        }
+    }
+
+    #[test]
+    fn test_the_hosts_staging_answer_is_read_from_its_marker_line() {
+        assert_eq!(
+            remote_staging_result(
+                "zed-remote-agent path /root/.cache/zed-jp-enhance/agents/a/claude\n"
+            )
+            .expect("a path"),
+            RemoteStagingResult::Ready("/root/.cache/zed-jp-enhance/agents/a/claude".to_string())
+        );
+        assert_eq!(
+            remote_staging_result("motd\nzed-remote-agent missing\n").expect("missing"),
+            RemoteStagingResult::Missing
+        );
+        assert_eq!(
+            remote_staging_result("zed-remote-agent mismatch\n").expect("mismatch"),
+            RemoteStagingResult::Mismatch
+        );
+        assert_eq!(
+            remote_staging_result("zed-remote-agent unverifiable\n").expect("unverifiable"),
+            RemoteStagingResult::Unverifiable
+        );
+        // A script that printed nothing is a failure, not "missing": treating
+        // it as missing would send the binary again on every launch.
+        for bad in [
+            "",
+            "zed-remote-agent\n",
+            "zed-remote-agent path relative/claude\n",
+            "some other output\n",
+        ] {
+            assert!(remote_staging_result(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    /// The host as the staging talks to it: one script per round trip, and one
+    /// directory upload. Everything the real one does over SSH, without SSH.
+    #[derive(Default)]
+    struct FakeRemoteHost {
+        /// `<digest> -> the bytes at `agents/<digest>/claude``.
+        staged: Mutex<HashMap<String, Vec<u8>>>,
+        /// What an upload put at `agents/<name>/claude`, before it is checked.
+        incoming: Mutex<HashMap<String, Vec<u8>>>,
+        scripts: Mutex<Vec<&'static str>>,
+        uploads: Mutex<usize>,
+        has_sha256sum: bool,
+    }
+
+    impl FakeRemoteHost {
+        fn with_sha256sum() -> Rc<Self> {
+            Rc::new(Self {
+                has_sha256sum: true,
+                ..Default::default()
+            })
+        }
+
+        fn digest(contents: &[u8]) -> String {
+            format!("{:x}", Sha256::digest(contents))
+        }
+
+        fn staged_path(digest: &str) -> String {
+            format!("/home/test/{REMOTE_AGENTS_HOME_RELATIVE}/{digest}/{BINARY_NAME}")
+        }
+
+        fn uploads(&self) -> usize {
+            *self.uploads.lock()
+        }
+
+        fn ran(&self, script: &'static str) -> usize {
+            self.scripts
+                .lock()
+                .iter()
+                .filter(|ran| **ran == script)
+                .count()
+        }
+    }
+
+    impl RemoteAgentOperations for FakeRemoteHost {
+        fn run_script(
+            &self,
+            script: &'static str,
+            arguments: Vec<String>,
+        ) -> LocalBoxFuture<'static, Result<String>> {
+            self.scripts.lock().push(script);
+            let answer = |result: &str| format!("{REMOTE_RESULT_PREFIX}{result}\n");
+            // By content, not by pointer: a `const &str` is inlined at
+            // each use, so two uses need not share an address.
+            let output = if script == REMOTE_PROBE_SCRIPT {
+                format!("{X64_PROBE}zed-probe home /home/test\nzed-probe available-kb 4194304\n")
+            } else if script == REMOTE_PREPARE_SCRIPT {
+                self.incoming.lock().remove(&arguments[0]);
+                String::new()
+            } else if script == REMOTE_STAGED_SCRIPT {
+                let digest = &arguments[0];
+                // As the script does: whether it can hash at all is answered
+                // first, whatever is or is not there.
+                if !self.has_sha256sum {
+                    answer("unverifiable")
+                } else {
+                    match self.staged.lock().get(digest) {
+                        None => answer("missing"),
+                        Some(contents) if Self::digest(contents) == *digest => {
+                            answer(&format!("path {}", Self::staged_path(digest)))
+                        }
+                        Some(_) => answer("mismatch"),
+                    }
+                }
+            } else if script == REMOTE_FINALIZE_SCRIPT {
+                let digest = arguments[0].clone();
+                match self.incoming.lock().remove(&arguments[2]) {
+                    None => answer("missing"),
+                    Some(_) if !self.has_sha256sum => answer("unverifiable"),
+                    Some(contents) if Self::digest(&contents) == digest => {
+                        let path = Self::staged_path(&digest);
+                        self.staged.lock().insert(digest, contents);
+                        answer(&format!("path {path}"))
+                    }
+                    Some(_) => answer("mismatch"),
+                }
+            } else {
+                return future::ready(Err(anyhow!("unknown script"))).boxed_local();
+            };
+            future::ready(Ok(output)).boxed_local()
+        }
+
+        fn upload(
+            &self,
+            source: PathBuf,
+            destination: String,
+        ) -> LocalBoxFuture<'static, Result<()>> {
+            let result = (|| {
+                ensure!(
+                    destination == REMOTE_AGENTS_HOME_RELATIVE,
+                    "the upload went to {destination}"
+                );
+                let name = source
+                    .file_name()
+                    .context("the upload has no name")?
+                    .to_string_lossy()
+                    .into_owned();
+                let contents = std::fs::read(source.join(BINARY_NAME))?;
+                *self.uploads.lock() += 1;
+                self.incoming.lock().insert(name, contents);
+                Ok(())
+            })();
+            future::ready(result).boxed_local()
+        }
+    }
+
+    fn remote_host(
+        operations: Rc<FakeRemoteHost>,
+        cx: &TestAppContext,
+    ) -> (RemoteAgentHost, tempfile::TempDir) {
+        let downloads = tempfile::tempdir().expect("temporary directory");
+        (
+            RemoteAgentHost {
+                operations,
+                executor: cx.executor(),
+            },
+            downloads,
+        )
+    }
+
+    fn downloaded(downloads: &tempfile::TempDir, contents: &[u8]) -> PathBuf {
+        let path = downloads.path().join(BINARY_NAME);
+        std::fs::write(&path, contents).expect("write the download");
+        path
+    }
+
+    /// The staging sends the binary once and then finds it: a launch on a host
+    /// that already has this version costs one round trip and no transfer.
+    #[gpui::test]
+    async fn test_a_binary_already_on_the_host_is_not_sent_again(cx: &mut TestAppContext) {
+        let operations = FakeRemoteHost::with_sha256sum();
+        let (host, downloads) = remote_host(operations.clone(), cx);
+        let contents = b"claude binary".to_vec();
+        let digest = FakeRemoteHost::digest(&contents);
+
+        assert_eq!(
+            host.staged(digest.clone()).await.expect("a check"),
+            None,
+            "nothing is staged to begin with"
+        );
+        let path = host
+            .stage(downloaded(&downloads, &contents), digest.clone())
+            .await
+            .expect("the binary is sent");
+        assert_eq!(path, FakeRemoteHost::staged_path(&digest));
+        assert_eq!(operations.uploads(), 1);
+
+        assert_eq!(
+            host.staged(digest.clone()).await.expect("a check"),
+            Some(FakeRemoteHost::staged_path(&digest))
+        );
+        // A second staging of the same digest checks and returns without
+        // sending 224 MB over the connection again.
+        let again = host
+            .stage(downloaded(&downloads, &contents), digest.clone())
+            .await
+            .expect("already there");
+        assert_eq!(again, FakeRemoteHost::staged_path(&digest));
+        assert_eq!(operations.uploads(), 1, "nothing was sent a second time");
+    }
+
+    /// A copy on the host that does not hash to the digest asked for is not
+    /// run: it is replaced, and the host checks again what arrives.
+    #[gpui::test]
+    async fn test_a_copy_on_the_host_that_does_not_match_is_replaced(cx: &mut TestAppContext) {
+        let operations = FakeRemoteHost::with_sha256sum();
+        let (host, downloads) = remote_host(operations.clone(), cx);
+        let contents = b"claude binary".to_vec();
+        let digest = FakeRemoteHost::digest(&contents);
+        operations
+            .staged
+            .lock()
+            .insert(digest.clone(), b"something else".to_vec());
+
+        assert_eq!(
+            host.staged(digest.clone()).await.expect("a check"),
+            None,
+            "a copy that does not match is not offered to run"
+        );
+        let path = host
+            .stage(downloaded(&downloads, &contents), digest.clone())
+            .await
+            .expect("it is replaced");
+        assert_eq!(path, FakeRemoteHost::staged_path(&digest));
+        assert_eq!(operations.uploads(), 1);
+        assert_eq!(
+            operations.staged.lock().get(&digest).cloned(),
+            Some(contents)
+        );
+    }
+
+    /// Without `sha256sum` the host cannot vouch for what it holds, so the
+    /// session is refused rather than run against an unchecked binary — and
+    /// refused by the check that runs before the download, so that 224 MB is
+    /// not fetched and sent only to be thrown away.
+    #[gpui::test]
+    async fn test_a_host_that_cannot_hash_is_refused(cx: &mut TestAppContext) {
+        let operations = Rc::new(FakeRemoteHost::default());
+        let (host, downloads) = remote_host(operations.clone(), cx);
+        let contents = b"claude binary".to_vec();
+        let digest = FakeRemoteHost::digest(&contents);
+
+        let error = host
+            .staged(digest.clone())
+            .await
+            .expect_err("nothing can be vouched for");
+        assert!(error.to_string().contains("sha256sum"), "{error}");
+
+        let error = host
+            .stage(downloaded(&downloads, &contents), digest)
+            .await
+            .expect_err("nothing can be vouched for");
+        assert!(error.to_string().contains("sha256sum"), "{error}");
+        assert_eq!(operations.uploads(), 0, "nothing was sent");
+        assert_eq!(operations.ran(REMOTE_FINALIZE_SCRIPT), 0);
+    }
+
+    /// A host with no room is told so before the download starts, and nothing
+    /// is sent to it.
+    #[gpui::test]
+    async fn test_a_host_without_room_is_not_sent_the_binary(cx: &mut TestAppContext) {
+        let operations = FakeRemoteHost::with_sha256sum();
+        let (host, _downloads) = remote_host(operations.clone(), cx);
+        let probe = host.probe().await.expect("a probe");
+        host.ensure_room(&probe, 224 * 1024 * 1024)
+            .expect("4 GB is enough");
+        let error = host
+            .ensure_room(&probe, 8 * 1024 * 1024 * 1024)
+            .expect_err("8 GB is not");
+        assert!(error.to_string().contains("空き容量"), "{error}");
+        assert_eq!(operations.uploads(), 0);
     }
 
     #[test]
@@ -3046,10 +4004,11 @@ mod tests {
     #[test]
     fn test_consent_prompts_use_the_install_consent_wording() {
         let hosts = vec!["downloads.claude.ai".to_string()];
+        let wsl = AgentHostKind::WslDistro;
         let install = ConsentRequest::Install {
             version: version("2.1.270"),
         };
-        let prompt = consent_prompt(&install, &hosts, &hosts);
+        let prompt = consent_prompt(&install, wsl, &hosts, &hosts);
         assert_eq!(prompt.message, "Linux 版 Claude Code v2.1.270 を取得します");
         assert_eq!(prompt.confirm, "許可リストに追加してインストール");
         assert!(
@@ -3059,7 +4018,7 @@ mod tests {
             "{}",
             prompt.detail
         );
-        let prompt = consent_prompt(&install, &hosts, &[]);
+        let prompt = consent_prompt(&install, wsl, &hosts, &[]);
         assert_eq!(prompt.confirm, "了承してインストール");
         assert!(prompt.detail.ends_with("(登録済み)"), "{}", prompt.detail);
 
@@ -3067,7 +4026,7 @@ mod tests {
             from: version("2.1.270"),
             to: version("2.1.280"),
         };
-        let prompt = consent_prompt(&update, &hosts, &[]);
+        let prompt = consent_prompt(&update, wsl, &hosts, &[]);
         assert_eq!(prompt.message, "Claude Code を v2.1.280 に更新します");
         assert!(
             prompt.detail.starts_with("現在の版: v2.1.270"),
@@ -3076,7 +4035,7 @@ mod tests {
         );
         assert_eq!(prompt.confirm, "了承して更新");
         assert_eq!(
-            consent_prompt(&update, &hosts, &hosts).confirm,
+            consent_prompt(&update, wsl, &hosts, &hosts).confirm,
             "許可リストに追加して更新"
         );
     }
@@ -3086,12 +4045,13 @@ mod tests {
         let binary = ManagedClaudeBinary {
             version: "1.2.3".to_string(),
             sha256: "0".repeat(64),
-            path_in_wsl: staged_path(&"0".repeat(64)),
+            path_on_host: staged_path(&"0".repeat(64)),
+            home_on_host: None,
         };
         let starts = Rc::new(Cell::new(0));
         let (finish_tx, finish_rx) = oneshot::channel::<()>();
         let first = cx.update(|cx| {
-            join_or_start(None, cx, {
+            join_or_start(wsl_key(None), cx, {
                 let starts = starts.clone();
                 let binary = binary.clone();
                 move |cx| {
@@ -3104,10 +4064,12 @@ mod tests {
             })
         });
         let second = cx.update(|cx| {
-            join_or_start(None, cx, |_| unreachable!("the running install is joined"))
+            join_or_start(wsl_key(None), cx, |_| {
+                unreachable!("the running install is joined")
+            })
         });
         let other_distro = cx.update(|cx| {
-            join_or_start(Some("Debian".to_string()), cx, |_| {
+            join_or_start(wsl_key(Some("Debian")), cx, |_| {
                 Task::ready(Err(anyhow!("inner detail").context(DOWNLOAD_DECLINED)))
             })
         });
@@ -3124,7 +4086,7 @@ mod tests {
         );
 
         let third = cx.update(|cx| {
-            join_or_start(None, cx, {
+            join_or_start(wsl_key(None), cx, {
                 let starts = starts.clone();
                 let binary = binary.clone();
                 move |_| {
@@ -3152,7 +4114,8 @@ mod tests {
             ManagedClaudeBinary {
                 version: "1.2.3".to_string(),
                 sha256: expected.sha256.clone(),
-                path_in_wsl: staged_path(&expected.sha256),
+                path_on_host: staged_path(&expected.sha256),
+                home_on_host: None,
             }
         );
         assert_eq!(
@@ -3194,7 +4157,11 @@ mod tests {
             total: compressed.size,
         }));
         assert!(progress.contains(&ManagedClaudeProgress::Extracting));
-        assert!(progress.contains(&ManagedClaudeProgress::Staging));
+        assert!(
+            progress
+                .iter()
+                .any(|update| matches!(update, ManagedClaudeProgress::Staging { .. }))
+        );
     }
 
     #[gpui::test]
@@ -3372,7 +4339,7 @@ mod tests {
         let cancelled = Rc::new(Cell::new(false));
         let (_finish_tx, finish_rx) = oneshot::channel::<()>();
         let first = cx.update(|cx| {
-            join_or_start(None, cx, {
+            join_or_start(wsl_key(None), cx, {
                 let cancelled = cancelled.clone();
                 move |cx| {
                     cx.spawn(async move |_| {
@@ -3383,7 +4350,8 @@ mod tests {
                 }
             })
         });
-        let second = cx.update(|cx| join_or_start(None, cx, |_| unreachable!("it is joined")));
+        let second =
+            cx.update(|cx| join_or_start(wsl_key(None), cx, |_| unreachable!("it is joined")));
         cx.run_until_parked();
 
         drop(first);
@@ -3395,7 +4363,7 @@ mod tests {
 
         let starts = Rc::new(Cell::new(0));
         let third = cx.update(|cx| {
-            join_or_start(None, cx, {
+            join_or_start(wsl_key(None), cx, {
                 let starts = starts.clone();
                 move |_| {
                     starts.set(starts.get() + 1);

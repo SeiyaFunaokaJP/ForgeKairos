@@ -63,9 +63,14 @@
 //! 3. `postprocess::inject_css` injects CSS rules for the classes applied by
 //!    `accent_colors`
 
+pub mod er_model;
 pub mod flowchart_model;
+pub mod mermaid_model;
+pub mod pie_model;
 mod postprocess;
 mod render;
+pub mod sequence_model;
+pub mod state_model;
 
 use anyhow::Result;
 use gpui::{Hsla, Rgba};

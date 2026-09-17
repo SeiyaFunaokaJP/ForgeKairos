@@ -1209,6 +1209,14 @@
     // is reachable without opening the window-wide threads sidebar. The list is
     // hidden automatically while the panel is too narrow to fit both halves.
     "panel_thread_history": true,
+    // When the agent panel shows the tab bar of its own pane. Can be 'auto',
+    // 'always' or 'never'. 'auto' hides it while the in-panel thread history
+    // is showing and the panel holds a single pane, because that list carries
+    // the open tabs as well; splitting the panel or closing the list brings
+    // the tab bar back. 'never' leans on that list instead, but a panel too
+    // narrow to show it still gets the tab bar, so the open tabs stay
+    // reachable.
+    "panel_tab_bar": "auto",
     // Default width when the agent panel is docked to the left or right.
     "default_width": 640,
     // Default height when the agent panel is docked to the bottom.
@@ -1273,9 +1281,14 @@
     "tool_permissions": {
       // Global default permission when no tool-specific rules match.
       // "allow" - Auto-approve without prompting (the agent panel's
-      //           "auto approve" switch writes this value)
+      //           "auto approve" switch writes this value). Terminal commands
+      //           still run inside the sandbox, and file operations outside
+      //           the project's worktrees are still confirmed.
       // "deny" - Auto-reject
       // "confirm" - Always prompt (default)
+      // "auto" - Let the permission judge model ("permission_judge_model")
+      //          decide: what it judges safe runs without prompting,
+      //          everything else is confirmed
       "default": "confirm",
       // Per-tool permission rules. Regex patterns match against tool input text.
       // The per-tool "default" also applies to MCP tools.
@@ -1343,7 +1356,7 @@
     "default_profile": "write",
     "profiles": {
       "write": {
-        "name": "Write",
+        "name": "書き込み",
         "enable_all_context_servers": true,
         "tools": {
           "copy_path": true,
@@ -1374,7 +1387,7 @@
         },
       },
       "ask": {
-        "name": "Ask",
+        "name": "質問",
         // We don't know which of the context server tools are safe for the "Ask" profile, so we don't enable them by default.
         // "enable_all_context_servers": true,
         "tools": {
@@ -1396,8 +1409,30 @@
           "search_web": true,
         },
       },
+      // Reads and edits files, but never runs commands and never reaches the
+      // network. Deleting, moving and copying paths are left out too: an edit
+      // can be reviewed in the diff, a deletion cannot.
+      "edit": {
+        "name": "編集のみ",
+        "enable_all_context_servers": false,
+        "tools": {
+          "create_directory": true,
+          "diagnostics": true,
+          "ask_user": false,
+          "edit_file": true,
+          "write_file": true,
+          "find_path": true,
+          "find_references": true,
+          "get_code_actions": true,
+          "go_to_definition": true,
+          "list_directory": true,
+          "read_file": true,
+          "repo_map": true,
+          "grep": true,
+        },
+      },
       "minimal": {
-        "name": "Minimal",
+        "name": "最小",
         "enable_all_context_servers": false,
         "tools": {},
       },

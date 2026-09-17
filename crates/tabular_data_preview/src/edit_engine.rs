@@ -243,15 +243,16 @@ impl<'a> EditEngine<'a> {
                     log::warn!("ignoring a request to insert rows below the missing row {row:?}");
                     return Vec::new();
                 };
-                vec![(
-                    layout.range.end..layout.range.end,
-                    repeat_rows_after(&blank_row, count),
-                )]
+                let end = layout.range.end;
+                vec![(end..end, self.rows_after_offset(&blank_row, count, end))]
             }
             RowInsertPosition::AtEnd => match self.last_row_end() {
                 // Appending after the last row's content instead of after the buffer's final
                 // newline keeps the file's trailing newline exactly as it was.
-                Some(offset) => vec![(offset..offset, repeat_rows_after(&blank_row, count))],
+                Some(offset) => vec![(
+                    offset..offset,
+                    self.rows_after_offset(&blank_row, count, offset),
+                )],
                 None => {
                     let mut text = String::new();
                     for _ in 0..count {
@@ -644,6 +645,20 @@ impl<'a> EditEngine<'a> {
         self.delimiter
             .to_string()
             .repeat(self.contents.number_of_cols.saturating_sub(1))
+    }
+
+    /// The text that puts `count` rows of `row_text` after the content at `offset`.
+    ///
+    /// A single column table's blank row is the empty string, so such a row is nothing but the
+    /// terminator that introduces it. At the very end of the buffer that terminator is the file's
+    /// trailing newline, which does not make a row of its own, and the last of the inserted rows
+    /// would be lost; giving it a terminator of its own keeps it a line of the file.
+    fn rows_after_offset(&self, row_text: &str, count: usize, offset: usize) -> String {
+        let mut text = repeat_rows_after(row_text, count);
+        if row_text.is_empty() && self.snapshot.chars_at(offset).next().is_none() {
+            text.push('\n');
+        }
+        text
     }
 
     /// A buffer with nothing in it still has one editable cell in the grid; both the header and the
@@ -1153,6 +1168,47 @@ pub(crate) mod tests {
                 .insert_rows(RowInsertPosition::AtEnd, 2)),
             "a,b\nc,d\n,\n,\n"
         );
+        assert_eq!(
+            csv("a,b\nc,d", |engine| engine
+                .insert_rows(RowInsertPosition::AtEnd, 1)),
+            "a,b\nc,d\n,"
+        );
+    }
+
+    /// A one column table's blank row has no delimiter to make it a line of its own, so appending
+    /// one at the end of a buffer that has no trailing newline has to add that newline as well.
+    #[test]
+    fn insert_rows_at_end_of_a_single_column_file_adds_a_line() {
+        assert_eq!(
+            csv("a\nb", |engine| engine
+                .insert_rows(RowInsertPosition::AtEnd, 1)),
+            "a\nb\n\n"
+        );
+        assert_eq!(
+            csv("a\nb", |engine| engine
+                .insert_rows(RowInsertPosition::AtEnd, 2)),
+            "a\nb\n\n\n"
+        );
+        // The same row after the last row, which is where "下に行を挿入" lands.
+        assert_eq!(
+            csv("a\nb", |engine| engine
+                .insert_rows(RowInsertPosition::After(data(0)), 1)),
+            "a\nb\n\n"
+        );
+        // A file that already ends in a newline has the line it needs, and taking another would
+        // append two rows instead of one.
+        assert_eq!(
+            csv("a\nb\n", |engine| engine
+                .insert_rows(RowInsertPosition::AtEnd, 1)),
+            "a\nb\n\n"
+        );
+        // Inside the file the terminator that introduces the row is enough.
+        assert_eq!(
+            csv("a\nb\nc", |engine| engine
+                .insert_rows(RowInsertPosition::After(data(0)), 1)),
+            "a\nb\n\nc"
+        );
+        // Two columns and up have a delimiter to stand on, so nothing changes for them.
         assert_eq!(
             csv("a,b\nc,d", |engine| engine
                 .insert_rows(RowInsertPosition::AtEnd, 1)),

@@ -17,9 +17,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings::{
     DockPosition, DockSide, IntoGpui, LanguageModelParameters, LanguageModelSelection,
-    NotifyWhenAgentWaiting, PlaySoundWhenAgentDone, RegisterSetting, Settings, SettingsContent,
-    SettingsStore, SidebarDockPosition, SidebarSide, ThinkingBlockDisplay, ToolPermissionMode,
-    update_settings_file_with_completion,
+    NotifyWhenAgentWaiting, PanelTabBar, PlaySoundWhenAgentDone, RegisterSetting, Settings,
+    SettingsContent, SettingsStore, SidebarDockPosition, SidebarSide, ThinkingBlockDisplay,
+    ToolPermissionMode, update_settings_file_with_completion,
 };
 use util::ResultExt as _;
 
@@ -210,6 +210,7 @@ pub struct AgentSettings {
     pub sidebar_enabled: bool,
     pub sidebar_side: SidebarDockPosition,
     pub panel_thread_history: bool,
+    pub panel_tab_bar: PanelTabBar,
     pub default_width: Pixels,
     pub default_height: Pixels,
     pub max_content_width: Option<Pixels>,
@@ -782,6 +783,7 @@ impl Settings for AgentSettings {
             sidebar_enabled: agent.sidebar_enabled.unwrap_or(false),
             sidebar_side: agent.sidebar_side.unwrap(),
             panel_thread_history: agent.panel_thread_history.unwrap_or(true),
+            panel_tab_bar: agent.panel_tab_bar.unwrap_or_default(),
             default_width: agent.default_width.unwrap().into_gpui(),
             default_height: agent.default_height.unwrap().into_gpui(),
             max_content_width: if agent.limit_content_width.unwrap() {

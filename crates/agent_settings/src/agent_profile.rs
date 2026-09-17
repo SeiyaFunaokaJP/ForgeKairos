@@ -17,11 +17,13 @@ pub mod builtin_profiles {
     use super::AgentProfileId;
 
     pub const WRITE: &str = "write";
+    /// Reads and edits files, but runs no commands and reaches no network.
+    pub const EDIT: &str = "edit";
     pub const ASK: &str = "ask";
     pub const MINIMAL: &str = "minimal";
 
     pub fn is_builtin(profile_id: &AgentProfileId) -> bool {
-        profile_id.as_str() == WRITE || profile_id.as_str() == ASK || profile_id.as_str() == MINIMAL
+        matches!(profile_id.as_str(), WRITE | EDIT | ASK | MINIMAL)
     }
 }
 
@@ -272,6 +274,68 @@ mod tests {
         assert!(profile.is_context_server_tool_enabled("server", "enabled_tool"));
         assert!(!profile.is_context_server_tool_enabled("server", "other_tool"));
         assert!(!profile.is_context_server_tool_enabled("other_server", "any_tool"));
+    }
+
+    /// 決定 4: the shipped "read and edit" profile. Its point is what it
+    /// leaves out, so the disabled half is asserted too — a tool silently
+    /// gaining a `true` here would hand the model a capability the profile
+    /// promises it doesn't have.
+    #[gpui::test]
+    fn shipped_edit_profile_reads_and_edits_only(cx: &mut gpui::App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        project::DisableAiSettings::register(cx);
+        AgentSettings::register(cx);
+
+        let edit_profile_id = AgentProfileId(builtin_profiles::EDIT.into());
+        assert!(builtin_profiles::is_builtin(&edit_profile_id));
+        assert!(AgentProfileSettings::is_unmodified_default(
+            &edit_profile_id,
+            cx
+        ));
+
+        let profile = AgentSettings::get_global(cx)
+            .profiles
+            .get(&edit_profile_id)
+            .expect("the edit profile ships in default.json")
+            .clone();
+
+        for tool in [
+            "read_file",
+            "list_directory",
+            "grep",
+            "find_path",
+            "diagnostics",
+            "repo_map",
+            "find_references",
+            "go_to_definition",
+            "get_code_actions",
+            "edit_file",
+            "write_file",
+            "create_directory",
+        ] {
+            assert!(profile.is_tool_enabled(tool), "{tool} should be enabled");
+        }
+        for tool in [
+            "terminal",
+            "sandboxed_terminal",
+            "fetch",
+            "search_web",
+            "delete_path",
+            "move_path",
+            "copy_path",
+            "skill",
+            "spawn_agent",
+            "apply_code_action",
+            "rename_symbol",
+            "ask_user",
+        ] {
+            assert!(!profile.is_tool_enabled(tool), "{tool} should be disabled");
+        }
+        assert!(
+            !profile.enable_all_context_servers,
+            "context server tools are not vetted for this profile"
+        );
     }
 
     #[gpui::test]

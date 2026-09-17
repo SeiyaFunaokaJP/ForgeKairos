@@ -40,7 +40,9 @@ use ui::{ContextMenu, PopoverMenu, Tooltip, prelude::*};
 use crate::{
     TabularDataPreviewPane,
     edit_engine::{RowInsertPosition, RowRef},
-    grid::{GridCell, GridSelectionKind, MAX_GRID_OPERATION_CELLS, grouped_digits},
+    grid::{
+        GridCell, GridRect, GridRow, GridSelectionKind, MAX_GRID_OPERATION_CELLS, grouped_digits,
+    },
 };
 
 /// 選択範囲を指定した色で塗りつぶします。
@@ -1074,25 +1076,38 @@ impl TabularDataPreviewPane {
         }
     }
 
-    fn selected_physical_rows(&self) -> Vec<usize> {
-        self.selected_row_refs()
-            .into_iter()
+    fn physical_rows_of(&self, rect: GridRect) -> Vec<usize> {
+        rect.rows()
+            .filter_map(|row| self.row_ref(GridRow::from_index(row)))
             .map(|row| self.physical_row(row))
             .collect()
     }
 
-    /// What the current selection paints, in the coarsest form that covers it.
-    pub(crate) fn selection_style_scope(&self) -> StyleScope {
-        let cols: Vec<usize> = self.selection_rect().cols().collect();
-        match self.grid.selection_kind {
+    /// What one block of the selection paints, in the coarsest form that covers
+    /// it.
+    fn style_scope_for(&self, rect: GridRect, kind: GridSelectionKind) -> StyleScope {
+        let cols: Vec<usize> = rect.cols().collect();
+        match kind {
             GridSelectionKind::All => StyleScope::All,
-            GridSelectionKind::Rows => StyleScope::Rows(self.selected_physical_rows()),
+            GridSelectionKind::Rows => StyleScope::Rows(self.physical_rows_of(rect)),
             GridSelectionKind::Columns => StyleScope::Columns(cols),
             GridSelectionKind::Cells => StyleScope::Cells {
-                rows: self.selected_physical_rows(),
+                rows: self.physical_rows_of(rect),
                 cols,
             },
         }
+    }
+
+    /// What every selected block paints, one scope per block.
+    ///
+    /// A scope is a set of rows crossed with a set of columns, which two blocks
+    /// sitting apart cannot share without painting the empty corners between
+    /// them, so they stay separate scopes and are applied one after the other.
+    pub(crate) fn selection_style_scopes(&self) -> Vec<StyleScope> {
+        self.selection_blocks()
+            .into_iter()
+            .map(|(rect, kind)| self.style_scope_for(rect, kind))
+            .collect()
     }
 
     pub(crate) fn set_selection_color(
@@ -1104,9 +1119,11 @@ impl TabularDataPreviewPane {
         if self.grid_is_empty() || !self.within_color_budget(color, cx) {
             return;
         }
-        let scope = self.selection_style_scope();
+        let scopes = self.selection_style_scopes();
         let warn = self.styles.update(cx, |model, cx| {
-            model.set(&scope, field, color, cx);
+            for scope in &scopes {
+                model.set(scope, field, color, cx);
+            }
             model.take_not_stored_warning()
         });
         if warn {
@@ -1122,17 +1139,18 @@ impl TabularDataPreviewPane {
     /// column however wide the table is, so only a cell range is counted by
     /// area - and taking colors away never adds an entry at all.
     fn within_color_budget(&mut self, color: CellColor, cx: &mut Context<Self>) -> bool {
-        let kind = self.grid.selection_kind;
-        if color == CellColor::None && kind != GridSelectionKind::Cells {
-            return true;
+        let mut entries: usize = 0;
+        for (rect, kind) in self.selection_blocks() {
+            if color == CellColor::None && kind != GridSelectionKind::Cells {
+                continue;
+            }
+            entries = entries.saturating_add(match kind {
+                GridSelectionKind::All => 1,
+                GridSelectionKind::Rows => rect.row_count(),
+                GridSelectionKind::Columns => rect.col_count(),
+                GridSelectionKind::Cells => rect.cell_count(),
+            });
         }
-        let rect = self.selection_rect();
-        let entries = match kind {
-            GridSelectionKind::All => 1,
-            GridSelectionKind::Rows => rect.last_row - rect.first_row + 1,
-            GridSelectionKind::Columns => rect.last_col - rect.first_col + 1,
-            GridSelectionKind::Cells => rect.cell_count(),
-        };
         if entries <= MAX_GRID_OPERATION_CELLS {
             return true;
         }
@@ -1217,7 +1235,7 @@ impl TabularDataPreviewPane {
         field: StyleField,
         cx: &mut Context<Self>,
     ) -> PopoverMenu<ContextMenu> {
-        let view = cx.entity();
+        let view = cx.entity().downgrade();
         PopoverMenu::new(ElementId::Name(id.into()))
             .trigger_with_tooltip(
                 IconButton::new(ElementId::NamedInteger(id.into(), 0), icon)
@@ -1234,9 +1252,13 @@ impl TabularDataPreviewPane {
 }
 
 /// Adds the palette's eight entries to `menu`, each painting `field` when picked.
+///
+/// The grid is held weakly because the grid's own right click menu is stored on
+/// the grid: a strong handle in an entry of it would be a cycle, and a menu left
+/// open over a closing tab would keep the whole pane alive.
 pub(crate) fn extend_with_color_palette(
     menu: ContextMenu,
-    view: &Entity<TabularDataPreviewPane>,
+    view: &WeakEntity<TabularDataPreviewPane>,
     field: StyleField,
 ) -> ContextMenu {
     let mut menu = menu;
@@ -1244,7 +1266,8 @@ pub(crate) fn extend_with_color_palette(
         menu = menu.custom_entry(move |_window, cx| render_palette_entry(color, field, cx), {
             let view = view.clone();
             move |_window, cx| {
-                view.update(cx, |this, cx| this.set_selection_color(field, color, cx));
+                view.update(cx, |this, cx| this.set_selection_color(field, color, cx))
+                    .ok();
             }
         });
     }

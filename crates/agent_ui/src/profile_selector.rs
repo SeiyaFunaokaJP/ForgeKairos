@@ -389,6 +389,9 @@ impl ProfilePickerDelegate {
     fn documentation(candidate: &ProfileCandidate) -> Option<&'static str> {
         match candidate.id.as_str() {
             builtin_profiles::WRITE => Some("何でも書く手助けをします。"),
+            builtin_profiles::EDIT => {
+                Some("ファイルの読み取りと編集だけを行います。コマンドは実行しません。")
+            }
             builtin_profiles::ASK => Some("コードベースについて対話します。"),
             builtin_profiles::MINIMAL => Some("ツールを使わずに何でも対話します。"),
             _ => None,

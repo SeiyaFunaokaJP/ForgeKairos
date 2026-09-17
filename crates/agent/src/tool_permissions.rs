@@ -10,16 +10,17 @@ use std::sync::{Arc, LazyLock};
 use util::shell::ShellKind;
 
 const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "組み込みのセキュリティルールによりブロックされました。この操作は許可するには危険すぎると判断されており、設定で上書きすることはできません。";
-const INVALID_TERMINAL_COMMAND_MESSAGE: &str = "The terminal command could not be approved because terminal does not \
-     allow shell substitutions or interpolations in permission-protected commands. Forbidden examples include $VAR, \
-     ${VAR}, $(...), backticks, $((...)), <(...), and >(...). Resolve those values before calling terminal, or ask \
-     the user for the literal value to use.";
-const UNAPPROVABLE_SUBSTITUTION_MESSAGE: &str = "The command was not run. It runs outside the sandbox \
-     (or in one that may write anywhere), so the user has to approve this exact command, and a command \
-     with shell substitutions or interpolations ($VAR, ${VAR}, $(...), backticks, $((...)), <(...), \
-     >(...)) can't be shown for that approval safely: what actually runs depends on values the user \
-     doesn't see. Run the command with the literal values instead, or tell the user the exact command \
-     so they can run it themselves in a terminal.";
+// The `\` line continuations below also swallow the next line's indentation,
+// but not the space in front of them, so these lines end right at the text.
+const INVALID_TERMINAL_COMMAND_MESSAGE: &str = "コマンドは実行されませんでした。権限の判定を受けるコマンドに\
+     シェルの置換・展開 ($VAR、${VAR}、$(...)、バッククォート、$((...))、<(...)、>(...)) を含めることは\
+     できません。値を自分で解決してから terminal を呼び出すか、使うべき値そのものをユーザーに尋ねてください。";
+const UNAPPROVABLE_SUBSTITUTION_MESSAGE: &str = "コマンドは実行されませんでした。このコマンドは\
+     サンドボックスの外 (またはどこにでも書き込めるサンドボックス) で実行されるため、ユーザーが\
+     このコマンドそのものを承認する必要がありますが、シェルの置換・展開 ($VAR、${VAR}、$(...)、\
+     バッククォート、$((...))、<(...)、>(...)) を含むコマンドは、実際に何が実行されるかがユーザーに\
+     見えない値で決まるため、安全に提示できません。値を展開せずに書いたコマンドで実行し直すか、\
+     ユーザーにコマンドをそのまま伝えて、ユーザー自身のターミナルで実行してもらってください。";
 
 /// Security rules that are always enforced and cannot be overridden by any setting.
 /// These protect against catastrophic operations like wiping filesystems.
@@ -222,6 +223,28 @@ pub enum ToolPermissionDecision {
     Judge,
 }
 
+/// What a shell substitution in a terminal command means for the decision
+/// (決定 2). A substitution makes the text the rules see differ from what the
+/// shell will actually run, so every rung of the ladder below the built-in
+/// safety rules loses its footing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SubstitutionPolicy {
+    /// Refuse the command. Used wherever the command may run with Zed's own
+    /// reach: nothing there can vouch for what the expansion turns out to be,
+    /// and the user can't be shown a command whose effect they can't see.
+    Refuse,
+    /// Decide as usual, minus pattern-based auto-approval. Used for a command
+    /// that is known to run inside the sandbox, where the expansion can only
+    /// reach what the sandbox already allows, so the mode decides whether to
+    /// ask — but an `always_allow` pattern, which only ever matched the
+    /// unexpanded text, may not approve it.
+    NoAutoApproval,
+    /// As [`Self::NoAutoApproval`], and ask the user: the terminal has
+    /// `always_confirm` patterns, and whether one of them describes what this
+    /// command expands to cannot be known.
+    Confirm,
+}
+
 impl ToolPermissionDecision {
     /// Determines the permission decision for a tool invocation based on configured rules.
     ///
@@ -267,6 +290,26 @@ impl ToolPermissionDecision {
         permissions: &ToolPermissions,
         shell_kind: ShellKind,
     ) -> ToolPermissionDecision {
+        Self::decide(
+            tool_name,
+            inputs,
+            permissions,
+            shell_kind,
+            SubstitutionPolicy::Refuse,
+        )
+    }
+
+    /// [`Self::from_input`] with an explicit policy for a terminal command
+    /// that contains a shell substitution. Only a command that is known to run
+    /// inside the sandbox relaxes it (決定 2); every other caller refuses such
+    /// a command as before.
+    fn decide(
+        tool_name: &str,
+        inputs: &[String],
+        permissions: &ToolPermissions,
+        shell_kind: ShellKind,
+        substitutions: SubstitutionPolicy,
+    ) -> ToolPermissionDecision {
         // First, check hardcoded security rules, such as banning `rm -rf /` in terminal tool.
         // These cannot be bypassed by any user settings.
         if let Some(denial) = check_hardcoded_security_rules(tool_name, inputs, shell_kind) {
@@ -281,6 +324,12 @@ impl ToolPermissionDecision {
             return ToolPermissionDecision::Deny(error);
         }
 
+        // A substitution hides what actually runs from every rule below, which
+        // can only be matched against the unexpanded text. What follows from
+        // that depends on where the command runs, so the caller decides
+        // (see [`SubstitutionPolicy`]).
+        let mut allow_patterns_enabled = true;
+        let mut substitution_forces_confirm = false;
         if tool_name == TerminalTool::NAME
             && !rules.map_or(
                 matches!(permissions.default, ToolPermissionMode::Allow),
@@ -293,18 +342,54 @@ impl ToolPermissionDecision {
                 )
             })
         {
-            return ToolPermissionDecision::Deny(INVALID_TERMINAL_COMMAND_MESSAGE.into());
+            match substitutions {
+                SubstitutionPolicy::Refuse => {
+                    return ToolPermissionDecision::Deny(INVALID_TERMINAL_COMMAND_MESSAGE.into());
+                }
+                SubstitutionPolicy::NoAutoApproval => allow_patterns_enabled = false,
+                SubstitutionPolicy::Confirm => {
+                    allow_patterns_enabled = false;
+                    substitution_forces_confirm = true;
+                }
+            }
         }
 
-        let rules = match rules {
+        let decision = Self::decide_against_rules(
+            tool_name,
+            inputs,
+            permissions,
+            shell_kind,
+            allow_patterns_enabled,
+        );
+        if substitution_forces_confirm {
+            // Only ever stricter: a "deny" default (or a deny pattern) still
+            // refuses the command.
+            most_restrictive(decision, ToolPermissionDecision::Confirm)
+        } else {
+            decision
+        }
+    }
+
+    /// The `always_deny` → `always_confirm` → `always_allow` → default ladder,
+    /// with `allow_patterns_enabled` switching off the `always_allow` rung for
+    /// input whose sub-commands could not be established (an unparsable
+    /// command, or one carrying a substitution).
+    fn decide_against_rules(
+        tool_name: &str,
+        inputs: &[String],
+        permissions: &ToolPermissions,
+        shell_kind: ShellKind,
+        allow_patterns_enabled: bool,
+    ) -> ToolPermissionDecision {
+        let rules = match permissions.tools.get(tool_name) {
             Some(rules) => rules,
             None => {
                 // No tool-specific rules, use the global default
                 return match permissions.default {
                     ToolPermissionMode::Allow => ToolPermissionDecision::Allow,
-                    ToolPermissionMode::Deny => {
-                        ToolPermissionDecision::Deny("Blocked by global default: deny".into())
-                    }
+                    ToolPermissionMode::Deny => ToolPermissionDecision::Deny(
+                        "設定の既定が「拒否」のためブロックされました。".into(),
+                    ),
                     ToolPermissionMode::Confirm => ToolPermissionDecision::Confirm,
                     ToolPermissionMode::Auto => ToolPermissionDecision::Judge,
                 };
@@ -328,10 +413,10 @@ impl ToolPermissionDecision {
                     // because we can't safely verify the command doesn't contain
                     // hidden sub-commands that bypass the allow patterns.
                     return ToolPermissionDecision::Deny(format!(
-                        "The {} shell does not support \"always allow\" patterns for the terminal \
-                         tool because Zed cannot parse its command chaining syntax. Please remove \
-                         the always_allow patterns from your tool_permissions settings, or switch \
-                         to a POSIX-conforming shell.",
+                        "{} シェルではターミナルの「常に許可」パターンを使えません \
+                         (コマンドの連結構文を Zed が解析できないため)。設定 \
+                         tool_permissions の always_allow パターンを削除するか、POSIX \
+                         準拠のシェルに切り替えてください。",
                         shell_kind
                     ));
                 }
@@ -362,7 +447,7 @@ impl ToolPermissionDecision {
                 all_commands,
                 rules,
                 tool_name,
-                !any_parse_failed,
+                allow_patterns_enabled && !any_parse_failed,
                 permissions.default,
             )
         } else {
@@ -370,7 +455,7 @@ impl ToolPermissionDecision {
                 inputs.iter().map(|s| s.to_string()),
                 rules,
                 tool_name,
-                true,
+                allow_patterns_enabled,
                 permissions.default,
             )
         }
@@ -408,7 +493,7 @@ fn check_commands(
         // DENY: immediate return if any command matches a deny pattern
         if rules.always_deny.iter().any(|r| r.is_match(&command)) {
             return ToolPermissionDecision::Deny(format!(
-                "Command blocked by security rule for {} tool",
+                "{} ツールに設定された拒否パターンによりブロックされました。",
                 tool_name
             ));
         }
@@ -435,7 +520,7 @@ fn check_commands(
 
     match rules.default.unwrap_or(global_default) {
         ToolPermissionMode::Deny => {
-            ToolPermissionDecision::Deny(format!("{} tool is disabled", tool_name))
+            ToolPermissionDecision::Deny(format!("{} ツールは無効になっています。", tool_name))
         }
         ToolPermissionMode::Allow => ToolPermissionDecision::Allow,
         ToolPermissionMode::Confirm => ToolPermissionDecision::Confirm,
@@ -462,13 +547,11 @@ fn check_invalid_patterns(tool_name: &str, rules: &ToolRules) -> Option<String> 
         return None;
     }
 
-    let count = rules.invalid_patterns.len();
-    let pattern_word = if count == 1 { "pattern" } else { "patterns" };
-
     Some(format!(
-        "The {} tool cannot run because {} regex {} failed to compile. \
-         Please fix the invalid patterns in your tool_permissions settings.",
-        tool_name, count, pattern_word
+        "{} ツールは実行できません: 正規表現 {} 個がコンパイルできませんでした。\
+         設定 tool_permissions の不正なパターンを直してください。",
+        tool_name,
+        rules.invalid_patterns.len()
     ))
 }
 
@@ -505,12 +588,16 @@ pub enum TerminalExecution {
 
 /// The permission decision for an agent terminal command (ADR-F46).
 ///
-/// Inside the sandbox this is exactly [`ToolPermissionDecision::from_input`].
-/// Outside it, auto-approval doesn't apply. Deny patterns, the built-in safety
-/// rules and the shell-substitution check refuse the command as they would in
-/// confirm mode, and a "deny" default still refuses it unless one of the
-/// user's allow patterns matches the whole command. Everything else asks,
-/// including every command an allow source would have approved.
+/// Inside the sandbox this is [`ToolPermissionDecision::from_input`], except
+/// that a shell substitution is not refused outright: the sandbox bounds what
+/// the expansion can do, so the mode decides whether to ask
+/// ([`sandboxed_substitution_policy`], 決定 2).
+///
+/// Outside the sandbox, auto-approval doesn't apply. Deny patterns, the
+/// built-in safety rules and the shell-substitution check refuse the command
+/// as they would in confirm mode, and a "deny" default still refuses it unless
+/// one of the user's allow patterns matches the whole command. Everything else
+/// asks, including every command an allow source would have approved.
 pub fn decide_terminal_permission(
     inputs: &[String],
     permissions: &ToolPermissions,
@@ -518,9 +605,13 @@ pub fn decide_terminal_permission(
     execution: TerminalExecution,
 ) -> ToolPermissionDecision {
     match execution {
-        TerminalExecution::Sandboxed => {
-            ToolPermissionDecision::from_input(TerminalTool::NAME, inputs, permissions, shell_kind)
-        }
+        TerminalExecution::Sandboxed => ToolPermissionDecision::decide(
+            TerminalTool::NAME,
+            inputs,
+            permissions,
+            shell_kind,
+            sandboxed_substitution_policy(permissions),
+        ),
         TerminalExecution::Unsandboxed => {
             if let ToolPermissionDecision::Deny(reason) = ToolPermissionDecision::from_input(
                 TerminalTool::NAME,
@@ -553,6 +644,25 @@ pub fn decide_terminal_permission(
                 | ToolPermissionDecision::Judge => ToolPermissionDecision::Confirm,
             }
         }
+    }
+}
+
+/// How a substitution in a command that will run inside the sandbox is treated
+/// (決定 2).
+///
+/// The user's own patterns come first: a substitution could spell a command
+/// their `always_deny` pattern was meant to catch, so with deny patterns in
+/// play the command is refused exactly as it is outside the sandbox, and with
+/// `always_confirm` patterns it is shown to the user. Only when neither kind of
+/// pattern exists does the mode alone decide.
+fn sandboxed_substitution_policy(permissions: &ToolPermissions) -> SubstitutionPolicy {
+    let rules = permissions.tools.get(TerminalTool::NAME);
+    if rules.is_some_and(|rules| !rules.always_deny.is_empty()) {
+        SubstitutionPolicy::Refuse
+    } else if rules.is_some_and(|rules| !rules.always_confirm.is_empty()) {
+        SubstitutionPolicy::Confirm
+    } else {
+        SubstitutionPolicy::NoAutoApproval
     }
 }
 
@@ -618,8 +728,18 @@ pub fn decide_permission_for_paths(
     raw_paths: &[String],
     settings: &AgentSettings,
 ) -> ToolPermissionDecision {
-    let raw_inputs: Vec<String> = raw_paths.to_vec();
-    let raw_decision = decide_permission_from_settings(tool_name, &raw_inputs, settings);
+    decide_permission_for_paths_in(tool_name, raw_paths, &settings.tool_permissions)
+}
+
+fn decide_permission_for_paths_in(
+    tool_name: &str,
+    raw_paths: &[String],
+    permissions: &ToolPermissions,
+) -> ToolPermissionDecision {
+    let decide = |inputs: &[String]| {
+        ToolPermissionDecision::from_input(tool_name, inputs, permissions, ShellKind::system())
+    };
+    let raw_decision = decide(raw_paths);
 
     let normalized: Vec<String> = raw_paths.iter().map(|p| normalize_path(p)).collect();
     let any_changed = raw_paths
@@ -630,9 +750,7 @@ pub fn decide_permission_for_paths(
         return raw_decision;
     }
 
-    let normalized_decision = decide_permission_from_settings(tool_name, &normalized, settings);
-
-    most_restrictive(raw_decision, normalized_decision)
+    most_restrictive(raw_decision, decide(&normalized))
 }
 
 pub fn decide_permission_for_path(
@@ -641,6 +759,66 @@ pub fn decide_permission_for_path(
     settings: &AgentSettings,
 ) -> ToolPermissionDecision {
     decide_permission_for_paths(tool_name, &[raw_path.to_string()], settings)
+}
+
+/// Decides permission for paths that lie outside every worktree root of the
+/// project (決定 3).
+///
+/// "Allow everything" mode covers the project the user opened, not the rest of
+/// the disk, so out here it approves nothing on its own: every default asks.
+/// Only a pattern the user wrote for this tool — which names the path they
+/// meant to hand over — can still allow the call, and their deny and confirm
+/// patterns work as they do everywhere else. The judge gets no say either: it
+/// is instructed to refuse writes outside the worktree roots, so asking it
+/// would only add latency before the same prompt.
+pub fn decide_permission_for_paths_outside_project(
+    tool_name: &str,
+    raw_paths: &[String],
+    settings: &AgentSettings,
+) -> ToolPermissionDecision {
+    decide_permission_for_paths_in(
+        tool_name,
+        raw_paths,
+        &permissions_with_asking_defaults(tool_name, &settings.tool_permissions),
+    )
+}
+
+/// One tool's permissions with every approving default replaced by "ask",
+/// leaving the user's patterns — and any denial — in place.
+fn permissions_with_asking_defaults(
+    tool_name: &str,
+    permissions: &ToolPermissions,
+) -> ToolPermissions {
+    let mut tools = collections::HashMap::default();
+    if let Some(rules) = permissions.tools.get(tool_name) {
+        tools.insert(
+            Arc::from(tool_name),
+            ToolRules {
+                // Keep the tool-specific default present, so the global
+                // default can't apply in its place.
+                default: rules.default.map(asking_instead_of_approving),
+                always_allow: rules.always_allow.clone(),
+                always_deny: rules.always_deny.clone(),
+                always_confirm: rules.always_confirm.clone(),
+                invalid_patterns: rules.invalid_patterns.clone(),
+            },
+        );
+    }
+    ToolPermissions {
+        default: asking_instead_of_approving(permissions.default),
+        tools,
+    }
+}
+
+fn asking_instead_of_approving(mode: ToolPermissionMode) -> ToolPermissionMode {
+    match mode {
+        // A blanket allow becomes a question, and so does the judge, which is
+        // told to refuse this case anyway. A denial stays a denial.
+        ToolPermissionMode::Allow | ToolPermissionMode::Auto | ToolPermissionMode::Confirm => {
+            ToolPermissionMode::Confirm
+        }
+        ToolPermissionMode::Deny => ToolPermissionMode::Deny,
+    }
 }
 
 pub fn most_restrictive(
@@ -906,6 +1084,7 @@ mod tests {
             sidebar_enabled: true,
             sidebar_side: Default::default(),
             panel_thread_history: true,
+            panel_tab_bar: Default::default(),
             thinking_display: Default::default(),
         }
     }
@@ -1925,7 +2104,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_invalid_patterns_pluralizes_message() {
+    fn multiple_invalid_patterns_are_counted_in_the_message() {
         let mut tools = collections::HashMap::default();
         tools.insert(
             Arc::from(TerminalTool::NAME),
@@ -1962,8 +2141,8 @@ mod tests {
         match result {
             ToolPermissionDecision::Deny(msg) => {
                 assert!(
-                    msg.contains("2 regex patterns"),
-                    "Expected '2 regex patterns' in message, got: {}",
+                    msg.contains("正規表現 2 個"),
+                    "Expected the failing pattern count in the message, got: {}",
                     msg
                 );
             }
@@ -3157,12 +3336,9 @@ mod tests {
             panic!("a substitution outside the sandbox must be refused");
         };
         // The model is told why, and that the user can run it themselves.
+        assert!(reason.contains("安全に提示できません"), "{reason}");
         assert!(
-            reason.contains("can't be shown for that approval safely"),
-            "{reason}"
-        );
-        assert!(
-            reason.contains("run it themselves in a terminal"),
+            reason.contains("ユーザー自身のターミナルで実行"),
             "{reason}"
         );
         assert_eq!(
@@ -3209,5 +3385,225 @@ mod tests {
             terminal_permission("rm build.log", &deny_pattern, TerminalExecution::Sandboxed),
             ToolPermissionDecision::Deny(_)
         ));
+    }
+
+    fn terminal_rules_with_confirm(
+        global_default: ToolPermissionMode,
+        confirm: &[&str],
+    ) -> ToolPermissions {
+        let mut tools = collections::HashMap::default();
+        tools.insert(
+            Arc::from(TerminalTool::NAME),
+            ToolRules {
+                default: None,
+                always_allow: vec![],
+                always_deny: vec![],
+                always_confirm: confirm
+                    .iter()
+                    .map(|pattern| {
+                        CompiledRegex::new(pattern, false)
+                            .unwrap_or_else(|| panic!("invalid regex in test: {pattern:?}"))
+                    })
+                    .collect(),
+                invalid_patterns: vec![],
+            },
+        );
+        ToolPermissions {
+            default: global_default,
+            tools,
+        }
+    }
+
+    /// 決定 2: the whole table for a command carrying a shell substitution —
+    /// where it runs × the mode × which patterns the user wrote.
+    #[test]
+    fn sandboxed_substitution_table() {
+        let substituting = "echo $HOME";
+
+        // Inside the sandbox the mode decides, because the sandbox — not the
+        // unexpanded text — is what bounds the command.
+        for (global_default, expected) in [
+            (ToolPermissionMode::Confirm, ToolPermissionDecision::Confirm),
+            (ToolPermissionMode::Auto, ToolPermissionDecision::Judge),
+            (ToolPermissionMode::Allow, ToolPermissionDecision::Allow),
+        ] {
+            assert_eq!(
+                terminal_permission(
+                    substituting,
+                    &global_default_only(global_default),
+                    TerminalExecution::Sandboxed,
+                ),
+                expected,
+                "{global_default:?} inside the sandbox"
+            );
+        }
+        assert!(matches!(
+            terminal_permission(
+                substituting,
+                &global_default_only(ToolPermissionMode::Deny),
+                TerminalExecution::Sandboxed,
+            ),
+            ToolPermissionDecision::Deny(_)
+        ));
+
+        // Outside it, nothing changes: the command is still unapprovable.
+        for global_default in [
+            ToolPermissionMode::Confirm,
+            ToolPermissionMode::Auto,
+            ToolPermissionMode::Allow,
+            ToolPermissionMode::Deny,
+        ] {
+            assert!(
+                matches!(
+                    terminal_permission(
+                        substituting,
+                        &global_default_only(global_default),
+                        TerminalExecution::Unsandboxed,
+                    ),
+                    ToolPermissionDecision::Deny(_)
+                ),
+                "{global_default:?} outside the sandbox"
+            );
+        }
+
+        // An allow pattern may not approve it even inside the sandbox: the
+        // pattern only ever saw the unexpanded command.
+        let allow_pattern = terminal_rules(ToolPermissionMode::Confirm, None, &["^echo\\b"], &[]);
+        assert_eq!(
+            terminal_permission(substituting, &allow_pattern, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Confirm
+        );
+        assert_eq!(
+            terminal_permission("echo hello", &allow_pattern, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Allow,
+            "the same pattern still auto-approves a command without substitutions"
+        );
+
+        // A user who wrote deny patterns gets the old refusal, because a
+        // substitution could spell exactly what they denied.
+        let unrelated_deny = terminal_rules(ToolPermissionMode::Allow, None, &[], &["^curl\\b"]);
+        assert!(
+            matches!(
+                terminal_permission(substituting, &unrelated_deny, TerminalExecution::Sandboxed),
+                ToolPermissionDecision::Deny(_)
+            ),
+            "deny patterns must not be dodged by a substitution"
+        );
+
+        // Confirm patterns can't be checked against the expansion either, so
+        // the user is asked even under a blanket allow.
+        let unrelated_confirm =
+            terminal_rules_with_confirm(ToolPermissionMode::Allow, &["^git\\s+push\\b"]);
+        assert_eq!(
+            terminal_permission(
+                substituting,
+                &unrelated_confirm,
+                TerminalExecution::Sandboxed
+            ),
+            ToolPermissionDecision::Confirm
+        );
+        assert_eq!(
+            terminal_permission(
+                "echo hello",
+                &unrelated_confirm,
+                TerminalExecution::Sandboxed
+            ),
+            ToolPermissionDecision::Allow,
+            "without a substitution the blanket allow still applies"
+        );
+
+        // The built-in safety rules are unreachable by any of this.
+        assert!(matches!(
+            terminal_permission(
+                "rm -rf $HOME",
+                &global_default_only(ToolPermissionMode::Allow),
+                TerminalExecution::Sandboxed,
+            ),
+            ToolPermissionDecision::Deny(_)
+        ));
+    }
+
+    /// 決定 3: outside every worktree root, the mode's blanket approval (and
+    /// the judge) stop applying; only the user's own patterns can still allow.
+    #[test]
+    fn outside_the_project_the_mode_cannot_approve() {
+        let outside = "/etc/hosts".to_string();
+
+        for global_default in [
+            ToolPermissionMode::Allow,
+            ToolPermissionMode::Auto,
+            ToolPermissionMode::Confirm,
+        ] {
+            let settings = test_agent_settings(global_default_only(global_default));
+            assert_eq!(
+                decide_permission_for_paths_outside_project(
+                    EditFileTool::NAME,
+                    std::slice::from_ref(&outside),
+                    &settings,
+                ),
+                ToolPermissionDecision::Confirm,
+                "{global_default:?} outside the project"
+            );
+            assert_eq!(
+                decide_permission_for_paths(
+                    EditFileTool::NAME,
+                    std::slice::from_ref(&outside),
+                    &settings,
+                ),
+                match global_default {
+                    ToolPermissionMode::Allow => ToolPermissionDecision::Allow,
+                    ToolPermissionMode::Auto => ToolPermissionDecision::Judge,
+                    _ => ToolPermissionDecision::Confirm,
+                },
+                "the in-project decision is untouched"
+            );
+        }
+
+        // A denial still denies without asking.
+        let denied = test_agent_settings(global_default_only(ToolPermissionMode::Deny));
+        assert!(matches!(
+            decide_permission_for_paths_outside_project(
+                EditFileTool::NAME,
+                std::slice::from_ref(&outside),
+                &denied,
+            ),
+            ToolPermissionDecision::Deny(_)
+        ));
+
+        // A pattern the user wrote for this path is their own decision to
+        // hand it over, so it still allows.
+        let mut tools = collections::HashMap::default();
+        tools.insert(
+            Arc::from(EditFileTool::NAME),
+            ToolRules {
+                default: Some(ToolPermissionMode::Allow),
+                always_allow: vec![CompiledRegex::new("^/etc/hosts$", false).expect("valid regex")],
+                always_deny: vec![],
+                always_confirm: vec![],
+                invalid_patterns: vec![],
+            },
+        );
+        let with_pattern = test_agent_settings(ToolPermissions {
+            default: ToolPermissionMode::Confirm,
+            tools,
+        });
+        assert_eq!(
+            decide_permission_for_paths_outside_project(
+                EditFileTool::NAME,
+                std::slice::from_ref(&outside),
+                &with_pattern,
+            ),
+            ToolPermissionDecision::Allow
+        );
+        assert_eq!(
+            decide_permission_for_paths_outside_project(
+                EditFileTool::NAME,
+                &["/etc/shadow".to_string()],
+                &with_pattern,
+            ),
+            ToolPermissionDecision::Confirm,
+            "a path the pattern doesn't name is still asked about, \
+             even though the tool's default is allow"
+        );
     }
 }

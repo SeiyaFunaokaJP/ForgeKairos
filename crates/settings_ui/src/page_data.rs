@@ -8603,7 +8603,7 @@ fn collaboration_page() -> SettingsPage {
 }
 
 fn ai_page(cx: &App) -> SettingsPage {
-    fn general_section() -> [SettingsPageItem; 11] {
+    fn general_section() -> [SettingsPageItem; 12] {
         [
             SettingsPageItem::SectionHeader("全般"),
             // The only UI writer of `agent.enabled` (ADR-F13, `docs/jp-enhance/DESIGN.md`):
@@ -8680,6 +8680,20 @@ fn ai_page(cx: &App) -> SettingsPage {
                             .agent
                             .get_or_insert_default()
                             .panel_thread_history = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "パネルのタブバー",
+                description: "エージェントパネル内のタブ列をいつ表示するかを設定します。「自動」はパネル内のスレッド履歴が出ていて分割していないとき (履歴側に開いているタブが並ぶため) 隠します。「表示しない」でも、パネルが狭くて履歴もその帯も出せないときは、開いているタブへ届かなくなるので表示します。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.panel_tab_bar"),
+                    pick: |settings_content| settings_content.agent.as_ref()?.panel_tab_bar.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.agent.get_or_insert_default().panel_tab_bar = value;
                     },
                 }),
                 metadata: None,

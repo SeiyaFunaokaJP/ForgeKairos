@@ -2221,6 +2221,327 @@ async fn test_markdown_heading_creases(cx: &mut TestAppContext) {
     });
 }
 
+/// The document the Markdown code fence fold tests work on. Rows: 2..4 a
+/// backtick fence with an injected language, 6..8 a tilde fence, and 10..14 a
+/// four-backtick fence holding a three-backtick one.
+const MARKDOWN_FENCE_FIXTURE: &str = indoc! {"
+    本文
+
+    ```rust
+    fn 中身() {}
+    ```
+
+    ~~~
+    チルダ
+    ~~~
+
+    ````
+    ```
+    入れ子
+    ```
+    ````
+"};
+
+#[gpui::test]
+async fn test_markdown_fence_creases(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    // Registered so that the ```rust block really becomes an injected Rust
+    // layer, which is what puts that layer's own text objects in the way of the
+    // fence the Markdown layer captured.
+    let language_registry = Arc::new(language::LanguageRegistry::test(cx.executor()));
+    language_registry.add(markdown_lang());
+    language_registry.add(rust_lang());
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| {
+        buffer.set_language_registry(language_registry.clone());
+        buffer.set_language(Some(markdown_lang()), cx);
+    });
+    cx.set_state(&format!("ˇ{MARKDOWN_FENCE_FIXTURE}"));
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+
+        // The opening fence stays visible, so the fold starts at its end.
+        assert_eq!(
+            crease_rows(2),
+            Some(2..4),
+            "a backtick fence folds down to its opening line"
+        );
+        assert_eq!(crease_rows(6), Some(6..8), "a tilde fence folds too");
+        assert_eq!(
+            crease_rows(10),
+            Some(10..14),
+            "a four-backtick fence folds past the three-backtick one it holds"
+        );
+
+        assert_eq!(
+            crease_rows(11),
+            None,
+            "a fence line inside a longer fence opens nothing, so it offers no \
+             fold of its own"
+        );
+        assert_eq!(
+            crease_rows(4),
+            None,
+            "a closing fence offers no fold: its block starts on another row"
+        );
+        assert_eq!(crease_rows(3), None, "a body line offers no fold");
+        assert_eq!(crease_rows(0), None, "prose offers no fold");
+    });
+
+    // A fence that is never closed runs to the end of the buffer.
+    cx.set_state(indoc! {"
+        ˇ本文
+
+        ```
+        閉じ忘れ"});
+    cx.executor().run_until_parked();
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(2))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            Some(2..3),
+            "an unclosed fence folds everything below it"
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_markdown_details_creases(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    cx.set_state(indoc! {"
+        ˇ<details><summary>開く</summary>
+
+        ```
+        本文
+        ```
+        </details>
+
+        あと"});
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+
+        assert_eq!(
+            crease_rows(0),
+            Some(0..5),
+            "the disclosure folds through its closing tag, leaving the summary visible"
+        );
+        assert_eq!(
+            crease_rows(2),
+            Some(2..4),
+            "the fence inside the disclosure still folds on its own"
+        );
+        assert_eq!(crease_rows(5), None, "the closing tag offers no fold");
+    });
+
+    // Nested disclosures are counted, so the outer one folds past the inner
+    // one's closing tag.
+    cx.set_state(indoc! {"
+        ˇ<details><summary>外</summary>
+
+        <details><summary>内</summary>
+
+        中身
+
+        </details>
+
+        </details>"});
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+
+        assert_eq!(
+            crease_rows(0),
+            Some(0..8),
+            "the outer disclosure folds past the inner closing tag"
+        );
+        assert_eq!(
+            crease_rows(2),
+            Some(2..6),
+            "the inner one folds its own body"
+        );
+    });
+
+    // A disclosure quoted inside a fenced code block is an example, and the
+    // `</details>` in it closes nothing.
+    cx.set_state(indoc! {"
+        ˇ```
+        <details><summary>偽</summary>
+        </details>
+        ```
+
+        <details><summary>本物</summary>
+
+        本文"});
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+
+        assert_eq!(
+            crease_rows(1),
+            None,
+            "a `<details>` inside a fenced code block offers no fold"
+        );
+        assert_eq!(
+            crease_rows(5),
+            Some(5..7),
+            "an unclosed disclosure folds to the end of the buffer"
+        );
+    });
+
+    // A self-contained disclosure has no body rows to hide.
+    cx.set_state("ˇ<details><summary>題</summary>本文</details>\n\nあと");
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(0))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            None
+        );
+    });
+
+    // `editor::FoldAll` reaches the disclosure and the fence nested in it
+    // through the same crease lookup, and the two nest rather than fight.
+    cx.set_state(indoc! {"
+        ˇ<details><summary>開く</summary>
+
+        ```
+        本文
+        ```
+        </details>
+
+        あと"});
+    cx.update_editor(|editor, window, cx| {
+        editor.fold_all(&FoldAll, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            "<details><summary>開く</summary>⋯\n\nあと"
+        );
+
+        // Folding the fence on its own and then the disclosure around it, and
+        // taking both back, has to land on the text it started from.
+        editor.unfold_all(&UnfoldAll, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            "<details><summary>開く</summary>\n\n```\n本文\n```\n</details>\n\nあと"
+        );
+        editor.fold_at(MultiBufferRow(2), window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            "<details><summary>開く</summary>\n\n```⋯\n</details>\n\nあと"
+        );
+        editor.fold_at(MultiBufferRow(0), window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            "<details><summary>開く</summary>⋯\n\nあと"
+        );
+        editor.unfold_at(MultiBufferRow(0), window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            "<details><summary>開く</summary>\n\n```⋯\n</details>\n\nあと"
+        );
+        editor.unfold_all(&UnfoldAll, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            "<details><summary>開く</summary>\n\n```\n本文\n```\n</details>\n\nあと"
+        );
+    });
+
+    // Another language's buffer keeps its own folds; `<details>` means nothing
+    // there.
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state(indoc! {"
+        ˇ<details><summary>開く</summary>
+
+        本文
+        </details>"});
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(0))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            None,
+            "the disclosure fold is offered in Markdown buffers only"
+        );
+    });
+}
+
+/// A `<details>` whose closing tag is further away than the scan looks offers no
+/// fold at all: the gutter is drawn row by row, so the alternative is walking a
+/// large file on every frame.
+#[gpui::test]
+async fn test_markdown_details_crease_gives_up_past_its_scan_limit(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    let mut text = String::from("<details><summary>開く</summary>\n");
+    for row in 1..2_500 {
+        text.push_str(&format!("本文 {row}\n"));
+    }
+    cx.update_buffer(|buffer, cx| buffer.set_text(text.as_str(), cx));
+    cx.executor().run_until_parked();
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(0))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            None,
+            "an unclosed disclosure past the scan limit offers no fold"
+        );
+    });
+
+    // The same document with the closing tag inside the scanned window folds.
+    let mut text = String::from("<details><summary>開く</summary>\n");
+    for row in 1..1_500 {
+        text.push_str(&format!("本文 {row}\n"));
+    }
+    text.push_str("</details>\n");
+    cx.update_buffer(|buffer, cx| buffer.set_text(text.as_str(), cx));
+    cx.executor().run_until_parked();
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(0))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            Some(0..1_500),
+            "a closing tag inside the scanned window is still found"
+        );
+    });
+}
+
 #[gpui::test]
 async fn test_fold_markdown_headings_by_level(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
@@ -44191,6 +44512,157 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_insert_markdown_details(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // Outside Markdown nothing is inserted
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state("textˇ");
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state("textˇ");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // With no selection the body is a single blank line, and the summary is left
+    // selected so it can be typed over
+    cx.set_state("ˇ");
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state(indoc! {"
+        <details><summary>«開くˇ»</summary>
+
+        ```
+
+        ```
+        </details>"});
+
+    // A selection becomes the body of the fenced block
+    cx.set_state("«codeˇ»");
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state(indoc! {"
+        <details><summary>«開くˇ»</summary>
+
+        ```
+        code
+        ```
+        </details>"});
+
+    // One undo takes the whole insertion back
+    cx.update_editor(|e, window, cx| e.undo(&Undo, window, cx));
+    assert_eq!(cx.buffer_text(), "code");
+
+    // A multi-byte selection is carried over untouched
+    cx.set_state("«日本語ˇ»");
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state(indoc! {"
+        <details><summary>«開くˇ»</summary>
+
+        ```
+        日本語
+        ```
+        </details>"});
+
+    // The fence outruns the longest run of backticks in the body, and is spelled
+    // with backticks so that a tilde fence inside cannot close it either. Blank
+    // lines are kept on both sides of the disclosure.
+    cx.set_state(indoc! {"
+        before
+        «```
+        ~~~
+        x
+        ```ˇ»
+        after
+    "});
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state(indoc! {"
+        before
+
+        <details><summary>«開くˇ»</summary>
+
+        ````
+        ```
+        ~~~
+        x
+        ```
+        ````
+        </details>
+
+        after
+    "});
+
+    // A cursor inside a line splits it: the tail follows the disclosure rather
+    // than being swallowed by it, and the summary offset survives the leading
+    // blank line
+    cx.set_state("abcˇdef");
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state(indoc! {"
+        abc
+
+        <details><summary>«開くˇ»</summary>
+
+        ```
+
+        ```
+        </details>
+
+        def"});
+
+    // A selection that starts and ends mid-line is widened to whole lines, the
+    // way `markdown::WrapInCodeBlock` does it
+    cx.set_state(indoc! {"
+        a«bc
+        deˇ»f"});
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state(indoc! {"
+        <details><summary>«開くˇ»</summary>
+
+        ```
+        abc
+        def
+        ```
+        </details>"});
+
+    // Every cursor gets a disclosure of its own, each with its summary selected
+    cx.set_state(indoc! {"
+        ˇa
+        ˇb"});
+    cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+    cx.assert_editor_state(indoc! {"
+        <details><summary>«開くˇ»</summary>
+
+        ```
+
+        ```
+        </details>
+
+        a
+
+        <details><summary>«開くˇ»</summary>
+
+        ```
+
+        ```
+        </details>
+
+        b"});
+
+    // A CRLF file is held as LF with its line ending recorded elsewhere, so the
+    // inserted block cannot leave a stray `\r` behind
+    cx.update_buffer(|buffer, cx| {
+        buffer.set_text("一\r\n二", cx);
+    });
+    cx.update_editor(|e, window, cx| {
+        e.select_all(&SelectAll, window, cx);
+        e.insert_markdown_details(&InsertDetails, window, cx);
+    });
+    assert_eq!(
+        cx.buffer_text(),
+        "<details><summary>開く</summary>\n\n```\n一\n二\n```\n</details>"
+    );
+}
+
+#[gpui::test]
 async fn test_markdown_table_target(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
 
@@ -44298,7 +44770,8 @@ async fn test_mermaid_fence_target(cx: &mut TestAppContext) {
   A --> B"
     );
 
-    // A cursor outside every fence, and one inside a fence of another language
+    // A cursor outside every fence, and one inside a fence of another
+    // language, fall back to the nearest diagram rather than to nothing
     for state in [
         indoc! {"
             前ˇ文
@@ -44311,16 +44784,32 @@ async fn test_mermaid_fence_target(cx: &mut TestAppContext) {
             ```rust
             fn main() {ˇ}
             ```
+
+            ```mermaid
+            flowchart TD
+            ```
         "},
     ] {
         cx.set_state(state);
-        assert!(
-            cx.update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
-                .is_none(),
-            "unexpected target for:
+        let Some(target) = cx.update_editor(|e, _window, cx| e.mermaid_fence_target(cx)) else {
+            panic!(
+                "expected the nearest diagram for:
 {state}"
-        );
+            );
+        };
+        assert_eq!(target.source, "flowchart TD");
     }
+
+    // A document with no diagram at all has no fence to edit
+    cx.set_state(indoc! {"
+        ```rust
+        fn main() {ˇ}
+        ```
+    "});
+    assert!(
+        cx.update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+            .is_none()
+    );
 
     // A fence that is never closed has no body to write back into
     cx.set_state(indoc! {"
@@ -44343,6 +44832,286 @@ async fn test_mermaid_fence_target(cx: &mut TestAppContext) {
         .expect("a tilde fence is a fence");
     assert_eq!(target.info, "mermaid 150");
     assert_eq!(target.source, "flowchart LR");
+}
+
+/// The body of a ```` ```mermaid ```` fence is an injection layer of its own, so
+/// the language at the cursor there is Mermaid and not Markdown. The Mermaid
+/// entry points used to gate on that language and therefore refused to edit the
+/// very diagram the cursor was standing in. Injection layers only grow when the
+/// injected language is in the registry, which is what the other Mermaid tests
+/// lack and why they could not see this.
+#[gpui::test]
+async fn test_mermaid_fence_target_in_an_injected_fence(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    let markdown = markdown_lang();
+    cx.language_registry().add(markdown.clone());
+    cx.language_registry().add(languages::language(
+        "mermaid",
+        tree_sitter_mermaid::LANGUAGE.into(),
+    ));
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown), cx));
+
+    let in_the_body = indoc! {"
+        ```mermaid
+        flowchart TD
+          Aˇ --> B
+        ```
+    "};
+
+    // What the old gate saw, and what this test would not be testing without
+    // the registry above
+    cx.set_state(in_the_body);
+    cx.run_until_parked();
+    let language = cx.update_editor(|editor, _window, cx| {
+        let snapshot = editor.buffer().read(cx).snapshot(cx);
+        snapshot
+            .language_at(editor.selections.newest_anchor().head())
+            .map(|language| language.name().to_string())
+    });
+    assert_eq!(language.as_deref(), Some("Mermaid"));
+
+    // The opening fence, the body and the closing fence all resolve to the
+    // diagram they belong to
+    for state in [
+        indoc! {"
+            ```mermaidˇ
+            flowchart TD
+              A --> B
+            ```
+        "},
+        in_the_body,
+        indoc! {"
+            ```mermaid
+            flowchart TD
+              A --> B
+            ˇ```
+        "},
+    ] {
+        cx.set_state(state);
+        cx.run_until_parked();
+        let Some(target) = cx.update_editor(|editor, _window, cx| editor.mermaid_fence_target(cx))
+        else {
+            panic!(
+                "expected the diagram the cursor is in for:
+{state}"
+            );
+        };
+        assert_eq!(
+            target.source, "flowchart TD\n  A --> B",
+            "for:
+{state}"
+        );
+        // Nothing to reveal: the cursor already stands on this diagram, and
+        // dragging it to the first body line would be a jump out of nowhere
+        cx.update_editor(|editor, window, cx| {
+            editor.reveal_mermaid_fence_target(&target, window, cx)
+        });
+        cx.assert_editor_state(state);
+    }
+
+    // A cursor in a fence of another language falls back to the next diagram
+    // down the document, not to the one above it
+    cx.set_state(indoc! {"
+        ```mermaid
+        flowchart TD
+          A --> B
+        ```
+
+        ```rust
+        fn main() {ˇ}
+        ```
+
+        ```mermaid
+        flowchart LR
+          C --> D
+        ```
+    "});
+    cx.run_until_parked();
+    let Some(target) = cx.update_editor(|editor, _window, cx| editor.mermaid_fence_target(cx))
+    else {
+        panic!("expected the nearest diagram from inside a Rust fence");
+    };
+    assert_eq!(target.source, "flowchart LR\n  C --> D");
+
+    // A fall-back diagram is rewritten on confirm, so the cursor is moved onto
+    // it: the user has to see which one the editor opened on
+    cx.update_editor(|editor, window, cx| editor.reveal_mermaid_fence_target(&target, window, cx));
+    cx.assert_editor_state(indoc! {"
+        ```mermaid
+        flowchart TD
+          A --> B
+        ```
+
+        ```rust
+        fn main() {}
+        ```
+
+        ```mermaid
+        ˇflowchart LR
+          C --> D
+        ```
+    "});
+
+    // The preview resolves its own fence and must not be redirected to a
+    // neighbouring diagram, wherever the cursor happens to be
+    let text = cx.update_editor(|editor, _window, cx| editor.text(cx));
+    let Some(diagram_offset) = text.find("flowchart TD") else {
+        panic!("the fixture no longer holds a flowchart");
+    };
+    let Some(rust_offset) = text.find("fn main") else {
+        panic!("the fixture no longer holds a Rust fence");
+    };
+    let Some(target) =
+        cx.update_editor(|editor, _window, cx| editor.mermaid_fence_target_at(diagram_offset, cx))
+    else {
+        panic!("expected the diagram at the offset the preview passed");
+    };
+    assert_eq!(target.source, "flowchart TD\n  A --> B");
+    assert!(
+        cx.update_editor(|editor, _window, cx| editor.mermaid_fence_target_at(rust_offset, cx))
+            .is_none()
+    );
+
+    // Past the last diagram, the one above the cursor is the nearest one
+    cx.set_state(indoc! {"
+        ```mermaid
+        flowchart TD
+          A --> B
+        ```
+
+        あとˇがき
+    "});
+    cx.run_until_parked();
+    let Some(target) = cx.update_editor(|editor, _window, cx| editor.mermaid_fence_target(cx))
+    else {
+        panic!("expected the diagram above the cursor");
+    };
+    assert_eq!(target.source, "flowchart TD\n  A --> B");
+
+    // A document with no diagram gets a fence of its own, which is only written
+    // once the caller confirms, so that dismissing the editor changes nothing
+    let without_a_diagram = indoc! {"
+        # 見出し
+
+        本文ˇ
+    "};
+    cx.set_state(without_a_diagram);
+    cx.run_until_parked();
+    assert!(
+        cx.update_editor(|editor, _window, cx| editor.mermaid_fence_target(cx))
+            .is_none()
+    );
+    let Some(target) = cx.update_editor(|editor, _window, cx| editor.new_mermaid_fence_target(cx))
+    else {
+        panic!("a Markdown document always has somewhere to start a diagram");
+    };
+    // Empty, so that the structured editor asks which kind of diagram to start.
+    assert_eq!(target.source, "");
+    cx.assert_editor_state(without_a_diagram);
+
+    cx.update_editor(|editor, window, cx| {
+        editor.write_mermaid_fence(&target, "flowchart LR\n    A --> B", window, cx)
+    })
+    .expect("nothing has touched the insertion point");
+    cx.assert_editor_state(indoc! {"
+        # 見出し
+
+        本文
+
+        ```mermaid
+        ˇflowchart LR
+            A --> B
+        ```
+    "});
+    cx.update_editor(|editor, window, cx| editor.undo(&Undo, window, cx));
+    cx.assert_editor_state(without_a_diagram);
+
+    // Starting a diagram from inside another fence puts it after that fence:
+    // dropped in place, its opening line would close the block it landed in and
+    // the code below would become prose
+    cx.set_state(indoc! {"
+        ```rust
+        fn main() {ˇ}
+        ```
+
+        あとがき
+    "});
+    cx.run_until_parked();
+    let Some(target) = cx.update_editor(|editor, _window, cx| editor.new_mermaid_fence_target(cx))
+    else {
+        panic!("a Markdown document always has somewhere to start a diagram");
+    };
+    cx.update_editor(|editor, window, cx| {
+        editor.write_mermaid_fence(&target, "flowchart TD", window, cx)
+    })
+    .expect("nothing has touched the insertion point");
+    cx.assert_editor_state(indoc! {"
+        ```rust
+        fn main() {}
+        ```
+
+        ```mermaid
+        ˇflowchart TD
+        ```
+
+        あとがき
+    "});
+
+    // The fence rides on anchors, so text that reaches the insertion point
+    // while the editor is open — a reload, a collaborator — is pushed along
+    // rather than replaced by the diagram
+    cx.set_state(without_a_diagram);
+    cx.run_until_parked();
+    let Some(target) = cx.update_editor(|editor, _window, cx| editor.new_mermaid_fence_target(cx))
+    else {
+        panic!("a Markdown document always has somewhere to start a diagram");
+    };
+    let text = cx.update_editor(|editor, _window, cx| editor.text(cx));
+    let Some(cursor_offset) = text.find("本文").map(|offset| offset + "本文".len()) else {
+        panic!("the fixture no longer holds the line the cursor is on");
+    };
+    cx.update_buffer(|buffer, cx| {
+        buffer.edit([(cursor_offset..cursor_offset, "の続き")], None, cx)
+    });
+    cx.update_editor(|editor, window, cx| {
+        editor.write_mermaid_fence(&target, "flowchart TD", window, cx)
+    })
+    .expect("nothing has touched the insertion point");
+    cx.assert_editor_state(indoc! {"
+        # 見出し
+
+        本文
+
+        ```mermaid
+        ˇflowchart TD
+        ```の続き
+    "});
+
+    // The context menu entry is on wherever the cursor is in a writable
+    // Markdown buffer, and off where the action has nothing to write
+    for state in [in_the_body, without_a_diagram] {
+        cx.set_state(state);
+        cx.run_until_parked();
+        assert!(
+            cx.update_editor(|editor, _window, cx| editor.can_edit_mermaid_diagram(cx)),
+            "the entry should be enabled for:
+{state}"
+        );
+    }
+    cx.update_editor(|editor, _window, _cx| editor.set_read_only(true));
+    assert!(
+        !cx.update_editor(|editor, _window, cx| editor.can_edit_mermaid_diagram(cx)),
+        "a read-only buffer cannot take a diagram"
+    );
+    cx.update_editor(|editor, _window, _cx| editor.set_read_only(false));
+    cx.update_buffer(|buffer, cx| buffer.set_language(None, cx));
+    cx.run_until_parked();
+    assert!(
+        !cx.update_editor(|editor, _window, cx| editor.can_edit_mermaid_diagram(cx)),
+        "a buffer that is not Markdown has no diagram to edit"
+    );
 }
 
 #[gpui::test]
@@ -44383,7 +45152,8 @@ async fn test_write_mermaid_fence_is_one_undo_step(cx: &mut TestAppContext) {
             window,
             cx,
         )
-    });
+    })
+    .expect("the fence still holds what the target was resolved against");
     // The cursor lands at the start of the body, which is column zero of the
     // line the indentation begins.
     cx.assert_editor_state(indoc! {"
@@ -44418,12 +45188,60 @@ async fn test_write_mermaid_fence_fills_an_empty_fence(cx: &mut TestAppContext) 
         .expect("an empty fence is still a fence");
     assert_eq!(target.source, "");
 
-    cx.update_editor(|e, window, cx| e.write_mermaid_fence(&target, "flowchart TB", window, cx));
+    cx.update_editor(|e, window, cx| e.write_mermaid_fence(&target, "flowchart TB", window, cx))
+        .expect("the empty fence is still empty");
     cx.assert_editor_state(indoc! {"
         ```mermaid
         ˇflowchart TB
         ```
     "});
+}
+
+/// The structured editor stays open while the user works, and the fence it read
+/// may be rewritten in another pane meanwhile. Writing over that would throw
+/// away an edit nobody saw, so the write is refused instead.
+#[gpui::test]
+async fn test_write_mermaid_fence_refuses_a_fence_that_changed(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(indoc! {"
+        ```mermaid
+        flowchart TDˇ
+            A --> B
+        ```
+    "});
+    let target = cx
+        .update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+        .expect("the cursor is inside a mermaid fence");
+
+    // A surgical edit rather than a fresh buffer, so that the fence is still the
+    // one the target was resolved against and only its body has moved on: a
+    // buffer replaced wholesale collapses the anchors and would be caught even
+    // by a comparison that looked at nothing but the first line.
+    cx.update_buffer(|buffer, cx| {
+        let text = buffer.text();
+        let offset = text
+            .find("A --> B")
+            .expect("the fence holds the edge the test rewrites");
+        buffer.edit([(offset..offset + "A --> B".len(), "A --> C")], None, cx);
+    });
+    let changed = indoc! {"
+        ```mermaid
+        flowchart TDˇ
+            A --> C
+        ```
+    "};
+
+    let error = cx
+        .update_editor(|e, window, cx| e.write_mermaid_fence(&target, "flowchart LR", window, cx))
+        .expect_err("the fence no longer holds what the target was resolved against");
+    assert_eq!(
+        format!("{error}"),
+        "図のテキストが編集中に変更されました。もう一度開き直してください。"
+    );
+    cx.assert_editor_state(changed);
 }
 
 #[gpui::test]

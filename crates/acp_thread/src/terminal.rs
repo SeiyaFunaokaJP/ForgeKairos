@@ -1441,6 +1441,7 @@ pub fn sandbox_worktree_writable_paths(project: &Project, cx: &App) -> Vec<PathB
 /// and every discovered repository's git/common dirs.
 pub fn sandbox_git_dirs(project: &Project, cx: &App) -> Vec<PathBuf> {
     let mut git_dirs = Vec::new();
+    let path_style = project.path_style(cx);
 
     for worktree in project.worktrees(cx) {
         let worktree = worktree.read(cx);
@@ -1455,7 +1456,7 @@ pub fn sandbox_git_dirs(project: &Project, cx: &App) -> Vec<PathBuf> {
         // resolved authoritatively at capture time — the real filesystem
         // reports `NotADirectory`, and `SandboxWrap::to_policy` skips a
         // protected path that can't exist — so it never reaches enforcement.
-        git_dirs.push(worktree_abs_path.join(".git"));
+        git_dirs.push(dot_git_path(&worktree_abs_path, path_style));
         if let Some(root_repo_common_dir) = worktree.root_repo_common_dir() {
             git_dirs.push(root_repo_common_dir.to_path_buf());
         }
@@ -1471,6 +1472,23 @@ pub fn sandbox_git_dirs(project: &Project, cx: &App) -> Vec<PathBuf> {
     git_dirs.sort();
     git_dirs.dedup();
     git_dirs
+}
+
+/// `<root>/.git` spelled the way the machine that owns `root` spells its paths.
+///
+/// `Path::join` always writes the separator of the machine Zed itself runs on,
+/// which for a remote project is the wrong machine: on a Windows client an SSH
+/// host's `/srv/app` becomes `/srv/app\.git`, a name no Linux host has. A
+/// protected path that cannot exist is skipped when the policy is built
+/// (`SandboxWrap::to_policy`, and the helper's own `classify_protected_paths`),
+/// so the repository's metadata would have been left writable to every
+/// sandboxed command on the host. The project's own style spells it as the host
+/// does; a path this cannot render (not UTF-8) keeps the local spelling rather
+/// than losing the protection.
+fn dot_git_path(root: &Path, path_style: PathStyle) -> PathBuf {
+    path_style
+        .join(root, ".git")
+        .map_or_else(|| root.join(".git"), PathBuf::from)
 }
 
 /// Whether sandboxing is *applicable* for this project at all — the feature is
@@ -2108,6 +2126,45 @@ mod linux_tests {
 #[cfg(test)]
 mod sandboxed_spawn_tests {
     use super::*;
+
+    /// The `.git` a sandboxed command may not write is the one on the machine
+    /// the worktree is on. Spelling it with this machine's separator would name
+    /// something no host has, and a protected path that cannot exist is dropped
+    /// — so the repository's metadata would stay writable. Runs the same on
+    /// every client, which is the point: the client's own OS must not decide.
+    #[test]
+    fn the_protected_git_directory_is_spelled_as_its_own_machine_spells_it() {
+        assert_eq!(
+            dot_git_path(Path::new("/srv/app"), PathStyle::Unix)
+                .to_string_lossy()
+                .as_ref(),
+            "/srv/app/.git"
+        );
+        assert_eq!(
+            dot_git_path(Path::new("/srv/app/"), PathStyle::Unix)
+                .to_string_lossy()
+                .as_ref(),
+            "/srv/app/.git",
+            "a root that already ends in a separator does not gain a second one"
+        );
+        assert_eq!(
+            dot_git_path(Path::new("C:\\work"), PathStyle::Windows)
+                .to_string_lossy()
+                .as_ref(),
+            "C:\\work\\.git"
+        );
+        // A WSL share, which is how a Windows client spells a distro's folder:
+        // still a Windows path, so it keeps the Windows separator.
+        assert_eq!(
+            dot_git_path(
+                Path::new("\\\\wsl.localhost\\Ubuntu\\srv"),
+                PathStyle::Windows
+            )
+            .to_string_lossy()
+            .as_ref(),
+            "\\\\wsl.localhost\\Ubuntu\\srv\\.git"
+        );
+    }
 
     #[test]
     fn a_wrapped_command_is_routed_to_a_sandbox_or_refused() {

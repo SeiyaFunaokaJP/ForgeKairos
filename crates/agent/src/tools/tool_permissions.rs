@@ -716,6 +716,10 @@ pub fn authorize_file_edit(
         }
 
         let explicitly_allowed = matches!(decision, ToolPermissionDecision::Allow);
+        // 決定 3: blanket approval reaches as far as the project, so a path
+        // that resolves nowhere in it is never auto-approved — it is handed to
+        // `authorize_outside_project` below instead.
+        let in_project = resolved.is_ok();
 
         // Check sensitive settings asynchronously. Short-circuit on the
         // raw-path fast paths to skip the canonicalization in
@@ -731,7 +735,7 @@ pub fn authorize_file_edit(
         };
 
         let is_sensitive = settings_kind.is_some();
-        if explicitly_allowed && !is_sensitive {
+        if explicitly_allowed && !is_sensitive && in_project {
             return Ok(());
         }
 
@@ -786,7 +790,7 @@ pub fn authorize_file_edit(
                         &tool_name,
                         vec![path_owned.to_string_lossy().to_string()],
                     );
-                    event_stream.authorize(&title, context, cx)
+                    event_stream.authorize_outside_project(&title, context, cx)
                 });
                 authorize.await
             }

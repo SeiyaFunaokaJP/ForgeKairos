@@ -3,7 +3,10 @@ use crate::{
     EvaluateSelectedText, FindAllReferences, GoToDeclaration, GoToDefinition, GoToImplementation,
     GoToTypeDefinition, Indent, Outdent, Paste, Rename, RevealInFileManager, RunToCursor,
     SelectMode, SelectionEffects, SelectionExt, ToDisplayPoint, ToggleCodeActions,
-    actions::{Format, FormatSelections, InsertMermaidDiagram, MermaidDiagramKind},
+    actions::{
+        FoldAllHeadings, Format, FormatSelections, InsertDetails, InsertMermaidDiagram,
+        MermaidDiagramKind, UnfoldAllHeadings,
+    },
     selections_collection::SelectionsCollection,
 };
 use gpui::prelude::FluentBuilder;
@@ -241,8 +244,8 @@ pub fn deploy_context_menu(
             .is_some_and(|language| language.name().as_ref() == "Markdown");
 
         // Editing a diagram needs a fence to write back into, so the entry is
-        // shown greyed out rather than hidden when the click landed elsewhere.
-        let is_in_mermaid_fence = is_markdown && editor.mermaid_fence_target(cx).is_some();
+        // shown greyed out rather than hidden in a buffer that cannot take one.
+        let can_edit_mermaid = editor.can_edit_mermaid_diagram(cx);
 
         let is_svg = editor
             .buffer()
@@ -322,7 +325,7 @@ pub fn deploy_context_menu(
                         )
                         .action("表を編集…", Box::new(EditTable))
                         .action_disabled_when(
-                            !is_in_mermaid_fence,
+                            !can_edit_mermaid,
                             "Mermaid 図を編集…",
                             Box::new(EditMermaid),
                         )
@@ -335,6 +338,11 @@ pub fn deploy_context_menu(
                             }
                             menu
                         })
+                        .action("折り畳み (details) を挿入", Box::new(InsertDetails))
+                        // The formatting bar has no heading-fold menu any more,
+                        // so these two keep a mouse-only route to it.
+                        .action("見出しをすべて畳む", Box::new(FoldAllHeadings))
+                        .action("見出しをすべて展開", Box::new(UnfoldAllHeadings))
                 })
                 .when(is_svg, |builder| {
                     builder.action(

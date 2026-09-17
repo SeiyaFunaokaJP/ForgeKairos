@@ -276,6 +276,16 @@ impl RegistryInstallStatus {
     }
 }
 
+/// ADR-F53: what this fork has to add to a registry entry's own description.
+/// The registry's text is the vendor's and says nothing of this route's
+/// limits, so the one entry that has one says so next to it.
+fn fork_agent_note(agent_id: &str) -> Option<&'static str> {
+    (agent_id == agent_servers::CLAUDE_AGENT_ID).then_some(
+        "API キー専用: サブスクリプション (Claude Pro / Max など) では使えません。\
+         サブスクリプションは公式の Claude Code をご利用ください。",
+    )
+}
+
 /// Marks an installed agent whose running connection reported a newer version.
 /// Deliberately not a button: updating an agent underneath a live session
 /// desyncs it, so the only supported update paths stay the thread's update
@@ -974,9 +984,16 @@ impl AgentRegistryPage {
                     .gap_2()
                     .justify_between()
                     .child(
-                        Label::new(agent.description().clone())
-                            .size(LabelSize::Small)
-                            .truncate(),
+                        v_flex()
+                            .min_w_0()
+                            .child(
+                                Label::new(agent.description().clone())
+                                    .size(LabelSize::Small)
+                                    .truncate(),
+                            )
+                            .children(fork_agent_note(agent.id().as_ref()).map(|note| {
+                                Label::new(note).size(LabelSize::Small).color(Color::Muted)
+                            })),
                     )
                     .child(
                         h_flex()

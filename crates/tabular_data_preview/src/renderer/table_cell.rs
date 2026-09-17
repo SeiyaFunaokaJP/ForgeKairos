@@ -74,7 +74,7 @@ impl TabularDataPreviewPane {
     ) -> AnyElement {
         let is_active = self.grid.cursor == cell && self.grid.context_menu.is_none();
         let needs_probe = self.overlay_cell() == cell;
-        let is_selected = self.selection_rect().contains(cell.row, cell.col);
+        let is_selected = self.selection_contains(cell.row, cell.col);
         let colors = cx.theme().colors();
         let paint = self.cell_paint(cell, is_selected, is_active, cx);
         // Only a cell that is clipped has anything left to show on hover; a
@@ -112,7 +112,7 @@ impl TabularDataPreviewPane {
                 this.on_cell_mouse_down(
                     cell,
                     MouseButton::Left,
-                    event.modifiers.shift,
+                    event.modifiers,
                     event.click_count,
                     event.position,
                     window,
@@ -126,7 +126,7 @@ impl TabularDataPreviewPane {
                 this.on_cell_mouse_down(
                     cell,
                     MouseButton::Right,
-                    event.modifiers.shift,
+                    event.modifiers,
                     event.click_count,
                     event.position,
                     window,
@@ -157,12 +157,17 @@ impl TabularDataPreviewPane {
         // The wrapper has to be a flex container: an absolutely positioned
         // child of a block container is laid out in flow, which would put the
         // probe below the cell instead of over it.
+        //
+        // The fill handle and the bands that grab the selection's border share
+        // that wrapper, and come after the probe so that their hitboxes are the
+        // ones the pointer finds at the cell's edge.
         div()
             .relative()
             .flex()
             .size_full()
             .child(framed_cell)
             .when(needs_probe, |this| this.child(self.active_cell_probe(cx)))
+            .children(self.grid_drag_overlays(cell, cx))
             .into_any_element()
     }
 }
@@ -183,7 +188,7 @@ pub(crate) const EDITOR_TEXT_DEBUG_SELECTOR: &str = "tabular-grid-cell-editor-te
 
 #[cfg(test)]
 mod tests {
-    use gpui::{Bounds, MouseButton, Pixels, TestAppContext, VisualTestContext, px};
+    use gpui::{Bounds, Modifiers, MouseButton, Pixels, TestAppContext, VisualTestContext, px};
     use settings::SettingsStore;
 
     use super::*;
@@ -308,7 +313,7 @@ mod tests {
             pane.on_cell_mouse_down(
                 clicked,
                 MouseButton::Left,
-                false,
+                Modifiers::none(),
                 2,
                 cell.center(),
                 window,
@@ -391,6 +396,68 @@ mod tests {
         cx.run_until_parked();
 
         assert_the_editor_covers_the_active_cell(&mut cx, "a cell clamped to one line");
+    }
+
+    /// The fill handle has to sit in the bottom right corner of the cell the
+    /// selection ends on, and be a small square there: one that filled the cell
+    /// would swallow every click on it, and one placed against the wrapper's
+    /// padding box rather than its edge would float inside the cell.
+    #[gpui::test]
+    async fn the_fill_handle_sits_in_the_corner_of_the_caret_cell(cx: &mut TestAppContext) {
+        let (_pane, _editor, mut cx) = open_the_first_body_cell(cx).await;
+
+        let cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret's cell should have been drawn");
+        let handle = cx
+            .debug_bounds(crate::grid_fill::FILL_HANDLE_DEBUG_SELECTOR)
+            .expect("the caret's cell should carry the fill handle");
+        assert!(
+            cell.size.width > px(0.) && cell.size.height > px(0.),
+            "the cell was drawn with no size ({cell:?})"
+        );
+        assert_eq!(
+            handle.bottom_right(),
+            cell.bottom_right(),
+            "the handle should end where the cell does ({handle:?} against {cell:?})"
+        );
+        assert!(
+            handle.size.width < cell.size.width && handle.size.height < cell.size.height,
+            "the handle should be a small square in the corner rather than the \
+             whole cell ({handle:?} against {cell:?})"
+        );
+
+        // Opening the cell for input hides it: the overlay editor covers the
+        // corner it would sit in.
+        cx.simulate_keystrokes("f2");
+        cx.run_until_parked();
+        assert_eq!(
+            cx.debug_bounds(crate::grid_fill::FILL_HANDLE_DEBUG_SELECTOR),
+            None
+        );
+    }
+
+    /// The fill handle and the bands that grab the selection's border hang off
+    /// the same wrapper as the cell and take presses of their own. Away from the
+    /// corner and the edges the cell has to keep them, or the selected cell -
+    /// the one the pointer is most often on - would stop selecting and opening.
+    #[gpui::test]
+    async fn a_press_in_the_middle_of_the_caret_cell_still_reaches_it(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_the_first_body_cell(cx).await;
+        let cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret's cell should have been drawn");
+
+        cx.simulate_mouse_down(cell.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.drag,
+                Some(crate::grid::GridDrag::Cells),
+                "the middle of the cell still starts an ordinary drag selection"
+            );
+        });
     }
 
     /// The heading is a cell too: the caret starts on it, and the editor that

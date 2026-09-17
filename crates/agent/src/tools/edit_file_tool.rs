@@ -1405,7 +1405,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`/etc/hosts` を編集".into())
+            Some("`/etc/hosts` を編集 (プロジェクトの外)".into())
         );
 
         // Test 3: Relative path without .zed should not require confirmation
@@ -1444,12 +1444,16 @@ mod tests {
             Some("`.zed/settings.json` を編集 (プロジェクトの設定)".into())
         );
 
-        // 5.2: /etc/hosts is outside the project, but Allow auto-approves
+        // 5.2: /etc/hosts is outside the project, and blanket approval covers
+        // the project rather than the whole disk, so it still prompts (決定 3).
         let (stream_tx, mut stream_rx) = ToolCallEventStream::test();
-        cx.update(|cx| edit_tool.authorize(&PathBuf::from("/etc/hosts"), &stream_tx, cx))
-            .await
-            .unwrap();
-        assert!(stream_rx.try_recv().is_err());
+        let _auth =
+            cx.update(|cx| edit_tool.authorize(&PathBuf::from("/etc/hosts"), &stream_tx, cx));
+        let event = stream_rx.expect_authorization().await;
+        assert_eq!(
+            event.tool_call.fields.title,
+            Some("`/etc/hosts` を編集 (プロジェクトの外)".into())
+        );
 
         // 5.3: Normal in-project path with allow — no confirmation needed
         let (stream_tx, mut stream_rx) = ToolCallEventStream::test();
@@ -1472,7 +1476,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`/etc/hosts` を編集".into())
+            Some("`/etc/hosts` を編集 (プロジェクトの外)".into())
         );
 
         // 5.5: .agents/skills is a sensitive path — still prompts. The

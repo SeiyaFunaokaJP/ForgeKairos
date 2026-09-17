@@ -90,8 +90,8 @@ pub use conversation_view::open_markdown_in_workspace;
 pub use conversation_view::{ConversationView, StateChange};
 pub use external_source_prompt::ExternalSourcePrompt;
 pub use managed_claude_binary::{
-    ClaudeReleaseChannel, ManagedClaudeBinary, ManagedClaudeProgress, ensure_managed_claude_binary,
-    update_managed_claude_binary,
+    ClaudeReleaseChannel, ManagedClaudeBinary, ManagedClaudeProgress, ManagedClaudeTarget,
+    ensure_managed_claude_binary, update_managed_claude_binary,
 };
 pub(crate) use mode_selector::ModeSelector;
 pub(crate) use model_selector::ModelSelector;
@@ -240,6 +240,8 @@ actions!(
         ToggleOptionsMenu,
         /// Toggles the thread history list shown inside the agent panel.
         TogglePanelThreadHistory,
+        /// Toggles the tab bar of the agent panel's own pane.
+        TogglePanelTabBar,
         /// Toggles the profile or mode selector for switching between agent profiles.
         ToggleProfileSelector,
         /// Cycles through available session modes.
@@ -1009,6 +1011,7 @@ mod tests {
             starts_open: false,
             flexible: true,
             panel_thread_history: true,
+            panel_tab_bar: Default::default(),
             default_width: px(300.),
             default_height: px(600.),
             max_content_width: Some(px(850.)),

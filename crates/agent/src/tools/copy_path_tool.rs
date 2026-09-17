@@ -135,6 +135,16 @@ impl AgentTool for CopyPathTool {
             )
             .await);
 
+            // 決定 3: either end outside every worktree root is never
+            // approved by the mode alone. A sensitive location always prompts
+            // anyway, so it is left to the sensitive-settings path below.
+            let outside_project = sensitive_kind.is_none()
+                && project.read_with(cx, |project, cx| {
+                    [&input.source_path, &input.destination_path]
+                        .into_iter()
+                        .any(|path| project.find_project_path(path, cx).is_none())
+                });
+
             // A judged decision reaches the same authorization call, which
             // re-evaluates the settings and runs the judge there; treating it
             // as "no confirmation needed" would run the tool unreviewed.
@@ -151,7 +161,7 @@ impl AgentTool for CopyPathTool {
                 Some(cx.update(|cx| {
                     authorize_symlink_escapes(Self::NAME, &symlink_escapes, &event_stream, cx)
                 }))
-            } else if needs_confirmation {
+            } else if outside_project || needs_confirmation {
                 Some(cx.update(|cx| {
                     let src = MarkdownInlineCode(&input.source_path);
                     let dest = MarkdownInlineCode(&input.destination_path);
@@ -160,13 +170,17 @@ impl AgentTool for CopyPathTool {
                         vec![input.source_path.clone(), input.destination_path.clone()],
                     );
                     let title = format!("{src} を {dest} にコピー");
-                    authorize_with_sensitive_settings(
-                        sensitive_kind,
-                        context,
-                        &title,
-                        &event_stream,
-                        cx,
-                    )
+                    if outside_project {
+                        event_stream.authorize_outside_project(&title, context, cx)
+                    } else {
+                        authorize_with_sensitive_settings(
+                            sensitive_kind,
+                            context,
+                            &title,
+                            &event_stream,
+                            cx,
+                        )
+                    }
                 }))
             } else {
                 None

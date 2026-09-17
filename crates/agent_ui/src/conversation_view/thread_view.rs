@@ -1594,7 +1594,11 @@ impl ThreadView {
         let text = text.trim();
         if text == "/login" || text == "/logout" {
             let connection = thread.read(cx).connection().clone();
-            let can_login = !connection.auth_methods().is_empty();
+            // ADR-F53: an agent this fork restricts to an API key has the same
+            // card to show whether or not it advertises a sign-in, so `/login`
+            // reaches the guidance rather than going to the agent as a prompt.
+            let can_login = !connection.auth_methods().is_empty()
+                || agent_servers::is_api_key_only_agent(connection.agent_id().0.as_ref());
             // Does the agent have a specific logout command? Prefer that in case they need to reset internal state.
             let logout_supported = text == "/logout"
                 && self
@@ -5109,9 +5113,7 @@ impl ThreadView {
         // "AI が判定" still reviews every action, so it gets the information
         // colour rather than the warning colour that marks blanket approval.
         let (label, color, icon) = match mode {
-            settings::ToolPermissionMode::Allow => {
-                ("自動承認 中", Color::Warning, IconName::LockOff)
-            }
+            settings::ToolPermissionMode::Allow => ("全自動 中", Color::Warning, IconName::LockOff),
             settings::ToolPermissionMode::Auto => ("AI が判定 中", Color::Info, IconName::AiZed),
             settings::ToolPermissionMode::Deny | settings::ToolPermissionMode::Confirm => {
                 ("確認する", Color::Muted, IconName::Lock)
@@ -5176,7 +5178,7 @@ impl ThreadView {
                                 },
                             )
                             .toggleable_entry(
-                                "自動承認 (すべてのツールを許可)",
+                                "全自動 (サンドボックス内)",
                                 matches!(mode, settings::ToolPermissionMode::Allow),
                                 IconPosition::Start,
                                 None,
@@ -5194,7 +5196,7 @@ impl ThreadView {
                                     .max_w_72()
                                     .child(
                                         Label::new(
-                                            "自動承認でも「AI が判定」でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。サンドボックスの外で実行されるターミナルコマンドは、どちらでも毎回確認します。「AI が判定」の判定内容 (コマンドやパス) は判定に使うモデルの提供元に送られるので、ローカルのモデルをお勧めします。",
+                                            "「全自動」でも「AI が判定」でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。ターミナルのコマンドはサンドボックスの中で実行され、プロジェクトの外へのファイル操作とネットワークの追加は、どのモードでも確認します。サンドボックスの外で実行されるターミナルコマンドも毎回確認します。使えるツールの種類はモードではなくプロファイルで選びます。「AI が判定」の判定内容 (コマンドやパス) は判定に使うモデルの提供元に送られるので、ローカルのモデルをお勧めします。",
                                         )
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),

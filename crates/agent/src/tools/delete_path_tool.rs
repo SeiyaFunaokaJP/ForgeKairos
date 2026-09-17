@@ -115,6 +115,15 @@ impl AgentTool for DeletePathTool {
             let settings_kind =
                 sensitive_settings_kind(Path::new(&path), &canonical_roots, fs.as_ref()).await;
 
+            // 決定 3: a path outside every worktree root is never approved by
+            // the mode alone. A sensitive location (the global skills tree,
+            // the config dir) always prompts anyway, so it is left to the
+            // sensitive-settings path below.
+            let outside_project = settings_kind.is_none()
+                && project.read_with(cx, |project, cx| {
+                    project.find_project_path(&path, cx).is_none()
+                });
+
             let decision =
                 if matches!(decision, ToolPermissionDecision::Allow) && settings_kind.is_some() {
                     ToolPermissionDecision::Confirm
@@ -135,6 +144,12 @@ impl AgentTool for DeletePathTool {
                         &event_stream,
                         cx,
                     )
+                }))
+            } else if outside_project {
+                Some(cx.update(|cx| {
+                    let context = crate::ToolPermissionContext::new(Self::NAME, vec![path.clone()]);
+                    let title = format!("{} を削除", MarkdownInlineCode(&path));
+                    event_stream.authorize_outside_project(&title, context, cx)
                 }))
             } else {
                 match decision {

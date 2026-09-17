@@ -141,6 +141,8 @@ To auto-approve all tool actions:
 
 This bypasses confirmation prompts for most tools, but `always_deny`, `always_confirm`, built-in security rules, and paths inside Zed settings directories still prompt or block.
 
+Two more limits apply in this mode. Terminal commands are still confined to the sandbox, and one that would run outside it is confirmed every time. File operations that target a path outside the project's worktree roots are confirmed as well, unless one of your own `always_allow` patterns names that path: auto-approval covers the project you opened, not the rest of the filesystem.
+
 ## Shell Compatibility
 
 For the `terminal` tool, Zed parses chained commands (e.g., `echo hello && rm file`) to check each sub-command against your patterns.

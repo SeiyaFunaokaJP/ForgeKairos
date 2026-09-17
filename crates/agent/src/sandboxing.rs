@@ -247,6 +247,14 @@ pub(crate) struct ThreadSandboxGrants {
     /// target resolved at approval time. Each covers its whole subtree; redundant
     /// children are pruned on insert (by canonical target).
     write_paths: Vec<GrantedWritePath>,
+    /// Whether the user already accepted the weaker integrity guarantees of a
+    /// sandbox containing a Windows drive (DrvFs) path in this thread, so the
+    /// warning is not repeated for every command (決定 1).
+    ///
+    /// Deliberately absent from [`Self::to_db`]: this is not a permission
+    /// grant but an acknowledgement of a caveat, and a reopened thread asks
+    /// again.
+    windows_fs_warning_accepted: bool,
 }
 
 impl ThreadSandboxGrants {
@@ -387,7 +395,21 @@ impl ThreadSandboxGrants {
             network_any_host: db.network_any_host,
             network_hosts,
             write_paths,
+            windows_fs_warning_accepted: false,
         }
+    }
+
+    /// Whether the Windows-drive warning was already accepted in this thread
+    /// (決定 1).
+    pub fn windows_fs_warning_accepted(&self) -> bool {
+        self.windows_fs_warning_accepted
+    }
+
+    /// Remember that the user accepted the Windows-drive warning, so the rest
+    /// of the thread's commands don't repeat it. Only 「続行」 records this;
+    /// 「中止」 leaves it unset so the next command asks again.
+    pub fn accept_windows_fs_warning(&mut self) {
+        self.windows_fs_warning_accepted = true;
     }
 
     /// Record everything in `request` as granted for the rest of the thread,

@@ -1455,8 +1455,11 @@
     "context": "TabularDataGrid > Editor",
     "use_key_equivalents": true,
     "bindings": {
+      "cmd-d": "tabular_data::FillDown",
+      "cmd-r": "tabular_data::FillRight",
       "cmd-shift-=": "tabular_data::InsertRowsOrColumns",
       "cmd--": "tabular_data::DeleteRowsOrColumns",
+      "alt-down": "tabular_data::ToggleFilterMenu",
     },
   },
   {

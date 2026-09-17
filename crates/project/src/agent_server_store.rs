@@ -692,6 +692,16 @@ impl AgentServerStore {
         envelope: TypedEnvelope<proto::GetAgentServerCommand>,
         mut cx: AsyncApp,
     ) -> Result<proto::AgentServerCommand> {
+        // ADR-F49 MEDIUM-5: the agent's policy comes from its id and where it
+        // came from, on the host it runs on as on the client.
+        let profile = this.read_with(&cx, |this, _| {
+            SandboxedAgentProfile::for_agent(
+                &envelope.payload.name,
+                this.external_agents
+                    .get(&*envelope.payload.name)
+                    .is_some_and(|entry| entry.source == ExternalAgentSource::Registry),
+            )
+        });
         let command = this
             .update(&mut cx, |this, cx| {
                 let AgentServerStoreState::Local {
@@ -785,6 +795,23 @@ impl AgentServerStore {
         let mut env = command.env.unwrap_or_default();
         if http_client::child_process_proxy().is_some() {
             http_client::apply_child_process_proxy_env(&mut env);
+        }
+        // ADR-F53: the agent runs on this host, so the folder that keeps the
+        // official Claude Code CLI's sign-in off this route is this host's —
+        // the client cannot name it, since a path of the client's names
+        // nothing here. Only the start outside the sandbox uses it; the
+        // sandbox's own per-project folder is laid over the agent's
+        // environment when it is placed, below.
+        if let Some(config_dir) = point_the_acp_claude_at_the_forks_folder(&profile, &mut env) {
+            let fs = this.read_with(&cx, |this, _| match &this.state {
+                AgentServerStoreState::Local { fs, .. } => Some(fs.clone()),
+                AgentServerStoreState::Remote { .. } | AgentServerStoreState::Collab => None,
+            });
+            if let Some(fs) = fs {
+                // Not fatal: the agent still starts, and its own message says
+                // what it could not write.
+                fs.create_dir(&config_dir).await.log_err();
+            }
         }
 
         let (sandbox, sandbox_error) = match command.sandbox {
@@ -993,6 +1020,52 @@ impl AgentServerStore {
         });
         Ok(())
     }
+}
+
+/// ADR-F49 決定 13: an agent's own environment, in the order that decides
+/// what wins — what its distribution needs, then what the IDE adds, then the
+/// agent's settings, which are the user's own word and override both.
+///
+/// ADR-F53: the last of the three is why `agent_servers.<id>.env` is how an
+/// API key reaches an agent. Every route that starts a registry agent (this
+/// host's, and the WSL sandbox's, which builds its environment from nothing)
+/// composes it here, so the order holds for all of them.
+fn agent_environment(
+    distribution_env: HashMap<String, String>,
+    extra_env: HashMap<String, String>,
+    settings_env: HashMap<String, String>,
+) -> HashMap<String, String> {
+    let mut env = distribution_env;
+    env.extend(extra_env);
+    env.extend(settings_env);
+    env
+}
+
+/// ADR-F53: points the ACP Claude agent at the fork's own configuration
+/// folder **on the machine that starts it**, so that credentials the official
+/// Claude Code CLI on that machine is signed in with are not picked up by the
+/// Agent SDK this IDE drives. Answers with the folder where it named one, so
+/// that the caller can create it.
+///
+/// The agent's own settings are already in `env` when this is reached and are
+/// left as they are, as they are on the client's own machine: a folder the
+/// user spelled out is their own word. The sandbox does not come through here
+/// — there the profile's per-project folder is laid over the agent's
+/// environment last, and nothing can name another.
+fn point_the_acp_claude_at_the_forks_folder(
+    profile: &SandboxedAgentProfile,
+    env: &mut HashMap<String, String>,
+) -> Option<PathBuf> {
+    const CONFIG_DIR_VARIABLE: &str = "CLAUDE_CONFIG_DIR";
+    if *profile != SandboxedAgentProfile::Claude || env.contains_key(CONFIG_DIR_VARIABLE) {
+        return None;
+    }
+    let config_dir = crate::agent_sandbox::claude_acp_host_config_dir();
+    env.insert(
+        CONFIG_DIR_VARIABLE.to_string(),
+        config_dir.to_string_lossy().into_owned(),
+    );
+    Some(config_dir)
 }
 
 /// ADR-F49 MEDIUM-5: what a host it connects to says it placed for the agent,
@@ -1553,9 +1626,7 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
 
             // ADR-F49: the sandbox takes the agent's own environment only, not
             // the host's it is layered over here.
-            let mut agent_env = target_config.env.clone();
-            agent_env.extend(extra_env);
-            agent_env.extend(settings_env);
+            let agent_env = agent_environment(target_config.env.clone(), extra_env, settings_env);
             env.extend(agent_env.clone());
 
             let archive_url = &target_config.archive;
@@ -1744,9 +1815,11 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
             if let AgentLaunchTarget::Sandbox { wsl_distro } = &target {
                 let editor_network_allowlist =
                     cx.update(|cx| wsl_runtime::editor_network_allowlist(cx));
-                let mut agent_env = distribution_env.clone();
-                agent_env.extend(extra_env.clone());
-                agent_env.extend(settings_env.clone());
+                let agent_env = agent_environment(
+                    distribution_env.clone(),
+                    extra_env.clone(),
+                    settings_env.clone(),
+                );
                 match npx_agent_command_in_wsl(
                     wsl_distro.clone(),
                     cx.background_executor().clone(),
@@ -1808,22 +1881,19 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
             // ADR-F49: in the sandbox the agent reaches the network through the
             // sandbox's own proxy, so the environment it takes there has none
             // of the child-process proxy's, and none of the host's.
+            let own_env = agent_environment(distribution_env, extra_env, settings_env);
             let mut agent_env: HashMap<String, String> =
                 node_runtime::npm_command_env(&node_binary, node_runtime::NpmProxyRouting::Direct)
                     .into_iter()
                     .collect();
-            agent_env.extend(distribution_env.clone());
-            agent_env.extend(extra_env.clone());
-            agent_env.extend(settings_env.clone());
+            agent_env.extend(own_env.clone());
             // The agent process itself runs inside the egress gate (ADR-F14), so
             // its environment carries the child-process proxy along with PATH.
             env.extend(node_runtime::npm_command_env(
                 &node_binary,
                 node_runtime::NpmProxyRouting::ThroughEgressProxy,
             ));
-            env.extend(distribution_env);
-            env.extend(extra_env);
-            env.extend(settings_env);
+            env.extend(own_env);
 
             let mut command_args = vec![executable.to_string_lossy().into_owned()];
             command_args.extend(args);
@@ -2226,6 +2296,96 @@ mod tests {
 
     #[cfg(feature = "test-support")]
     const TEST_ARCHIVE_URL: &str = "https://example.test/agent";
+
+    /// ADR-F53 決定 4: an `ANTHROPIC_API_KEY` the user put in
+    /// `agent_servers.<id>.env` reaches the agent, whatever the IDE would have
+    /// set for the same name — upstream blanked it there to push the agent
+    /// onto its OAuth sign-in, which this fork does not offer. Every route
+    /// that starts a registry agent composes its environment here, so the
+    /// order is checked once.
+    #[test]
+    fn the_agents_own_settings_win_over_what_the_ide_adds() {
+        let env = agent_environment(
+            HashMap::from_iter([
+                ("PATH".to_string(), "/opt/agent/bin".to_string()),
+                (
+                    "ANTHROPIC_API_KEY".to_string(),
+                    "from-distribution".to_string(),
+                ),
+            ]),
+            HashMap::from_iter([
+                ("ANTHROPIC_API_KEY".to_string(), String::new()),
+                ("NO_BROWSER".to_string(), "1".to_string()),
+            ]),
+            HashMap::from_iter([("ANTHROPIC_API_KEY".to_string(), "sk-user".to_string())]),
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-user"),
+            "the empty default the IDE would add must not win"
+        );
+        assert_eq!(env.get("PATH").map(String::as_str), Some("/opt/agent/bin"));
+        assert_eq!(env.get("NO_BROWSER").map(String::as_str), Some("1"));
+
+        let without_settings = agent_environment(
+            HashMap::default(),
+            HashMap::from_iter([(
+                "CLAUDE_CONFIG_DIR".to_string(),
+                "/data/claude-acp-config".to_string(),
+            )]),
+            HashMap::default(),
+        );
+        assert_eq!(
+            without_settings
+                .get("CLAUDE_CONFIG_DIR")
+                .map(String::as_str),
+            Some("/data/claude-acp-config"),
+            "what the IDE adds still reaches an agent whose settings say nothing"
+        );
+    }
+
+    /// ADR-F53: an agent started on the host this project is connected to is
+    /// pointed at that host's own folder, since the client's path names
+    /// nothing there — and only the ACP Claude agent is pointed anywhere.
+    #[test]
+    fn the_host_names_the_acp_claudes_folder_unless_the_agents_settings_do() {
+        let mut env = HashMap::default();
+        let named =
+            point_the_acp_claude_at_the_forks_folder(&SandboxedAgentProfile::Claude, &mut env)
+                .expect("the host names its own folder");
+        assert_eq!(named, crate::agent_sandbox::claude_acp_host_config_dir());
+        assert_eq!(
+            env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+            Some(named.to_string_lossy().as_ref()),
+        );
+        assert_ne!(
+            named,
+            paths::home_dir().join(".claude"),
+            "never the folder the official CLI signs in to"
+        );
+
+        let mut from_settings =
+            HashMap::from_iter([("CLAUDE_CONFIG_DIR".to_string(), "/srv/claude".to_string())]);
+        assert_eq!(
+            point_the_acp_claude_at_the_forks_folder(
+                &SandboxedAgentProfile::Claude,
+                &mut from_settings
+            ),
+            None,
+            "a folder the user spelled out is their own word"
+        );
+        assert_eq!(
+            from_settings.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+            Some("/srv/claude")
+        );
+
+        let mut codex = HashMap::default();
+        assert_eq!(
+            point_the_acp_claude_at_the_forks_folder(&SandboxedAgentProfile::Codex, &mut codex),
+            None
+        );
+        assert!(codex.is_empty(), "{codex:?}");
+    }
 
     /// ADR-F49 decision 18 (C): each named process costs a `/proc` read and a
     /// namespace walk on the host before it is signalled, so a request far
@@ -3391,10 +3551,11 @@ async fn registry_archive_command_in_wsl(
         .await?
     };
 
-    let mut agent_env = target_config.env.clone();
-    agent_env.extend(extra_env);
-    agent_env.extend(settings_env);
-    env.extend(agent_env);
+    env.extend(agent_environment(
+        target_config.env.clone(),
+        extra_env,
+        settings_env,
+    ));
 
     let mut args = target_config.args.clone();
     args.extend(extra_args);

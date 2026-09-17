@@ -899,6 +899,17 @@ mod tests {
         assert!(!unclosed.contains("mermaid-error"), "{unclosed}");
     }
 
+    /// A PDF is printed once and read on paper, so a disclosure written by
+    /// `markdown::InsertDetails` has to reach it with its body intact rather
+    /// than collapsed away.
+    #[test]
+    fn test_details_keeps_its_body_in_the_printed_document() {
+        let html = render("<details><summary>開く</summary>\n\n```\n本文\n```\n</details>\n");
+        assert!(html.contains("<details><summary>開く</summary>"), "{html}");
+        assert!(html.contains("<pre><code>本文\n</code></pre>"), "{html}");
+        assert!(html.contains("</details>"), "{html}");
+    }
+
     #[test]
     fn test_blockquote_and_rule() {
         assert_eq!(

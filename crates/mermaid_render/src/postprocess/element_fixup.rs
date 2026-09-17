@@ -24,6 +24,7 @@ use std::fmt::Write as _;
 use anyhow::Result;
 use quick_xml::events::{BytesStart, Event};
 
+use super::unescape_attribute_value;
 use crate::MermaidTheme;
 
 struct ElementFixup<I> {
@@ -183,7 +184,8 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
     fn rewrite_svg_style(&self, e: &BytesStart<'_>) -> Result<Option<BytesStart<'a>>> {
         let Some(style) = e
             .try_get_attribute("style")?
-            .map(|a| a.unescape_value())
+            .as_ref()
+            .map(unescape_attribute_value)
             .transpose()?
         else {
             return Ok(None);
@@ -220,7 +222,7 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
                 }
                 b"style" => {
                     has_style = true;
-                    let style = attr.unescape_value()?;
+                    let style = unescape_attribute_value(&attr)?;
                     let style = rewrite_font_style(&style, &self.font_family_css);
                     new_elem.push_attribute(("style", style.as_ref()));
                 }
@@ -313,5 +315,58 @@ pub(super) fn process<'a>(
         font_family_css: theme.font_family.clone(),
         svg_seen: false,
         skip_rect_depth: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use quick_xml::Reader;
+    use quick_xml::events::Event;
+
+    use crate::{MermaidTheme, render_to_svg};
+
+    /// State and ER diagrams are the ones that carry the font family in the
+    /// `style` attribute of every `<text>`, which is where `merman` loses the
+    /// `;` of a trailing `&quot;`. The production theme's font family ends with
+    /// a quoted name, so before this was repaired these two diagram kinds did
+    /// not render at all with the settings Zed ships.
+    #[test]
+    fn a_font_family_that_ends_with_a_quoted_name_still_renders() {
+        for source in [
+            "stateDiagram-v2\n    [*] --> Idle\n    Idle --> [*]",
+            "erDiagram\n    CUSTOMER ||--o{ ORDER : places",
+            "flowchart TD\n    A[開始] --> B[終了]",
+        ] {
+            for font_family in [
+                MermaidTheme::default().font_family,
+                "\"Segoe UI\"".to_string(),
+                "Zed Plex Sans, sans-serif".to_string(),
+                "Inter, \"Noto Sans JP\"".to_string(),
+            ] {
+                let theme = MermaidTheme {
+                    font_family: font_family.clone(),
+                    ..MermaidTheme::default()
+                };
+                let svg = render_to_svg(source, &theme).unwrap_or_else(|error| {
+                    panic!("`{source}` should render with {font_family:?}: {error}")
+                });
+
+                let mut reader = Reader::from_str(&svg);
+                reader.config_mut().check_end_names = false;
+                loop {
+                    match reader.read_event() {
+                        Ok(Event::Eof) => break,
+                        Ok(_) => {}
+                        Err(error) => {
+                            panic!("the SVG should parse back with {font_family:?}: {error}\n{svg}")
+                        }
+                    }
+                }
+                assert!(
+                    svg.contains(&font_family.replace('"', "&quot;")),
+                    "the font family should reach the SVG intact with {font_family:?}"
+                );
+            }
+        }
     }
 }

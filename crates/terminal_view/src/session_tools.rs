@@ -5,6 +5,7 @@
 //! (see [`terminal::terminal_macro`]); this module is only the UI over it.
 
 use std::{
+    path::PathBuf,
     rc::Rc,
     sync::{Arc, atomic::AtomicBool},
 };
@@ -14,11 +15,12 @@ use editor::{Editor, EditorEvent};
 use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
-    App, AsyncWindowContext, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Render,
-    Subscription, Task, WeakEntity, Window, actions,
+    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, Entity, EventEmitter, FocusHandle,
+    Focusable, Render, Subscription, Task, WeakEntity, Window, actions,
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
+use remote::{CommandTemplate, Interactive};
 use settings::Settings as _;
 use task::{RevealStrategy, RevealTarget, SpawnInTerminal, TaskId};
 use terminal::{
@@ -37,6 +39,7 @@ use ui::{
     ToggleState, Tooltip, input_frame, input_frame_sized, prelude::*, right_click_menu,
 };
 use util::ResultExt as _;
+use util::command::Stdio;
 use workspace::{ModalView, Panel as _, Workspace};
 use zed_actions::terminal::InstallClaudeCode;
 
@@ -112,24 +115,145 @@ const CLAUDE_CODE_PACKAGE: &str = "@anthropic-ai/claude-code";
 const NPM_PROGRAM: &str = "npm";
 const CLAUDE_CODE_PROGRAM: &str = "claude";
 
+/// 接続先 (リモートプロジェクト) では、`SpawnInTerminal` の program をそのまま渡すと
+/// トランスポートが `cd … && exec env <program>` を組み立てる (ログインシェルを通らない) ため、
+/// 公式インストーラーの置き場 `~/.local/bin` が PATH に無く「見つかりません」になる。
+/// ログインシェルを通し、そこに `~/.local/bin` を足したうえで起動する。
+const REMOTE_SHELL: &str = "/bin/sh";
+/// `$0`。スクリプトの引数は `$1` から始まる。
+const REMOTE_SCRIPT_NAME: &str = "zed-claude-code";
+/// `$@` をそのまま `exec` するので、プログラム名も引数もクォートしないで渡せる。
+/// 改行ではなく `;` で区切るのは、この本文を 1 引数に引用するのが接続先のログインシェルで、
+/// csh 系は引用の中の改行を受け付けないため。
+const REMOTE_LAUNCH_SCRIPT: &str = "PATH=\"$HOME/.local/bin:$PATH\"; export PATH; exec \"$@\"";
+/// 起動と同じ PATH で `$1` を探すだけ。見つからなければ終了コードが 0 以外になる。
+const REMOTE_LOOKUP_SCRIPT: &str =
+    "PATH=\"$HOME/.local/bin:$PATH\"; export PATH; command -v -- \"$1\" >/dev/null 2>&1";
+
+/// `script` を接続先のログインシェルで実行し、`program args…` をその位置引数として渡す形。
+fn remote_invocation(script: &str, program: &str, args: &[String]) -> (String, Vec<String>) {
+    let mut wrapped = vec![
+        "-l".to_string(),
+        "-c".to_string(),
+        script.to_string(),
+        REMOTE_SCRIPT_NAME.to_string(),
+        program.to_string(),
+    ];
+    wrapped.extend(args.iter().cloned());
+    (REMOTE_SHELL.to_string(), wrapped)
+}
+
 enum ClaudeCodeCommand {
     Install,
     Launch { effort: Option<String> },
 }
 
-/// 公式 CLI を統合ターミナルの新しいタブで実行する。
+fn claude_code_program(command: &ClaudeCodeCommand) -> &'static str {
+    match command {
+        ClaudeCodeCommand::Install => NPM_PROGRAM,
+        ClaudeCodeCommand::Launch { .. } => CLAUDE_CODE_PROGRAM,
+    }
+}
+
+/// 起動前にプログラムの在処を確かめる手立て。接続先では `command -v` を 1 往復で走らせる
+/// (proto は増やさない)。確かめようが無ければ `None` で、そのまま起動して端末に結果を出す。
+enum ProgramLookup {
+    OnThisMachine(String),
+    OnRemoteHost(CommandTemplate),
+}
+
+/// 起動前の在処確認ひとそろい。どのタブに開く経路でも同じものを通すので、接続先の
+/// プロジェクトでも事前確認と案内文が飛ばされない (ADR-F53)。
+pub struct ClaudeCodeLookup {
+    /// 確かめようが無ければ `None`。そのまま起動して端末に結果を出す。
+    lookup: Option<ProgramLookup>,
+    program: &'static str,
+    on_remote_host: bool,
+}
+
+/// 公式 CLI を起動するタスク。**どこのタブに開くかは呼び出し元が決める**:
+/// 起動の入り口は `agent_ui` にあり (サンドボックス経路が IDE セッションを使うため)、
+/// エージェントパネルのタブに開く経路 (ADR-F53) は組み立てだけをここから使う。
+pub fn claude_code_launch_task(
+    effort: Option<String>,
+    workspace: &Workspace,
+    cx: &App,
+) -> SpawnInTerminal {
+    claude_code_task(&ClaudeCodeCommand::Launch { effort }, workspace, cx)
+}
+
+/// 起動前に `claude` の在処を確かめる手立て。[`claude_code_launch_task`] と対で使う。
+pub fn claude_code_launch_lookup(workspace: &Workspace, cx: &App) -> ClaudeCodeLookup {
+    claude_code_lookup(CLAUDE_CODE_PROGRAM, workspace, cx)
+}
+
+fn claude_code_lookup(program: &'static str, workspace: &Workspace, cx: &App) -> ClaudeCodeLookup {
+    let remote_client = workspace.project().read(cx).remote_client();
+    let lookup = match &remote_client {
+        Some(remote_client) => {
+            let (lookup_program, lookup_args) =
+                remote_invocation(REMOTE_LOOKUP_SCRIPT, program, &[]);
+            remote_client
+                .read(cx)
+                .build_command(
+                    Some(lookup_program),
+                    &lookup_args,
+                    &HashMap::default(),
+                    None,
+                    None,
+                    Interactive::No,
+                )
+                .map(ProgramLookup::OnRemoteHost)
+                // 接続が落ちている等で組み立てられないなら確かめずに起動し、
+                // 端末に本当の失敗理由を出させる。
+                .log_err()
+        }
+        None => Some(ProgramLookup::OnThisMachine(program.to_string())),
+    };
+    ClaudeCodeLookup {
+        lookup,
+        program,
+        on_remote_host: remote_client.is_some(),
+    }
+}
+
+impl ClaudeCodeLookup {
+    /// 起動を止めるなら案内文、起動してよければ `None`。
+    pub async fn missing_message(self, executor: &BackgroundExecutor) -> Option<String> {
+        let lookup = self.lookup?;
+        let found = executor.spawn(async move { lookup.find().await }).await;
+        (!found).then(|| claude_code_missing_program_message(self.program, self.on_remote_host))
+    }
+}
+
+/// 公式 CLI / 公式インストールコマンドを実行するタスクを組み立てる。
 ///
 /// ここで組み立てるコマンドは**人間がターミナルに打つのと同じ実行経路**なので、
 /// ADR-F18 (リモートのエージェント実行と違い人間のターミナルは対象外) /
 /// ADR-F19 と同じ扱いで **egress 許可リストの対象外**。プロキシ注入も
 /// 許可リストへのホスト追加も不要で、ここでは一切行わない。
-fn spawn_claude_code_command(
-    workspace: &mut Workspace,
-    command: ClaudeCodeCommand,
-    window: &mut Window,
-    cx: &mut Context<Workspace>,
-) {
-    let (program, args, task_id, label) = match &command {
+fn claude_code_task(
+    command: &ClaudeCodeCommand,
+    workspace: &Workspace,
+    cx: &App,
+) -> SpawnInTerminal {
+    let project = workspace.project().read(cx);
+    claude_code_spawn(
+        command,
+        crate::first_project_directory(workspace, cx),
+        project.remote_client().is_some(),
+    )
+}
+
+/// [`claude_code_task`] の中身。どこのタブに開く経路も同じものを通すので、
+/// 接続先の包み ([`remote_invocation`]) がどれか一方だけに掛かることがない
+/// (ADR-F53)。
+fn claude_code_spawn(
+    command: &ClaudeCodeCommand,
+    cwd: Option<PathBuf>,
+    on_remote_host: bool,
+) -> SpawnInTerminal {
+    let (program, args, task_id, label) = match command {
         ClaudeCodeCommand::Install => (
             NPM_PROGRAM.to_string(),
             vec![
@@ -157,51 +281,62 @@ fn spawn_claude_code_command(
         }
     };
 
+    // 包む前の論理的なコマンド行。端末に見せるのはこちらで、接続先用の `/bin/sh -l -c …` は
+    // 見せない。
     let command_label = if args.is_empty() {
         program.clone()
     } else {
         format!("{program} {}", args.join(" "))
     };
-    let cwd = crate::first_project_directory(workspace, cx);
-    // リモートプロジェクトではコマンドはリモートのシェルで動くので、
-    // ローカルの PATH を調べても意味がない (事前チェックを飛ばす)。
-    let check_local_path = !workspace.project().read(cx).is_remote();
+    // 接続先ではログインシェルを通す ([`remote_invocation`])。
+    let (program, args) = if on_remote_host {
+        remote_invocation(REMOTE_LAUNCH_SCRIPT, &program, &args)
+    } else {
+        (program, args)
+    };
+
+    SpawnInTerminal {
+        id: TaskId(task_id.to_string()),
+        full_label: label.clone(),
+        label,
+        command: Some(program),
+        args,
+        command_label,
+        cwd,
+        use_new_terminal: true,
+        allow_concurrent_runs: true,
+        reveal: RevealStrategy::Always,
+        reveal_target: RevealTarget::Dock,
+        show_summary: false,
+        // 何が実行されるのかを利用者がその場で確認できるよう、
+        // 実行するコマンド行をターミナルに表示する。
+        show_command: true,
+        // Rerunning would open the task picker: these commands are not tasks.
+        show_rerun: false,
+        ..SpawnInTerminal::default()
+    }
+}
+
+/// 組み立てたタスクを統合ターミナルの新しいタブで実行する。
+fn spawn_claude_code_command(
+    workspace: &mut Workspace,
+    command: ClaudeCodeCommand,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let lookup = claude_code_lookup(claude_code_program(&command), workspace, cx);
+    let spawn_task = claude_code_task(&command, workspace, cx);
 
     cx.spawn_in(window, async move |workspace, cx| {
-        if check_local_path {
-            let lookup_program = program.clone();
-            let found = cx
-                .background_spawn(async move { which::which(&lookup_program) })
-                .await;
-            if found.is_err() {
-                let message = claude_code_missing_program_message(&program);
+        {
+            let executor = cx.background_executor().clone();
+            if let Some(message) = lookup.missing_message(&executor).await {
                 workspace
                     .update(cx, |workspace, cx| workspace.show_error(message, cx))
                     .ok();
                 return;
             }
         }
-
-        let spawn_task = SpawnInTerminal {
-            id: TaskId(task_id.to_string()),
-            full_label: label.clone(),
-            label,
-            command: Some(program),
-            args,
-            command_label,
-            cwd,
-            use_new_terminal: true,
-            allow_concurrent_runs: true,
-            reveal: RevealStrategy::Always,
-            reveal_target: RevealTarget::Dock,
-            show_summary: false,
-            // 何が実行されるのかを利用者がその場で確認できるよう、
-            // 実行するコマンド行をターミナルに表示する。
-            show_command: true,
-            // Rerunning would open the task picker: these commands are not tasks.
-            show_rerun: false,
-            ..SpawnInTerminal::default()
-        };
 
         let Some(spawn) = spawn_task_in_terminal_panel(&workspace, &spawn_task, cx) else {
             workspace
@@ -250,15 +385,66 @@ fn spawn_task_in_terminal_panel(
         .ok()
 }
 
-fn claude_code_missing_program_message(program: &str) -> String {
-    if program == NPM_PROGRAM {
-        "npm が PATH 上に見つかりません。Claude Code のインストールには Node.js が必要です。\
-         https://nodejs.org/ から Node.js をインストールしてから、もう一度お試しください。"
-            .to_string()
-    } else {
-        "claude が PATH 上に見つかりません。先に「Claude Code をインストール (公式コマンド)」\
-         を実行してください。"
-            .to_string()
+impl ProgramLookup {
+    /// そのプログラムを起動できるか。確かめられなかったときは「ある」として扱い、
+    /// 本当の失敗理由は端末に出させる。
+    async fn find(self) -> bool {
+        match self {
+            Self::OnThisMachine(program) => which::which(&program).is_ok(),
+            Self::OnRemoteHost(template) => {
+                let mut command = util::command::new_command(&template.program);
+                command
+                    .args(&template.args)
+                    .envs(template.env)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .kill_on_drop(true);
+                match command.output().await {
+                    // `command -v` の答えだけを答えとして扱う (見つからない =
+                    // sh は 127、bash は 1)。ssh 自身が失敗したとき (255 など) に
+                    // 「接続先に claude がありません」と言うのは嘘になるので、
+                    // 確かめられなかった扱いにして端末に本当の理由を出させる。
+                    Ok(output) => match output.status.code() {
+                        Some(0) => true,
+                        Some(1) | Some(127) => false,
+                        code => {
+                            log::warn!(
+                                "the host did not answer whether it has the CLI (exit {code:?}): {}",
+                                String::from_utf8_lossy(&output.stderr).trim()
+                            );
+                            true
+                        }
+                    },
+                    Err(error) => {
+                        log::warn!("could not ask the host whether it has the CLI: {error:#}");
+                        true
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn claude_code_missing_program_message(program: &str, on_remote_host: bool) -> String {
+    match (program, on_remote_host) {
+        (NPM_PROGRAM, false) => {
+            "npm が PATH 上に見つかりません。Claude Code のインストールには Node.js が必要です。\
+             https://nodejs.org/ から Node.js をインストールしてから、もう一度お試しください。"
+                .to_string()
+        }
+        (NPM_PROGRAM, true) => "接続先のホストに npm が見つかりません。接続先のターミナルで \
+             Node.js をインストールしてから、もう一度お試しください。"
+            .to_string(),
+        (_, false) => "claude が PATH 上に見つかりません。先に「Claude Code をインストール \
+             (公式コマンド)」を実行してください。"
+            .to_string(),
+        // ADR-F49 決定 6: 接続先へこちらから勝手にインストールはしない。公式手順を案内する。
+        (_, true) => "接続先のホストに claude が見つかりません。接続先のターミナルで次の\
+             コマンドを実行してインストールしてください。\n\
+             curl -fsSL https://claude.ai/install.sh | bash\n\
+             インストールすると `~/.local/bin/claude` に入り、この起動から使えるようになります。"
+            .to_string(),
     }
 }
 
@@ -8019,6 +8205,94 @@ mod tests {
             Some(true),
             "the spawn should reach the terminal panel"
         );
+    }
+
+    /// ADR-F53: タブをどこに開く経路でも、接続先では同じ包みを通る。組み立ては
+    /// 1 つしかないので、エージェントパネルのタブ経路 (`claude_code_launch_task`)
+    /// だけがログインシェルを通らない、ということが起きない。
+    #[test]
+    fn the_task_is_wrapped_for_the_host_whichever_tab_it_opens_in() {
+        let launch = ClaudeCodeCommand::Launch {
+            effort: Some("high".to_string()),
+        };
+        let here = claude_code_spawn(&launch, None, false);
+        assert_eq!(here.command.as_deref(), Some(CLAUDE_CODE_PROGRAM));
+        assert_eq!(here.args, ["--effort", "high"]);
+
+        let on_host = claude_code_spawn(&launch, None, true);
+        assert_eq!(on_host.command.as_deref(), Some(REMOTE_SHELL));
+        assert_eq!(
+            on_host.args,
+            [
+                "-l",
+                "-c",
+                REMOTE_LAUNCH_SCRIPT,
+                REMOTE_SCRIPT_NAME,
+                "claude",
+                "--effort",
+                "high",
+            ]
+        );
+        // 端末に見せるのは包む前の論理的なコマンド行。
+        assert_eq!(on_host.command_label, here.command_label);
+        assert_eq!(on_host.command_label, "claude --effort high");
+        // インストールの導線も同じ包みを通る。
+        let install = claude_code_spawn(&ClaudeCodeCommand::Install, None, true);
+        assert_eq!(install.command.as_deref(), Some(REMOTE_SHELL));
+        assert_eq!(install.args.get(4).map(String::as_str), Some(NPM_PROGRAM));
+    }
+
+    /// リモートでは引数をクォートせずに渡せる形 (`sh -l -c … $0 program args…`) で
+    /// なければならない。ログインシェルを通すのも `~/.local/bin` を足すのもここ。
+    #[test]
+    fn the_remote_invocation_passes_arguments_as_positional_parameters() {
+        let (program, args) = remote_invocation(
+            REMOTE_LAUNCH_SCRIPT,
+            CLAUDE_CODE_PROGRAM,
+            &["--effort".to_string(), "high; touch /tmp/pwned".to_string()],
+        );
+        assert_eq!(program, REMOTE_SHELL);
+        assert_eq!(
+            args,
+            vec![
+                "-l",
+                "-c",
+                REMOTE_LAUNCH_SCRIPT,
+                REMOTE_SCRIPT_NAME,
+                "claude",
+                "--effort",
+                "high; touch /tmp/pwned",
+            ]
+        );
+        // スクリプト側は位置引数しか見ないので、引数の中身がシェル構文として解釈される
+        // 余地が無い。
+        assert!(REMOTE_LAUNCH_SCRIPT.contains("exec \"$@\""));
+        assert!(REMOTE_LAUNCH_SCRIPT.contains("$HOME/.local/bin"));
+        // 探すときは `$0` がスクリプト名なので、プログラムは `$1`。
+        let (_, lookup_args) = remote_invocation(REMOTE_LOOKUP_SCRIPT, CLAUDE_CODE_PROGRAM, &[]);
+        assert_eq!(lookup_args.last().map(String::as_str), Some("claude"));
+        assert_eq!(
+            lookup_args.get(3).map(String::as_str),
+            Some(REMOTE_SCRIPT_NAME)
+        );
+        assert!(REMOTE_LOOKUP_SCRIPT.contains("command -v -- \"$1\""));
+    }
+
+    /// 接続先に CLI が無いときは、こちらからインストールせず公式手順を案内する。
+    #[test]
+    fn the_missing_cli_message_names_where_to_install_it() {
+        let on_host = claude_code_missing_program_message(CLAUDE_CODE_PROGRAM, true);
+        assert!(on_host.contains("接続先のターミナル"), "{on_host}");
+        assert!(
+            on_host.contains("https://claude.ai/install.sh"),
+            "{on_host}"
+        );
+        assert!(on_host.contains("~/.local/bin/claude"), "{on_host}");
+        let here = claude_code_missing_program_message(CLAUDE_CODE_PROGRAM, false);
+        assert!(!here.contains("接続先"), "{here}");
+        let npm_on_host = claude_code_missing_program_message(NPM_PROGRAM, true);
+        assert!(npm_on_host.contains("npm"), "{npm_on_host}");
+        assert!(npm_on_host.contains("接続先"), "{npm_on_host}");
     }
 
     #[test]

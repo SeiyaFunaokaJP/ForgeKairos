@@ -2,8 +2,8 @@ use editor::markdown_actions::display_width;
 use gpui::{AbsoluteLength, MouseButton, MouseDownEvent, MouseMoveEvent};
 use ui::{
     ActiveTheme as _, AnyElement, Context, ElementId, InteractiveElement as _, IntoElement as _,
-    ParentElement as _, StatefulInteractiveElement as _, Styled as _, StyledTypography as _,
-    Tooltip, div, px,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
+    StyledTypography as _, Tooltip, div, px,
 };
 
 use crate::{
@@ -185,14 +185,23 @@ impl TabularDataPreviewPane {
         };
 
         let grid_row = GridRow::Body(display_row);
-        let selected = self.selection_rect().contains_row(grid_row);
+        let selected = self.selection_contains_row(grid_row);
+        // Excel paints the row numbers blue while a filter is hiding rows, which
+        // is the only standing sign that what the grid shows is not the whole
+        // file. Sorting alone leaves them as they are: nothing is missing then.
+        let filtered = self.engine.has_any_filters();
         let colors = cx.theme().colors();
+        // The "+" on the heading's top edge only shows while the pointer is on
+        // the heading, so that the column of numbers stays a column of numbers.
+        let group_name = SharedString::from(format!("tabular-grid-row-header-{}", *display_row));
 
         let value = div()
             .id(ElementId::NamedInteger(
                 "tabular-grid-row-header".into(),
                 *display_row as u64,
             ))
+            .group(group_name.clone())
+            .relative()
             .flex()
             .px_1()
             .border_color(colors.border_variant)
@@ -202,7 +211,7 @@ impl TabularDataPreviewPane {
                 colors.panel_background
             })
             .h_full()
-            .text_color(if selected {
+            .text_color(if selected || filtered {
                 colors.text_accent
             } else {
                 colors.text_muted
@@ -218,7 +227,7 @@ impl TabularDataPreviewPane {
                     this.on_row_mouse_down(
                         grid_row,
                         MouseButton::Left,
-                        event.modifiers.shift,
+                        event.modifiers,
                         event.position,
                         window,
                         cx,
@@ -231,7 +240,7 @@ impl TabularDataPreviewPane {
                     this.on_row_mouse_down(
                         grid_row,
                         MouseButton::Right,
-                        event.modifiers.shift,
+                        event.modifiers,
                         event.position,
                         window,
                         cx,
@@ -246,6 +255,7 @@ impl TabularDataPreviewPane {
                 }),
             )
             .child(row_identifier)
+            .child(self.insert_row_handle(grid_row, group_name, cx))
             .into_any_element();
         Some(value)
     }

@@ -773,12 +773,20 @@ fn evaluate_test_input(
 ) -> ToolPermissionDecision {
     let settings = AgentSettings::get_global(cx);
 
-    if outside_sandbox {
+    // A terminal command always goes through `decide_terminal_permission`, so
+    // the preview shows what actually happens at either execution location
+    // (in particular, a sandboxed command's shell substitution is not refused
+    // outright).
+    if tool_id == TerminalTool::NAME {
         return agent::decide_terminal_permission(
             &[input.to_string()],
             &settings.tool_permissions,
             ShellKind::system(),
-            agent::TerminalExecution::Unsandboxed,
+            if outside_sandbox {
+                agent::TerminalExecution::Unsandboxed
+            } else {
+                agent::TerminalExecution::Sandboxed
+            },
         );
     }
 
@@ -1229,7 +1237,7 @@ fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyEl
                 .child(Label::new("既定の権限"))
                 .child(
                     Label::new(
-                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「自動承認」と同じ設定です。「AI が判定」は、危険でないと別のモデルが判定した操作だけを自動で実行し、それ以外は確認します。どちらの場合も、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。サンドボックスの外で実行されるターミナルコマンド (サンドボックスを無効にしているとき、またはサンドボックスの無いプロジェクト) は、「許可」「AI が判定」「常に許可」に関係なく毎回確認します。",
+                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「全自動 (サンドボックス内)」と同じ設定です。「AI が判定」は、危険でないと別のモデルが判定した操作だけを自動で実行し、それ以外は確認します。どちらの場合も、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。プロジェクト (ワークツリー) の外へのファイル操作は、どの設定でも確認します (そのパスを指す「常に許可」パターンを自分で書いた場合を除く)。サンドボックスの外で実行されるターミナルコマンド (サンドボックスを無効にしているとき、またはサンドボックスの無いプロジェクト) は、「許可」「AI が判定」「常に許可」に関係なく毎回確認します。使えるツールの種類は、この設定ではなくプロファイルで選びます。",
                     )
                     .size(LabelSize::Small)
                     .color(Color::Muted),

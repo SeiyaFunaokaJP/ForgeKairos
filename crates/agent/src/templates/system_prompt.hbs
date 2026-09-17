@@ -189,7 +189,7 @@ The `terminal` tool runs commands inside a sandbox with these permissions:
 {{#each worktrees}}
   - `{{abs_path}}`
 {{/each}}
-  Protected Git metadata remains read-only. In a project on a Windows drive (`/mnt/<drive>/...`), or one without `.git`, new files and directories can't be created directly in its top-level directory; create them in a subdirectory (existing top-level files stay writable). Writes anywhere else on the WSL filesystem and mounted Windows drives are blocked.{{else}}. No project directories are currently writable.{{/if}}
+  Protected Git metadata remains read-only. In a project on a Windows drive (`/mnt/<drive>/...`), or one without `.git`, new files and directories can't be created directly in its top-level directory; create them in a subdirectory (existing top-level files stay writable). To create a file directly in that top-level directory, use the `write_file` tool instead, which doesn't run inside the sandbox and isn't subject to this restriction. Writes anywhere else on the WSL filesystem and mounted Windows drives are blocked.{{else}}. No project directories are currently writable.{{/if}}
 {{else}}
 - Writes: a per-thread temporary directory exposed via `$TMPDIR`, `$TMP`, and `$TEMP` is writable and persists across `terminal` calls in this thread{{#if worktrees}}, along with these project directories:
 {{#each worktrees}}

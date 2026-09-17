@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -8,8 +8,8 @@ use std::{
 
 use fuzzy::{StringMatch, StringMatchCandidate, match_strings};
 use gpui::{
-    BackgroundExecutor, DismissEvent, ElementId, Entity, Focusable, ForegroundExecutor,
-    MouseButton, MouseDownEvent, MouseMoveEvent, Task, transparent_black,
+    BackgroundExecutor, ElementId, Focusable, ForegroundExecutor, MouseButton, MouseDownEvent,
+    MouseMoveEvent, Task, WeakEntity, actions, transparent_black,
 };
 use picker::{Picker, PickerDelegate};
 use ui::{
@@ -19,18 +19,39 @@ use ui::{
 
 use crate::{
     TabularDataPreviewPane,
-    grid::{CellEditMode, GridCell, GridRow, column_label},
+    grid::{CellEditMode, GridCell, GridRow, SelectionChange, column_label},
     renderer::table_cell::CELL_FRAME_DEBUG_SELECTOR,
     settings::FilterSortOrder,
     table_data_engine::{
-        filtering_by_column::{FilterEntry, FilterEntryState},
+        filtering_by_column::{FilterEntry, FilterEntryState, TextFilterOp},
         sorting_by_column::{AppliedSorting, SortDirection},
     },
     types::AnyColumn,
 };
 
+actions!(
+    tabular_data,
+    [
+        /// 表のすべての列の絞り込みを解除します。
+        ClearAllFilters,
+        /// 選択中のセルの列の絞り込みメニューを開きます。
+        ToggleFilterMenu,
+    ]
+);
+
 /// Stands in for a cell with no value at all in the filter list.
 const NULL_VALUE_LABEL: &str = "(空白)";
+
+/// Marks a heading's filter button, which - unlike the sort button beside it -
+/// has to be drawn whether or not the pointer is over the column. Only the first
+/// column carries it, so that a test reads one known button rather than whichever
+/// column was painted last.
+pub(crate) const FILTER_BUTTON_DEBUG_SELECTOR: &str = "tabular-grid-filter-button";
+
+/// The sort button's counterpart of [`FILTER_BUTTON_DEBUG_SELECTOR`]. It is only
+/// recorded while the button is actually painted, which is what tells the two
+/// visibility rules apart.
+pub(crate) const SORT_BUTTON_DEBUG_SELECTOR: &str = "tabular-grid-sort-button";
 
 struct ColumnFilterRow {
     entry: FilterEntry,
@@ -48,9 +69,12 @@ enum ColumnFilterListEntry {
     },
 }
 
-struct ColumnFilterDelegate {
+pub(crate) struct ColumnFilterDelegate {
     col: AnyColumn,
-    view: Entity<TabularDataPreviewPane>,
+    /// Weak, because the pane holds a [`ui::PopoverMenuHandle`] that keeps the
+    /// deployed picker alive: a strong handle back would close the loop and the
+    /// grid would outlive its own tab.
+    view: WeakEntity<TabularDataPreviewPane>,
     /// Row order frozen at open time (available entries sorted per the
     /// column's `FilterSortOrder`, then entries hidden by other columns'
     /// filters). Kept stable so toggling a value doesn't reshuffle the list
@@ -71,7 +95,7 @@ struct ColumnFilterDelegate {
 impl ColumnFilterDelegate {
     fn new(
         col: AnyColumn,
-        view: Entity<TabularDataPreviewPane>,
+        view: WeakEntity<TabularDataPreviewPane>,
         sort_order: FilterSortOrder,
         column_filters: Arc<Vec<(FilterEntry, FilterEntryState)>>,
         cx: &mut Context<Picker<Self>>,
@@ -228,7 +252,11 @@ impl ColumnFilterDelegate {
     /// toggle changes counts/availability across the cascade) while keeping
     /// `rows`' frozen order, then re-applies the current search query.
     fn refresh_rows(&mut self, cx: &mut Context<Picker<Self>>) {
-        let column_filters = match self.view.read(cx).engine.get_filters_for_column(self.col) {
+        let column_filters = match self
+            .view
+            .read_with(cx, |view, _| view.engine.get_filters_for_column(self.col))
+            .and_then(|filters| filters)
+        {
             Ok(filters) => filters,
             Err(err) => {
                 log::error!("Failed to get filters for column: {err}");
@@ -267,6 +295,116 @@ impl ColumnFilterDelegate {
             .selected_index
             .min(self.filtered.len().saturating_sub(1));
     }
+
+    /// How many of this column's values the user can actually choose, which is
+    /// what "all of them" means for [`Self::select_listed_values`].
+    fn available_rows(&self) -> impl Iterator<Item = &ColumnFilterRow> {
+        self.rows.iter().filter(|row| row.hidden_by.is_none())
+    }
+
+    /// Excel's "select everything the search narrowed the list down to": the
+    /// values the list is showing become the column's filter. With no search in
+    /// place that is every value, which is the same as no filter at all.
+    fn select_listed_values(&mut self, cx: &mut Context<Picker<Self>>) {
+        let listed = listed_value_filter(&self.rows, &self.filtered);
+        let col = self.col;
+        // The pane is only gone when the grid's tab closed under the open
+        // popover, which the popover is about to follow.
+        self.view
+            .update(cx, |view, cx| match listed {
+                Some(values) => view.set_value_filter(col, values, cx),
+                None => view.clear_filters(col, cx),
+            })
+            .ok();
+        self.refresh_rows(cx);
+    }
+
+    /// Applies a text condition built from what is typed in the search box, or
+    /// drops it again when it is the condition already in force.
+    fn toggle_text_filter(&mut self, op: TextFilterOp, cx: &mut Context<Picker<Self>>) {
+        let col = self.col;
+        let needle = SharedString::from(self.query.clone());
+        let already_applied = self
+            .view
+            .read_with(cx, |view, _| {
+                view.engine
+                    .text_filter(col)
+                    .is_some_and(|filter| filter.op == op && filter.needle == needle)
+            })
+            .unwrap_or(false);
+
+        self.view
+            .update(cx, |view, cx| {
+                if already_applied {
+                    view.clear_filters(col, cx);
+                } else {
+                    view.set_text_filter(col, op, needle, cx);
+                }
+            })
+            .ok();
+        self.refresh_rows(cx);
+    }
+
+    /// One of the text condition buttons under the value list.
+    fn render_text_filter_button(
+        &self,
+        op: TextFilterOp,
+        active: Option<TextFilterOp>,
+        cx: &mut Context<Picker<Self>>,
+    ) -> Button {
+        // A condition that reads the typed text has nothing to work with while
+        // the search box is empty, so it is offered but not armed.
+        let needs_query = op.needs_needle() && self.query.is_empty();
+        let is_active = active == Some(op);
+        let tooltip: SharedString = if needs_query {
+            format!("検索欄に文字を入れてから「{}」を押します", op.label()).into()
+        } else if is_active {
+            "この条件で絞り込み中。クリックで解除".into()
+        } else if op.needs_needle() {
+            format!("{}行だけを表示します", op.describe(&self.query)).into()
+        } else {
+            format!("{}のセルの行だけを表示します", op.label()).into()
+        };
+
+        Button::new(ElementId::Name(op.label().into()), op.label())
+            .size(ButtonSize::Compact)
+            .label_size(LabelSize::Small)
+            .style(if is_active {
+                ButtonStyle::Filled
+            } else {
+                ButtonStyle::Subtle
+            })
+            .disabled(needs_query)
+            .tooltip(Tooltip::text(tooltip))
+            .on_click(cx.listener(move |picker, _, _window, cx| {
+                picker.delegate.toggle_text_filter(op, cx);
+                cx.notify();
+            }))
+    }
+}
+
+/// Which values "select everything the list is showing" narrows a column to, or
+/// `None` when that is every value the column has: a filter that keeps every row
+/// is not a filter, and leaving one in place would go on excluding rows that a
+/// later edit gives a new value.
+///
+/// Entries hidden by another column's filter are left out, matching what the
+/// list lets the user check by hand.
+fn listed_value_filter(
+    rows: &[ColumnFilterRow],
+    filtered: &[ColumnFilterListEntry],
+) -> Option<HashSet<Option<SharedString>>> {
+    let listed: HashSet<Option<SharedString>> = filtered
+        .iter()
+        .filter_map(|entry| match entry {
+            ColumnFilterListEntry::Row { row_index, .. } => rows.get(*row_index),
+            ColumnFilterListEntry::Header(_) => None,
+        })
+        .filter(|row| row.hidden_by.is_none())
+        .map(|row| row.entry.content.clone())
+        .collect();
+    let available = rows.iter().filter(|row| row.hidden_by.is_none()).count();
+    (listed.len() != available).then_some(listed)
 }
 
 impl PickerDelegate for ColumnFilterDelegate {
@@ -308,8 +446,16 @@ impl PickerDelegate for ColumnFilterDelegate {
         }
     }
 
+    /// Names what the box does for both of its jobs: it narrows the value list,
+    /// and it is the text the conditions in the footer are applied to.
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        format!("{} 件の値から検索…", self.available_count).into()
+        format!("{} 件の値を検索 / 条件の文字", self.available_count).into()
+    }
+
+    /// Text nothing in the column matches is still worth having typed, since the
+    /// footer's conditions are applied to it.
+    fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
+        Some("一致する値はありません。下の条件では使えます".into())
     }
 
     fn update_matches(
@@ -379,7 +525,8 @@ impl PickerDelegate for ColumnFilterDelegate {
         let col = self.col;
         let value = self.rows[row_index].entry.content.clone();
         self.view
-            .update(cx, |view, cx| view.toggle_filter(col, value, cx));
+            .update(cx, |view, cx| view.toggle_filter(col, value, cx))
+            .ok();
         self.refresh_rows(cx);
         cx.notify();
     }
@@ -461,60 +608,121 @@ impl PickerDelegate for ColumnFilterDelegate {
         }
     }
 
+    /// What the column is filtered by, how to drop it, and the text conditions.
+    ///
+    /// All of it lives in the footer rather than the header because the picker
+    /// only draws a header while the value list has matches, and a text
+    /// condition is exactly what the user reaches for when it has none.
     fn render_footer(
         &self,
         _window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Option<AnyElement> {
-        if !self.view.read(cx).engine.has_active_filters(self.col) {
-            return None;
-        }
-        let selected_rows: usize = self
-            .rows
-            .iter()
-            .filter(|row| row.hidden_by.is_none() && row.is_applied)
-            .map(|row| row.entry.occurred_times())
-            .sum();
-        let total_rows: usize = self
-            .rows
-            .iter()
-            .filter(|row| row.hidden_by.is_none())
-            .map(|row| row.entry.occurred_times())
-            .sum();
-
         let col = self.col;
+        let (has_active_filters, active_text) = self
+            .view
+            .read_with(cx, |view, _| {
+                (
+                    view.engine.has_active_filters(col),
+                    view.engine.text_filter(col).cloned(),
+                )
+            })
+            .unwrap_or((false, None));
+
+        let status: SharedString = match &active_text {
+            Some(filter) => format!("条件: {}", filter.description()).into(),
+            None if has_active_filters => {
+                let selected_rows: usize = self
+                    .available_rows()
+                    .filter(|row| row.is_applied)
+                    .map(|row| row.entry.occurred_times())
+                    .sum();
+                let total_rows: usize = self
+                    .available_rows()
+                    .map(|row| row.entry.occurred_times())
+                    .sum();
+                format!("{total_rows} 行中 {selected_rows} 行を選択中").into()
+            }
+            None => "値を選ぶか、下の条件で絞り込みます".into(),
+        };
+        let active_op = active_text.as_ref().map(|filter| filter.op);
+
+        // Two rows of four and three: the popover is too narrow for all seven
+        // labels side by side once the buffer font is enlarged.
+        let (first_ops, second_ops) = TextFilterOp::ALL.split_at(4);
+
         Some(
-            h_flex()
+            v_flex()
                 .w_full()
+                .gap_1()
                 .px_2()
                 .py_1()
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
-                .justify_between()
-                .items_center()
                 .child(
-                    Label::new(format!("{total_rows} 行中 {selected_rows} 行を選択中"))
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    h_flex()
+                        .w_full()
+                        .gap_1()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            Label::new(status)
+                                .size(LabelSize::Small)
+                                .color(Color::Muted)
+                                .single_line()
+                                .truncate(),
+                        )
+                        .child(
+                            Button::new(ElementId::Name("table-filter-clear".into()), "すべて解除")
+                                .size(ButtonSize::Compact)
+                                .label_size(LabelSize::Small)
+                                .style(ButtonStyle::Subtle)
+                                .disabled(!has_active_filters)
+                                .tooltip(Tooltip::text("この列の絞り込みを解除します"))
+                                .on_click(cx.listener(move |picker, _, _window, cx| {
+                                    picker
+                                        .delegate
+                                        .view
+                                        .update(cx, |view, cx| view.clear_filters(col, cx))
+                                        .ok();
+                                    picker.delegate.refresh_rows(cx);
+                                    cx.notify();
+                                })),
+                        ),
                 )
                 .child(
-                    div()
-                        .id("table-filter-clear-all")
-                        .cursor_pointer()
+                    h_flex()
+                        .w_full()
+                        .gap_1()
+                        .items_center()
                         .child(
-                            Label::new("すべて解除")
-                                .size(LabelSize::Small)
-                                .color(Color::Accent),
+                            Button::new(
+                                ElementId::Name("table-filter-select-listed".into()),
+                                "すべて選択",
+                            )
+                            .size(ButtonSize::Compact)
+                            .label_size(LabelSize::Small)
+                            .style(ButtonStyle::Subtle)
+                            .tooltip(Tooltip::text(
+                                "いま一覧に出ている値だけに絞り込みます (検索と組み合わせて使います)",
+                            ))
+                            .on_click(cx.listener(move |picker, _, _window, cx| {
+                                picker.delegate.select_listed_values(cx);
+                                cx.notify();
+                            })),
                         )
-                        .on_click(cx.listener(move |picker, _, _, cx| {
-                            picker
-                                .delegate
-                                .view
-                                .update(cx, |view, cx| view.clear_filters(col, cx));
-                            picker.delegate.refresh_rows(cx);
-                            cx.notify();
-                            cx.emit(DismissEvent);
-                        })),
+                        .children(
+                            first_ops
+                                .iter()
+                                .map(|op| self.render_text_filter_button(*op, active_op, cx)),
+                        ),
+                )
+                .child(
+                    h_flex().w_full().gap_1().items_center().children(
+                        second_ops
+                            .iter()
+                            .map(|op| self.render_text_filter_button(*op, active_op, cx)),
+                    ),
                 )
                 .into_any(),
         )
@@ -529,18 +737,16 @@ impl TabularDataPreviewPane {
         cx: &mut Context<'_, TabularDataPreviewPane>,
         col_idx: AnyColumn,
     ) -> AnyElement {
-        let has_active_filter = self.engine.has_active_filters(col_idx);
         let has_active_sort = self
             .engine
             .applied_sorting
             .is_some_and(|o| o.col_idx == col_idx);
-        let always_show_buttons = has_active_filter || has_active_sort;
         let group_name = SharedString::from(format!("table-col-header-{}", col_idx.get()));
 
         let header_cell = GridCell::new(GridRow::Header, col_idx);
         let is_active_cell = self.grid.cursor == header_cell && self.grid.context_menu.is_none();
         let needs_probe = self.overlay_cell() == header_cell;
-        let is_selected = self.selection_rect().contains_col(col_idx);
+        let is_selected = self.selection_contains_col(col_idx);
         let search_range_border = self.search_range_border(header_cell, cx);
         let header_text = if self.settings.first_row_is_header {
             self.cell_value(GridRow::Header, col_idx)
@@ -554,11 +760,15 @@ impl TabularDataPreviewPane {
         // and filter buttons, so it has to be the same color the cell is.
         let base_bg = paint.background.unwrap_or(colors.editor_background);
         let grad_width_hovered = px(100.);
-        let grad_width = if always_show_buttons {
+        // The filter button stands in the heading whether or not the pointer is
+        // there, so the text has to fade out behind it at rest too; hovering
+        // brings out the sort button beside it, which needs more room.
+        let grad_width = if has_active_sort {
             grad_width_hovered
         } else {
-            px(20.)
+            px(44.)
         };
+        let insert_handle = self.insert_column_handle(col_idx, group_name.clone(), cx);
         let heading = h_flex()
             .group(group_name.clone())
             .relative()
@@ -603,7 +813,7 @@ impl TabularDataPreviewPane {
                             this.on_column_mouse_down(
                                 col_idx,
                                 MouseButton::Left,
-                                event.modifiers.shift,
+                                event.modifiers,
                                 event.position,
                                 window,
                                 cx,
@@ -616,7 +826,7 @@ impl TabularDataPreviewPane {
                             this.on_column_mouse_down(
                                 col_idx,
                                 MouseButton::Right,
-                                event.modifiers.shift,
+                                event.modifiers,
                                 event.position,
                                 window,
                                 cx,
@@ -653,12 +863,38 @@ impl TabularDataPreviewPane {
                     .h_full()
                     .items_center()
                     .gap_1()
-                    .when(!always_show_buttons, |this| {
-                        this.visible_on_hover(group_name)
-                    })
-                    .child(self.create_filter_button(cx, col_idx))
-                    .child(self.create_sort_button(cx, col_idx)),
-            );
+                    // Sorting stays a hover affordance, but the filter arrow is
+                    // Excel's autofilter: hidden until hovered, nobody finds it.
+                    // The debug selector hangs off a child of the hover gate, so
+                    // that it is only recorded while the button is really drawn.
+                    .child(
+                        div()
+                            .when(!has_active_sort, |this| {
+                                this.visible_on_hover(group_name.clone())
+                            })
+                            .child(
+                                div()
+                                    .when(col_idx.get() == 0, |this| {
+                                        this.debug_selector(|| {
+                                            SORT_BUTTON_DEBUG_SELECTOR.to_owned()
+                                        })
+                                    })
+                                    .child(self.create_sort_button(cx, col_idx)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .when(col_idx.get() == 0, |this| {
+                                this.debug_selector(|| FILTER_BUTTON_DEBUG_SELECTOR.to_owned())
+                            })
+                            .child(self.create_filter_button(cx, col_idx)),
+                    ),
+            )
+            // Last, so that it is painted over the heading's own text: the "+"
+            // sits on the boundary a column inserted here would land on, and
+            // that boundary is the heading's left edge, the one end of the
+            // heading the sort and filter buttons never reach.
+            .child(insert_handle);
 
         // As in the body cells, the probe has to hang off an undecorated
         // wrapper: inside the heading it would be laid out against the padding
@@ -734,34 +970,55 @@ impl TabularDataPreviewPane {
     ) -> PopoverMenu<Picker<ColumnFilterDelegate>> {
         let has_active_filters = self.engine.has_active_filters(col);
         let sort_order = self.settings.filter_sort_order;
+        // Only the caret's own column carries the handle, so that the keyboard
+        // shortcut always deploys the menu of the column the user is standing in.
+        let is_caret_column = self.grid.cursor.col == col;
+        let tooltip: SharedString = match self.engine.text_filter(col) {
+            Some(filter) => format!("絞り込み中: {}。クリックで変更", filter.description()).into(),
+            None if has_active_filters => "選んだ値で絞り込み中。クリックで変更".into(),
+            None => "絞り込み・並べ替えのメニュー (Alt+↓)".into(),
+        };
 
         PopoverMenu::new(ElementId::NamedInteger(
             "filter-menu".into(),
             col.get() as u64,
         ))
+        .when(is_caret_column, |menu| {
+            menu.with_handle(self.filter_menu_handle.clone())
+        })
         .trigger_with_tooltip(
             IconButton::new(
                 ElementId::NamedInteger("filter-button".into(), col.get() as u64),
-                IconName::Filter,
+                // The funnel is Excel's "this column is filtered"; an unfiltered
+                // column shows the bare arrow that opens the menu.
+                if has_active_filters {
+                    IconName::Filter
+                } else {
+                    IconName::ChevronDown
+                },
             )
             .icon_size(IconSize::Small)
+            .icon_color(if has_active_filters {
+                Color::Accent
+            } else {
+                Color::Muted
+            })
             .style(if has_active_filters {
                 ButtonStyle::Filled
             } else {
                 ButtonStyle::Subtle
             })
             .toggle_state(has_active_filters),
-            Tooltip::text(if has_active_filters {
-                "この列を絞り込み中。クリックで変更"
-            } else {
-                "絞り込みなし。クリックで絞り込み"
-            }),
+            Tooltip::text(tooltip),
         )
         .menu({
-            let view_entity = cx.entity();
+            // Weak, because the caret column's menu is registered with a handle
+            // the pane itself owns: a builder holding the pane strongly would
+            // close a cycle and keep the grid alive after its tab was closed.
+            let view_entity = cx.entity().downgrade();
             move |window, cx| {
-                let view = view_entity.read(cx);
-                let column_filters = match view.engine.get_filters_for_column(col) {
+                let view = view_entity.upgrade()?;
+                let column_filters = match view.read(cx).engine.get_filters_for_column(col) {
                     Ok(filters) => filters,
                     Err(err) => {
                         log::error!("Failed to get filters for column: {err}");
@@ -782,5 +1039,468 @@ impl TabularDataPreviewPane {
                 Some(picker)
             }
         })
+    }
+
+    ///// Filtering from the grid itself /////
+
+    /// Narrows `col` to this set of values, replacing whatever it was filtered
+    /// by before.
+    pub(crate) fn set_value_filter(
+        &mut self,
+        col: AnyColumn,
+        values: HashSet<Option<SharedString>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.engine.set_value_filter(col, values);
+        self.apply_filter_sort(cx);
+    }
+
+    /// Narrows `col` to the rows whose value satisfies a text condition,
+    /// replacing whatever it was filtered by before.
+    pub(crate) fn set_text_filter(
+        &mut self,
+        col: AnyColumn,
+        op: TextFilterOp,
+        needle: SharedString,
+        cx: &mut Context<Self>,
+    ) {
+        self.engine.set_text_filter(col, op, needle);
+        self.apply_filter_sort(cx);
+    }
+
+    /// The way back from a table narrowed on several columns at once, which
+    /// otherwise takes one visit to each column's menu.
+    pub(crate) fn clear_all_filters(&mut self, cx: &mut Context<Self>) {
+        if !self.engine.has_any_filters() {
+            return;
+        }
+        self.engine.clear_all_filters();
+        self.apply_filter_sort(cx);
+    }
+
+    /// The grid's own filter actions. Registered on the root element beside
+    /// [`Self::register_grid_actions`]; these are actions of the grid's own
+    /// namespace, so the overlay editor never claims them and they need no
+    /// `capture_action`.
+    pub(crate) fn register_filter_actions(&self, element: Div, cx: &mut Context<Self>) -> Div {
+        element
+            .on_action(cx.listener(|this, _: &ClearAllFilters, _window, cx| {
+                this.clear_all_filters(cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleFilterMenu, window, cx| {
+                // The popover takes the focus, and the caret's cell is committed
+                // on losing it anyway; doing it here keeps the order fixed.
+                this.commit_editing(window, cx);
+                // A column scrolled out of the view has no button on screen to
+                // hang the popover off, so it has to be brought back first.
+                this.scroll_column_into_view(window, cx);
+                // The menu is built by a closure that reads this pane, so
+                // deploying it from inside an update of the pane would be a
+                // re-entrant read.
+                let handle = this.filter_menu_handle.clone();
+                window.defer(cx, move |window, cx| handle.toggle(window, cx));
+            }))
+    }
+
+    /// Opens `col`'s filter popover, which is what the column heading's context
+    /// menu offers.
+    ///
+    /// The handle the popover is opened through is registered by the caret
+    /// column's own button and by no other, so a column that is not the caret's
+    /// has to become it first - and the button carrying the handle is only
+    /// rebuilt on the next frame, which is why the menu is opened from one.
+    pub(crate) fn open_filter_menu_for_column(
+        &mut self,
+        col: AnyColumn,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.commit_editing(window, cx);
+        let caret_has_to_move = self.grid.cursor.col != col;
+        if caret_has_to_move {
+            self.change_column_selection(col, SelectionChange::Replace, cx);
+        }
+        self.scroll_column_into_view(window, cx);
+
+        let handle = self.filter_menu_handle.clone();
+        if caret_has_to_move {
+            window.on_next_frame(move |window, cx| handle.show(window, cx));
+            return;
+        }
+        window.defer(cx, move |window, cx| handle.show(window, cx));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{Entity, TestAppContext, VisualTestContext, px};
+
+    use super::*;
+    use crate::{
+        grid_editing::tests::{open_grid, open_grid_in_workspace},
+        table_data_engine::filtering_by_column::FilterEntry,
+        types::{DataRow, DisplayRow},
+    };
+    use workspace::SaveIntent;
+
+    fn row(value: &str, hidden_by: Option<AnyColumn>) -> ColumnFilterRow {
+        ColumnFilterRow {
+            entry: FilterEntry {
+                content: Some(value.to_owned().into()),
+                rows: vec![DataRow(0)],
+            },
+            is_applied: false,
+            hidden_by,
+        }
+    }
+
+    fn listed(indices: impl IntoIterator<Item = usize>) -> Vec<ColumnFilterListEntry> {
+        indices
+            .into_iter()
+            .map(|row_index| ColumnFilterListEntry::Row {
+                row_index,
+                positions: Vec::new(),
+            })
+            .collect()
+    }
+
+    /// Narrowing to the whole list has to come out as "no filter" rather than as
+    /// a filter naming every current value, which would keep excluding rows that
+    /// a later edit gives a value the set never heard of.
+    #[test]
+    fn selecting_the_whole_list_clears_the_column_instead_of_naming_every_value() {
+        let rows = vec![row("a", None), row("b", None)];
+        assert_eq!(listed_value_filter(&rows, &listed([0, 1])), None);
+    }
+
+    #[test]
+    fn selecting_part_of_the_list_narrows_the_column_to_it() {
+        let rows = vec![row("a", None), row("b", None), row("c", None)];
+        let values = listed_value_filter(&rows, &listed([0, 2]))
+            .expect("two of three values is a narrower filter");
+        assert_eq!(
+            values,
+            HashSet::from_iter([Some("a".into()), Some("c".into())])
+        );
+    }
+
+    /// Values another column's filter has hidden are not ones the user could
+    /// check by hand, so "select everything listed" has to skip them - and has to
+    /// count "everything" the same way, or selecting the full list of a column
+    /// with hidden values would never read as "no filter".
+    #[test]
+    fn selecting_the_whole_list_ignores_values_hidden_by_another_column() {
+        let rows = vec![row("a", None), row("b", None), row("c", Some(AnyColumn(1)))];
+        assert_eq!(listed_value_filter(&rows, &listed([0, 1, 2])), None);
+
+        let values = listed_value_filter(&rows, &listed([0, 2]))
+            .expect("one of two available values is a narrower filter");
+        assert_eq!(values, HashSet::from_iter([Some("a".into())]));
+    }
+
+    /// The user could not find the filter at all, because the heading only showed
+    /// its buttons while the pointer was over the column. The arrow now stands in
+    /// every heading; the sort button beside it is still a hover affordance,
+    /// which is what makes this assertion mean anything - `debug_bounds` reports
+    /// an element's rectangle whether or not it was painted, so the control is
+    /// the button that is *not* drawn.
+    #[gpui::test]
+    async fn the_filter_arrow_is_drawn_without_hovering_the_column(cx: &mut TestAppContext) {
+        let (_pane, _editor, mut cx) = open_grid("name,value\nalpha,1\nbeta,2", cx).await;
+        cx.run_until_parked();
+
+        let arrow = cx
+            .debug_bounds(FILTER_BUTTON_DEBUG_SELECTOR)
+            .expect("the filter arrow should be drawn with no pointer over the heading");
+        assert!(
+            arrow.size.width > px(0.) && arrow.size.height > px(0.),
+            "the filter arrow was drawn with no size ({arrow:?})"
+        );
+        assert!(
+            cx.debug_bounds(SORT_BUTTON_DEBUG_SELECTOR).is_none(),
+            "the sort button should stay hidden until the heading is hovered"
+        );
+    }
+
+    /// With the header row turned off the headings only carry their spreadsheet
+    /// letters, which was one candidate explanation for the filter going
+    /// unnoticed: the buttons have to be there in that mode too.
+    #[gpui::test]
+    async fn the_filter_arrow_is_drawn_without_a_header_row(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("name,value\nalpha,1\nbeta,2", cx).await;
+        cx.run_until_parked();
+
+        cx.dispatch_action(crate::ToggleHeaderRow);
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(!pane.has_header_row());
+        });
+
+        let arrow = cx
+            .debug_bounds(FILTER_BUTTON_DEBUG_SELECTOR)
+            .expect("the filter arrow should be drawn on a grid with no header row");
+        assert!(
+            arrow.size.width > px(0.) && arrow.size.height > px(0.),
+            "the filter arrow was drawn with no size ({arrow:?})"
+        );
+    }
+
+    /// Excel's Alt+Down. The binding sits in the `"TabularDataGrid > Editor"`
+    /// block because the overlay editor holds the focus, and `alt-down` is bound
+    /// to `editor::MoveLineDown` at the editor's own depth.
+    #[gpui::test]
+    async fn alt_down_opens_the_caret_columns_filter_menu(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("name,value\nalpha,1\nbeta,2", cx).await;
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(!pane.filter_menu_handle.is_deployed());
+        });
+
+        cx.simulate_keystrokes("right");
+        cx.run_until_parked();
+        cx.simulate_keystrokes("alt-down");
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.col, AnyColumn(1));
+            assert!(
+                pane.filter_menu_handle.is_deployed(),
+                "alt-down should have deployed the caret column's filter menu"
+            );
+        });
+
+        cx.simulate_keystrokes("alt-down");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                !pane.filter_menu_handle.is_deployed(),
+                "alt-down should close the menu it opened"
+            );
+        });
+    }
+
+    /// The way back out of a table narrowed on two columns at once.
+    #[gpui::test]
+    async fn clear_all_filters_brings_every_row_back(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("c0,c1\na,keep\nb,keep\na,drop", cx).await;
+        cx.run_until_parked();
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.toggle_filter(AnyColumn(0), Some("a".into()), cx);
+            pane.toggle_filter(AnyColumn(1), Some("keep".into()), cx);
+        });
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.body_row_count(), 1);
+            assert!(pane.engine.has_any_filters());
+        });
+
+        cx.dispatch_action(ClearAllFilters);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.body_row_count(), 3);
+            assert!(!pane.engine.has_any_filters());
+        });
+    }
+
+    /// A text condition narrows the grid itself, not just the value list.
+    #[gpui::test]
+    async fn a_text_condition_narrows_the_grid(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("c0,c1\nApfel,1\napfelsaft,2\nBirne,3", cx).await;
+        cx.run_until_parked();
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.set_text_filter(AnyColumn(0), TextFilterOp::Contains, "APFEL".into(), cx);
+        });
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.body_row_count(), 2);
+            assert_eq!(
+                pane.cell_value(GridRow::Body(DisplayRow(0)), AnyColumn(0)),
+                SharedString::from("Apfel")
+            );
+            assert_eq!(
+                pane.cell_value(GridRow::Body(DisplayRow(1)), AnyColumn(0)),
+                SharedString::from("apfelsaft")
+            );
+        });
+    }
+
+    fn buffer_text(editor: &Entity<editor::Editor>, cx: &mut VisualTestContext) -> String {
+        editor.read_with(cx, |editor, cx| editor.text(cx))
+    }
+
+    /// While rows are hidden a display row is not its own data row, so an edit
+    /// has to travel through the mapping rather than count lines of the file.
+    #[gpui::test]
+    async fn editing_a_filtered_row_writes_to_its_own_data_row(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("c0,c1\na,1\nb,2\na,3", cx).await;
+        cx.run_until_parked();
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.toggle_filter(AnyColumn(0), Some("a".into()), cx);
+        });
+        cx.run_until_parked();
+
+        // The second row still showing is the file's fourth line, not its third.
+        cx.simulate_keystrokes("down down right");
+        cx.run_until_parked();
+        cx.simulate_input("x");
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+
+        assert_eq!(buffer_text(&editor, &mut cx), "c0,c1\na,1\nb,2\na,x");
+    }
+
+    /// The same for a structural edit: the new row goes after the data row the
+    /// caret is on, wherever the filter has moved that row on screen.
+    #[gpui::test]
+    async fn inserting_a_row_while_filtered_lands_after_its_data_row(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("c0,c1\na,1\nb,2\na,3", cx).await;
+        cx.run_until_parked();
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.toggle_filter(AnyColumn(0), Some("a".into()), cx);
+        });
+        cx.run_until_parked();
+
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+        cx.dispatch_action(crate::InsertRowBelow);
+        cx.run_until_parked();
+
+        assert_eq!(buffer_text(&editor, &mut cx), "c0,c1\na,1\n,\nb,2\na,3");
+    }
+
+    /// The pane owns the popover handle, the handle owns the closure that builds
+    /// the menu, and that closure needs the pane: closing the loop with a strong
+    /// handle leaves the grid - and the colors model it shares - alive for the
+    /// rest of the session.
+    #[gpui::test]
+    async fn closing_the_grid_releases_it_despite_the_filter_menu_handle(cx: &mut TestAppContext) {
+        let (workspace, pane, _editor, mut cx) = open_grid_in_workspace("a,b\nc,d", cx).await;
+        cx.run_until_parked();
+        // Deployed at least once, so that the handle really holds the builder.
+        cx.simulate_keystrokes("alt-down");
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.filter_menu_handle.is_deployed());
+        });
+
+        let item_id = pane.entity_id();
+        let released = pane.downgrade();
+        drop(pane);
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.active_pane().update(cx, |pane, cx| {
+                    pane.close_item_by_id(item_id, SaveIntent::Skip, window, cx)
+                })
+            })
+            .await
+            .expect("closing the grid tab should succeed");
+        cx.run_until_parked();
+
+        released.assert_released();
+    }
+
+    /// The column heading's menu is the other way to the filter popover, for a
+    /// user who never notices the arrow. It opens the popover of the column that
+    /// was clicked, which the caret has to be on for the handle to belong to it.
+    #[gpui::test]
+    async fn the_heading_menu_opens_the_filter_popover(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("name,value\nalpha,1\nbeta,2", cx).await;
+        cx.run_until_parked();
+
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.open_filter_menu_for_column(AnyColumn(0), window, cx);
+        });
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.col, AnyColumn(0));
+            assert!(
+                pane.filter_menu_handle.is_deployed(),
+                "the caret's own column opens straight away"
+            );
+        });
+    }
+
+    /// A column that is not the caret's has to become it first: the handle that
+    /// opens the popover is registered by the caret column's button alone, so
+    /// asking for another column's menu has to move the caret there.
+    #[gpui::test]
+    async fn the_heading_menu_moves_the_caret_to_the_column_it_opens(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("name,value\nalpha,1\nbeta,2", cx).await;
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.cursor.col, AnyColumn(0))
+        });
+
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.open_filter_menu_for_column(AnyColumn(1), window, cx);
+        });
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.cursor.col,
+                AnyColumn(1),
+                "the popover's handle only ever belongs to the caret's column"
+            );
+            assert_eq!(
+                pane.grid.selection_kind,
+                crate::grid::GridSelectionKind::Columns
+            );
+        });
+    }
+
+    /// Right clicking a column heading leaves the caret on that column even when
+    /// the click landed inside a wider column selection, because the heading
+    /// menu's filter entry opens the caret column's popover and no other. The
+    /// whole path has to hold, or the entry silently filters a different column.
+    #[gpui::test]
+    async fn right_clicking_a_heading_leaves_its_filter_entry_pointing_at_it(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3", cx).await;
+        cx.run_until_parked();
+
+        // Columns A to C dragged as one block, with the caret at its far end.
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_column_selection(AnyColumn(0), SelectionChange::Replace, cx);
+            pane.change_column_selection(AnyColumn(2), SelectionChange::Extend, cx);
+        });
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.on_column_mouse_down(
+                AnyColumn(1),
+                MouseButton::Right,
+                gpui::Modifiers::none(),
+                gpui::point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.cursor.col,
+                AnyColumn(1),
+                "the clicked column has to become the caret's"
+            );
+        });
+
+        // A menu entry's handler runs while the menu it was picked from is
+        // still open; the menu only dismisses itself afterwards.
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.open_filter_menu_for_column(AnyColumn(1), window, cx);
+        });
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                pane.filter_menu_handle.is_deployed(),
+                "the entry has to reach the popover of the column that was clicked"
+            );
+        });
     }
 }

@@ -74,6 +74,8 @@ impl Render for TabularDataPreviewPane {
             .w_full()
             .h_full();
         let root = self.register_grid_actions(root, cx);
+        let root = self.register_append_actions(root, cx);
+        let root = self.register_filter_actions(root, cx);
         let root = self.capture_editor_actions(root, cx);
 
         let div = root
@@ -155,8 +157,16 @@ impl TabularDataPreviewPane {
                 )
                 .into_any_element()
         } else {
+            // A file with no columns has no heading to hang the grid's own "+"
+            // off, so the way into a table has to be here instead.
             message
-                .child("空のファイルです。セルに入力すると 1 行目が作られます")
+                .child(
+                    v_flex()
+                        .gap_1()
+                        .items_center()
+                        .child("空のファイルです。セルに入力すると 1 行目が作られます")
+                        .child(self.render_start_table_button(cx)),
+                )
                 .into_any_element()
         }
     }

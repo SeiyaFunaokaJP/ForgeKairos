@@ -387,7 +387,7 @@ impl Render for MarkdownFormatBar {
                         );
                     }
                     menu.separator().action(
-                        "カーソル位置の図を編集…",
+                        "Mermaid 図を編集…",
                         markdown_preview::EditMermaid.boxed_clone(),
                     )
                 },
@@ -399,28 +399,15 @@ impl Render for MarkdownFormatBar {
                 markdown_preview::OpenPreviewToTheSide.boxed_clone(),
                 &focus_handle,
             ))
-            .child(menu_format_button(
-                "markdown-fold",
+            // Folding by heading level lives on in the gutter arrows, the
+            // editor's own "…" fold submenu and the command palette, so this
+            // slot carries the disclosure the headings cannot express instead.
+            .child(icon_format_button(
+                "markdown-details",
                 IconName::FoldVertical,
-                "見出しで折り畳む",
+                "折り畳み (details) を挿入",
+                editor_actions::InsertDetails.boxed_clone(),
                 &focus_handle,
-                |menu| {
-                    menu.action(
-                        "見出し 1 で畳む",
-                        Box::new(editor_actions::FoldHeadings { level: 1 }),
-                    )
-                    .action(
-                        "見出し 2 で畳む",
-                        Box::new(editor_actions::FoldHeadings { level: 2 }),
-                    )
-                    .action(
-                        "見出し 3 で畳む",
-                        Box::new(editor_actions::FoldHeadings { level: 3 }),
-                    )
-                    .separator()
-                    .action("すべて畳む", Box::new(editor_actions::FoldAllHeadings))
-                    .action("すべて展開", Box::new(editor_actions::UnfoldAllHeadings))
-                },
             ));
 
         let separator = || Divider::vertical().inset();

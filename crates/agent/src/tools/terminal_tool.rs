@@ -528,7 +528,10 @@ async fn run_terminal_tool(
                 let context = crate::ToolPermissionContext::new(
                     TerminalTool::NAME,
                     vec![input.command.clone()],
-                );
+                )
+                // 決定 2: the command is now known to run inside the sandbox,
+                // which is what lets the rules tolerate a shell substitution.
+                .in_sandbox();
                 event_stream.authorize(SharedString::new(input.command.clone()), context, cx)
             } else {
                 let reason = unsandboxed_execution_reason(project.read(cx), cx);
@@ -2443,8 +2446,8 @@ mod tests {
         let result = task.await;
         let error = result.expect_err("expected invalid terminal command to be rejected");
         assert!(
-            error.contains("shell substitutions or interpolations")
-                && error.contains("run it themselves"),
+            error.contains("シェルの置換・展開")
+                && error.contains("ユーザー自身のターミナルで実行"),
             "expected explicit invalid-command message, got: {error}"
         );
         assert!(
@@ -2666,8 +2669,8 @@ mod tests {
             .await
             .expect_err("a substitution outside the sandbox must be rejected");
         assert!(
-            error.contains("shell substitutions or interpolations")
-                && error.contains("run it themselves"),
+            error.contains("シェルの置換・展開")
+                && error.contains("ユーザー自身のターミナルで実行"),
             "expected the invalid-command message, got: {error}"
         );
         assert_eq!(environment.terminal_creation_count(), 0);
@@ -2678,6 +2681,67 @@ mod tests {
             ),
             "a rejected command must not show a card"
         );
+    }
+
+    /// 決定 2: the same command inside the sandbox is not refused. The sandbox
+    /// bounds what the expansion can reach, so the mode decides — in confirm
+    /// mode the user sees the command as written and answers for it.
+    #[gpui::test]
+    async fn test_run_asks_about_a_substitution_inside_the_sandbox(cx: &mut gpui::TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+
+        crate::tests::init_test(cx);
+        cx.update(|cx| {
+            cx.update_flags(true, vec!["sandboxing".to_string()]);
+            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+            settings.tool_permissions.default = settings::ToolPermissionMode::Confirm;
+            settings.tool_permissions.tools.remove(TerminalTool::NAME);
+            settings.sandbox_permissions.allow_unsandboxed = false;
+            agent_settings::AgentSettings::override_global(settings, cx);
+        });
+
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/root", serde_json::json!({})).await;
+        let project = project::Project::test(fs, ["/root".as_ref()], cx).await;
+
+        let environment = std::rc::Rc::new(cx.update(|cx| {
+            crate::tests::FakeThreadEnvironment::default().with_terminal(
+                crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
+            )
+        }));
+        #[allow(clippy::arc_with_non_send_sync)]
+        let tool = std::sync::Arc::new(SandboxedTerminalTool::new(project, environment.clone()));
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+        let input: SandboxedTerminalToolInput = serde_json::from_value(serde_json::json!({
+            "command": "echo $HOME",
+            "cd": "root",
+        }))
+        .expect("the sandboxed input should deserialize");
+
+        let task = cx.update(|cx| tool.run(crate::ToolInput::resolved(input), event_stream, cx));
+
+        let authorization = rx.expect_authorization().await;
+        assert_eq!(
+            authorization.tool_call.fields.title.as_deref(),
+            Some("echo $HOME"),
+            "the card has to show the command exactly as it will run"
+        );
+        assert_eq!(
+            environment.terminal_creation_count(),
+            0,
+            "nothing runs before the card is answered"
+        );
+
+        authorization
+            .response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new("deny"),
+                acp::PermissionOptionKind::RejectOnce,
+            ))
+            .expect("authorization response should send");
+        task.await
+            .expect_err("a denied command must not run after all");
+        assert_eq!(environment.terminal_creation_count(), 0);
     }
 
     #[gpui::test]
@@ -3170,8 +3234,8 @@ mod tests {
         let result = task.await;
         let error = result.unwrap_err();
         assert!(
-            error.contains("shell substitutions or interpolations")
-                && error.contains("run it themselves"),
+            error.contains("シェルの置換・展開")
+                && error.contains("ユーザー自身のターミナルで実行"),
             "command {command:?} should be rejected with substitution message, got: {error}"
         );
         assert!(
@@ -3342,8 +3406,8 @@ mod tests {
             .await
             .expect_err("a substitution outside the sandbox must be rejected");
         assert!(
-            error.contains("shell substitutions or interpolations")
-                && error.contains("run it themselves"),
+            error.contains("シェルの置換・展開")
+                && error.contains("ユーザー自身のターミナルで実行"),
             "expected the invalid-command message, got: {error}"
         );
         assert_eq!(environment.terminal_creation_count(), 0);
@@ -3410,9 +3474,7 @@ mod tests {
             .await
             .expect_err("different env-var value should not match allow pattern");
         assert!(
-            error.contains("could not be approved")
-                || error.contains("denied")
-                || error.contains("disabled"),
+            error.contains("無効になっています") || error.contains("ブロックされました"),
             "expected denial for mismatched env value, got: {error}"
         );
         assert!(

@@ -134,7 +134,9 @@ const LAUNCH_CLAUDE_CODE_LABEL: &str = "Claude Code を起動";
 fn launch_claude_code_button() -> FoldableTabBarButton {
     let button = IconButton::new("terminal-launch-claude-code", IconName::AiClaude)
         .icon_size(IconSize::Small)
-        .tooltip(Tooltip::text("Claude Code を起動 (新しいターミナル)"))
+        // 置き場はエージェントパネルのタブにもなるので、どこに開くかは言わない
+        // (ADR-F53)。
+        .tooltip(Tooltip::text(LAUNCH_CLAUDE_CODE_LABEL))
         .on_click(|_, window, cx| {
             window.dispatch_action(
                 Box::new(zed_actions::terminal::LaunchClaudeCode { effort: None }),

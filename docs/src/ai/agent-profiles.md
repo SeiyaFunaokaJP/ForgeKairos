@@ -11,11 +11,12 @@ Profiles do not decide whether a tool call is allowed automatically. Use [Tool P
 
 ## Built-in Profiles {#built-in-profiles}
 
-Zed includes three built-in profiles:
+Zed includes four built-in profiles:
 
-- `Write`: enables tools for reading, editing, and running commands.
-- `Ask`: focuses on read-only codebase questions.
-- `Minimal`: uses no project tools.
+- `書き込み` (`write`): enables tools for reading, editing, and running commands.
+- `編集のみ` (`edit`): reads and edits files, but runs no commands and reaches no network. Deleting, moving and copying paths are left out as well.
+- `質問` (`ask`): focuses on read-only codebase questions.
+- `最小` (`minimal`): uses no project tools.
 
 ## Configure Profiles {#configure-profiles}
 

@@ -130,6 +130,20 @@ const RETRY_AGENT_START_LABEL: &str = "もう一度試す";
 /// How a test finds that button in the frame the view just drew.
 const RETRY_AGENT_START_SELECTOR: &str = "RETRY-AGENT-START";
 
+/// ADR-F53: what a sign-in this route may not perform is refused with.
+const SUBSCRIPTION_SIGN_IN_REFUSED: &str = "Claude のサブスクリプションでのサインインは、\
+     この接続方式では行えません。公式の Claude Code を使ってください。";
+
+/// How a test finds the guidance that replaces a sign-in on the ACP Claude
+/// agent's authentication card in the frame the view just drew.
+const API_KEY_ONLY_SELECTOR: &str = "AUTH-API-KEY-ONLY";
+
+/// How a test finds one authentication method's button in the frame the view
+/// just drew, so that a method the card must not offer can be shown absent.
+fn auth_method_selector(method_id: &str) -> String {
+    format!("AUTH-METHOD-{method_id}")
+}
+
 /// ADR-F49: the consent's detail, as for the sandboxed Claude Code CLI: the
 /// hosts go into the IDE-wide allowlist, where the built-in agent's commands
 /// can reach them too.
@@ -2482,6 +2496,19 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let agent_id = self.agent.agent_id();
+        // ADR-F53: the card offers no subscription sign-in for this agent, so
+        // nothing should ask for one; a keybinding or a card drawn before the
+        // agent was reconfigured still could, and it is refused here rather
+        // than at the terminal.
+        if agent_servers::is_subscription_auth_method(agent_id.0.as_ref(), method.0.as_ref()) {
+            let refusal = anyhow!(SUBSCRIPTION_SIGN_IN_REFUSED);
+            match self.root_thread_view() {
+                Some(view) => view.update(cx, |view, cx| view.handle_thread_error(refusal, cx)),
+                None => log::warn!("{refusal}"),
+            }
+            return;
+        }
         let Some(workspace) = self.workspace.upgrade() else {
             return;
         };
@@ -2521,6 +2548,7 @@ impl ConversationView {
                                 login,
                                 workspace,
                                 project,
+                                agent_id,
                                 method.clone(),
                                 false,
                                 runs_in_sandbox,
@@ -2689,10 +2717,12 @@ impl ConversationView {
         .detach();
     }
 
+    #[allow(clippy::too_many_arguments, reason = "one sign-in's whole description")]
     fn spawn_external_agent_login(
         login: task::SpawnInTerminal,
         workspace: Entity<Workspace>,
         project: Entity<Project>,
+        agent_id: AgentId,
         method: acp::AuthMethodId,
         previous_attempt: bool,
         runs_in_sandbox: bool,
@@ -2700,6 +2730,11 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<()>> {
+        // ADR-F53: the last gate before a terminal is opened for a sign-in,
+        // whatever asked for it.
+        if agent_servers::is_subscription_auth_method(agent_id.0.as_ref(), method.0.as_ref()) {
+            return Task::ready(Err(anyhow!(SUBSCRIPTION_SIGN_IN_REFUSED)));
+        }
         let Some(terminal_panel) = workspace.read(cx).panel::<TerminalPanel>(cx) else {
             return Task::ready(Err(anyhow!("Terminal panel is unavailable")));
         };
@@ -2823,6 +2858,7 @@ impl ConversationView {
                                         login,
                                         workspace,
                                         project.clone(),
+                                        agent_id,
                                         method,
                                         true,
                                         runs_in_sandbox,
@@ -2862,7 +2898,23 @@ impl ConversationView {
         window: &mut Window,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        let auth_methods = connection.auth_methods();
+        let agent_id = self.agent.agent_id();
+        // ADR-F53: a subscription sign-in is not offered on this route, so it
+        // is left out of the card and the guidance below takes its place.
+        let offered_methods = || {
+            connection
+                .auth_methods()
+                .iter()
+                .filter(|method| {
+                    !agent_servers::is_subscription_auth_method(
+                        agent_id.0.as_ref(),
+                        method.id().0.as_ref(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let auth_methods = offered_methods();
+        let show_api_key_only_notice = agent_servers::is_api_key_only_agent(agent_id.0.as_ref());
 
         let agent_display_name = self
             .agent_server_store
@@ -2870,47 +2922,51 @@ impl ConversationView {
             .agent_display_name(&self.agent.agent_id())
             .unwrap_or_else(|| self.agent.agent_id().0);
 
-        let show_fallback_description =
-            auth_methods.len() > 1 && description.is_none() && pending_auth_method.is_none();
+        let show_fallback_description = auth_methods.len() > 1
+            && description.is_none()
+            && pending_auth_method.is_none()
+            && !show_api_key_only_notice;
 
         let auth_buttons = || {
             h_flex().justify_end().flex_wrap().gap_1().children(
-                connection
-                    .auth_methods()
-                    .iter()
+                offered_methods()
+                    .into_iter()
                     .enumerate()
                     .rev()
                     .map(|(ix, method)| {
                         let (method_id, name) = (method.id().0.clone(), method.name().to_string());
                         let agent_telemetry_id = connection.telemetry_id();
+                        let selector = auth_method_selector(&method_id);
 
-                        Button::new(method_id.clone(), name)
-                            .label_size(LabelSize::Small)
-                            .map(|this| {
-                                if ix == 0 {
-                                    this.style(ButtonStyle::Tinted(TintColor::Accent))
-                                } else {
-                                    this.style(ButtonStyle::Outlined)
-                                }
-                            })
-                            .when_some(method.description(), |this, description| {
-                                this.tooltip(Tooltip::text(description.to_string()))
-                            })
-                            .on_click({
-                                cx.listener(move |this, _, window, cx| {
-                                    telemetry::event!(
-                                        "Authenticate Agent Started",
-                                        agent = agent_telemetry_id,
-                                        method = method_id
-                                    );
-
-                                    this.authenticate(
-                                        acp::AuthMethodId::new(method_id.clone()),
-                                        window,
-                                        cx,
-                                    )
+                        div().debug_selector(|| selector).child(
+                            Button::new(method_id.clone(), name)
+                                .label_size(LabelSize::Small)
+                                .map(|this| {
+                                    if ix == 0 {
+                                        this.style(ButtonStyle::Tinted(TintColor::Accent))
+                                    } else {
+                                        this.style(ButtonStyle::Outlined)
+                                    }
                                 })
-                            })
+                                .when_some(method.description(), |this, description| {
+                                    this.tooltip(Tooltip::text(description.to_string()))
+                                })
+                                .on_click({
+                                    cx.listener(move |this, _, window, cx| {
+                                        telemetry::event!(
+                                            "Authenticate Agent Started",
+                                            agent = agent_telemetry_id,
+                                            method = method_id
+                                        );
+
+                                        this.authenticate(
+                                            acp::AuthMethodId::new(method_id.clone()),
+                                            window,
+                                            cx,
+                                        )
+                                    })
+                                }),
+                        )
                     }),
             )
         };
@@ -2945,6 +3001,12 @@ impl ConversationView {
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
+                        } else if show_api_key_only_notice {
+                            // The agent's own description asks for a
+                            // subscription sign-in, which is exactly what this
+                            // route does not do, so it is replaced rather than
+                            // shown alongside the guidance.
+                            this
                         } else {
                             this.children(description.map(|desc| {
                                 self.render_markdown(
@@ -2955,11 +3017,55 @@ impl ConversationView {
                             }))
                         }
                     })
+                    .when(show_api_key_only_notice, |this| {
+                        this.gap_1().child(Self::render_api_key_only_notice())
+                    })
                     .when(auth_methods.len() > 1, |this| {
                         this.gap_1().child(auth_buttons())
                     }),
             )
             .into_any_element()
+    }
+
+    /// ADR-F53: what the ACP Claude agent's authentication card says in place
+    /// of a sign-in. A subscription is used by starting the official Claude
+    /// Code, which signs itself in; this route takes an API key from the
+    /// agent's own `env`.
+    fn render_api_key_only_notice() -> impl IntoElement {
+        v_flex()
+            .debug_selector(|| API_KEY_ONLY_SELECTOR.to_string())
+            .gap_1()
+            .child(
+                Label::new(
+                    "Claude のサブスクリプション (Pro / Max など) は、この接続方式では\
+                     使えません。公式の Claude Code を使ってください。",
+                )
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+            )
+            .child(
+                Label::new(
+                    "API キー (従量課金) で使う場合は、settings.json の \
+                     `agent_servers` → `claude-acp` → `env` に `ANTHROPIC_API_KEY` を\
+                     設定してください。",
+                )
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+            )
+            .child(
+                h_flex().justify_end().child(
+                    Button::new("launch-claude-code", "Claude Code を起動")
+                        .label_size(LabelSize::Small)
+                        .style(ButtonStyle::Tinted(TintColor::Accent))
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(
+                                zed_actions::terminal::LaunchClaudeCode { effort: None }
+                                    .boxed_clone(),
+                                cx,
+                            );
+                        }),
+                ),
+            )
     }
 
     fn sync_request_elicitation_states(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -7937,20 +8043,33 @@ pub(crate) mod tests {
     #[derive(Clone)]
     struct AuthGatedAgentConnection {
         authenticated: Arc<Mutex<bool>>,
-        auth_method: acp::AuthMethod,
+        auth_methods: Vec<acp::AuthMethod>,
     }
 
     impl AuthGatedAgentConnection {
         const AUTH_METHOD_ID: &str = "test-login";
 
         fn new() -> Self {
+            Self::with_methods(&[Self::AUTH_METHOD_ID])
+        }
+
+        fn with_methods(method_ids: &[&'static str]) -> Self {
             Self {
                 authenticated: Arc::new(Mutex::new(false)),
-                auth_method: acp::AuthMethod::Agent(acp::AuthMethodAgent::new(
-                    Self::AUTH_METHOD_ID,
-                    "Test Login",
-                )),
+                auth_methods: method_ids
+                    .iter()
+                    .map(|id| {
+                        acp::AuthMethod::Agent(acp::AuthMethodAgent::new(
+                            *id,
+                            format!("Sign in with {id}"),
+                        ))
+                    })
+                    .collect(),
             }
+        }
+
+        fn is_authenticated(&self) -> bool {
+            *self.authenticated.lock()
         }
     }
 
@@ -7998,7 +8117,7 @@ pub(crate) mod tests {
         }
 
         fn auth_methods(&self) -> &[acp::AuthMethod] {
-            std::slice::from_ref(&self.auth_method)
+            &self.auth_methods
         }
 
         fn authenticate(
@@ -8006,7 +8125,11 @@ pub(crate) mod tests {
             method_id: acp::AuthMethodId,
             _cx: &mut App,
         ) -> Task<gpui::Result<()>> {
-            if &method_id == self.auth_method.id() {
+            if self
+                .auth_methods
+                .iter()
+                .any(|method| method.id() == &method_id)
+            {
                 *self.authenticated.lock() = true;
                 Task::ready(Ok(()))
             } else {
@@ -8038,6 +8161,116 @@ pub(crate) mod tests {
         fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
             self
         }
+    }
+
+    /// ADR-F53: stands in for the ACP Claude entry — the id the fork's policy
+    /// is keyed on — offering the vendor's subscription sign-in next to an
+    /// API-key method.
+    struct ClaudeAcpAgentServer {
+        connection: AuthGatedAgentConnection,
+    }
+
+    impl AgentServer for ClaudeAcpAgentServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::AiClaude
+        }
+
+        fn agent_id(&self) -> AgentId {
+            AgentId::new(agent_servers::CLAUDE_AGENT_ID)
+        }
+
+        fn connect(
+            &self,
+            _delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            _cx: &mut App,
+        ) -> Task<gpui::Result<Rc<dyn AgentConnection>>> {
+            Task::ready(Ok(Rc::new(self.connection.clone())))
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    const CLAUDE_ACP_API_KEY_METHOD: &str = "anthropic-api-key";
+    /// `debug_bounds` takes a `&'static str`, so the two selectors this test
+    /// looks for are spelled out and tied to [`auth_method_selector`] below.
+    const CLAUDE_SUBSCRIPTION_METHOD_SELECTOR: &str = "AUTH-METHOD-claude-login";
+    const CLAUDE_ACP_API_KEY_METHOD_SELECTOR: &str = "AUTH-METHOD-anthropic-api-key";
+
+    /// ADR-F53: on this route the ACP Claude agent offers no sign-in of its
+    /// own — the subscription one is left off the card and the guidance takes
+    /// its place — and asking for it anyway, past the card, is refused.
+    #[gpui::test]
+    async fn the_acp_claude_offers_no_subscription_sign_in(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        assert_eq!(
+            auth_method_selector(agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD),
+            CLAUDE_SUBSCRIPTION_METHOD_SELECTOR
+        );
+        assert_eq!(
+            auth_method_selector(CLAUDE_ACP_API_KEY_METHOD),
+            CLAUDE_ACP_API_KEY_METHOD_SELECTOR
+        );
+
+        let connection = AuthGatedAgentConnection::with_methods(&[
+            agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD,
+            CLAUDE_ACP_API_KEY_METHOD,
+        ]);
+        let (conversation_view, cx) = setup_conversation_view(
+            ClaudeAcpAgentServer {
+                connection: connection.clone(),
+            },
+            cx,
+        )
+        .await;
+        add_to_workspace(conversation_view.clone(), cx);
+        // A frame that reuses a cached pane records no `debug_selector`.
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        assert!(
+            cx.debug_bounds(API_KEY_ONLY_SELECTOR).is_some(),
+            "the card says where a subscription is used instead"
+        );
+        assert!(
+            cx.debug_bounds(CLAUDE_SUBSCRIPTION_METHOD_SELECTOR)
+                .is_none(),
+            "the subscription sign-in is not on the card"
+        );
+        assert!(
+            cx.debug_bounds(CLAUDE_ACP_API_KEY_METHOD_SELECTOR)
+                .is_some(),
+            "an API-key method is what this route is for, so it stays"
+        );
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.authenticate(
+                acp::AuthMethodId::new(agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert!(
+            !connection.is_authenticated(),
+            "the sign-in the card left off is refused when asked for anyway"
+        );
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.authenticate(
+                acp::AuthMethodId::new(CLAUDE_ACP_API_KEY_METHOD),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert!(
+            connection.is_authenticated(),
+            "the method the card does offer still works"
+        );
     }
 
     /// Simulates a model which always returns a refusal response

@@ -43,6 +43,40 @@ pub enum SidebarSide {
     Right,
 }
 
+/// When the agent panel shows the tab bar of its own pane.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum PanelTabBar {
+    /// Hide the tab bar while the in-panel thread history is showing and the
+    /// panel holds a single pane: the history lists the open tabs too, so the
+    /// horizontal row would say the same thing twice. Split the panel or close
+    /// the history and the tab bar comes back.
+    #[default]
+    #[strum(serialize = "自動")]
+    Auto,
+    #[strum(serialize = "常に表示")]
+    Always,
+    /// Keep the tab bar hidden, leaving the in-panel thread history as the way
+    /// to the open tabs. A panel too narrow to show that list, or the strip
+    /// that brings it back, still gets the tab bar: otherwise nothing would
+    /// reach the tabs that are not in front.
+    #[strum(serialize = "表示しない")]
+    Never,
+}
+
 /// How thinking blocks should be displayed by default in the agent panel.
 #[derive(
     Clone,
@@ -228,6 +262,10 @@ pub struct AgentSettingsContent {
     ///
     /// Default: true
     pub panel_thread_history: Option<bool>,
+    /// When the agent panel shows the tab bar of its own pane.
+    ///
+    /// Default: auto
+    pub panel_tab_bar: Option<PanelTabBar>,
     /// Default width in pixels when the agent panel is docked to the left or right.
     ///
     /// Default: 640
@@ -436,6 +474,10 @@ impl AgentSettingsContent {
 
     pub fn set_panel_thread_history(&mut self, visible: bool) {
         self.panel_thread_history = Some(visible);
+    }
+
+    pub fn set_panel_tab_bar(&mut self, tab_bar: PanelTabBar) {
+        self.panel_tab_bar = Some(tab_bar);
     }
 
     pub fn set_flexible_size(&mut self, flexible: bool) {

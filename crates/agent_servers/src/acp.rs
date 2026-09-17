@@ -4854,7 +4854,7 @@ mod tests {
     use super::*;
     use feature_flags::FeatureFlag as _;
 
-    const CONFIG_DIR: &str = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/config";
+    const CONFIG_DIR: &str = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp";
 
     fn placed_sandbox(
         env: &[(&str, &str)],
@@ -8011,7 +8011,7 @@ mod tests {
     /// ADR-F49 第 2b 段: what an agent in the WSL sandbox is started with.
     #[test]
     fn a_wsl_agent_writes_its_worktrees_and_its_folder_and_never_opens_a_browser() {
-        let config_dir = "/root/.zed-jp-enhance-claude/projects/0123456789abcdef/config";
+        let config_dir = "/root/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp";
         let plan = plan_wsl_agent(
             &SandboxedAgentProfile::Claude,
             HashMap::from_iter([("PATH".to_string(), "/usr/bin".to_string())]),
@@ -8037,10 +8037,9 @@ mod tests {
         assert_eq!(plan.env.get("PATH").map(String::as_str), Some("/usr/bin"));
         assert_eq!(
             plan.hosts,
-            AgentSandboxHosts::Listed(vec![
-                "api.anthropic.com".to_string(),
-                "platform.claude.com".to_string()
-            ])
+            AgentSandboxHosts::Listed(vec!["api.anthropic.com".to_string()]),
+            "ADR-F53: the OAuth token exchange is not among them — this route \
+             is API-key only"
         );
         assert_eq!(
             plan.sandbox_write_paths,
@@ -8057,7 +8056,7 @@ mod tests {
                 PathBuf::from(r"I:\proj"),
                 PathBuf::from(r"C:\other"),
                 PathBuf::from(
-                    r"\\wsl.localhost\Ubuntu\root\.zed-jp-enhance-claude\projects\0123456789abcdef\config"
+                    r"\\wsl.localhost\Ubuntu\root\.zed-jp-enhance-claude\projects\0123456789abcdef\claude-acp"
                 ),
             ],
             "ADR-F50: the write scope is spelled the way worktrees are"
